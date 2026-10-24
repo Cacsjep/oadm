@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Radius.Client"
+             x:Class="Oadm.Plugins.Radius.Client.PolicyFormView"
+             x:DataType="vm:PolicyEditorViewModel">
+  <!-- Name, policy and VLAN ID of the policy editor, on top of the shared device picker's card. -->
+  <StackPanel Classes="form">
+    <ui:FormField Label="Name">
+      <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" PlaceholderText="e.g. Building C" />
+    </ui:FormField>
+    <ui:FormField Label="Policy" Hint="{Binding KindHint}">
+      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{Binding KindChoices}" SelectedItem="{Binding Kind}" />
+    </ui:FormField>
+    <ui:FormField Label="VLAN ID" IsVisible="{Binding IsVlan}">
+      <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
+    </ui:FormField>
+  </StackPanel>
+</UserControl>

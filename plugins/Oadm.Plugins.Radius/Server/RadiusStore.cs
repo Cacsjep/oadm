@@ -35,7 +35,8 @@ public sealed record StoredServerCertificate
 
 /// <summary>
 /// The plugin settings of the 802.1X server (<see cref="IPluginSettings"/>): <c>config</c> (General and Advanced),
-/// <c>switches</c> (at most 500, secrets encrypted), <c>vlans</c> and <c>serverCertificate</c>. Each a small JSON value
+/// <c>switches</c> (at most 500, secrets encrypted), <c>policies</c> (OADM 4.1's <c>vlans</c> moved into them), <c>trustedCas</c> and
+/// <c>serverCertificate</c>. Each a small JSON value
 /// written on Save; the log lives in the plugin records (<see cref="RadiusLog"/>).
 /// </summary>
 public sealed class RadiusStore(IPluginSettings settings)
@@ -44,10 +45,23 @@ public sealed class RadiusStore(IPluginSettings settings)
     public const string SwitchesKey = "switches";
     public const string VlansKey = "vlans";
     public const string ServerCertificateKey = "serverCertificate";
+    public const string PoliciesKey = "policies";
+    public const string TrustedCasKey = "trustedCas";
+
+    public async Task<PolicySettings?> PoliciesAsync(CancellationToken ct) => Read<PolicySettings>(await settings.GetAsync(PoliciesKey, ct).ConfigureAwait(false));
+
+    public Task SavePoliciesAsync(PolicySettings policies, CancellationToken ct) => settings.SetAsync(PoliciesKey, RadiusJson.Serialize(policies with { TagChoices = [] }), ct);
+
+    /// <summary>The VLAN rules of OADM 4.1 are moved into policies once, then deleted.</summary>
+    public Task DeleteVlansAsync(CancellationToken ct) => settings.SetAsync(VlansKey, null, ct);
+
+    public async Task<TrustedCaSettings?> TrustedCasAsync(CancellationToken ct) => Read<TrustedCaSettings>(await settings.GetAsync(TrustedCasKey, ct).ConfigureAwait(false));
+
+    public Task SaveTrustedCasAsync(TrustedCaSettings cas, CancellationToken ct) => settings.SetAsync(TrustedCasKey, RadiusJson.Serialize(cas), ct);
 
     public async Task<RadiusSettings?> ConfigAsync(CancellationToken ct) => Read<RadiusSettings>(await settings.GetAsync(ConfigKey, ct).ConfigureAwait(false));
 
-    public Task SaveConfigAsync(RadiusSettings config, CancellationToken ct) => settings.SetAsync(ConfigKey, RadiusJson.Serialize(config with { VlansEnabled = false, DefaultVlan = null }), ct);
+    public Task SaveConfigAsync(RadiusSettings config, CancellationToken ct) => settings.SetAsync(ConfigKey, RadiusJson.Serialize(config), ct);
 
     public async Task<IReadOnlyList<StoredSwitch>> SwitchesAsync(CancellationToken ct) =>
         Read<List<StoredSwitch>>(await settings.GetAsync(SwitchesKey, ct).ConfigureAwait(false)) ?? [];
@@ -56,7 +70,6 @@ public sealed class RadiusStore(IPluginSettings settings)
 
     public async Task<VlanSettings?> VlansAsync(CancellationToken ct) => Read<VlanSettings>(await settings.GetAsync(VlansKey, ct).ConfigureAwait(false));
 
-    public Task SaveVlansAsync(VlanSettings vlans, CancellationToken ct) => settings.SetAsync(VlansKey, RadiusJson.Serialize(vlans with { TagChoices = [] }), ct);
 
     public async Task<StoredServerCertificate?> ServerCertificateAsync(CancellationToken ct) =>
         Read<StoredServerCertificate>(await settings.GetAsync(ServerCertificateKey, ct).ConfigureAwait(false));

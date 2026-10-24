@@ -18,9 +18,8 @@ namespace Oadm.Plugins.Radius.Tests;
 
 /// <summary>
 /// The server part's rules from the first review (docs/spec/radius-server.md "Who passes", "Code (server)", "Device
-/// groups"): only certificates the OADM CA issued itself, fail closed without PKI, revoking only IEEE 802.1X certificates
-/// with PKI's permission, what a group user sees, requests without EAP, the device list after a miss, maintenance asked for
-/// during a round, a stable server certificate, one socket per address, the log's search, Delete all and the revoked list.
+/// groups"): only certificates the OADM CA issued itself, fail closed without PKI, what a group user sees, requests without EAP, the device list after a miss, maintenance asked for
+/// during a round, a stable server certificate, one socket per address, the log's search and Delete all.
 /// </summary>
 public sealed class HardeningTests
 {
@@ -127,113 +126,6 @@ public sealed class HardeningTests
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
     }
 
-    // ------------------------------------------------------------------ revoke
-
-    [Fact]
-    public async Task RevokeNeedsTheCaPermissionOfPkiToo()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = "7DFD05", Purpose = DeviceCertificatePurposes.Dot1x }, []));
-        var radiusOnly = new LimitedCall(harness.Admin, PermissionKeys.Of(RadiusPlugin.PluginId, PermissionKeys.Manage));
-        var both = new LimitedCall(harness.Admin, PermissionKeys.Of(RadiusPlugin.PluginId, PermissionKeys.Manage), PermissionKeys.Of("oadm.pki", PermissionKeys.Manage));
-
-        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() =>
-            harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["7DFD05"], RevokeReasons.Other), radiusOnly));
-
-        Assert.Equal(RadiusTexts.NeedsCaPermission, refused.Message);
-        Assert.Empty(harness.Ca.RevokeCalls);
-        Assert.Equal(1, (await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["7DFD05"], RevokeReasons.Other), both)).Revoked);
-    }
-
-    [Fact]
-    public async Task OnlyIeee8021XCertificatesAreRevokedHere()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = "AA01", Purpose = DeviceCertificatePurposes.Dot1x }, []));
-        harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = "BB02", Purpose = DeviceCertificatePurposes.Https }, []));
-
-        // Another use, or a serial neither PKI nor this server's log knows: refused as a whole, nothing revoked.
-        foreach (var serials in new[] { new[] { "AA01", "BB02" }, ["CC03"] })
-        {
-            var refused = await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(serials, RevokeReasons.KeyCompromised)));
-            Assert.Equal("serials", refused.ParamName);
-            Assert.StartsWith(RadiusTexts.OnlyDot1x, refused.Message, StringComparison.Ordinal);
-        }
-
-        Assert.Empty(harness.Ca.RevokeCalls);
-
-        // A client certificate the 802.1X server saw (in its log) is an IEEE 802.1X certificate, also when PKI's list has
-        // no entry for it (a certificate from before the list).
-        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        var seen = harness.Ca.Camera(Serial);
-        await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, seen));
-        harness.Tick();
-        var reply = await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(["AA01", TestAuthority.SerialOf(seen)], RevokeReasons.KeyCompromised));
-        Assert.Equal(2, reply.Revoked);
-    }
-
-    [Fact]
-    public async Task AnAxisDeviceIdSerialFromTheLogIsNeverRevoked()
-    {
-        // Revoking the factory certificate's serial would lock the camera out of 802.1X and EST for good: a serial only the
-        // log knows counts only when the logged certificate was issued by an OADM CA (also a previous one).
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        var factory = harness.DeviceIds.Device(Serial);
-        using var previous = new TestAuthority("Previous OADM CA");
-        harness.Ca.Previous.Add([previous.CaCertificate]);
-        harness.Ca.RaiseChanged();
-        var ofPrevious = previous.Camera(Serial);
-        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, factory))).Final);
-        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
-        harness.Tick();
-
-        var refused = await Assert.ThrowsAsync<ArgumentException>(() =>
-            harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([TestAuthority.SerialOf(factory)], RevokeReasons.DeviceReplaced)));
-        Assert.StartsWith(RadiusTexts.OnlyDot1x, refused.Message, StringComparison.Ordinal);
-        Assert.Empty(harness.Ca.RevokeCalls);
-
-        Assert.Equal(1, (await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest([TestAuthority.SerialOf(ofPrevious)], RevokeReasons.DeviceReplaced))).Revoked);
-    }
-
-    [Fact]
-    public async Task ManySerialsAreCheckedInOnePassWithoutSearchingPkiPerSerial()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        var serials = Enumerable.Range(1, 1200).Select(i => i.ToString("X6", System.Globalization.CultureInfo.InvariantCulture)).ToList();
-        foreach (var serial in serials)
-        {
-            harness.Ca.Issued.Add((new IssuedCertificateInfo { SerialNumber = serial, Purpose = DeviceCertificatePurposes.Dot1x }, []));
-        }
-
-        var reply = await harness.CallAsync<RevokeReply>(RadiusMethods.Revoke, new RevokeRequest(serials, RevokeReasons.DeviceRemoved));
-
-        Assert.Equal(1200, reply.Revoked);
-        Assert.Empty(harness.Ca.IssuedQueries); // the uses come from PKI's list in memory, never one search per serial
-    }
-
-    [Fact]
-    public async Task TheRevokedListComesInPagesWithTheSearch()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        for (var i = 1; i <= 1200; i++)
-        {
-            harness.Ca.Revoke(i.ToString("X6", System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        var first = await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked);
-        var second = await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked, new RevokedQuery(null, 500, 500));
-        var found = await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked, new RevokedQuery("00:04:b0")); // 0004B0 = 1200
-
-        Assert.Equal(500, first.Rows.Count);
-        Assert.Equal(1200, first.Total);
-        Assert.Equal(500, second.Rows.Count);
-        Assert.NotEqual(first.Rows[0].SerialNumber, second.Rows[0].SerialNumber);
-        Assert.Equal("4B0", Assert.Single(found.Rows).SerialNumber);
-        Assert.Equal(1, found.Total);
-        Assert.Equal(200, (await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked, new RevokedQuery(null, 1000, 999))).Rows.Count);
-    }
-
     // ------------------------------------------------------------------ device groups
 
     [Fact]
@@ -269,53 +161,58 @@ public sealed class HardeningTests
     }
 
     [Fact]
-    public async Task AGroupUserGetsEmptyVlanSettings()
+    public async Task AGroupUserGetsEmptyPoliciesAndNoTrustedCas()
     {
         await using var harness = await PluginHarness.CreateAsync();
         var device = harness.AddDevice(Serial, tags: ["Lobby"]);
         await harness.RefreshDevicesAsync();
-        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, new VlanSettings
+        await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, new PolicySettings
         {
-            Enabled = true,
-            Rules = [new VlanRule(VlanRuleKinds.Tag, "Vlan 20", null, 20), new VlanRule(VlanRuleKinds.Site, RadiusLimits.ThisServerSiteId, null, 30)],
+            Policies = [PolicyTests.Vlan("Twenty", 20, new PolicyDevices { Tags = ["Vlan 20"] }), PolicyTests.Vlan("Thirty", 30, new PolicyDevices { ThisServer = true })],
             DefaultVlan = 99,
         });
+        var group = harness.Ctx.CallAsGroup([device.Id]);
 
-        var mine = await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans, null, harness.Ctx.CallAsGroup([device.Id]));
+        var mine = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies, null, group);
 
-        Assert.False(mine.Enabled);
-        Assert.Empty(mine.Rules);
+        Assert.Empty(mine.Policies);
         Assert.Null(mine.DefaultVlan);
-        Assert.Empty(mine.TagChoices); // no tag that sets a VLAN to choose
-        var all = await harness.CallAsync<VlanSettings>(RadiusMethods.GetVlans);
-        Assert.Equal(2, all.Rules.Count);
+        Assert.Empty(mine.TagChoices); // no tag of a policy to choose
+        Assert.Empty((await harness.CallAsync<TrustedCaList>(RadiusMethods.GetTrustedCas, null, group)).Cas);
+        var all = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies);
+        Assert.Equal(2, all.Policies.Count);
         Assert.Equal(["Lobby", "Vlan 20"], all.TagChoices.Select(t => t.Name));
     }
 
     [Fact]
-    public async Task TheTagsOfTheVlanRulesAreProtectedAndATagRuleWithoutProtectionMatchesNothing()
+    public async Task TheTagsOfThePoliciesAreProtectedAndAVlanTagWithoutProtectionMatchesNothing()
     {
         await using var harness = await PluginHarness.CreateAsync();
-        var settings = new VlanSettings
+        var settings = new PolicySettings
         {
-            Enabled = true,
-            Rules = [new VlanRule(VlanRuleKinds.Tag, "Vlan 20", null, 20), new VlanRule(VlanRuleKinds.Tag, "Vlan 21", null, 21), new VlanRule(VlanRuleKinds.Site, RadiusLimits.ThisServerSiteId, null, 30)],
+            Policies =
+            [
+                PolicyTests.Vlan("Twenty", 20, new PolicyDevices { Tags = ["Vlan 20"] }),
+                new RadiusPolicy { Name = "Lobby", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Vlan 21"] } },
+                PolicyTests.Vlan("Thirty", 30, new PolicyDevices { ThisServer = true }),
+            ],
         };
 
-        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, settings);
+        var saved = await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, settings);
 
         Assert.Equal(["Vlan 20", "Vlan 21"], harness.Ctx.FakeProtectedTags.Names.Order(StringComparer.Ordinal));
         Assert.NotNull(harness.Ctx.FakeProtectedTags.RefusalFor("VLAN 21")); // case-insensitive
         Assert.Equal(RadiusTexts.VlanTag("Vlan 20"), harness.Ctx.FakeProtectedTags.RefusalFor("Vlan 20"));
         Assert.Equal(RadiusTexts.VlanTagChange("Vlan 20"), harness.Ctx.FakeProtectedTags.ChangeRefusalFor("Vlan 20")); // not renamed or deleted while the server runs
-        Assert.Equal("The tag Vlan 20 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.", RadiusTexts.VlanTag("Vlan 20"));
-        await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, settings with { Rules = [settings.Rules[2]] });
-        Assert.Empty(harness.Ctx.FakeProtectedTags.Names); // a removed rule frees its tag
+        Assert.Equal("The tag Vlan 20 is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed.", RadiusTexts.VlanTag("Vlan 20"));
+        await harness.CallAsync<PolicySettings>(RadiusMethods.SavePolicies, saved with { Policies = [saved.Policies[2]] });
+        Assert.Empty(harness.Ctx.FakeProtectedTags.Names); // a removed policy frees its tag
 
-        // A host that cannot protect the tags: the tag rules match no device (fail closed), site rules as before.
-        var tagged = new FakeDevice { Serial = Serial, Tags = ["Vlan 20"] };
-        Assert.Equal(20, new VlanPlan(settings).For(tagged));
-        Assert.Equal(30, new VlanPlan(settings, tagsProtected: false).For(tagged));
+        // A host that cannot protect the tags: the tag parts of VLAN policies match no device (fail closed), block ones still do.
+        var tagged = new FakeDevice { Serial = Serial, Tags = ["Vlan 20", "Vlan 21"] };
+        Assert.Equal(20, new PolicyPlan(settings).VlanFor(tagged));
+        Assert.Equal(30, new PolicyPlan(settings, tagsProtected: false).VlanFor(tagged));
+        Assert.Equal("Lobby", new PolicyPlan(settings, tagsProtected: false).RefusalFor(tagged)?.Name);
     }
 
     // ------------------------------------------------------------------ requests without EAP
@@ -601,7 +498,7 @@ public sealed class HardeningTests
     }
 
     /// <summary>A user's call whose role has only <paramref name="permissions"/>.</summary>
-    private sealed class LimitedCall(ICallContext inner, params string[] permissions) : ICallContext
+    internal sealed class LimitedCall(ICallContext inner, params string[] permissions) : ICallContext
     {
         public string UserName => inner.UserName;
 

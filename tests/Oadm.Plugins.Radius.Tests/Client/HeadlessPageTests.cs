@@ -43,7 +43,7 @@ public sealed class HeadlessSessions
 }
 
 /// <summary>
-/// The page, its tabs and its dialogs rendered offscreen in the real host page with demo data (OADM_SCREENSHOT_DIR writes
+/// The page, its cards and its dialogs rendered offscreen in the real host page with demo data (OADM_SCREENSHOT_DIR writes
 /// PNGs); the checks are content and rules, never positions.
 /// </summary>
 [Collection(HeadlessSessions.Name)]
@@ -52,7 +52,7 @@ public sealed class HeadlessPageTests
     private static readonly string? OutDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
 
     [Fact]
-    public async Task Every_tab_renders_with_demo_data()
+    public async Task The_page_renders_every_card_with_demo_data()
     {
         var server = new FakeRadiusBackend();
         var ctx = new FakePageContext(server);
@@ -60,58 +60,50 @@ public sealed class HeadlessPageTests
         {
             var view = new RadiusView();
             using var vm = new RadiusViewModel(ctx);
-            var window = Host(view, 1280, 1000);
+            var window = Host(view, 1920, 1500);
             window.Show();
             view.DataContext = vm; // after attaching: no live watch, deterministic content
-            await vm.LoadServerAsync(CancellationToken.None);
+            await vm.LoadAllAsync(CancellationToken.None);
             Pump();
-            Capture(window, "radius-server.png");
-            var server1 = Texts(window);
-
-            vm.Settings.ShowAdvanced = true;
-            vm.Settings.MinimumTls = SettingsViewModel.TlsVersions[1];
-            vm.Settings.Port = "0";
-            Pump();
-            Capture(window, "radius-server-advanced.png");
-            var advanced = Texts(window);
-            vm.Settings.Port = "1812";
-
-            await vm.ShowSessionsTabCommand.ExecuteAsync(null);
-            Pump();
-            Capture(window, "radius-sessions.png");
-            var sessions = Texts(window);
+            Capture(window, "radius-page.png");
+            var texts = Texts(window);
+            var checkBoxes = window.GetVisualDescendants().OfType<CheckBox>().Where(c => c.IsEffectivelyVisible).Select(c => c.Content as string).ToList();
             var italic = window.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Classes.Contains("guess") && t.FontStyle == Avalonia.Media.FontStyle.Italic);
-
-            await vm.ShowLogTabCommand.ExecuteAsync(null);
-            Pump();
-            Capture(window, "radius-log.png");
-            var log = Texts(window);
-
-            await vm.ShowRevokedTabCommand.ExecuteAsync(null);
-            Pump();
-            Capture(window, "radius-revoked.png");
-            var revoked = Texts(window);
-            var redRevoke = window.GetVisualDescendants().OfType<Button>().Any(b => b.Classes.Contains("danger") && b.IsEffectivelyVisible);
+            var tabs = window.GetVisualDescendants().OfType<PageTab>().Count(t => t.IsEffectivelyVisible);
+            var primaries = window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
+            var labels = window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible)
+                .SelectMany(b => b.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text)).ToList();
             window.Close();
-            return (server1, advanced, sessions, italic, log, revoked, redRevoke);
+            return (texts, checkBoxes, italic, tabs, primaries, labels);
         }, CancellationToken.None);
 
-        Assert.Contains("802.1X server", checks.server1);
-        Assert.Contains(RadiusPluginInfo.Subtitle, checks.server1);
-        Assert.Contains("Running on port 1812", checks.server1);
-        Assert.Contains("Wrong secret", checks.server1);
-        Assert.Contains("Advanced", checks.server1);
-        Assert.DoesNotContain("TLS_AES_128_GCM_SHA256", checks.server1); // Advanced starts collapsed
-        Assert.Contains(SettingsViewModel.OldTlsHint, checks.advanced);
-        Assert.Contains("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", checks.advanced);
-        Assert.Contains("Use 1 to 65535.", checks.advanced);
-        Assert.Contains("Sending server certificate: fragment 2 of 4", checks.sessions);
+        Assert.Contains("802.1X server", checks.texts);
+        Assert.Contains(RadiusPluginInfo.Subtitle, checks.texts);
+        Assert.Equal(0, checks.tabs); // one page, no tabs
+        foreach (var title in new[] { "Server", "Trusted CAs", "Switches", "Policies", "Sessions", "Log" })
+        {
+            Assert.Contains(title, checks.texts);
+        }
+
+        Assert.Contains("Running on port 1812", checks.texts);
+        Assert.Contains("Wrong secret", checks.texts);
+        Assert.Contains("Advanced", checks.labels);
+        Assert.Contains("OADM CA", checks.texts);
+        Assert.Contains("Contoso Root", checks.texts);
+        Assert.Equal(2, checks.checkBoxes.Count(c => c == "Only devices OADM manages")); // only below the checked CAs
+        Assert.Contains(TrustedCasViewModel.ManageText, checks.texts);
+        Assert.Contains("Building B cameras", checks.texts);
+        Assert.Contains("VLAN 30", checks.texts);
+        Assert.Contains("Default VLAN", checks.texts);
+        Assert.Contains("Add policy", checks.labels);
+        Assert.Contains("Add switch", checks.labels);
+        Assert.Equal(1, checks.primaries); // one accent button: the Server card's Save
+        Assert.Contains("Sending server certificate: fragment 2 of 4", checks.texts);
         Assert.True(checks.italic);
-        Assert.Contains("Delete all", checks.log);
-        Assert.Contains(checks.log, t => t?.Contains("Certificate of a device OADM does not manage (ACCC8E123407)", StringComparison.Ordinal) == true);
-        Assert.Contains("Key compromised", checks.revoked);
-        Assert.True(checks.redRevoke);
-        Assert.All(checks.server1.Concat(checks.log), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
+        Assert.Contains("Delete all", checks.labels);
+        Assert.DoesNotContain("Revoked", checks.texts);
+        Assert.Contains(checks.texts, t => t?.Contains("Certificate of a device OADM does not manage (ACCC8E123407)", StringComparison.Ordinal) == true);
+        Assert.All(checks.texts.Concat(checks.labels), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }
 
     [Fact]
@@ -119,24 +111,118 @@ public sealed class HeadlessPageTests
     {
         var server = new FakeRadiusBackend();
         var ctx = new FakePageContext(server) { AllDevices = false };
-        var texts = await HeadlessEntry.Session.Dispatch(async () =>
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
         {
             var view = new RadiusView();
             using var vm = new RadiusViewModel(ctx);
-            var window = Host(view, 1280, 720);
+            var window = Host(view, 1280, 900);
             window.Show();
             view.DataContext = vm;
-            await vm.ShowLogTabCommand.ExecuteAsync(null);
+            await vm.LoadAllAsync(CancellationToken.None);
             Pump();
             Capture(window, "radius-group-user.png");
-            var visibleTabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => t.Title).ToList();
+            var texts = Texts(window);
             var deleteAll = window.GetVisualDescendants().OfType<Button>().Any(b => b.IsEffectivelyVisible && b.Classes.Contains("danger"));
             window.Close();
-            return (visibleTabs, deleteAll);
+            return (texts, deleteAll);
         }, CancellationToken.None);
 
-        Assert.Equal(["Sessions", "Log"], texts.visibleTabs);
-        Assert.False(texts.deleteAll);
+        Assert.Contains("Sessions", checks.texts);
+        Assert.Contains("Log", checks.texts);
+        Assert.DoesNotContain("Policies", checks.texts);
+        Assert.DoesNotContain("Trusted CAs", checks.texts);
+        Assert.DoesNotContain("Switches", checks.texts);
+        Assert.False(checks.deleteAll);
+    }
+
+    [Fact]
+    public async Task The_advanced_dialog_renders_with_the_old_suites_and_an_error_below_the_packet_size()
+    {
+        var server = new FakeRadiusBackend();
+        var ctx = new FakePageContext(server);
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            using var page = new RadiusViewModel(ctx);
+            await page.LoadServerAsync(CancellationToken.None);
+            var dialog = page.NewAdvanced(server.State);
+            var window = new AdvancedWindow();
+            window.Attach(dialog, _ => { });
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+            Capture(window, "radius-advanced.png");
+            var first = Texts(window);
+            dialog.MinimumTls = AdvancedViewModel.TlsVersions[1];
+            dialog.LargestPacket = "1500";
+            Pump();
+            Capture(window, "radius-advanced-errors.png");
+            var errors = Texts(window);
+            window.Close();
+            return (first, errors);
+        }, CancellationToken.None);
+
+        Assert.Contains("Largest EAP packet", checks.first);
+        Assert.DoesNotContain("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", checks.first);
+        Assert.Contains(AdvancedViewModel.OldTlsHint, checks.errors);
+        Assert.Contains("TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", checks.errors);
+        Assert.Contains(RadiusRules.FragmentRange, checks.errors);
+    }
+
+    [Fact]
+    public async Task The_policy_editor_renders_the_group_picker_with_the_form_and_the_revoke_question()
+    {
+        var server = new FakeRadiusBackend();
+        var ctx = new FakePageContext(server);
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            using var page = new RadiusViewModel(ctx);
+            await page.LoadServerAsync(CancellationToken.None);
+            var editor = page.Policies.NewEditor(page.Policies.Rows[1].Source);
+            var window = PolicyFormView.CreateWindow(editor);
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+            Capture(window, "radius-policy-edit.png");
+            var edit = Texts(window);
+            editor.Name = "Storage room";
+            editor.Vlan = "0";
+            Pump();
+            Capture(window, "radius-policy-errors.png");
+            var errors = Texts(window);
+            var saveEnabled = window.AcceptButton.IsEffectivelyEnabled;
+            window.Close();
+
+            var add = page.Policies.NewEditor(null);
+            var addWindow = PolicyFormView.CreateWindow(add);
+            Oadm.Client.App.ApplyCrispText(addWindow);
+            addWindow.Show();
+            add.Name = "Stolen";
+            add.Kind = add.KindChoices[2];
+            Pump();
+            Capture(addWindow, "radius-policy-revoke.png");
+            var revoke = Texts(addWindow);
+            addWindow.Close();
+
+            var question = new MessageWindow { Heading = "Add policy", Message = "Saving revokes 7 IEEE 802.1X certificates of these devices in PKI, and every new one while the policy exists. This cannot be undone.", ConfirmText = "Revoke", CancelText = "Cancel", IsDanger = true };
+            Oadm.Client.App.ApplyCrispText(question);
+            question.Show();
+            Pump();
+            Capture(question, "radius-policy-revoke-question.png");
+            var red = question.ConfirmButton.Classes.Contains("danger");
+            question.Close();
+            return (edit, errors, saveEnabled, revoke, red);
+        }, CancellationToken.None);
+
+        Assert.Contains("Edit PTZ", checks.edit);
+        Assert.Contains("Sites", checks.edit);
+        Assert.Contains("PTZ", checks.edit);
+        Assert.Contains("VLAN ID", checks.edit);
+        Assert.Contains(RadiusRules.PolicyNameTaken, checks.errors);
+        Assert.Contains(RadiusRules.VlanRange, checks.errors);
+        Assert.False(checks.saveEnabled);
+        Assert.Contains(PolicyEditorViewModel.RevokeHint, checks.revoke);
+        Assert.DoesNotContain("VLAN ID", checks.revoke);
+        Assert.True(checks.red);
     }
 
     [Fact]
@@ -194,74 +280,28 @@ public sealed class HeadlessPageTests
     }
 
     [Fact]
-    public async Task The_certificate_choice_the_revoke_confirmation_and_the_certificate_window_render()
+    public async Task The_certificate_window_of_a_log_row_renders()
     {
-        var server = new FakeRadiusBackend();
-        var ctx = new FakePageContext(server);
-        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        var texts = await HeadlessEntry.Session.Dispatch(() =>
         {
-            var picker = new RevokePickerViewModel(ctx);
-            var window = new RevokePickerWindow();
-            window.Attach(picker, _ => { });
-            Oadm.Client.App.ApplyCrispText(window);
-            window.Show();
-            await picker.LoadAsync();
-            Pump();
-            var list = window.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
-            list.Table.SelectedItems.Add(picker.Rows[0]);
-            list.Table.SelectedItems.Add(picker.Rows[1]);
-            Pump();
-            Capture(window, "radius-revoke-choice.png");
-            var texts = Texts(window);
-            var rows = list.Table.ItemsSource?.Cast<object>().Count();
-            var chosen = picker.Selected.Count;
-            window.Close();
-
-            var confirm = new MessageWindow
-            {
-                Heading = IssuedCertificateTexts.RevokeTitle([.. picker.Rows.Take(2)]),
-                Message = IssuedCertificateTexts.ConfirmMessage,
-                ConfirmText = "Revoke",
-                ChoiceLabel = "Reason",
-                Choices = [.. IssuedCertificateTexts.Reasons.Select(CertificateRevocation.ReasonText)],
-                IsDanger = true,
-            };
-            Oadm.Client.App.ApplyCrispText(confirm);
-            confirm.Show();
-            Pump();
-            Capture(confirm, "radius-revoke-confirm.png");
-            confirm.Close();
-
             var certificate = new CertificateWindow { DataContext = new CertificateDetails(CertificateDescriber.Describe(FakeRadiusBackend.CameraCertificate), "Certificate · 10.0.0.45 · IEEE 802.1X", DateTime.UtcNow) };
             Oadm.Client.App.ApplyCrispText(certificate);
             certificate.Show();
             Pump();
             Capture(certificate, "radius-log-certificate.png");
-            var certificateTexts = Texts(certificate);
+            var result = Texts(certificate);
             certificate.Close();
-            return (texts, rows, chosen, certificateTexts);
+            return Task.FromResult(result);
         }, CancellationToken.None);
 
-        Assert.Contains("Revoke certificates", checks.texts);
-        Assert.Contains("2 certificates chosen", checks.texts);
-        Assert.Equal(12, checks.rows);
-        Assert.Equal(2, checks.chosen); // the grid's selection reached the view model
-        Assert.Contains("Client authentication", string.Join(" ", checks.certificateTexts));
+        Assert.Contains("Client authentication", string.Join(" ", texts));
     }
 
     [Fact]
-    public async Task Revoked_pages_a_sessions_reread_and_the_log_choice_over_live_rows_render()
+    public async Task A_sessions_reread_and_the_log_choice_over_live_rows_render()
     {
         var server = new FakeRadiusBackend();
         var now = DateTime.UtcNow;
-        server.Revoked.AddRange(Enumerable.Range(0, 1_200).Select(i => new RevokedRow
-        {
-            SerialNumber = (0x100000 + i).ToString("X", System.Globalization.CultureInfo.InvariantCulture),
-            RevokedUtc = now.AddDays(-20).AddMinutes(-i),
-            Reason = "Device removed",
-            UserName = "admin",
-            NotAfterUtc = now.AddDays(100),
-        }));
         server.Log = [.. Enumerable.Range(0, RadiusLimits.MaxLogPage).Select(i => FakeRadiusBackend.LogEntry(now.AddSeconds(-i), "AC:CC:8E:12:34:01", LogResults.Authenticated, null, null, null, "10.0.0.41"))];
         var ctx = new FakePageContext(server);
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
@@ -272,13 +312,8 @@ public sealed class HeadlessPageTests
             window.Show();
             view.DataContext = vm;
 
-            await vm.ShowRevokedTabCommand.ExecuteAsync(null);
-            Pump();
-            Capture(window, "radius-revoked-pages.png");
-            var revoked = Texts(window);
-
-            // The sessions tab read again (the page came back): the rows stay, the progress row shows.
-            await vm.ShowSessionsTabCommand.ExecuteAsync(null);
+            // The sessions read again (the page came back): the rows stay, the progress row shows.
+            await vm.LoadAllAsync(CancellationToken.None);
             vm.Sessions.MarkStale();
             var hold = server.Hold(RadiusMethods.ListSessions);
             var reread = vm.Sessions.LoadAsync(CancellationToken.None);
@@ -290,7 +325,6 @@ public sealed class HeadlessPageTests
             await reread;
 
             // The log's chosen row stays chosen in the grid when a live row pushes the full page.
-            await vm.ShowLogTabCommand.ExecuteAsync(null);
             Pump();
             var grid = window.GetVisualDescendants().OfType<DataGrid>().Single(g => g.Name == "LogGrid");
             var chosen = vm.Log.Rows[3];
@@ -300,12 +334,9 @@ public sealed class HeadlessPageTests
             Pump();
             var kept = ReferenceEquals(grid.SelectedItem, chosen) && ReferenceEquals(vm.Log.Selected, chosen);
             window.Close();
-            return (revoked, sessions, rowsWhileReading, kept);
+            return (sessions, rowsWhileReading, kept);
         }, CancellationToken.None);
 
-        Assert.Contains("1-500 of 1,202", checks.revoked);
-        Assert.Contains("Next", checks.revoked);
-        Assert.Contains("1,202 certificates revoked", checks.revoked);
         Assert.Contains("Reading the sessions", checks.sessions);
         Assert.True(checks.rowsWhileReading > 0);
         Assert.True(checks.kept);
@@ -375,7 +406,7 @@ public sealed class HeadlessPerfTests(Xunit.Abstractions.ITestOutputHelper outpu
             window.Show();
             view.DataContext = vm;
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            await vm.ShowSessionsTabCommand.ExecuteAsync(null);
+            await vm.Sessions.LoadAsync(CancellationToken.None);
             HeadlessPageTests.Pump();
             var shown = watch.Elapsed;
             watch.Restart();

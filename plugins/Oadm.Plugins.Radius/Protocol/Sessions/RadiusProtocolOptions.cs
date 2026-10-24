@@ -26,12 +26,12 @@ public sealed record RadiusProtocolOptions
 
     public const int MaxFragment = 1400;
 
-    public const int DefaultFragment = 1000;
+    public const int DefaultFragment = 1020; // RFC 3748 3.1: the EAP MTU every link guarantees
 
     /// <summary>Minimum version and cipher suites (Advanced).</summary>
     public TlsSettings Tls { get; init; } = TlsSettings.Default;
 
-    /// <summary>TLS data per EAP-TLS message, 500..1400 (Advanced); the switch's Framed-MTU makes it smaller.</summary>
+    /// <summary>The largest EAP packet (EAP header included), 500..1400 (Advanced); the switch's Framed-MTU makes it smaller.</summary>
     public int LargestFragment
     {
         get;
