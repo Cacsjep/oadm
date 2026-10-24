@@ -46,7 +46,7 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx) : IIssu
             Limit = query.Limit,
         };
         var reply = PkiJson.Deserialize<CertificatesReply>(await ctx.InvokeAsync(PkiMethods.GetCertificates, PkiJson.Serialize(request), ct).ConfigureAwait(true));
-        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays, Issuers = reply.Issuers };
+        return new IssuedCertificateListPage(reply.Rows, reply.Total, reply.Offset) { WarningDays = reply.WarningDays, Issuers = reply.Issuers.Count == 0 ? null : reply.Issuers };
     }
 
     public async Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct)
