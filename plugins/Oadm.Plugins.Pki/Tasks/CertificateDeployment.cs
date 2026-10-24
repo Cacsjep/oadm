@@ -204,6 +204,7 @@ public static class CertificateDeployment
         CertificateNames names,
         string purpose,
         string alias,
+        Policies.PkiPolicy policy,
         string? stepPrefix,
         CancellationToken ct)
     {
@@ -211,11 +212,13 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(policy);
         var sans = names.DeviceSubjectAltNames;
+        var keyType = CertApi.KeyTypeOf(policy.Key);
         await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.CreateKey), async step =>
         {
-            await CertApi.CreateCertificateAsync(ctx.Vapix, alias, names.Subject, sans, ct).ConfigureAwait(false);
-            step.Complete($"{CertApi.KeyType} key \"{alias}\"");
+            await CertApi.CreateCertificateAsync(ctx.Vapix, alias, names.Subject, sans, keyType, ct).ConfigureAwait(false);
+            step.Complete($"{keyType} key \"{alias}\"");
         }).ConfigureAwait(false);
 
         var installed = false;
@@ -230,7 +233,7 @@ public static class CertificateDeployment
 
             using var signed = await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.Sign), step =>
             {
-                var certificate = DeviceCertificateIssuer.Sign(ca, csr, names, purpose, service.Time.GetUtcNow(), service.DeviceCertificateValidity());
+                var certificate = DeviceCertificateIssuer.Sign(ca, csr, names, purpose, service.Time.GetUtcNow(), service.DeviceCertificateValidity(policy.ValidDays));
                 step.Complete($"{names.CommonName}, valid until {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}");
                 return Task.FromResult(certificate);
             }).ConfigureAwait(false);
@@ -255,7 +258,7 @@ public static class CertificateDeployment
                 IssuedUtc = service.Time.GetUtcNow().UtcDateTime,
                 Alias = alias,
             }, signed.RawData, ct).ConfigureAwait(false);
-            ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" issued by {CaCertificates.CommonName(ca.Certificate)} (serial {serial}, valid until {notAfter:yyyy-MM-dd}).");
+            ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" issued by {CaCertificates.CommonName(ca.Certificate)} with the policy {policy.Name} (serial {serial}, valid until {notAfter:yyyy-MM-dd}).");
             return new IssuedOnDevice(alias, fingerprint, serial, notAfter);
         }
         catch (Exception) when (!installed)
@@ -465,34 +468,34 @@ public static class CertificateDeployment
         }).ConfigureAwait(false);
     }
 
-    /// <summary>The EAP identity from the page setting: MAC (= serial), host name, or custom with {serial} / {hostName}.</summary>
-    public static string Identity(Dot1xConfig config, IDeviceInfo device, DeviceNetworkInfo? network)
+    /// <summary>The EAP identity of an IEEE 802.1X certificate policy: MAC (= serial), host name, or custom with {serial} / {hostName}.</summary>
+    public static string Identity(Policies.PkiPolicy policy, IDeviceInfo device, DeviceNetworkInfo? network)
     {
-        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(device);
         var hostName = network?.HostName ?? device.HostName ?? device.Serial;
-        return config.Identity switch
+        return policy.Identity switch
         {
             Dot1xIdentity.HostName => hostName,
-            Dot1xIdentity.Custom when !string.IsNullOrWhiteSpace(config.CustomIdentity) =>
-                config.CustomIdentity.Replace("{serial}", device.Serial, StringComparison.OrdinalIgnoreCase).Replace("{hostName}", hostName, StringComparison.OrdinalIgnoreCase),
+            Dot1xIdentity.Custom when !string.IsNullOrWhiteSpace(policy.CustomIdentity) =>
+                policy.CustomIdentity.Replace("{serial}", device.Serial, StringComparison.OrdinalIgnoreCase).Replace("{hostName}", hostName, StringComparison.OrdinalIgnoreCase),
             _ => device.Serial,
         };
     }
 
-    /// <summary>The CA certificates the device uses to check the RADIUS server: the imported one, or the OADM CA chain.</summary>
-    public static IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(PkiConfig config, CaMaterial ca)
+    /// <summary>The CA certificates the device uses to check the RADIUS server: the imported one of the policy, or the OADM CA chain.</summary>
+    public static IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy, CaMaterial ca)
     {
-        ArgumentNullException.ThrowIfNull(config);
-        if (string.Equals(config.Dot1x.RadiusCa, RadiusCaSource.Imported, StringComparison.Ordinal))
+        ArgumentNullException.ThrowIfNull(policy);
+        if (string.Equals(policy.RadiusCa, RadiusCaSource.Imported, StringComparison.Ordinal))
         {
-            if (string.IsNullOrWhiteSpace(config.Dot1x.RadiusCaPem))
+            if (!Policies.PolicyRules.IsCertificatePem(policy.RadiusCaPem))
             {
-                throw new InvalidOperationException("The RADIUS server CA is set to an imported certificate, but none is imported (see the PKI page). Nothing was changed.");
+                throw new InvalidOperationException($"The policy {policy.Name} names an imported RADIUS server CA, but none is imported (see the PKI page). Nothing was changed.");
             }
 
-            var fingerprint = Fingerprint(config.Dot1x.RadiusCaPem);
-            return [(CaAlias(RadiusCaAliasPrefix, fingerprint), config.Dot1x.RadiusCaPem, fingerprint)];
+            var fingerprint = Fingerprint(policy.RadiusCaPem!);
+            return [(CaAlias(RadiusCaAliasPrefix, fingerprint), policy.RadiusCaPem!, fingerprint)];
         }
 
         return CaChain(ca);

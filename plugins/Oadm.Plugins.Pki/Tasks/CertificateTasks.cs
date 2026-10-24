@@ -445,11 +445,14 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             case InstallPurpose.Dot1x:
             {
                 await CertificateDeployment.CheckClockAsync(ctx, apis, Time, confirmed: false, ct).ConfigureAwait(false);
-                var (_, ca) = CertificateDeployment.RequireCa(service);
-                var radius = CertificateDeployment.RadiusCas(service!.Config, ca);
+                var (running, ca) = CertificateDeployment.RequireCa(service);
+
+                // The 802.1X settings of the first IEEE 802.1X certificate policy (the file brings its own certificate).
+                var policy = IssuingChoice.Resolve(running, Policies.PolicyKinds.Dot1xCertificate, null);
+                var radius = CertificateDeployment.RadiusCas(policy, ca);
                 var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radius, ct).ConfigureAwait(false);
                 var alias = await InstallAsync(ctx, bytes, payload.Password, file, ct).ConfigureAwait(false);
-                await Dot1xEnableTask.ConfigureAsync(ctx, service.Config.Dot1x, device, apis, network!, alias, aliases, null, ct).ConfigureAwait(false);
+                await Dot1xEnableTask.ConfigureAsync(ctx, policy, device, apis, network!, alias, aliases, null, ct).ConfigureAwait(false);
                 break;
             }
         }

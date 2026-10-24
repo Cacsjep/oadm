@@ -30,8 +30,73 @@ public static class CertApi
     public const string DiscoverPath = "config/discover";
     public const string BasePath = "config/rest/cert/v1";
 
-    /// <summary>The key type OADM creates.</summary>
+    /// <summary>The RSA key type OADM creates (before the issuing policies the only one).</summary>
     public const string KeyType = "RSA-2048";
+
+    /// <summary>The ECC key type OADM creates.</summary>
+    public const string EccKeyType = "EC-P256";
+
+    /// <summary>The device's key type of an issuing policy's key: ECC is P-256, RSA is 2048 bits.</summary>
+    public static string KeyTypeOf(string? policyKey) => policyKey == Oadm.Plugins.Pki.Policies.PolicyKeys.Ecc ? EccKeyType : KeyType;
+
+    /// <summary>
+    /// The key types the device's default keystore offers (<c>GET cert/v1</c>: <c>settings.keystore</c> and its
+    /// <c>keystores[].key_types</c>; without a default keystore, the types every keystore offers). Null when the device does
+    /// not say (an older AXIS OS, an unreadable answer). Read-only.
+    /// </summary>
+    public static async Task<IReadOnlySet<string>?> KeyTypesAsync(IVapixClient vapix, CancellationToken ct)
+    {
+        JsonNode? data;
+        try
+        {
+            data = await GetAsync(vapix, BasePath, ct).ConfigureAwait(false);
+        }
+        catch (PkiDeviceException)
+        {
+            return null;
+        }
+
+        return ParseKeyTypes(data);
+    }
+
+    /// <summary>See <see cref="KeyTypesAsync"/>.</summary>
+    public static IReadOnlySet<string>? ParseKeyTypes(JsonNode? data)
+    {
+        try
+        {
+            if (data?["keystores"] is not JsonArray keystores || keystores.Count == 0)
+            {
+                return null;
+            }
+
+            var chosen = data["settings"]?["keystore"]?.GetValue<string>();
+            HashSet<string>? types = null;
+            foreach (var keystore in keystores.OfType<JsonObject>())
+            {
+                if (chosen is not null && !string.Equals(keystore["id"]?.GetValue<string>(), chosen, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var own = (keystore["key_types"] as JsonArray)?.Select(t => t?.GetValue<string>()).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (types is null)
+                {
+                    types = own;
+                }
+                else
+                {
+                    types.IntersectWith(own);
+                }
+            }
+
+            return types;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>Message of devices without the REST certificate API.</summary>
     public const string NeedsNewerFirmware = "Needs AXIS OS 11.11 or later. Nothing was changed.";
@@ -68,12 +133,12 @@ public static class CertApi
     public static async Task<IReadOnlyList<DeviceCertificate>> ListCaCertificatesAsync(IVapixClient vapix, CancellationToken ct) =>
         ParseList(await GetAsync(vapix, BasePath + "/ca_certificates", ct).ConfigureAwait(false));
 
-    /// <summary>Creates a key pair (RSA 2048) and a self-signed placeholder certificate in the device's default keystore.</summary>
-    public static Task CreateCertificateAsync(IVapixClient vapix, string alias, string subject, IReadOnlyList<string> subjectAltNames, CancellationToken ct) =>
+    /// <summary>Creates a key pair (<paramref name="keyType"/>, e.g. RSA-2048 or EC-P256) and a self-signed placeholder certificate in the device's default keystore.</summary>
+    public static Task CreateCertificateAsync(IVapixClient vapix, string alias, string subject, IReadOnlyList<string> subjectAltNames, string keyType, CancellationToken ct) =>
         SendDataAsync(vapix, HttpMethod.Post, BasePath + "/create_certificate", new JsonObject
         {
             ["alias"] = alias,
-            ["key_type"] = KeyType,
+            ["key_type"] = keyType,
             ["subject"] = subject,
             ["subject_alt_names"] = new JsonArray([.. subjectAltNames.Select(s => (JsonNode)JsonValue.Create(s)!)]),
         }, "Create key", ct);
