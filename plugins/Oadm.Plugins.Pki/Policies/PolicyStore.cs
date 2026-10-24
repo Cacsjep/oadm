@@ -554,6 +554,12 @@ public sealed partial class PolicyStore : IDisposable
         return [.. _snapshot.Stored.Policies.Where(p => kinds(p.Kind)).Select(p => new PolicyLine(p.Name, Summary(p, names)))];
     }
 
+    /// <summary>The summary sentence of <paramref name="policy"/> with the names of PKI's CAs now ("Check a device").</summary>
+    public string SummaryOf(PkiPolicy policy) => Summary(policy, CaNames());
+
+    /// <summary>The name of a CA in a sentence ("Corp CA", "Axis device ID", "(removed CA)").</summary>
+    public string CaNameOf(string? caId) => CaName(caId, CaNames());
+
     /// <summary>The CAs an Allow CA policy can name (previous OADM CAs follow the OADM CA).</summary>
     public IReadOnlyList<PolicyCaChoice> CaChoices()
     {

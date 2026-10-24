@@ -499,9 +499,43 @@ public sealed record PolicyRef(Guid Id);
 /// <summary>The answer of <see cref="PolicyMethods.CountRevocations"/>.</summary>
 public sealed record PolicyRevocationCount(int Count);
 
+/// <summary>The device of <see cref="PolicyMethods.CheckDevice"/> (its OADM id).</summary>
+public sealed record PolicyCheckRequest(Guid DeviceId);
+
+/// <summary>The areas of a "Check a device" line, in the page's order.</summary>
+public static class PolicyCheckAreas
+{
+    public const string Https = "HTTPS";
+    public const string Dot1x = "IEEE 802.1X";
+    public const string Expiry = "Expiry warning";
+    public const string Network = "802.1X server";
+    public const string Est = "EST server";
+}
+
+/// <summary>
+/// One line of "Check a device": the area (<see cref="PolicyCheckAreas"/>), what applies to the device in one plain sentence,
+/// the policies that decide it (none: what happens without one) and whether it needs attention.
+/// </summary>
+public sealed record PolicyCheckLine(string Area, string Text, IReadOnlyList<string> Policies, bool IsWarning = false);
+
+/// <summary>The answer of <see cref="PolicyMethods.CheckDevice"/>: the lines, or why there are none.</summary>
+public sealed record PolicyCheck
+{
+    public IReadOnlyList<PolicyCheckLine> Lines { get; init; } = [];
+
+    /// <summary>The device is gone, or the policies cannot be read; null otherwise.</summary>
+    public string? Error { get; init; }
+}
+
 /// <summary>The page methods of the policies (PKI's <c>InvokeAsync</c>).</summary>
 public static class PolicyMethods
 {
+    /// <summary>
+    /// <see cref="PolicyCheckRequest"/> -> <see cref="PolicyCheck"/>: which policies apply to one device, decided as the 802.1X
+    /// and EST servers decide (read only). A user limited to a device group: an empty answer (the policies are server-wide).
+    /// </summary>
+    public const string CheckDevice = "checkDevice";
+
     /// <summary>() -> <see cref="PolicyList"/>. A user limited to a device group: an empty list.</summary>
     public const string GetPolicies = "getPolicies";
 
