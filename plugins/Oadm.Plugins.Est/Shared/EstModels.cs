@@ -272,6 +272,12 @@ public sealed record SetupPayload(bool ReplaceDot1x = false)
     /// <summary>Set up (default) or remove <see cref="Profiles"/>.</summary>
     public SetupAction Action { get; init; }
 
+    /// <summary>
+    /// The user answered the dialog's clock question with Yes (a camera is behind the certificate's start,
+    /// docs/spec/pki.md "Clock check"): the task goes on and notes it in the log.
+    /// </summary>
+    public bool ClockConfirmed { get; init; }
+
     /// <summary>With <see cref="SetupAction.Remove"/>: the profile ids to remove from every selected camera (any profile).</summary>
     public IReadOnlyList<string> Profiles { get; init; } = [];
 

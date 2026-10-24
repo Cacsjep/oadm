@@ -47,7 +47,24 @@ public sealed class Dot1xEnableDialog : ITaskPluginDialog
     {
         ArgumentNullException.ThrowIfNull(devices);
         var (title, message, confirm) = PkiConfirmations.Dot1xEnable(devices.Count);
-        return devices.Count > 0 && await MessageWindow.ConfirmAsync(owner, title, message, confirm).ConfigureAwait(true) ? "{}" : null;
+        if (devices.Count == 0 || !await MessageWindow.ConfirmAsync(owner, title, message, confirm).ConfigureAwait(true))
+        {
+            return null;
+        }
+
+        return await ClockCheck.RunAsync(ctx, devices, owner, title).ConfigureAwait(true);
+    }
+}
+
+/// <summary>"Enable HTTPS": the clock check only (no window of its own); the payload carries the answer.</summary>
+public sealed class HttpsEnableDialog : ITaskPluginDialog
+{
+    public string PluginId => PkiTaskIds.HttpsEnable;
+
+    public Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        return devices.Count == 0 ? Task.FromResult<string?>(null) : ClockCheck.RunAsync(ctx, devices, owner, PkiTaskIds.HttpsEnableName);
     }
 }
 

@@ -21,6 +21,7 @@ public sealed class EstSetupDialog : ITaskPluginDialog
 
         var vm = new EstSetupViewModel(devices, ctx);
         var window = new EstSetupWindow { DataContext = vm };
+        vm.AskClock = question => Oadm.Sdk.Client.Controls.MessageWindow.ConfirmAsync(window, EstSetupViewModel.Title, question, "Yes", "No");
         var ok = false;
         vm.CloseRequested += (_, result) =>
         {

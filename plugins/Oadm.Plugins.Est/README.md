@@ -27,6 +27,8 @@ Apache 2.0).
     (the OADM CA) in `EstState`; at least one ("Choose at least one." below the check boxes). EST reports
     `SetUsedBy("oadm.est", "EST server", chosen ∩ listed + oadm)` at the start, after Save and on PKI's `Changed`, and
     clears it when it stops.
+  - Set up reads the camera clocks first (`CameraClock`, query `readClock` of the Set up task; the run line shows the
+    reading) and asks Yes / No when one is behind the certificate's start; Yes sets `SetupPayload.ClockConfirmed` (logged).
   - `Protocol/EstHttp`: HTTP/1.1 (16 KB headers, 64 KB body, Content-Length or chunked, `Expect: 100-continue`,
     keep-alive); `Protocol/EstMessages`: PKCS#7 certs-only and PKCS#10 in base64.
   - `Serving/EstStore`: plugin settings `config` (interface, port, profiles, enrollments kept 100..5000), `enrollments` (newest

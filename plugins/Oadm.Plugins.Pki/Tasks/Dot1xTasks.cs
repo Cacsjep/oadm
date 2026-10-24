@@ -1,3 +1,4 @@
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -12,7 +13,7 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// certificate request, Sign certificate, Install certificate, Set 802.1X configuration, Verify 802.1X settings, Remove
 /// previous OADM certificate.
 /// </summary>
-public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(service)
+public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
 {
     public const int MaxIdentityLength = 128;
 
@@ -37,9 +38,13 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             PkiSteps.InstallCertificate, PkiSteps.SetDot1x, PkiSteps.VerifyDot1x, PkiSteps.RemovePrevious);
 
         var (service, ca, apis, network, radius) = await CheckAsync(ctx, device, ct).ConfigureAwait(false);
-        await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, ct).ConfigureAwait(false);
+        await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
         await DeployAsync(ctx, service, ca, device, apis, network, radius, stepPrefix: null, ct).ConfigureAwait(false);
     }
+
+    /// <summary>The dialog's clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        ClockQuery.QueryAsync(ctx, device, method, Time, ct);
 
     /// <summary>Check compatibility: CA (+ complete chain), cert v1, network-settings 1.x with wired 802.1X, RADIUS CA, identity.</summary>
     internal async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, DeviceNetworkInfo Network, IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas)> CheckAsync(

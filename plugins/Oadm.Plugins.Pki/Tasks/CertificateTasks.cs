@@ -444,7 +444,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
 
             case InstallPurpose.Dot1x:
             {
-                await CertificateDeployment.CheckClockAsync(ctx, apis, Time, ct).ConfigureAwait(false);
+                await CertificateDeployment.CheckClockAsync(ctx, apis, Time, confirmed: false, ct).ConfigureAwait(false);
                 var (_, ca) = CertificateDeployment.RequireCa(service);
                 var radius = CertificateDeployment.RadiusCas(service!.Config, ca);
                 var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radius, ct).ConfigureAwait(false);
