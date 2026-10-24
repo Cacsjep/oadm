@@ -473,7 +473,10 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     /// <summary>The filters show (default); false for a short list such as the PKI page's CAs (the search always shows).</summary>
     public bool ShowsFilters { get; init; } = true;
 
-    /// <summary>The Used in column shows (the PKI page's CA list: the policies that use each CA); false by default.</summary>
+    /// <summary>
+    /// A CA list (the PKI page's): the Used in column shows (the policies that use each CA) and the Type column is wider (the
+    /// OADM CA's badges); false by default.
+    /// </summary>
     public bool ShowsUsedIn { get; init; }
 
     /// <summary>The chosen grouping; a change reads the first page again.</summary>

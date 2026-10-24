@@ -38,6 +38,7 @@ public sealed class IssuedCertificateList : UserControl
     private readonly ContentControl _toolbar = new() { VerticalAlignment = VerticalAlignment.Center };
     private readonly ContentControl _banner = new();
     private readonly DataGridTemplateColumn _usedIn;
+    private readonly DataGridTemplateColumn _type;
     private IssuedCertificateListViewModel? _vm;
     private bool _restoring;
 
@@ -66,7 +67,7 @@ public sealed class IssuedCertificateList : UserControl
                 return name;
             }, supportsRecycling: true),
         });
-        Table.Columns.Add(new DataGridTemplateColumn
+        _type = new DataGridTemplateColumn
         {
             Header = "Type",
             Width = new DataGridLength(1.2, DataGridLengthUnitType.Star),
@@ -102,7 +103,8 @@ public sealed class IssuedCertificateList : UserControl
                     Children = { Badges(nameof(IssuedCertificateRow.Badges), wrap: false), more },
                 };
             }, supportsRecycling: true),
-        });
+        };
+        Table.Columns.Add(_type);
         Table.Columns.Add(TextColumn("Issuer", nameof(IssuedCertificateRow.Issuer), new DataGridLength(1, DataGridLengthUnitType.Star), 130));
         Table.Columns.Add(TextColumn("Key", nameof(IssuedCertificateRow.KeyType), new DataGridLength(110), 110));
         Table.Columns.Add(new DataGridTemplateColumn
@@ -130,7 +132,7 @@ public sealed class IssuedCertificateList : UserControl
         {
             Header = "Used in",
             Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-            MinWidth = 130,
+            MinWidth = 110,
             IsVisible = false,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
@@ -300,6 +302,10 @@ public sealed class IssuedCertificateList : UserControl
 
         _vm = DataContext as IssuedCertificateListViewModel;
         _usedIn.IsVisible = _vm?.ShowsUsedIn == true;
+
+        // A CA list (the one with Used in): the OADM CA's row carries four badges (its kind and where it is a trusted
+        // root), so its Type column takes more of the width; the certificate list keeps its look.
+        _type.Width = new DataGridLength(_vm?.ShowsUsedIn == true ? 3.2 : 1.2, DataGridLengthUnitType.Star);
         if (_vm is not null)
         {
             _vm.SelectionRestored += OnSelectionRestored;
