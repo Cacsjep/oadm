@@ -785,7 +785,8 @@ and the servers' status when the CA of their policy cannot issue.
   `IssueDialogTests` (the IEEE 802.1X and 802.1X server policies in place), `PolicyTabHeadlessTests`
   (`pki-policies-1700.png`, `pki-policies-1000.png`, `-end` captures: nothing clipped, no sideways scroll, one accent
   button, the Devices column only where the kinds have devices); `Oadm.Plugins.Radius.Tests` `ServerTests` and
-  `Oadm.Plugins.Est.Tests` `ServerTests` (the status of a CA without its key).
+  `Oadm.Plugins.Est.Tests` `ServerTests` (the status of a CA without its key); Perf `PolicyPerfTests` (Check a device and the
+  cards with 150 rules at 30,000 devices).
 
 ## Not planned
 
