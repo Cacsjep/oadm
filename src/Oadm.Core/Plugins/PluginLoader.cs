@@ -124,6 +124,14 @@ public sealed partial class PluginLoader
             }
 
             var manifest = ReadManifest(Path.Combine(directory, ManifestFileName));
+            if (MergedPlugins.MergedInto(manifest.Id) is not null)
+            {
+                // A folder of a package that is part of PKI now, left from OADM 4.1: never loaded (its core plugins would
+                // take the ids of PKI's), not an error.
+                LogMerged(manifest.Id, directory);
+                return null;
+            }
+
             if (!IsSdkCompatible(manifest.MinSdkVersion))
             {
                 throw new PluginLoadException(
@@ -396,6 +404,9 @@ public sealed partial class PluginLoader
             return null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} in {Directory} skipped: Merged into PKI")]
+    private partial void LogMerged(string packageId, string directory);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Plugin root {Root} does not exist, skipped")]
     private partial void LogRootMissing(string? root);

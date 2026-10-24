@@ -14,6 +14,9 @@
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <!-- The server ships BouncyCastle (Oadm.Sites) and PKI compiles against its copy (the 802.1X server): MergedPluginsTests
+         load the PKI package like the server does. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -27,6 +30,8 @@
     <ProjectReference Include="..\..\tools\Oadm.Notices\Oadm.Notices.csproj" />
     <!-- Built (and deployed to artifacts/test-plugins) but loaded at runtime by the PluginLoader tests. -->
     <ProjectReference Include="..\TestPlugins\Oadm.TestPlugins.Sample\Oadm.TestPlugins.Sample.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <!-- Built (and deployed to artifacts/plugins/oadm.pki) for MergedPluginsTests: one package with three core plugins. -->
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Pki\Oadm.Plugins.Pki.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

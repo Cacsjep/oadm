@@ -189,6 +189,26 @@ public sealed class PluginPackageTests
     }
 
     [Fact]
+    public async Task TheFirstStartTakesTheChoicesOfTheEstAndRadiusPluginsOverForTheirServers()
+    {
+        // docs/spec/pki.md "One plugin": the 4.1 choice of oadm.est / oadm.radius becomes the server's own Turn on choice.
+        await using var host = await TestServerHost.StartAsync();
+        var settings = host.Get<Oadm.Core.Settings.ServerSettingsStore>();
+        await settings.SetJsonAsync(PluginActivation.SettingKey, """{"oadm.est":true,"oadm.radius":false,"test.dashboard":true}""", CancellationToken.None);
+        var core = new CountingCorePlugin("test.dashboard");
+        var registry = host.Get<PluginRegistry>();
+        registry.RegisterCorePlugin(core, new PluginOrigin("test.dashboard", "1.0.0", null) { DisplayName = "Dashboard", EnabledByDefault = false });
+
+        await host.Get<PluginActivation>().LoadAsync(CancellationToken.None);
+        await host.Get<PluginActivation>().LoadAsync(CancellationToken.None); // every later start: nothing more happens
+
+        Assert.Equal("true", await settings.GetJsonAsync("Plugin:oadm.est:" + MergedPlugins.ServerOnSetting, CancellationToken.None));
+        Assert.Equal("false", await settings.GetJsonAsync("Plugin:oadm.radius:" + MergedPlugins.ServerOnSetting, CancellationToken.None));
+        Assert.Equal("""{"test.dashboard":true}""", await settings.GetJsonAsync(PluginActivation.SettingKey, CancellationToken.None));
+        Assert.True(registry.IsEnabled("test.dashboard")); // the other choices apply as before
+    }
+
+    [Fact]
     public void TheBundledManifestsTurnTheHardeningScanAndTheImageHealthDashboardOffByDefault()
     {
         var root = TestRepository.Root;
