@@ -542,6 +542,16 @@
     <Setter Property="Margin" Value="8,3,0,0" />
   </Style>
 
+  <!-- A row that needs attention without a state column (the 802.1X switches): an amber dot, red with class error -->
+  <Style Selector="Ellipse.problemDot">
+    <Setter Property="Width" Value="8" />
+    <Setter Property="Height" Value="8" />
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusWarningBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Ellipse.problemDot.error">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
   <!-- No status dot on the device icon: the Status column already says it -->
   <Style Selector="Ellipse.statusDot">
     <Setter Property="IsVisible" Value="False" />

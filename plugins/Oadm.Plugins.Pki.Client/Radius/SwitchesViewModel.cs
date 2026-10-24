@@ -30,6 +30,15 @@ public sealed class SwitchRowViewModel(SwitchRow source)
 
     public bool IsError => Source.State is SwitchStates.WrongSecret or SwitchStates.SiteOffline;
 
+    /// <summary>
+    /// The switch needs attention (decision 2026-10-25, no State column): a dot before its name, red for an error, amber for
+    /// "No requests yet", the state as its tooltip; none for a switch that answered.
+    /// </summary>
+    public bool HasProblem => !IsOk;
+
+    /// <summary>The dot's tooltip: the state of a switch with a problem; null for one that answered.</summary>
+    public string? ProblemTip => HasProblem ? State : null;
+
     /// <summary>"14:03:12" today, else the day "2026-10-23" (the card is narrow); empty before the first request.</summary>
     public string LastRequest => Source.LastRequestUtc is { } utc ? ShortTime(utc, DateTime.Now) : string.Empty;
 

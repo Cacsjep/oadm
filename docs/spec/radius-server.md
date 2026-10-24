@@ -46,7 +46,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
     is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
-  - **Switches** (card): name (flexes), address, site, last request (no state column, decision 2026-10-25), each
+  - **Switches** (card): name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site
+    offline", amber for "No requests yet", the state as its tooltip), address, site, last request (no state column,
+    decision 2026-10-25), each
     column as wide as its longest text; Edit and Delete as row icon buttons; the dialog with the shared secret and Generate.
   - **Sessions** (full width, live) and **Log** (full width, without **Add switch**, decision 2026-10-24): every column as
     wide as its content (the full "2026-10-24 07:21:58", the port, MAC address, EAP identity, device, IP address, the VLAN

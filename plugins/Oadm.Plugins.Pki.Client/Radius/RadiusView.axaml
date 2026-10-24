@@ -80,7 +80,19 @@
                 <DataGrid x:Name="SwitchesGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" CanUserSortColumns="True"
                           CanUserReorderColumns="False" SelectionMode="Single">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="Name" Width="*" MinWidth="110" Binding="{Binding Name}" x:DataType="vm:SwitchRowViewModel" />
+                    <!-- The name with a dot before it when the switch needs attention (its state as tooltip); the dot's room stays
+                         so the names line up. -->
+                    <DataGridTemplateColumn Header="Name" Width="*" MinWidth="110" SortMemberPath="Name" x:DataType="vm:SwitchRowViewModel">
+                      <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:SwitchRowViewModel">
+                          <Grid ColumnDefinitions="16,*" Margin="10,4" VerticalAlignment="Center">
+                            <Ellipse Grid.Column="0" Classes="problemDot" Classes.error="{Binding IsError}" HorizontalAlignment="Left"
+                                     IsVisible="{Binding HasProblem}" ToolTip.Tip="{Binding ProblemTip}" />
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" ToolTip.Tip="{Binding ProblemTip}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                          </Grid>
+                        </DataTemplate>
+                      </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Address" Width="150" MinWidth="150" Binding="{Binding Address}" x:DataType="vm:SwitchRowViewModel" />
                     <DataGridTextColumn Header="Site" Width="110" MinWidth="110" Binding="{Binding Site}" x:DataType="vm:SwitchRowViewModel" />
                     <!-- No State column (decision 2026-10-25). -->
