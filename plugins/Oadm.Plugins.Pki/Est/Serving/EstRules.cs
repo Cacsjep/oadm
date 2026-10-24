@@ -57,7 +57,7 @@ public sealed class EstRules
         var newCas = new HashSet<string>(signIn.Where(p => p.SignInFor == PolicySignIn.New).Select(p => p.CaId ?? string.Empty), StringComparer.OrdinalIgnoreCase);
         var renewalCas = new HashSet<string>(signIn.Where(p => PolicySignIn.IsKnown(p.SignInFor)).Select(p => p.CaId ?? string.Empty), StringComparer.OrdinalIgnoreCase);
         var problem = signIn.Count == 0 ? EstTexts.NoSignInPolicy : enrollment.Count == 0 ? EstTexts.NoEnrollmentPolicies : null;
-        return new(store, version, [.. enrollment.Select(p => (PolicyMatcher.Of(p, store.TagsProtected), p))], newCas, renewalCas, signIn.Count + enrollment.Count, problem);
+        return new(store, version, [.. enrollment.Select(p => (PolicyMatcher.Of(p, store.TagsProtected), p))], newCas, renewalCas, signIn.Count + enrollment.Count + store.PoliciesOf(PolicyKinds.EstServer).Count, problem); // the EST server policy applies too (its certificate)
     }
 
     /// <summary>The store these rules were built from (null: none).</summary>

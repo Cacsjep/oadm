@@ -48,26 +48,29 @@ public abstract class PkiTaskBase : ITaskPlugin
 
     public abstract Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
 
-    /// <summary>"Check compatibility" of the certificate tasks: the CA, a fresh config/discover (cert v1) and the API list.</summary>
-    protected async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis)> CheckCertificateTaskAsync(
+    /// <summary>
+    /// "Check compatibility" of the certificate tasks: PKI runs, a fresh config/discover (cert v1) and the API list (the CA of
+    /// each policy is checked where it issues: decision 2026-10-25, several CAs issue).
+    /// </summary>
+    protected async Task<(PkiService Service, IReadOnlyList<DeviceApi> Apis)> CheckCertificateTaskAsync(
         ITaskExecutionContext ctx, IDeviceInfo device, CancellationToken ct, Action<IReadOnlyList<DeviceApi>>? more = null)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         return await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
-            var (service, ca) = CertificateDeployment.RequireCa(Service);
+            var service = CertificateDeployment.RequireService(Service);
             var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
             more?.Invoke(apis);
             step.Complete("cert " + support.Version);
-            return (service, ca, apis);
+            return (service, apis);
         }).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// "Check compatibility" of a task that issues with a policy of <paramref name="kind"/>: the CA, the policy of the run
-    /// with the dialog's values (<see cref="IssuingChoice.Resolve"/>), a fresh config/discover (cert v1), the API list and
+    /// "Check compatibility" of a task that issues with a policy of <paramref name="kind"/>: the policy of the run with the
+    /// dialog's values and the CA it names ("Issued by") (<see cref="IssuingChoice.Resolve"/>), a fresh config/discover (cert v1), the API list and
     /// the key type the device's keystore offers. Everything before the first write.
     /// </summary>
     protected async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, Policies.PkiPolicy Policy)> CheckIssuingTaskAsync(
@@ -77,8 +80,9 @@ public abstract class PkiTaskBase : ITaskPlugin
         ArgumentNullException.ThrowIfNull(device);
         return await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
-            var (service, ca) = CertificateDeployment.RequireCa(Service);
+            var service = CertificateDeployment.RequireService(Service);
             var policy = IssuingChoice.Resolve(service, kind, payloadJson);
+            var ca = CertificateDeployment.RequireCa(service, policy);
             var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
             await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);

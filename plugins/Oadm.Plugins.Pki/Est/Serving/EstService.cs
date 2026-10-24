@@ -118,7 +118,7 @@ public sealed partial class EstService : IAsyncDisposable
         _logger = host.Logger;
         Viewers = new ViewerScopes(host.Scopes);
         _store = new EstStore(host.Settings, host.Records, host.Time) { Logger = host.Logger };
-        _certificates = new ServerCertificates(host.Authority, host.Time) { Policy = () => host.Policies()?.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Est) };
+        _certificates = new ServerCertificates(host.Authority, host.Time) { Policy = () => host.Policies()?.EstServerPolicy };
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
             async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup)
@@ -945,7 +945,8 @@ public sealed partial class EstService : IAsyncDisposable
     private X509Certificate2Collection AuthorityChain()
     {
         var chain = new X509Certificate2Collection();
-        foreach (var der in _host.Authority()?.Chain ?? [])
+        // The chain of the EST server policy's CA (decision 2026-10-25); none: the OADM CA.
+        foreach (var der in Oadm.Plugins.Pki.Ca.IssuerChains.Of(_host.Authority(), _host.Policies()?.EstServerPolicy?.CaId))
         {
             chain.Add(X509CertificateLoader.LoadCertificate(der));
         }

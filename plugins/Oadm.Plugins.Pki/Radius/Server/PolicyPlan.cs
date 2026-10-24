@@ -25,8 +25,8 @@ public sealed class PolicyPlan
         ArgumentNullException.ThrowIfNull(policies);
         var list = policies.Where(p => p is not null).ToList();
         _vlans = [.. list.Where(p => p.Kind == PolicyKinds.Vlan && p.Vlan is >= 1 and <= 4094).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
-        _refusals = [.. list.Where(p => p.Kind is PolicyKinds.Block or PolicyKinds.Revoke).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
-        RevokePolicies = [.. list.Where(p => p.Kind == PolicyKinds.Revoke)];
+        _refusals = [.. list.Where(p => p.Kind == PolicyKinds.Block).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
+        RevokePolicies = [.. list.Where(PolicyRules.Revokes)];
     }
 
     private PolicyPlan(string reason)
@@ -71,7 +71,7 @@ public sealed class PolicyPlan
     }
 
     /// <summary>
-    /// The oldest Block or Revoke policy that holds <paramref name="device"/>, null when none does. A device OADM does not
+    /// The oldest Block policy (with or without Also revoke) that holds <paramref name="device"/>, null when none does. A device OADM does not
     /// manage (null): the oldest "All devices" Block policy.
     /// </summary>
     public PkiPolicy? RefusalFor(IDeviceInfo? device)

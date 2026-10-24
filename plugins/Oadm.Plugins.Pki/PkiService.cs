@@ -401,26 +401,8 @@ public sealed partial class PkiService : IAsyncDisposable
             return new PkiReply { Errors = result.Errors };
         }
 
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var affected = await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false);
-            if (_stored is not null && _stored.Id != material.Id && !request.Confirmed)
-            {
-                material.Dispose();
-                return new PkiReply { NeedsConfirmation = true, DevicesWithCurrentCa = affected };
-            }
-
-            await ReplaceAsync(material, CaSource.Imported, ct).ConfigureAwait(false);
-            LogImported(material.Certificate.Subject, material.Chain.Count);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-
-        await PublishAsync().ConfigureAwait(false);
-        return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
+        // Decision 2026-10-25: a CA with its key is added to the list (it can issue); it never replaces the OADM CA.
+        return await AddImportedAsync(material, ct).ConfigureAwait(false);
     }
 
     /// <summary>Devices whose newest certificate comes from the current CA (the replace warning).</summary>
@@ -520,6 +502,12 @@ public sealed partial class PkiService : IAsyncDisposable
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // A policy that names this previous CA itself (an EST sign-in CA) keeps it (decision 2026-10-25).
+            if (Policies.NamingCa(PreviousAuthorityId(request.Id ?? string.Empty)) is { Count: > 0 } naming)
+            {
+                return await ErrorAsync(Pki.Policies.PolicyTexts.UsedByPolicy(naming[0].Name), ct).ConfigureAwait(false);
+            }
+
             var list = _previous.Where(p => !string.Equals(p.Id, request.Id, StringComparison.OrdinalIgnoreCase)).ToList();
             if (list.Count == _previous.Count)
             {
@@ -647,13 +635,14 @@ public sealed partial class PkiService : IAsyncDisposable
 
     /// <summary>
     /// Device certificate validity for a certificate issued now: <paramref name="days"/> (an issuing policy's; null: the first
-    /// HTTPS certificate policy's, else 365), shortened to the CA's end of validity (logged).
+    /// HTTPS certificate policy's, else 365), shortened to the end of validity of the CA that signs (<paramref name="issuer"/>;
+    /// null: the OADM CA), logged.
     /// </summary>
-    public TimeSpan DeviceCertificateValidity(int? days = null)
+    public TimeSpan DeviceCertificateValidity(int? days = null, CaMaterial? issuer = null)
     {
         var validDays = days ?? DefaultValidDays;
         var wanted = TimeSpan.FromDays(validDays);
-        if (_ca is not { } ca)
+        if ((issuer ?? _ca) is not { } ca)
         {
             return wanted;
         }
@@ -824,14 +813,25 @@ public sealed partial class PkiService : IAsyncDisposable
             }
         }
 
+        // Every imported CA with its key issues device certificates too (decision 2026-10-25): the server trusts them and
+        // their chains like the OADM CA's. Imported certificates without a key stay out (as before).
+        var issuing = _importedMaterial.Values.Where(m => m.HasKey).ToList();
+        foreach (var imported in issuing)
+        {
+            der.Add(imported.Certificate.RawData);
+            der.AddRange(imported.Chain.Select(c => c.RawData));
+        }
+
         _anchors.Set(der);
 
-        // Renewals are pinned again only for certificates the OADM CAs themselves issued: the CAs, not their chains.
+        // Renewals are pinned again only for certificates the CAs of PKI themselves issued: the CAs, not their chains.
         var issuers = new List<byte[]>();
         if (_ca is { } active)
         {
             issuers.Add(active.Certificate.RawData);
         }
+
+        issuers.AddRange(issuing.Select(m => m.Certificate.RawData));
 
         foreach (var previous in _previous)
         {
@@ -1037,7 +1037,7 @@ public sealed partial class PkiService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: generated a new CA {Subject}, valid until {NotAfter:yyyy-MM-dd}; the previous CA was kept for the transition")]
     private partial void LogGenerated(string subject, DateTime notAfter);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: imported the CA {Subject} with {ChainCount} issuer certificates; the previous CA was kept for the transition")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: imported the CA {Subject} with its key and {ChainCount} issuer certificates into the list of CAs")]
     private partial void LogImported(string subject, int chainCount);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: creating the default CA failed")]

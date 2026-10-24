@@ -52,6 +52,9 @@ public sealed record IssuingPolicyList
     /// <summary>The OADM CA's name ("OADM Root CA SERVER01"); null without a CA.</summary>
     public string? CaName { get; init; }
 
+    /// <summary>The name of the CA each policy issues with ("Issued by"), by policy id.</summary>
+    public IReadOnlyDictionary<Guid, string> CaNames { get; init; } = new Dictionary<Guid, string>();
+
     /// <summary>The RADIUS server CA of each policy that imported one: "Contoso RADIUS CA, valid until 2030-01-01" by policy id.</summary>
     public IReadOnlyDictionary<Guid, string> RadiusCaSummaries { get; init; } = new Dictionary<Guid, string>();
 

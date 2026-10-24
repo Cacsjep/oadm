@@ -76,18 +76,21 @@ public sealed partial class PkiService
                 RadiusCa = dot1x.RadiusCa == RadiusCaSource.Imported ? RadiusCaSource.Imported : RadiusCaSource.Oadm,
                 RadiusCaPem = radiusPem,
             },
+            // The 802.1X server's certificate (365 days, ECC) is part of its 802.1X server policy, made by the 802.1X server's
+            // conversion (RadiusPolicies.DefaultServerPolicy); the EST server's has a policy of its own (decision 2026-10-25).
             new PkiPolicy
             {
-                Name = PolicyLimits.Dot1xServerCertificateName, Kind = PolicyKinds.ServerCertificate, CaId = CertificateAuthorityInfo.OadmId,
-                ValidDays = PolicyLimits.DefaultValidDays, Key = PolicyKeys.Ecc, Server = PolicyServers.Dot1x,
-            },
-            new PkiPolicy
-            {
-                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.ServerCertificate, CaId = CertificateAuthorityInfo.OadmId,
-                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc, Server = PolicyServers.Est,
+                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer, CaId = CertificateAuthorityInfo.OadmId,
+                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc,
             },
         ];
     }
+
+    /// <summary>
+    /// The owner of the conversion of 2026-10-25 (<see cref="PolicyStore.ConvertKinds"/>): Server certificate into the server
+    /// policies, Revoke into Block with Also revoke.
+    /// </summary>
+    public const string KindsOwner = PkiPluginInfo.PluginId + ":kinds-2026-10-25";
 
     /// <summary>Loads the policies, converts PKI's own settings once and starts the minute round of Revoke.</summary>
     private async Task StartPoliciesAsync(CancellationToken ct)
@@ -97,6 +100,7 @@ public sealed partial class PkiService
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
         await RenameEstPoliciesAsync(ct).ConfigureAwait(false);
+        await Policies.RewriteOnceAsync(KindsOwner, list => PolicyStore.ConvertKinds(list, RadiusPolicies.DefaultServerPolicy), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);
@@ -169,6 +173,7 @@ public sealed partial class PkiService
             Error = unreadable ? PolicyTexts.Unreadable : null,
             Rows = Policies.Rows(devices),
             Cas = Policies.CaChoices(),
+            IssuingCas = Policies.IssuingCaChoices(),
             SignInCas = Policies.SignInCaChoices(),
             EstProfiles = await Policies.EstProfilesAsync(ct).ConfigureAwait(false),
             CipherSuites = CipherSuites,
@@ -193,7 +198,7 @@ public sealed partial class PkiService
             return new PolicySaveReply { Error = error };
         }
 
-        if (result.Saved is { Kind: PolicyKinds.Revoke } saved)
+        if (result.Saved is { } saved && PolicyRules.Revokes(saved))
         {
             await RevokeByPoliciesAsync(saved.Id, ct).ConfigureAwait(false);
         }
@@ -213,7 +218,7 @@ public sealed partial class PkiService
     internal async Task<PolicyRevocationCount> CountRevocationsAsync(PolicyDevices devices, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(devices);
-        var policy = PolicyRules.Normalize(new PkiPolicy { Name = "count", Kind = PolicyKinds.Revoke, Devices = devices });
+        var policy = PolicyRules.Normalize(new PkiPolicy { Name = "count", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = devices });
         return new PolicyRevocationCount((await SerialsToRevokeAsync(policy, ct).ConfigureAwait(false)).Count);
     }
 
@@ -249,7 +254,7 @@ public sealed partial class PkiService
     /// </summary>
     internal async Task RevokeByPoliciesAsync(Guid? only, CancellationToken ct)
     {
-        var policies = Policies.PoliciesOf(PolicyKinds.Revoke).Where(p => only is null || p.Id == only).ToList();
+        var policies = Policies.PoliciesOf(PolicyKinds.Block).Where(p => PolicyRules.Revokes(p) && (only is null || p.Id == only)).ToList();
         if (policies.Count == 0)
         {
             return;

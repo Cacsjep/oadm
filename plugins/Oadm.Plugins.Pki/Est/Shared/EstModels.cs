@@ -274,7 +274,7 @@ public static class EstTexts
     public static string ProfileWithoutPolicy(string profile) => $"The EST profile {profile} has no issuing policy. Choose one on the EST server page. Nothing was changed.";
 
     /// <summary>The page: PKI has no Sign-in CA policy (nothing signs in, fail closed).</summary>
-    public const string NoSignInPolicy = "Cameras cannot sign in: there is no Sign-in CA policy.";
+    public const string NoSignInPolicy = "Cameras cannot sign in: there is no EST sign-in CA policy.";
 
     /// <summary>The page: PKI has no Enrollment policy (every device is refused).</summary>
     public const string NoEnrollmentPolicies = "No camera can enroll: there is no Enrollment policy.";

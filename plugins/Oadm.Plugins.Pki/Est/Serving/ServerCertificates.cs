@@ -26,7 +26,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     private readonly Dictionary<Guid, Entry> _entries = [];
     private readonly SemaphoreSlim _making = new(1, 1);
 
-    /// <summary>PKI's Server certificate policy of the EST server (valid days, key); null: 90 days, ECC.</summary>
+    /// <summary>PKI's EST server policy (CA, valid days, key); null: 90 days, ECC, the OADM CA.</summary>
     public Func<Oadm.Plugins.Pki.Policies.PkiPolicy?> Policy { get; init; } = () => null;
 
     /// <summary>
@@ -36,14 +36,16 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     public async Task<X509Certificate2?> GetAsync(Guid siteId, IReadOnlyCollection<string> addresses, string? hostName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(addresses);
-        if (authority() is not { IsReady: true } ca)
+        // The CA of the EST server policy (decision 2026-10-25: any CA with its key); none: the OADM CA.
+        var policy = Policy();
+        if (authority() is not { } ca || Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, policy?.CaId) is not { Count: > 0 } issuerChain)
         {
             return null;
         }
 
         var names = string.Join('|', addresses.Order(StringComparer.Ordinal)) + "|" + hostName;
-        var caId = ca.Chain.Count > 0 ? Convert.ToHexString(SHA256.HashData(ca.Chain[0])) : string.Empty;
-        var (validity, rsa) = Wanted(Policy());
+        var caId = Convert.ToHexString(SHA256.HashData(issuerChain[0]));
+        var (validity, rsa) = Wanted(policy);
         lock (_gate)
         {
             if (_entries.TryGetValue(siteId, out var entry) && Fits(entry, names, caId, rsa))
@@ -64,7 +66,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
                 }
             }
 
-            var made = await MakeAsync(ca, addresses, hostName, validity, rsa, ct).ConfigureAwait(false);
+            var made = await MakeAsync(ca, policy?.CaId, addresses, hostName, validity, rsa, ct).ConfigureAwait(false);
             lock (_gate)
             {
                 // The replaced certificate is left to the GC: a handshake may still use it.
@@ -158,7 +160,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     }
 
     private static async Task<X509Certificate2> MakeAsync(
-        IDeviceCertificateAuthority ca, IReadOnlyCollection<string> addresses, string? hostName, TimeSpan validity, bool rsa, CancellationToken ct)
+        IDeviceCertificateAuthority ca, string? issuerId, IReadOnlyCollection<string> addresses, string? hostName, TimeSpan validity, bool rsa, CancellationToken ct)
     {
         using var rsaKey = rsa ? RSA.Create(2048) : null;
         using var ecKey = rsa ? null : ECDsa.Create(ECCurve.NamedCurves.nistP256);
@@ -168,7 +170,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
             : new CertificateRequest("CN=" + commonName, ecKey!, HashAlgorithmName.SHA256);
         var csr = request.CreateSigningRequest();
         var dns = string.IsNullOrWhiteSpace(hostName) ? Array.Empty<string>() : [hostName];
-        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, [.. addresses], dns, DeviceCertificateUse.Server) { Validity = validity, Source = "EST" }, ct)
+        var issued = await ca.SignAsync(new DeviceCertificateRequest(csr, commonName, [.. addresses], dns, DeviceCertificateUse.Server) { Validity = validity, Source = "EST", IssuerId = issuerId }, ct)
             .ConfigureAwait(false);
         using var publicOnly = X509CertificateLoader.LoadCertificate(issued.Certificate);
         using var withKey = rsaKey is not null ? publicOnly.CopyWithPrivateKey(rsaKey) : publicOnly.CopyWithPrivateKey(ecKey!);

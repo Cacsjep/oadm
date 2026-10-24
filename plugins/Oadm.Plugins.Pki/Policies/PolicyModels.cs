@@ -16,12 +16,11 @@ public static class PolicyGroups
     public const string Certificates = "certificates";
     public const string Dot1x = "dot1x";
     public const string Est = "est";
-    public const string Revoke = "revoke";
 
-    /// <summary>The filter chips, in order.</summary>
-    public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Est, Revoke];
+    /// <summary>The groups in their order (decision 2026-10-25: Revoke is part of Block, its group is gone).</summary>
+    public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Est];
 
-    /// <summary>"All", "Issuing", "Certificates", "802.1X", "EST", "Revoke".</summary>
+    /// <summary>"All", "Issuing", "Certificates", "802.1X", "EST".</summary>
     public static string Label(string group) => group switch
     {
         All => "All",
@@ -29,7 +28,6 @@ public static class PolicyGroups
         Certificates => "Certificates",
         Dot1x => "802.1X",
         Est => "EST",
-        Revoke => "Revoke",
         _ => group,
     };
 }
@@ -43,23 +41,32 @@ public static class PolicyKinds
     /// <summary>Issuing: the certificates of Enable IEEE 802.1X and of the EST profiles for IEEE 802.1X and MQTT, with the 802.1X settings (no devices).</summary>
     public const string Dot1xCertificate = "dot1xCertificate";
 
-    /// <summary>Issuing: the certificate of the 802.1X server or of the EST server (one per server, no devices).</summary>
-    public const string ServerCertificate = "serverCertificate";
+    /// <summary>
+    /// Before 2026-10-25: the certificate of the 802.1X server or of the EST server. Converted once into
+    /// <see cref="Dot1xServer"/> and <see cref="EstServer"/> (<see cref="PolicyStore.ConvertKinds"/>); never stored again.
+    /// </summary>
+    public const string LegacyServerCertificate = "serverCertificate";
 
-    /// <summary>The 802.1X server's TLS settings, largest EAP packet and reauthentication (one only).</summary>
+    /// <summary>The 802.1X server's certificate (CA, valid days, key), TLS settings, largest EAP packet and reauthentication (one only).</summary>
     public const string Dot1xServer = "dot1xServer";
 
-    /// <summary>Certificates of a CA may pass the 802.1X server.</summary>
+    /// <summary>The EST server's certificate: CA, valid days, key (one only).</summary>
+    public const string EstServer = "estServer";
+
+    /// <summary>"802.1X trusted CA": certificates of a CA may pass the 802.1X server.</summary>
     public const string AllowCa = "allowCa";
 
     /// <summary>The devices get a VLAN from the 802.1X server.</summary>
     public const string Vlan = "vlan";
 
-    /// <summary>The 802.1X server refuses the devices; nothing is revoked.</summary>
+    /// <summary>
+    /// The 802.1X server refuses the devices; with <see cref="PkiPolicy.AlsoRevoke"/> their IEEE 802.1X certificates are
+    /// revoked too (on save and every new one while it exists).
+    /// </summary>
     public const string Block = "block";
 
-    /// <summary>The IEEE 802.1X certificates of the devices are revoked (on save and every new one while it exists).</summary>
-    public const string Revoke = "revoke";
+    /// <summary>Before 2026-10-25: the IEEE 802.1X certificates of the devices are revoked. Converted once into Block with Also revoke.</summary>
+    public const string LegacyRevoke = "revoke";
 
     /// <summary>The certificates of the devices count as "expires soon" this many days before their end.</summary>
     public const string ExpiryWarning = "expiryWarning";
@@ -71,67 +78,65 @@ public static class PolicyKinds
     public const string SignInCa = "signInCa";
 
     /// <summary>Every kind in the order of the editor's choice and the card (by group).</summary>
-    public static IReadOnlyList<string> All { get; } = [HttpsCertificate, Dot1xCertificate, ServerCertificate, ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, Enrollment, SignInCa, Revoke];
+    public static IReadOnlyList<string> All { get; } = [HttpsCertificate, Dot1xCertificate, ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, EstServer, Enrollment, SignInCa];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind, StringComparer.Ordinal);
 
-    /// <summary>"HTTPS certificate", "Expiry warning", "802.1X server", "Allow CA", "VLAN", "Block", "Revoke".</summary>
+    /// <summary>"HTTPS certificate", "Expiry warning", "802.1X server", "802.1X trusted CA", "VLAN", "Block", "EST sign-in CA".</summary>
     public static string Name(string kind) => kind switch
     {
         HttpsCertificate => "HTTPS certificate",
         Dot1xCertificate => "IEEE 802.1X certificate",
-        ServerCertificate => "Server certificate",
+        LegacyServerCertificate => "Server certificate",
         Dot1xServer => "802.1X server",
-        AllowCa => "Allow CA",
+        EstServer => "EST server",
+        AllowCa => "802.1X trusted CA",
         Vlan => "VLAN",
         Block => "Block",
-        Revoke => "Revoke",
+        LegacyRevoke => "Revoke",
         ExpiryWarning => "Expiry warning",
         Enrollment => "Enrollment",
-        SignInCa => "Sign-in CA",
+        SignInCa => "EST sign-in CA",
         _ => kind,
     };
 
-    /// <summary>The group of the filter.</summary>
+    /// <summary>The group of the table.</summary>
     public static string GroupOf(string kind) => kind switch
     {
         Dot1xServer or AllowCa or Vlan or Block => PolicyGroups.Dot1x,
-        Revoke => PolicyGroups.Revoke,
         ExpiryWarning => PolicyGroups.Certificates,
-        HttpsCertificate or Dot1xCertificate or ServerCertificate => PolicyGroups.Issuing,
-        Enrollment or SignInCa => PolicyGroups.Est,
+        HttpsCertificate or Dot1xCertificate => PolicyGroups.Issuing,
+        EstServer or Enrollment or SignInCa => PolicyGroups.Est,
         _ => PolicyGroups.All,
     };
 
-    /// <summary>An issuing kind: the values a certificate is issued with (CA, valid days, key).</summary>
-    public static bool IsIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate or ServerCertificate;
+    /// <summary>A kind that issues certificates: the values a certificate is issued with (CA, valid days, key); the device kinds and the two servers.</summary>
+    public static bool IsIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate or Dot1xServer or EstServer;
 
     /// <summary>An issuing kind of device certificates (the task dialogs and the EST profiles pick one).</summary>
     public static bool IsDeviceIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate;
 
     /// <summary>The kind chooses devices (the shared device selector).</summary>
-    public static bool HasDevices(string kind) => kind is Vlan or Block or Revoke or ExpiryWarning or Enrollment;
+    public static bool HasDevices(string kind) => kind is Vlan or Block or ExpiryWarning or Enrollment;
 
     /// <summary>
     /// The kind may hold "All devices" (<see cref="PolicyDevices.AllDevices"/>): every device, also of sites added later and,
-    /// for the 802.1X kinds, devices OADM does not manage. Never Revoke (like tags: it would revoke every device's certificate).
+    /// for the 802.1X kinds, devices OADM does not manage. A Block policy that also revokes never does
+    /// (<see cref="PolicyRules.Revokes"/>: it would revoke every device's certificate).
     /// </summary>
-    public static bool AllowsAllDevices(string kind) => HasDevices(kind) && kind != Revoke;
+    public static bool AllowsAllDevices(string kind) => HasDevices(kind);
 
     /// <summary>At most one policy of the kind.</summary>
-    public static bool OneOnly(string kind) => kind == Dot1xServer;
+    public static bool OneOnly(string kind) => kind is Dot1xServer or EstServer;
 
     /// <summary>
     /// The kind has system policies (decision 2026-10-25): OADM needs them, they cannot be deleted, their values stay
-    /// editable. The first (oldest) of the kind, every Server certificate policy (one per server).
+    /// editable. The first (oldest) of the kind.
     /// </summary>
-    public static bool HasSystemPolicy(string kind) => kind is HttpsCertificate or Dot1xCertificate or ServerCertificate or Dot1xServer or ExpiryWarning or Enrollment;
-
-    /// <summary>The devices are chosen by device and site only, never by tag (Revoke: a tag could revoke every device that gets it later).</summary>
-    public static bool NoTags(string kind) => kind == Revoke;
+    public static bool HasSystemPolicy(string kind) => kind is HttpsCertificate or Dot1xCertificate or Dot1xServer or EstServer or ExpiryWarning or Enrollment;
 
     /// <summary>A kind of the 802.1X server (its page counts them: "6 policies apply").</summary>
-    public static bool IsDot1x(string kind) => GroupOf(kind) == PolicyGroups.Dot1x || kind == Revoke;
+    public static bool IsDot1x(string kind) => GroupOf(kind) == PolicyGroups.Dot1x;
 
     /// <summary>A kind of the EST server (its page counts them: "2 policies apply").</summary>
     public static bool IsEst(string kind) => GroupOf(kind) == PolicyGroups.Est;
@@ -147,12 +152,11 @@ public static class PolicyKinds
     {
         HttpsCertificate => "Certificates for HTTPS from Enable HTTPS and the EST server.",
         Dot1xCertificate => "Certificates for IEEE 802.1X from Enable IEEE 802.1X and the EST server.",
-        ServerCertificate => "The certificate of the 802.1X server or the EST server.",
-        Dot1xServer => "TLS settings of the 802.1X server.",
+        Dot1xServer => "The certificate and the TLS settings of the 802.1X server.",
+        EstServer => "The certificate of the EST server.",
         AllowCa => "Certificates of this CA may pass the 802.1X server.",
         Vlan => "The 802.1X server puts these devices in this VLAN.",
-        Block => "The 802.1X server refuses these devices, also with a valid certificate. Nothing is revoked.",
-        Revoke => "Revokes the IEEE 802.1X certificates of these devices, also new ones while the policy exists.",
+        Block => "The 802.1X server refuses these devices, also with a valid certificate.",
         ExpiryWarning => "Certificates of these devices show Expires soon this many days before their end.",
         Enrollment => "The EST profiles these devices may use. The EST server refuses devices no Enrollment policy holds.",
         SignInCa => "Cameras may sign in to the EST server with certificates of this CA.",
@@ -245,7 +249,7 @@ public static class PolicyProfiles
     };
 }
 
-/// <summary>What a Sign-in CA policy lets a camera sign in for.</summary>
+/// <summary>What an EST sign-in CA policy lets a camera sign in for.</summary>
 public static class PolicySignIn
 {
     /// <summary>New certificates, and renewals too (decision of stage 6: a camera that may get a new certificate with it may renew with it).</summary>
@@ -267,7 +271,7 @@ public static class PolicySignIn
     };
 }
 
-/// <summary>Which server a Server certificate policy is for.</summary>
+/// <summary>Which server a Server certificate policy of before 2026-10-25 was for (read only by <see cref="PolicyStore.ConvertKinds"/>).</summary>
 public static class PolicyServers
 {
     public const string Dot1x = "dot1xServer";
@@ -298,7 +302,7 @@ public sealed record PolicyDevices
 
     /// <summary>
     /// Every device: also the devices of sites added later and, for the 802.1X kinds, devices OADM does not manage (a
-    /// certificate of an Allow CA for any device). The other fields are empty. Overlaps every other policy of its kind.
+    /// certificate of an 802.1X trusted CA for any device). The other fields are empty. Overlaps every other policy of its kind.
     /// </summary>
     public bool AllDevices { get; init; }
 
@@ -347,12 +351,16 @@ public sealed record PkiPolicy
     public int? Vlan { get; init; }
 
     /// <summary>
-    /// Allow CA: PKI's id of the CA (<see cref="CertificateAuthorityInfo.Id"/>; the OADM CA covers its previous ones). Issuing:
-    /// the CA that issues (only the OADM CA issues today).
+    /// 802.1X trusted CA and EST sign-in CA: PKI's id of the CA (<see cref="CertificateAuthorityInfo.Id"/>; the OADM CA covers
+    /// its previous ones for 802.1X). Issuing kinds (also the 802.1X and EST server policies): "Issued by", a CA with its key
+    /// (the OADM CA or an imported CA with its key; decision 2026-10-25).
     /// </summary>
     public string? CaId { get; init; }
 
-    /// <summary>Allow CA: only certificates that name a device OADM manages pass (default); false: any valid certificate of the CA.</summary>
+    /// <summary>Block: also revoke the IEEE 802.1X certificates of its devices (on save and every new one while it exists); then no tags and no "All devices".</summary>
+    public bool? AlsoRevoke { get; init; }
+
+    /// <summary>802.1X trusted CA: only certificates that name a device OADM manages pass (default); false: any valid certificate of the CA.</summary>
     public bool? OnlyManaged { get; init; }
 
     /// <summary>802.1X server: "1.0", "1.1", "1.2" (default) or "1.3".</summary>
@@ -391,7 +399,7 @@ public sealed record PkiPolicy
     /// <summary>IEEE 802.1X certificate: the imported RADIUS server CA (PEM, public only).</summary>
     public string? RadiusCaPem { get; init; }
 
-    /// <summary>Server certificate: the server it is for (<see cref="PolicyServers"/>).</summary>
+    /// <summary>A Server certificate policy of before 2026-10-25: the server it was for (<see cref="PolicyServers"/>); read only by the conversion.</summary>
     public string? Server { get; init; }
 
     /// <summary>Enrollment: which profiles the devices may use (<see cref="PolicyProfiles"/>).</summary>
@@ -400,16 +408,16 @@ public sealed record PkiPolicy
     /// <summary>Enrollment with <see cref="PolicyProfiles.Chosen"/>: the names of the EST profiles (as the cameras use them in their URL).</summary>
     public IReadOnlyList<string>? Profiles { get; init; }
 
-    /// <summary>Sign-in CA: new certificates or renewals (<see cref="PolicySignIn"/>).</summary>
+    /// <summary>EST sign-in CA: new certificates or renewals (<see cref="PolicySignIn"/>).</summary>
     public string? SignInFor { get; init; }
 
-    /// <summary>Set by PKI: who saved it last (the user of a revoke policy's later revocations).</summary>
+    /// <summary>Set by PKI: who saved it last (the user of a Block policy that also revokes's later revocations).</summary>
     public string? SavedBy { get; init; }
 }
 
 /// <summary>One row of the Policies card: the policy with its kind's name, its group, the summary and a warning.</summary>
 /// <param name="Policy">The stored policy.</param>
-/// <param name="KindName">"VLAN", "Allow CA", ...</param>
+/// <param name="KindName">"VLAN", "802.1X trusted CA", ...</param>
 /// <param name="Group">One of <see cref="PolicyGroups"/>.</param>
 /// <param name="Summary">"VLAN 30", "OADM CA, only devices OADM manages", "30 days".</param>
 /// <param name="Warning">An overlap a tag or site change made later ("10.0.0.48 is in Building B and PTZ. Building B applies."); null when none.</param>
@@ -443,10 +451,13 @@ public sealed record PolicyList
     /// <summary>Every policy in age order (oldest first). A user limited to a device group: none.</summary>
     public IReadOnlyList<PolicyRow> Rows { get; init; } = [];
 
-    /// <summary>The CAs of PKI an Allow CA policy can name.</summary>
+    /// <summary>The CAs of PKI an 802.1X trusted CA policy can name.</summary>
     public IReadOnlyList<PolicyCaChoice> Cas { get; init; } = [];
 
-    /// <summary>The CAs a Sign-in CA policy can name: the Axis device ID, the OADM CA and the previous OADM CAs.</summary>
+    /// <summary>The CAs an issuing policy can pick as "Issued by": the OADM CA and the imported CAs with their key.</summary>
+    public IReadOnlyList<PolicyCaChoice> IssuingCas { get; init; } = [];
+
+    /// <summary>The CAs an EST sign-in CA policy can name: the Axis device ID, the OADM CA and the previous OADM CAs.</summary>
     public IReadOnlyList<PolicyCaChoice> SignInCas { get; init; } = [];
 
     /// <summary>The names of the EST server's profiles (an Enrollment policy chooses among them).</summary>
@@ -500,7 +511,7 @@ public static class PolicyMethods
     /// <summary><see cref="PolicyRef"/> -> <see cref="PolicySaveReply"/>. "Manage the certificate authority", all devices, audited.</summary>
     public const string DeletePolicy = "deletePolicy";
 
-    /// <summary><see cref="PolicyDevices"/> -> <see cref="PolicyRevocationCount"/>: the IEEE 802.1X certificates a revoke policy would revoke now.</summary>
+    /// <summary><see cref="PolicyDevices"/> -> <see cref="PolicyRevocationCount"/>: the IEEE 802.1X certificates a Block policy that also revokes would revoke now.</summary>
     public const string CountRevocations = "countRevocations";
 
     /// <summary>Event (payload <c>{}</c>): the policies changed; pages read them again.</summary>
@@ -530,6 +541,7 @@ public static class PolicyFields
     public const string ProfileScope = "profileScope";
     public const string Profiles = "profiles";
     public const string SignInFor = "signInFor";
+    public const string AlsoRevoke = "alsoRevoke";
 }
 
 /// <summary>The texts of the policies (one phrase per concept), the same on the page and in the server's refusals.</summary>
@@ -539,8 +551,11 @@ public static class PolicyTexts
     public const string NameTooLong = "Use at most 64 characters.";
     public const string ChooseKind = "Choose a kind.";
     public const string ChooseDevices = "Choose sites, tags or devices.";
-    public const string RevokeNoTags = "Revoke policies choose devices and sites, not tags.";
-    public const string RevokeNoAll = "Revoke policies choose devices and sites, not all devices.";
+    public const string RevokeNoTags = "To also revoke, choose devices and sites, not tags.";
+    public const string RevokeNoAll = "To also revoke, choose devices and sites, not all devices.";
+
+    /// <summary>The check box of a Block policy (decision 2026-10-25: Revoke is part of Block).</summary>
+    public const string AlsoRevoke = "Also revoke their IEEE 802.1X certificates";
     public const string SiteGone = "This site no longer exists.";
     public const string PolicyGone = "This policy no longer exists.";
     public const string KindKept = "A policy keeps its kind. Add a new policy instead.";
@@ -561,9 +576,7 @@ public static class PolicyTexts
     public const string Unreadable = "The policies cannot be read. Restore a backup.";
     public const string ValidDaysRange = "Use 1 to 3,650 days.";
     public const string ChooseKey = "Choose a key.";
-    public const string OnlyOadmIssues = "Only the OADM CA issues certificates.";
-    public const string ChooseServer = "Choose a server.";
-    public const string ServerKept = "A Server certificate policy keeps its server.";
+    public const string CannotIssue = "This CA cannot issue certificates. Choose a CA with its key.";
     public const string Dot1xServerNeedsEcc = "The 802.1X server uses an ECC key.";
     public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
     public const string ChooseProfileScope = "Choose which profiles.";
@@ -612,17 +625,11 @@ public static class PolicyTexts
             : Start + "the profiles " + string.Join(", ", profiles.Take(profiles.Count - 1)) + " and " + profiles[^1] + ".";
     }
 
-    /// <summary>"for new certificates", "for renewals" (the row's summary of a Sign-in CA policy).</summary>
+    /// <summary>"for new certificates", "for renewals" (the row's summary of an EST sign-in CA policy).</summary>
     public static string SignInForText(string? value) => value == PolicySignIn.Renewal ? "for renewals" : "for new certificates";
 
-    /// <summary>"Another Sign-in CA policy has this CA."</summary>
-    public const string SignInCaTaken = "Another Sign-in CA policy has this CA.";
-
-    /// <summary>"Another Server certificate policy is for the EST server."</summary>
-    public static string ServerTaken(string? server) => $"Another Server certificate policy is for the {PolicyServers.Name(server)}.";
-
-    /// <summary>"The EST server gets its certificate from this policy. Change it instead." (a Server certificate policy is never deleted).</summary>
-    public static string ServerNeedsPolicy(string? server) => $"The {PolicyServers.Name(server)} gets its certificate from this policy. Change it instead.";
+    /// <summary>"Another EST sign-in CA policy has this CA."</summary>
+    public const string SignInCaTaken = "Another EST sign-in CA policy has this CA.";
 
     /// <summary>"Used by the EST profile https." / "Used by the EST profiles https and dot1x."</summary>
     public static string UsedByProfiles(IReadOnlyList<string> profiles)
@@ -649,8 +656,8 @@ public static class PolicyTexts
     /// <summary>The refusal of Delete for a system policy.</summary>
     public const string SystemPolicy = "OADM needs this policy. Change its values instead.";
 
-    /// <summary>"Another Allow CA policy has this CA."</summary>
-    public const string CaTaken = "Another Allow CA policy has this CA.";
+    /// <summary>"Another 802.1X trusted CA policy has this CA."</summary>
+    public const string CaTaken = "Another 802.1X trusted CA policy has this CA.";
 
     /// <summary>"10.0.0.48 is in Building B and PTZ." (refused on save; the same words as the warning of a later overlap).</summary>
     public static string Overlap(string device, int more, string first, string second) => more == 0
@@ -683,7 +690,7 @@ public static class PolicyTexts
     public static string UsedBy(PkiPolicy policy) => UsedBy([policy])!;
 
     /// <summary>
-    /// "802.1X: OADM CA (only devices OADM manages), Lab CA": the Allow CA policies of one CA behind one prefix (the Used by
+    /// "802.1X: OADM CA (only devices OADM manages), Lab CA": the 802.1X trusted CA policies of one CA behind one prefix (the Used by
     /// column of the CA list); null for none.
     /// </summary>
     public static string? UsedBy(IReadOnlyCollection<PkiPolicy> policies)

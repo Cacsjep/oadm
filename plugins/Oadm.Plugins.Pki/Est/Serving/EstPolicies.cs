@@ -10,7 +10,8 @@ namespace Oadm.Plugins.Est.Serving;
 /// <param name="ValidDays">How long a certificate is valid (never past the CA's end).</param>
 /// <param name="Key">The key the camera creates.</param>
 /// <param name="PolicyName">The issuing policy ("HTTPS"); null without PKI's store.</param>
-public sealed record ProfileIssuing(int ValidDays, ProfileKey Key, string? PolicyName);
+/// <param name="CaId">The policy's "Issued by" (decision 2026-10-25); null: the OADM CA.</param>
+public sealed record ProfileIssuing(int ValidDays, ProfileKey Key, string? PolicyName, string? CaId = null);
 
 /// <summary>
 /// The EST profiles and PKI's issuing policies (docs/spec/pki.md "Issuing policies have no devices", est-server.md
@@ -53,7 +54,7 @@ public static class EstPolicies
             return new ProfileIssuing(profile.ValidityDays, profile.Key, null);
         }
 
-        return PolicyOf(profile, store) is { } policy ? new ProfileIssuing(policy.ValidDays ?? PolicyLimits.DefaultValidDays, KeyOf(policy), policy.Name) : null;
+        return PolicyOf(profile, store) is { } policy ? new ProfileIssuing(policy.ValidDays ?? PolicyLimits.DefaultValidDays, KeyOf(policy), policy.Name, policy.CaId) : null;
     }
 
     /// <summary>The key the camera creates for the profile (the device ID it signs in with is of that key).</summary>
@@ -71,7 +72,7 @@ public static class EstPolicies
             return [];
         }
 
-        var names = authorities.Where(a => a.Kind == CertificateAuthorityKind.Oadm).GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
+        var names = authorities.Where(a => a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.Imported).GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
         return [.. store.All.Where(p => PolicyKinds.IsDeviceIssuing(p.Kind)).Select(p => new IssuingPolicyChoice(p.Id, p.Name, p.Kind, PolicyStore.IssuingSummary(p, names)))];
     }

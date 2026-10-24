@@ -26,6 +26,7 @@ public sealed partial class PkiService
     private readonly Lock _usedByGate = new();
     private readonly Dictionary<string, (string Name, HashSet<string> Ids)> _usedBy = new(StringComparer.Ordinal);
     private volatile List<StoredImportedCa> _imported = [];
+    private volatile IReadOnlyDictionary<string, CaMaterial> _importedMaterial = new Dictionary<string, CaMaterial>(StringComparer.OrdinalIgnoreCase);
     private AuthorityCache? _authorities;
 
     /// <summary>The authority id of a previous OADM CA.</summary>
@@ -44,9 +45,10 @@ public sealed partial class PkiService
         var ca = _ca;
         var previous = _previous;
         var imported = _imported;
+        var material = _importedMaterial;
         var now = Now.UtcDateTime;
         if (Volatile.Read(ref _authorities) is { } cached && ReferenceEquals(cached.Ca, ca) && ReferenceEquals(cached.Previous, previous)
-            && ReferenceEquals(cached.Imported, imported) && cached.NextEndUtc > now)
+            && ReferenceEquals(cached.Imported, imported) && ReferenceEquals(cached.Material, material) && cached.NextEndUtc > now)
         {
             return cached.List;
         }
@@ -79,26 +81,86 @@ public sealed partial class PkiService
 
         foreach (var entry in imported)
         {
-            try
+            // The CA and the chain kept at import (an intermediate's issuers); one with its key can issue.
+            if (material.TryGetValue(entry.Id, out var read))
             {
-                var certificates = CaCertificates.ReadPemCertificates(entry.CertificatePem);
-                if (certificates.Count == 0)
-                {
-                    continue;
-                }
-
-                using var certificate = certificates[0];
-                list.Add(new CertificateAuthorityInfo(ImportedAuthorityId(entry.Id), CaCertificates.CommonName(certificate), CertificateAuthorityKind.Imported,
-                    [certificate.RawData], certificate.NotAfter.ToUniversalTime(), false));
-            }
-            catch (Exception ex) when (ex is CryptographicException or FormatException)
-            {
-                // an unreadable entry is no CA
+                list.Add(new CertificateAuthorityInfo(ImportedAuthorityId(entry.Id), CaCertificates.CommonName(read.Certificate), CertificateAuthorityKind.Imported,
+                    [read.Certificate.RawData, .. read.Chain.Select(c => c.RawData)], read.Certificate.NotAfter.ToUniversalTime(), read.HasKey));
             }
         }
 
-        Volatile.Write(ref _authorities, new AuthorityCache(ca, previous, imported, nextEnd, list));
+        Volatile.Write(ref _authorities, new AuthorityCache(ca, previous, imported, material, nextEnd, list));
         return list;
+    }
+
+    /// <summary>
+    /// The CA with its key that signs for <paramref name="caId"/> (an issuing policy's "Issued by"): the OADM CA (null or
+    /// "oadm") or an imported CA with its key; null when that CA cannot issue (no key, unreadable key, not in the list).
+    /// </summary>
+    public CaMaterial? IssuingCa(string? caId)
+    {
+        if (caId is null || string.Equals(caId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase))
+        {
+            return _ca is { HasKey: true } oadm ? oadm : null;
+        }
+
+        return caId.StartsWith(ImportedPrefix, StringComparison.OrdinalIgnoreCase)
+            && _importedMaterial.TryGetValue(caId[ImportedPrefix.Length..], out var imported) && imported.HasKey
+            ? imported
+            : null;
+    }
+
+    /// <summary>Every CA that can issue now: the OADM CA, then the imported CAs with their key (oldest first).</summary>
+    public IReadOnlyList<CaMaterial> IssuingCas() =>
+        [.. (_ca is { HasKey: true } oadm ? new[] { oadm } : []), .. _imported.Select(i => _importedMaterial.GetValueOrDefault(i.Id)).OfType<CaMaterial>().Where(m => m.HasKey)];
+
+    /// <summary>
+    /// Adds an imported CA with its key to the list (the key encrypted with the master key like the OADM CA's). A CA imported
+    /// before without its key gets it; the OADM CA, a previous OADM CA or a CA with its key already listed is refused.
+    /// </summary>
+    private async Task<PkiReply> AddImportedAsync(CaMaterial material, CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var id = material.Id;
+            var known = _imported.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (string.Equals(_ca?.Id, id, StringComparison.OrdinalIgnoreCase) || _previous.Any(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))
+                || known is { KeyProtected: not null })
+            {
+                material.Dispose();
+                return new PkiReply { Errors = One(PkiFields.File, "This CA is already in the list.") };
+            }
+
+            if (known is null && _imported.Count >= PkiPluginInfo.MaxImportedCas)
+            {
+                material.Dispose();
+                return new PkiReply { Errors = One(PkiFields.File, $"At most {PkiPluginInfo.MaxImportedCas} CAs can be imported. Remove one first.") };
+            }
+
+            var entry = new StoredImportedCa
+            {
+                Id = id,
+                CertificatePem = material.CertificatePem,
+                ChainPem = material.ChainPem,
+                KeyProtected = _secrets!.Protect(material.KeyPkcs8Pem!, KeyPurposePrefix + id),
+                ImportedUtc = known?.ImportedUtc ?? Now.UtcDateTime,
+            };
+            var list = known is null ? [.. _imported, entry] : _imported.Select(i => ReferenceEquals(i, known) ? entry : i).ToList();
+            await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
+            _importedMaterial = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase) { [id] = material };
+            _imported = list;
+            ApplyAnchors();
+            LogImported(material.Certificate.Subject, material.Chain.Count);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        CaChanged?.Invoke(this, EventArgs.Empty);
+        await PublishAsync().ConfigureAwait(false);
+        return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
     }
 
     /// <summary>
@@ -208,8 +270,14 @@ public sealed partial class PkiService
                 }
 
                 name = CaCertificates.CommonName(certificate);
-                var list = new List<StoredImportedCa>(_imported) { new() { Id = id, CertificatePem = CaCertificates.ToPem(certificate), ImportedUtc = Now.UtcDateTime } };
+                var entry = new StoredImportedCa { Id = id, CertificatePem = CaCertificates.ToPem(certificate), ImportedUtc = Now.UtcDateTime };
+                var list = new List<StoredImportedCa>(_imported) { entry };
                 await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
+                if (ReadImported(entry) is { } read)
+                {
+                    _importedMaterial = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase) { [id] = read };
+                }
+
                 _imported = list;
             }
         }
@@ -239,7 +307,8 @@ public sealed partial class PkiService
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (Policies.UsingCa(id, CertificateAuthorityKind.Imported) is { Count: > 0 } naming)
+            // Any policy that names it (issuing, 802.1X trusted CA, EST sign-in CA) keeps it (decision 2026-10-25).
+            if (Policies.NamingCa(id) is { Count: > 0 } naming)
             {
                 return await ErrorAsync(PolicyTexts.UsedByPolicy(naming[0].Name), ct).ConfigureAwait(false);
             }
@@ -257,7 +326,11 @@ public sealed partial class PkiService
             }
 
             await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
+            var material = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase);
+            material.Remove(sha); // left to the GC: a signing that read it may still run
+            _importedMaterial = material;
             _imported = list;
+            ApplyAnchors();
         }
         finally
         {
@@ -277,7 +350,78 @@ public sealed partial class PkiService
         return names.Count == 0 ? null : "Used by the " + string.Join(" and the ", names) + ". Remove it there first.";
     }
 
-    private async Task LoadImportedAsync(CancellationToken ct) => _imported = await _store.LoadImportedAsync(ct).ConfigureAwait(false);
+    /// <summary>Reads the imported CAs and decrypts the keys of those imported with one (without the master key: none).</summary>
+    private async Task LoadImportedAsync(CancellationToken ct)
+    {
+        var imported = await _store.LoadImportedAsync(ct).ConfigureAwait(false);
+        var material = new Dictionary<string, CaMaterial>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in imported)
+        {
+            if (ReadImported(entry) is { } read)
+            {
+                material[entry.Id] = read;
+                if (entry.KeyProtected is not null && !read.HasKey)
+                {
+                    LogImportedKeyUnreadable(entry.Id);
+                }
+            }
+        }
+
+        _importedMaterial = material;
+        _imported = imported;
+    }
+
+    /// <summary>An imported CA in memory: its certificate, the chain kept at import and its key when it has one and the master key reads it; null when unreadable.</summary>
+    private CaMaterial? ReadImported(StoredImportedCa entry)
+    {
+        List<X509Certificate2> certificates;
+        try
+        {
+            certificates = CaCertificates.ReadPemCertificates(entry.CertificatePem);
+        }
+        catch (Exception ex) when (ex is CryptographicException or FormatException)
+        {
+            return null; // an unreadable entry is no CA
+        }
+
+        if (certificates.Count == 0)
+        {
+            return null;
+        }
+
+        foreach (var extra in certificates.Skip(1))
+        {
+            extra.Dispose();
+        }
+
+        var chain = new List<X509Certificate2>();
+        foreach (var pem in entry.ChainPem ?? [])
+        {
+            try
+            {
+                chain.AddRange(CaCertificates.ReadPemCertificates(pem));
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException)
+            {
+                // a damaged chain entry is left out
+            }
+        }
+
+        string? key = null;
+        if (entry.KeyProtected is { Length: > 0 } protectedKey && _secrets is { } secrets)
+        {
+            try
+            {
+                key = secrets.Unprotect(protectedKey, KeyPurposePrefix + entry.Id);
+            }
+            catch (Exception ex) when (ex is CryptographicException or FormatException or ArgumentException)
+            {
+                key = null; // another master key: the CA stays listed, it cannot issue
+            }
+        }
+
+        return new CaMaterial(certificates[0], chain, key);
+    }
 
     /// <summary>The rows of the page's Certificate authorities card.</summary>
     private List<AuthorityRow> AuthorityRows() =>
@@ -301,13 +445,23 @@ public sealed partial class PkiService
     private List<string> AuthorityUsedBy(CertificateAuthorityInfo a) =>
         [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
 
-    /// <summary>The names of the issuing policies that name the CA (only the OADM CA issues; its previous ones never do).</summary>
+    /// <summary>The names of the issuing policies that name the CA (the OADM CA or an imported CA; previous OADM CAs never issue).</summary>
     private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>
-        authority.Kind != CertificateAuthorityKind.Oadm
+        authority.Kind is not (CertificateAuthorityKind.Oadm or CertificateAuthorityKind.Imported)
             ? []
-            : PolicyKinds.All.Where(PolicyKinds.IsIssuing).SelectMany(Policies.PoliciesOf)
-                .Where(p => string.Equals(p.CaId ?? CertificateAuthorityInfo.OadmId, authority.Id, StringComparison.OrdinalIgnoreCase))
-                .Select(p => p.Name);
+            : Policies.All.Where(p => PolicyKinds.IsIssuing(p.Kind)
+                && string.Equals(p.CaId ?? CertificateAuthorityInfo.OadmId, authority.Id, StringComparison.OrdinalIgnoreCase)).Select(p => p.Name);
+
+    /// <summary>
+    /// The Used in column of the CA list (decision 2026-10-25): the names of the policies that use the CA, in the policies'
+    /// order: issuing ones, 802.1X trusted CA (a previous OADM CA: those of the OADM CA, which cover it) and EST sign-in CA.
+    /// </summary>
+    internal IReadOnlyList<string> UsedIn(CertificateAuthorityInfo authority)
+    {
+        var trusted = Policies.UsingCa(authority.Id, authority.Kind).Select(p => p.Id).ToHashSet();
+        var named = Policies.NamingCa(authority.Id).Select(p => p.Id).ToHashSet();
+        return [.. Policies.All.Where(p => trusted.Contains(p.Id) || named.Contains(p.Id)).Select(p => p.Name).Distinct(StringComparer.Ordinal)];
+    }
 
     private static DateTime LatestEnd(List<byte[]> certificates)
     {
@@ -353,6 +507,10 @@ public sealed partial class PkiService
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: imported CA {Id} removed from the list of CAs")]
     private partial void LogAuthorityRemoved(string id);
 
-    private sealed record AuthorityCache(CaMaterial? Ca, IReadOnlyList<StoredPreviousCa> Previous, IReadOnlyList<StoredImportedCa> Imported, DateTime NextEndUtc,
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the imported CA {Id} cannot be decrypted (other master key); it cannot issue certificates")]
+    private partial void LogImportedKeyUnreadable(string id);
+
+    private sealed record AuthorityCache(CaMaterial? Ca, IReadOnlyList<StoredPreviousCa> Previous, IReadOnlyList<StoredImportedCa> Imported,
+        IReadOnlyDictionary<string, CaMaterial> Material, DateTime NextEndUtc,
         IReadOnlyList<CertificateAuthorityInfo> List);
 }

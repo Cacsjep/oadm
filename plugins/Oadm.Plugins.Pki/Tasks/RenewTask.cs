@@ -31,7 +31,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         ctx.PlanSteps(PkiSteps.CheckCompatibility, PkiSteps.ReadCertificates, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork);
-        var (service, ca, apis) = await CheckCertificateTaskAsync(ctx, device, ct).ConfigureAwait(false);
+        var (service, apis) = await CheckCertificateTaskAsync(ctx, device, ct).ConfigureAwait(false);
 
         var certificates = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
@@ -69,27 +69,33 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         var dot1xReason = dot1x is null ? "No OADM 802.1X certificate on this device"
             : !IsOadm(dot1x.CertClient) ? "No OADM 802.1X certificate on this device"
             : !dot1x.Enabled ? "IEEE 802.1X is off on this device"
-            : !CertificateDeployment.ChainComplete(ca) ? "The CA chain is incomplete; import the CA with its full chain"
             : null;
         // The first policy of each kind (a renewal has no dialog): its values, checked before the first write like a run of Enable.
         IReadOnlyList<(string Alias, string Pem, string Fingerprint)>? radius = null;
         Policies.PkiPolicy? httpsPolicy = null;
         Policies.PkiPolicy? dot1xPolicy = null;
+        Ca.CaMaterial? httpsCa = null;
+        Ca.CaMaterial? dot1xCa = null;
         if (httpsReason is null)
         {
-            (httpsPolicy, httpsReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.HttpsCertificate, ct).ConfigureAwait(false);
+            (httpsPolicy, httpsCa, httpsReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.HttpsCertificate, ct).ConfigureAwait(false);
         }
 
         if (dot1xReason is null)
         {
-            (dot1xPolicy, dot1xReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.Dot1xCertificate, ct).ConfigureAwait(false);
+            (dot1xPolicy, dot1xCa, dot1xReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.Dot1xCertificate, ct).ConfigureAwait(false);
+        }
+
+        if (dot1xReason is null && !CertificateDeployment.ChainComplete(dot1xCa!))
+        {
+            dot1xReason = "The CA chain is incomplete; import the CA with its full chain";
         }
 
         if (dot1xReason is null)
         {
             try
             {
-                radius = CertificateDeployment.RadiusCas(dot1xPolicy!, ca);
+                radius = CertificateDeployment.RadiusCas(dot1xPolicy!, service);
             }
             catch (InvalidOperationException ex)
             {
@@ -103,7 +109,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         }
         else
         {
-            await HttpsEnableTask.DeployAsync(ctx, service, ca, device, webServer!, network, httpsPolicy!, HttpsPrefix, ct).ConfigureAwait(false);
+            await HttpsEnableTask.DeployAsync(ctx, service, httpsCa!, device, webServer!, network, httpsPolicy!, HttpsPrefix, ct).ConfigureAwait(false);
         }
 
         if (dot1xReason is not null)
@@ -113,22 +119,26 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         else
         {
             await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, confirmed: false, ct).ConfigureAwait(false);
-            await Dot1xEnableTask.DeployAsync(ctx, service, ca, device, apis, network!, radius!, dot1xPolicy!, Dot1xPrefix, ct).ConfigureAwait(false);
+            await Dot1xEnableTask.DeployAsync(ctx, service, dot1xCa!, device, apis, network!, radius!, dot1xPolicy!, Dot1xPrefix, ct).ConfigureAwait(false);
         }
     }
 
-    /// <summary>The first policy of <paramref name="kind"/> and the device's key check; or why this purpose is skipped (nothing written for it).</summary>
-    private static async Task<(Policies.PkiPolicy? Policy, string? Reason)> PolicyOrReasonAsync(ITaskExecutionContext ctx, PkiService service, string kind, CancellationToken ct)
+    /// <summary>
+    /// The first policy of <paramref name="kind"/>, the CA it names and the device's key check; or why this purpose is skipped
+    /// (nothing written for it).
+    /// </summary>
+    private static async Task<(Policies.PkiPolicy? Policy, Ca.CaMaterial? Ca, string? Reason)> PolicyOrReasonAsync(ITaskExecutionContext ctx, PkiService service, string kind, CancellationToken ct)
     {
         try
         {
             var policy = IssuingChoice.Resolve(service, kind, null);
+            var ca = CertificateDeployment.RequireCa(service, policy);
             await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);
-            return (policy, null);
+            return (policy, ca, null);
         }
         catch (Exception ex) when (ex is InvalidOperationException or DeviceNotCompatibleException)
         {
-            return (null, Reason(ex));
+            return (null, null, Reason(ex));
         }
     }
 

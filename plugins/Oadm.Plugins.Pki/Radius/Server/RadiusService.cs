@@ -163,7 +163,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _index = new DeviceIndex(host.Devices, host.Time);
         _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger)
         {
-            Policy = () => host.Policies()?.ServerCertificateFor(Oadm.Plugins.Pki.Policies.PolicyServers.Dot1x),
+            Policy = () => host.Policies()?.ServerPolicy,
         };
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time, QueuePolicyRevoke);

@@ -99,7 +99,8 @@ public sealed partial class EstEndpoint(
             return new EstResult(Unavailable(EstRefusals.NotPro), operation, profile.Name);
         }
 
-        if (authority() is not { IsReady: true } ca)
+        // The CA of the profile's issuing policy (decision 2026-10-25: any CA with its key); its chain is what cacerts answers.
+        if (authority() is not { } ca || Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, IssuingOf(profile)?.CaId) is not { Count: > 0 } issuerChain)
         {
             return new EstResult(Unavailable(EstRefusals.NoCa), operation, profile.Name);
         }
@@ -107,7 +108,7 @@ public sealed partial class EstEndpoint(
         if (operation == "cacerts")
         {
             return request.Method == "GET"
-                ? new EstResult(Certificates(EstMessages.CaCertsContentType, ca.Chain), operation, profile.Name)
+                ? new EstResult(Certificates(EstMessages.CaCertsContentType, issuerChain), operation, profile.Name)
                 : new EstResult(HttpResponse.Text(405, "Use GET."), operation, profile.Name);
         }
 
@@ -206,6 +207,7 @@ public sealed partial class EstEndpoint(
                     Validity = TimeSpan.FromDays(issuing.ValidDays),
                     Source = IssuedCertificateSources.Est,
                     Purpose = profile.Purpose,
+                    IssuerId = issuing.CaId,
                 },
                 ct).ConfigureAwait(false);
         }

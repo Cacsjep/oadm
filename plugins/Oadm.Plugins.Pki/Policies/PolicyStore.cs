@@ -170,6 +170,117 @@ public sealed partial class PolicyStore : IDisposable
     }
 
     /// <summary>
+    /// Once per <paramref name="owner"/>: the stored list becomes what <paramref name="rewrite"/> makes of it (a change of the
+    /// kinds, e.g. <see cref="ConvertKinds"/>). Never on a list that cannot be read; later calls do nothing.
+    /// </summary>
+    /// <returns>True when it rewrote now.</returns>
+    public async Task<bool> RewriteOnceAsync(string owner, Func<IReadOnlyList<PkiPolicy>, IReadOnlyList<PkiPolicy>> rewrite, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner);
+        ArgumentNullException.ThrowIfNull(rewrite);
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        int changed;
+        try
+        {
+            var stored = _snapshot.Stored;
+            if (_snapshot.Unreadable || stored.Converted.Contains(owner, StringComparer.Ordinal))
+            {
+                return false; // unreadable: converting would overwrite the stored list
+            }
+
+            var list = WithUniqueIds(rewrite(stored.Policies));
+            changed = list.Count(p => !stored.Policies.Contains(p));
+            Protect(list);
+            await StoreAsync(stored with { Policies = list, Converted = [.. stored.Converted, owner] }, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        LogConverted(changed, owner);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>
+    /// The kinds of 2026-10-25 (docs/spec/pki.md "Converting existing settings"), nothing the user set lost: the Server
+    /// certificate policy of the 802.1X server goes into the 802.1X server policy (its CA, days and key; without an 802.1X
+    /// server policy one with the kind's TLS defaults takes them), the one of the EST server becomes the EST server policy
+    /// in its place; a Revoke policy becomes a Block policy with Also revoke, a Block policy keeps it off; names stay,
+    /// made unique per kind ("Stolen (2)"). Without an EST server policy one with the defaults (90 days, ECC, the OADM CA)
+    /// is added. Idempotent: a converted list stays as it is.
+    /// </summary>
+    public static IReadOnlyList<PkiPolicy> ConvertKinds(IReadOnlyList<PkiPolicy> stored, Func<PkiPolicy> defaultDot1xServer)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+        ArgumentNullException.ThrowIfNull(defaultDot1xServer);
+        var servers = stored.Where(p => p.Kind == PolicyKinds.LegacyServerCertificate).ToList();
+        var dot1xCertificate = servers.FirstOrDefault(p => p.Server == PolicyServers.Dot1x);
+        var estCertificate = servers.FirstOrDefault(p => p.Server == PolicyServers.Est);
+        var hasDot1xServer = stored.Any(p => p.Kind == PolicyKinds.Dot1xServer);
+        var hasEstServer = stored.Any(p => p.Kind == PolicyKinds.EstServer);
+        var list = new List<PkiPolicy>(stored.Count);
+        foreach (var policy in stored)
+        {
+            switch (policy.Kind)
+            {
+                case PolicyKinds.LegacyServerCertificate when ReferenceEquals(policy, estCertificate) && !hasEstServer:
+                    list.Add(policy with { Kind = PolicyKinds.EstServer, Server = null, CaId = policy.CaId ?? CertificateAuthorityInfo.OadmId });
+                    break;
+                case PolicyKinds.LegacyServerCertificate when ReferenceEquals(policy, dot1xCertificate) && !hasDot1xServer:
+                    // No 802.1X server policy (deleted on a build before the system policies): one with the TLS defaults.
+                    list.Add(WithCertificate(defaultDot1xServer() with { Id = policy.Id, SavedBy = policy.SavedBy }, policy));
+                    break;
+                case PolicyKinds.LegacyServerCertificate:
+                    break; // its values went into the server policy
+                case PolicyKinds.Dot1xServer:
+                    list.Add(WithCertificate(policy, dot1xCertificate));
+                    break;
+                case PolicyKinds.LegacyRevoke:
+                    list.Add(policy with { Kind = PolicyKinds.Block, AlsoRevoke = true });
+                    break;
+                case PolicyKinds.Block:
+                    list.Add(policy with { AlsoRevoke = policy.AlsoRevoke ?? false });
+                    break;
+                default:
+                    list.Add(policy);
+                    break;
+            }
+        }
+
+        if (!list.Any(p => p.Kind == PolicyKinds.EstServer))
+        {
+            list.Add(new PkiPolicy
+            {
+                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer, CaId = CertificateAuthorityInfo.OadmId,
+                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc,
+            });
+        }
+
+        // Names are unique per kind: a Revoke and a Block policy of the same name are both Block policies now.
+        for (var i = 0; i < list.Count; i++)
+        {
+            var policy = list[i];
+            if (list.Take(i).Any(p => p.Kind == policy.Kind && string.Equals(p.Name.Trim(), policy.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                list[i] = policy with { Name = UniqueName(list.Take(i).ToList(), policy) };
+            }
+        }
+
+        return list;
+
+        // The 802.1X server policy with the certificate values (those of the Server certificate policy win: the user set
+        // them there; without one the policy's own or the kind's defaults).
+        static PkiPolicy WithCertificate(PkiPolicy server, PkiPolicy? certificate) => server with
+        {
+            CaId = certificate?.CaId ?? server.CaId ?? CertificateAuthorityInfo.OadmId,
+            ValidDays = certificate?.ValidDays ?? server.ValidDays ?? PolicyLimits.DefaultValidDays,
+            Key = certificate?.Key ?? server.Key ?? PolicyKeys.Ecc,
+        };
+    }
+
+    /// <summary>
     /// Saves <paramref name="request"/> (a new one goes last: it is the newest) after the checks, as <paramref name="userName"/>;
     /// applies at once for the 802.1X server (<see cref="Changed"/>).
     /// </summary>
@@ -227,16 +338,10 @@ public sealed partial class PolicyStore : IDisposable
                 return Refused(PolicyFields.Kind, PolicyTexts.OneOnly(policy.Kind));
             }
 
-            // A server keeps its policy: it cannot be moved to the other server, which would leave this one without a certificate.
-            if (before is { Kind: PolicyKinds.ServerCertificate } && before.Server != policy.Server)
+            // "Issued by" is a CA that can issue now: the OADM CA (also while it is being made) or an imported CA with its key.
+            if (PolicyKinds.IsIssuing(policy.Kind) && !IssuingCaChoices().Any(c => string.Equals(c.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
             {
-                return Refused(PolicyFields.Server, PolicyTexts.ServerKept);
-            }
-
-            // One Server certificate policy per server (each server gets its certificate from exactly one).
-            if (policy.Kind == PolicyKinds.ServerCertificate && sameKind.Any(p => p.Server == policy.Server))
-            {
-                return Refused(PolicyFields.Server, PolicyTexts.ServerTaken(policy.Server));
+                return Refused(PolicyFields.Ca, PolicyTexts.CannotIssue);
             }
 
             if (policy.Kind == PolicyKinds.AllowCa)
@@ -382,20 +487,15 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>The first (oldest) policy of <paramref name="kind"/>: the default of the task dialogs, renewals and new profiles.</summary>
     public PkiPolicy? FirstOf(string kind) => PoliciesOf(kind) is { Count: > 0 } list ? list[0] : null;
 
-    /// <summary>The Server certificate policy of <paramref name="server"/> (<see cref="PolicyServers"/>); null when there is none.</summary>
-    public PkiPolicy? ServerCertificateFor(string server) => PoliciesOf(PolicyKinds.ServerCertificate).FirstOrDefault(p => p.Server == server);
+    /// <summary>The EST server policy (its certificate's CA, days and key); null without one (the EST server then uses 90 days, ECC, the OADM CA).</summary>
+    public PkiPolicy? EstServerPolicy => FirstOf(PolicyKinds.EstServer);
 
     /// <summary>
-    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), a system policy
-    /// (<see cref="IsSystem"/>), an issuing policy an EST profile names. Null when it can.
+    /// Why <paramref name="policy"/> cannot be deleted: a system policy (<see cref="IsSystem"/>; the server policies among
+    /// them), an issuing policy an EST profile names. Null when it can.
     /// </summary>
     private async Task<string?> DeleteRefusalAsync(PkiPolicy policy, IReadOnlyList<PkiPolicy> list, CancellationToken ct)
     {
-        if (policy.Kind == PolicyKinds.ServerCertificate)
-        {
-            return PolicyTexts.ServerNeedsPolicy(policy.Server);
-        }
-
         if (IsSystem(policy, list))
         {
             return PolicyTexts.SystemPolicy;
@@ -419,15 +519,14 @@ public sealed partial class PolicyStore : IDisposable
     }
 
     /// <summary>
-    /// A system policy (decision 2026-10-25): of a kind with system policies (<see cref="PolicyKinds.HasSystemPolicy"/>),
-    /// every Server certificate policy and the first (oldest) policy of the other kinds. It cannot be deleted.
+    /// A system policy (decision 2026-10-25): the first (oldest) policy of a kind with system policies
+    /// (<see cref="PolicyKinds.HasSystemPolicy"/>). It cannot be deleted.
     /// </summary>
     public static bool IsSystem(PkiPolicy policy, IReadOnlyList<PkiPolicy> list)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(list);
-        return PolicyKinds.HasSystemPolicy(policy.Kind)
-            && (policy.Kind == PolicyKinds.ServerCertificate || list.FirstOrDefault(p => p.Kind == policy.Kind)?.Id == policy.Id);
+        return PolicyKinds.HasSystemPolicy(policy.Kind) && list.FirstOrDefault(p => p.Kind == policy.Kind)?.Id == policy.Id;
     }
 
     /// <summary>
@@ -494,6 +593,30 @@ public sealed partial class PolicyStore : IDisposable
         return choices;
     }
 
+    /// <summary>
+    /// The CAs an issuing policy can pick as "Issued by" (decision 2026-10-25): every CA that can issue (the OADM CA, the
+    /// imported CAs with their key). The OADM CA is listed while it has no certificate yet (being made).
+    /// </summary>
+    public IReadOnlyList<PolicyCaChoice> IssuingCaChoices()
+    {
+        var choices = _authorities().Where(a => a.Issues && a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.Imported)
+            .Select(a => new PolicyCaChoice(a.Id, a.Name, a.Kind)).ToList();
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm))
+        {
+            choices.Insert(0, new PolicyCaChoice(CertificateAuthorityInfo.OadmId, IssuingCaName, CertificateAuthorityKind.Oadm));
+        }
+
+        return choices;
+    }
+
+    /// <summary>
+    /// Every policy that names <paramref name="authorityId"/> itself: issuing ones ("Issued by"; no CA: the OADM CA), 802.1X
+    /// trusted CA and EST sign-in CA (decision 2026-10-25: such a CA cannot be removed).
+    /// </summary>
+    public IReadOnlyList<PkiPolicy> NamingCa(string authorityId) =>
+        [.. All.Where(p => (p.Kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(p.Kind))
+            && string.Equals(p.CaId ?? (PolicyKinds.IsIssuing(p.Kind) ? CertificateAuthorityInfo.OadmId : null), authorityId, StringComparison.OrdinalIgnoreCase))];
+
     /// <summary>The name of the Axis device ID CAs.</summary>
     public const string AxisDeviceIdName = "Axis device ID";
 
@@ -538,9 +661,9 @@ public sealed partial class PolicyStore : IDisposable
                 $"Certificates with {PolicyTexts.DaysText(policy.Days ?? 0)} or less left show a warning and raise Certificate expires soon."),
             PolicyKinds.HttpsCertificate => $"Enable HTTPS issues certificates from {ca}, {Issued(policy)}.",
             PolicyKinds.Dot1xCertificate => $"Enable IEEE 802.1X issues certificates from {ca}, {Issued(policy)}. {SignsInAs(policy)}",
-            PolicyKinds.ServerCertificate => $"The {PolicyServers.Name(policy.Server)} uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends.",
+            PolicyKinds.EstServer => $"The EST server uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends.",
             PolicyKinds.Dot1xServer => string.Create(CultureInfo.CurrentCulture,
-                $"The 802.1X server accepts TLS {policy.MinimumTls} or later, sends EAP packets of up to {policy.LargestEapPacket ?? 0:N0} bytes and ")
+                $"The 802.1X server uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends. It accepts TLS {policy.MinimumTls} or later, sends EAP packets of up to {policy.LargestEapPacket ?? 0:N0} bytes and ")
                 + (policy.ReauthMinutes is { } minutes
                     ? string.Create(CultureInfo.CurrentCulture, $"asks cameras to sign in again every {minutes:N0} minutes.")
                     : "lets the switch decide when cameras sign in again."),
@@ -548,8 +671,9 @@ public sealed partial class PolicyStore : IDisposable
                 ? $"The 802.1X server lets in devices OADM manages that have a certificate from {ca}."
                 : $"The 802.1X server lets in any device with a valid certificate from {ca}.",
             PolicyKinds.Vlan => string.Create(CultureInfo.InvariantCulture, $"The 802.1X server puts these devices in VLAN {policy.Vlan}."),
-            PolicyKinds.Block => "The 802.1X server refuses these devices.",
-            PolicyKinds.Revoke => "Certificates of these devices are revoked, new ones too.",
+            PolicyKinds.Block => PolicyRules.Revokes(policy)
+                ? "The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too."
+                : "The 802.1X server refuses these devices.",
             PolicyKinds.Enrollment => PolicyTexts.EnrollmentSentence(policy),
             PolicyKinds.SignInCa => SignInSentence(policy, caNames),
             _ => PolicyKinds.Name(policy.Kind),
@@ -694,6 +818,7 @@ public sealed partial class PolicyStore : IDisposable
         PolicyKinds.Vlan => older,
         PolicyKinds.ExpiryWarning => (newer.Days ?? 0) > (older.Days ?? 0) ? newer : older,
         PolicyKinds.Enrollment => Narrower(older, newer),
+        PolicyKinds.Block => PolicyRules.Revokes(older) == PolicyRules.Revokes(newer) ? null : PolicyRules.Revokes(older) ? older : newer, // both refuse; the one that revokes does more
         _ => null,
     };
 
@@ -809,8 +934,8 @@ public sealed partial class PolicyStore : IDisposable
                 return true;
             case PolicyKinds.Dot1xServer:
                 return list.Any(p => p.Kind == PolicyKinds.Dot1xServer);
-            case PolicyKinds.ServerCertificate:
-                return list.Any(p => p.Kind == PolicyKinds.ServerCertificate && p.Server == policy.Server);
+            case PolicyKinds.EstServer:
+                return list.Any(p => p.Kind == PolicyKinds.EstServer);
             case PolicyKinds.Vlan when policy.Devices?.AllDevices == true:
                 return list.Any(p => p.Kind == PolicyKinds.Vlan
                     && (p.Devices?.AllDevices == true || string.Equals(p.Name.Trim(), PolicyLimits.AllDevicesName, StringComparison.OrdinalIgnoreCase)));
@@ -862,9 +987,9 @@ public sealed partial class PolicyStore : IDisposable
         _snapshot = new Snapshot(stored, _snapshot.Version + 1, TagsProtected);
     }
 
-    /// <summary>The tags of the policies are protected (Revoke never matches by tag).</summary>
+    /// <summary>The tags of the policies are protected (a Block that also revokes never matches by tag).</summary>
     private void Protect(IEnumerable<PkiPolicy> policies) =>
-        _protectedTags?.Protect(PolicyMatcher.TagsOf(policies.Where(p => !PolicyKinds.NoTags(p.Kind))), PolicyTexts.TagRefusal, PolicyTexts.TagChangeRefusal);
+        _protectedTags?.Protect(PolicyMatcher.TagsOf(policies.Where(p => !PolicyRules.Revokes(p))), PolicyTexts.TagRefusal, PolicyTexts.TagChangeRefusal);
 
     public void Dispose() => _gate.Dispose();
 

@@ -113,9 +113,12 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
     public async Task<IssuedDeviceCertificate> SignAsync(DeviceCertificateRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (service.Ca is not { HasKey: true } ca)
+        // The CA of the caller's policy (decision 2026-10-25); none named: the OADM CA.
+        if (service.IssuingCa(request.IssuerId) is not { } ca)
         {
-            throw new CertificateRequestRefusedException("The PKI has no certificate authority. Generate or import one first.");
+            throw new CertificateRequestRefusedException(request.IssuerId is null || string.Equals(request.IssuerId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)
+                ? "The PKI has no certificate authority. Generate or import one first."
+                : "The CA of this policy cannot issue certificates. Choose another CA in the policy.");
         }
 
         CheckSignatureAlgorithm(request.Csr);
@@ -135,7 +138,7 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
         var names = new CertificateNames(request.CommonName.Trim(), request.IpAddresses, request.DnsNames);
         var purpose = request.Use == DeviceCertificateUse.Client ? CertificatePurpose.Dot1x : CertificatePurpose.Https;
         var csrPem = new string(PemEncoding.Write("CERTIFICATE REQUEST", request.Csr.Span));
-        var validity = request.Validity is { } wanted && wanted > TimeSpan.Zero ? wanted : service.DeviceCertificateValidity();
+        var validity = request.Validity is { } wanted && wanted > TimeSpan.Zero ? wanted : service.DeviceCertificateValidity(null, ca);
         X509Certificate2 signed;
         try
         {

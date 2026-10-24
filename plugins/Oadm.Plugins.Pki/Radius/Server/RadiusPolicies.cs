@@ -28,11 +28,17 @@ public static class RadiusPolicies
         [.. TlsCipherSuites.All.Select(s => new PolicyCipherSuite(s.Id, s.Name, s.Group == CipherSuiteGroup.LegacyCbc, s.Group == CipherSuiteGroup.Tls13,
             s.Key is null || s.Key == ServerIdentityKeeper.KeyKind))];
 
-    /// <summary>The 802.1X server policy of a new server: TLS 1.2, the default cipher suites, 1,020 bytes (RFC 3748 3.1), the switch decides reauthentication.</summary>
+    /// <summary>
+    /// The 802.1X server policy of a new server: its certificate from the OADM CA (365 days, ECC), TLS 1.2, the default cipher
+    /// suites, 1,020 bytes (RFC 3748 3.1), the switch decides reauthentication.
+    /// </summary>
     public static PkiPolicy DefaultServerPolicy() => new()
     {
         Name = PolicyLimits.ServerPolicyName,
         Kind = PolicyKinds.Dot1xServer,
+        CaId = CertificateAuthorityInfo.OadmId,
+        ValidDays = PolicyLimits.DefaultValidDays,
+        Key = PolicyKeys.Ecc,
         MinimumTls = PolicyRules.DefaultMinimumTls,
         CipherSuites = DefaultSuites(TlsVersion.Tls12),
         LargestEapPacket = PolicyRules.DefaultEapPacket,
@@ -92,7 +98,7 @@ public static class RadiusPolicies
     public static TimeSpan? ReauthenticationOf(PkiPolicy? policy) =>
         policy?.ReauthMinutes is { } minutes and >= PolicyLimits.MinReauthMinutes and <= PolicyLimits.MaxReauthMinutes ? TimeSpan.FromMinutes(minutes) : null;
 
-    /// <summary>The 802.1X policies that apply (the page's "6 policies apply"): 802.1X server, Allow CA, VLAN, Block and Revoke.</summary>
+    /// <summary>The 802.1X policies that apply (the page's "6 policies apply"): 802.1X server, 802.1X trusted CA, VLAN and Block.</summary>
     public static int CountApplying(PolicyStore? store) => store?.All.Count(p => PolicyKinds.IsDot1x(p.Kind)) ?? 0;
 
     // ------------------------------------------------------------------ the settings of OADM 4.1 and of development builds
@@ -132,7 +138,8 @@ public static class RadiusPolicies
                 {
                     Id = policy.Id,
                     Name = policy.Name,
-                    Kind = policy.Kind switch { LegacyPolicyKinds.Block => PolicyKinds.Block, LegacyPolicyKinds.Revoke => PolicyKinds.Revoke, _ => PolicyKinds.Vlan },
+                    Kind = policy.Kind is LegacyPolicyKinds.Block or LegacyPolicyKinds.Revoke ? PolicyKinds.Block : PolicyKinds.Vlan,
+                    AlsoRevoke = policy.Kind switch { LegacyPolicyKinds.Revoke => true, LegacyPolicyKinds.Block => false, _ => null }, // Revoke is Block with Also revoke
                     Vlan = policy.Vlan,
                     Devices = policy.Devices ?? new PolicyDevices(),
                     SavedBy = policy.SavedBy,
