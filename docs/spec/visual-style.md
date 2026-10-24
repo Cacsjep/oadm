@@ -124,7 +124,8 @@ Certificates tab and the certificate choice of the 802.1X server's Revoke; the p
 use, issued by and the search right (it waits 300 ms for the typing to stop), progress row, virtualized grid with several
 rows chosen in one step and a double click for View certificate, the empty line, the overlay of the first read, the error
 and the pages of 500 below; `IIssuedCertificateSource` says where it reads, `IssuedCertificateList.ConfirmRevokeAsync` is
-the revoke confirmation with the reason, `IssuedCertificateTexts` the texts),
+the revoke confirmation with the reason, `IssuedCertificateTexts` the texts (with the SDK's `IssuedCertificateMessages`);
+View certificate shows the row's revocation and its "ends soon" uses the page's warning days, else the row's state),
 `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
 "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
 (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,

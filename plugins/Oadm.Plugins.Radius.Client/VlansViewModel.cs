@@ -54,6 +54,24 @@ public sealed partial class VlanRuleViewModel : ValidatingViewModel
 
     internal void ShowAllErrors() => Validation.ShowAll();
 
+    /// <summary>A rule error of the shared rules ("refId", "vlan") below its field.</summary>
+    internal bool ShowError(string field, string message)
+    {
+        var property = field switch
+        {
+            "refId" or "kind" => nameof(Reference),
+            "vlan" => nameof(Vlan),
+            _ => null,
+        };
+        if (property is null)
+        {
+            return false;
+        }
+
+        Validation.SetServerError(property, message);
+        return true;
+    }
+
     internal void NotifyRole() => OnPropertyChanged(nameof(MayManage));
 
     partial void OnKindChanged(Choice<string> value)
@@ -82,7 +100,9 @@ public sealed partial class VlanRuleViewModel : ValidatingViewModel
 
 /// <summary>
 /// The VLANs card (docs/spec/radius-server.md): Assign VLANs (off by default), rules in order (first match wins) of a site
-/// or a tag to a VLAN ID, and the optional Default VLAN. The page's Save sends it with the general settings.
+/// or a tag to a VLAN ID, and the optional Default VLAN. The page's Save sends it with the general settings. While Assign
+/// VLANs is off the card is collapsed: its errors never block Save, and Save keeps the saved rules when the edits are not
+/// valid.
 /// </summary>
 public sealed partial class VlansViewModel : ValidatingViewModel
 {
@@ -94,6 +114,7 @@ public sealed partial class VlansViewModel : ValidatingViewModel
 
     private readonly Func<bool> _mayManage;
     private bool _rulesValid = true;
+    private VlanSettings _saved = new();
 
     public VlansViewModel(Func<bool> mayManage)
     {
@@ -116,11 +137,14 @@ public sealed partial class VlansViewModel : ValidatingViewModel
 
     public bool MayManage => _mayManage();
 
-    /// <summary>The VLAN form and every rule are valid.</summary>
-    public bool IsValid => IsFormValid && _rulesValid;
+    /// <summary>The VLAN form and every rule are valid (and the edits are valid at all).</summary>
+    public bool EditsValid => IsFormValid && _rulesValid;
 
-    /// <summary>Why Save is off (the first error of the card).</summary>
-    public string? Error => FormError ?? Rules.Select(r => r.FormError).FirstOrDefault(e => e is not null);
+    /// <summary>Save may go on: Assign VLANs is off (the hidden card blocks nothing), or every edit is valid.</summary>
+    public bool IsValid => !Enabled || EditsValid;
+
+    /// <summary>Why Save is off (the first error of the card); none while Assign VLANs is off.</summary>
+    public string? Error => !Enabled ? null : FormError ?? Rules.Select(r => r.FormError).FirstOrDefault(e => e is not null);
 
     public bool HasRules => Rules.Count > 0;
 
@@ -144,6 +168,7 @@ public sealed partial class VlansViewModel : ValidatingViewModel
     public void Apply(VlanSettings vlans)
     {
         ArgumentNullException.ThrowIfNull(vlans);
+        _saved = vlans with { TagChoices = [] };
         Enabled = vlans.Enabled;
         DefaultVlan = vlans.DefaultVlan?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         Rules.ReplaceAll(vlans.Rules.Select(r => new VlanRuleViewModel(this, r)));
@@ -151,12 +176,36 @@ public sealed partial class VlansViewModel : ValidatingViewModel
         Edited();
     }
 
-    public VlanSettings ToSettings() => new()
+    /// <summary>What Save sends: the card; while Assign VLANs is off with edits that are not valid, the saved rules (off).</summary>
+    public VlanSettings ToSettings() => Enabled || EditsValid
+        ? new()
+        {
+            Enabled = Enabled,
+            Rules = [.. Rules.Select(r => r.ToRule())],
+            DefaultVlan = ParseDefault(),
+        }
+        : _saved with { Enabled = false };
+
+    /// <summary>An error of the shared rules (<see cref="RadiusRules.Validate(VlanSettings)"/>) below its field; false when no field shows it.</summary>
+    public bool ShowError(RadiusFieldError error)
     {
-        Enabled = Enabled,
-        Rules = [.. Rules.Select(r => r.ToRule())],
-        DefaultVlan = ParseDefault(),
-    };
+        ArgumentNullException.ThrowIfNull(error);
+        if (error.Field == "defaultVlan")
+        {
+            Validation.SetServerError(nameof(DefaultVlan), error.Message);
+            return true;
+        }
+
+        // "rules[2].vlan"
+        if (error.Field.StartsWith("rules[", StringComparison.Ordinal) && error.Field.IndexOf(']', StringComparison.Ordinal) is var close and > 6
+            && int.TryParse(error.Field.AsSpan(6, close - 6), NumberStyles.None, CultureInfo.InvariantCulture, out var index) && index < Rules.Count
+            && error.Field.Length > close + 2)
+        {
+            return Rules[index].ShowError(error.Field[(close + 2)..], error.Message);
+        }
+
+        return false;
+    }
 
     /// <summary>The default VLAN; null when empty.</summary>
     public int? ParseDefault() => DefaultVlan.Trim().Length == 0 ? null : ParseVlan(DefaultVlan);
@@ -185,6 +234,8 @@ public sealed partial class VlansViewModel : ValidatingViewModel
         AddRuleCommand.NotifyCanExecuteChanged();
     }
 
+    partial void OnEnabledChanged(bool value) => RuleValidationChanged(); // off: the hidden card no longer blocks Save
+
     internal void Edited()
     {
         foreach (var rule in Rules)
@@ -205,6 +256,7 @@ public sealed partial class VlansViewModel : ValidatingViewModel
     internal void RuleValidationChanged()
     {
         _rulesValid = Rules.All(r => r.IsFormValid);
+        OnPropertyChanged(nameof(EditsValid));
         OnPropertyChanged(nameof(IsValid));
         OnPropertyChanged(nameof(Error));
         OnPropertyChanged(nameof(HasRules));

@@ -249,6 +249,68 @@ public sealed class HeadlessPageTests
         Assert.Contains("Client authentication", string.Join(" ", checks.certificateTexts));
     }
 
+    [Fact]
+    public async Task Revoked_pages_a_sessions_reread_and_the_log_choice_over_live_rows_render()
+    {
+        var server = new FakeRadiusBackend();
+        var now = DateTime.UtcNow;
+        server.Revoked.AddRange(Enumerable.Range(0, 1_200).Select(i => new RevokedRow
+        {
+            SerialNumber = (0x100000 + i).ToString("X", System.Globalization.CultureInfo.InvariantCulture),
+            RevokedUtc = now.AddDays(-20).AddMinutes(-i),
+            Reason = "Device removed",
+            UserName = "admin",
+            NotAfterUtc = now.AddDays(100),
+        }));
+        server.Log = [.. Enumerable.Range(0, RadiusLimits.MaxLogPage).Select(i => FakeRadiusBackend.LogEntry(now.AddSeconds(-i), "AC:CC:8E:12:34:01", LogResults.Authenticated, null, null, null, "10.0.0.41"))];
+        var ctx = new FakePageContext(server);
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var view = new RadiusView();
+            using var vm = new RadiusViewModel(ctx);
+            var window = Host(view, 1280, 900);
+            window.Show();
+            view.DataContext = vm;
+
+            await vm.ShowRevokedTabCommand.ExecuteAsync(null);
+            Pump();
+            Capture(window, "radius-revoked-pages.png");
+            var revoked = Texts(window);
+
+            // The sessions tab read again (the page came back): the rows stay, the progress row shows.
+            await vm.ShowSessionsTabCommand.ExecuteAsync(null);
+            vm.Sessions.MarkStale();
+            var hold = server.Hold(RadiusMethods.ListSessions);
+            var reread = vm.Sessions.LoadAsync(CancellationToken.None);
+            Pump();
+            Capture(window, "radius-sessions-reread.png");
+            var sessions = Texts(window);
+            var rowsWhileReading = vm.Sessions.Rows.Count;
+            hold.SetResult();
+            await reread;
+
+            // The log's chosen row stays chosen in the grid when a live row pushes the full page.
+            await vm.ShowLogTabCommand.ExecuteAsync(null);
+            Pump();
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().Single(g => g.Name == "LogGrid");
+            var chosen = vm.Log.Rows[3];
+            grid.SelectedItem = chosen;
+            Pump();
+            vm.Log.Add([FakeRadiusBackend.LogEntry(now.AddSeconds(1), "AC:CC:8E:12:34:02", LogResults.Failed, "Timed out", null, null, null)]);
+            Pump();
+            var kept = ReferenceEquals(grid.SelectedItem, chosen) && ReferenceEquals(vm.Log.Selected, chosen);
+            window.Close();
+            return (revoked, sessions, rowsWhileReading, kept);
+        }, CancellationToken.None);
+
+        Assert.Contains("1-500 of 1,202", checks.revoked);
+        Assert.Contains("Next", checks.revoked);
+        Assert.Contains("1,202 certificates revoked", checks.revoked);
+        Assert.Contains("Reading the sessions", checks.sessions);
+        Assert.True(checks.rowsWhileReading > 0);
+        Assert.True(checks.kept);
+    }
+
     internal static Window Host(Control view, int width, int height)
     {
         // The real host page (title, ui:PageHeader subtitle, own cards), like in the client.

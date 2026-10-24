@@ -405,17 +405,28 @@ public sealed class PageViewModelTests
     public async Task Revoked_lists_the_revocations_and_Revoke_chooses_from_the_certificate_list_with_a_reason()
     {
         var dialogs = new FakeDialogs { Reason = null };
-        using var vm = new RadiusViewModel(_ctx);
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var vm = new RadiusViewModel(_ctx, time);
         vm.Revoked.Dialogs = dialogs;
         await vm.ShowRevokedTabCommand.ExecuteAsync(null);
         Assert.Equal(2, vm.Revoked.Rows.Count);
         Assert.Equal(("10.0.0.49", "7D FD 05 49 A1", "Key compromised", "admin"), (vm.Revoked.Rows[0].Device, vm.Revoked.Rows[0].SerialNumber, vm.Revoked.Rows[0].Reason, vm.Revoked.Rows[0].RevokedBy));
         Assert.Equal("Device (removed)", vm.Revoked.Rows[1].Device);
+        Assert.Equal(new RevokedQuery(0, 500, null), _server.LastPayload<RevokedQuery>(RadiusMethods.ListRevoked)); // a page
+
+        // The search goes to the server 300 ms after the last key.
         vm.Revoked.Search = "replaced";
-        Assert.Single(vm.Revoked.Rows);
+        time.Advance(TimeSpan.FromMilliseconds(300));
+        await Eventually.TrueAsync(() => vm.Revoked.Rows.Count == 1, "the search answered");
+        Assert.Equal("replaced", _server.LastPayload<RevokedQuery>(RadiusMethods.ListRevoked).Search);
+        Assert.Equal("1 certificate matches", vm.Revoked.CountText);
         vm.Revoked.Search = "7dfd05";
-        Assert.Equal("10.0.0.49", Assert.Single(vm.Revoked.Rows).Device);
+        time.Advance(TimeSpan.FromMilliseconds(300));
+        await Eventually.TrueAsync(() => vm.Revoked.Rows is [{ Device: "10.0.0.49" }], "the second search answered");
         vm.Revoked.Search = string.Empty;
+        time.Advance(TimeSpan.FromMilliseconds(300));
+        await Eventually.TrueAsync(() => vm.Revoked.Rows.Count == 2, "every row again");
+        Assert.Equal("2 certificates revoked", vm.Revoked.CountText);
 
         await vm.Revoked.RevokeCommand.ExecuteAsync(null); // Cancel at the reason
         Assert.NotNull(dialogs.Picker);

@@ -74,7 +74,9 @@ public interface ILogDialogs
 /// <summary>
 /// The Log tab (like the EST enrollments): the authentications, newest first, read from the server 500 at a time with the
 /// search over every column (the server searches; one grid reset per page); new rows arrive live on the first page; View
-/// certificate (the shared certificate window); Delete all (red, confirmed, users with all devices).
+/// certificate (the shared certificate window); Delete all (red, confirmed, users with all devices). Rows that arrive while a
+/// page is read are added after it (once each); the chosen row stays chosen over live rows; a log read before the page was
+/// left is read again when the tab opens (<see cref="MarkStale"/>).
 /// </summary>
 public sealed partial class LogViewModel : ObservableObject
 {
@@ -84,6 +86,8 @@ public sealed partial class LogViewModel : ObservableObject
     private CancellationTokenSource? _searchDelay;
     private int _readVersion;
     private bool _loadedOnce;
+    private bool _stale;
+    private List<LogRow>? _pending; // live rows that came in while a page was read
 
     public LogViewModel(ICorePluginClientContext ctx, Func<bool> mayManage, TimeProvider? time = null)
     {
@@ -104,6 +108,12 @@ public sealed partial class LogViewModel : ObservableObject
     public RangeObservableCollection<LogRowViewModel> Rows { get; } = [];
 
     public bool IsLoaded => _loadedOnce;
+
+    /// <summary>The tab must be read when it opens: never read, or read before the page was left (no events meanwhile).</summary>
+    public bool NeedsLoad => !_loadedOnce || _stale;
+
+    /// <summary>The page was left: no events came in since, the log is read again when the tab opens.</summary>
+    public void MarkStale() => _stale = _loadedOnce;
 
     [ObservableProperty]
     public partial string? Search { get; set; }
@@ -160,6 +170,7 @@ public sealed partial class LogViewModel : ObservableObject
             IsLoading = true;
         }
 
+        _pending ??= [];
         try
         {
             var query = new LogQuery(string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(), Offset, RadiusLimits.MaxLogPage);
@@ -172,9 +183,18 @@ public sealed partial class LogViewModel : ObservableObject
             var selected = Selected?.Source.Id;
             Rows.ReplaceAll(page.Rows.Select(r => new LogRowViewModel(r)));
             _loadedOnce = true;
+            _stale = false;
             Total = page.Total;
             Error = null;
             Selected = selected is { } id ? Rows.FirstOrDefault(r => r.Source.Id == id) : null;
+            var pending = _pending;
+            _pending = null;
+            if (pending is { Count: > 0 })
+            {
+                var shown = Rows.Select(r => r.Source.Id).ToHashSet();
+                Add([.. pending.Where(r => !shown.Contains(r.Id)).DistinctBy(r => r.Id)]); // the page may hold them already
+            }
+
             OnPropertyChanged(nameof(EmptyText));
             OnPropertyChanged(nameof(IsLoaded));
         }
@@ -194,17 +214,32 @@ public sealed partial class LogViewModel : ObservableObject
         {
             if (version == Volatile.Read(ref _readVersion))
             {
+                _pending = null;
                 IsLoading = false;
                 IsReloading = false;
             }
         }
     }
 
-    /// <summary>New rows of the <c>log</c> event: on top of the first page (those that match the search), in one step.</summary>
+    /// <summary>
+    /// New rows of the <c>log</c> event: on top of the first page (those that match the search), in one step; while a page is
+    /// read they wait for it. The chosen row stays chosen.
+    /// </summary>
     public void Add(IReadOnlyList<LogRow> rows)
     {
         ArgumentNullException.ThrowIfNull(rows);
-        if (!_loadedOnce || rows.Count == 0)
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        if (_pending is { } pending)
+        {
+            pending.AddRange(rows);
+            return;
+        }
+
+        if (!_loadedOnce)
         {
             return;
         }
@@ -220,7 +255,13 @@ public sealed partial class LogViewModel : ObservableObject
         {
             if (Rows.Count + added.Count > RadiusLimits.MaxLogPage)
             {
+                var selected = Selected;
                 Rows.ReplaceAll([.. added.Concat(Rows).Take(RadiusLimits.MaxLogPage)]); // one reset, the page stays 500 rows
+                if (selected is not null)
+                {
+                    // The reset clears the grid's choice: the same row again while it is still on the page.
+                    Selected = Rows.Contains(selected) ? selected : null;
+                }
             }
             else
             {

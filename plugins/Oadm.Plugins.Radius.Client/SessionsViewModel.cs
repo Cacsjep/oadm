@@ -119,6 +119,8 @@ public sealed partial class SessionRowViewModel : ObservableObject
 /// from <c>listSessions</c> when the tab opens and from the <c>sessions</c> events (batched by the server every 500 ms):
 /// each batch is one pass with an index by id (at most 10,000 rows), new rows are added in one step on top, ended rows
 /// leave 10 s after they ended in one step. <see cref="Tick"/> (every second while the page is shown) moves the durations.
+/// Batches that arrive while the list is read are kept and applied after it (in order, never older than the read rows); a
+/// list read while the page was away is stale (<see cref="MarkStale"/>) and read again when the tab opens.
 /// </summary>
 public sealed partial class SessionsViewModel : ObservableObject
 {
@@ -127,6 +129,9 @@ public sealed partial class SessionsViewModel : ObservableObject
     private readonly Dictionary<Guid, SessionRowViewModel> _byId = [];
     private int _open;
     private bool _loadedOnce;
+    private bool _stale;
+    private int _readVersion;
+    private List<IReadOnlyList<SessionRow>>? _pending; // batches that came in while the list was read
 
     public SessionsViewModel(ICorePluginClientContext ctx, TimeProvider? time = null)
     {
@@ -140,8 +145,19 @@ public sealed partial class SessionsViewModel : ObservableObject
     /// <summary>The tab was read once: events apply from now on.</summary>
     public bool IsLoaded => _loadedOnce;
 
+    /// <summary>The tab must be read when it opens: never read, or read before the page was left (no events meanwhile).</summary>
+    public bool NeedsLoad => !_loadedOnce || _stale;
+
+    /// <summary>The first read (the overlay).</summary>
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
+
+    /// <summary>A later read (the page came back): the progress row, the rows stay.</summary>
+    [ObservableProperty]
+    public partial bool IsReloading { get; set; }
+
+    /// <summary>The page was left: no events came in since, the rows are read again when the tab opens.</summary>
+    public void MarkStale() => _stale = _loadedOnce;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -158,10 +174,18 @@ public sealed partial class SessionsViewModel : ObservableObject
     /// <summary>Reads the open sessions (the overlay the first time).</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        var version = ++_readVersion;
         IsLoading = !_loadedOnce;
+        IsReloading = _loadedOnce;
+        _pending ??= [];
         try
         {
             var rows = RadiusJson.Deserialize<SessionList>(await _ctx.InvokeAsync(RadiusMethods.ListSessions, null, ct).ConfigureAwait(true)).Sessions;
+            if (version != _readVersion)
+            {
+                return; // a newer read answers
+            }
+
             _byId.Clear();
             var models = rows.OrderByDescending(r => r.StartedUtc).Select(r => new SessionRowViewModel(r, _time)).ToList();
             foreach (var model in models)
@@ -173,7 +197,15 @@ public sealed partial class SessionsViewModel : ObservableObject
             Rows.ReplaceAll(models);
             _open = models.Count(m => !m.IsEnded);
             _loadedOnce = true;
+            _stale = false;
             Error = null;
+            var pending = _pending;
+            _pending = null;
+            foreach (var batch in pending ?? [])
+            {
+                ApplyBatch(batch, buffered: true);
+            }
+
             Notify();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -187,18 +219,48 @@ public sealed partial class SessionsViewModel : ObservableObject
         }
         finally
         {
-            IsLoading = false;
+            if (version == _readVersion)
+            {
+                _pending = null;
+                IsLoading = false;
+                IsReloading = false;
+            }
         }
     }
 
-    /// <summary>One batch of the <c>sessions</c> event: rows updated in place, new ones on top in one step.</summary>
+    /// <summary>
+    /// One batch of the <c>sessions</c> event: rows updated in place, new ones on top in one step. While the list is read the
+    /// batch waits and is applied after it.
+    /// </summary>
     public void Apply(IReadOnlyList<SessionRow> batch)
     {
         ArgumentNullException.ThrowIfNull(batch);
-        if (!_loadedOnce || batch.Count == 0)
+        if (batch.Count == 0)
+        {
+            return;
+        }
+
+        if (_pending is { } pending)
+        {
+            pending.Add(batch); // applied after the read
+            return;
+        }
+
+        if (!_loadedOnce)
         {
             return; // read with the rest when the tab opens
         }
+
+        ApplyBatch(batch, buffered: false);
+        Notify();
+    }
+
+    /// <summary>
+    /// Applies one batch. A <paramref name="buffered"/> one came in during the read: an update older than the read row
+    /// (a shorter duration) is left out.
+    /// </summary>
+    private void ApplyBatch(IReadOnlyList<SessionRow> batch, bool buffered)
+    {
 
         List<SessionRowViewModel>? added = null;
         HashSet<Guid>? removed = null;
@@ -217,6 +279,11 @@ public sealed partial class SessionsViewModel : ObservableObject
 
             if (_byId.TryGetValue(row.Id, out var model))
             {
+                if (buffered && row.DurationMs < model.Source.DurationMs)
+                {
+                    continue; // the read row is newer
+                }
+
                 var wasOpen = !model.IsEnded;
                 model.Update(row);
                 _open += (model.IsEnded ? 0 : 1) - (wasOpen ? 1 : 0);
@@ -240,8 +307,6 @@ public sealed partial class SessionsViewModel : ObservableObject
         {
             Rows.InsertRange(0, added.OrderByDescending(m => m.StartedSortKey));
         }
-
-        Notify();
     }
 
     /// <summary>Every second: ended rows older than 10 s leave (one step), open rows show their new duration.</summary>

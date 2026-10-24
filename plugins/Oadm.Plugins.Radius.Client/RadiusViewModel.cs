@@ -133,6 +133,10 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     public void Activate()
     {
         Deactivate();
+
+        // No events came in while the page was away: the lists read before are read again when their tab opens.
+        Sessions.MarkStale();
+        Log.MarkStale();
         _active = new CancellationTokenSource();
         var ct = _active.Token;
         _ = _ctx.RunAsync(OnEvent, null, ct);
@@ -194,8 +198,8 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     internal Task OpenTabAsync(RadiusTab tab, CancellationToken ct) => tab switch
     {
         RadiusTab.Server => LoadServerAsync(ct),
-        RadiusTab.Sessions => Sessions.IsLoaded ? Task.CompletedTask : Sessions.LoadAsync(ct),
-        RadiusTab.Log => Log.IsLoaded ? Task.CompletedTask : Log.LoadAsync(ct),
+        RadiusTab.Sessions => Sessions.NeedsLoad ? Sessions.LoadAsync(ct) : Task.CompletedTask,
+        RadiusTab.Log => Log.NeedsLoad ? Log.LoadAsync(ct) : Task.CompletedTask,
         _ => Revoked.LoadAsync(ct),
     };
 
@@ -235,26 +239,53 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
 
     private bool CanSave() => MayManage && !IsSaving && Settings.IsFormValid && Vlans.IsValid;
 
-    /// <summary>Save: General with Advanced and VLANs (the switches apply at once in their dialog).</summary>
+    /// <summary>
+    /// Save: General with Advanced and VLANs (the switches apply at once in their dialog). Both are checked with the server's
+    /// own rules (<see cref="RadiusRules"/>) before the first call, so a refusal of the second leaves nothing half saved.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
         Settings.ShowAllErrors();
-        Vlans.ShowAllErrors();
+        if (Vlans.Enabled)
+        {
+            Vlans.ShowAllErrors(); // collapsed while off: nothing to show there
+        }
+
         if (!Settings.IsFormValid || !Vlans.IsValid)
         {
             return;
         }
 
-        IsSaving = true;
         ActionError = null;
+        var vlans = Vlans.ToSettings();
+        var settings = Settings.ToSettings(vlans.Enabled, vlans.DefaultVlan);
+        if (_state is { } known && RadiusRules.Validate(settings, known.CipherSuitesListed) is { } settingsError)
+        {
+            if (!Settings.ShowServerError(settingsError.Message))
+            {
+                ActionError = settingsError.Message;
+            }
+
+            return;
+        }
+
+        if (RadiusRules.Validate(vlans) is { } vlanError)
+        {
+            if (!(vlans.Enabled && Vlans.ShowError(vlanError)))
+            {
+                ActionError = vlanError.Message;
+            }
+
+            return;
+        }
+
+        IsSaving = true;
         try
         {
-            var vlans = Vlans.ToSettings();
-            var settings = Settings.ToSettings(vlans.Enabled, vlans.DefaultVlan);
             var state = RadiusJson.Deserialize<RadiusState>(await _ctx.InvokeAsync(RadiusMethods.SaveSettings, RadiusJson.Serialize(settings), CancellationToken.None).ConfigureAwait(true));
+            ApplyState(state, form: true); // saved, whatever the VLANs answer
             await _ctx.InvokeAsync(RadiusMethods.SaveVlans, RadiusJson.Serialize(vlans), CancellationToken.None).ConfigureAwait(true);
-            ApplyState(state, form: true);
             Vlans.Apply(vlans);
         }
 #pragma warning disable CA1031 // Shown below the field it belongs to, else below the Save row.

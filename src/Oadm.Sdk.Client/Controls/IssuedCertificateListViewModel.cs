@@ -22,7 +22,7 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     public IssuedCertificateInfo Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
 
     /// <summary>The device's address; for a device OADM no longer manages its serial, "B8A44F631339 (removed)".</summary>
-    public string Device => Source.DeviceManaged ? Source.Device : (Source.DeviceSerial.Length > 0 ? Source.DeviceSerial : "Device") + " (removed)";
+    public string Device => Source.DeviceManaged ? Source.Device : IssuedCertificateTexts.RemovedDevice(Source.DeviceSerial);
 
     /// <summary>"HTTPS", "IEEE 802.1X", "MQTT", "RTSPS".</summary>
     public string Use => DeviceCertificatePurposes.Text(Source.Purpose);
@@ -83,6 +83,21 @@ public static class IssuedCertificateTexts
     /// <summary>The empty list with a filter or a search.</summary>
     public const string NoMatch = "No certificate matches.";
 
+    /// <summary>A serial that is not listed (or of a device outside the user's group).</summary>
+    public const string NotListed = IssuedCertificateMessages.NotListed;
+
+    /// <summary>A certificate listed by OADM 4.1, before OADM kept a copy of each one.</summary>
+    public const string NoCopy = IssuedCertificateMessages.NoCopy;
+
+    /// <summary>A revoked serial the list did not hold: OADM does not know its device.</summary>
+    public const string UnknownDevice = "Unknown device";
+
+    /// <summary>The days before the end that count as "Expires soon" when the server does not say (the settings' default).</summary>
+    public const int DefaultWarningDays = 30;
+
+    /// <summary>A device OADM no longer manages: "B8A44F631339 (removed)", or "Device (removed)" without its serial.</summary>
+    public static string RemovedDevice(string? deviceSerial) => (string.IsNullOrEmpty(deviceSerial) ? "Device" : deviceSerial) + " (removed)";
+
     /// <summary>"State" texts.</summary>
     public static string State(IssuedCertificateState state) => state switch
     {
@@ -115,7 +130,14 @@ public static class IssuedCertificateTexts
 /// <param name="Rows">The certificates of the page, newest first.</param>
 /// <param name="Total">How many match the filters and the search.</param>
 /// <param name="Offset">The first row of the page (the server may move it back when the list became shorter).</param>
-public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateInfo> Rows, int Total, int Offset);
+public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateInfo> Rows, int Total, int Offset)
+{
+    /// <summary>
+    /// The days before the end that the server counts as "Expires soon" (PKI's setting); null when the server does not say:
+    /// the certificate window then follows the row's state.
+    /// </summary>
+    public int? WarningDays { get; init; }
+}
 
 /// <summary>One certificate for View certificate: the description and its revocation, or why it cannot be shown.</summary>
 /// <param name="Certificate">The certificate (<see cref="CertificateDescriber.Describe"/>); null when it cannot be shown.</param>
@@ -154,6 +176,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     private int _readVersion;
     private bool _loadedOnce;
     private bool _started;
+    private int? _warningDays;
 
     /// <summary>A list that reads from <paramref name="source"/>; <paramref name="time"/> for the search delay (tests).</summary>
     public IssuedCertificateListViewModel(IIssuedCertificateSource source, TimeProvider? time = null)
@@ -322,6 +345,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             _loadedOnce = true;
             Offset = page.Offset;
             Total = page.Total;
+            _warningDays = page.WarningDays;
             Error = null;
             SetSelection(Rows.Where(r => keep.Contains(r.Source.SerialNumber)));
             OnPropertyChanged(nameof(EmptyText));
@@ -424,11 +448,13 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             var reply = await _source.GetCertificateAsync(row.Source.SerialNumber, CancellationToken.None).ConfigureAwait(true);
             if (reply.Certificate is not { } certificate)
             {
-                await ShowMessageAsync("View certificate", reply.Error ?? "This certificate is not in the list.").ConfigureAwait(true);
+                await ShowMessageAsync("View certificate", reply.Error ?? IssuedCertificateTexts.NotListed).ConfigureAwait(true);
                 return;
             }
 
-            var details = new CertificateDetails(certificate, $"Certificate · {row.Device} · {row.Use}", Time.GetUtcNow().UtcDateTime, reply.Revocation);
+            // The revocation and "ending soon" as the list says, so the window and the row's state agree.
+            var now = Time.GetUtcNow().UtcDateTime;
+            var details = new CertificateDetails(certificate, $"Certificate · {row.Device} · {row.Use}", now, reply.Revocation ?? row.Source.Revocation, WarningDaysFor(row, now));
             if (Dialogs is { } dialogs)
             {
                 await dialogs.ShowCertificateAsync(details).ConfigureAwait(true);
@@ -440,6 +466,27 @@ public partial class IssuedCertificateListViewModel : ObservableObject
         {
             await ShowMessageAsync("View certificate", ServerErrors.Message(ex)).ConfigureAwait(true);
         }
+    }
+
+    /// <summary>
+    /// The warning days of the certificate window: the server's (PKI's setting) when the page said, else what makes the window
+    /// agree with the row's state (Expires soon or Valid), else the default.
+    /// </summary>
+    public int WarningDaysFor(IssuedCertificateRow row, DateTime nowUtc)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (_warningDays is { } days)
+        {
+            return days;
+        }
+
+        var left = (int)Math.Floor((row.Source.NotAfterUtc - nowUtc).TotalDays);
+        return row.Source.State switch
+        {
+            IssuedCertificateState.ExpiresSoon => Math.Max(left, 0),
+            IssuedCertificateState.Valid => Math.Min(IssuedCertificateTexts.DefaultWarningDays, Math.Max(left - 1, 0)),
+            _ => IssuedCertificateTexts.DefaultWarningDays,
+        };
     }
 
     /// <summary>A message to the user (the page's message window).</summary>
