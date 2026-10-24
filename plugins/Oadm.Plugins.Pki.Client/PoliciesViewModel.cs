@@ -351,10 +351,18 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         _list = list ?? throw new ArgumentNullException(nameof(list));
         _existing = existing;
         var hasServer = list.Rows.Any(r => r.Policy.Kind == PolicyKinds.Dot1xServer && r.Policy.Id != existing?.Id);
+
+        // A Server certificate policy per server: a new one only for a server without one.
+        var takenServers = list.Rows.Where(r => r.Policy.Kind == PolicyKinds.ServerCertificate && r.Policy.Id != existing?.Id).Select(r => r.Policy.Server).ToHashSet();
+        ServerChoices = existing is { Kind: PolicyKinds.ServerCertificate } own
+            ? [new Choice<string>(own.Server ?? string.Empty, PolicyServers.Name(own.Server))]
+            : [.. PolicyServers.All.Where(s => !takenServers.Contains(s)).Select(s => new Choice<string>(s, PolicyServers.Name(s)))];
         KindChoices = existing is { } kept
             ? [new Choice<string>(kept.Kind, PolicyKinds.Name(kept.Kind))]
-            : [.. PolicyKinds.All.Where(k => !(PolicyKinds.OneOnly(k) && hasServer)).Select(k => new Choice<string>(k, PolicyKinds.Name(k)))];
+            : [.. PolicyKinds.All.Where(k => !(PolicyKinds.OneOnly(k) && hasServer) && !(k == PolicyKinds.ServerCertificate && ServerChoices.Count == 0))
+                .Select(k => new Choice<string>(k, PolicyKinds.Name(k)))];
         CaChoices = [.. list.Cas.Select(c => new Choice<string>(c.Id, CaLabel(c)))];
+        IssuingCaChoices = [.. list.Cas.Where(c => c.Kind == CertificateAuthorityKind.Oadm).Select(c => new Choice<string>(c.Id, c.Name))];
         CipherSuites = [.. list.CipherSuites.Select(s => new CipherSuiteViewModel(s, this))];
 
         var policy = existing ?? new PkiPolicy();
@@ -379,6 +387,20 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         LargestPacket = (server?.LargestEapPacket ?? PolicyRules.DefaultEapPacket).ToString("N0", CultureInfo.InvariantCulture);
         Reauth = ReauthChoices[server?.ReauthMinutes is null ? 0 : 1];
         ReauthMinutes = (server?.ReauthMinutes ?? 60).ToString(CultureInfo.InvariantCulture);
+
+        // Issuing: the policy's values; a new one starts like the first policy of its kind (the 802.1X settings too).
+        var issuing = PolicyKinds.IsIssuing(policy.Kind) ? policy : null;
+        var dot1x = existing?.Kind == PolicyKinds.Dot1xCertificate ? existing : list.Rows.Select(r => r.Policy).FirstOrDefault(p => p.Kind == PolicyKinds.Dot1xCertificate);
+        IssuingCa = IssuingCaChoices.FirstOrDefault(c => string.Equals(c.Value, issuing?.CaId, StringComparison.OrdinalIgnoreCase)) ?? (IssuingCaChoices.Count > 0 ? IssuingCaChoices[0] : null);
+        ValidDays = (issuing?.ValidDays ?? PolicyLimits.DefaultValidDays).ToString(CultureInfo.InvariantCulture);
+        Key = KeyChoices.FirstOrDefault(k => k.Value == issuing?.Key) ?? KeyChoices[0];
+        IssuingServer = ServerChoices.FirstOrDefault(s => s.Value == issuing?.Server) ?? (ServerChoices.Count > 0 ? ServerChoices[0] : null);
+        Eapol = EapolChoices.FirstOrDefault(e => e.Value == (dot1x?.EapolVersion ?? 1)) ?? EapolChoices[0];
+        Identity = IdentityChoices.FirstOrDefault(i => i.Value == dot1x?.Identity) ?? IdentityChoices[0];
+        CustomIdentity = dot1x?.CustomIdentity ?? string.Empty;
+        RadiusCa = RadiusChoices.FirstOrDefault(r => r.Value == dot1x?.RadiusCa) ?? RadiusChoices[0];
+        RadiusCaPem = dot1x?.RadiusCaPem;
+        RadiusCaLine = RadiusLineOf(RadiusCaPem);
 
         var chosen = policy.Devices ?? new PolicyDevices();
         Scope = DeviceScopes[chosen.AllDevices ? 0 : 1];
@@ -414,8 +436,176 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             .Rule(nameof(LargestPacket), () => !IsServer || ParseInt(LargestPacket) is >= PolicyRules.MinEapPacket and <= PolicyRules.MaxEapPacket ? null : PolicyRules.EapPacketRange)
             .Rule(nameof(ReauthMinutes), () => !IsServer || !Reauth.Value || ParseInt(ReauthMinutes) is >= PolicyLimits.MinReauthMinutes and <= PolicyLimits.MaxReauthMinutes
                 ? null : PolicyTexts.ReauthRange)
-            .Rule(nameof(CipherSuites), () => !IsServer || CipherSuites.Any(s => s.IsListed && s.IsChecked && s.IsUsable(MinimumTls.Value)) ? null : PolicyRules.CheckCipherSuite);
+            .Rule(nameof(CipherSuites), () => !IsServer || CipherSuites.Any(s => s.IsListed && s.IsChecked && s.IsUsable(MinimumTls.Value)) ? null : PolicyRules.CheckCipherSuite)
+            .Rule(nameof(IssuingCa), () => !IsIssuing || IssuingCa is not null ? null : PolicyTexts.ChooseCa)
+            .Rule(nameof(ValidDays), () => !IsIssuing || ParseInt(ValidDays) is >= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays ? null : PolicyTexts.ValidDaysRange)
+            .Rule(nameof(Key), () => IsServerCertificate && IssuingServer?.Value == PolicyServers.Dot1x && Key.Value != PolicyKeys.Ecc ? PolicyTexts.Dot1xServerNeedsEcc : null)
+            .Rule(nameof(IssuingServer), () => !IsServerCertificate || IssuingServer is not null ? null : PolicyTexts.ChooseServer)
+            .Rule(nameof(CustomIdentity), () => IsDot1xCertificate ? PkiValidation.CustomIdentity(Identity.Value, CustomIdentity) : null)
+            .Rule(nameof(RadiusCa), () => IsDot1xCertificate ? PkiValidation.RadiusCa(RadiusCa.Value, RadiusCaPem) : null);
         Validation.Validate();
+    }
+
+    public static IReadOnlyList<Choice<string>> KeyChoices { get; } = [.. PolicyKeys.All.Select(k => new Choice<string>(k, PolicyKeys.Name(k)))];
+
+    public static IReadOnlyList<Choice<int>> EapolChoices { get; } = [new(1, "1"), new(2, "2")];
+
+    public static IReadOnlyList<Choice<string>> IdentityChoices { get; } =
+    [
+        new(Dot1xIdentity.Mac, "MAC address"),
+        new(Dot1xIdentity.HostName, "Host name"),
+        new(Dot1xIdentity.Custom, "Custom"),
+    ];
+
+    public static IReadOnlyList<Choice<string>> RadiusChoices { get; } =
+    [
+        new(RadiusCaSource.Oadm, "This OADM CA"),
+        new(RadiusCaSource.Imported, "Imported CA"),
+    ];
+
+    /// <summary>The CAs that issue (today only the OADM CA).</summary>
+    public IReadOnlyList<Choice<string>> IssuingCaChoices { get; }
+
+    /// <summary>The servers a new Server certificate policy can be for (those without one); an existing one: its own.</summary>
+    public IReadOnlyList<Choice<string>> ServerChoices { get; }
+
+    [ObservableProperty]
+    public partial Choice<string>? IssuingCa { get; set; }
+
+    [ObservableProperty]
+    public partial string ValidDays { get; set; }
+
+    [ObservableProperty]
+    public partial Choice<string> Key { get; set; }
+
+    [ObservableProperty]
+    public partial Choice<string>? IssuingServer { get; set; }
+
+    [ObservableProperty]
+    public partial Choice<int> Eapol { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCustomIdentity))]
+    public partial Choice<string> Identity { get; set; }
+
+    [ObservableProperty]
+    public partial string CustomIdentity { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRadiusImported))]
+    public partial Choice<string> RadiusCa { get; set; }
+
+    /// <summary>The imported RADIUS server CA (PEM, public only), checked by the server when it was chosen.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ViewRadiusCaCommand))]
+    public partial string? RadiusCaPem { get; set; }
+
+    /// <summary>"Corp RADIUS CA, valid until 2030-01-01"; null without one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RadiusCaText))]
+    public partial string? RadiusCaLine { get; set; }
+
+    /// <summary>The line below the RADIUS server CA: the imported CA, or what to do first.</summary>
+    public string RadiusCaText => RadiusCaLine ?? "No CA certificate imported yet.";
+
+    public bool IsIssuing => PolicyKinds.IsIssuing(Kind.Value);
+
+    public bool IsDot1xCertificate => Kind.Value == PolicyKinds.Dot1xCertificate;
+
+    public bool IsServerCertificate => Kind.Value == PolicyKinds.ServerCertificate;
+
+    public bool IsCustomIdentity => Identity.Value == Dot1xIdentity.Custom;
+
+    public bool IsRadiusImported => RadiusCa.Value == RadiusCaSource.Imported;
+
+    /// <summary>File pickers owned by the editor window (the RADIUS server CA); set by the window.</summary>
+    public IPkiFiles? Files { get; set; }
+
+    /// <summary>A message owned by the editor window (title, text); set by the window, else the page's.</summary>
+    public Func<string, string, Task>? ShowMessage { get; set; }
+
+    /// <summary>Import of the RADIUS server CA: the server checks the file (a CA certificate, PEM or DER), the policy stores it on Save.</summary>
+    [RelayCommand]
+    private async Task ImportRadiusCaAsync()
+    {
+        if (Files is not { } files || await files.OpenAsync("Choose the CA of the RADIUS server", PkiFileKind.RadiusCa).ConfigureAwait(true) is not { } file)
+        {
+            return;
+        }
+
+        await ApplyRadiusFileAsync(file).ConfigureAwait(true);
+    }
+
+    /// <summary>Checks a RADIUS CA file on the server and puts it into the form (also used by tests).</summary>
+    public async Task ApplyRadiusFileAsync(PickedFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        var reply = PkiJson.Deserialize<RadiusCaReply>(await _ctx.InvokeAsync(PkiMethods.ImportRadiusCa, PkiJson.Serialize(new ImportRadiusCaRequest(Convert.ToBase64String(file.Data))), CancellationToken.None)
+            .ConfigureAwait(true));
+        if (reply.Errors is { Count: > 0 } errors)
+        {
+            Validation.SetServerError(nameof(RadiusCa), errors.Values.First());
+            return;
+        }
+
+        RadiusCaPem = reply.Pem;
+        RadiusCaLine = reply.Summary is { } summary ? PolicyTexts.RadiusCaLine(summary.CommonName, summary.NotAfterUtc) : RadiusLineOf(reply.Pem);
+        Validation.Touch(nameof(RadiusCa));
+    }
+
+    [RelayCommand(CanExecute = nameof(CanViewRadiusCa))]
+    private async Task ViewRadiusCaAsync()
+    {
+        if (RadiusCaPem is not { } pem)
+        {
+            return;
+        }
+
+        string text;
+        try
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
+            text = string.Join(
+                Environment.NewLine,
+                $"Subject: {certificate.Subject}",
+                $"Issuer: {certificate.Issuer}",
+                string.Create(CultureInfo.InvariantCulture, $"Valid: {certificate.NotBefore.ToUniversalTime():yyyy-MM-dd} to {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}"),
+                $"Fingerprint (SHA-256): {certificate.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256)}");
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            text = PolicyTexts.RadiusCaUnreadable;
+        }
+
+        if (ShowMessage is { } show)
+        {
+            await show("RADIUS server CA", text).ConfigureAwait(true);
+        }
+        else
+        {
+            await _ctx.ShowMessageAsync("RADIUS server CA", text).ConfigureAwait(true);
+        }
+    }
+
+    private bool CanViewRadiusCa() => !string.IsNullOrEmpty(RadiusCaPem);
+
+    /// <summary>"Corp RADIUS CA, valid until 2030-01-01" of a PEM; null when there is none or it cannot be read.</summary>
+    internal static string? RadiusLineOf(string? pem)
+    {
+        if (string.IsNullOrWhiteSpace(pem))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
+            return PolicyTexts.RadiusCaLine(certificate.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, false), certificate.NotAfter.ToUniversalTime());
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return null;
+        }
     }
 
     /// <summary>"Add policy" / "Edit Building C".</summary>
@@ -437,7 +627,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder),
-        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker))]
+        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(IsIssuing), nameof(IsDot1xCertificate), nameof(IsServerCertificate))]
     public partial Choice<string> Kind { get; set; }
 
     /// <summary>The Devices choice: "All devices" or "Chosen devices" (the picker).</summary>
@@ -501,6 +691,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         PolicyKinds.AllowCa => "e.g. OADM CA",
         PolicyKinds.ExpiryWarning => "e.g. All devices",
         PolicyKinds.Dot1xServer => "e.g. 802.1X server",
+        PolicyKinds.HttpsCertificate => "e.g. HTTPS 2 years",
+        PolicyKinds.Dot1xCertificate => "e.g. IEEE 802.1X Building B",
+        PolicyKinds.ServerCertificate => "e.g. EST server",
         _ => "e.g. Building C",
     };
 
@@ -543,12 +736,20 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             },
             Vlan = ParseInt(Vlan),
             Days = ParseInt(Days),
-            CaId = Ca?.Value,
+            CaId = IsIssuing ? IssuingCa?.Value : Ca?.Value,
             OnlyManaged = OnlyManaged,
             MinimumTls = MinimumTls.Value,
             CipherSuites = [.. CipherSuites.Where(s => s.IsListed && s.IsChecked).Select(s => s.Id)],
             LargestEapPacket = ParseInt(LargestPacket),
             ReauthMinutes = Reauth.Value ? ParseInt(ReauthMinutes) : null,
+            ValidDays = ParseInt(ValidDays),
+            Key = Key.Value,
+            Server = IssuingServer?.Value,
+            EapolVersion = Eapol.Value,
+            Identity = Identity.Value,
+            CustomIdentity = CustomIdentity,
+            RadiusCa = RadiusCa.Value,
+            RadiusCaPem = RadiusCaPem,
             SavedBy = _existing?.SavedBy,
         });
     }
@@ -655,7 +856,14 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.Kind => nameof(Kind),
             PolicyFields.Vlan => nameof(Vlan),
             PolicyFields.Days => nameof(Days),
-            PolicyFields.Ca => nameof(Ca),
+            PolicyFields.Ca => IsIssuing ? nameof(IssuingCa) : nameof(Ca),
+            PolicyFields.ValidDays => nameof(ValidDays),
+            PolicyFields.Key => nameof(Key),
+            PolicyFields.Server => nameof(IssuingServer),
+            PolicyFields.EapolVersion => nameof(Eapol),
+            PolicyFields.Identity => nameof(Identity),
+            PolicyFields.CustomIdentity => nameof(CustomIdentity),
+            PolicyFields.RadiusCa => nameof(RadiusCa),
             PolicyFields.LargestEapPacket => nameof(LargestPacket),
             PolicyFields.ReauthMinutes => nameof(ReauthMinutes),
             PolicyFields.MinimumTls => nameof(MinimumTls),

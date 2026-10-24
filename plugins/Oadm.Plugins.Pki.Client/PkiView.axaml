@@ -7,7 +7,8 @@
              ui:PageHeader.Subtitle="Issues device certificates for HTTPS and IEEE 802.1X.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), shared controls and theme classes only. One page, no tabs
        (docs/spec/pki.md "The PKI page"): Certificate authorities | Policies side by side on wide pages (stacked on narrow
-       ones, PkiView.Arrange), Certificates full width below, then the settings of device certificates and IEEE 802.1X. -->
+       ones, PkiView.Arrange), Certificates full width below. The settings of device certificates and IEEE 802.1X are the
+       issuing policies. -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
       <Grid x:Name="TopCards" ColumnDefinitions="*,16,*" RowDefinitions="Auto,Auto">
@@ -222,69 +223,6 @@
             </ui:IssuedCertificateList.RowContextMenu>
           </ui:IssuedCertificateList>
         </Grid>
-      </Border>
-
-      <!-- ============================== Device certificates ============================== -->
-      <Border Classes="card">
-        <StackPanel Classes="form" IsEnabled="{Binding MayManage}">
-          <ui:CardHeader Title="Device certificates" />
-          <ui:FormField Label="Certificate validity (days)" InputWidth="460">
-            <TextBox Text="{Binding DeviceCertValidityDays}" />
-          </ui:FormField>
-          <!-- Saved with the IEEE 802.1X settings: one Save at the end of the last settings card -->
-        </StackPanel>
-      </Border>
-
-      <!-- ============================== IEEE 802.1X ============================== -->
-      <Border Classes="card">
-        <StackPanel Classes="form" IsEnabled="{Binding MayManage}">
-          <ui:CardHeader Title="IEEE 802.1X" />
-          <ui:FormField Label="EAPOL version" InputWidth="460">
-            <ComboBox ItemsSource="{Binding EapolChoices}" SelectedItem="{Binding EapolVersion}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:Choice">
-                  <TextBlock Text="{Binding Label}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </ui:FormField>
-          <ui:FormField Label="EAP identity" InputWidth="460">
-            <ComboBox ItemsSource="{Binding IdentityChoices}" SelectedItem="{Binding Identity}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:Choice">
-                  <TextBlock Text="{Binding Label}" />
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-            </ComboBox>
-          </ui:FormField>
-          <ui:FormField Label="Custom identity" InputWidth="460" IsVisible="{Binding IsCustomIdentity}" Hint="{}{serial} and {hostName} are replaced">
-            <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
-          </ui:FormField>
-          <ui:FormField Label="RADIUS server CA" InputWidth="460">
-            <Grid ColumnDefinitions="*,Auto,Auto">
-              <ComboBox ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" HorizontalAlignment="Stretch">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:Choice">
-                    <TextBlock Text="{Binding Label}" />
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
-              <Button Grid.Column="1" Margin="10,0,0,0" Classes="secondary" Content="Import" Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
-                      ToolTip.Tip="Choose the CA certificate (.crt or .cer) that issued the RADIUS server's certificate" />
-              <Button Grid.Column="2" Margin="10,0,0,0" Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
-            </Grid>
-          </ui:FormField>
-          <ui:FormField Classes="wide" IsVisible="{Binding IsRadiusImported}">
-            <TextBlock Classes="secondary" Text="{Binding RadiusCaLine}" TextWrapping="Wrap" />
-          </ui:FormField>
-          <ui:FormField InputWidth="460">
-            <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Right">
-              <ui:StatusChip Text="{Binding SaveResult}" IsOk="True" IsVisible="{Binding SaveResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-              <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
-                      ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
-            </StackPanel>
-          </ui:FormField>
-        </StackPanel>
       </Border>
     </StackPanel>
   </ScrollViewer>

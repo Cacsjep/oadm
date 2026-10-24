@@ -73,10 +73,7 @@ public static class PkiMethods
     /// <summary>() -> <see cref="InstallReply"/>: the CA into the server's machine root store.</summary>
     public const string InstallServerTrust = "installServerTrust";
 
-    /// <summary><see cref="SaveSettingsRequest"/> -> <see cref="PkiReply"/>.</summary>
-    public const string SaveSettings = "saveSettings";
-
-    /// <summary><see cref="ImportRadiusCaRequest"/> -> <see cref="RadiusCaReply"/> (checked, not stored: Save stores it).</summary>
+    /// <summary><see cref="ImportRadiusCaRequest"/> -> <see cref="RadiusCaReply"/> (checked, not stored: saving the policy stores it).</summary>
     public const string ImportRadiusCa = "importRadiusCa";
 
     /// <summary>Event: <see cref="PkiState"/> after every change.</summary>
@@ -470,8 +467,6 @@ public sealed record ExportPreviousRequest(string? Id, string? Format);
 public sealed record RemovePreviousRequest(string? Id);
 
 public sealed record BackupRequest(string? Password);
-
-public sealed record SaveSettingsRequest(PkiConfig? Config);
 
 public sealed record ImportRadiusCaRequest(string? FileBase64);
 

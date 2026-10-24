@@ -598,42 +598,7 @@ public sealed partial class PkiService : IAsyncDisposable
         return new InstallReply(result.Installed, result.Error, await GetStateAsync(ct).ConfigureAwait(false));
     }
 
-    public async Task<PkiReply> SaveSettingsAsync(SaveSettingsRequest request, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (request.Config is not { } config)
-        {
-            return await ErrorAsync("The settings are missing.", ct).ConfigureAwait(false);
-        }
-
-        var dot1x = config.Dot1x ?? new Dot1xConfig();
-        config = config with
-        {
-            Dot1x = dot1x with
-            {
-                CustomIdentity = dot1x.CustomIdentity?.Trim() ?? string.Empty,
-                RadiusCaPem = dot1x.RadiusCa == RadiusCaSource.Imported ? dot1x.RadiusCaPem : null,
-            },
-        };
-        var errors = PkiValidation.Config(config);
-        if (!errors.ContainsKey(PkiFields.RadiusCa) && config.Dot1x.RadiusCaPem is { } pem && RadiusSummary(pem) is null)
-        {
-            errors[PkiFields.RadiusCa] = "The CA certificate of the RADIUS server cannot be read. Import it again.";
-        }
-
-        if (errors.Count > 0)
-        {
-            return new PkiReply { Errors = errors };
-        }
-
-        await _store.SaveConfigAsync(config, ct).ConfigureAwait(false);
-        _config = config;
-        LogSettingsSaved();
-        await PublishAsync().ConfigureAwait(false);
-        return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
-    }
-
-    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); Save stores it with the settings.</summary>
+    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); saving the IEEE 802.1X certificate policy stores it.</summary>
     public static RadiusCaReply ImportRadiusCa(ImportRadiusCaRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -1086,9 +1051,6 @@ public sealed partial class PkiService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: installing the CA {Subject} into the server's trusted root store failed: {Error}")]
     private partial void LogTrustFailed(string subject, string error);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: settings saved")]
-    private partial void LogSettingsSaved();
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: device certificate validity shortened from {Days} to {Left} days (end of the CA)")]
     private partial void LogValidityShortened(int days, int left);

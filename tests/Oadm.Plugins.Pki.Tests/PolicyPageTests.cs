@@ -322,7 +322,9 @@ public sealed class PolicyHeadlessTests
         Assert.Contains("Previous OADM CA", checks.texts);
         Assert.DoesNotContain("Warn before expiry (days)", checks.texts); // the Expiry warning policy
         Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "Revoke"], checks.segments);
-        Assert.Equal(1, checks.primaries); // one accent button: the settings' Save
+        Assert.Equal(0, checks.primaries); // no Save: the settings of device certificates and IEEE 802.1X are issuing policies
+        Assert.DoesNotContain("Device certificates", checks.texts);
+        Assert.DoesNotContain("EAPOL version", checks.texts);
         Assert.All(checks.texts, t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }
 

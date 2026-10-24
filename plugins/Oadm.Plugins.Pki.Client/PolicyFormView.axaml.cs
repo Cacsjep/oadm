@@ -42,6 +42,8 @@ public partial class PolicyFormView : UserControl
         window.Closed += (_, _) => editor.PropertyChanged -= OnChanged;
         editor.ConfirmRevoke = (title, message) =>
             new MessageWindow { Heading = title, Message = message, ConfirmText = "Revoke", CancelText = "Cancel", IsDanger = true }.ShowDialog<bool>(window);
+        editor.Files = new PkiFilePicker(() => window);
+        editor.ShowMessage = (title, message) => MessageWindow.ShowMessageAsync(window, title, message);
         window.Opened += (_, _) => form.NameBox.Focus();
         return window;
     }
