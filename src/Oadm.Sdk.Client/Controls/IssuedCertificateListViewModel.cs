@@ -10,7 +10,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>A choice of a filter of <see cref="IssuedCertificateListViewModel"/>: the value sent to the server and its label.</summary>
 /// <param name="Value">Empty for "every".</param>
 /// <param name="Label">The text of the choice.</param>
-public sealed record IssuedCertificateFilter(string Value, string Label)
+/// <param name="IsIssuer">A CA of the "Issued by" filter (<see cref="IssuedCertificateQuery.IssuedBy"/>); false: a source (Task, EST).</param>
+public sealed record IssuedCertificateFilter(string Value, string Label, bool IsIssuer = false)
 {
     public override string ToString() => Label;
 }
@@ -21,14 +22,23 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>The row as the server sent it.</summary>
     public IssuedCertificateInfo Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
 
+    /// <summary>The row's id: the serial number of a device certificate, else <see cref="IssuedCertificateInfo.Id"/>.</summary>
+    public string Key => Source.Id ?? Source.SerialNumber;
+
     /// <summary>The device's address; for a device OADM no longer manages its serial, "B8A44F631339 (removed)".</summary>
     public string Device => Source.DeviceManaged ? Source.Device : IssuedCertificateTexts.RemovedDevice(Source.DeviceSerial);
 
-    /// <summary>"HTTPS", "IEEE 802.1X", "MQTT", "RTSPS".</summary>
-    public string Use => DeviceCertificatePurposes.Text(Source.Purpose);
+    /// <summary>The certificate's name, or the device of a device certificate (the first column).</summary>
+    public string Name => Source.Name ?? Device;
 
-    /// <summary>"Task" or "EST".</summary>
-    public string IssuedBy => Source.Source;
+    /// <summary>"HTTPS", "IEEE 802.1X", "MQTT", "RTSPS", "Server", "CA", "Other".</summary>
+    public string Use => ListedCertificateUses.Text(Source.Purpose);
+
+    /// <summary>The CA that issued it; "Task" or "EST" from a server that does not say.</summary>
+    public string IssuedBy => Source.IssuedBy ?? Source.Source;
+
+    /// <summary>The device it is installed on, "802.1X server", "EST server"; "-" when nothing uses it.</summary>
+    public string UsedBy => string.IsNullOrEmpty(Source.UsedBy) ? "-" : Source.UsedBy;
 
     /// <summary>Start of validity, "2026-10-24".</summary>
     public string ValidFrom => Source.NotBeforeUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
@@ -57,8 +67,25 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>Replaced: grey.</summary>
     public bool IsNeutral => Source.State == IssuedCertificateState.Replaced;
 
-    /// <summary>Still valid and not revoked: Revoke can take it.</summary>
-    public bool CanRevoke => Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
+    /// <summary>Issued by the OADM CA, still valid and not revoked: Revoke can take it.</summary>
+    public bool CanRevoke => Source.Kind is ListedCertificateKind.Device or ListedCertificateKind.Created or ListedCertificateKind.SignedRequest
+        && Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
+
+    /// <summary>
+    /// Nothing uses it: a revoked or expired certificate, or one created, signed or imported here that no server uses. CAs are
+    /// removed in their own list. The server checks again.
+    /// </summary>
+    public bool CanDelete => Source.Kind switch
+    {
+        ListedCertificateKind.Authority => false,
+        ListedCertificateKind.Created or ListedCertificateKind.SignedRequest or ListedCertificateKind.Imported => string.IsNullOrEmpty(Source.UsedBy) || IsEnded,
+        _ => IsEnded,
+    };
+
+    /// <summary>OADM holds the key: PKCS#12 can be exported.</summary>
+    public bool HasKey => Source.HasKey;
+
+    private bool IsEnded => Source.State is IssuedCertificateState.Revoked or IssuedCertificateState.Expired;
 }
 
 /// <summary>The texts of the list of issued certificates and of a revocation, one phrase each (PKI, 802.1X server).</summary>
@@ -79,6 +106,12 @@ public static class IssuedCertificateTexts
 
     /// <summary>The empty list without filters.</summary>
     public const string NoCertificates = "No certificates yet. Enable HTTPS or IEEE 802.1X on devices, or set up Certificate enrollment.";
+
+    /// <summary>The confirmation of Delete.</summary>
+    public const string DeleteMessage = "They leave the list. A revocation stays in force. This cannot be undone.";
+
+    /// <summary>The confirmation of Delete of one certificate.</summary>
+    public const string DeleteMessageOne = "It leaves the list. A revocation stays in force. This cannot be undone.";
 
     /// <summary>The empty list with a filter or a search.</summary>
     public const string NoMatch = "No certificate matches.";
@@ -114,6 +147,15 @@ public static class IssuedCertificateTexts
         _ => "Valid",
     };
 
+    /// <summary>The title of the delete confirmation: "Delete the certificate nvr.example.com?" or "Delete 3 certificates?".</summary>
+    public static string DeleteTitle(IReadOnlyList<IssuedCertificateRow> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        return rows.Count == 1
+            ? $"Delete the certificate {rows[0].Name}?"
+            : string.Create(CultureInfo.CurrentCulture, $"Delete {rows.Count:N0} certificates?");
+    }
+
     /// <summary>"7DFD05" as "7D FD 05".</summary>
     public static string Pairs(string hex)
     {
@@ -143,6 +185,11 @@ public sealed record IssuedCertificateListPage(IReadOnlyList<IssuedCertificateIn
     /// the certificate window then follows the row's state.
     /// </summary>
     public int? WarningDays { get; init; }
+
+    /// <summary>
+    /// The CAs of the "Issued by" filter; null when the server does not list them (the filter then offers Task and EST).
+    /// </summary>
+    public IReadOnlyList<CertificateIssuerChoice>? Issuers { get; init; }
 }
 
 /// <summary>One certificate for View certificate: the description and its revocation, or why it cannot be shown.</summary>
@@ -157,7 +204,7 @@ public interface IIssuedCertificateSource
     /// <summary>One page with the query's filters, search, offset and limit.</summary>
     Task<IssuedCertificateListPage> ReadAsync(IssuedCertificateQuery query, CancellationToken ct);
 
-    /// <summary>The certificate of <paramref name="serialNumber"/> for View certificate.</summary>
+    /// <summary>The certificate of a row (<see cref="IssuedCertificateRow.Key"/>: its serial number or id) for View certificate.</summary>
     Task<IssuedCertificateDetails> GetCertificateAsync(string serialNumber, CancellationToken ct);
 }
 
@@ -183,6 +230,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     private bool _loadedOnce;
     private bool _started;
     private int? _warningDays;
+    private bool _applyingChoices;
 
     /// <summary>A list that reads from <paramref name="source"/>; <paramref name="time"/> for the search delay (tests).</summary>
     public IssuedCertificateListViewModel(IIssuedCertificateSource source, TimeProvider? time = null)
@@ -191,6 +239,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
         Time = time ?? TimeProvider.System;
         StateFilter = StateChoices[0];
         UseFilter = UseChoices[0];
+        SourceChoices.AddRange(SourceChoicesOfTasks);
         SourceFilter = SourceChoices[0];
     }
 
@@ -220,11 +269,13 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     public IReadOnlyList<IssuedCertificateFilter> UseChoices { get; } =
     [
         new(string.Empty, "All uses"),
-        .. DeviceCertificatePurposes.All.Select(p => new IssuedCertificateFilter(p, DeviceCertificatePurposes.Text(p))),
+        .. ListedCertificateUses.All.Select(p => new IssuedCertificateFilter(p, ListedCertificateUses.Text(p))),
     ];
 
-    /// <summary>"Issued by any", Task and EST.</summary>
-    public IReadOnlyList<IssuedCertificateFilter> SourceChoices { get; } =
+    /// <summary>"Issued by any" and the CAs the server lists, or Task and EST when it lists none.</summary>
+    public Collections.RangeObservableCollection<IssuedCertificateFilter> SourceChoices { get; } = [];
+
+    private static IReadOnlyList<IssuedCertificateFilter> SourceChoicesOfTasks { get; } =
     [
         new(string.Empty, "Issued by any"),
         .. IssuedCertificateSources.All.Select(s => new IssuedCertificateFilter(s, s)),
@@ -242,7 +293,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     [ObservableProperty]
     public partial IssuedCertificateFilter SourceFilter { get; set; }
 
-    /// <summary>Device address, host name, device serial or certificate serial; read 300 ms after the last key.</summary>
+    /// <summary>Text in any column, the device's host name or serial, or the certificate's serial; read 300 ms after the last key.</summary>
     [ObservableProperty]
     public partial string? Search { get; set; }
 
@@ -360,7 +411,8 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             {
                 State = Enum.TryParse<IssuedCertificateState>(StateFilter.Value, out var state) ? state : null,
                 Purpose = UseFilter.Value.Length > 0 ? UseFilter.Value : null,
-                Source = SourceFilter.Value.Length > 0 ? SourceFilter.Value : null,
+                Source = SourceFilter.Value.Length > 0 && !SourceFilter.IsIssuer ? SourceFilter.Value : null,
+                IssuedBy = SourceFilter.Value.Length > 0 && SourceFilter.IsIssuer ? SourceFilter.Value : null,
                 Search = string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(),
                 Offset = Offset,
                 Limit = PageSize,
@@ -371,14 +423,15 @@ public partial class IssuedCertificateListViewModel : ObservableObject
                 return; // a newer read (another filter) answers
             }
 
-            var keep = _selected.Select(r => r.Source.SerialNumber).ToHashSet(StringComparer.Ordinal);
+            var keep = _selected.Select(r => r.Key).ToHashSet(StringComparer.Ordinal);
             Rows.ReplaceAll(page.Rows.Select(r => new IssuedCertificateRow(r)));
             _loadedOnce = true;
             Offset = page.Offset;
             Total = page.Total;
             _warningDays = page.WarningDays;
+            ApplyIssuers(page.Issuers);
             Error = null;
-            SetSelection(Rows.Where(r => keep.Contains(r.Source.SerialNumber)));
+            SetSelection(Rows.Where(r => keep.Contains(r.Key)));
             OnPropertyChanged(nameof(EmptyText));
             SelectionRestored?.Invoke(this, EventArgs.Empty);
         }
@@ -402,6 +455,38 @@ public partial class IssuedCertificateListViewModel : ObservableObject
                 IsLoading = false;
                 IsReloading = false;
             }
+        }
+    }
+
+    /// <summary>The CAs of the "Issued by" filter from the page (only when they changed; the choice is kept while it is listed).</summary>
+    private void ApplyIssuers(IReadOnlyList<CertificateIssuerChoice>? issuers)
+    {
+        if (issuers is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<IssuedCertificateFilter> wanted = [new(string.Empty, "Issued by any"), .. issuers.Select(i => new IssuedCertificateFilter(i.Id, i.Name, IsIssuer: true))];
+        if (SourceChoices.SequenceEqual(wanted))
+        {
+            return;
+        }
+
+        var chosen = SourceFilter;
+        _applyingChoices = true;
+        try
+        {
+            SourceChoices.ReplaceAll(wanted);
+            SourceFilter = wanted.FirstOrDefault(c => c == chosen) ?? wanted[0];
+        }
+        finally
+        {
+            _applyingChoices = false;
+        }
+
+        if (SourceFilter != chosen)
+        {
+            Refilter(); // the chosen CA left the list
         }
     }
 
@@ -435,7 +520,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
     private void Refilter()
     {
-        if (!_started || StateFilter is null || UseFilter is null || SourceFilter is null)
+        if (!_started || _applyingChoices || StateFilter is null || UseFilter is null || SourceFilter is null)
         {
             return; // not shown yet (or the constructor sets them one by one): the first read takes the filters
         }
@@ -466,17 +551,19 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
     /// <summary>View certificate (toolbar, row menu, double click): the shared certificate window.</summary>
     [RelayCommand(CanExecute = nameof(CanView))]
-    private async Task ViewCertificateAsync()
-    {
-        if (_selected.Count != 1)
-        {
-            return;
-        }
+    private Task ViewCertificateAsync() => _selected.Count == 1 ? ViewAsync(_selected[0]) : Task.CompletedTask;
 
-        var row = _selected[0];
+    /// <summary>View (a row button): the certificate of this row in the shared certificate window.</summary>
+    [RelayCommand]
+    private Task ViewRowAsync(IssuedCertificateRow? row) => row is null ? Task.CompletedTask : ViewAsync(row);
+
+    /// <summary>Shows <paramref name="row"/> in the shared certificate window (or why it cannot be shown).</summary>
+    protected async Task ViewAsync(IssuedCertificateRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
         try
         {
-            var reply = await _source.GetCertificateAsync(row.Source.SerialNumber, CancellationToken.None).ConfigureAwait(true);
+            var reply = await _source.GetCertificateAsync(row.Key, CancellationToken.None).ConfigureAwait(true);
             if (reply.Certificate is not { } certificate)
             {
                 await ShowMessageAsync("View certificate", reply.Error ?? IssuedCertificateTexts.NotListed).ConfigureAwait(true);
@@ -485,7 +572,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
 
             // The revocation and "ending soon" as the list says, so the window and the row's state agree.
             var now = Time.GetUtcNow().UtcDateTime;
-            var details = new CertificateDetails(certificate, $"Certificate · {row.Device} · {row.Use}", now, reply.Revocation ?? row.Source.Revocation, WarningDaysFor(row, now));
+            var details = new CertificateDetails(certificate, $"Certificate · {row.Name} · {row.Use}", now, reply.Revocation ?? row.Source.Revocation, WarningDaysFor(row, now));
             if (Dialogs is { } dialogs)
             {
                 await dialogs.ShowCertificateAsync(details).ConfigureAwait(true);
