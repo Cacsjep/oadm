@@ -245,12 +245,16 @@ public sealed record EnrollmentList(IReadOnlyList<Enrollment> Enrollments);
 /// <summary>One CA of "Sign in with": PKI's id and the name shown.</summary>
 public sealed record SignInChoice(string Id, string Name);
 
-/// <summary>The names of the "Sign in with" choices.</summary>
+/// <summary>The names of the "Sign in with" choices: "Axis device ID", "OADM Root CA SERVER01, for renewals".</summary>
 public static class SignInNames
 {
     public const string AxisDeviceId = "Axis device ID";
-    public const string Oadm = "OADM CA, for renewals";
-    public const string PreviousSuffix = ", for renewals";
+
+    /// <summary>The OADM CA's name when PKI names none (its certificate unreadable).</summary>
+    public const string Oadm = "OADM CA";
+
+    /// <summary>After the name of an OADM CA (the current and the previous ones).</summary>
+    public const string ForRenewals = ", for renewals";
 }
 
 /// <param name="Certificates">The certificates the cameras did not renew in time (the first 500).</param>

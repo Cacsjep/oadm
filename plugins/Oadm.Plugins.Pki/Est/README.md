@@ -27,7 +27,8 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   - "Sign in with" (`config.signInWith`, docs/spec/pki.md; `Serving/EstService.Authorities`): ids of PKI's CAs a camera may
     sign in with, default `axis-device-id` + `oadm` (renewals; today's behaviour); previous OADM CAs can be chosen. Only
     the chosen CAs PKI still lists count (fail closed; a PKI without the list: the two defaults). Choices and "Issued by"
-    (the OADM CA) in `EstState`; at least one ("Choose at least one." below the check boxes). EST reports
+    (the OADM CA by its name in PKI, else the name in its certificate: "OADM Root CA SERVER01", "OADM Root CA SERVER01, for
+    renewals") in `EstState`; at least one ("Choose at least one." below the check boxes). EST reports
     `SetUsedBy("oadm.est", "EST server", chosen ∩ listed + oadm)` at the start, after Save and on PKI's `Changed`, and
     clears it when it stops.
   - Set up reads the camera clocks first (`CameraClock`, query `readClock` of the Set up task; the run line shows the

@@ -81,6 +81,19 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Issued_by_and_sign_in_with_name_the_oadm_ca_by_its_certificate_when_pki_lists_no_cas()
+    {
+        Assert.Empty(_ca.AuthorityList); // a PKI without the list
+        var name = _ca.Certificate.GetNameInfo(X509NameType.SimpleName, false);
+        Assert.StartsWith("OADM Test CA", name, StringComparison.Ordinal);
+
+        var state = _service.GetState();
+
+        Assert.Equal(name, state.IssuingCa); // never "OADM CA, for renewals"
+        Assert.Equal([SignInNames.AxisDeviceId, name + ", for renewals"], state.SignInChoices.Select(c => c.Name));
+    }
+
+    [Fact]
     public async Task A_camera_a_device_group_covers_gets_no_host_name_it_reports()
     {
         // A user of the group could have set the camera's host name (Network settings, VAPIX Commander, Web View).
@@ -386,7 +399,7 @@ public sealed class ServerTests : IAsyncLifetime
 
         // The page's choices and the CA that issues come from PKI's list.
         var state = _service.GetState();
-        Assert.Equal([(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID"), (CertificateAuthorityInfo.OadmId, "OADM CA, for renewals")],
+        Assert.Equal([(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID"), (CertificateAuthorityInfo.OadmId, "OADM Test CA, for renewals")],
             state.SignInChoices.Select(c => (c.Id, c.Name)));
         Assert.Equal("OADM Test CA", state.IssuingCa);
 

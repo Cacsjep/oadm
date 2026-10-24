@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+
 using Oadm.Sdk.Certificates;
 
 namespace Oadm.Plugins.Est.Serving;
@@ -21,7 +24,9 @@ public sealed partial class EstService
         var authorities = ca?.Authorities ?? [];
         if (authorities.Count == 0)
         {
-            return [new(CertificateAuthorityInfo.AxisDeviceIdId, SignInNames.AxisDeviceId), new(CertificateAuthorityInfo.OadmId, SignInNames.Oadm)];
+            return ca is null
+                ? [new(CertificateAuthorityInfo.AxisDeviceIdId, SignInNames.AxisDeviceId), new(CertificateAuthorityInfo.OadmId, SignInNames.Oadm + SignInNames.ForRenewals)]
+                : [new(CertificateAuthorityInfo.AxisDeviceIdId, SignInNames.AxisDeviceId), new(CertificateAuthorityInfo.OadmId, ChainName(ca) + SignInNames.ForRenewals)];
         }
 
         return
@@ -31,15 +36,36 @@ public sealed partial class EstService
                 .Select(a => new SignInChoice(a.Id, a.Kind switch
                 {
                     CertificateAuthorityKind.AxisDeviceId => SignInNames.AxisDeviceId,
-                    CertificateAuthorityKind.Oadm => SignInNames.Oadm,
-                    _ => a.Name + SignInNames.PreviousSuffix,
+                    _ => (string.IsNullOrWhiteSpace(a.Name) ? SignInNames.Oadm : a.Name) + SignInNames.ForRenewals,
                 })),
         ];
     }
 
-    /// <summary>The name of the CA that issues (the OADM CA); null without one.</summary>
+    /// <summary>The name of the CA that issues (the OADM CA, as the PKI page names it); null without one.</summary>
     internal static string? IssuingName(IDeviceCertificateAuthority? ca) =>
-        ca?.Authorities.FirstOrDefault(a => a.Kind == CertificateAuthorityKind.Oadm)?.Name ?? (ca is { IsReady: true } ? SignInNames.Oadm : null);
+        ca?.Authorities.FirstOrDefault(a => a.Kind == CertificateAuthorityKind.Oadm)?.Name is { Length: > 0 } name ? name
+        : ca is { IsReady: true } ? ChainName(ca)
+        : null;
+
+    /// <summary>The OADM CA's name from its certificate (the first of the chain), else "OADM CA".</summary>
+    private static string ChainName(IDeviceCertificateAuthority ca)
+    {
+        if (ca.Chain is not { Count: > 0 } chain)
+        {
+            return SignInNames.Oadm;
+        }
+
+        try
+        {
+            using var certificate = X509CertificateLoader.LoadCertificate(chain[0]);
+            var name = certificate.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
+            return string.IsNullOrWhiteSpace(name) ? SignInNames.Oadm : name.Trim();
+        }
+        catch (CryptographicException)
+        {
+            return SignInNames.Oadm;
+        }
+    }
 
     /// <summary>
     /// Tells PKI the CAs EST uses now (the chosen ones PKI still holds, and the OADM CA it signs with) and follows PKI's

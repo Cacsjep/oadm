@@ -66,7 +66,7 @@ public sealed class PageTests : IAsyncLifetime
         using var vm = new EstViewModel(_ctx);
         await vm.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["Axis device ID", "OADM CA, for renewals"], vm.SignIn.Select(s => s.Name));
+        Assert.Equal(["Axis device ID", "OADM Test CA, for renewals"], vm.SignIn.Select(s => s.Name)); // the CA's name, as on the PKI page
         Assert.All(vm.SignIn, s => Assert.True(s.IsChecked));
         Assert.Equal("OADM Test CA", vm.IssuingCa);
         Assert.Null(vm.SignInError);
