@@ -189,7 +189,8 @@ public sealed class IssuedCertificateList : UserControl
 
             if (RowActions is { } template)
             {
-                _actions = new DataGridTemplateColumn { Width = DataGridLength.Auto, CellTemplate = template };
+                // A fixed width: an Auto column takes the width of the first rows only and cuts off wider buttons further down.
+                _actions = new DataGridTemplateColumn { Width = new DataGridLength(250), CellTemplate = template };
                 Table.Columns.Add(_actions);
             }
         }
