@@ -86,6 +86,9 @@ public static class TlsCipherSuites
 /// <param name="CipherSuites">The checked suites (IANA ids).</param>
 public sealed record TlsSettings(TlsVersion MinimumVersion, IReadOnlySet<int> CipherSuites)
 {
+    /// <summary>The refusal when no checked suite can be used (the page's text below the list).</summary>
+    public const string NoUsableSuite = "Check at least one cipher suite for the chosen TLS versions.";
+
     /// <summary>TLS 1.2 and 1.3 with the secure default suites.</summary>
     public static TlsSettings Default { get; } = new(TlsVersion.Tls12, TlsCipherSuites.DefaultFor(TlsVersion.Tls12));
 
@@ -101,6 +104,30 @@ public sealed record TlsSettings(TlsVersion MinimumVersion, IReadOnlySet<int> Ci
         [.. TlsCipherSuites.Listed(MinimumVersion)
             .Where(s => CipherSuites.Contains(s.Id) && (s.Key is null || s.Key == key) && Versions.Any(v => TlsCipherSuites.Fits(s, v)))
             .Select(s => s.Id)];
+
+    /// <summary>
+    /// The versions offered with a server key of <paramref name="key"/>: only those for which a checked suite can be
+    /// negotiated (TLS 1.3 without a checked TLS 1.3 suite would only fail with handshake_failure).
+    /// </summary>
+    public IReadOnlyList<TlsVersion> VersionsFor(ServerKeyKind key)
+    {
+        var offered = Offered(key).Select(id => TlsCipherSuites.Find(id)!).ToList();
+        return [.. Versions.Where(v => offered.Any(s => TlsCipherSuites.Fits(s, v)))];
+    }
+
+    /// <summary>
+    /// Null when the settings can be used with a server key of <paramref name="key"/>, else the reason for the page: an
+    /// unknown suite, or no checked suite the key can use in the chosen versions (only ECDHE_RSA suites with an ECDSA key).
+    /// </summary>
+    public string? Validate(ServerKeyKind key)
+    {
+        if (Validate() is { } error)
+        {
+            return error;
+        }
+
+        return VersionsFor(key).Count > 0 ? null : NoUsableSuite;
+    }
 
     /// <summary>
     /// Null when the settings can be used, else the reason for the page: an unknown suite (RC4, 3DES, NULL, export, RSA key
@@ -119,6 +146,6 @@ public sealed record TlsSettings(TlsVersion MinimumVersion, IReadOnlySet<int> Ci
         }
 
         var usable = TlsCipherSuites.Listed(MinimumVersion).Any(s => CipherSuites.Contains(s.Id) && Versions.Any(v => TlsCipherSuites.Fits(s, v)));
-        return usable ? null : "Check at least one cipher suite for the chosen TLS versions.";
+        return usable ? null : NoUsableSuite;
     }
 }

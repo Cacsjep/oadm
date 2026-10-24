@@ -122,6 +122,7 @@ public static class EapSessionTexts
     public const string SwitchRemoved = "The switch was removed";
     public const string NewSession = "The switch started a new session for the port";
     public const string RoleReversal = "The switch sent a request instead of a response";
+    public const string AnswerTooLarge = "Answer too large";
 
     /// <summary>"The device does not support EAP-TLS (it asked for PEAP)".</summary>
     public static string NotEapTls(IReadOnlyList<byte> desired)

@@ -192,7 +192,7 @@ public sealed partial class RevokedViewModel : ObservableObject
 
         try
         {
-            var list = RadiusJson.Deserialize<RevokedList>(await _ctx.InvokeAsync(RadiusMethods.ListRevoked, null, ct).ConfigureAwait(true));
+            var list = RadiusJson.Deserialize<RevokedPage>(await _ctx.InvokeAsync(RadiusMethods.ListRevoked, null, ct).ConfigureAwait(true));
             _all = [.. list.Rows.OrderByDescending(r => r.RevokedUtc).Select(r => new RevokedRowViewModel(r))];
             _loadedOnce = true;
             Error = null;

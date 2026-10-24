@@ -195,7 +195,7 @@ internal sealed class FakeRadiusBackend
             RadiusMethods.ListLog => ListLog(RadiusJson.Deserialize<LogQuery>(payload)),
             RadiusMethods.DeleteLog => DeleteLog(),
             RadiusMethods.GetLogCertificate => new LogCertificate(Convert.ToBase64String(CameraCertificate)),
-            RadiusMethods.ListRevoked => new RevokedList(Revoked),
+            RadiusMethods.ListRevoked => new RevokedPage(Revoked) { Total = Revoked.Count },
             RadiusMethods.Revoke => Revoke(RadiusJson.Deserialize<RevokeRequest>(payload)),
             RadiusPageMethods.ListSites => new SiteList(Sites),
             RadiusPageMethods.ListCertificates => ListCertificates(RadiusJson.Deserialize<CertificateListQuery>(payload)),

@@ -15,7 +15,8 @@ version and date, and the release workflow copies it into the GitHub release.
   View certificate. **Revoke** takes certificates out of use for good; EST no longer renews a revoked certificate.
   Certificates from before this version are added when OADM reads them from the devices.
 - 802.1X server (OADM PRO, in work): its page lists the switches, the VLAN rules, the cameras signing in right now, the
-  log of sign-ins and the revoked certificates; **Revoke** there picks from the PKI list of certificates.
+  log of sign-ins and the revoked certificates; **Revoke** there picks from the PKI list of IEEE 802.1X certificates and
+  needs the PKI permission "Manage the certificate authority" too.
 - Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
   Also in the search and the export.
 - Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the

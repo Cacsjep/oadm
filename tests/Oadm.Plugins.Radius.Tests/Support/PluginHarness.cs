@@ -77,6 +77,7 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
 {
     private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly X509Certificate2 _ca;
+    private readonly TestAuthority? _parent;
     private readonly Dictionary<string, CertificateRevocation> _revoked = new(StringComparer.Ordinal);
 
     public TestAuthority(string name = "OADM test CA")
@@ -84,9 +85,23 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
         _ca = CreateRoot(name, _key);
     }
 
+    /// <summary>A CA under <paramref name="parent"/> (an OADM CA imported as an intermediate of an enterprise root, or a sibling).</summary>
+    public TestAuthority(string name, TestAuthority parent)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        _parent = parent;
+        var request = new CertificateRequest($"CN={name} {Guid.NewGuid():N}", _key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
+        request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
+        using var signed = request.Create(parent._ca.SubjectName, X509SignatureGenerator.CreateForECDsa(parent._key), DateTimeOffset.UtcNow.AddDays(-9), DateTimeOffset.UtcNow.AddYears(9), Serial());
+        _ca = X509CertificateLoader.LoadCertificate(signed.RawData);
+    }
+
     public bool IsReady { get; set; } = true;
 
-    public IReadOnlyList<byte[]> Chain => IsReady ? [_ca.RawData] : [];
+    /// <summary>The CA certificate first, then the certificates above it (PKI's <see cref="IDeviceCertificateAuthority.Chain"/>).</summary>
+    public IReadOnlyList<byte[]> Chain => IsReady ? (_parent is null ? [_ca.RawData] : [_ca.RawData, .. _parent.Chain]) : [];
 
     public byte[] CaCertificate => _ca.RawData;
 
@@ -100,8 +115,16 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
 
     public event EventHandler? RevocationChanged;
 
-    public Task<IssuedDeviceCertificate> SignAsync(DeviceCertificateRequest request, CancellationToken ct)
+    /// <summary>Runs before every signature (a test holds a maintenance round in the middle with it).</summary>
+    public Func<Task>? BeforeSign { get; set; }
+
+    public async Task<IssuedDeviceCertificate> SignAsync(DeviceCertificateRequest request, CancellationToken ct)
     {
+        if (BeforeSign is { } before)
+        {
+            await before();
+        }
+
         SignCount++;
         var csr = CertificateRequest.LoadSigningRequest(request.Csr.ToArray(), HashAlgorithmName.SHA256);
         var signing = new CertificateRequest(new X500DistinguishedName("CN=" + request.CommonName), csr.PublicKey, HashAlgorithmName.SHA256);
@@ -121,7 +144,7 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
         signing.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid(request.Use == DeviceCertificateUse.Client ? "1.3.6.1.5.5.7.3.2" : "1.3.6.1.5.5.7.3.1")], false));
         var notAfter = DateTimeOffset.UtcNow + (request.Validity ?? TimeSpan.FromDays(365));
         using var signed = signing.Create(_ca.SubjectName, X509SignatureGenerator.CreateForECDsa(_key), DateTimeOffset.UtcNow.AddMinutes(-5), notAfter, Serial());
-        return Task.FromResult(new IssuedDeviceCertificate(signed.RawData, Chain, signed.SerialNumber, signed.NotAfter.ToUniversalTime()));
+        return new IssuedDeviceCertificate(signed.RawData, Chain, signed.SerialNumber, signed.NotAfter.ToUniversalTime());
     }
 
     /// <summary>A camera certificate of this CA naming <paramref name="serial"/> (client authentication unless <paramref name="usage"/> says otherwise).</summary>
@@ -316,10 +339,10 @@ public sealed class PluginHarness : IAsyncDisposable
     /// <summary>The listener on this server's network.</summary>
     public InMemoryUdpRelay Listener => (InMemoryUdpRelay)Service.Listener!;
 
-    public static async Task<PluginHarness> CreateAsync(Action<PluginHarness>? beforeStart = null, int workers = 4, bool start = true)
+    public static async Task<PluginHarness> CreateAsync(Action<PluginHarness>? beforeStart = null, int workers = 4, bool start = true, TestAuthority? authority = null)
     {
         var ctx = new FakeCoreContext { Pro = FakeProLicense.ActivePro(), Secrets = new FakeSecrets() };
-        var ca = new TestAuthority();
+        var ca = authority ?? new TestAuthority();
         ctx.FakeServices.Offer<IDeviceCertificateAuthority>(ca);
         var harness = new PluginHarness(ctx, ca, new TestDeviceIds(), new FakeTimeProvider(DateTimeOffset.UtcNow), new FixedInterfaces(FixedInterfaces.Card("eth0", "10.0.0.17")));
         beforeStart?.Invoke(harness);

@@ -19,7 +19,9 @@ public sealed class ConversationTests
         var data = new TheoryData<int, int>();
         foreach (var version in new[] { 12, 13 })
         {
-            foreach (var size in new[] { 500, 600, 800, 1000, 1200, 1400 })
+            // The TLS 1.2 flight with the RSA test certificate is just below 1,400 bytes (the certificate request lists only
+            // the signature schemes of RFC 9155), so 1,400 fragments only the TLS 1.3 flight.
+            foreach (var size in new[] { 500, 600, 800, 1000, 1200, 1400 }.Where(s => version == 13 || s < 1400))
             {
                 data.Add(version, size);
             }
@@ -376,8 +378,10 @@ public sealed class ConversationTests
 
         var conversation = new TestSwitch(processor).Run(camera);
 
+        // The reason names the alert OADM really sent (TLS 1.2: 40, RFC 5246 7.4.6; TLS 1.3: 116, RFC 8446 4.4.2.4).
         Assert.Equal(RadiusCode.AccessReject, conversation.Final);
-        Assert.Equal("No client certificate sent", conversation.Session!.Reason);
+        Assert.Equal(version == 13 ? "No client certificate sent (TLS alert 116, certificate required)" : "No client certificate sent (TLS alert 40, handshake failure)",
+            conversation.Session!.Reason);
         Assert.Equal(alert, camera.AlertReceived);
     }
 
@@ -453,5 +457,97 @@ public sealed class ConversationTests
         }
 
         Assert.Equal(0, processor.SessionCount);
+    }
+
+    [Theory]
+    [InlineData(12, 600)]
+    [InlineData(13, 600)]
+    public void AFramedMtuSentOnlyInTheFirstRequestStillLimitsEveryFragment(int version, int mtu)
+    {
+        // RFC 3579 2.4 / RFC 3580 3.10: many switches send Framed-MTU (and NAS-Port-Type) in the first Access-Request only;
+        // the smallest MTU of the session keeps limiting OADM's fragments.
+        var (processor, _) = Processor(new RadiusProtocolOptions { ServerIdentity = TestPki.ServerIdentity, LargestFragment = 1400 });
+        var camera = new TestSupplicant(new SupplicantOptions { Versions = Only(version) });
+        var radiusSwitch = new TestSwitch(processor) { FramedMtu = mtu, PortAttributesOnlyFirst = true };
+
+        var conversation = radiusSwitch.Run(camera);
+
+        AssertAuthenticated(conversation, camera);
+        Assert.True(camera.FragmentsReceived > 0, "the server flight was fragmented");
+        Assert.All(camera.ServerMessages, m => Assert.True(m.Data.Length <= mtu - 14, $"{m.Data.Length} > {mtu - 14}"));
+    }
+
+    [Fact]
+    public void WithoutACheckedTls13SuiteOnlyTls12IsOffered()
+    {
+        // Minimum TLS 1.2 with only TLS 1.2 suites checked: offering TLS 1.3 could only end in handshake_failure (RFC 8446
+        // 4.1.1: no common suite), so a camera that offers 1.3 and 1.2 gets 1.2.
+        var suites = new HashSet<int> { CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 };
+        var (processor, _) = Processor(new RadiusProtocolOptions { ServerIdentity = TestPki.ServerIdentity, Tls = new TlsSettings(TlsVersion.Tls12, suites) });
+        var camera = new TestSupplicant();
+
+        var conversation = new TestSwitch(processor).Run(camera);
+
+        AssertAuthenticated(conversation, camera);
+        Assert.Equal(ProtocolVersion.TLSv12, camera.NegotiatedVersion);
+        Assert.Equal([TlsVersion.Tls12], new TlsSettings(TlsVersion.Tls12, suites).VersionsFor(ServerKeyKind.Ecdsa));
+    }
+
+    [Fact]
+    public void SuitesTheServerKeyCannotUseAreNotEnough()
+    {
+        // The server certificate is ECDSA: checking only ECDHE_RSA suites leaves nothing to negotiate.
+        var rsaOnly = new TlsSettings(TlsVersion.Tls12, new HashSet<int> { CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 });
+
+        Assert.Null(rsaOnly.Validate());
+        Assert.Equal(TlsSettings.NoUsableSuite, rsaOnly.Validate(ServerKeyKind.Ecdsa));
+        Assert.Null(rsaOnly.Validate(ServerKeyKind.Rsa));
+        Assert.Empty(rsaOnly.VersionsFor(ServerKeyKind.Ecdsa));
+    }
+
+    [Fact]
+    public void TheCertificateRequestNamesNoSha1OrSha224UnlessOldVersionsAreAllowed()
+    {
+        // RFC 9155 2: SHA-1 MUST NOT be used in TLS 1.2 signatures; SHA-224 is not offered either.
+        var modern = EapTlsServer.AcceptedSignatures(legacy: false);
+        Assert.DoesNotContain(modern, a => a.Hash is HashAlgorithm.sha1 or HashAlgorithm.sha224 or HashAlgorithm.md5);
+        Assert.Contains(SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha256, SignatureAlgorithm.ecdsa), modern);
+        Assert.Contains(SignatureAndHashAlgorithm.rsa_pss_rsae_sha256, modern);
+
+        var legacy = EapTlsServer.AcceptedSignatures(legacy: true);
+        Assert.Contains(SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, SignatureAlgorithm.ecdsa), legacy);
+        Assert.DoesNotContain(legacy, a => a.Hash == HashAlgorithm.sha224);
+    }
+
+    [Theory]
+    [InlineData(TlsVersion.Tls12, false)]
+    [InlineData(TlsVersion.Tls10, true)]
+    public void ATls12CameraOfferingOnlySha1SignaturesPassesOnlyWithOldVersionsAllowed(TlsVersion minimum, bool passes)
+    {
+        // RFC 9155 2: OADM never signs with SHA-1 in TLS 1.2 unless Advanced allows the old versions for old devices.
+        var (processor, _) = Processor(new RadiusProtocolOptions
+        {
+            ServerIdentity = TestPki.ServerIdentity,
+            Tls = new TlsSettings(minimum, TlsCipherSuites.DefaultFor(minimum)),
+        });
+        var camera = new TestSupplicant(new SupplicantOptions
+        {
+            Versions = Only(12),
+            SignatureAlgorithms = [SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, SignatureAlgorithm.ecdsa), SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha256, SignatureAlgorithm.ecdsa)],
+        });
+        var shaOneOnly = new TestSupplicant(new SupplicantOptions
+        {
+            Versions = Only(12),
+            SignatureAlgorithms = [SignatureAndHashAlgorithm.GetInstance(HashAlgorithm.sha1, SignatureAlgorithm.ecdsa)],
+        });
+
+        Assert.Equal(RadiusCode.AccessAccept, new TestSwitch(processor).Run(camera).Final); // SHA-256 offered too: always fine
+        var conversation = new TestSwitch(processor).Run(shaOneOnly);
+
+        Assert.Equal(passes ? RadiusCode.AccessAccept : RadiusCode.AccessReject, conversation.Final);
+        if (!passes)
+        {
+            Assert.Equal((short)40, shaOneOnly.AlertReceived);
+        }
     }
 }

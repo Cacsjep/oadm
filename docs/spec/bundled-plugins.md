@@ -514,11 +514,13 @@ default, `"pro": true` (runs only while OADM PRO is active), its own source-avai
 every site with switches (the node's relay); EAP-TLS with the server certificate from the OADM CA; Sessions, Log, VLAN
 rules, the event rules "Device authenticated" and "Authentication failed".
 
-- Rules that must hold: only devices whose client certificate passes (the OADM CA, a previous OADM CA or a root above
-  them, or the Axis device ID roots; client authentication; exactly one managed device; at a site a device of that site;
+- Rules that must hold: only devices whose client certificate passes (issued by the OADM CA or a previous OADM CA
+  itself, a root above them only anchoring the chain, or the Axis device ID roots; nothing of the OADM CA without PKI; client authentication; exactly one managed device; at a site a device of that site;
   not on PKI's revocation list) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
   and requests of unknown senders are dropped, never answered; OADM PRO is checked on every request; shared secrets are
   stored only encrypted, never logged and never sent to a page; keys are never logged.
 - Roles and device groups: reading for everyone with the page; saves, Delete all and Revoke Admin (permission "Change
-  the 802.1X server"), audited, and only for users with all devices; a user with a group sees the Sessions, Log and
-  Revoked rows of the group's devices (rows without a managed device never).
+  the 802.1X server"), audited, and only for users with all devices; Revoke also needs PKI's "Manage the certificate
+  authority" and takes only IEEE 802.1X certificates; a user with a group sees the Sessions, Log and Revoked rows of the
+  group's devices (rows without a managed device never), no server-wide settings and only the switches of the group's
+  routes.

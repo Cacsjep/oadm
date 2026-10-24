@@ -13,20 +13,26 @@ namespace Oadm.Plugins.Radius.Server;
 /// <summary>
 /// The certificate authorities a client certificate may chain to (docs/spec/radius-server.md "Who passes"): the OADM CA with
 /// the certificates above it and the previous OADM CAs with theirs, as one immutable set. Self-signed certificates are the
-/// trust anchors (the OADM CA itself when it is a root, else the root of its chain), the rest intermediates. Rebuilt when
-/// PKI changes its CA (and checked every minute), never per authentication.
+/// trust anchors (the OADM CA itself when it is a root, else the root of its chain), the rest intermediates. A device
+/// certificate must be issued directly by one of the OADM CAs (<see cref="Issuers"/>): an OADM CA imported as an
+/// intermediate of an enterprise root never makes the certificates of its sibling CAs pass. Rebuilt when PKI changes its CA
+/// (and checked every minute), never per authentication.
 /// </summary>
 public sealed class CaTrust
 {
-    private CaTrust(string key, X509Certificate2Collection anchors, X509Certificate2Collection intermediates)
+    private CaTrust(string key, X509Certificate2Collection anchors, X509Certificate2Collection intermediates, IReadOnlySet<string> issuers)
     {
         Key = key;
         Anchors = anchors;
         Intermediates = intermediates;
+        Issuers = issuers;
     }
 
     /// <summary>No CA: nothing chains.</summary>
-    public static CaTrust None { get; } = new(string.Empty, [], []);
+    public static CaTrust None { get; } = new(string.Empty, [], [], new HashSet<string>());
+
+    /// <summary>The SHA-256 hashes of the OADM CAs themselves (the first certificate of the current and of each previous chain).</summary>
+    public IReadOnlySet<string> Issuers { get; }
 
     /// <summary>A fingerprint of every certificate in the set (to tell whether a rebuild changed anything).</summary>
     public string Key { get; }
@@ -60,6 +66,7 @@ public sealed class CaTrust
 
         var anchors = new X509Certificate2Collection();
         var intermediates = new X509Certificate2Collection();
+        var issuers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var chains = new List<IReadOnlyList<byte[]>> { authority.Chain };
         chains.AddRange(authority.PreviousChains);
@@ -78,6 +85,11 @@ public sealed class CaTrust
                 }
             }
 
+            if (loaded.Count > 0 && chain.Count > 0 && loaded[0].RawData.AsSpan().SequenceEqual(chain[0]))
+            {
+                issuers.Add(loaded[0].GetCertHashString(HashAlgorithmName.SHA256)); // the OADM CA of this chain (an unreadable first entry is no issuer)
+            }
+
             for (var i = 0; i < loaded.Count; i++)
             {
                 var certificate = loaded[i];
@@ -93,7 +105,7 @@ public sealed class CaTrust
             }
         }
 
-        return new CaTrust(KeyOf(authority), anchors, intermediates);
+        return new CaTrust(KeyOf(authority), anchors, intermediates, issuers);
     }
 
     private static bool IsSelfSigned(X509Certificate2 certificate) =>
@@ -114,6 +126,7 @@ public static class CertificateRefusals
     public const string NamesNoDevice = "Client certificate names no device";
     public const string OtherSite = "The device belongs to another site";
     public const string Revoked = "Certificate revoked";
+    public const string NoCa = "The PKI has no certificate authority";
 
     /// <summary>"Client certificate not issued by a trusted CA (TLS alert 48, unknown CA)".</summary>
     public static string NotTrusted => TlsAlertTexts.Describe(48, TlsAlertDirection.SentByOadm);
@@ -213,7 +226,17 @@ public sealed partial class DeviceCertificateValidator(
         }
 
         string? serial;
-        if (ChainsTo(trust(), leaf, presented, now))
+        var trusted = trust();
+        var ca = authority();
+        var oadmCa = ChainsTo(trusted, leaf, presented, now);
+        if (oadmCa && (ca is null || CaTrust.KeyOf(ca) != trusted.Key))
+        {
+            // The trusted set is from a CA that is gone or changed (PKI stopped, replaced its CA): without the CA's current
+            // revocation list nothing of it passes (fail closed).
+            return ClientCertificateVerdict.Refuse(CertificateRefusals.NoCa, 80, new CheckedCertificate(null, null, certificateSerial));
+        }
+
+        if (oadmCa)
         {
             var names = leaf.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault()?.EnumerateDnsNames() ?? [];
             var serials = names.Select(AxisLocalSerial).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -232,7 +255,6 @@ public sealed partial class DeviceCertificateValidator(
             return ClientCertificateVerdict.Refuse(CertificateRefusals.NotTrusted, 48, new CheckedCertificate(null, null, certificateSerial));
         }
 
-        var ca = authority();
         var device = devices.BySerial(serial);
         if (ca?.IsRevoked(certificateSerial) == true)
         {
@@ -261,7 +283,10 @@ public sealed partial class DeviceCertificateValidator(
         return ClientCertificateVerdict.Accept(vlans().For(device), warning, tag);
     }
 
-    /// <summary>The leaf chains to one of the OADM anchors now (the device's own intermediates may help), offline.</summary>
+    /// <summary>
+    /// The leaf chains to one of the OADM anchors now (the device's own intermediates may help), offline, and its direct
+    /// issuer is one of the OADM CAs (<see cref="CaTrust.Issuers"/>), never another CA under the same root.
+    /// </summary>
     internal static bool ChainsTo(CaTrust trust, X509Certificate2 leaf, IEnumerable<X509Certificate2> presented, DateTimeOffset now)
     {
         if (trust.IsEmpty)
@@ -288,7 +313,7 @@ public sealed partial class DeviceCertificateValidator(
         chain.ChainPolicy.VerificationTimeIgnored = false;
         try
         {
-            return chain.Build(leaf);
+            return chain.Build(leaf) && chain.ChainElements.Count >= 2 && trust.Issuers.Contains(chain.ChainElements[1].Certificate.GetCertHashString(HashAlgorithmName.SHA256));
         }
         catch (CryptographicException)
         {

@@ -115,8 +115,8 @@ public sealed class PluginTests
         Assert.All(seen, id => Assert.Equal(inside.Id.ToString(), id));
 
         // PKI's lists through the page: the group's devices only.
-        Assert.Empty((await harness.CallAsync<RevokedList>(RadiusMethods.ListRevoked, null, group)).Rows);
-        Assert.Single((await harness.CallAsync<RevokedList>(RadiusMethods.ListRevoked)).Rows);
+        Assert.Empty((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked, null, group)).Rows);
+        Assert.Single((await harness.CallAsync<RevokedPage>(RadiusMethods.ListRevoked)).Rows);
         var certificates = await harness.CallAsync<CertificateListPage>(RadiusMethods.ListCertificates, new CertificateListQuery(), group);
         Assert.Equal(inside.Id, Assert.Single(certificates.Rows).DeviceId);
         Assert.Equal(2, (await harness.CallAsync<CertificateListPage>(RadiusMethods.ListCertificates, new CertificateListQuery())).Total);

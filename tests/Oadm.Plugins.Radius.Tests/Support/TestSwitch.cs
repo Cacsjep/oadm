@@ -31,6 +31,12 @@ public sealed class TestSwitch(RadiusProcessor processor)
 
     public int? FramedMtu { get; init; } = 1500;
 
+    /// <summary>Framed-MTU and NAS-Port-Type only in the first request of a conversation (many switches do so).</summary>
+    public bool PortAttributesOnlyFirst { get; init; }
+
+    /// <summary>Changes the attributes of every request from now on (e.g. large Proxy-States for the last one).</summary>
+    public Action<List<RadiusAttribute>>? EditEach { get; set; }
+
     public string? CallingStationId { get; init; } = "AC-CC-8E-12-34-56";
 
     public string? NasPortId { get; init; } = "GigabitEthernet1/0/5";
@@ -136,7 +142,8 @@ public sealed class TestSwitch(RadiusProcessor processor)
             attributes.Add(RadiusAttribute.Text(RadiusAttributeType.NasPortId, NasPortId));
         }
 
-        if (NasPortType is { } type)
+        var first = !withState || State is null;
+        if (NasPortType is { } type && (first || !PortAttributesOnlyFirst))
         {
             attributes.Add(RadiusAttribute.Number(RadiusAttributeType.NasPortType, type));
         }
@@ -146,7 +153,7 @@ public sealed class TestSwitch(RadiusProcessor processor)
             attributes.Add(RadiusAttribute.Text(RadiusAttributeType.CallingStationId, CallingStationId));
         }
 
-        if (FramedMtu is { } mtu)
+        if (FramedMtu is { } mtu && (first || !PortAttributesOnlyFirst))
         {
             attributes.Add(RadiusAttribute.Number(RadiusAttributeType.FramedMtu, (uint)mtu));
         }
@@ -158,7 +165,7 @@ public sealed class TestSwitch(RadiusProcessor processor)
         }
 
         attributes.AddRange(ProxyStates.Select(p => new RadiusAttribute(RadiusAttributeType.ProxyState, p)));
-        edit?.Invoke(attributes);
+        (edit ?? EditEach)?.Invoke(attributes);
         return RadiusPacketWriter.Request(RadiusCode.AccessRequest, _identifier++, authenticator, Client.Secret.Span, attributes)!;
     }
 

@@ -31,6 +31,7 @@ public sealed partial class RadiusLog : IAsyncDisposable
     private readonly Dictionary<string, string?> _rowChanges = new(StringComparer.Ordinal); // id -> row JSON, null = delete
     private readonly Dictionary<string, string?> _certificateChanges = new(StringComparer.Ordinal); // fingerprint -> record, null = delete
     private bool _clear;
+    private long _generation; // + 1 with every Delete all: a write that failed before it never brings its rows back
     private long _nextId = 1;
     private int _kept = RadiusLimits.DefaultLogKept;
     private ITimer? _flushTimer;
@@ -58,10 +59,14 @@ public sealed partial class RadiusLog : IAsyncDisposable
         }
     }
 
-    /// <summary>Reads the kept rows; rows beyond <paramref name="kept"/> (and unreadable ones) are deleted with the next flush.</summary>
+    /// <summary>
+    /// Reads the kept rows; rows beyond <paramref name="kept"/>, unreadable ones and certificates no row points to (left by a
+    /// stop between two writes) are deleted with the next flush.
+    /// </summary>
     public async Task LoadAsync(int kept, CancellationToken ct)
     {
         var rows = await _records.ListAsync(LogCollection, ct).ConfigureAwait(false);
+        var certificates = await _records.ListAsync(CertificatesCollection, ct).ConfigureAwait(false);
         var loaded = new List<(string Key, StoredRow Row)>(rows.Count);
         var drop = new List<string>();
         foreach (var (key, json) in rows)
@@ -99,11 +104,26 @@ public sealed partial class RadiusLog : IAsyncDisposable
             }
 
             Trim();
+            foreach (var fingerprint in certificates.Keys)
+            {
+                if (!_certificateUses.ContainsKey(fingerprint))
+                {
+                    _certificateChanges[fingerprint] = null;
+                }
+            }
         }
 
-        if (drop.Count > 0 || Count < loaded.Count)
+        if (drop.Count > 0 || Count < loaded.Count || HasChanges())
         {
             MarkDirty();
+        }
+    }
+
+    private bool HasChanges()
+    {
+        lock (_gate)
+        {
+            return _rowChanges.Count > 0 || _certificateChanges.Count > 0;
         }
     }
 
@@ -150,11 +170,13 @@ public sealed partial class RadiusLog : IAsyncDisposable
 
     /// <summary>
     /// One page of the rows <paramref name="include"/> keeps (null: every row), newest first, matching
-    /// <paramref name="search"/> in any column (case-insensitive). One pass over the rows.
+    /// <paramref name="search"/> in any column (case-insensitive), the time also as the page shows it in
+    /// <paramref name="timeZone"/>. One pass over the rows.
     /// </summary>
-    public LogPage Page(string? search, int offset, int limit, Func<Guid?, bool>? include)
+    public LogPage Page(string? search, int offset, int limit, Func<Guid?, bool>? include, TimeZoneInfo? timeZone = null)
     {
         var text = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        var local = text is not null && timeZone is not null && !timeZone.Equals(TimeZoneInfo.Utc) && text.Any(char.IsAsciiDigit) ? timeZone : null;
         offset = Math.Max(0, offset);
         limit = Math.Clamp(limit, 1, RadiusLimits.MaxLogPage);
         var rows = new List<LogRow>(Math.Min(limit, 64));
@@ -164,7 +186,8 @@ public sealed partial class RadiusLog : IAsyncDisposable
             foreach (var entry in _entries)
             {
                 if ((include is not null && !include(entry.Row.DeviceId))
-                    || (text is not null && !entry.Text.Contains(text, StringComparison.OrdinalIgnoreCase)))
+                    || (text is not null && !entry.Text.Contains(text, StringComparison.OrdinalIgnoreCase)
+                        && (local is null || !LocalTime(entry.Row.TimeUtc, local).Contains(text, StringComparison.Ordinal))))
                 {
                     continue;
                 }
@@ -179,6 +202,24 @@ public sealed partial class RadiusLog : IAsyncDisposable
         }
 
         return new LogPage(total, rows);
+    }
+
+    /// <summary>The serial numbers of the client certificates in the kept rows (one pass).</summary>
+    public IReadOnlySet<string> CertificateSerials()
+    {
+        lock (_gate)
+        {
+            var serials = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in _entries)
+            {
+                if (entry.Row.CertificateSerial is { Length: > 0 } serial)
+                {
+                    serials.Add(serial);
+                }
+            }
+
+            return serials;
+        }
     }
 
     /// <summary>The row of <paramref name="id"/>, null when it is no longer kept.</summary>
@@ -221,6 +262,7 @@ public sealed partial class RadiusLog : IAsyncDisposable
             _rowChanges.Clear();
             _certificateChanges.Clear();
             _clear = true;
+            _generation++;
         }
 
         MarkDirty();
@@ -233,11 +275,13 @@ public sealed partial class RadiusLog : IAsyncDisposable
         try
         {
             bool clear;
+            long generation;
             List<KeyValuePair<string, string?>> rows;
             List<KeyValuePair<string, string?>> certificates;
             lock (_gate)
             {
                 _flushPending = false;
+                generation = _generation;
                 clear = _clear;
                 _clear = false;
                 rows = [.. _rowChanges];
@@ -270,14 +314,18 @@ public sealed partial class RadiusLog : IAsyncDisposable
                 lock (_gate)
                 {
                     _clear |= clear;
-                    foreach (var (key, value) in rows)
+                    if (_generation == generation)
                     {
-                        _rowChanges.TryAdd(key, value); // a newer change of the same key wins
-                    }
+                        // Written again with the next flush; after a Delete all meanwhile they are gone with everything else.
+                        foreach (var (key, value) in rows)
+                        {
+                            _rowChanges.TryAdd(key, value); // a newer change of the same key wins
+                        }
 
-                    foreach (var (key, value) in certificates)
-                    {
-                        _certificateChanges.TryAdd(key, value);
+                        foreach (var (key, value) in certificates)
+                        {
+                            _certificateChanges.TryAdd(key, value);
+                        }
                     }
                 }
 
@@ -375,6 +423,10 @@ public sealed partial class RadiusLog : IAsyncDisposable
     }
 
     private static string KeyOf(long id) => id.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The time as the page shows it ("yyyy-MM-dd HH:mm:ss" in the page's time zone).</summary>
+    private static string LocalTime(DateTime utc, TimeZoneInfo zone) =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 
     /// <summary>Every column of a row in one text for the search.</summary>
     private static string Searchable(LogRow row) => string.Join('\u001f',
