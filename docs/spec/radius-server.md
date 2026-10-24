@@ -1,7 +1,7 @@
 # 802.1X server (OADM PRO)
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
-Agreed 2026-10-23; built 2026-10-24: the protocol layer ("Code (protocol)") and the server part ("Code (server)"); the
+Agreed 2026-10-23; one-page redesign, trusted CAs from PKI and policies agreed 2026-10-24 (planned, `feature/pki-center`); built 2026-10-24: the protocol layer ("Code (protocol)") and the server part ("Code (server)"); the
 page is the client part.
 
 An OADM PRO plugin (`oadm.radius`, `"pro": true`, its own source-available license like EST). OADM answers the switches
@@ -27,53 +27,37 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 - **Plugins page:** "802.1X server" with the chip **OADM PRO**; off by default; without an active license the same lock
   and **Activate** as EST. When the license ends, the server stops answering (switches fall back to their own rule).
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
-  their ports."
-  - **Server** (tab): three cards side by side, each as high as it needs: **General** | **Switches** | **VLANs**; one
-    row below them, right aligned, with the server certificate's end, the status chip and **Save** (decision 2026-10-24,
-    the maintainer's screenshot). Narrower pages (small or scaled screens, `RadiusView.ThreeColumnWidth` /
-    `TwoColumnWidth`, like the Permissions page): from 1,660 px three columns (Switches 1.25 parts of the width) (each card about 470 px of content: the Switches columns, a VLAN rule
-    with its stretching site or tag; a Full HD screen keeps three), from 1,100 px two (General with VLANs below it | Switches), below that one (General, Switches,
-    VLANs).
-  - **General** (card): **Listen on** (all interfaces or one, like EST), **Port** (UDP 1812), **Log entries
-    kept** (1,000..50,000, default 5,000). **Advanced** (collapsed, the defaults fit almost every network):
-    **Minimum TLS version** (one select: TLS 1.0, TLS 1.1, **TLS 1.2** (default), TLS 1.3; for 1.0 or 1.1 the hint below
-    the field says "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure."), **Cipher suites** (check
-    boxes, the secure default set checked, **Reset to default**: TLS 1.3 suites and TLS 1.2 ECDHE suites with AES-GCM or
-    ChaCha20-Poly1305; with a minimum of 1.0 or 1.1 the list also shows the old ECDHE suites with AES-CBC and SHA-1, which
-    those versions need, checked when the minimum is lowered; never RC4, 3DES, NULL, export or RSA key exchange; at least
-    one usable suite for the chosen versions must stay checked; a suite the server certificate cannot use, ECDHE_RSA with
-    its ECDSA key, says "Not usable with the server certificate." below its name and does not count: Save stays off with
-    the reason as its tooltip), **Largest fragment** (bytes, 500..1400, default 1000; the switch's `Framed-MTU` makes it smaller). The
-    status left of Save (below the cards): "Running on port 1812", "OADM PRO is not active.", "The PKI has no
-    certificate authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available".
-  - **Switches** (card): name, address (IP or host name), state chip (Answered, No requests yet, Wrong secret),
-    last request, the requests without 802.1X (a MAC address or password check of the switch: not answered, counted apart,
-    never Wrong secret); **Add switch**, Edit, Delete (red). The dialog: Name, Address, **Shared secret** (`ui:PasswordBox`,
-    16 characters or more, **Generate** fills a random one and shows it once to copy), validation below the fields.
-    Changes apply to the running server at once (decision above). At most 500 switches.
-  - **VLANs** (card; collapsed while off): **Assign VLANs** (off by default); rules in order, first match wins:
-    a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
-    matches). Applies to the next authentication of each device. The tags of the rules are protected: only users with all
-    devices (also an Operator with "Tag devices") add them to devices or remove them, also while the 802.1X server is
-    stopped or off ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was
-    changed."); while the 802.1X server runs nobody renames or deletes them ("The tag Floor 3 sets a VLAN. Change the VLAN
-    rule first. Nothing was changed."). While it is stopped or off (also PRO lapsed) they can be renamed or deleted: the
-    rule then matches no device (docs/spec/tags.md "Protected tags").
-  - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device,
-    **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
-  - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
-    Authenticated / Failed), reason, VLAN; **search** over every column (one pass, one grid reset), **View
-    certificate** (the client certificate of the row, the shared `ui:CertificateWindow`, built with stage 1), **Add switch**
-    (a row from a switch that is not added: the switch dialog with its address and site filled in; users who manage the
-    server), **Delete all** (red, confirmed, users with all devices). Kept entries per the setting, newest first.
-  - **Log rows of dropped requests** (decision 2026-10-24): a request from a sender that is no switch, and one from an
-    added switch with a wrong shared secret (the most common setup mistake), are logged too, not only counted: switch =
-    "10.0.0.9 (not added)" ("10.0.0.9 at Building B (not added)" at a site) or the switch's name, result Failed, reason
-    "Request from a switch that is not added. Add it under Switches." or "Wrong shared secret: the request's check value
-    does not match.", no port, MAC, device or certificate. At most one row per sender address and reason per minute: the
-    first request gives a row at once, the ones after it within the minute one row when the minute ended, whose reason
-    ends with "12 requests in the last minute." (the count in the reason, not a column: the grid stays as it is). No
-    device: only users with all devices see them; the search finds them; no event rule fires (no device tried).
+  their ports." **One page, no tabs** (decision 2026-10-24): a row of four cards, each as high as it needs —
+  **Server** | **Trusted CAs** | **Switches** | **Policies** — then **Sessions** and **Log** full width below. Narrower pages
+  fall back to two columns, then one (like the Permissions page). Revocation is PKI's (its Certificates tab); the page has
+  no Revoked tab.
+  - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch] [Edit]
+    [Delete]", "Policies [Add policy] [Edit] [Delete]").
+  - **Server** (card): the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate
+    authority.", "Port 1812 is used by another program", "Interface Ethernet 2 is not available"), the server
+    certificate's end, **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000),
+    **Advanced** (a button: opens the dialog below) and **Save**.
+  - **Advanced** (dialog, single operation, `Border.dialogBody`): **Minimum TLS version** (TLS 1.0, 1.1, **1.2**
+    (default), 1.3; the hint for 1.0 and 1.1 as before), **Cipher suites** (as before, incl. the hint for suites the server
+    certificate cannot use), **Largest EAP packet** (bytes, 500..1,400, **default 1,020**: RFC 3748 3.1 guarantees an EAP
+    MTU of 1,020 octets; FreeRADIUS uses about the same; the switch's `Framed-MTU` can only lower it).
+  - **Trusted CAs** (card): the CAs of PKI (`docs/spec/pki.md`) as check boxes — OADM CA (with its previous ones), Axis
+    device ID, imported CAs — each with **Only devices OADM manages** (on by default). Default: OADM CA and Axis device
+    ID, both only managed. A CA PKI no longer lists drops out at once. "Manage in PKI" link.
+  - **Switches** (card): as before (name, address, state, last request; the dialog with the shared secret and Generate).
+  - **Policies** (card, replaces VLANs): a list of policies in order; each has a name, a kind and its devices chosen
+    with the shared device selector (sites, tags, single devices, the group editor's `DevicePickerWindow` mode):
+    - **VLAN policy:** the devices get VLAN X (1..4094). First matching VLAN policy wins; a **Default VLAN** setting on
+      the card for devices no VLAN policy matches (empty = none). VLANs stay off until the first VLAN policy exists.
+    - **Block policy:** the devices are refused even with a valid certificate ("Blocked by policy Building C"), nothing
+      is revoked; deleting the policy lets them in again.
+    - **Revoke policy:** saving it revokes the current IEEE 802.1X certificates of its devices in PKI (permanent, audited,
+      needs PKI's "Manage the certificate authority"; the confirmation names how many), and every new IEEE 802.1X
+      certificate of those devices too while the policy exists. Removing it revokes nothing back; the devices need new
+      certificates.
+    - Tags used by a policy's selection are protected as VLAN tags were (`docs/spec/tags.md` "Protected tags").
+  - **Sessions** (full width, live): as before.
+  - **Log** (full width): as before, without **Add switch** (decision 2026-10-24).
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
 - **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
@@ -324,11 +308,12 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 
 ## Who passes
 
-- The client certificate: issued by the OADM CA itself (the current or a previous one; the chain may end in a root above
-  it, a certificate of another CA under that root never passes), valid now, extended key usage client authentication (or
-  none), and it names **exactly one managed device**: the DNS name `axis-<serial>.local` the
-  OADM CA puts into every device certificate, or the serial of the factory **Axis device ID** (checked against the Axis
-  device ID roots EST ships). At a site: a device of that site.
+- The client certificate: issued by a CA checked under **Trusted CAs** (decision 2026-10-24; issued by it directly, a
+  certificate of another CA under the same root never passes), valid now, extended key usage client authentication (or
+  none). For a CA with **Only devices OADM manages** (the default) it must name **exactly one managed device**: the DNS
+  name `axis-<serial>.local` the OADM CA puts into every device certificate, or the serial of an **Axis device ID**. At a
+  site: a device of that site. For a CA without it, any valid certificate of that CA passes (the log shows its subject).
+- Not blocked by a block policy.
 - A certificate of the OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
   not an IEEE 802.1X certificate"; review round 2): an MQTT client certificate has client authentication and the
   `axis-<serial>.local` name too, but the 802.1X page cannot revoke it. One PKI does not list (from before the list)

@@ -188,6 +188,9 @@ must never break.
 - **[Device groups](docs/spec/device-scope.md)** (OADM 4.2): a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
+- **[PKI, the certificate control center](docs/spec/pki.md)** (planned): PKI holds every CA (OADM, previous, Axis device ID,
+  imported) and certificate; services such as EST and 802.1X only select from it; certificates start 5 minutes early and
+  the install dialogs ask when the camera's clock is behind.
 - **[802.1X server](docs/spec/radius-server.md)** (OADM 4.2, OADM PRO `oadm.radius`): RADIUS on UDP 1812 with EAP-TLS for
   the switch ports, only devices OADM manages with a certificate of the OADM CA pass, fragmentation both ways, a deep
   session state and plain TLS alert texts, switches changed while it runs, VLANs per rule off by default.
