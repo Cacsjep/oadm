@@ -61,7 +61,7 @@ public sealed class RadiusStore(IPluginSettings settings)
 
     public async Task<RadiusSettings?> ConfigAsync(CancellationToken ct) => Read<RadiusSettings>(await settings.GetAsync(ConfigKey, ct).ConfigureAwait(false));
 
-    public Task SaveConfigAsync(RadiusSettings config, CancellationToken ct) => settings.SetAsync(ConfigKey, RadiusJson.Serialize(config with { VlansEnabled = false, DefaultVlan = null }), ct);
+    public Task SaveConfigAsync(RadiusSettings config, CancellationToken ct) => settings.SetAsync(ConfigKey, RadiusJson.Serialize(config), ct);
 
     public async Task<IReadOnlyList<StoredSwitch>> SwitchesAsync(CancellationToken ct) =>
         Read<List<StoredSwitch>>(await settings.GetAsync(SwitchesKey, ct).ConfigureAwait(false)) ?? [];

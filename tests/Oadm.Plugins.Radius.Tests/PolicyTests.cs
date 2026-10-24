@@ -55,7 +55,6 @@ public sealed class PolicyTests
         Assert.Equal(VlanAttributes.TunnelTypeVlan, tagged.Find(64)!.Value.Value.Span[^1]);
         var log = await LastLogRowAsync(harness);
         Assert.Equal(30, log.Vlan);
-        Assert.True((await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).Settings.VlansEnabled);
 
         // The default VLAN for a device no VLAN policy holds, only while one exists.
         var plan = new PolicyPlan(saved);

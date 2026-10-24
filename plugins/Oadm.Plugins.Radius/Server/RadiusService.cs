@@ -786,7 +786,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             Running = kind == ServiceStatus.Ok,
             StatusText = text,
             StatusKind = kind,
-            Settings = config with { VlansEnabled = _policies.VlansEnabled, DefaultVlan = policies.DefaultVlan },
+            Settings = config,
             CipherSuitesListed = CipherSuites,
             Interfaces = ListInterfaces(),
             ServerCertificate = _identity.Info,
@@ -839,7 +839,6 @@ public sealed partial class RadiusService : IAsyncDisposable
                 throw RadiusErrors.Field("listenOn", RadiusTexts.InterfaceGone);
             }
 
-            settings = settings with { VlansEnabled = false, DefaultVlan = null };
             await _store.SaveConfigAsync(settings, ct).ConfigureAwait(false);
             _config = settings;
             _processor.Options = OptionsOf(settings, _identity.Identity);
@@ -1754,7 +1753,6 @@ public sealed partial class RadiusService : IAsyncDisposable
             if (ca is not null)
             {
                 ca.Changed += OnCaChanged;
-                ca.RevocationChanged += OnRevocationChanged;
             }
         }
     }
@@ -1772,7 +1770,6 @@ public sealed partial class RadiusService : IAsyncDisposable
         if (_followed is { } old)
         {
             old.Changed -= OnCaChanged;
-            old.RevocationChanged -= OnRevocationChanged;
             _followed = null;
         }
     }
@@ -1783,8 +1780,6 @@ public sealed partial class RadiusService : IAsyncDisposable
         Interlocked.Increment(ref _caVersion);
         Track(Task.Run(() => MaintainAsync(_cts.Token)));
     }
-
-    private void OnRevocationChanged(object? sender, EventArgs e) => PublishToEveryPage(RadiusTopics.Revoked, "{}");
 
     /// <summary>Tells PKI which of its CAs this server uses ("Used by"), when that changed.</summary>
     private void TellUsedBy(CaTrust trust)

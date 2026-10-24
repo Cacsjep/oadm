@@ -447,7 +447,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
 - **EAP Identifier** (RFC 3748 4.1): OADM's first request after the switch's own (its Identity request) uses that
   Identifier + 1, never the same one; a response with the Identifier of the request before is a retransmission (the
   outstanding request again); any other Identifier is dropped. EAP-Success and EAP-Failure carry the response's Identifier.
-- **Fragments**: OADM's TLS data per EAP-TLS message = min(Largest fragment, Framed-MTU − 4 − 10), an 802.11 port at most
+- **Fragments**: OADM's TLS data per EAP-TLS message = min(Largest EAP packet − 10, Framed-MTU − 4 − 10), an 802.11 port at most
   1,496 EAP octets (RFC 3580 3.10); L and the total only on the first fragment, never on an unfragmented message (RFC 9190
   2.1.9). The device's fragments: L required on the first of a fragmented message (at most 64 KB), a repeated L only with
   the same value, the fragments add up exactly; else "Message could not be read".
@@ -603,69 +603,53 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 
 `plugins/Oadm.Plugins.Radius.Client` (namespace `Oadm.Plugins.Radius.Client`, `RadiusPage`, `HasOwnCards`); tests in
 `tests/Oadm.Plugins.Radius.Tests/Client` against a fake server (`FakeRadiusBackend`: every method of the contract with demo
-data, also for the screenshots; review round 2 in `ReviewRound2PageTests` and `ReviewRound2HeadlessTests`; the three, two
-and one column Server tab and the rows of dropped requests with Add switch in `ServerLayoutTests`). Built 2026-10-24.
+data, also for the screenshots; the four, two and one column layout and the rows of dropped requests in
+`ServerLayoutTests`). One page since 2026-10-24.
 
-- **Fixed tabs** (`ui:PageTab`): **Server** (General with Advanced, Switches, VLANs in three, two or one column;
-  `RadiusView.Arrange` moves the cards in `MeasureOverride`, before they are measured: a DataGrid measured once too
-  narrow keeps its fixed columns shrunk), **Sessions**, **Log**,
-  **Revoked**. Nothing of a tab is read before it opens (the Server tab reads `getState`, `listSwitches`, `getVlans` each
-  time it opens, the overlay over the cards; the lists the first time, then the events keep them).
-- **One Save** below the cards saves General with Advanced (`saveSettings`) and then the VLANs (`saveVlans`),
-  the status chip and the server certificate's end directly left of it, the sites that did not allow the port and a save
-  error without a field below it (one accent button per view). Both parts are checked with `RadiusRules` before the first
-  call (an error below its field, else below Save), so a refusal leaves nothing half saved; a `saveVlans` refused for
-  another reason still shows the saved General. While Assign VLANs is off the collapsed card blocks nothing: Save sends
-  the card when it is valid, else the saved rules with Assign VLANs off. Switches apply in their dialog at once.
-- **Advanced** is a chevron (`ToggleButton.sectionExpander`) and starts collapsed; the old CBC suites are listed and checked
-  only while the minimum is below TLS 1.2; the page sends only the listed checked suites; the error "Check at least one
-  cipher suite." below the list. A suite with `usable: false` (the server's key cannot use it) shows "Not usable with
-  the server certificate." below its name and never counts as the checked one (review round 2).
-- **Switch dialog**: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per site), Site (only when
-  the server has sites), Shared secret (`ui:PasswordBox`, 16..128 characters; **Generate** asks `generateSecret` and shows
-  the secret in plain text once with "Copy it now into the switch: OADM does not show it again."; on Edit empty keeps it),
-  the line "RADIUS server for this switch: <address>, port <port>" (the row's `radiusServerAddress`, else the Listen on
-  address, the site node's address for a site). A refusal of the server goes below the field it names, else into a message.
-- **VLANs**: Assign VLANs (check box), the rules (Match Site or Tag, the site or tag, VLAN ID 1..4094, move up and down,
-  Remove), Default VLAN (optional). Tags: the server's list (`tagChoices`) plus the tags of the devices this client knows
-  and of the saved rules. A user limited to a group (the client's `HasAllDevices` or the state's `hasAllDevices` false,
-  fail closed) reads no VLANs: no `getVlans`, the card's content hidden and emptied (no rules, no tag or site choices);
-  rules read before a role change leave at once. Empty settings from the server show an empty card (review round 2).
-- **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again when its
-  tab opens (the progress row, the rows stay). Events that arrive during a read wait and apply after it: session batches
-  in order (an update older than the read row, a shorter duration, is left out), log rows once each.
-- **Sessions**: rows by id in a dictionary, a `sessions` batch updates rows in place and adds new ones on top in one step;
-  an ended row leaves 10 s after it ended (one step per second, the page's one-second tick also moves the durations of the
-  open rows); the device in italics while it is a guess from the MAC (`TextBlock.guess`); the state chip running (violet),
-  ok or error with the text of the server ("Sending server certificate: fragment 2 of 4").
-- **Log**: **Add switch** (toolbar, `LogViewModel.AddSwitchCommand`, on for a row with `sender` and the manage
-  permission) reads the switches and opens the switch dialog with the sender's address and site
-  (`SwitchesViewModel.AddSenderAsync`). Pages of 500 from the server with the search (300 ms after the last key), live `log` rows on the first page when
-  they match the search (the chosen row stays chosen when they push the full page), the reason or the warning in the Result chip (a warning is amber), View certificate describes the
-  DER of `getLogCertificate` with the SDK's `CertificateDescriber` in the client, Delete all red and confirmed. Every
-  read sends `timeZoneId` (`TimeZoneInfo.Local.Id`) so the search finds the times as shown; `logCleared` during a read
-  drops that read and the live rows that waited for it (review round 2).
-- **Revoked**: pages of 500 from the server: `listRevoked` with `{offset, limit (at most 500), search}` (search over device,
-  serial, reason and user, 300 ms after the last key) -> `{total, rows}` newest first, Previous / Next and "1-500 of
-  1,202" below the table; a server part that answers only `{rows}` gets the search and the pages in the client. A row
-  without a device id says "Unknown device", a removed device "Device (removed)". **Revoke** opens the shared certificate
-  list (`ui:IssuedCertificateList`, started on the IEEE 802.1X certificates) as a choice, then the reason
-  (`IssuedCertificateList.ConfirmRevokeAsync`), then `revoke`, with "Revoking the certificates" in the progress row and
-  Revoke off until the server answered (no Cancel: a write runs to its end); "Nothing was revoked ..." when every chosen
-  one was revoked already. View certificate in the choice shows the row's revocation and "ends soon" as the row's state says (the list
-  sends no warning days; PKI's own tab uses the days of its answer).
-- **Device groups**: a user with a group sees only Sessions and Log (the server filters the rows); users without "manage"
-  or without all devices see no Save, Add switch, Edit, Delete, Delete all or Revoke, and the inputs are read only.
-- **Contract**: the server part's `plugins/Oadm.Plugins.Radius/Api/RadiusApi.cs` (methods, `RadiusTopics`, DTOs and
-  `RadiusRules`, whose texts and checks the page uses for its errors below the fields); the client project references the
-  server project like EST (a linked copy would give the tests every type twice). A session event row with `removed` leaves
-  the tab at once; the page also drops ended rows 10 s after their end. **Page additions** for the server part
-  (`RadiusPageMethods` in `Api/RadiusApi.cs`): `listSites` (-> `{sites: [{siteId, siteName}]}`, every site
-  of the server; without it the page takes the sites of the devices and switches it knows), `listCertificates` (PKI's
-  list through `IDeviceCertificateAuthority.ListIssuedAsync`: `{state, purpose, source, search, offset, limit}` ->
-  `{rows: [IssuedCertificateInfo], total, offset}`, rows of the caller's devices) and `getIssuedCertificate`
-  (`{serialNumber}` -> `{der}`, empty when OADM kept no copy). VLAN tag choices: the server's `tagChoices`, the tags of the
-  devices the client knows and those of the saved rules (users with all devices only).
+- **One page, no tabs** (`RadiusView`): Server | Trusted CAs | Switches | Policies (`RadiusView.Arrange` in
+  `MeasureOverride`, before the cards are measured: four columns from 1,850 px with Switches 1.6 and Policies 1.35 parts,
+  two from 1,000 px (Server and Trusted CAs | Switches and Policies), else one; a DataGrid measured once too narrow keeps
+  its fixed columns shrunk), then Sessions and Log full width (grids of fixed height inside the page's scroll viewer, so
+  they stay virtualized). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites`,
+  `getTrustedCas`, `getPolicies` with the overlay over the cards, then `listSessions` and `listLog`); the events keep it.
+- **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
+- **Server**: Listen on, Port, Log entries kept, **Advanced** (secondary), the status chip directly left of **Save** (the
+  one accent button of the page), the server certificate's end, the sites that did not allow the port and a save error
+  without a field below it. Save sends the form with the saved Advanced settings (`SettingsViewModel.ToSettings`).
+- **Advanced** (`AdvancedWindow`, `AdvancedViewModel`, single operation): Minimum TLS version, cipher suites (old CBC suites
+  listed and checked only below TLS 1.2; "Not usable with the server certificate." below an unusable suite, never the
+  checked one; Reset to default), Largest EAP packet (500..1,400). Its Save sends the saved Server settings with these;
+  the Server card keeps unsaved edits.
+- **Trusted CAs** (`TrustedCasViewModel`): a check box per CA of `getTrustedCas` ("With its previous CA", "Imported",
+  "Factory certificates of Axis devices", valid until) with **Only devices OADM manages** below a checked one; a secondary
+  **Save** (on while changed, tooltip "No CA is checked: no device passes." when none is), errors below the list; "Add or
+  remove CAs on the PKI page." (the client SDK has no page navigation).
+- **Switches**: as before; the switch dialog: Name (unique), Address (IPv4 with four parts, IPv6 or a host name; unique per
+  site), Site (only with sites), Shared secret (16..128, **Generate** shows it once), "RADIUS server for this switch:
+  <address>, port <port>". A refusal goes below the field it names, else into a message.
+- **Policies** (`PoliciesViewModel`): the policies in order (Name, Policy chip "VLAN 30" / "Block" / "Revoke certificates",
+  Devices "Site Building B, Tag PTZ, 3 devices, except 1"); **Add policy**, Edit (also a double click), **Delete** (red,
+  confirmed; a revoke policy says revoked certificates stay revoked), Move up, Move down: each sends the whole list
+  (`savePolicies`). **Default VLAN** (secondary Save) only while a VLAN policy exists.
+- **Policy editor** (`PolicyFormView.CreateWindow`, `PolicyEditorViewModel`): the shared `DevicePickerWindow` in its group
+  mode (sites with "This server", tags by name: the server's `tagChoices`, the devices' and the policies' tags, single
+  devices, Except) with Name (unique), Policy (VLAN, Block, Revoke certificates: the last only with PKI's "Manage the
+  certificate authority") and VLAN ID on top; Save off with the reason as tooltip. A revoke policy that is new or whose
+  devices changed asks first with `countRevocations` ("Saving revokes 7 IEEE 802.1X certificates ... This cannot be
+  undone.", red Revoke, owned by the editor).
+- **Reads and events**: a list read while the page was away is stale (`MarkStale` on `Activate`) and read again (the
+  progress row, the rows stay). Events during a read wait and apply after it: session batches in order, log rows once each.
+- **Sessions**: rows by id, a `sessions` batch updates rows in place and adds new ones on top in one step; an ended row
+  leaves 10 s after it ended; the device in italics while it is a guess from the MAC; the state chip running, ok or error.
+- **Log**: View certificate, Delete all (red, confirmed), the search (300 ms after the last key), pages of 500, live rows on
+  the first page when they match (the chosen row stays chosen), `timeZoneId` with every read; `logCleared` during a read
+  drops that read. No Add switch (decision 2026-10-24).
+- **Device groups**: a user with a group (the client's `HasAllDevices` or the state's `hasAllDevices` false, fail closed)
+  sees only Sessions and Log; nothing server-wide is read, and what was read before a role change leaves at once. Users
+  without "manage" see no Save, Add, Edit, Delete, Move or Delete all, and the inputs are read only.
+- **Contract**: `plugins/Oadm.Plugins.Radius/Api/RadiusApi.cs` (methods, topics, DTOs and `RadiusRules`, whose texts and
+  checks the page uses for its errors below the fields); the client project references the server project like EST.
+  `listSites` -> every site of the server (without it the page takes the sites of the devices and switches it knows).
 
 ## Stages
 
@@ -675,6 +659,8 @@ and one column Server tab and the rows of dropped requests with Add switch in `S
    switches (changed while running), Sessions and Log, the TLS alert texts, Advanced, the Revoked tab.
 3. **Built 2026-10-24 (server part):** VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab was filtered in stage 1).
 4. **Built 2026-10-24 (server part):** Switches at sites through the site node.
+5. **Built 2026-10-24:** one page without tabs, Trusted CAs from PKI, policies (VLAN, block, revoke) instead of the VLAN
+   rules and the Revoked tab, Advanced as a dialog, Largest EAP packet 1,020 by default.
 
-The switches, VLAN rules, settings, the issued certificates and the revocation list are part of the encrypted backup
+The switches, trusted CAs, policies, settings, the issued certificates and the revocation list are part of the encrypted backup
 (plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.

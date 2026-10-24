@@ -5,7 +5,7 @@
         x:Class="Oadm.Plugins.Radius.Client.AdvancedWindow"
         x:DataType="vm:AdvancedViewModel"
         Title="Advanced"
-        Width="560" SizeToContent="Height"
+        Width="700" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
@@ -20,7 +20,7 @@
           <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:AdvancedViewModel.TlsVersions}" SelectedItem="{Binding MinimumTls}"
                     IsEnabled="{Binding MayManage}" />
         </ui:FormField>
-        <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}">
+        <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}" InputWidth="440">
           <StackPanel Spacing="4">
             <!-- At most 13 suites: no virtualization needed. -->
             <ItemsControl ItemsSource="{Binding CipherSuites}">
