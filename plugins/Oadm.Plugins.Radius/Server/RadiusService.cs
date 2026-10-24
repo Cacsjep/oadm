@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
@@ -114,8 +115,13 @@ public sealed partial class RadiusService : IAsyncDisposable
     private volatile SwitchTable _switches = SwitchTable.Empty;
     private List<StoredSwitch> _stored = [];
     private volatile CaTrust _trust = CaTrust.None;
-    private volatile VlanPlan _vlans = VlanPlan.Off;
-    private VlanSettings _vlanSettings = new();
+    private volatile PolicyPlan _policies = PolicyPlan.Off;
+    private PolicySettings _policySettings = new();
+    private volatile TrustedCaSettings _trustedCas = CaTrust.DefaultSelection;
+    private readonly AxisDeviceId _deviceIds;
+    private readonly ConcurrentDictionary<string, string> _policyRevokes = new(StringComparer.Ordinal); // serial -> user, revoked in the background
+    private int _policyRevoking; // 1 = the background revocation runs
+    private string? _usedByKey; // the ids PKI was last told ("Used by"), with the offer
     private RadiusSettings _config = new();
     private IUdpRelay? _listener;
     private IReadOnlyList<IPAddress> _requestedAddresses = []; // what the listener was asked for (empty = every address)
@@ -153,7 +159,8 @@ public sealed partial class RadiusService : IAsyncDisposable
         _board = new SessionBoard(host.Time);
         _index = new DeviceIndex(host.Devices, host.Time);
         _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger);
-        var validator = new DeviceCertificateValidator(TrustNow, host.DeviceIds ?? new AxisDeviceId(), _index, host.Authority, () => _switches, () => _vlans, host.Time);
+        _deviceIds = host.DeviceIds ?? new AxisDeviceId();
+        var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => _policies, host.Time, QueuePolicyRevoke);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
         _processor.SessionChanged += _board.Enqueue;
         _index.Missed += (_, _) => Track(Task.Run(() => RefreshIndexAsync(onlyAfterMiss: true)));
@@ -235,8 +242,9 @@ public sealed partial class RadiusService : IAsyncDisposable
             Port = config.Port is >= 1 and <= 65535 ? config.Port : RadiusLimits.DefaultPort,
         };
         _config = config;
-        _vlanSettings = await _store.VlansAsync(ct).ConfigureAwait(false) ?? new VlanSettings();
-        _vlans = PlanOf(_vlanSettings);
+        _trustedCas = await _store.TrustedCasAsync(ct).ConfigureAwait(false) ?? CaTrust.DefaultSelection;
+        _policySettings = await LoadPoliciesAsync(ct).ConfigureAwait(false);
+        _policies = PlanOf(_policySettings);
         _stored = [.. await _store.SwitchesAsync(ct).ConfigureAwait(false)];
         var entries = new List<SwitchEntry>();
         foreach (var stored in _stored)
@@ -759,7 +767,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             unknown = new UnknownRequests(Interlocked.Read(ref _unknownCount), _lastUnknown?.Address, _lastUnknown?.Site, _lastUnknown?.At);
         }
 
-        var vlans = _vlanSettings;
+        var policies = _policySettings;
         if (!hasAllDevices)
         {
             // A user limited to a group sees Sessions and Log only: the status, never the server-wide settings, the
@@ -778,7 +786,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             Running = kind == ServiceStatus.Ok,
             StatusText = text,
             StatusKind = kind,
-            Settings = config with { VlansEnabled = vlans.Enabled, DefaultVlan = vlans.DefaultVlan },
+            Settings = config with { VlansEnabled = _policies.VlansEnabled, DefaultVlan = policies.DefaultVlan },
             CipherSuitesListed = CipherSuites,
             Interfaces = ListInterfaces(),
             ServerCertificate = _identity.Info,
@@ -870,87 +878,219 @@ public sealed partial class RadiusService : IAsyncDisposable
         return GetState(hasAllDevices: true);
     }
 
-    /// <summary>
-    /// The VLAN rules with the tag choices of the managed devices and the rules. A user limited to a group gets empty VLAN
-    /// settings: the rules are server-wide (docs/spec/device-scope.md "Server-wide services") and their tags are protected.
-    /// </summary>
-    public VlanSettings GetVlans(bool hasAllDevices)
+    // ------------------------------------------------------------------ trusted CAs
+
+    /// <summary>PKI's CAs with this server's choice (previous OADM CAs follow the OADM CA: no rows). A group user: none.</summary>
+    public TrustedCaList GetTrustedCas(bool hasAllDevices)
     {
         if (!hasAllDevices)
         {
-            return new VlanSettings();
+            return new TrustedCaList();
         }
 
-        var vlans = _vlanSettings;
-        var tags = VlanPlan.TagsOf(vlans).Concat(_index.Tags());
-        return vlans with
+        var authorities = CaTrust.AuthoritiesOf(_host.Authority(), _deviceIds);
+        var choices = (_trustedCas.Cas ?? []).GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var previous = authorities.Count(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        return new TrustedCaList
+        {
+            Cas = [.. authorities.Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm).Select(a => new TrustedCaRow
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Kind = a.Kind,
+                NotAfterUtc = a.NotAfterUtc,
+                Trusted = choices.ContainsKey(a.Id),
+                OnlyManaged = !choices.TryGetValue(a.Id, out var choice) || choice.OnlyManaged,
+                PreviousCount = a.Kind == CertificateAuthorityKind.Oadm ? previous : 0,
+            })],
+        };
+    }
+
+    /// <summary>Save of the Trusted CAs: ids PKI does not list are refused; applies to the next handshake at once.</summary>
+    public async Task<TrustedCaList> SaveTrustedCasAsync(TrustedCaSettings request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var listed = CaTrust.AuthoritiesOf(_host.Authority(), _deviceIds).Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm)
+            .Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var choices = (request.Cas ?? []).Where(c => c is not null && !string.IsNullOrWhiteSpace(c.Id))
+            .Select(c => c with { Id = c.Id.Trim() }).DistinctBy(c => c.Id, StringComparer.Ordinal).ToList();
+        if (choices.Any(c => !listed.Contains(c.Id)))
+        {
+            throw RadiusErrors.Field("cas", RadiusTexts.UnknownCa);
+        }
+
+        var settings = new TrustedCaSettings { Cas = choices };
+        await _saveGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _store.SaveTrustedCasAsync(settings, ct).ConfigureAwait(false);
+            _trustedCas = settings;
+            var ca = _host.Authority();
+            Follow();
+            var trust = CaTrust.Build(ca, settings, _deviceIds, Volatile.Read(ref _caVersion));
+            _trust = trust;
+            TellUsedBy(trust);
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+
+        var anyDevice = choices.Count(c => !c.OnlyManaged);
+        LogTrustedCasSaved(choices.Count, anyDevice);
+        return GetTrustedCas(hasAllDevices: true);
+    }
+
+    // ------------------------------------------------------------------ policies
+
+    /// <summary>
+    /// The stored policies; the first start after the VLAN rules moves them into VLAN policies (only when Assign VLANs was on:
+    /// rules that were off would switch VLANs on) and deletes the old setting.
+    /// </summary>
+    private async Task<PolicySettings> LoadPoliciesAsync(CancellationToken ct)
+    {
+        if (await _store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
+        {
+            return stored;
+        }
+
+        if (await _store.VlansAsync(ct).ConfigureAwait(false) is not { } vlans)
+        {
+            return new PolicySettings();
+        }
+
+        var policies = new List<RadiusPolicy>();
+        if (vlans.Enabled)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var rule in vlans.Rules ?? [])
+            {
+                var baseName = (rule.RefName ?? rule.RefId ?? string.Empty).Trim();
+                baseName = baseName.Length == 0 ? "VLAN " + rule.Vlan.ToString(CultureInfo.InvariantCulture) : baseName;
+                baseName = baseName.Length > RadiusLimits.MaxNameLength - 5 ? baseName[..(RadiusLimits.MaxNameLength - 5)] : baseName;
+                var name = baseName;
+                for (var n = 2; !names.Add(name); n++)
+                {
+                    name = string.Create(CultureInfo.InvariantCulture, $"{baseName} ({n})");
+                }
+
+                PolicyDevices devices;
+                if (rule.Kind == VlanRuleKinds.Site && Guid.TryParse(rule.RefId, out var site))
+                {
+                    devices = site == Guid.Empty ? new PolicyDevices { ThisServer = true } : new PolicyDevices { SiteIds = [site] };
+                }
+                else if (rule.Kind == VlanRuleKinds.Tag && !string.IsNullOrWhiteSpace(rule.RefId))
+                {
+                    devices = new PolicyDevices { Tags = [rule.RefId.Trim()] };
+                }
+                else
+                {
+                    continue;
+                }
+
+                policies.Add(new RadiusPolicy { Id = Guid.NewGuid(), Name = name, Kind = PolicyKinds.Vlan, Vlan = rule.Vlan, Devices = devices });
+            }
+        }
+
+        var migrated = new PolicySettings { Policies = policies, DefaultVlan = vlans.Enabled ? vlans.DefaultVlan : null };
+        await _store.SavePoliciesAsync(migrated, ct).ConfigureAwait(false);
+        await _store.DeleteVlansAsync(ct).ConfigureAwait(false);
+        LogPoliciesMigrated(policies.Count);
+        return migrated;
+    }
+
+    /// <summary>The policies with the tag choices of the managed devices and the policies. A group user: empty settings.</summary>
+    public PolicySettings GetPolicies(bool hasAllDevices)
+    {
+        if (!hasAllDevices)
+        {
+            return new PolicySettings();
+        }
+
+        var policies = _policySettings;
+        var tags = PolicyPlan.TagsOf(policies).Concat(_index.Tags());
+        return policies with
         {
             TagChoices = [.. tags.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).Select(t => new TagChoice(t, t))],
         };
     }
 
     /// <summary>
-    /// The plan of <paramref name="vlans"/> with its tags protected by the host (only users with all devices add or remove
-    /// them on devices, docs/spec/radius-server.md "VLANs"); without the host's protection the tag rules match nothing.
+    /// The plan of <paramref name="policies"/> with their tags protected by the host (only users with all devices add or
+    /// remove them on devices); without the host's protection the tag parts of VLAN policies match nothing.
     /// </summary>
-    private VlanPlan PlanOf(VlanSettings vlans)
+    private PolicyPlan PlanOf(PolicySettings policies)
     {
         if (_host.ProtectedTags is not { } protectedTags)
         {
-            return new VlanPlan(vlans, tagsProtected: false);
+            return new PolicyPlan(policies, tagsProtected: false);
         }
 
-        protectedTags.Protect(VlanPlan.TagsOf(vlans), RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
-        return new VlanPlan(vlans);
+        protectedTags.Protect(PolicyPlan.TagsOf(policies), RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
+        return new PolicyPlan(policies);
     }
 
-    /// <summary>Save of the VLAN rules; applies to the next authentication of each device.</summary>
-    public async Task<VlanSettings> SaveVlansAsync(VlanSettings request, CancellationToken ct)
+    /// <summary>
+    /// Save of the whole ordered list; applies to the next authentication of each device. A revoke policy that is new or
+    /// whose devices changed needs <paramref name="mayRevoke"/> (PKI's "Manage the certificate authority"); after the save
+    /// the current IEEE 802.1X certificates of every revoke policy's devices are revoked in PKI.
+    /// </summary>
+    public async Task<PolicySettings> SavePoliciesAsync(PolicySettings request, string userName, bool mayRevoke, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var rules = (request.Rules ?? []).Select(r => r with { Kind = r.Kind?.Trim() ?? string.Empty, RefId = r.RefId?.Trim() ?? string.Empty }).ToList();
-        var vlans = request with { Rules = rules };
-        if (RadiusRules.Validate(vlans) is { } error)
+        var policies = (request.Policies ?? []).Select(Normalize).ToList();
+        var settings = new PolicySettings { Policies = policies, DefaultVlan = request.DefaultVlan };
+        if (RadiusRules.Validate(settings) is { } error)
         {
             throw RadiusErrors.Field(error.Field, error.Message);
         }
 
-        var named = new List<VlanRule>(rules.Count);
-        for (var i = 0; i < rules.Count; i++)
-        {
-            var rule = rules[i];
-            string name;
-            if (rule.Kind == VlanRuleKinds.Site)
-            {
-                var id = Guid.Parse(rule.RefId);
-                name = id == Guid.Empty ? DeviceGroupMessages.ThisServer
-                    : _host.Sites?.List.FirstOrDefault(s => s.Id == id)?.Name
-                      ?? (_vlanSettings.Rules.FirstOrDefault(r => r.Kind == VlanRuleKinds.Site && r.RefId == rule.RefId)?.RefName
-                          ?? throw RadiusErrors.Field(string.Create(CultureInfo.InvariantCulture, $"rules[{i}].refId"), RadiusTexts.SiteGone));
-                rule = rule with { RefId = id.ToString() };
-            }
-            else
-            {
-                name = rule.RefId;
-            }
-
-            named.Add(rule with { RefName = name });
-        }
-
-        vlans = vlans with { Rules = named, TagChoices = [] };
         await _saveGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // The tags of the old and the new rules stay protected while the save runs (a failed save keeps the old plan).
-            _host.ProtectedTags?.Protect([.. VlanPlan.TagsOf(_vlanSettings), .. VlanPlan.TagsOf(vlans)], RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
+            var old = _policySettings;
+            var oldById = old.Policies.ToDictionary(p => p.Id);
+            var knownSites = (_host.Sites?.List ?? []).Select(s => s.Id).Concat(old.Policies.SelectMany(p => p.Devices.SiteIds)).ToHashSet();
+            for (var i = 0; i < policies.Count; i++)
+            {
+                var policy = policies[i];
+                if (policy.Devices.SiteIds.Any(id => !knownSites.Contains(id)))
+                {
+                    throw RadiusErrors.Field(string.Create(CultureInfo.InvariantCulture, $"policies[{i}].devices"), RadiusTexts.SiteGone);
+                }
+
+                var before = policy.Id == Guid.Empty ? null : oldById.GetValueOrDefault(policy.Id);
+                if (policy.Kind == PolicyKinds.Revoke)
+                {
+                    var changed = before is null || before.Kind != PolicyKinds.Revoke || !SameDevices(before.Devices, policy.Devices);
+                    if (changed && !mayRevoke)
+                    {
+                        // The revocation list is PKI's: a revoke policy needs the permission to manage the CA (fail closed).
+                        throw new DeviceAccessRefusedException(RadiusTexts.NeedsCaPermission);
+                    }
+
+                    policy = policy with { SavedBy = changed ? userName : before!.SavedBy ?? userName };
+                }
+                else
+                {
+                    policy = policy with { SavedBy = null };
+                }
+
+                policies[i] = policy with { Id = before is null ? Guid.NewGuid() : policy.Id };
+            }
+
+            settings = settings with { Policies = policies };
+
+            // The tags of the old and the new policies stay protected while the save runs (a failed save keeps the old plan).
+            _host.ProtectedTags?.Protect([.. PolicyPlan.TagsOf(old), .. PolicyPlan.TagsOf(settings)], RadiusTexts.VlanTag, RadiusTexts.VlanTagChange);
             try
             {
-                await _store.SaveVlansAsync(vlans, ct).ConfigureAwait(false);
-                _vlanSettings = vlans;
+                await _store.SavePoliciesAsync(settings, ct).ConfigureAwait(false);
+                _policySettings = settings;
             }
             finally
             {
-                _vlans = PlanOf(_vlanSettings);
+                _policies = PlanOf(_policySettings);
             }
         }
         finally
@@ -958,9 +1098,157 @@ public sealed partial class RadiusService : IAsyncDisposable
             _saveGate.Release();
         }
 
-        LogVlansSaved(vlans.Enabled, named.Count);
+        LogPoliciesSaved(policies.Count, userName);
+        await RevokeByPoliciesAsync(_policies, null, ct).ConfigureAwait(false);
         PublishState();
-        return GetVlans(hasAllDevices: true);
+        return GetPolicies(hasAllDevices: true);
+    }
+
+    /// <summary>How many IEEE 802.1X certificates a revoke policy with <paramref name="devices"/> would revoke now.</summary>
+    public async Task<RevocationCount> CountRevocationsAsync(PolicyDevices devices, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        var policy = Normalize(new RadiusPolicy { Name = "count", Kind = PolicyKinds.Revoke, Devices = devices });
+        return new RevocationCount(_host.Authority() is { } ca ? (await SerialsToRevokeAsync(ca, policy, ct).ConfigureAwait(false)).Count : 0);
+    }
+
+    private static RadiusPolicy Normalize(RadiusPolicy policy)
+    {
+        var devices = policy.Devices ?? new PolicyDevices();
+        var sites = (devices.SiteIds ?? []).Distinct().ToList();
+        return policy with
+        {
+            Name = policy.Name?.Trim() ?? string.Empty,
+            Kind = policy.Kind?.Trim() ?? string.Empty,
+            Vlan = policy.Kind?.Trim() == PolicyKinds.Vlan ? policy.Vlan : null,
+            Devices = new PolicyDevices
+            {
+                ThisServer = devices.ThisServer || sites.Contains(Guid.Empty),
+                SiteIds = [.. sites.Where(id => id != Guid.Empty)],
+                Tags = [.. (devices.Tags ?? []).Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)],
+                Serials = [.. SerialsOf(devices.Serials)],
+                ExceptSerials = [.. SerialsOf(devices.ExceptSerials)],
+            },
+        };
+    }
+
+    private static IEnumerable<string> SerialsOf(IReadOnlyList<string>? serials) =>
+        (serials ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal);
+
+    private static bool SameDevices(PolicyDevices a, PolicyDevices b) =>
+        a.ThisServer == b.ThisServer && a.SiteIds.ToHashSet().SetEquals(b.SiteIds)
+        && a.Tags.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.Tags)
+        && a.Serials.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.Serials)
+        && a.ExceptSerials.ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(b.ExceptSerials);
+
+    /// <summary>The IEEE 802.1X certificates of <paramref name="policy"/>'s devices that are still valid and not revoked (PKI's list, paged).</summary>
+    private async Task<List<string>> SerialsToRevokeAsync(IDeviceCertificateAuthority ca, RadiusPolicy policy, CancellationToken ct)
+    {
+        var ids = _index.All.Where(d => PolicyPlan.Holds(policy, d)).Select(d => d.Id).ToHashSet();
+        var serials = new List<string>();
+        if (ids.Count == 0)
+        {
+            return serials;
+        }
+
+        for (var offset = 0; ; offset += IssuedCertificateQuery.MaxLimit)
+        {
+            var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
+            {
+                Purpose = DeviceCertificatePurposes.Dot1x,
+                DeviceIds = ids,
+                Offset = offset,
+                Limit = IssuedCertificateQuery.MaxLimit,
+            }, ct).ConfigureAwait(false);
+            serials.AddRange(page.Rows.Where(r => r.State is not (IssuedCertificateState.Expired or IssuedCertificateState.Revoked) && r.Revocation is null)
+                .Select(r => CertificateSerials.Normalize(r.SerialNumber)));
+            if (page.Rows.Count < IssuedCertificateQuery.MaxLimit || offset + page.Rows.Count >= page.Total)
+            {
+                return serials;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Revokes the current IEEE 802.1X certificates of the revoke policies' devices in PKI (after a save and every minute:
+    /// new certificates of those devices too), by the user who saved each policy, at most 5,000 per call.
+    /// </summary>
+    private async Task RevokeByPoliciesAsync(PolicyPlan plan, string? userName, CancellationToken ct)
+    {
+        if (plan.RevokePolicies.Count == 0 || _host.Authority() is not { } ca)
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (var policy in plan.RevokePolicies)
+            {
+                var serials = (await SerialsToRevokeAsync(ca, policy, ct).ConfigureAwait(false)).Where(s => !ca.IsRevoked(s)).Distinct(StringComparer.Ordinal).ToList();
+                foreach (var batch in serials.Chunk(5000))
+                {
+                    var result = await ca.RevokeAsync(batch, RevocationReason.Other, userName ?? policy.SavedBy ?? RadiusTexts.ServiceName, ct).ConfigureAwait(false);
+                    LogPolicyRevoked(result.Revoked, policy.Name);
+                }
+            }
+        }
+        catch (NotSupportedException ex)
+        {
+            LogMaintainFailed(ex); // a CA without a revocation list: the policy still refuses the devices
+        }
+    }
+
+    /// <summary>A handshake met a certificate a revoke policy holds: revoked in the background (deduplicated, at most 10,000 waiting).</summary>
+    private void QueuePolicyRevoke(string serial, RadiusPolicy policy)
+    {
+        if (_policyRevokes.Count >= 10_000 || !_policyRevokes.TryAdd(serial, policy.SavedBy ?? RadiusTexts.ServiceName))
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _policyRevoking, 1, 0) == 0)
+        {
+            Track(Task.Run(DrainPolicyRevokesAsync));
+        }
+    }
+
+    private async Task DrainPolicyRevokesAsync()
+    {
+        try
+        {
+            while (!_policyRevokes.IsEmpty && _host.Authority() is { } ca)
+            {
+                var due = _policyRevokes.ToArray();
+                foreach (var byUser in due.GroupBy(d => d.Value, StringComparer.Ordinal))
+                {
+                    var serials = byUser.Select(d => d.Key).Where(s => !ca.IsRevoked(s)).ToList();
+                    if (serials.Count > 0)
+                    {
+                        await ca.RevokeAsync(serials, RevocationReason.Other, byUser.Key, _cts.Token).ConfigureAwait(false);
+                    }
+
+                    foreach (var (serial, _) in byUser)
+                    {
+                        _policyRevokes.TryRemove(serial, out _);
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+            // stopping
+        }
+#pragma warning disable CA1031 // Tried again by the minute round; the reason goes to the server log.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _policyRevokes.Clear();
+            LogMaintainFailed(ex);
+        }
+        finally
+        {
+            Volatile.Write(ref _policyRevoking, 0);
+        }
     }
 
     // ------------------------------------------------------------------ switches
@@ -1308,214 +1596,11 @@ public sealed partial class RadiusService : IAsyncDisposable
         new([.. (_host.Sites?.List ?? []).Where(s => view is null || view.CoversSite(s.Id))
             .OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new SiteRef(s.Id, s.Name))]);
 
-    /// <summary>One page of PKI's list of issued certificates; <paramref name="deviceIds"/>: only these devices (a group user).</summary>
-    internal async Task<CertificateListPage> ListCertificatesAsync(CertificateListQuery query, IReadOnlySet<Guid>? deviceIds, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        var offset = Math.Max(0, query.Offset);
-        if (_host.Authority() is not { } ca)
-        {
-            return new CertificateListPage { Offset = offset };
-        }
-
-        var page = await ca.ListIssuedAsync(new IssuedCertificateQuery
-        {
-            State = query.State,
-            Purpose = string.IsNullOrWhiteSpace(query.Purpose) ? null : query.Purpose,
-            Source = string.IsNullOrWhiteSpace(query.Source) ? null : query.Source,
-            Search = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim(),
-            DeviceIds = deviceIds,
-            Offset = offset,
-            Limit = Math.Clamp(query.Limit, 1, IssuedCertificateQuery.MaxLimit),
-        }, ct).ConfigureAwait(false);
-        return new CertificateListPage { Rows = page.Rows, Total = page.Total, Offset = offset };
-    }
-
-    /// <summary>
-    /// An issued certificate (DER; empty when OADM kept no copy). For a group user (<paramref name="deviceIds"/>) only one of
-    /// the group's devices; any other answers like an unknown one.
-    /// </summary>
-    internal async Task<LogCertificate> IssuedCertificateAsync(string serialNumber, IReadOnlySet<Guid>? deviceIds, CancellationToken ct)
-    {
-        var serial = CertificateSerials.Normalize(serialNumber);
-        if (serial.Length == 0 || _host.Authority() is not { } ca)
-        {
-            throw new KeyNotFoundException(RadiusTexts.CertificateGone);
-        }
-
-        if (deviceIds is not null)
-        {
-            var page = await ca.ListIssuedAsync(new IssuedCertificateQuery { Search = serial, DeviceIds = deviceIds, Limit = IssuedCertificateQuery.MaxLimit }, ct).ConfigureAwait(false);
-            if (!page.Rows.Any(r => CertificateSerials.Normalize(r.SerialNumber) == serial))
-            {
-                throw new KeyNotFoundException(RadiusTexts.CertificateGone);
-            }
-        }
-
-        var der = await ca.GetIssuedCertificateAsync(serial, ct).ConfigureAwait(false);
-        return new LogCertificate(der is null ? string.Empty : Convert.ToBase64String(der));
-    }
-
     public void DeleteLog(string userName)
     {
         _log.Clear();
         LogLogCleared(userName);
         PublishToEveryPage(RadiusTopics.LogCleared, "{}");
-    }
-
-    /// <summary>
-    /// One page of PKI's revocation list (newest first), the rows of <paramref name="view"/>'s devices (null: all) that match
-    /// the search (serial number in any notation, device, reason, user; case-insensitive). One pass.
-    /// </summary>
-    internal RevokedPage ListRevoked(RevokedQuery query, ViewedSet? view)
-    {
-        ArgumentNullException.ThrowIfNull(query);
-        var offset = Math.Max(0, query.Offset);
-        var limit = Math.Clamp(query.Limit, 1, RadiusLimits.MaxRevokedPage);
-        var text = string.IsNullOrWhiteSpace(query.Search) ? null : query.Search.Trim();
-        var serialText = text is null ? null : CertificateSerials.Normalize(text);
-        var revocations = _host.Authority()?.Revocations ?? [];
-        var rows = new List<RevokedRow>(Math.Min(limit, revocations.Count));
-        var total = 0;
-        foreach (var r in revocations)
-        {
-            if (view is not null && !view.Contains(r.DeviceId))
-            {
-                continue;
-            }
-
-            var deviceName = r.DeviceId is { } id ? DeviceIndex.NameOf(_index.ById(id)) : string.Empty;
-            var reason = CertificateRevocation.ReasonText(r.Reason);
-            if (text is not null
-                && !r.SerialNumber.Contains(serialText!, StringComparison.OrdinalIgnoreCase)
-                && !deviceName.Contains(text, StringComparison.OrdinalIgnoreCase)
-                && !reason.Contains(text, StringComparison.OrdinalIgnoreCase)
-                && !r.UserName.Contains(text, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (total >= offset && rows.Count < limit)
-            {
-                rows.Add(new RevokedRow
-                {
-                    SerialNumber = r.SerialNumber,
-                    RevokedUtc = r.RevokedUtc,
-                    Reason = reason,
-                    UserName = r.UserName,
-                    DeviceId = r.DeviceId,
-                    DeviceName = deviceName,
-                    NotAfterUtc = r.NotAfterUtc,
-                });
-            }
-
-            total++;
-        }
-
-        return new RevokedPage(rows) { Total = total };
-    }
-
-    /// <summary>Revokes through PKI (the one revocation list).</summary>
-    public async Task<RevokeReply> RevokeAsync(RevokeRequest request, string userName, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var serials = (request.Serials ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(CertificateSerials.Normalize).Distinct(StringComparer.Ordinal).ToList();
-        if (serials.Count is 0 or > 5000)
-        {
-            throw RadiusErrors.Field("serials", RadiusTexts.RevokeCount);
-        }
-
-        var reason = request.Reason switch
-        {
-            RevokeReasons.KeyCompromised => RevocationReason.KeyCompromised,
-            RevokeReasons.DeviceReplaced => RevocationReason.DeviceReplaced,
-            RevokeReasons.DeviceRemoved => RevocationReason.DeviceRemoved,
-            RevokeReasons.Other => RevocationReason.Other,
-            _ => throw RadiusErrors.Field("reason", RadiusTexts.ChooseReason),
-        };
-        var ca = _host.Authority() ?? throw new InvalidOperationException(RadiusTexts.NoCa);
-        if (await FirstOtherUseAsync(ca, serials, ct).ConfigureAwait(false) is not null)
-        {
-            throw RadiusErrors.Field("serials", RadiusTexts.OnlyDot1x);
-        }
-
-        var result = await ca.RevokeAsync(serials, reason, userName, ct).ConfigureAwait(false);
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            var reasonText = CertificateRevocation.ReasonText(reason);
-            LogRevoked(result.Revoked, reasonText, userName);
-        }
-        return new RevokeReply(result.Revoked, result.AlreadyRevoked, result.NotFound);
-    }
-
-    /// <summary>
-    /// The first serial that is no IEEE 802.1X certificate, else null, in one pass (docs/spec/radius-server.md "Revoke"): PKI
-    /// lists it with another use (HTTPS, MQTT, RTSPS); or PKI does not list it and not every client certificate of this
-    /// server's log with that serial was issued by an OADM CA (an Axis device ID certificate never counts: revoking its
-    /// serial would lock the camera out for good), or the log has none.
-    /// </summary>
-    private async Task<string?> FirstOtherUseAsync(IDeviceCertificateAuthority ca, List<string> serials, CancellationToken ct)
-    {
-        var unlisted = new List<string>();
-        foreach (var serial in serials)
-        {
-            switch (ca.PurposeOf(serial))
-            {
-                case null:
-                    unlisted.Add(serial);
-                    break;
-                case DeviceCertificatePurposes.Dot1x:
-                    break;
-                default:
-                    return serial;
-            }
-        }
-
-        if (unlisted.Count == 0)
-        {
-            return null;
-        }
-
-        var logged = _log.CertificatesOf(unlisted.ToHashSet(StringComparer.Ordinal));
-        var trust = TrustNow(); // the current and the previous OADM CAs
-        var now = _host.Time.GetUtcNow();
-        foreach (var serial in unlisted)
-        {
-            if (!logged.TryGetValue(serial, out var fingerprints))
-            {
-                return serial;
-            }
-
-            foreach (var fingerprint in fingerprints)
-            {
-                if (await _log.CertificateByFingerprintAsync(fingerprint, ct).ConfigureAwait(false) is not { } der || !IssuedByOadmCa(trust, der, now))
-                {
-                    return serial;
-                }
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>The logged certificate chains to an OADM CA that issued it directly (checked within its own validity).</summary>
-    private static bool IssuedByOadmCa(CaTrust trust, byte[] der, DateTimeOffset now)
-    {
-        X509Certificate2 leaf;
-        try
-        {
-            leaf = X509CertificateLoader.LoadCertificate(der);
-        }
-        catch (CryptographicException)
-        {
-            return false;
-        }
-
-        using (leaf)
-        {
-            var notAfter = new DateTimeOffset(leaf.NotAfter.ToUniversalTime());
-            return DeviceCertificateValidator.ChainsTo(trust, leaf, [], notAfter < now ? notAfter : now);
-        }
     }
 
     // ------------------------------------------------------------------ maintenance: CA, server certificate, devices
@@ -1563,11 +1648,15 @@ public sealed partial class RadiusService : IAsyncDisposable
             Follow();
             var ca = _host.Authority();
             var trust = _trust;
-            if (!ReferenceEquals(ca, trust.Authority) || CaTrust.KeyOf(ca) != trust.Key)
+            if (!ReferenceEquals(ca, trust.Authority) || CaTrust.KeyOf(ca, _trustedCas, _deviceIds) != trust.Key)
             {
-                // Once a minute the hashes too: previous CAs that changed without a Changed event.
-                _trust = CaTrust.Build(ca, Volatile.Read(ref _caVersion));
+                // Once a minute the hashes too: CAs that changed without a Changed event (a CA PKI no longer lists drops out).
+                trust = CaTrust.Build(ca, _trustedCas, _deviceIds, Volatile.Read(ref _caVersion));
+                _trust = trust;
             }
+
+            TellUsedBy(trust);
+            await RevokeByPoliciesAsync(_policies, null, ct).ConfigureAwait(false);
 
             try
             {
@@ -1636,8 +1725,9 @@ public sealed partial class RadiusService : IAsyncDisposable
         }
 
         Follow(); // a new offer: its Changed events count from now on
-        trust = CaTrust.Build(ca, Volatile.Read(ref _caVersion));
+        trust = CaTrust.Build(ca, _trustedCas, _deviceIds, Volatile.Read(ref _caVersion));
         _trust = trust;
+        TellUsedBy(trust);
         return trust;
     }
 
@@ -1695,6 +1785,33 @@ public sealed partial class RadiusService : IAsyncDisposable
     }
 
     private void OnRevocationChanged(object? sender, EventArgs e) => PublishToEveryPage(RadiusTopics.Revoked, "{}");
+
+    /// <summary>Tells PKI which of its CAs this server uses ("Used by"), when that changed.</summary>
+    private void TellUsedBy(CaTrust trust)
+    {
+        if (trust.Authority is not { } ca)
+        {
+            return;
+        }
+
+        var key = RuntimeHelpers.GetHashCode(ca).ToString(CultureInfo.InvariantCulture) + ":" + string.Join(',', trust.UsedIds);
+        if (Interlocked.Exchange(ref _usedByKey, key) == key)
+        {
+            return;
+        }
+
+        try
+        {
+            ca.SetUsedBy(RadiusTexts.PluginId, RadiusTexts.ServiceName, trust.UsedIds);
+        }
+#pragma warning disable CA1031 // PKI's list of users is a display; the check never depends on it.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _usedByKey = null;
+            LogMaintainFailed(ex);
+        }
+    }
 
     private async Task RefreshIndexAsync(bool onlyAfterMiss)
     {
@@ -2196,14 +2313,21 @@ public sealed partial class RadiusService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server settings saved: port {Port}, minimum TLS {MinimumTls}, {Suites} cipher suites")]
     private partial void LogSettingsSaved(int port, string minimumTls, int suites);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: VLAN rules saved (assign VLANs {Enabled}, {Rules} rules)")]
-    private partial void LogVlansSaved(bool enabled, int rules);
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} policies saved by {User}")]
+    private partial void LogPoliciesSaved(int count, string user);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} VLAN rules moved into VLAN policies")]
+    private partial void LogPoliciesMigrated(int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} trusted CAs saved, {AnyDevice} of them for any device")]
+    private partial void LogTrustedCasSaved(int count, int anyDevice);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} certificates revoked by policy {Policy}")]
+    private partial void LogPolicyRevoked(int count, string policy);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: the log was deleted by {User}")]
     private partial void LogLogCleared(string user);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "802.1X server: {Count} certificates revoked ({Reason}) by {User}")]
-    private partial void LogRevoked(int count, string reason, string user);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "802.1X server: no server certificate from the OADM CA: {Reason}")]
     private partial void LogCertificateFailed(string reason);
@@ -2293,11 +2417,19 @@ public static class RadiusTexts
     /// <summary>Revoke without PKI's permission (the host's wording of a missing permission).</summary>
     public const string NeedsCaPermission = "Your role does not allow: PKI: Manage the certificate authority.";
 
-    /// <summary>"The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."</summary>
-    public static string VlanTag(string tag) => $"The tag {tag} sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.";
+    /// <summary>The plugin id ("Used by" in PKI).</summary>
+    public const string PluginId = "oadm.radius";
 
-    /// <summary>A rename or delete of a tag a VLAN rule names while the 802.1X server runs (every user).</summary>
-    public static string VlanTagChange(string tag) => $"The tag {tag} sets a VLAN. Change the VLAN rule first. Nothing was changed.";
+    /// <summary>The name PKI shows under "Used by".</summary>
+    public const string ServiceName = "802.1X server";
+
+    public const string UnknownCa = "This certificate authority is not in the PKI.";
+
+    /// <summary>"The tag Floor 3 is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed."</summary>
+    public static string VlanTag(string tag) => $"The tag {tag} is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed.";
+
+    /// <summary>A rename or delete of a tag a policy names while the 802.1X server runs (every user).</summary>
+    public static string VlanTagChange(string tag) => $"The tag {tag} is used by an 802.1X policy. Change the policy first. Nothing was changed.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 
