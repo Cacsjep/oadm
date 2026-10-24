@@ -332,7 +332,7 @@ is always on.
   0.4.0; server `ProtectedTagRegistry`): a core plugin whose settings act on devices by tag names those tags; only users
   with all devices then add them to or remove them from devices (docs/spec/tags.md "Protected tags"). Each call replaces
   the plugin's set; `Protect(names, refusal, changeRefusal)` adds the text for a rename or delete, which the host refuses
-  for every user; `Protect` returns once the tag writes in flight ended; the host keeps the set while the plugin is installed (also stopped, faulted, turned off, PRO lapsed, over a
+  for every user while the plugin runs (allowed while it is stopped, faulted or off); `Protect` returns once the tag writes in flight ended; the host keeps the set while the plugin is installed (also stopped, faulted, turned off, PRO lapsed, over a
   restart) and forgets it only when the plugin is removed; a late call of a stopped plugin changes nothing (decision
   2026-10-24, docs/spec/tags.md "Protected tags"). Null on older hosts: the plugin treats its tag rules as unsafe (the 802.1X server's tag
   rules then match nothing). Test fake: `FakeProtectedTags` (`FakeCoreContext.FakeProtectedTags`).

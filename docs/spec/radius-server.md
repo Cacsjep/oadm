@@ -49,9 +49,10 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
     a **site** or a **tag** → **VLAN ID** (1..4094); **Default VLAN** (optional; empty = no VLAN for devices no rule
     matches). Applies to the next authentication of each device. The tags of the rules are protected: only users with all
     devices (also an Operator with "Tag devices") add them to devices or remove them, also while the 802.1X server is
-    stopped or off, and nobody renames or deletes them ("The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing
-    was changed.") ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove
-    it. Nothing was changed.", docs/spec/tags.md "Protected tags").
+    stopped or off ("The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was
+    changed."); while the 802.1X server runs nobody renames or deletes them ("The tag Floor 3 sets a VLAN. Change the VLAN
+    rule first. Nothing was changed."). While it is stopped or off (also PRO lapsed) they can be renamed or deleted: the
+    rule then matches no device (docs/spec/tags.md "Protected tags").
   - **Sessions** (tab): the authentications in progress, live: started, switch, port, MAC address, EAP identity, device,
     **IP address** (below), **state** (below), duration. Virtualized; at most 10,000 open sessions.
   - **Log** (tab, like the EST enrollments): time, switch, port, MAC address, EAP identity, device, IP address, result (status chip
@@ -359,8 +360,11 @@ devices but has a group could otherwise choose a device's VLAN. The plugin hands
 match no device (fail closed; site rules and the default VLAN apply). The host keeps the protected names while the plugin
 is installed (round 3): a stopped or turned-off 802.1X server (PRO lapsed, a restart with it off) still protects the tags
 of its stored rules, so a tag a group user adds meanwhile never sets a VLAN when the server starts again; the names are
-forgotten only when the plugin is removed (docs/spec/tags.md "Protected tags"). A rename or delete of such a tag is refused
-for every user (`Protect(names, RadiusTexts.VlanTag, RadiusTexts.VlanTagChange)`): the rules keep tags by name. A save
+forgotten only when the plugin is removed (docs/spec/tags.md "Protected tags"). While the 802.1X server runs, a rename or
+delete of such a tag is refused for every user (`Protect(names, RadiusTexts.VlanTag, RadiusTexts.VlanTagChange)`): the
+rules keep tags by name. While it is stopped, off or faulted (a lapsed PRO license turns the package off) nobody can edit
+the rules, so the rename or delete is allowed (decision 2026-10-24, final review): the rule's old name then matches no
+device (fail closed), and a tag made again under that name is protected again. A change of case only is no rename. A save
 of the rules waits for group users' tag writes in flight (`Protect` returns after them). Users with all devices, also an Operator
 with all devices and "Tag devices", add and remove the VLAN-rule tags: they manage VLAN membership (decision
 2026-10-24).

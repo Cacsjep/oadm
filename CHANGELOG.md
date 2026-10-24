@@ -14,8 +14,8 @@ version and date, and the release workflow copies it into the GitHub release.
   Its page lists the switches, the VLAN rules, the cameras signing in right now, the log of sign-ins and the revoked
   certificates; **Revoke** there picks from the PKI list of IEEE 802.1X certificates and
   needs the PKI permission "Manage the certificate authority" too. Only users with all devices can add or remove a tag
-  that sets a VLAN, also while the 802.1X server is stopped or off; nobody renames or deletes it before changing the VLAN
-  rule. With Listen on "All interfaces" a new address of the server is answered on within 5 seconds.
+  that sets a VLAN, also while the 802.1X server is stopped or off; while the 802.1X server runs, a tag a VLAN rule uses
+  cannot be renamed or deleted before changing the VLAN rule. With Listen on "All interfaces" a new address of the server is answered on within 5 seconds.
 - PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST, with its use: HTTPS,
   IEEE 802.1X, MQTT or RTSPS), with filters, search and View certificate. **Revoke** takes certificates out of use for
   good; EST no longer renews a revoked certificate. A certificate stays in the list until a year after it ended; one that

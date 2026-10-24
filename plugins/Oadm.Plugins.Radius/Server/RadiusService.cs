@@ -2205,7 +2205,7 @@ public static class RadiusTexts
     /// <summary>"The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."</summary>
     public static string VlanTag(string tag) => $"The tag {tag} sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.";
 
-    /// <summary>A rename or delete of a tag a VLAN rule names (every user).</summary>
+    /// <summary>A rename or delete of a tag a VLAN rule names while the 802.1X server runs (every user).</summary>
     public static string VlanTagChange(string tag) => $"The tag {tag} sets a VLAN. Change the VLAN rule first. Nothing was changed.";
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");

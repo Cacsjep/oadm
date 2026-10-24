@@ -12,8 +12,8 @@ namespace Oadm.Core.Devices;
 /// The tag names core plugins protect (<see cref="IProtectedTags"/>, docs/spec/tags.md "Protected tags"): only users with
 /// all devices add them to or remove them from devices. <see cref="Plugins.CorePluginHost"/> hands each plugin its view
 /// (<see cref="For"/>); <see cref="DeviceTagStore"/> asks <see cref="RefusalFor"/> inside its write transaction, next to the
-/// device-group guard. A plugin's set is kept while the plugin is installed: a stop, a fault or a turned-off package only
-/// closes its views (<see cref="Detach"/>; the set stays with the refusal texts it had), the sets are stored in the server
+/// device-group guard; <see cref="ChangeRefusalFor"/> refuses a rename or delete only while the plugin runs. A plugin's set
+/// is kept while the plugin is installed: a stop, a fault or a turned-off package only closes its views (<see cref="Detach"/>; the set stays with the refusal texts it had), the sets are stored in the server
 /// setting <see cref="SettingKey"/> and restored at server start before any tag write (<see cref="LoadAsync"/>), and a set
 /// is forgotten only when its plugin is no longer installed (<see cref="LoadAsync"/> with the installed ids, or
 /// <see cref="RemoveOwner"/>). Thread-safe; a lookup is a hash lookup per name.
@@ -269,9 +269,12 @@ public sealed partial class ProtectedTagRegistry
     public static string DefaultRefusal(string name) => $"Only users with all devices can add or remove the tag {name}. Nothing was changed.";
 
     /// <summary>
-    /// The refusal of a rename or delete of the tag <paramref name="name"/> (for every user: the settings of a plugin name the
-    /// tag and would silently stop matching), null when no plugin protects it. A text that fails or is empty becomes
-    /// <see cref="DefaultChangeRefusal"/>.
+    /// The refusal of a rename or delete of the tag <paramref name="name"/> (for every user: the settings of a running plugin
+    /// name the tag), null when no running plugin protects it. Only a running plugin's set refuses (its live set, decision
+    /// 2026-10-24, final review): while the plugin is stopped, off or faulted (also a lapsed PRO license, which turns a PRO
+    /// package off) nobody could change its settings, so the tag is renamed or deleted freely; the plugin's rules keep tags by
+    /// name, so a renamed or deleted tag matches nothing (fail closed) and a tag made again under the name is still protected.
+    /// A text that fails or is empty becomes <see cref="DefaultChangeRefusal"/>.
     /// </summary>
     public string? ChangeRefusalFor(string name)
     {
@@ -280,7 +283,7 @@ public sealed partial class ProtectedTagRegistry
         List<ProtectedSet> sets;
         lock (_gate)
         {
-            sets = [.. _owners.Values.Select(o => o.Set).OfType<ProtectedSet>()];
+            sets = [.. _owners.Values.Select(o => o.Set).OfType<ProtectedSet>().Where(s => s.Live is not null)];
         }
 
         foreach (var set in sets)

@@ -109,7 +109,7 @@ public sealed partial class DeviceTagStore(
     /// rewrites every device's tag in the same transaction. A name used only on devices gets a definition.
     /// </summary>
     /// <exception cref="KeyNotFoundException">No such tag.</exception>
-    /// <exception cref="ProtectedTagChangeException">A rename of a tag a plugin protects (every user).</exception>
+    /// <exception cref="ProtectedTagChangeException">A rename of a tag a running plugin protects (every user; a change of case only is allowed).</exception>
     public async Task<TagUpdateResult> UpdateAsync(string name, string? newName, TagColor color, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(name);
@@ -151,9 +151,10 @@ public sealed partial class DeviceTagStore(
 
             string target = cleanNew ?? oldName;
             using var protectedWrite = protectedTags?.BeginTagWrite(); // a new protected set waits for this rename
-            if (!string.Equals(target, oldName, StringComparison.Ordinal) && protectedTags?.ChangeRefusalFor(oldName) is { } refusal)
+            if (!TagNames.Comparer.Equals(target, oldName) && protectedTags?.ChangeRefusalFor(oldName) is { } refusal)
             {
-                throw new ProtectedTagChangeException(oldName, refusal); // the plugin's rules name the tag; a recolor is fine
+                // A running plugin's rules name the tag; a recolor or a change of case only is fine (the rules match ignoring case).
+                throw new ProtectedTagChangeException(oldName, refusal);
             }
 
             if (!TagNames.Comparer.Equals(target, oldName)
@@ -192,7 +193,7 @@ public sealed partial class DeviceTagStore(
     /// their tags before and after. Device groups that use the tag lose it (their rules keep the id of a tag that is gone).
     /// </summary>
     /// <exception cref="KeyNotFoundException">No such tag.</exception>
-    /// <exception cref="ProtectedTagChangeException">A tag a plugin protects (every user).</exception>
+    /// <exception cref="ProtectedTagChangeException">A tag a running plugin protects (every user).</exception>
     public async Task<TagDeleteResult> DeleteAsync(string name, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(name);

@@ -128,9 +128,9 @@ public sealed class TagGuardTests : DeviceGroupTestBase
     }
 
     [Fact]
-    public async Task AProtectedTagIsRecoloredButNeverRenamedOrDeleted()
+    public async Task AProtectedTagIsRecoloredButNeverRenamedOrDeletedWhileThePluginRuns()
     {
-        await AddDeviceAsync("ACCC8E000001", tags: ["Vlan 20", "Free"]);
+        var device = await AddDeviceAsync("ACCC8E000001", tags: ["Vlan 20", "Free"]);
         var registry = Db.Get<ProtectedTagRegistry>();
         registry.For("oadm.radius").Protect(["Vlan 20"], name => name, name => $"The tag {name} sets a VLAN. Change the VLAN rule first. Nothing was changed.");
 
@@ -140,6 +140,43 @@ public sealed class TagGuardTests : DeviceGroupTestBase
         Assert.Equal(TagColor.Blue, (await Tags.UpdateAsync("Vlan 20", null, TagColor.Blue, Ct)).Tag.Color);
         Assert.Contains(await Tags.ListDefinitionsAsync(Ct), t => t.Name == "Vlan 20");
         Assert.Equal(1, (await Tags.DeleteAsync("Free", Ct)).DevicesChanged); // other tags as before
+
+        // A change of case only is no rename: the plugin's rules match the tag ignoring case.
+        var cased = await Tags.UpdateAsync("Vlan 20", "VLAN 20", TagColor.None, Ct);
+        Assert.Equal("VLAN 20", cased.Tag.Name);
+        Assert.Equal(["VLAN 20"], (await Devices.GetAsync(device.Id, Ct))!.Tags);
+    }
+
+    [Fact]
+    public async Task AProtectedTagOfAStoppedPluginIsRenamedAndDeletedButAGroupUserStillNeverAddsIt()
+    {
+        var mine = await AddDeviceAsync("ACCC8E000001", tags: ["Lobby", "Vlan 20", "Vlan 30"]);
+        var group = await SaveGroupAsync("Lobby", tags: [await TagIdAsync("Lobby")]);
+        var registry = Db.Get<ProtectedTagRegistry>();
+        registry.For("oadm.radius").Protect(["Vlan 20", "Vlan 30", "Vlan 40"], name => $"The tag {name} sets a VLAN.", name => $"change {name}");
+        Assert.NotNull(registry.ChangeRefusalFor("Vlan 20"));
+
+        // Stopped, turned off or the PRO license ended (the host stops the package): its rules can change nothing, so the
+        // tags are renamed and deleted (the rules match by name: the old name then matches no device).
+        registry.Detach("oadm.radius");
+        Assert.Null(registry.ChangeRefusalFor("Vlan 20"));
+        Assert.Equal("Vlan 21", (await Tags.UpdateAsync("Vlan 20", "Vlan 21", TagColor.None, Ct)).Tag.Name);
+        Assert.Equal(1, (await Tags.DeleteAsync("Vlan 30", Ct)).DevicesChanged);
+        Assert.Equal(["Lobby", "Vlan 21"], (await Devices.GetAsync(mine.Id, Ct))!.Tags);
+
+        // A group user still never adds or removes a protected name, also one made again after a delete.
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Group.Id), "operator", Ct);
+        var devices = await view.GetAsync([mine.Id], Ct);
+        var add = await Assert.ThrowsAsync<ProtectedTagException>(() => Tags.SetDeviceTagsAsync(devices, ["vlan 30"], [], Ct));
+        Assert.Equal("The tag Vlan 30 sets a VLAN.", add.Message);
+        await Assert.ThrowsAsync<ProtectedTagException>(() => Tags.SetDeviceTagsAsync(devices, ["Vlan 40"], [], Ct));
+        Assert.Equal(1, (await Tags.SetDeviceTagsAsync(devices, [], ["Vlan 21"], Ct)).DevicesChanged); // the new name is free
+
+        // Started again: renames and deletes are refused again.
+        registry.For("oadm.radius").Protect(["Vlan 30"], name => name, name => $"change {name}");
+        await Tags.CreateAsync("Vlan 30", TagColor.None, Ct);
+        var refused = await Assert.ThrowsAsync<ProtectedTagChangeException>(() => Tags.DeleteAsync("Vlan 30", Ct));
+        Assert.Equal("change Vlan 30", refused.Message);
     }
 
     [Fact]
