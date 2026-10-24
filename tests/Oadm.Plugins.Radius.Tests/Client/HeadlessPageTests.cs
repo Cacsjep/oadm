@@ -6,6 +6,7 @@ using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Client;
 using Oadm.Sdk.Certificates;
@@ -50,6 +51,61 @@ public sealed class HeadlessSessions
 public sealed class HeadlessPageTests
 {
     private static readonly string? OutDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+
+    [Fact]
+    public async Task Turned_off_the_page_shows_only_the_server_card_with_turn_on_which_waits_for_oadm_pro()
+    {
+        // docs/spec/pki.md "One plugin": the server is off by default and turned on on its own page; nothing else is read.
+        var server = new FakeRadiusBackend { Switch = new ServerSwitchState(false, false, true, ServerSwitchMethods.OffText) };
+        var ctx = new FakePageContext(server);
+        static Button? Button(Window window, string label) => window.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == label));
+        static int Cards(Window window) => window.GetVisualDescendants().OfType<Border>().Count(b => b.Classes.Contains("card") && b.IsEffectivelyVisible);
+
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var view = new RadiusView();
+            using var vm = new RadiusViewModel(ctx);
+            var window = Host(view, 1600, 900);
+            window.Show();
+            view.DataContext = vm; // after attaching: no live watch, deterministic content
+            await vm.LoadAllAsync(CancellationToken.None);
+            Pump();
+            Capture(window, "radius-page-off.png");
+            var off = (Cards(window), Texts(window), Button(window, "Turn on")?.IsEffectivelyEnabled, server.CountOf(RadiusMethods.GetState) + server.CountOf(RadiusMethods.ListLog));
+
+            server.Switch = server.Switch with { ProActive = false, StatusText = Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro };
+            await vm.Server.LoadAsync(CancellationToken.None);
+            Pump();
+            Capture(window, "radius-page-needs-pro.png");
+            var noPro = (Texts(window), Button(window, "Turn on")?.IsEffectivelyEnabled);
+
+            server.Switch = server.Switch with { ProActive = true, StatusText = ServerSwitchMethods.OffText };
+            await vm.Server.LoadAsync(CancellationToken.None);
+            await vm.Server.TurnOnCommand.ExecuteAsync(null);
+            await vm.LoadPageAsync(CancellationToken.None); // the live watch would read the page (not started here)
+            Pump();
+            Capture(window, "radius-page-turned-on.png");
+            var on = (Cards(window), Button(window, "Turn off") is not null, Button(window, "Turn on") is null);
+            window.Close();
+            return (off, noPro, on);
+        }, CancellationToken.None);
+
+        Assert.Equal(1, checks.off.Item1);
+        Assert.Contains("Server", checks.off.Item2);
+        Assert.Contains(ServerSwitchMethods.OffText, checks.off.Item2);
+        Assert.DoesNotContain("Switches", checks.off.Item2);
+        Assert.DoesNotContain("Sessions", checks.off.Item2);
+        Assert.True(checks.off.Item3);
+        Assert.Equal(0, checks.off.Item4); // nothing of the server is read while it is off
+
+        Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, checks.noPro.Item1);
+        Assert.False(checks.noPro.Item2);
+
+        Assert.Equal(6, checks.on.Item1); // Server, Trusted CAs, Switches, Policies, Sessions, Log
+        Assert.True(checks.on.Item2);
+        Assert.True(checks.on.Item3);
+    }
 
     [Fact]
     public async Task The_page_renders_every_card_with_demo_data()
@@ -406,6 +462,7 @@ public sealed class HeadlessPerfTests(Xunit.Abstractions.ITestOutputHelper outpu
             window.Show();
             view.DataContext = vm;
             var watch = System.Diagnostics.Stopwatch.StartNew();
+            await vm.Server.LoadAsync(CancellationToken.None); // the server runs: the cards show
             await vm.Sessions.LoadAsync(CancellationToken.None);
             HeadlessPageTests.Pump();
             var shown = watch.Elapsed;

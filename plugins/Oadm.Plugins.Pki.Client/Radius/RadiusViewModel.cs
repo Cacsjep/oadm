@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Pki.Client.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Network;
@@ -35,6 +36,9 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Policies = new PoliciesViewModel(ctx, () => MayManage, () => _ctx.Has(PermissionKeys.Of(PkiPluginId, PermissionKeys.Manage)));
         Sessions = new SessionsViewModel(ctx, _time);
         Log = new LogViewModel(ctx, () => MayManage, _time);
+        Server = new ServerSwitchViewModel(ctx, RadiusPluginInfo.PluginId, RadiusPluginInfo.DisplayName,
+            "Switches get no answer from OADM until it is on again: cameras on 802.1X ports may lose their network access.");
+        Server.RunningChanged += (_, _) => OnServerRunningChanged();
         Settings.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(SettingsViewModel.IsFormValid) or nameof(SettingsViewModel.FormError))
@@ -59,6 +63,9 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     public SessionsViewModel Sessions { get; }
 
     public LogViewModel Log { get; }
+
+    /// <summary>Turn on / Turn off of the server (PKI): the cards show only while it runs.</summary>
+    public ServerSwitchViewModel Server { get; }
 
     /// <summary>The Advanced dialog (the page view).</summary>
     public IAdvancedDialog? AdvancedDialog { get; set; }
@@ -157,8 +164,59 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Deactivate();
     }
 
-    /// <summary>Everything of the page: the cards (users with all devices), then the sessions and the log.</summary>
+    /// <summary>The switch first, then everything of the page while the server runs.</summary>
     internal async Task LoadAllAsync(CancellationToken ct)
+    {
+        _readingSwitch = true;
+        try
+        {
+            await Server.LoadAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // The page shows the reason instead of crashing.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            StatusText = ServerErrors.Message(ex);
+            StatusKind = ServiceStatus.Error;
+        }
+        finally
+        {
+            _readingSwitch = false;
+        }
+
+        if (Server.Running && !ct.IsCancellationRequested)
+        {
+            await LoadPageAsync(ct).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>The switch is being read by <see cref="LoadAllAsync"/>, which reads the page itself.</summary>
+    private bool _readingSwitch;
+
+    /// <summary>The server started (read the page) or stopped (the page shows only the switch; lists are read again later).</summary>
+    private void OnServerRunningChanged()
+    {
+        if (_readingSwitch)
+        {
+            return;
+        }
+
+        if (Server.Running && _active is { } active)
+        {
+            _ = LoadPageAsync(active.Token);
+        }
+        else if (!Server.Running)
+        {
+            Sessions.MarkStale();
+            Log.MarkStale();
+        }
+    }
+
+    /// <summary>Everything of the page: the cards (users with all devices), then the sessions and the log.</summary>
+    internal async Task LoadPageAsync(CancellationToken ct)
     {
         if (HasAllDevices)
         {
@@ -338,6 +396,11 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     internal void OnEvent(PluginEvent e)
     {
         ArgumentNullException.ThrowIfNull(e);
+        if (Server.OnEvent(e))
+        {
+            return; // turned on or off, or the license changed
+        }
+
         switch (e.Topic)
         {
             case RadiusTopics.State:

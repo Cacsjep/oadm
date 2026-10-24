@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Pki.Client.Servers;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
@@ -185,6 +186,8 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     public EstViewModel(ICorePluginClientContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        Server = new ServerSwitchViewModel(ctx, EstPluginInfo.PluginId, EstPluginInfo.DisplayName, "Cameras cannot get or renew certificates from OADM until it is on again.");
+        Server.RunningChanged += (_, _) => OnServerRunningChanged();
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayManage));
@@ -346,14 +349,73 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     /// <summary>Why Save is off, for its tooltip.</summary>
     public string? SaveTip => !IsFormValid ? FormError : Profiles.Select(p => p.FormError).FirstOrDefault(e => e is not null);
 
+    /// <summary>Turn on / Turn off of the server (PKI): the cards show only while it runs.</summary>
+    public ServerSwitchViewModel Server { get; }
+
     public void Activate()
     {
         Deactivate();
         _active = new CancellationTokenSource();
         var ct = _active.Token;
         IsLoading = true;
-        _ = LoadAsync(ct);
+        _ = LoadServerAsync(ct);
         _ = _ctx.RunAsync(OnEvent, null, ct);
+    }
+
+    /// <summary>The switch first, then the cards while the server runs.</summary>
+    internal async Task LoadServerAsync(CancellationToken ct)
+    {
+        _readingSwitch = true;
+        try
+        {
+            await Server.LoadAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // The page shows the reason instead of crashing.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            StatusText = ServerErrors.Message(ex);
+            StatusOk = false;
+        }
+        finally
+        {
+            _readingSwitch = false;
+        }
+
+        if (Server.Running && !ct.IsCancellationRequested)
+        {
+            await LoadAsync(ct).ConfigureAwait(true);
+        }
+        else
+        {
+            IsLoading = false;
+        }
+    }
+
+    /// <summary>The switch is being read by <see cref="LoadServerAsync"/>, which reads the cards itself.</summary>
+    private bool _readingSwitch;
+
+    /// <summary>The server started (read the cards) or stopped (the page shows only the switch).</summary>
+    private void OnServerRunningChanged()
+    {
+        if (_readingSwitch)
+        {
+            return;
+        }
+
+        if (Server.Running && _active is { } active)
+        {
+            IsLoading = true;
+            _ = LoadAsync(active.Token);
+        }
+        else if (!Server.Running)
+        {
+            ++_loadVersion; // a read still running no longer owns the overlay
+            IsLoading = false;
+        }
     }
 
     public void Deactivate()
@@ -616,6 +678,11 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
 
     private void OnEvent(PluginEvent e)
     {
+        if (Server.OnEvent(e))
+        {
+            return; // turned on or off, or the license changed
+        }
+
         switch (e.Topic)
         {
             case EstMethods.StateTopic:

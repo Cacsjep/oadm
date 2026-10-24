@@ -55,7 +55,7 @@ public sealed class PluginListTests
     {
         var api = Substitute.For<IOadmApi>();
         var list = new PluginPackageList { ServerId = "server" };
-        list.Packages.Add(new PluginPackageInfo { Id = "oadm.est", DisplayName = "EST server", Pro = true, Group = "Security" });
+        list.Packages.Add(new PluginPackageInfo { Id = "example.pro", DisplayName = "PRO sample", Pro = true, Group = "Security" });
         api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(list);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
         var vm = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Channels;
 
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Client;
 using Oadm.Sdk.Certificates;
@@ -187,8 +188,21 @@ internal sealed class FakeRadiusBackend
         return Answer(method, payload);
     }
 
+    /// <summary>Turn on / Turn off of the server (PKI): running unless a test says otherwise.</summary>
+    public ServerSwitchState Switch { get; set; } = new(true, true, true, string.Empty);
+
     private string? Answer(string method, string? payload)
     {
+        if (ServerSwitchMethods.IsSwitchMethod(method))
+        {
+            Switch = method switch
+            {
+                ServerSwitchMethods.TurnOn => Switch with { On = true, Running = Switch.ProActive, StatusText = Switch.ProActive ? string.Empty : Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro },
+                ServerSwitchMethods.TurnOff => Switch with { On = false, Running = false, StatusText = ServerSwitchMethods.OffText },
+                _ => Switch,
+            };
+            return ServerSwitchMethods.Serialize(Switch);
+        }
 
         object? answer = method switch
         {

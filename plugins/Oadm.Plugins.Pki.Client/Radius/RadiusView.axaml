@@ -3,6 +3,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.Radius.Client"
              xmlns:net="using:Oadm.Sdk.Network"
+             xmlns:srv="using:Oadm.Plugins.Pki.Client.Servers"
              x:Class="Oadm.Plugins.Radius.Client.RadiusView"
              x:DataType="vm:RadiusViewModel"
              ui:PageHeader.Subtitle="Switches ask OADM which cameras may use their ports.">
@@ -12,6 +13,16 @@
        in one row. -->
   <ScrollViewer HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
+      <!-- The server does not run (turned off, no OADM PRO, a start that failed): only the Server card with Turn on
+           (docs/spec/pki.md "One plugin"). -->
+      <Border Classes="card" HorizontalAlignment="Left" MinWidth="360" IsVisible="{Binding Server.ShowOffState}">
+        <StackPanel Classes="form">
+          <TextBlock Classes="cardTitle" Text="Server" />
+          <srv:ServerSwitchView DataContext="{Binding Server}" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Spacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding Server.Running}">
       <Panel IsVisible="{Binding HasAllDevices}">
         <Grid x:Name="CardColumns" ColumnDefinitions="*,16,*,16,1.6*,16,1.35*" RowDefinitions="Auto,Auto,Auto,Auto">
           <!-- ========== Server ========== -->
@@ -43,6 +54,8 @@
               <DockPanel>
                 <Button DockPanel.Dock="Right" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayManage}"
                         ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+                <!-- Turn off (for users who may change the server) between the status of the server and Save. -->
+                <srv:ServerSwitchView DockPanel.Dock="Right" DataContext="{Binding Server}" VerticalAlignment="Center" Margin="0,0,12,0" />
                 <ui:StatusChip HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Text="{Binding StatusText}" IsOk="{Binding StatusOk}"
                                IsWarning="{Binding StatusWarning}" IsError="{Binding StatusError}" MaxLines="2" />
               </DockPanel>
@@ -315,6 +328,7 @@
           </Grid>
         </Grid>
       </Border>
+      </StackPanel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

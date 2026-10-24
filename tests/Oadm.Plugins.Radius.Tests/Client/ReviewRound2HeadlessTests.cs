@@ -19,6 +19,7 @@ public sealed class ReviewRound2HeadlessTests
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
         {
             using var vm = new RadiusViewModel(ctx);
+            await vm.Server.LoadAsync(CancellationToken.None); // the server runs: the cards show
             await vm.LoadServerAsync(CancellationToken.None);
             var dialog = vm.NewAdvanced(server.State);
             var window = new AdvancedWindow();

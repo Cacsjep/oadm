@@ -393,6 +393,9 @@ public sealed class PluginHarness : IAsyncDisposable
         return harness;
     }
 
+    /// <summary>The server is turned on before the plugin starts (default; false: the stored choice stays as it is).</summary>
+    public bool TurnedOn { get; set; } = true;
+
     public async Task StartAsync(int workers = 4)
     {
         Plugin = new RadiusPlugin(host => host with
@@ -404,6 +407,11 @@ public sealed class PluginHarness : IAsyncDisposable
             Publisher = Publisher,
             Workers = workers,
         });
+        if (TurnedOn)
+        {
+            await Ctx.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<RadiusService>.SettingKey, "true", CancellationToken.None);
+        }
+
         await Plugin.StartAsync(Ctx, CancellationToken.None);
     }
 

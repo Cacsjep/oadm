@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Server;
@@ -37,6 +38,47 @@ public sealed class PluginTests
         Assert.Equal(["oadm.radius.authenticated", "oadm.radius.failed"], plugin.EventTypes.Select(t => t.Id));
         Assert.Equal([PermissionKeys.Manage], plugin.Permissions.Select(p => p.Key));
         Assert.Equal(typeof(Oadm.Plugins.Pki.PkiPlugin).Assembly, typeof(RadiusPlugin).Assembly);
+    }
+
+    [Fact]
+    public async Task OffByDefaultThePortStaysClosedUntilTurnOnAndTurnOffClosesIt()
+    {
+        // docs/spec/pki.md "One plugin": the server is off by default and runs (UDP 1812 open) only while turned on.
+        await using var harness = await PluginHarness.CreateAsync(h => h.TurnedOn = false);
+        var listeners = harness.Ctx.FakeNetwork.Listeners;
+
+        Assert.Null(harness.Plugin.Service);
+        Assert.Empty(listeners);
+        var off = ServerSwitchMethods.Deserialize(await harness.Ctx.InvokeAsync(harness.Plugin, harness.Admin, ServerSwitchMethods.Get, null));
+        Assert.Equal(new ServerSwitchState(false, false, true, ServerSwitchMethods.OffText), off);
+        await Assert.ThrowsAnyAsync<Exception>(() => harness.CallAsync<RadiusState>(RadiusMethods.GetState));
+
+        var on = ServerSwitchMethods.Deserialize(await harness.Ctx.InvokeAsync(harness.Plugin, harness.Admin, ServerSwitchMethods.TurnOn, null));
+
+        Assert.True(on.Running);
+        Assert.Equal(1812, Assert.Single(listeners, l => !l.IsDisposed).Port);
+        Assert.Equal("Running on port 1812", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
+
+        await harness.Ctx.InvokeAsync(harness.Plugin, harness.Admin, ServerSwitchMethods.TurnOff, null);
+
+        Assert.Null(harness.Plugin.Service);
+        Assert.All(listeners, l => Assert.True(l.IsDisposed));
+        Assert.Equal("false", await harness.Ctx.Settings.GetAsync(ServerSwitch<RadiusService>.SettingKey, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheSettingsOf41StayTheServersAndTheTakenOverChoiceStartsIt()
+    {
+        // Stored by 4.1 under the core plugin id oadm.radius; the host took the plugin's choice over as "serverOn".
+        await using var harness = await PluginHarness.CreateAsync(h =>
+        {
+            h.TurnedOn = false;
+            h.Ctx.Settings.SetAsync(RadiusStore.ConfigKey, RadiusJson.Serialize(new RadiusSettings { Port = 1813, LogKept = 2000 }), CancellationToken.None).GetAwaiter().GetResult();
+            h.Ctx.Settings.SetAsync("serverOn", "true", CancellationToken.None).GetAwaiter().GetResult();
+        });
+
+        Assert.Equal(1813, Assert.Single(harness.Ctx.FakeNetwork.Listeners).Port);
+        Assert.Equal(2000, (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).Settings.LogKept);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Eap;
 using Oadm.Plugins.Radius.Protocol.Radius;
@@ -269,10 +270,13 @@ public sealed class ServerTests
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var listener = harness.Listener;
         harness.Pro.Current = ProLicenseInfo.None;
 
-        Assert.Null((await harness.Switch().SendAsync([], null, TimeSpan.FromMilliseconds(200))).Answer);
-        Assert.Equal(RadiusTexts.NotPro, (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
+        // The license ran out: the server stops (its port closes) and the page says why; the choice stays on.
+        await Eventually.TrueAsync(() => harness.Plugin.Service is null && listener.IsDisposed, "the server stops without OADM PRO");
+        var state = ServerSwitchMethods.Deserialize(await harness.Ctx.InvokeAsync(harness.Plugin, harness.Admin, ServerSwitchMethods.Get, null));
+        Assert.Equal((true, false, false, ProLicenseTexts.NeedsPro), (state.On, state.Running, state.ProActive, state.StatusText));
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Server;
 using Oadm.Plugins.Shared;
@@ -8,10 +9,11 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Radius;
 
 /// <summary>
-/// Core plugin "802.1X server", an OADM PRO plugin (docs/spec/radius-server.md): OADM answers the switches as their RADIUS
+/// Core plugin "802.1X server" of the PKI package (docs/spec/radius-server.md): OADM answers the switches as their RADIUS
 /// server and authenticates the cameras on the switch ports with EAP-TLS. The protocol layer is in <c>Protocol/</c> (no
 /// sockets, no host), the server part in <c>Server/</c> (<see cref="RadiusService"/>), the page contract in <c>Api/</c>.
-/// The host runs it only while OADM PRO is active; the server checks the license again on every request.
+/// A PRO part of PKI (docs/spec/pki.md "One plugin"): the core plugin always runs, the server only while it is turned on and
+/// OADM PRO is active (<see cref="ServerSwitch{TService}"/>); the server checks the license again on every request.
 /// Events: "Device authenticated", "Authentication failed".
 /// </summary>
 public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
@@ -23,7 +25,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     public const string GetStateMethod = RadiusMethods.GetState;
 
     private readonly Func<RadiusHost, RadiusHost>? _customize;
-    private volatile RadiusService? _service;
+    private volatile ServerSwitch<RadiusService>? _server;
 
     public RadiusPlugin()
     {
@@ -48,8 +50,11 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];
 
-    /// <summary>The running server (null while stopped).</summary>
-    public RadiusService? Service => _service;
+    /// <summary>The running server (null while stopped, turned off or without OADM PRO).</summary>
+    public RadiusService? Service => _server?.Service;
+
+    /// <summary>Turn on / Turn off of the server (null while the core plugin is stopped).</summary>
+    public ServerSwitch<RadiusService>? Server => _server;
 
     public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
     [
@@ -77,33 +82,38 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
-        var host = new RadiusHost(
-            ctx.Settings,
-            ctx.Devices,
-            ctx.Network,
-            () => ctx.Services?.Find<IDeviceCertificateAuthority>(),
-            () => ctx.Pro?.IsActive == true)
+        var server = new ServerSwitch<RadiusService>(DisplayName, ctx.Settings, ctx.Pro, async token =>
         {
-            Sites = ctx.Sites,
-            Events = ctx.Events,
-            Records = ctx.Records ?? throw new InvalidOperationException("The 802.1X server needs OADM 4.1 or later."),
-            Publisher = ctx.EventPublisher,
-            Scopes = ctx.DeviceScopes,
-            ProtectedTags = ctx.ProtectedTags,
-            Secrets = ctx.Secrets,
-            Logger = ctx.Logger,
-        };
-        var service = new RadiusService(_customize?.Invoke(host) ?? host);
-        await service.StartAsync(ct).ConfigureAwait(false);
-        _service = service;
+            var host = new RadiusHost(
+                ctx.Settings,
+                ctx.Devices,
+                ctx.Network,
+                () => ctx.Services?.Find<IDeviceCertificateAuthority>(),
+                () => ctx.Pro?.IsActive == true)
+            {
+                Sites = ctx.Sites,
+                Events = ctx.Events,
+                Records = ctx.Records ?? throw new InvalidOperationException("The 802.1X server needs OADM 4.1 or later."),
+                Publisher = ctx.EventPublisher,
+                Scopes = ctx.DeviceScopes,
+                ProtectedTags = ctx.ProtectedTags,
+                Secrets = ctx.Secrets,
+                Logger = ctx.Logger,
+            };
+            var service = new RadiusService(_customize?.Invoke(host) ?? host);
+            await service.StartAsync(token).ConfigureAwait(false);
+            return service;
+        }, ctx.Events, ctx.Logger);
+        _server = server;
+        await server.StartAsync(ct).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
-        if (_service is { } service)
+        if (_server is { } server)
         {
-            _service = null;
-            await service.DisposeAsync().ConfigureAwait(false);
+            _server = null;
+            await server.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -113,7 +123,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     /// Reading is for everyone with the page; every change is Admin (permission "Change the 802.1X server"), audited. A new
     /// or changed revoke policy needs PKI's "Manage the certificate authority" too (checked with the call).
     /// </summary>
-    public UserRole RequiredRole(string method) => method is RadiusMethods.GetState or RadiusMethods.ListSwitches or RadiusMethods.GetPolicies
+    public UserRole RequiredRole(string method) => method is ServerSwitchMethods.Get or RadiusMethods.GetState or RadiusMethods.ListSwitches or RadiusMethods.GetPolicies
         or RadiusMethods.ListSessions or RadiusMethods.ListLog or RadiusMethods.GetLogCertificate or RadiusMethods.ListSites or RadiusMethods.GetTrustedCas
         ? UserRole.Operator
         : UserRole.Admin;
@@ -123,26 +133,38 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(PermissionKeys.Manage, "Change the 802.1X server", "Change the settings, the switches, the trusted CAs and the policies, and delete the log.") { OperatorDefault = false },
+        new(PermissionKeys.Manage, "Change the 802.1X server", "Turn the server on and off, change the settings, the switches, the trusted CAs and the policies, and delete the log.") { OperatorDefault = false },
     ];
 
     /// <summary>
-    /// The 802.1X server is server-wide (docs/spec/device-scope.md "Server-wide services"): the settings, Switches, Trusted
+    /// The 802.1X server is server-wide (docs/spec/device-scope.md "Server-wide services"): Turn on, Turn off, the settings, Switches, Trusted
     /// CAs, Policies and Delete all are for users with all devices; users limited to a group read the page with the Sessions
     /// and Log rows of their devices.
     /// </summary>
-    public bool RequiresAllDevices(string method) => method is RadiusMethods.SaveSettings or RadiusMethods.SaveSwitch or RadiusMethods.GenerateSecret
+    public bool RequiresAllDevices(string method) => ServerSwitchMethods.IsChange(method) || method is RadiusMethods.SaveSettings or RadiusMethods.SaveSwitch or RadiusMethods.GenerateSecret
         or RadiusMethods.DeleteSwitch or RadiusMethods.SaveTrustedCas or RadiusMethods.SavePolicies or RadiusMethods.CountRevocations or RadiusMethods.DeleteLog;
 
     /// <summary>The page backend with the user's call: rows of devices are filtered to the caller's devices.</summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        var service = _service ?? throw new InvalidOperationException(RadiusTexts.NotRunning);
         if (RequiresAllDevices(method) && !caller.HasAllDevices)
         {
             throw new DeviceAccessRefusedException(); // the host refuses these first; fail closed
         }
+
+        if (ServerSwitchMethods.IsSwitchMethod(method))
+        {
+            var server = _server ?? throw new InvalidOperationException(RadiusTexts.NotRunning);
+            return ServerSwitchMethods.Serialize(method switch
+            {
+                ServerSwitchMethods.TurnOn => await server.TurnOnAsync(ct).ConfigureAwait(false),
+                ServerSwitchMethods.TurnOff => await server.TurnOffAsync(ct).ConfigureAwait(false),
+                _ => server.State,
+            });
+        }
+
+        var service = Service ?? throw new InvalidOperationException(RadiusTexts.NotRunning);
 
         service.Viewers.Seen(caller);
         switch (method)

@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Pki.Client.Servers"
+             x:Class="Oadm.Plugins.Pki.Client.Servers.ServerSwitchView"
+             x:DataType="vm:ServerSwitchViewModel">
+  <!-- Turn on / Turn off of a server in PKI, the same on the 802.1X and EST server pages: the status (only while the server
+       does not run) directly left of the button it reports on, the error of a failed change below. Shared controls only. -->
+  <StackPanel Spacing="6">
+    <StackPanel Orientation="Horizontal" Spacing="12">
+      <ui:StatusChip VerticalAlignment="Center" Text="{Binding StatusText}" IsVisible="{Binding !Running}"
+                     IsWarning="{Binding NeedsPro}" IsError="{Binding Failed}" MaxLines="2" />
+      <Button Classes="primary" Command="{Binding TurnOnCommand}" IsVisible="{Binding ShowTurnOn}"
+              ToolTip.Tip="{Binding TurnOnTip}" ToolTip.ShowOnDisabled="True">
+        <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="Turn on" />
+      </Button>
+      <Button Classes="secondary" Command="{Binding TurnOffCommand}" IsVisible="{Binding ShowTurnOff}">
+        <ui:IconLabel Icon="{DynamicResource Icon.stop}" Text="Turn off" />
+      </Button>
+    </StackPanel>
+    <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+  </StackPanel>
+</UserControl>

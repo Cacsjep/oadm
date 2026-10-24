@@ -81,7 +81,7 @@ public static class EstTaskIds
     /// <summary>Profiles one camera holds at most.</summary>
     public const int MaxProfilesPerCamera = 2;
 
-    public const string NotRunning = "The EST server is not running. Turn it on on the Plugins page. Nothing was changed.";
+    public const string NotRunning = "The EST server is off. Turn it on on the EST server page. Nothing was changed.";
     public const string NoPro = "OADM PRO is not active. Nothing was changed.";
     public const string NoCa = "The PKI has no certificate authority. Create one on the PKI page. Nothing was changed.";
     public const string Dot1xSkipped = "IEEE 802.1X is on: the IEEE 802.1X profile was skipped, so the camera keeps the certificate it uses for network access.";
@@ -214,7 +214,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
         {
-            var est = Service ?? throw new InvalidOperationException(EstTaskIds.NotRunning);
+            var est = Service ?? throw new InvalidOperationException(ctx.Pro?.IsActive == true ? EstTaskIds.NotRunning : EstTaskIds.NoPro);
             if (!est.ProActive)
             {
                 throw new InvalidOperationException(EstTaskIds.NoPro);

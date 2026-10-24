@@ -27,6 +27,7 @@ public sealed class ServerLayoutTests
             var window = HeadlessPageTests.Host(view, width, 1500);
             window.Show();
             view.DataContext = vm;
+            await vm.Server.LoadAsync(CancellationToken.None); // the server runs: the cards show
             await vm.LoadServerAsync(CancellationToken.None);
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, $"radius-page-{columns}-columns.png");
@@ -64,6 +65,7 @@ public sealed class ServerLayoutTests
             var window = HeadlessPageTests.Host(view, 1600, 900);
             window.Show();
             view.DataContext = vm;
+            await vm.Server.LoadAsync(CancellationToken.None); // the server runs: the cards show
             await vm.Log.LoadAsync(CancellationToken.None);
             HeadlessPageTests.Pump();
             vm.Log.Selected = vm.Log.Rows[0];

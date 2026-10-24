@@ -12,6 +12,7 @@ using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Licensing;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
 
@@ -28,6 +29,7 @@ public sealed class PageTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _core.FakeServices.Offer<IDeviceCertificateAuthority>(_ca);
+        await _core.Settings.SetAsync(Oadm.Plugins.Pki.Servers.ServerSwitch<EstService>.SettingKey, "true", CancellationToken.None); // turned on
         await _plugin.StartAsync(_core, CancellationToken.None);
         _ctx = new PageContext(_plugin, _core);
     }
@@ -310,6 +312,67 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Turned_off_the_page_shows_only_general_with_turn_on_which_waits_for_oadm_pro()
+    {
+        // docs/spec/pki.md "One plugin": the server is off by default and turned on on its own page.
+        await _plugin.InvokeAsync(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.TurnOff, null, CancellationToken.None);
+        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var pro = (FakeProLicense)_core.Pro!;
+        static List<string?> Texts(Window window) =>
+            [.. window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text)];
+        static Button? Button(Window window, string label) => window.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == label));
+
+        var session = HeadlessUnitTestSession.StartNew(typeof(HeadlessEntry));
+        var checks = await session.Dispatch(async () =>
+        {
+            var view = new EstView();
+            using var vm = new EstViewModel(_ctx);
+            var window = Host(view);
+            window.Show();
+            view.DataContext = vm; // after attaching: no live watch, deterministic content
+            await vm.LoadServerAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, "est-page-off.png");
+            var off = (Texts(window), Button(window, "Turn on")?.IsEffectivelyEnabled, Button(window, "Turn off") is null, vm.IsLoading);
+
+            pro.Current = ProLicenseInfo.None;
+            await vm.Server.LoadAsync(CancellationToken.None);
+            Pump();
+            Capture(window, outDir, "est-page-needs-pro.png");
+            var turnOn = Button(window, "Turn on");
+            var noPro = (Texts(window), turnOn?.IsEffectivelyEnabled, ToolTip.GetTip(turnOn!) as string);
+
+            pro.Current = FakeProLicense.ActivePro().Current;
+            await vm.Server.LoadAsync(CancellationToken.None);
+            await vm.Server.TurnOnCommand.ExecuteAsync(null);
+            await vm.LoadAsync(CancellationToken.None); // the live watch would read the cards (not started here)
+            Pump();
+            var on = (Texts(window), Button(window, "Turn off") is not null, Button(window, "Turn on") is null);
+            window.Close();
+            return (off, noPro, on);
+        }, CancellationToken.None);
+        GC.KeepAlive(session);
+
+        Assert.Contains("General", checks.off.Item1);
+        Assert.Contains(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.OffText, checks.off.Item1);
+        Assert.DoesNotContain("Profiles", checks.off.Item1);
+        Assert.DoesNotContain("Enrollments", checks.off.Item1);
+        Assert.True(checks.off.Item2);
+        Assert.True(checks.off.Item3);
+        Assert.False(checks.off.Item4);
+
+        Assert.Contains(ProLicenseTexts.NeedsPro, checks.noPro.Item1);
+        Assert.False(checks.noPro.Item2); // disabled without OADM PRO, the tooltip says why
+        Assert.Equal(ProLicenseTexts.NeedsPro, checks.noPro.Item3);
+
+        Assert.Contains("Profiles", checks.on.Item1);
+        Assert.Contains("Enrollments", checks.on.Item1);
+        Assert.True(checks.on.Item2);
+        Assert.True(checks.on.Item3);
+    }
+
+    [Fact]
     public async Task Page_renders()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
@@ -345,7 +408,7 @@ public sealed class PageTests : IAsyncLifetime
             var window = Host(view);
             window.Show();
             view.DataContext = vm; // after attaching: no live watch, deterministic content
-            await vm.LoadAsync(CancellationToken.None);
+            await vm.LoadServerAsync(CancellationToken.None); // the switch, then the cards
             Pump();
             Capture(window, outDir, "est-page.png");
 
