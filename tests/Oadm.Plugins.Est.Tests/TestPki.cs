@@ -69,9 +69,28 @@ internal static class TestPki
 }
 
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
-internal sealed class FakeAuthority : IDeviceCertificateAuthority, IDisposable
+internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, IDisposable
 {
     private readonly X509Certificate2 _ca = TestPki.Root("OADM Test CA");
+
+    /// <summary>What EST told the store: ("delivered" | "not delivered" | "signed in", serial), in order.</summary>
+    public List<(string What, string Serial)> Deliveries { get; } = [];
+
+    public Task DeliveredAsync(string serialNumber, CancellationToken ct) => Note("delivered", serialNumber);
+
+    public Task NotDeliveredAsync(string serialNumber, CancellationToken ct) => Note("not delivered", serialNumber);
+
+    public Task SignedInAsync(string serialNumber, CancellationToken ct) => Note("signed in", serialNumber);
+
+    private Task Note(string what, string serial)
+    {
+        lock (Deliveries)
+        {
+            Deliveries.Add((what, CertificateSerials.Normalize(serial)));
+        }
+
+        return Task.CompletedTask;
+    }
 
     public bool IsReady { get; set; } = true;
 

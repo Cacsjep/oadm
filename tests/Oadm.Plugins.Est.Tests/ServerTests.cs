@@ -67,6 +67,28 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_written_answer_tells_pki_the_camera_received_its_certificate_and_a_refusal_tells_nothing()
+    {
+        _policies = await TestPolicies.EstStoreAsync();
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+
+        var enrolled = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+        Assert.Equal(200, enrolled.Status);
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
+
+        // Written: PKI makes it current and revokes the camera's previous one (docs/spec/pki.md "Current and pending").
+        await Eventually.TrueAsync(() => { lock (_ca.Deliveries) { return _ca.Deliveries.Count == 1; } }, "the delivery");
+        Assert.Equal(("delivered", CertificateSerials.Normalize(issued.SerialNumber)), _ca.Deliveries[0]);
+
+        Assert.Equal(404, (await SendAsync("POST", "/.well-known/est/nosuch/simpleenroll", _deviceId, Body(csr))).Status);
+        lock (_ca.Deliveries)
+        {
+            Assert.Single(_ca.Deliveries); // no certificate, nothing to tell
+        }
+    }
+
+    [Fact]
     public async Task Enrollment_and_renewal_issue_with_the_valid_days_of_the_profiles_policy()
     {
         _policies = await TestPolicies.EstStoreAsync();

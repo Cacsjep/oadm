@@ -868,7 +868,22 @@ public sealed partial class EstService : IAsyncDisposable
                 // A refusal of who the camera is ends the connection: nobody keeps a slot without a valid identity.
                 var close = request.CloseAfter || count == MaxRequestsPerConnection || result.Response.Status is 401 or 403
                     || identity.Certificate is null; // no identity: one answer (the CA), never a slot held
-                await EstHttp.WriteAsync(tls, result.Response, close, ct).ConfigureAwait(false);
+                try
+                {
+                    await EstHttp.WriteAsync(tls, result.Response, close, ct).ConfigureAwait(false);
+                }
+                catch (Exception) when (result.Issued is { } unsent)
+                {
+                    await NotDeliveredAsync(unsent.SerialNumber).ConfigureAwait(false); // the camera never got it
+                    throw;
+                }
+
+                if (result.Issued is { } delivered && _host.Authority() is Oadm.Plugins.Pki.Ca.ICertificateDelivery pki)
+                {
+                    // The answer is written (handed to TLS): docs/spec/pki.md "Current and pending".
+                    await pki.DeliveredAsync(delivered.SerialNumber, CancellationToken.None).ConfigureAwait(false);
+                }
+
                 Record(result, connection);
                 if (close)
                 {
@@ -936,6 +951,23 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         return chain;
+    }
+
+    /// <summary>The answer with a new certificate could not be written: PKI revokes it as unused (best effort).</summary>
+    private async Task NotDeliveredAsync(string serialNumber)
+    {
+        try
+        {
+            if (_host.Authority() is Oadm.Plugins.Pki.Ca.ICertificateDelivery pki)
+            {
+                await pki.NotDeliveredAsync(serialNumber, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+#pragma warning disable CA1031 // The connection's own error is what ends it; PKI revokes stale ones at its next prune.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
     }
 
     private void Record(EstResult result, IIncomingConnection connection)

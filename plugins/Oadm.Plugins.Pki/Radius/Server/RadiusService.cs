@@ -557,6 +557,16 @@ public sealed partial class RadiusService : IAsyncDisposable
             }, leaf);
             rows.Add(row);
             Fire(snapshot, session.SwitchName, tag?.DeviceId);
+            if (authenticated && tag?.CertificateSerial is { } signedIn && _host.Authority() is Oadm.Plugins.Pki.Ca.ICertificateDelivery pki)
+            {
+                // The camera uses this certificate: a pending IEEE 802.1X certificate (EST) becomes current (docs/spec/pki.md).
+                var confirm = pki.SignedInAsync(signedIn, _cts.Token); // one lookup when nothing is pending
+                if (!confirm.IsCompleted)
+                {
+                    Track(confirm.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default));
+                }
+            }
+
             if (!_logger.IsEnabled(LogLevel.Information))
             {
                 continue;
