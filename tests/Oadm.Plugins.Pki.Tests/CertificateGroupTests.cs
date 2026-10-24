@@ -188,7 +188,7 @@ public sealed class CertificateGroupTests
         // Install in trusted root store: the OADM CA's row says where it is trusted now.
         await vm.InstallTrustCommand.ExecuteAsync(null);
         var states = vm.Authorities.Rows.Single(r => r.IsOadmCa).MoreStates;
-        Assert.Contains(states, s => s.Text == "Trusted here" && s.IsOk);
+        Assert.Contains(states, s => s.Text == "OS root store: client" && s.IsOk && s.Tip == Oadm.Plugins.Pki.Client.PkiViewModel.TrustedHereTip);
         Assert.All(vm.Authorities.Rows.Where(r => !r.IsOadmCa), r => Assert.Empty(r.MoreStates));
         Assert.All(vm.Certificates.Rows, r => Assert.Empty(r.MoreStates));
     }

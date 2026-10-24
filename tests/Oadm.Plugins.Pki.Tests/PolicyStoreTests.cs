@@ -54,7 +54,9 @@ public sealed class PolicyStoreTests
         Assert.Equal(new PolicyFieldError(PolicyFields.Days, PolicyTexts.DaysRange), await RefusedAsync(store, Expiry("Long", 366, new PolicyDevices { ThisServer = true })));
         Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.ChooseDevices), await RefusedAsync(store, Vlan("None", 12, new PolicyDevices())));
         Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.RevokeNoTags),
-            await RefusedAsync(store, new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = new PolicyDevices { Tags = ["Lost"] } }));
+            await RefusedAsync(store, new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Tags = ["Lost"] } }));
+        Assert.Null(await RefusedAsync(store, new PkiPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Lost"] } })); // Block alone: tags too
+        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.ChooseKind), await RefusedAsync(store, new PkiPolicy { Name = "Old", Kind = PolicyKinds.LegacyRevoke, Devices = new PolicyDevices { ThisServer = true } }));
         Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.SiteGone), await RefusedAsync(store, Vlan("Gone", 13, new PolicyDevices { SiteIds = [Guid.NewGuid()] })));
         Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.ChooseKind), await RefusedAsync(store, new PkiPolicy { Name = "What", Kind = "nope" }));
         Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.KindKept), await RefusedAsync(store, lobby with { Kind = PolicyKinds.Block }));
@@ -118,8 +120,8 @@ public sealed class PolicyStoreTests
             await RefusedAsync(store, Expiry("All devices", 30, PolicyDevices.Everything)));
         Assert.Null(await RefusedAsync(store, new PkiPolicy { Name = "Lobby", Kind = PolicyKinds.Block, Devices = PolicyDevices.Everything })); // Block may hold what VLAN holds
         Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.RevokeNoAll),
-            await RefusedAsync(store, new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = PolicyDevices.Everything }));
-        Assert.False(PolicyKinds.AllowsAllDevices(PolicyKinds.Revoke));
+            await RefusedAsync(store, new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = PolicyDevices.Everything }));
+        Assert.True(PolicyKinds.AllowsAllDevices(PolicyKinds.Block)); // a Block that also revokes never
     }
 
     [Fact]
@@ -322,7 +324,7 @@ public sealed class PolicyStoreTests
         var current = await RevocationTests.SignAsync(authority, device.Id, device.Serial, DeviceCertificateUse.Client);
         var https = await RevocationTests.SignAsync(authority, device.Id, device.Serial);
         var others = await RevocationTests.SignAsync(authority, other.Id, other.Serial, DeviceCertificateUse.Client);
-        var policy = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Revoke, Devices = new PolicyDevices { Serials = [device.Serial] } };
+        var policy = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Serials = [device.Serial] } };
 
         Assert.Equal(1, (await pki.InvokeAsync<PolicyRevocationCount>(PolicyMethods.CountRevocations, policy.Devices)).Count);
         var reply = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy);

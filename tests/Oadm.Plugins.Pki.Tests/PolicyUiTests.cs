@@ -43,7 +43,7 @@ public sealed class PolicyUiTests
         // The rows of the page carry the flag.
         var rows = store.Rows([]);
         Assert.True(rows.Single(r => r.Policy.Id == https.Id).IsSystem);
-        Assert.All(rows.Where(r => r.Policy.Kind == PolicyKinds.ServerCertificate), r => Assert.True(r.IsSystem));
+        Assert.All(rows.Where(r => r.Policy.Kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer), r => Assert.True(r.IsSystem));
     }
 
     [Fact]

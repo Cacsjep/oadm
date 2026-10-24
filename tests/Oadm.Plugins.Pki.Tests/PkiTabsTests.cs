@@ -171,7 +171,7 @@ public sealed class PkiTabsTests
         Assert.True(checks.lists.NoCaRows);
         Assert.Same(checks.Generate, checks.toolbar.NewCa);
         Assert.False(checks.toolbar.NewCaPrimary);
-        Assert.Equal([("Own CA with its key", (System.Windows.Input.ICommand)checks.ImportOwn), ("CA certificate only", checks.ImportAuthority)], checks.toolbar.ImportCa);
+        Assert.Equal([("CA certificate", (System.Windows.Input.ICommand)checks.ImportAuthority), ("CA with its key", checks.ImportOwn)], checks.toolbar.ImportCa);
         Assert.Same(checks.Create, checks.toolbar.Create);
         Assert.True(checks.toolbar.CreatePrimary);
         Assert.Same(checks.Sign, checks.toolbar.Sign);
@@ -185,6 +185,6 @@ public sealed class PkiTabsTests
         Assert.Equal(["View", "Export", "-", "Revoke (red)", "Revoke all of this device (red)"], checks.links.Device);
         Assert.True(checks.enabled);
         Assert.True(checks.red);
-        Assert.Contains("Trusted here", checks.texts); // the OADM CA's trust as a badge next to its type
+        Assert.Contains("OS root store: client", checks.texts); // the OADM CA's trust as a badge next to its type
     }
 }

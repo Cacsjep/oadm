@@ -41,23 +41,25 @@ public sealed class PolicyPageTests
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["Issuing", "Certificates", "802.1X", "EST", "Revoke"], PoliciesViewModel.GroupLabels);
-        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "All devices", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
+        // Decision 2026-10-25: no Revoke group (Revoke is part of Block), the servers' certificates in their server policies.
+        Assert.Equal(["Issuing", "Certificates", "802.1X", "EST"], PoliciesViewModel.GroupLabels);
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "All devices", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room", "EST server"], card.Rows.Select(r => r.Name));
         Assert.Equal(
-            ["HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "Expiry warning", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
+            ["HTTPS certificate", "IEEE 802.1X certificate", "Expiry warning", "802.1X server", "802.1X trusted CA", "802.1X trusted CA", "VLAN", "Block", "EST server"],
             card.Rows.Select(r => r.Kind));
-        Assert.Equal(["Issuing", "Issuing", "Issuing", "Issuing", "Certificates", "802.1X", "802.1X", "802.1X", "802.1X", "802.1X"], card.Rows.Select(r => r.GroupLabel));
+        Assert.Equal(["Issuing", "Issuing", "Certificates", "802.1X", "802.1X", "802.1X", "802.1X", "802.1X", "EST"], card.Rows.Select(r => r.GroupLabel));
         Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", card.Rows[0].Summary); // the defaults of a new server
-        Assert.Equal("The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends.", card.Rows[2].Summary);
-        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[3].Summary);
-        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[4].Summary);
-        Assert.Equal("The 802.1X server accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.", card.Rows[5].Summary);
-        Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[6].Summary); // the CA's name in PKI
-        Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[8].Summary);
-        Assert.Equal(["-", "-", "-", "-", "All devices", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
+        Assert.Equal("Certificates with 30 days or less left show a warning and raise Certificate expires soon.", card.Rows[2].Summary);
+        Assert.Equal(
+            "The 802.1X server uses a certificate from OADM Root CA SERVER01, valid 365 days, with an ECC key, renewed 30 days before it ends. It accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and lets the switch decide when cameras sign in again.",
+            card.Rows[3].Summary);
+        Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA SERVER01.", card.Rows[4].Summary); // the CA's name in PKI
+        Assert.Equal("The 802.1X server puts these devices in VLAN 30.", card.Rows[6].Summary);
+        Assert.Equal("The EST server uses a certificate from OADM Root CA SERVER01, valid 90 days, with an ECC key, renewed 30 days before it ends.", card.Rows[8].Summary);
+        Assert.Equal(["-", "-", "All devices", "-", "-", "-", "This server, except 1", "1 device", "-"], card.Rows.Select(r => r.Devices));
 
-        // System policies (OADM needs them, no Delete): every Server certificate policy and the first of the other kinds that have one.
-        Assert.Equal(["System", "System", "System", "System", "System", "System", "User", "User", "User", "User"], card.Rows.Select(r => r.Origin));
+        // System policies (OADM needs them, no Delete): the first of each kind that has one (the server policies among them).
+        Assert.Equal(["System", "System", "System", "System", "User", "User", "User", "User", "System"], card.Rows.Select(r => r.Origin));
         Assert.All(card.Rows, r => Assert.Equal(!r.IsSystem, r.CanDelete));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
@@ -143,8 +145,10 @@ public sealed class PolicyPageTests
         Assert.False(await editor.SaveAsync());
         Assert.Equal("Everyone includes every device, also those of Building B.", editor.ErrorOf(nameof(PolicyEditorViewModel.Scope)));
 
-        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Revoke);
-        Assert.False(editor.OffersAllDevices); // Revoke: devices and sites only
+        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Block);
+        Assert.True(editor.OffersAllDevices); // Block alone may hold every device
+        editor.AlsoRevoke = true;
+        Assert.False(editor.OffersAllDevices); // also revoking: devices and sites only
         Assert.True(editor.ShowsPicker);
 
         var expiry = card.NewEditor(card.Rows.Single(r => r.Kind == "Expiry warning").Source);
@@ -236,7 +240,9 @@ public sealed class PolicyPageTests
         var card = new PoliciesViewModel(ctx);
         await card.LoadAsync(CancellationToken.None);
         var editor = card.NewEditor(null);
-        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Revoke);
+        editor.Kind = editor.KindChoices.Single(k => k.Value == PolicyKinds.Block);
+        Assert.True(editor.IsBlock);
+        editor.AlsoRevoke = true;
         editor.Name = "Stolen";
         editor.Picker.Tags.Single(t => t.Name == "PTZ").IsChecked = true;
         Assert.Equal(PolicyTexts.RevokeNoTags, editor.Picker.ErrorText);
@@ -253,7 +259,9 @@ public sealed class PolicyPageTests
         Assert.True(await editor.SaveAsync());
 
         Assert.Equal("Saving revokes 1 IEEE 802.1X certificate of these devices, and every new one while the policy exists. This cannot be undone.", question);
-        Assert.Contains(card.Rows, r => r.Name == "Stolen" && r.Group == PolicyGroups.Revoke);
+        var stolen = Assert.Single(card.Rows, r => r.Name == "Stolen");
+        Assert.Equal((PolicyGroups.Dot1x, "Block", true), (stolen.Group, stolen.Kind, stolen.Source.AlsoRevoke));
+        Assert.Equal("The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too.", stolen.Summary);
         Assert.NotEmpty(pki.Service.Issued.Revocations);
     }
 }
@@ -409,6 +417,18 @@ public sealed class PolicyHeadlessTests
             var expiryPicker = expiryWindow.IsPickerVisible;
             expiryWindow.Close();
 
+            // Block with Also revoke (decision 2026-10-25): the check box, then the picker without All devices.
+            var block = card.NewEditor(card.Rows.Single(r => r.Name == "Storage room").Source);
+            var blockWindow = PolicyFormView.CreateWindow(block);
+            Oadm.Client.App.ApplyCrispText(blockWindow);
+            blockWindow.Show();
+            block.AlsoRevoke = true;
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(blockWindow, outDir, "pki-policy-block.png");
+            var blockTexts = Texts(blockWindow);
+            var blockPicker = blockWindow.IsPickerVisible;
+            blockWindow.Close();
+
             var question = new MessageWindow { Heading = "Add policy", Message = "Saving revokes 7 IEEE 802.1X certificates of these devices, and every new one while the policy exists. This cannot be undone.", ConfirmText = "Revoke", CancelText = "Cancel", IsDanger = true };
             Oadm.Client.App.ApplyCrispText(question);
             question.Show();
@@ -416,8 +436,14 @@ public sealed class PolicyHeadlessTests
             HeadlessPageTests.Capture(question, outDir, "pki-policy-revoke-question.png");
             var red = question.ConfirmButton.Classes.Contains("danger");
             question.Close();
-            return (vlanTexts, vlanPicker, allowTexts, allowPicker, serverTexts, expiryTexts, expiryPicker, red);
+            return (vlanTexts, vlanPicker, allowTexts, allowPicker, serverTexts, expiryTexts, expiryPicker, red, blockTexts, blockPicker);
         }, CancellationToken.None);
+
+        Assert.Contains(PolicyTexts.AlsoRevoke, checks.blockTexts);
+        Assert.DoesNotContain(PolicyTexts.AllDevices, checks.blockTexts); // also revoking: devices and sites only
+        Assert.True(checks.blockPicker);
+        Assert.Contains("Issued by", checks.serverTexts); // the 802.1X server policy holds its certificate
+        Assert.Contains("802.1X trusted CA", checks.allowTexts);
 
         Assert.True(checks.vlanPicker);
         Assert.Contains("Edit Building B", checks.vlanTexts);

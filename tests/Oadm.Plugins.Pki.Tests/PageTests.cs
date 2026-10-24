@@ -234,10 +234,11 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task Import_shows_server_errors_under_the_fields_then_confirms_and_imports()
+    public async Task Import_with_its_key_shows_server_errors_under_the_fields_then_adds_the_ca()
     {
         using var vm = CreateViewModel();
         await vm.LoadAsync();
+        var oadm = vm.CaName;
         using var rsa = RSA.Create(2048);
         using var root = TestCa.Root("Customer Root CA", rsa: rsa);
 
@@ -266,10 +267,13 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         };
         await vm.ImportCommand.ExecuteAsync(null);
 
-        Assert.Equal("Replace the CA?", Assert.Single(_dialogs.Confirmations).Message);
+        // Decision 2026-10-25: the CA is added to the list and can issue; the OADM CA stays, so nothing is asked.
+        Assert.Empty(_dialogs.Confirmations);
         Assert.True(_dialogs.Last!.Completed);
-        Assert.Equal("Customer Root CA", vm.CaName);
-        Assert.Equal("Imported", vm.CaSourceText);
+        Assert.Equal((oadm, "Generated"), (vm.CaName, vm.CaSourceText));
+        var imported = Assert.Single(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
+        Assert.Equal("Customer Root CA", imported.Name);
+        Assert.Equal(["Root CA", "Imported", "Can issue"], imported.Badges);
     }
 
     [Fact]
@@ -433,7 +437,7 @@ public sealed class HeadlessPageTests
                 var firstSummary = window.GetVisualDescendants().OfType<TextBlock>().Any(t => (t.Text ?? "").StartsWith("Issued:", StringComparison.Ordinal));
 
                 // Imported intermediate, previous CA, imported RADIUS CA with a custom identity.
-                await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null, true));
+                await pki.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(pfx), "acme.pfx", "secret", null, null));
                 var dot1x = pki.Policies.FirstOf(Policies.PolicyKinds.Dot1xCertificate)!;
                 await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, dot1x with
                 {
@@ -442,6 +446,7 @@ public sealed class HeadlessPageTests
                 using var vm2 = new PkiViewModel(ctx, new FakeClientTrust(), new PkiClientSettingsStore(settingsFile));
                 view.DataContext = vm2;
                 await vm2.LoadAsync();
+                await vm2.Authorities.LoadAsync();
                 Pump();
                 Capture(window, outDir, "pki-page-imported-intermediate.png");
                 window.Close();
@@ -484,13 +489,16 @@ public sealed class HeadlessPageTests
                 var backupError = backupVm.ErrorOf(nameof(BackupViewModel.ConfirmPassword));
                 backup.Close();
 
-                return (firstSummary, vm2.HasChain, vm2.ChainText, HasPreviousCas: vm2.PreviousCas.Count > 0, keyPasswordError, backupError);
+                var importedRow = vm2.Authorities.Rows.FirstOrDefault(r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
+                return (firstSummary, vm2.HasChain, HasPreviousCas: vm2.PreviousCas.Count > 0, Imported: importedRow?.Badges, ImportedIssuer: importedRow?.Issuer, keyPasswordError, backupError);
             }, CancellationToken.None);
 
+            // The intermediate with its key is a CA of the list that can issue; the OADM CA stays as it was.
             Assert.False(checks.firstSummary);
-            Assert.True(checks.HasChain);
-            Assert.Equal("Issued by Acme Root CA", checks.ChainText);
-            Assert.True(checks.HasPreviousCas);
+            Assert.False(checks.HasChain);
+            Assert.False(checks.HasPreviousCas);
+            Assert.Equal(["Intermediate CA", "Imported", "Can issue"], checks.Imported);
+            Assert.Equal("Acme Root CA", checks.ImportedIssuer);
             Assert.Equal(CaImporter.WrongKeyPassword, checks.keyPasswordError);
             Assert.Equal("The passwords do not match.", checks.backupError);
         }

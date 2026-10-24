@@ -347,7 +347,7 @@ public sealed class ServerTests
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         Assert.Equal(1, harness.Ca.SignCount);
         await harness.Policies.ConvertOnceAsync(Oadm.Plugins.Pki.PkiService.IssuingOwner, _ => Task.FromResult(Oadm.Plugins.Pki.PkiService.ConvertIssuing(new Oadm.Plugins.Pki.PkiConfig(), usedBefore: false)), CancellationToken.None);
-        var policy = harness.Policies.ServerCertificateFor(PolicyServers.Dot1x)!;
+        var policy = harness.Policies.ServerPolicy!; // the 802.1X server policy holds its certificate (decision 2026-10-25)
         await harness.SavePolicyAsync(policy with { ValidDays = 100 });
 
         // Other days alone make no new certificate.

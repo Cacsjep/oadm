@@ -126,7 +126,7 @@ public sealed class AuthorityTests
         ca.SetUsedBy("oadm.radius", "802.1X server", [id, CertificateAuthorityInfo.OadmId]);
         ca.SetUsedBy("oadm.est", "EST server", [CertificateAuthorityInfo.OadmId]);
         var state = await pki.StateAsync();
-        Assert.Equal(["Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", "802.1X server", "EST server"],
+        Assert.Equal(["Issuing: HTTPS, IEEE 802.1X, EST server", "802.1X server", "EST server"],
             state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
         Assert.Equal(["802.1X server"], state.Authorities.Single(a => a.Id == id).UsedBy);
         Assert.Empty(state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.AxisDeviceIdId).UsedBy);
@@ -208,8 +208,16 @@ public sealed class AuthorityTests
             IssuedCertificateRow[] Cas() => [.. vm.Authorities.Rows.Where(r => r.AuthorityKind is not null)];
             Assert.Equal(["OADM CA", "Axis device ID"], Cas().Select(r => r.Badges[1]).Distinct());
             // Used by: the issuing policies name the OADM CA (they issue with it); the Axis device ID is used by nothing yet.
-            Assert.Equal("Issuing: HTTPS, IEEE 802.1X, 802.1X server, EST server", Cas()[0].UsedBy); // one prefix per group
+            Assert.Equal("Issuing: HTTPS, IEEE 802.1X, EST server", Cas()[0].UsedBy); // one prefix per group
             Assert.All(Cas().Skip(1), row => Assert.Equal("-", row.UsedBy));
+
+            // Used in (decision 2026-10-25): the names of the policies that use the CA, the first as a badge and "+N", every name as tooltip.
+            Assert.True(vm.Authorities.ShowsUsedIn);
+            Assert.False(vm.Certificates.ShowsUsedIn);
+            Assert.Equal(["HTTPS", "+2"], Cas()[0].UsedIn);
+            Assert.Equal(string.Join(Environment.NewLine, "HTTPS", "IEEE 802.1X", "EST server"), Cas()[0].UsedInTip);
+            Assert.All(Cas().Skip(1), row => Assert.Empty(row.UsedIn)); // no policy: nothing
+            Assert.All(Cas().Skip(1), row => Assert.Null(row.UsedInTip));
             Assert.All(Cas(), row => Assert.False(row.IsRemovableCa));
 
             // View: the shared certificate window with the CA.

@@ -126,8 +126,8 @@ public sealed class PolicyTests
         var twoYears = await TestPolicies.AddAsync(store, new PkiPolicy { Name = "HTTPS 2 years", Kind = PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 730, Key = PolicyKeys.Rsa });
         var dot1x = store.FirstOf(PolicyKinds.Dot1xCertificate)!;
 
-        Assert.Equal(new ProfileIssuing(730, ProfileKey.Rsa, "HTTPS 2 years"), EstPolicies.IssuingOf(new EstProfile("https", ProfileUse.Https) { PolicyId = twoYears.Id }, store));
-        Assert.Equal(new ProfileIssuing(730, ProfileKey.Rsa, "HTTPS 2 years"), EstPolicies.IssuingOf(new EstProfile("rtsps", ProfileUse.Rtsps) { PolicyId = twoYears.Id }, store));
+        Assert.Equal(new ProfileIssuing(730, ProfileKey.Rsa, "HTTPS 2 years", "oadm"), EstPolicies.IssuingOf(new EstProfile("https", ProfileUse.Https) { PolicyId = twoYears.Id }, store));
+        Assert.Equal(new ProfileIssuing(730, ProfileKey.Rsa, "HTTPS 2 years", "oadm"), EstPolicies.IssuingOf(new EstProfile("rtsps", ProfileUse.Rtsps) { PolicyId = twoYears.Id }, store));
         Assert.Equal("IEEE 802.1X", EstPolicies.IssuingOf(new EstProfile("mqtt", ProfileUse.Mqtt) { PolicyId = dot1x.Id }, store)!.PolicyName);
         Assert.Null(EstPolicies.IssuingOf(new EstProfile("https", ProfileUse.Https) { PolicyId = dot1x.Id }, store)); // another kind
         Assert.Null(EstPolicies.IssuingOf(new EstProfile("https", ProfileUse.Https) { PolicyId = Guid.NewGuid() }, store)); // gone
