@@ -41,7 +41,8 @@ public static class ClockCheck
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(devices);
         using var cancel = new CancellationTokenSource();
-        var row = new ProgressRow { Text = ReadingText(0, devices.Count) };
+        var total = CameraClock.Sampled(devices.Count);
+        var row = new ProgressRow { Text = ReadingText(0, total) };
         var footer = new DialogFooter();
         footer.CancelButton.Click += (_, _) => cancel.Cancel();
         var body = new Border { Child = row };
@@ -57,7 +58,7 @@ public static class ClockCheck
             WindowDecorations = WindowDecorations.BorderOnly,
             Content = new StackPanel { Children = { new DialogTitleBar { Text = title }, body, footer } },
         };
-        var progress = new Progress<int>(done => row.Text = ReadingText(done, devices.Count));
+        var progress = new Progress<int>(done => row.Text = ReadingText(done, total));
         var read = CameraClock.ReadBehindAsync([.. devices.Select(d => d.Id)], (id, ct) => ctx.QueryAsync(id, CameraClock.QueryMethod, null, ct), progress, null, cancel.Token);
         var shown = window.ShowDialog(owner);
         IReadOnlyList<TimeSpan> behind;
@@ -75,7 +76,7 @@ public static class ClockCheck
             await shown.ConfigureAwait(true);
         }
 
-        return await PayloadAsync(behind, devices.Count, question => MessageWindow.ConfirmAsync(owner, title, question, "Yes", "No")).ConfigureAwait(true);
+        return await PayloadAsync(behind, total, question => MessageWindow.ConfirmAsync(owner, title, question, "Yes", "No")).ConfigureAwait(true);
     }
 
     /// <summary>"Reading the camera clocks · 3 of 12".</summary>

@@ -50,7 +50,7 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
   certificate's start, they ask before starting: "The camera's time is 9 min 12 s behind. The certificate becomes valid on
   the camera only in 4 min 12 s. Set the camera to use NTP. Continue?" **Yes** / **No**. Several cameras: one question
   listing how many and the largest drift. The task gets the user's answer and does not ask again; a camera that is ahead
-  is fine.
+  is fine. The dialogs read at most the first 100 selected cameras (3 seconds each); the tasks check every camera.
 - This replaces the 802.1X task's hard refusal at more than 5 minutes off. A run without the answer (no dialog) still
   refuses a camera behind the certificate's start ("Nothing was changed").
 

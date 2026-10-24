@@ -349,7 +349,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
                 RunText = null;
             }
 
-            if (CameraClock.Question(behind, Devices.Count) is { } question)
+            if (CameraClock.Question(behind, CameraClock.Sampled(Devices.Count)) is { } question)
             {
                 if (AskClock is null || !await AskClock(question).ConfigureAwait(true))
                 {
@@ -365,7 +365,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
 
     private string ClockText(int done) => Devices.Count <= 1
         ? "reading the camera clock"
-        : string.Create(CultureInfo.InvariantCulture, $"reading the camera clocks ({done:N0} of {Devices.Count:N0})");
+        : string.Create(CultureInfo.InvariantCulture, $"reading the camera clocks ({done:N0} of {CameraClock.Sampled(Devices.Count):N0})");
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);

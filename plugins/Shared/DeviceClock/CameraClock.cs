@@ -38,8 +38,14 @@ internal static class CameraClock
     /// <summary>A camera still behind the certificate's start by more than this is asked about.</summary>
     public static readonly TimeSpan Tolerance = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Clocks a dialog reads at most (the first selected cameras), so the question comes quickly also with 30,000 selected;
+    /// the tasks check every camera before the first write.
+    /// </summary>
+    public const int MaxRead = 100;
+
     /// <summary>How long a dialog waits for one camera's clock.</summary>
-    public static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(3);
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -143,8 +149,8 @@ internal static class CameraClock
     }
 
     /// <summary>
-    /// Reads the clocks of <paramref name="deviceIds"/> through the dialog's query (<see cref="MaxParallel"/> at a time, at
-    /// most <see cref="ReadTimeout"/> each); returns what each readable camera is behind. Unreadable cameras are left out
+    /// Reads the clocks of the first <see cref="MaxRead"/> of <paramref name="deviceIds"/> through the dialog's query
+    /// (<see cref="MaxParallel"/> at a time, at most <see cref="ReadTimeout"/> each); returns what each readable camera is behind. Unreadable cameras are left out
     /// (the task checks again where it matters). <paramref name="progress"/> gets the number read so far.
     /// </summary>
     public static async Task<IReadOnlyList<TimeSpan>> ReadBehindAsync(IReadOnlyList<Guid> deviceIds, Func<Guid, CancellationToken, Task<string?>> query,
@@ -153,9 +159,10 @@ internal static class CameraClock
         ArgumentNullException.ThrowIfNull(deviceIds);
         ArgumentNullException.ThrowIfNull(query);
         time ??= TimeProvider.System;
-        var results = new TimeSpan?[deviceIds.Count];
+        var count = Sampled(deviceIds.Count);
+        var results = new TimeSpan?[count];
         var done = 0;
-        await Parallel.ForAsync(0, deviceIds.Count, new ParallelOptions { MaxDegreeOfParallelism = MaxParallel, CancellationToken = ct }, async (i, token) =>
+        await Parallel.ForAsync(0, count, new ParallelOptions { MaxDegreeOfParallelism = MaxParallel, CancellationToken = ct }, async (i, token) =>
         {
             using var timeout = new CancellationTokenSource(ReadTimeout, time);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
@@ -181,6 +188,9 @@ internal static class CameraClock
         }).ConfigureAwait(false);
         return [.. results.OfType<TimeSpan>()];
     }
+
+    /// <summary>How many of <paramref name="selected"/> cameras a dialog reads (at most <see cref="MaxRead"/>).</summary>
+    public static int Sampled(int selected) => Math.Min(selected, MaxRead);
 
     /// <summary>The user's answer in a task payload (<see cref="ConfirmedField"/>); false when missing or unreadable.</summary>
     public static bool Confirmed(string? payloadJson)

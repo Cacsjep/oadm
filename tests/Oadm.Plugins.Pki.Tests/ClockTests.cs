@@ -105,6 +105,27 @@ public sealed class ClockTests
     }
 
     [Fact]
+    public async Task A_dialog_reads_no_more_than_the_first_hundred_of_30000_cameras()
+    {
+        var ids = Enumerable.Range(0, 30_000).Select(_ => Guid.NewGuid()).ToList();
+        var asked = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        var server = new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
+        Task<string?> Query(Guid id, CancellationToken ct)
+        {
+            asked.Add(id);
+            return Task.FromResult<string?>(JsonSerializer.Serialize(new ClockReading(server - Span(9, 0), server), Json));
+        }
+
+        var behind = await CameraClock.ReadBehindAsync(ids, Query, null, new FakeTimeProvider(server), CancellationToken.None);
+
+        Assert.Equal(CameraClock.MaxRead, asked.Count);
+        Assert.Equal(ids.Take(CameraClock.MaxRead).ToHashSet(), asked.ToHashSet());
+        Assert.Equal(CameraClock.MaxRead, behind.Count);
+        Assert.Equal(CameraClock.MaxRead, CameraClock.Sampled(ids.Count));
+        Assert.Equal(3, CameraClock.Sampled(3));
+    }
+
+    [Fact]
     public async Task Device_certificates_of_the_oadm_ca_start_five_minutes_in_the_past()
     {
         var time = new FakeTimeProvider(new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero));
