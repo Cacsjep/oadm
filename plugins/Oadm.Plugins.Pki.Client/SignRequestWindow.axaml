@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.SignRequestWindow"
+        x:DataType="vm:SignRequestViewModel"
+        Title="{x:Static vm:SignRequestViewModel.Title}"
+        Width="640" MinWidth="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- One operation: title bar, the form in the dialog body (no card), footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:SignRequestViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:SignRequestViewModel.Intro}" />
+        <ui:FormField Label="Request" Classes="wide" Error="{Binding FileError}">
+          <ui:FileRow FileName="{Binding FileText}" Command="{Binding ChooseFileCommand}" />
+        </ui:FormField>
+        <ui:FormField Label="Policy" InputWidth="380">
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" />
+        </ui:FormField>
+        <ui:ProgressRow Text="Signing the request" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Sign" Command="{Binding SignCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -84,6 +84,19 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
 
     public IPkiFiles Files { get; }
 
+    public IPkiFiles? CertificateFiles => Files;
+
+    public Task<bool> ConfirmDeleteAsync(string title, string message) =>
+        TopLevel.GetTopLevel(this) is Window owner ? MessageWindow.ConfirmAsync(owner, title, message, "Delete") : Task.FromResult(false);
+
+    public Task ShowCreateAsync(CreateCertificateViewModel dialog) => ShowAsync(new CreateCertificateWindow(), dialog);
+
+    public Task ShowSignRequestAsync(SignRequestViewModel dialog) => ShowAsync(new SignRequestWindow(), dialog);
+
+    public Task ShowImportCertificateAsync(ImportCertificateViewModel dialog) => ShowAsync(new ImportCertificateWindow(), dialog);
+
+    public Task ShowExportKeyAsync(ExportKeyViewModel dialog) => ShowAsync(new ExportKeyWindow(), dialog);
+
     public Task ShowGenerateAsync(GenerateCaViewModel dialog) => ShowAsync(new GenerateCaWindow(), dialog);
 
     public Task ShowImportAsync(ImportCaViewModel dialog) => ShowAsync(new ImportCaWindow(), dialog);

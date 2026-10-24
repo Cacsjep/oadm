@@ -62,6 +62,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ITrustStoreInstaller _trustStore;
     private readonly IssuedRegistry _issued;
+    private readonly Certificates.LocalCertificates _local;
     private readonly IDeviceScopes? _scopes;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly CancellationTokenSource _stopping = new();
@@ -108,6 +109,8 @@ public sealed partial class PkiService : IAsyncDisposable
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
         _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
+        _local = new Certificates.LocalCertificates(records ?? new MemoryPluginRecords(), secrets, options.Time, logger);
+        _local.Changed += OnIssuedChanged;
         _sites = sites;
         Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger);
     }
@@ -160,6 +163,7 @@ public sealed partial class PkiService : IAsyncDisposable
     public async Task StartAsync(CancellationToken ct)
     {
         await _issued.LoadAsync(ct).ConfigureAwait(false); // the revocation list counts from the first request on
+        await _local.LoadAsync(ct).ConfigureAwait(false);
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
         await StartPoliciesAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
@@ -202,6 +206,8 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued.Changed -= OnIssuedChanged;
+        _local.Changed -= OnIssuedChanged;
+        _local.Dispose();
         await StopPoliciesAsync().ConfigureAwait(false);
         await _issued.DisposeAsync().ConfigureAwait(false);
         _stopping.Dispose();

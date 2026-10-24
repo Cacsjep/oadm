@@ -1,4 +1,5 @@
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Plugins.Pki.Certificates;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Tasks;
@@ -15,7 +16,7 @@ namespace Oadm.Plugins.Pki;
 /// server's trust store, trust anchors for the device grid's certificate rating, settings. Part 2: the contributed Security
 /// task plugins that deploy certificates (<see cref="TaskPlugins"/>). Page backend methods: <see cref="PkiMethods"/>; live event: state.
 /// </summary>
-public sealed class PkiPlugin : ICorePlugin, IEventSource, IAsyncDisposable
+public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource, IAsyncDisposable
 {
     private readonly PkiOptions _options;
     private volatile PkiService? _service;
@@ -134,7 +135,7 @@ public sealed class PkiPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate or PolicyMethods.GetPolicies;
 
-    /// <summary>Admin methods are audited by the host; the count of a revoke policy only reads.</summary>
+    /// <summary>Admin methods (the Certificates card's Create, Sign request, Import, Delete and Export too) are audited by the host; the count of a revoke policy only reads.</summary>
     public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method != PolicyMethods.CountRevocations;
 
     /// <summary>The certificate authority ("manage") and the server's trust in it ("trustServer") are rights of their own.</summary>
@@ -174,6 +175,8 @@ public sealed class PkiPlugin : ICorePlugin, IEventSource, IAsyncDisposable
                 PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, caller.UserName, ct).ConfigureAwait(false)),
                 PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
                 PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
+                CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
+                    await CertificateActionAsync(service, method, payloadJson, caller.UserName, ct).ConfigureAwait(false),
                 _ => await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false),
             };
         }
@@ -234,8 +237,42 @@ public sealed class PkiPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             PkiMethods.ImportAuthority => PkiJson.Serialize(await service.ImportAuthorityAsync(PkiJson.Deserialize<ImportAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.RemoveAuthority => PkiJson.Serialize(await service.RemoveAuthorityAsync(PkiJson.Deserialize<RemoveAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.ImportRadiusCa => PkiJson.Serialize(PkiService.ImportRadiusCa(PkiJson.Deserialize<ImportRadiusCaRequest>(payloadJson))),
+            CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
+                await CertificateActionAsync(service, method, payloadJson, InProcessUser, ct).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
+    }
+
+    /// <summary>Create, Sign request, Import and Delete of the Certificates card in the name of <paramref name="userName"/>.</summary>
+    private static async Task<string?> CertificateActionAsync(PkiService service, string method, string? payloadJson, string userName, CancellationToken ct) => method switch
+    {
+        CertificateMethods.Create => PkiJson.Serialize(await service.CreateCertificateAsync(PkiJson.Deserialize<CreateCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        CertificateMethods.Sign => PkiJson.Serialize(await service.SignCertificateAsync(PkiJson.Deserialize<SignCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        CertificateMethods.Import => PkiJson.Serialize(await service.ImportCertificateAsync(PkiJson.Deserialize<ImportCertificateRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+        _ => PkiJson.Serialize(await service.DeleteCertificatesAsync(PkiJson.Deserialize<DeleteCertificatesRequest>(payloadJson), userName, ct).ConfigureAwait(false)),
+    };
+
+    /// <summary>Export of the Certificates card (users with all devices; the host checks "Manage the certificate authority" and audits).</summary>
+    public Task<PluginDownload> OpenDownloadAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        if (!caller.HasAllDevices)
+        {
+            throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices); fail closed
+        }
+
+        return OpenDownloadAsync(method, payloadJson, caller.UserName, ct);
+    }
+
+    /// <summary>In-process callers and tests: Export in the name of "OADM".</summary>
+    public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) => OpenDownloadAsync(method, payloadJson, InProcessUser, ct);
+
+    private Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, string userName, CancellationToken ct)
+    {
+        var service = _service ?? throw new InvalidOperationException("The PKI plugin is not running.");
+        return method == CertificateMethods.Download
+            ? service.OpenCertificateDownloadAsync(PkiJson.Deserialize<DownloadCertificateRequest>(payloadJson), userName, ct)
+            : throw new ArgumentException($"Unknown download '{method}'.", nameof(method));
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);

@@ -137,11 +137,15 @@ public sealed class RevocationTests
             Source = i % 2 == 0 ? IssuedCertificateSources.Est : null,
         }));
 
+        // The CAs come first (the OADM CA, the Axis device ID roots and intermediates), then the device certificates.
+        var cas = (await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = ListedCertificateUses.Ca })).Total;
+        Assert.True(cas >= 2);
         var first = await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest());
-        Assert.Equal((1200, 500, 0, (int?)null), (first.Total, first.Rows.Count, first.Offset, first.WarningDays)); // each device follows its Expiry warning policy
-        Assert.Equal("C00000", first.Rows[0].SerialNumber); // newest first
+        Assert.Equal((1200 + cas, 500, 0, (int?)null), (first.Total, first.Rows.Count, first.Offset, first.WarningDays)); // each device follows its Expiry warning policy
+        Assert.All(first.Rows.Take(cas), r => Assert.Equal(ListedCertificateKind.Authority, r.Kind));
+        Assert.Equal("C00000", first.Rows[cas].SerialNumber); // newest first
         var last = await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Offset = 1000 });
-        Assert.Equal(200, last.Rows.Count);
+        Assert.Equal(200 + cas, last.Rows.Count);
         Assert.Equal(PkiPluginInfo.CertificatesPageSize, new CertificatesRequest().Limit);
         Assert.Equal(500, (await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Limit = 100_000 })).Rows.Count);
 
@@ -151,7 +155,7 @@ public sealed class RevocationTests
         Assert.All(dot1x.Rows, r => Assert.Equal((CertificatePurpose.Dot1x, IssuedCertificateSources.Est), (r.Purpose, r.Source)));
 
         // Unknown filter values count as no filter (never an error the user cannot fix).
-        Assert.Equal(1200, (await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = "telnet", Source = "x", State = (IssuedCertificateState)9 })).Total);
+        Assert.Equal(1200 + cas, (await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = "telnet", Source = "x", State = (IssuedCertificateState)9 })).Total);
     }
 
     [Fact]

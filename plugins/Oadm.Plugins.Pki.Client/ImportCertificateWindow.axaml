@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Pki.Client"
+        x:Class="Oadm.Plugins.Pki.Client.ImportCertificateWindow"
+        x:DataType="vm:ImportCertificateViewModel"
+        Title="{x:Static vm:ImportCertificateViewModel.Title}"
+        Width="640" MinWidth="560" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- One operation: title bar, the file (and the password of a .pfx / .p12 file) in the dialog body, footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ImportCertificateViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{x:Static vm:ImportCertificateViewModel.Intro}" />
+        <ui:FormField Label="Certificate" Classes="wide" Error="{Binding FileError}">
+          <ui:FileRow FileName="{Binding FileText}" Command="{Binding ChooseFileCommand}" />
+        </ui:FormField>
+        <ui:FormField Label="Password" IsVisible="{Binding NeedsPassword}">
+          <ui:PasswordBox Text="{Binding Password}" />
+        </ui:FormField>
+        <ui:ProgressRow Text="Checking the certificate" IsVisible="{Binding IsBusy}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Import" Command="{Binding ImportCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

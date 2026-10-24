@@ -125,7 +125,8 @@ public sealed class AuthorityTests
         ca.SetUsedBy("oadm.radius", "802.1X server", [id, CertificateAuthorityInfo.OadmId]);
         ca.SetUsedBy("oadm.est", "EST server", [CertificateAuthorityInfo.OadmId]);
         var state = await pki.StateAsync();
-        Assert.Equal(["802.1X server", "EST server"], state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
+        Assert.Equal(["Issuing: HTTPS", "Issuing: IEEE 802.1X", "Issuing: 802.1X server", "Issuing: EST server", "802.1X server", "EST server"],
+            state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
         Assert.Equal(["802.1X server"], state.Authorities.Single(a => a.Id == id).UsedBy);
         Assert.Empty(state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.AxisDeviceIdId).UsedBy);
 
@@ -201,7 +202,8 @@ public sealed class AuthorityTests
             using var vm = new PkiViewModel(ctx, new FakeClientTrust(), new PkiClientSettingsStore(settingsFile)) { Dialogs = dialogs };
             await vm.LoadAsync();
             Assert.Equal(["OADM CA", "Axis device ID"], vm.Authorities.Select(a => a.KindText));
-            Assert.All(vm.Authorities, row => Assert.Equal("-", row.UsedBy));
+            // Used by: the issuing policies name the OADM CA (they issue with it); the Axis device ID is used by nothing yet.
+            Assert.Equal(["Issuing: HTTPS, Issuing: IEEE 802.1X, Issuing: 802.1X server, Issuing: EST server", "-"], vm.Authorities.Select(a => a.UsedBy));
             Assert.All(vm.Authorities, row => Assert.False(row.IsRemovable));
 
             // View: the shared certificate window with the CA.

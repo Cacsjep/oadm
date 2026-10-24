@@ -124,7 +124,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         };
         _clientTrust = clientTrust ?? throw new ArgumentNullException(nameof(clientTrust));
         _clientSettings = clientSettings ?? new PkiClientSettingsStore();
-        Certificates = new IssuedCertificatesViewModel(ctx);
+        Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings) { PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)] };
     }
 
     /// <summary>The dialogs and file pickers of the page view.</summary>

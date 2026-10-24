@@ -25,6 +25,10 @@ public sealed class RevokeProgressTests
         return (pki, device);
     }
 
+    /// <summary>The device certificates of the list (the CAs come first).</summary>
+    internal static List<IssuedCertificateRow> DeviceRows(IssuedCertificateListViewModel list) =>
+        [.. list.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device)];
+
     /// <summary>Holds the answers of <paramref name="method"/> until the returned source is completed.</summary>
     internal static TaskCompletionSource Hold(PluginPageContext ctx, PkiHarness pki, string method)
     {
@@ -49,18 +53,18 @@ public sealed class RevokeProgressTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var tab = new IssuedCertificatesViewModel(ctx) { Dialogs = new FakeCertificateDialogs() };
         await tab.LoadAsync();
-        tab.SetSelection(tab.Rows.Take(1));
+        tab.SetSelection(DeviceRows(tab).Take(1));
         Assert.Equal((false, IssuedCertificateTexts.Reading), (tab.ShowsProgress, tab.ProgressText));
         Assert.True(tab.RevokeCommand.CanExecute(null));
 
         var gate = Hold(ctx, pki, PkiMethods.RevokeDevice);
-        var revoking = tab.RevokeDeviceCommand.ExecuteAsync(tab.Rows[0]);
+        var revoking = tab.RevokeDeviceCommand.ExecuteAsync(DeviceRows(tab)[0]);
         await Eventually.TrueAsync(() => tab.IsWorking, "Revoke all of this device is running");
 
         Assert.True(tab.ShowsProgress);
         Assert.Equal(IssuedCertificateTexts.Revoking, tab.ProgressText);
         Assert.False(tab.RevokeCommand.CanExecute(null));
-        Assert.False(tab.RevokeDeviceCommand.CanExecute(tab.Rows[0]));
+        Assert.False(tab.RevokeDeviceCommand.CanExecute(DeviceRows(tab)[0]));
 
         gate.SetResult();
         await revoking;
@@ -68,9 +72,9 @@ public sealed class RevokeProgressTests
         Assert.False(tab.IsWorking);
         Assert.False(tab.ShowsProgress);
         Assert.Null(tab.WorkText);
-        Assert.All(tab.Rows, r => Assert.Equal("Revoked", r.State)); // the page was read again
-        Assert.All(tab.Rows, r => Assert.Equal(device, r.Source.DeviceId));
-        Assert.True(tab.RevokeDeviceCommand.CanExecute(tab.Rows[0]));
+        Assert.All(DeviceRows(tab), r => Assert.Equal("Revoked", r.State)); // the page was read again
+        Assert.All(DeviceRows(tab), r => Assert.Equal(device, r.Source.DeviceId));
+        Assert.True(tab.RevokeDeviceCommand.CanExecute(DeviceRows(tab)[0]));
         Assert.Empty(ctx.Messages);
     }
 
@@ -82,7 +86,7 @@ public sealed class RevokeProgressTests
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var tab = new IssuedCertificatesViewModel(ctx) { Dialogs = new FakeCertificateDialogs() };
         await tab.LoadAsync();
-        tab.SetSelection(tab.Rows.Take(1));
+        tab.SetSelection(DeviceRows(tab).Take(1));
         ctx.Intercept = (m, payload) => m == PkiMethods.Revoke
             ? throw new InvalidOperationException("The PKI has no certificate authority.")
             : pki.Plugin.InvokeAsync(m, payload, CancellationToken.None);
@@ -125,13 +129,13 @@ public sealed class RevokeProgressHeadlessTests
             await vm.LoadAsync();
             await vm.Certificates.LoadAsync();
             vm.Certificates.Dialogs = new FakeCertificateDialogs(); // no real window
-            vm.Certificates.SetSelection(vm.Certificates.Rows.Take(1));
+            vm.Certificates.SetSelection(RevokeProgressTests.DeviceRows(vm.Certificates).Take(1));
             var gate = RevokeProgressTests.Hold(ctx, pki, PkiMethods.RevokeDevice);
-            var revoking = vm.Certificates.RevokeDeviceCommand.ExecuteAsync(vm.Certificates.Rows[0]);
+            var revoking = vm.Certificates.RevokeDeviceCommand.ExecuteAsync(RevokeProgressTests.DeviceRows(vm.Certificates)[0]);
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-revoking.png");
             var during = Visible(window);
-            var revoke = window.GetVisualDescendants().OfType<Button>().Single(b => b.IsEffectivelyVisible && b.Classes.Contains("danger"));
+            var revoke = window.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && b.Classes.Contains("danger") && b.Content is "Revoke");
             var enabledDuring = revoke.IsEffectivelyEnabled;
             gate.SetResult();
             await revoking;

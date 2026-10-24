@@ -355,6 +355,9 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
         return await plugin.InvokeAsync(method, payloadJson, ct);
     }
 
+    /// <summary>The downloads of the page (Export of the Certificates card) from the in-process plugin.</summary>
+    public Task<PluginDownload> OpenDownloadAsync(string method, string? payloadJson, CancellationToken ct) => plugin.OpenDownloadAsync(method, payloadJson, ct);
+
     public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
         await foreach (var item in hub.WatchAsync(PkiPluginInfo.PluginId, ct))
