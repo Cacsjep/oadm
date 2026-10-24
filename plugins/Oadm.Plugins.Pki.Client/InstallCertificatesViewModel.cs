@@ -124,9 +124,10 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
     [ObservableProperty]
     public partial string UploadStatus { get; private set; } = string.Empty;
 
-    public string FilesText => Files.Count switch
+    /// <summary>The file button's text: the file's name, "3 files"; null until files are chosen (the button says "Choose files").</summary>
+    public string? FilesText => Files.Count switch
     {
-        0 => "No file chosen",
+        0 => null,
         1 => Files[0].FileName,
         _ => string.Create(CultureInfo.InvariantCulture, $"{Files.Count} files"),
     };

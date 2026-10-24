@@ -49,9 +49,10 @@ public sealed class CertificateCardHeadlessTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync();
+            await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
             HeadlessPageTests.Pump();
-            var list = view.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
+            var list = view.FindControl<IssuedCertificateList>("CertificatesList")!;
             list.BringIntoView();
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-certificates-card.png");
@@ -80,8 +81,9 @@ public sealed class CertificateCardHeadlessTests
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Contains("Used by", checks.texts);
-        Assert.Contains("802.1X server", checks.texts);
+        Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
+        Assert.Contains("oadm-server", checks.texts); // the 802.1X server's certificate
+        Assert.Contains("Server", checks.texts);
         Assert.Contains("nvr.example.com", checks.texts);
         Assert.Contains("OADM Root CA SERVER01", checks.texts);
         Assert.Contains("Create", checks.texts);

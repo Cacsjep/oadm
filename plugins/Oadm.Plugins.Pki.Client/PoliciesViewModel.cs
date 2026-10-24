@@ -35,6 +35,19 @@ public sealed class PolicyRowViewModel(PolicyRow row, string devicesText)
     public bool HasWarning => !string.IsNullOrEmpty(Row.Warning);
 
     public string Group => Row.Group;
+
+    /// <summary>The group header of the table: "Issuing", "Certificates", "802.1X", "EST", "Revoke".</summary>
+    public string GroupLabel => PolicyGroups.Label(Row.Group);
+
+    /// <summary>"System" (OADM needs it, no Delete) or "User".</summary>
+    public string Origin => Row.IsSystem ? "System" : "User";
+
+    public bool IsSystem => Row.IsSystem;
+
+    public bool CanDelete => !Row.IsSystem;
+
+    /// <summary>Why a system policy has no Delete.</summary>
+    public string? OriginTip => Row.IsSystem ? "OADM needs it, so it cannot be deleted" : null;
 }
 
 /// <summary>One chip of the filter (All, Certificates, 802.1X, Revoke).</summary>
@@ -195,10 +208,28 @@ public sealed partial class PoliciesViewModel : ObservableObject
     private void Refilter()
     {
         var names = SiteNames();
+        // In the order of the groups (the table groups by them), each group in age order.
         Rows.ReplaceAll(_list.Rows.Where(r => Group == PolicyGroups.All || r.Group == Group)
+            .OrderBy(r => GroupOrder(r.Group))
             .Select(r => new PolicyRowViewModel(r, PolicyTexts.DevicesText(r.Policy.Devices, names))));
         OnPropertyChanged(nameof(EmptyText));
     }
+
+    private static int GroupOrder(string group)
+    {
+        for (var i = 0; i < PolicyGroups.Shown.Count; i++)
+        {
+            if (PolicyGroups.Shown[i] == group)
+            {
+                return i;
+            }
+        }
+
+        return PolicyGroups.Shown.Count;
+    }
+
+    /// <summary>The group headers of the table in their order (All is no group).</summary>
+    public static IReadOnlyList<string> GroupLabels { get; } = [.. PolicyGroups.Shown.Where(g => g != PolicyGroups.All).Select(PolicyGroups.Label)];
 
     private Dictionary<Guid, string> SiteNames() => _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name);
 

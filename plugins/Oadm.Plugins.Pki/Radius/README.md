@@ -45,11 +45,11 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
 - Client part (in `Oadm.Plugins.Pki.Client.dll`, `plugins/Oadm.Plugins.Pki.Client/Radius`): the page "802.1X server", the tab
-  of the PKI page (`RadiusPage.TabOf`; Edit policies opens the Certificates tab); while
-  the server does not run only the Server card with its status and Turn on (`Servers/ServerSwitchView`), else the
-  cards Server (Turn off left of Save, "6 policies apply" with Edit policies) and Switches (with the switch dialog) in two or
-  one column by the page width, then Sessions (live) and Log (search, View certificate, Delete all) with a splitter
-  between them; code
+  of the PKI page (`RadiusPage.TabOf`; the link "N policies applied" opens the Policies tab); while
+  the server does not run only the Server card with its status and Turn on (`Servers/ServerSwitchView`), else Server
+  (Turn off left of Save, the link "6 policies applied" with the policies as tooltip) above Switches (row menu, the
+  switch dialog) left and one Sessions table right (in progress on top, then the log: `AuthenticationsViewModel`; search,
+  View certificate, Delete all), one column on narrow pages (`Servers/ServerPageLayout`); code
   map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (the client part references the server assembly).
   Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
   (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and

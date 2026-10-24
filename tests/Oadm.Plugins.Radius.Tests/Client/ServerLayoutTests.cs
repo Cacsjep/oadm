@@ -40,20 +40,18 @@ public sealed class ServerLayoutTests
             var squeezed = switches.Columns.Skip(1).Any(c => c.ActualWidth < c.MinWidth);
             var splitter = window.GetVisualDescendants().OfType<GridSplitter>().Any(s => s.Name == "SessionsSplitter" && s.IsEffectivelyVisible);
 
-            // The Duration header is right-aligned like its numbers, with room left of the text so it shows.
-            var duration = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == "Duration" && t.IsEffectivelyVisible);
-            var durationRight = duration.Classes.Contains("numberHeader") && duration.TextAlignment == Avalonia.Media.TextAlignment.Right
-                && duration.Bounds.Width - duration.TextLayout.WidthIncludingTrailingWhitespace >= 10;
+            // No Duration column (decision 2026-10-25).
+            var durationRight = !window.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == "Duration" && t.IsEffectivelyVisible);
             window.Close();
             return (count, cards.Count, saveInCard, status, squeezed, splitter, durationRight);
         }, CancellationToken.None);
 
         Assert.Equal(columns, checks.count);
-        Assert.Equal(4, checks.Item2); // Server, Switches, Sessions, Log
+        Assert.Equal(3, checks.Item2); // Server, Switches, Sessions
         Assert.True(checks.saveInCard);
         Assert.True(checks.status);
         Assert.False(checks.squeezed);
-        Assert.True(checks.splitter); // Sessions and Log share the height
+        Assert.False(checks.splitter); // one Sessions table, no splitter
         Assert.True(checks.durationRight);
 
     }

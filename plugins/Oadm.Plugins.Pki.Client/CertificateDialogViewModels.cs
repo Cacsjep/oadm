@@ -160,7 +160,8 @@ public sealed partial class SignRequestViewModel : PkiDialogViewModel
 
     public string? FileError => ErrorOf(nameof(File));
 
-    public string FileText => File ?? "No file chosen";
+    /// <summary>The chosen file's name for the file button; null until one is chosen.</summary>
+    public string? FileText => File;
 
     /// <summary>Sets the chosen file (also used by tests).</summary>
     public void SetFile(PickedFile file)
@@ -251,7 +252,8 @@ public sealed partial class ImportCertificateViewModel : PkiDialogViewModel
 
     public string? FileError => ErrorOf(nameof(File));
 
-    public string FileText => File ?? "No file chosen";
+    /// <summary>The chosen file's name for the file button; null until one is chosen.</summary>
+    public string? FileText => File;
 
     /// <summary>Sets the chosen file (also used by tests).</summary>
     public void SetFile(PickedFile file)

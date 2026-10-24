@@ -74,7 +74,8 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
 
     public bool MayManage => _owner.MayManage;
 
-    internal EstProfile ToProfile() => _source with { Name = Name.Trim(), Use = Use.Value, Enabled = Enabled, PolicyId = Policy?.Value ?? _source.PolicyId };
+    /// <summary>The profile to save: every listed profile is on (decision 2026-10-25: no On column; remove a profile instead).</summary>
+    internal EstProfile ToProfile() => _source with { Name = Name.Trim(), Use = Use.Value, Enabled = true, PolicyId = Policy?.Value ?? _source.PolicyId };
 
     /// <summary>PKI's policies changed: the choices of the use's kind again, the chosen one kept while it is listed.</summary>
     internal void PoliciesChanged()
@@ -248,6 +249,10 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowsPolicies))]
     public partial string PoliciesText { get; set; } = string.Empty;
 
+    /// <summary>The applied policies' names and summaries: the tooltip of <see cref="PoliciesText"/>.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<Oadm.Plugins.Pki.Policies.PolicyLine> PolicyLines { get; set; } = [];
+
     /// <summary>The line with "N policies apply" and Edit policies shows (users with all devices).</summary>
     public bool ShowsPolicies => PoliciesText.Length > 0;
 
@@ -255,17 +260,21 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     [ObservableProperty]
     public partial string? PolicyProblem { get; set; }
 
-    /// <summary>"1 policy applies", "2 policies apply", "No policies apply" (the same words as the 802.1X page).</summary>
+    /// <summary>"1 policy applied", "2 policies applied", "No policies applied" (the same words as the 802.1X page): the link to the policies.</summary>
     public static string PoliciesApplyText(int count) => count switch
     {
-        0 => "No policies apply",
-        1 => "1 policy applies",
-        _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies apply"),
+        0 => "No policies applied",
+        1 => "1 policy applied",
+        _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies applied"),
     };
 
     /// <summary>Edit policies: the Enrollment and Sign-in CA policies are on the PKI page.</summary>
     [RelayCommand]
-    private Task EditInPkiAsync() => _ctx.OpenAsync("plugin:" + PkiPluginId);
+    private Task EditInPkiAsync()
+    {
+        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId);
+        return _ctx.OpenAsync("plugin:" + PkiPluginId);
+    }
 
     /// <summary>The enrollments that match <see cref="EnrollmentSearch"/>, newest first (bound to the grid).</summary>
     public RangeObservableCollection<EnrollmentRow> Enrollments { get; } = [];
@@ -490,11 +499,22 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     }
 
     [RelayCommand]
-    private void RemoveProfile(ProfileRowViewModel? row)
+    private async Task RemoveProfileAsync(ProfileRowViewModel? row)
     {
-        if (row is not null && MayManage && Profiles.Count > 1)
+        if (row is null || !MayManage || Profiles.Count <= 1)
         {
-            Profiles.Remove(row);
+            return;
+        }
+
+        // Confirmed first (red Remove, decision 2026-10-25); the change takes effect with Save like every other field.
+        var name = row.Name.Trim();
+        if (!await _ctx.ConfirmAsync("Remove profile", $"Remove the profile {name}? After Save, cameras that use it can no longer get or renew certificates with it.", "Remove").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        if (Profiles.Remove(row))
+        {
             ProfilesEdited();
         }
     }
@@ -662,6 +682,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
         IssuingCa = state.IssuingCa ?? "-";
         PoliciesText = state.PoliciesApply is { } count ? PoliciesApplyText(count) : string.Empty;
+        PolicyLines = state.PolicyLines ?? [];
         PolicyProblem = state.PolicyProblem;
         if (!IssuingPolicies.SequenceEqual(state.IssuingPolicies))
         {

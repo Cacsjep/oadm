@@ -34,7 +34,7 @@ public static class RadiusTexts
 }
 
 /// <summary>One open (or just ended) authentication of the Sessions tab, updated in place by the live events.</summary>
-public sealed partial class SessionRowViewModel : ObservableObject
+public sealed partial class SessionRowViewModel : ObservableObject, IAuthenticationRow
 {
     private readonly TimeProvider _time;
     private DateTime _receivedUtc;
@@ -48,7 +48,7 @@ public sealed partial class SessionRowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Switch), nameof(Port), nameof(Mac), nameof(Identity), nameof(Device), nameof(IsGuess), nameof(IpAddress),
-        nameof(State), nameof(IsOk), nameof(IsError), nameof(IsRunning), nameof(IsEnded), nameof(Duration))]
+        nameof(State), nameof(Status), nameof(Vlan), nameof(VlanText), nameof(IsOk), nameof(IsError), nameof(IsRunning), nameof(IsEnded), nameof(Duration))]
     public partial SessionRow Source { get; set; }
 
     public Guid Id => Source.Id;
@@ -56,6 +56,23 @@ public sealed partial class SessionRowViewModel : ObservableObject
     public string Started => RadiusTexts.Time(Source.StartedUtc);
 
     public DateTime StartedSortKey => Source.StartedUtc;
+
+    /// <summary>The Time column of the one table: when it started.</summary>
+    public string Time => Started;
+
+    /// <summary>The VLAN number ("30") once the session has one; empty before.</summary>
+    public string Vlan => Source.Vlan?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+
+    /// <summary>"VLAN 30 by Building B" once the session has one; empty before.</summary>
+    public string VlanText => Source.Vlan is { } vlan ? Oadm.Plugins.Pki.Policies.PolicyTexts.VlanBy(vlan, Source.VlanPolicy) : string.Empty;
+
+    /// <summary>The Status column: the state.</summary>
+    public string Status => State;
+
+    /// <summary>No second line: the state says it all.</summary>
+    public string? StatusDetail => null;
+
+    public bool IsWarning => false;
 
     public string Switch => Source.SwitchName;
 
@@ -112,6 +129,18 @@ public sealed partial class SessionRowViewModel : ObservableObject
     }
 
     internal void Tick() => OnPropertyChanged(nameof(Duration));
+
+    /// <summary>The search text is in a column (the log's search applies to the rows in progress too).</summary>
+    public bool Matches(string search) =>
+        search.Length == 0
+        || Time.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Switch.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Port.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Mac.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Identity.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || Device.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || IpAddress.Contains(search, StringComparison.OrdinalIgnoreCase)
+        || State.Contains(search, StringComparison.OrdinalIgnoreCase);
 }
 
 /// <summary>

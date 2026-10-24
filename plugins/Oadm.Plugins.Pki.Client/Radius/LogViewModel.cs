@@ -12,7 +12,7 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Radius.Client;
 
 /// <summary>One authentication of the Log tab.</summary>
-public sealed class LogRowViewModel(LogRow source)
+public sealed class LogRowViewModel(LogRow source) : IAuthenticationRow
 {
     public LogRow Source { get; } = source ?? throw new ArgumentNullException(nameof(source));
 
@@ -29,6 +29,20 @@ public sealed class LogRowViewModel(LogRow source)
     public string Device => Source.DeviceName;
 
     public string IpAddress => Source.IpAddress;
+
+    /// <summary>The log names the device the certificate named: never a guess.</summary>
+    public bool IsGuess => false;
+
+    /// <summary>Ended: no running time.</summary>
+    public bool IsRunning => false;
+
+    /// <summary>The log keeps no duration.</summary>
+    public string Duration => string.Empty;
+
+    /// <summary>The Status column: the result, the reason or warning as its second line.</summary>
+    public string Status => Result;
+
+    public string? StatusDetail => Reason.Length > 0 ? Reason : null;
 
     /// <summary>"Authenticated" or "Failed".</summary>
     public string Result => Source.Result == LogResults.Authenticated ? "Authenticated" : "Failed";

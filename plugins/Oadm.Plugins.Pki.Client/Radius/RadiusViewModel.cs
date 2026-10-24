@@ -36,6 +36,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         Switches = new SwitchesViewModel(ctx, () => MayManage, () => _state, () => _sites);
         Sessions = new SessionsViewModel(ctx, _time);
         Log = new LogViewModel(ctx, () => MayManage, _time);
+        Authentications = new AuthenticationsViewModel(Sessions, Log);
         Server = new ServerSwitchViewModel(ctx, RadiusPluginInfo.PluginId, RadiusPluginInfo.DisplayName,
             "Switches get no answer from OADM until it is on again: cameras on 802.1X ports may lose their network access.");
         Server.RunningChanged += (_, _) => OnServerRunningChanged();
@@ -59,6 +60,9 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     public SessionsViewModel Sessions { get; }
 
     public LogViewModel Log { get; }
+
+    /// <summary>The one Sessions table: in progress on top, then the log.</summary>
+    public AuthenticationsViewModel Authentications { get; }
 
     /// <summary>Turn on / Turn off of the server (PKI): the cards show only while it runs.</summary>
     public ServerSwitchViewModel Server { get; }
@@ -120,17 +124,25 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string PoliciesText { get; set; } = string.Empty;
 
-    /// <summary>"1 policy applies", "6 policies apply", "No policies apply".</summary>
+    /// <summary>The applied policies' names and summaries: the tooltip of <see cref="PoliciesText"/>.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<Oadm.Plugins.Pki.Policies.PolicyLine> PolicyLines { get; set; } = [];
+
+    /// <summary>"1 policy applied", "6 policies applied", "No policies applied": the link to the policies.</summary>
     public static string PoliciesApplyText(int count) => count switch
     {
-        0 => "No policies apply",
-        1 => "1 policy applies",
-        _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies apply"),
+        0 => "No policies applied",
+        1 => "1 policy applied",
+        _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies applied"),
     };
 
     /// <summary>Edit policies: the policies are on the PKI page.</summary>
     [RelayCommand]
-    private Task EditInPkiAsync() => _ctx.OpenAsync("plugin:" + PkiPluginId);
+    private Task EditInPkiAsync()
+    {
+        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId);
+        return _ctx.OpenAsync("plugin:" + PkiPluginId);
+    }
 
     public void Activate()
     {
@@ -337,6 +349,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
             : string.Empty;
         Log.Kept = state.Settings.LogKept;
         PoliciesText = state.HasAllDevices ? PoliciesApplyText(state.PoliciesApply) : string.Empty;
+        PolicyLines = state.HasAllDevices ? state.PolicyLines : [];
         if (form)
         {
             Settings.Apply(state);

@@ -97,12 +97,13 @@ public sealed class PageTests : IAsyncLifetime
         await vm.LoadAsync(CancellationToken.None);
 
         // The EST policies the conversion made at the start: Enrollment "All devices", Sign-in CA "Axis device ID" and "OADM CA".
-        Assert.Equal("3 policies apply", vm.PoliciesText);
+        Assert.Equal("3 policies applied", vm.PoliciesText);
         Assert.True(vm.ShowsPolicies);
         Assert.Null(vm.PolicyProblem);
         Assert.Equal("OADM Test CA", vm.IssuingCa);
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
+        Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PkiTabRequest.Take()); // the page opens on Policies; taken here, the request is process-wide
 
         // A save of the page keeps "Sign in with" of before the policies (read only by the conversion).
         var stored = _plugin.Service!.Store.Config.SignInWith;
@@ -117,10 +118,10 @@ public sealed class PageTests : IAsyncLifetime
         }
 
         await vm.LoadAsync(CancellationToken.None);
-        Assert.Equal("1 policy applies", vm.PoliciesText);
+        Assert.Equal("1 policy applied", vm.PoliciesText);
         Assert.Equal(EstTexts.NoSignInPolicy, vm.PolicyProblem);
-        Assert.Equal("2 policies apply", EstViewModel.PoliciesApplyText(2));
-        Assert.Equal("No policies apply", EstViewModel.PoliciesApplyText(0));
+        Assert.Equal("2 policies applied", EstViewModel.PoliciesApplyText(2));
+        Assert.Equal("No policies applied", EstViewModel.PoliciesApplyText(0));
     }
 
     [Fact]
@@ -461,7 +462,7 @@ public sealed class PageTests : IAsyncLifetime
             Pump();
             Capture(window, outDir, $"est-page-{width}-errors.png");
 
-            // Without a Sign-in CA policy: the warning below "N policies apply".
+            // Without a Sign-in CA policy: the warning below the General fields.
             foreach (var policy in _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa))
             {
                 await _policies.DeleteAsync(policy.Id, "admin", CancellationToken.None);
@@ -478,7 +479,7 @@ public sealed class PageTests : IAsyncLifetime
 
         Assert.True(cards.Warning);
         Assert.NotNull(cards.General);
-        Assert.Same(cards.General, cards.Profiles);
+        Assert.NotSame(cards.General, cards.Profiles); // two cards (decision 2026-10-25)
         Assert.NotNull(cards.Enrollments);
         Assert.NotSame(cards.General, cards.Enrollments);
         Assert.True(new Oadm.Plugins.Est.Client.EstPage().HasOwnCards);
@@ -520,8 +521,8 @@ public sealed class PageTests : IAsyncLifetime
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Equal([("Certificates", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
-        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments", "Edit policies" })
+        Assert.Equal([("Certificates", false), ("Policies", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
+        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments" })
         {
             Assert.Contains(title, checks.texts);
         }

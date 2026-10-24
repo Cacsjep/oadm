@@ -453,6 +453,7 @@ public sealed partial class EstService : IAsyncDisposable
             IssuingCa = IssuingName(ca),
             IssuingPolicies = EstPolicies.Choices(_host.Policies(), ca?.Authorities ?? []),
             PoliciesApply = Rules.Count, PolicyProblem = Rules.Problem,
+            PolicyLines = _host.Policies()?.LinesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.IsEst),
         };
     }
 
@@ -468,6 +469,7 @@ public sealed partial class EstService : IAsyncDisposable
             Listeners = [.. state.Listeners.Where(l => view.CoversSite(l.SiteId))],
             CertificateCount = _store.CountCertificates(view.Contains),
             PoliciesApply = null, // the policies are server-wide: like the 802.1X page, not for users limited to a group
+            PolicyLines = null,
             PolicyProblem = null,
         };
     }

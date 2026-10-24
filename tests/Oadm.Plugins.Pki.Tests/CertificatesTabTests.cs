@@ -108,31 +108,32 @@ public sealed class CertificatesTabTests
         var tab = page.Certificates;
         Assert.DoesNotContain(PkiMethods.GetCertificates, calls); // nothing read before the page is shown
 
+        await page.Authorities.LoadAsync();
         await page.Certificates.LoadAsync();
 
-        // The CAs first (the OADM CA, the Axis device ID roots and intermediates), then the two device certificates.
-        var cas = tab.Rows.Count(r => r.Source.Kind == ListedCertificateKind.Authority);
-        Assert.Equal(cas + 2, tab.Total);
-        Assert.Equal($"1-{cas + 2} of {cas + 2}", tab.PageText);
+        // The CAs in their own list (the OADM CA first, then the Axis device ID roots and intermediates).
+        var cas = page.Authorities;
+        Assert.All(cas.Rows, r => Assert.Equal(ListedCertificateKind.Authority, r.Source.Kind));
+        Assert.False(cas.ShowsFilters);
+        Assert.Equal(("OADM Root CA SERVER01", "CA", IssuedCertificateMessages.SelfSigned), (cas.Rows[0].Name, cas.Rows[0].Use, cas.Rows[0].Issuer));
+        Assert.StartsWith("Issuing: HTTPS", cas.Rows[0].UsedBy, StringComparison.Ordinal); // a CA names the policies that use it
+
+        // The certificates: the two device certificates, no CA among them.
+        Assert.Equal(2, tab.Total);
+        Assert.Equal("1-2 of 2", tab.PageText);
         Assert.False(tab.HasPages);
-        Assert.Equal(("OADM Root CA SERVER01", "CA", "OADM Root CA SERVER01"), (tab.Rows[0].Name, tab.Rows[0].Use, tab.Rows[0].IssuedBy));
-        Assert.StartsWith("Issuing: HTTPS", tab.Rows[0].UsedBy, StringComparison.Ordinal); // a CA names the policies that use it
+        Assert.True(tab.ShowsFilters);
+        Assert.DoesNotContain(tab.Rows, r => r.Source.Kind == ListedCertificateKind.Authority);
         var row = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
-        Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "OADM Root CA SERVER01", "Valid", "-"), (row.Name, row.Use, row.IssuedBy, row.State, row.UsedBy)); // the harness manages no devices
+        Assert.Equal(("B8A44F631339 (removed)", "HTTPS", "OADM Root CA SERVER01", "Valid", "-"), (row.Name, row.Use, row.Issuer, row.State, row.UsedBy)); // the harness manages no devices
         Assert.True(row.IsOk);
 
-        // A filter reads again with it (one call).
-        tab.UseFilter = tab.UseChoices.Single(c => c.Value == DeviceCertificatePurposes.Dot1x);
-        await Eventually.TrueAsync(() => tab.Rows.Count == 1 && !tab.IsReloading, "the filtered page");
-        Assert.Equal("IEEE 802.1X", tab.Rows[0].Use);
-        tab.UseFilter = tab.UseChoices[0];
-
-        // Issued by: the CAs of PKI (and Other CA), read from the server.
+        // Issued by: the CAs of PKI (and Other CA), read from the server; a filter reads again with it.
         Assert.Equal(["Issued by any", "OADM Root CA SERVER01", "Axis device ID", "Other CA"], tab.SourceChoices.Select(c => c.Label));
         tab.SourceFilter = tab.SourceChoices.Single(c => c.Label == "Axis device ID");
-        await Eventually.TrueAsync(() => tab.Rows.Count > 0 && tab.Rows.All(r => r.Source.Kind == ListedCertificateKind.Authority) && !tab.IsReloading, "the issuer filter");
+        await Eventually.TrueAsync(() => tab.Total == 0 && !tab.IsReloading, "the issuer filter: no certificate of the Axis device ID");
         tab.SourceFilter = tab.SourceChoices.Single(c => c.Label == "OADM Root CA SERVER01");
-        await Eventually.TrueAsync(() => tab.Total == 3 && !tab.IsReloading, "the OADM CA and its two certificates");
+        await Eventually.TrueAsync(() => tab.Total == 2 && !tab.IsReloading, "the two certificates of the OADM CA");
         tab.SourceFilter = tab.SourceChoices[0];
         tab.StateFilter = tab.StateChoices.Single(c => c.Value == nameof(IssuedCertificateState.Revoked));
         await Eventually.TrueAsync(() => tab.Total == 0 && !tab.IsReloading, "no revoked one");
@@ -311,11 +312,12 @@ public sealed class CertificatesTabHeadlessTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync();
+            await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
             vm.Certificates.SetSelection(vm.Certificates.Rows.Take(2));
             HeadlessPageTests.Pump();
-            var list = view.GetVisualDescendants().OfType<IssuedCertificateList>().Single();
-            list.BringIntoView(); // the card below the CAs and the policies
+            var list = view.FindControl<IssuedCertificateList>("CertificatesList")!;
+            list.BringIntoView(); // the card below the CAs
             HeadlessPageTests.Pump();
             list.GetVisualDescendants().OfType<DataGrid>().First().ScrollIntoView(vm.Certificates.Rows.First(r => r.State == "Revoked"), null);
             HeadlessPageTests.Pump();
@@ -357,7 +359,7 @@ public sealed class CertificatesTabHeadlessTests
 
         Assert.Contains("Certificates", checks.texts);
         Assert.Contains("Revoked", checks.texts);
-        Assert.Contains("Used by", checks.texts);
+        Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
         Assert.Contains("Create", checks.texts);
         Assert.Contains("Sign request", checks.texts);
         Assert.Equal(4, checks.reasons);

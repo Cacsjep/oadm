@@ -317,16 +317,16 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
         using var vm = CreateViewModel();
         var certificateDialogs = new FakeCertificateDialogs();
-        vm.Certificates.Dialogs = certificateDialogs;
+        vm.Authorities.Dialogs = certificateDialogs;
         await vm.LoadAsync();
-        await vm.Certificates.LoadAsync();
+        await vm.Authorities.LoadAsync();
         Assert.Equal("OADM Root CA SERVER01", Assert.Single(vm.PreviousCas).Name);
-        var row = Assert.Single(vm.Certificates.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // once: a row of the list
+        var row = Assert.Single(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // once: a row of the CA list
         Assert.Equal(("OADM Root CA SERVER01", true, false), (row.Name, row.IsRemovableCa, row.IsOadmCa));
         Assert.Equal(["Root CA", "Previous OADM CA"], row.Badges);
-        Assert.False(vm.Certificates.Rows.Single(r => r.IsOadmCa).IsRemovableCa);
+        Assert.False(vm.Authorities.Rows.Single(r => r.IsOadmCa).IsRemovableCa);
 
-        await vm.Certificates.ExportPemCommand.ExecuteAsync(row);
+        await vm.Authorities.ExportPemCommand.ExecuteAsync(row);
         Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(certificateDialogs.Files.Saved).FileName);
 
         _ctx.ConfirmAnswer = false;
@@ -335,7 +335,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         _ctx.ConfirmAnswer = true;
         await vm.RemoveCaCommand.ExecuteAsync(row);
         Assert.Empty(vm.PreviousCas);
-        Assert.DoesNotContain(vm.Certificates.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // the list was read again
+        Assert.DoesNotContain(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // the list was read again
         Assert.Equal(2, _ctx.Confirmations.Count);
     }
 

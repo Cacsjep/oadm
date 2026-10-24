@@ -58,9 +58,11 @@ public sealed class EnrollmentPolicyTests
         // Once: a second run adds nothing, also after the user changed them.
         var count = store.All.Count;
         Assert.False(await EstPolicies.ConvertRulesAsync(settings, store, CancellationToken.None));
-        Assert.Null((await store.DeleteAsync(enrollment.Id, "admin", CancellationToken.None)).Error);
+        var changed = (await SaveAsync(store, enrollment with { Devices = Serials("ACCC8E000002") })).Saved!; // the system policy is changed, never deleted
         Assert.False(await EstPolicies.ConvertRulesAsync(settings, store, CancellationToken.None));
-        Assert.Equal(count - 1, store.All.Count);
+        Assert.Equal(count, store.All.Count);
+        Assert.Equal(["ACCC8E000002"], Assert.Single(store.PoliciesOf(PolicyKinds.Enrollment)).Devices!.Serials);
+        Assert.Equal(changed.Id, store.PoliciesOf(PolicyKinds.Enrollment)[0].Id);
 
         // The rows of the card.
         var rows = store.Rows(_devices);
@@ -190,9 +192,18 @@ public sealed class EnrollmentPolicyTests
         Assert.False(unprotected.TagsProtected);
         Assert.False(EstRules.Of(unprotected).Check(_devices[0], "https").Allowed); // fail closed: a group user could add the tag
 
-        // No Enrollment policy at all: every device refused, the page says why.
-        Assert.Null((await store.DeleteAsync(all.Id, "admin", CancellationToken.None)).Error);
-        rules = EstRules.Of(store);
+        // The first Enrollment policy is a system policy: it is never deleted.
+        Assert.Equal(PolicyTexts.SystemPolicy, (await store.DeleteAsync(all.Id, "admin", CancellationToken.None)).Error?.Message);
+
+        // No Enrollment policy at all (a stored list without one): every device refused, the page says why.
+        var withoutEnrollment = new FakeSettings();
+        await withoutEnrollment.SetAsync(PolicyStore.SettingsKey,
+            PkiJson.Serialize(new StoredPolicies { Policies = [.. store.All.Where(p => p.Kind != PolicyKinds.Enrollment)], Converted = store.Converted }), CancellationToken.None);
+        var none = await TestPolicies.StoreAsync(settings: withoutEnrollment, devices: _ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. _devices]),
+            tags: new FakeCoreContext().FakeProtectedTags);
+        Assert.NotEmpty(none.PoliciesOf(PolicyKinds.SignInCa));
+        Assert.Empty(none.PoliciesOf(PolicyKinds.Enrollment));
+        rules = EstRules.Of(none);
         Assert.Equal(EstTexts.NoEnrollmentPolicies, rules.Problem);
         Assert.Equal(403, rules.Check(_devices[0], "https").Status);
 

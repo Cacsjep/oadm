@@ -88,9 +88,9 @@ public sealed class IssuingPolicyTests
         var https = store.FirstOf(PolicyKinds.HttpsCertificate)!;
         var dot1x = store.FirstOf(PolicyKinds.Dot1xCertificate)!;
 
-        Assert.Equal(PolicyTexts.LastIssuing(PolicyKinds.HttpsCertificate), (await store.DeleteAsync(https.Id, "admin", CancellationToken.None)).Error?.Message);
-        Assert.Equal("Enable HTTPS needs an HTTPS certificate policy. Add another one first.", PolicyTexts.LastIssuing(PolicyKinds.HttpsCertificate));
-        Assert.Equal("Enable IEEE 802.1X needs an IEEE 802.1X certificate policy. Add another one first.", (await store.DeleteAsync(dot1x.Id, "admin", CancellationToken.None)).Error?.Message);
+        // The first policy of each issuing kind is a system policy: it stays (the tasks always have one).
+        Assert.Equal(PolicyTexts.SystemPolicy, (await store.DeleteAsync(https.Id, "admin", CancellationToken.None)).Error?.Message);
+        Assert.Equal("OADM needs this policy. Change its values instead.", (await store.DeleteAsync(dot1x.Id, "admin", CancellationToken.None)).Error?.Message);
         foreach (var server in store.PoliciesOf(PolicyKinds.ServerCertificate))
         {
             Assert.Equal(PolicyTexts.ServerNeedsPolicy(server.Server), (await store.DeleteAsync(server.Id, "admin", CancellationToken.None)).Error?.Message);
@@ -98,13 +98,16 @@ public sealed class IssuingPolicyTests
 
         Assert.Equal("The EST server gets its certificate from this policy. Change it instead.", PolicyTexts.ServerNeedsPolicy(PolicyServers.Est));
 
-        // A second HTTPS policy: now either can go, unless an EST profile names it.
+        // A second HTTPS policy is the user's: it can go, unless an EST profile names it.
         var twoYears = (await store.SaveAsync(Https("HTTPS 2 years", 730), "admin", Suites, CancellationToken.None)).Saved!;
+        Assert.False(PolicyStore.IsSystem(twoYears, store.All));
         store.ProfileUses = _ => Task.FromResult<IReadOnlyList<(Guid, string)>>([(twoYears.Id, "https"), (twoYears.Id, "rtsps")]);
         Assert.Equal("Used by the EST profiles https and rtsps.", (await store.DeleteAsync(twoYears.Id, "admin", CancellationToken.None)).Error?.Message);
         Assert.Equal("Used by the EST profile https.", PolicyTexts.UsedByProfiles(["https"]));
-        Assert.Null((await store.DeleteAsync(https.Id, "admin", CancellationToken.None)).Error);
-        Assert.Equal(twoYears.Id, store.FirstOf(PolicyKinds.HttpsCertificate)!.Id); // the dialogs preselect the oldest left
+        Assert.Equal(PolicyTexts.SystemPolicy, (await store.DeleteAsync(https.Id, "admin", CancellationToken.None)).Error?.Message); // still the system policy
+        store.ProfileUses = _ => Task.FromResult<IReadOnlyList<(Guid, string)>>([]);
+        Assert.Null((await store.DeleteAsync(twoYears.Id, "admin", CancellationToken.None)).Error);
+        Assert.Equal(https.Id, Assert.Single(store.PoliciesOf(PolicyKinds.HttpsCertificate)).Id); // the dialogs preselect the oldest
     }
 
     [Fact]

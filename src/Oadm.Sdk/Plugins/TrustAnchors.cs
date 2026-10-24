@@ -38,4 +38,10 @@ public interface ITrustAnchors
     void SetExpiryWarning(Func<IDeviceInfo, int>? daysFor, int defaultDays)
     {
     }
+
+    /// <summary>
+    /// The OADM server's own TLS certificate (DER, the public part): PKI lists it read-only in its Certificates card (decision
+    /// 2026-10-25). Null over plain HTTP or before it is loaded. Default: null.
+    /// </summary>
+    byte[]? ServerCertificate => null;
 }

@@ -60,8 +60,9 @@ they have until these expire. Everything else in OADM works the same with or wit
   so they use the new port.
 - **Enrollments kept**: how many enrollments the list keeps, 100 to 5,000 (default 500).
 - **Issued by**: the OADM CA that signs the certificates.
-- **3 policies apply** with **Edit policies**: which cameras may enroll and which CAs they sign in with are policies on
-  the [PKI](../pki/) page (Enrollment and Sign-in CA). A warning below says when no camera can enroll.
+- **3 policies applied**, the link next to **Save**: which cameras may enroll and which CAs they sign in with are
+  policies on the [PKI](../pki/) page (Enrollment and Sign-in CA). Point at it to see them; it opens them. A warning
+  says when no camera can enroll.
 
 ### Profiles
 
@@ -79,9 +80,9 @@ You can add profiles for **MQTT** (client certificate) and **RTSPS** (server cer
   an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT. A
   certificate never lasts longer than the CA. The camera creates a key of the policy's kind and signs in with the device
   ID of the same kind. After an update, each profile names the policy with its former validity and key ("HTTPS", or a
-  new one such as "EST dot1x").
-- **On**: a profile that is off answers like one that does not exist; cameras set up with it get nothing until you turn
-  it on again.
+  new one such as "EST 802.1X").
+- **⋯ > Remove** takes a profile away after a confirmation (with **Save**); cameras set up with it then get nothing from
+  it.
 
 A camera holds at most two profiles, also counting profiles of another EST server that stay. When not all fit, the
 set-up uses those that fit, in the order of this list; when none fits, the camera is not changed.
@@ -218,7 +219,7 @@ For example, send an email when a certificate is not renewed: a certificate of 1
 | Status **TCP 9454 is used by another program** | Choose another port and set up the cameras again. |
 | Set-up ends with **Needs AXIS OS 12.10 or later** | Upgrade the camera's AXIS OS. |
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |
-| **The camera supports none of the EST server's profiles.** | Turn on a profile whose use the camera supports. |
+| **The camera supports none of the EST server's profiles.** | Add a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **No enrollment policy for this device.** | Add the camera to an Enrollment policy on the PKI page. |
 | Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page, or turn the profile off for the camera. |

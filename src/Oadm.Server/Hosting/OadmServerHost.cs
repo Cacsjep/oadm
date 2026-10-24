@@ -674,7 +674,9 @@ public static partial class OadmServerHost
         if (addresses is not null && addresses.Any(a => a.StartsWith("https:", StringComparison.OrdinalIgnoreCase)))
         {
             var regenerate = string.Equals(app.Configuration[ServerTlsCertificate.RegenerateConfigKey], "true", StringComparison.OrdinalIgnoreCase);
-            await sp.GetRequiredService<ServerTlsCertificate>().LoadOrCreateAsync(regenerate, ct).ConfigureAwait(false);
+            var tls = sp.GetRequiredService<ServerTlsCertificate>();
+            await tls.LoadOrCreateAsync(regenerate, ct).ConfigureAwait(false);
+            sp.GetRequiredService<TrustAnchorRegistry>().ServerCertificate = () => tls.Certificate.RawData; // PKI lists it read-only
         }
         else if (addresses is { Count: > 0 })
         {

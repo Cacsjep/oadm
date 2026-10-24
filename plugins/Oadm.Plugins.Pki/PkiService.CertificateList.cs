@@ -72,6 +72,10 @@ public sealed partial class PkiService
         };
         var warningDays = WarningDaysFor([.. byId.Values]);
         var extras = onlyListed ? [] : ExtraRows(query, issuers);
+        if (request.NoAuthorities)
+        {
+            extras.RemoveAll(e => e.Row.Kind == ListedCertificateKind.Authority);
+        }
         var page = ListPage(query, extras, byId, onlyListed, warningDays, issuers);
         if (page.Rows.Count == 0 && page.Total > 0 && query.Offset > 0 && query.Offset >= page.Total)
         {
@@ -240,6 +244,11 @@ public sealed partial class PkiService
             }, issuer.Id));
         }
 
+        if (OadmServerCertificate() is { } own)
+        {
+            all.Add(Extra(own, OtherIssuerId));
+        }
+
         foreach (var local in _local.List)
         {
             var issuer = issuers.Of(local.Stored.IssuerFingerprint);
@@ -317,6 +326,58 @@ public sealed partial class PkiService
     /// <summary>The DER of a CA row (<c>ca:&lt;SHA-256&gt;</c>); null when it is no longer listed.</summary>
     private byte[]? AuthorityDer(string rowId) =>
         Issuers().AuthorityRows.FirstOrDefault(r => r.Row.Id == rowId)?.Der;
+
+    /// <summary>The row id of the OADM server's own TLS certificate.</summary>
+    internal const string OadmServerRowId = "oadm-server";
+
+    /// <summary>The name of the OADM server's own certificate in the list.</summary>
+    internal const string OadmServerName = "OADM server";
+
+    /// <summary>The OADM server's own TLS certificate (DER) from the host; null without one.</summary>
+    private byte[]? OadmServerDer()
+    {
+        try
+        {
+            return _anchors?.ServerCertificate;
+        }
+#pragma warning disable CA1031 // Not loaded yet (or over plain HTTP): no row.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The OADM server's own TLS certificate as a read-only row of the Servers group (decision 2026-10-25): self-signed,
+    /// pinned by the clients, never issued by a policy; View and Export only.
+    /// </summary>
+    private IssuedCertificateInfo? OadmServerCertificate()
+    {
+        if (OadmServerDer() is not { } der)
+        {
+            return null;
+        }
+
+        using var certificate = X509CertificateLoader.LoadCertificate(der);
+        var now = Now.UtcDateTime;
+        return new IssuedCertificateInfo
+        {
+            Id = OadmServerRowId,
+            SerialNumber = certificate.SerialNumber,
+            Kind = ListedCertificateKind.Server,
+            Name = OadmServerName,
+            Purpose = ListedCertificateUses.Server,
+            IssuedBy = IssuedCertificateMessages.SelfSigned,
+            KeyText = CaCertificates.KeyType(certificate),
+            UsedBy = OadmServerName,
+            UsedByBadges = [OadmServerName],
+            NotBeforeUtc = certificate.NotBefore.ToUniversalTime(),
+            NotAfterUtc = certificate.NotAfter.ToUniversalTime(),
+            IssuedUtc = certificate.NotBefore.ToUniversalTime(),
+            State = StateOf(certificate.NotAfter.ToUniversalTime(), revoked: null, now, Policies.DefaultExpiryDays),
+        };
+    }
 
     /// <summary>One row before the device certificates: the row, its issuer's id and the texts the search looks in.</summary>
     private sealed record ExtraRow(IssuedCertificateInfo Row, string IssuerId, string Text);

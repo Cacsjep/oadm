@@ -72,7 +72,7 @@ public sealed class PolicyTests
         Assert.Equal("HTTPS", byName["https"].Name); // the same values: the default
         Assert.Equal("HTTPS", byName["rtsps"].Name);
         var dot1x = byName["dot1x"];
-        Assert.Equal(("EST dot1x", PolicyKinds.Dot1xCertificate, 730, PolicyKeys.Rsa), (dot1x.Name, dot1x.Kind, dot1x.ValidDays!.Value, dot1x.Key));
+        Assert.Equal(("EST 802.1X", PolicyKinds.Dot1xCertificate, 730, PolicyKeys.Rsa), (dot1x.Name, dot1x.Kind, dot1x.ValidDays!.Value, dot1x.Key));
         Assert.Null(PolicyRules.Validate(dot1x, PkiService.CipherSuites)); // a policy like any other (the 802.1X settings of the first)
         Assert.Equal(730, config.Profiles.Single(p => p.Name == "dot1x").ValidityDays); // the old values stay, no longer read
         Assert.Contains(EstPolicies.Owner, store.Converted);
@@ -81,7 +81,7 @@ public sealed class PolicyTests
         var json = await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None);
         Assert.False(await EstPolicies.ConvertAsync(settings, store, CancellationToken.None));
         Assert.Equal(json, await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None));
-        Assert.Single(store.All, p => p.Name == "EST dot1x");
+        Assert.Single(store.All, p => p.Name == "EST 802.1X");
 
         // PKI never deletes a policy a profile names.
         Assert.Contains((dot1x.Id, "dot1x"), await EstPolicies.UsesAsync(settings, CancellationToken.None));
@@ -94,14 +94,14 @@ public sealed class PolicyTests
         var settings = new FakeSettings();
         await settings.SetAsync(EstStore.ConfigKey, Config41, CancellationToken.None);
         Assert.True(await EstPolicies.ConvertAsync(settings, store, CancellationToken.None));
-        var made = store.All.Single(p => p.Name == "EST dot1x");
+        var made = store.All.Single(p => p.Name == "EST 802.1X");
 
         await settings.SetAsync(EstStore.ConfigKey, Config41, CancellationToken.None); // the settings write was lost
 
         Assert.True(await EstPolicies.ConvertAsync(settings, store, CancellationToken.None));
         var config = EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None));
         Assert.Equal(made.Id, config.Profiles.Single(p => p.Name == "dot1x").PolicyId);
-        Assert.Single(store.All, p => p.Name == "EST dot1x");
+        Assert.Single(store.All, p => p.Name == "EST 802.1X");
     }
 
     [Fact]

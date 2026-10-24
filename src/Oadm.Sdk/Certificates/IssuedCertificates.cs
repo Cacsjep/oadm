@@ -187,6 +187,9 @@ public static class IssuedCertificateMessages
 
     /// <summary>A certificate listed before OADM kept a copy of each one (4.1 and older), until a read of its device finds it.</summary>
     public const string NoCopy = "OADM keeps no copy of this certificate.";
+
+    /// <summary>The issuer of a root CA and of the OADM server's own certificate in the list.</summary>
+    public const string SelfSigned = "Self-signed";
 }
 
 /// <summary>One revoked certificate (SDK 0.4.0): kept while the certificate could still be valid.</summary>
@@ -311,12 +314,16 @@ public enum IssuedCertificateGrouping
 /// <summary>The groups of <see cref="IssuedCertificateGrouping.Type"/> (SDK 0.4.0): their keys and names.</summary>
 public static class IssuedCertificateGroups
 {
+    /// <summary>The certificate authorities.</summary>
     public const string Authorities = "authorities";
 
+    /// <summary>The certificates of the servers (802.1X server, EST server, the OADM server).</summary>
     public const string Servers = "servers";
 
+    /// <summary>The certificates created, signed or imported on the PKI page.</summary>
     public const string Local = "local";
 
+    /// <summary>The device certificates.</summary>
     public const string Devices = "devices";
 
     /// <summary>The group of a row by its kind.</summary>

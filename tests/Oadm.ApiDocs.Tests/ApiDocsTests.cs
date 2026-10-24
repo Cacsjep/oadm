@@ -186,7 +186,7 @@ public sealed partial class ApiDocsTests
             }
         }
 
-        Assert.Empty(empty);
+        Assert.True(empty.Count == 0, "Without a description:" + Environment.NewLine + string.Join(Environment.NewLine, empty)); // every one, not the first few
     }
 
     [Fact]

@@ -48,8 +48,8 @@ settings say for that case. Everything else in OADM works the same with or witho
 
 ## The page
 
-The page has the cards **Server** and **Switches**, then **Sessions** and **Log**. Drag the line between Sessions and Log
-to give one of them more room.
+The page has **Server** and **Switches** on the left and **Sessions** on the right. On a narrow window they are below
+each other.
 
 ### Server
 
@@ -57,9 +57,9 @@ to give one of them more room.
 - **Port**: the UDP port the switches send to (default 1812).
 - **Log entries kept**: how many entries the log keeps, 1,000 to 50,000 (default 5,000).
 
-The card also says how many policies apply. The rules of the server (TLS version, cipher suites, largest EAP packet,
-how often cameras sign in again, which CAs pass, VLANs, blocked and revoked devices) are policies on the
-[PKI](../pki/) page: **Edit policies** opens it.
+Next to **Save**, the link **4 policies applied** names the rules of the server when you point at it: TLS version, cipher
+suites, largest EAP packet, how often cameras sign in again, which CAs pass, VLANs, blocked and revoked devices. They are
+policies on the [PKI](../pki/) page; the link opens them.
 
 ### Switches
 
@@ -86,18 +86,13 @@ Changes to the switches apply at once, also while cameras sign in on other switc
 
 <Image src={sessionsShot} alt="The Sessions card with cameras signing in" class="screen" />
 
-The cameras signing in right now: started, switch, port, MAC address, EAP identity, device, IP address, state and how
-long it takes. The state says how far the camera got, for example **Sending server certificate: fragment 2 of 4** or
-**Checking client certificate**. Before the certificate is checked, the device is a guess from the MAC address and shows
-in italics; only the certificate decides. Finished sign-ins leave the list after 10 seconds and stay in the log.
+One list of every sign-in: the cameras signing in right now on top, then the finished ones, newest first. Each row has
+the time, switch, port, EAP identity, VLAN and the state. A camera signing in shows how far it got, for example
+**Sending server certificate: fragment 2 of 4**; a finished one shows **Authenticated** or **Failed** with the reason.
+Point at the VLAN to see the policy that gave it. A camera that passed with something odd shows amber, for example when
+its MAC address does not match its certificate (a copied certificate shows this way).
 
-### Log
-
-Every sign-in: time, switch, port, MAC address, EAP identity, device, IP address, the result (**Authenticated** or
-**Failed** with the reason) and the VLAN with the policy that gave it. A camera that passed with something odd shows
-amber, for example when its MAC address does not match its certificate (a copied certificate shows this way).
-
-- **Search** finds text in every column.
+- **Search** finds text in every column, also the MAC address, device and IP address.
 - **View certificate** shows the certificate the camera sent (also a double click on a row).
 - **Delete all** (red, with a confirmation) empties the log for every client.
 
@@ -119,7 +114,7 @@ the next sign-in of each camera.
 
 ## Users with a device group
 
-Users limited to a [device group](../../admin/device-groups/) see the Sessions and Log rows of their devices. Only users
+Users limited to a [device group](../../admin/device-groups/) see the sessions of their devices. Only users
 with all devices change the settings, the switches and the log.
 
 ## Troubleshooting

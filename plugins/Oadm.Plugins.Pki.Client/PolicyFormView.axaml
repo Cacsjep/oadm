@@ -144,9 +144,5 @@
         </ui:FormField>
       </StackPanel>
     </ui:FormField>
-
-    <!-- What the policy does, the sentence of its row in the list, as the fields are now. -->
-    <TextBlock Classes="secondary" Text="{Binding Preview}" TextWrapping="Wrap" MaxWidth="560" HorizontalAlignment="Left"
-               IsVisible="{Binding Preview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
   </StackPanel>
 </UserControl>

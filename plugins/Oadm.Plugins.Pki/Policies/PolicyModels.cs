@@ -121,6 +121,12 @@ public static class PolicyKinds
     /// <summary>At most one policy of the kind.</summary>
     public static bool OneOnly(string kind) => kind == Dot1xServer;
 
+    /// <summary>
+    /// The kind has system policies (decision 2026-10-25): OADM needs them, they cannot be deleted, their values stay
+    /// editable. The first (oldest) of the kind, every Server certificate policy (one per server).
+    /// </summary>
+    public static bool HasSystemPolicy(string kind) => kind is HttpsCertificate or Dot1xCertificate or ServerCertificate or Dot1xServer or ExpiryWarning or Enrollment;
+
     /// <summary>The devices are chosen by device and site only, never by tag (Revoke: a tag could revoke every device that gets it later).</summary>
     public static bool NoTags(string kind) => kind == Revoke;
 
@@ -407,7 +413,11 @@ public sealed record PkiPolicy
 /// <param name="Group">One of <see cref="PolicyGroups"/>.</param>
 /// <param name="Summary">"VLAN 30", "OADM CA, only devices OADM manages", "30 days".</param>
 /// <param name="Warning">An overlap a tag or site change made later ("10.0.0.48 is in Building B and PTZ. Building B applies."); null when none.</param>
-public sealed record PolicyRow(PkiPolicy Policy, string KindName, string Group, string Summary, string? Warning);
+/// <param name="IsSystem">A system policy: OADM needs it, it cannot be deleted (<see cref="PolicyKinds.HasSystemPolicy"/>).</param>
+public sealed record PolicyRow(PkiPolicy Policy, string KindName, string Group, string Summary, string? Warning, bool IsSystem = false);
+
+/// <summary>One policy in the tooltip of a server tab's "N policies applied": its name and its summary sentence.</summary>
+public sealed record PolicyLine(string Name, string Summary);
 
 /// <summary>A CA a policy can name (previous OADM CAs follow the OADM CA and are no choice of their own).</summary>
 public sealed record PolicyCaChoice(string Id, string Name, CertificateAuthorityKind Kind)
@@ -614,11 +624,6 @@ public static class PolicyTexts
     /// <summary>"The EST server gets its certificate from this policy. Change it instead." (a Server certificate policy is never deleted).</summary>
     public static string ServerNeedsPolicy(string? server) => $"The {PolicyServers.Name(server)} gets its certificate from this policy. Change it instead.";
 
-    /// <summary>The refusal to delete the last policy of a device issuing kind (the task needs one).</summary>
-    public static string LastIssuing(string kind) => kind == PolicyKinds.Dot1xCertificate
-        ? "Enable IEEE 802.1X needs an IEEE 802.1X certificate policy. Add another one first."
-        : "Enable HTTPS needs an HTTPS certificate policy. Add another one first.";
-
     /// <summary>"Used by the EST profile https." / "Used by the EST profiles https and dot1x."</summary>
     public static string UsedByProfiles(IReadOnlyList<string> profiles)
     {
@@ -640,6 +645,9 @@ public static class PolicyTexts
 
     /// <summary>"Only one 802.1X server policy is allowed."</summary>
     public static string OneOnly(string kind) => $"Only one {PolicyKinds.Name(kind)} policy is allowed.";
+
+    /// <summary>The refusal of Delete for a system policy.</summary>
+    public const string SystemPolicy = "OADM needs this policy. Change its values instead.";
 
     /// <summary>"Another Allow CA policy has this CA."</summary>
     public const string CaTaken = "Another Allow CA policy has this CA.";

@@ -11,15 +11,33 @@ namespace Oadm.Plugins.Radius.Client;
 /// </summary>
 public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs
 {
-    /// <summary>From this width of the page the cards Server and Switches stand side by side (Switches gets 1.7 parts); below it one column.</summary>
-    public const double TwoColumnWidth = 1000;
+    /// <summary>From this width of the page Server and Switches stand left of the Sessions card; below it one column.</summary>
+    public const double TwoColumnWidth = Oadm.Plugins.Pki.Client.Servers.ServerPageLayout.TwoColumnWidth;
+
+    /// <summary>The lowest the page's cards get in two columns, and the Sessions card in one; a lower page scrolls.</summary>
+    public const double MinSessionsHeight = 480;
 
     private RadiusViewModel? _vm;
     private int _columns;
+    private Action? _unfollowTip;
 
     public RadiusView()
     {
         InitializeComponent();
+        PageScroll.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == ScrollViewer.ViewportProperty)
+            {
+                FitSessions();
+            }
+        };
+        TopCards.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == IsVisibleProperty)
+            {
+                PlaceSessions();
+            }
+        };
         SwitchesGrid.DoubleTapped += (_, _) =>
         {
             if (_vm?.Switches.EditCommand.CanExecute(null) == true)
@@ -27,7 +45,7 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs
                 _vm.Switches.EditCommand.Execute(null);
             }
         };
-        LogGrid.DoubleTapped += (_, _) =>
+        SessionsGrid.DoubleTapped += (_, _) =>
         {
             if (_vm?.Log.ViewCertificateCommand.CanExecute(null) == true)
             {
@@ -53,7 +71,11 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs
     /// <summary>The columns of the cards now: 2 or 1 (tests; 2 before the first layout, as in the XAML).</summary>
     public int CardColumnCount => _columns == 0 ? 2 : _columns;
 
-    /// <summary>Two columns (Server | Switches) or one by the width of the page (like the Permissions page). Layout only.</summary>
+    /// <summary>
+    /// Two columns (Server above Switches | Sessions) or one (Server, Switches, Sessions below each other) by the width of
+    /// the page; Sessions takes the whole width when Server and Switches are hidden (users limited to a device group).
+    /// Layout only.
+    /// </summary>
     private void Arrange(double width)
     {
         var columns = width >= TwoColumnWidth ? 2 : 1;
@@ -63,26 +85,62 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs
         }
 
         _columns = columns;
-        var definitions = CardColumns.ColumnDefinitions;
-        definitions[0].Width = new GridLength(1, GridUnitType.Star);
+        var definitions = PageRows.ColumnDefinitions;
+        definitions[0].Width = columns == 2 ? new GridLength(Oadm.Plugins.Pki.Client.Servers.ServerPageLayout.LeftColumnWidth) : new GridLength(1, GridUnitType.Star);
         definitions[1].Width = columns == 2 ? new GridLength(16) : new GridLength(0);
-        definitions[2].Width = columns == 2 ? new GridLength(1.7, GridUnitType.Star) : new GridLength(0);
-        Place(ServerCard, 0, 0, default);
-        if (columns == 2)
+        definitions[2].Width = columns == 2 ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        PageRows.RowDefinitions[0].Height = columns == 2 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        PageRows.RowDefinitions[1].Height = columns == 2 ? new GridLength(0) : new GridLength(MinSessionsHeight);
+        CardColumns.RowDefinitions[2].Height = columns == 2 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto;
+        SwitchesCard.MinHeight = columns == 2 ? 0 : 320;
+        PlaceSessions();
+        FitSessions();
+    }
+
+    /// <summary>Sessions right of Server and Switches, below them, or alone over the whole width.</summary>
+    private void PlaceSessions()
+    {
+        // In one column Sessions has its own row of a fixed height (its grid stays bounded and virtualized).
+        var alone = !TopCards.IsVisible;
+        var two = CardColumnCount == 2;
+        Grid.SetRow(SessionsCard, two ? 0 : 1);
+        Grid.SetColumn(SessionsCard, two && !alone ? 2 : 0);
+        Grid.SetColumnSpan(SessionsCard, two && !alone ? 1 : 3);
+        SessionsCard.Margin = two || alone ? default : new Thickness(0, 16, 0, 0);
+    }
+
+    /// <summary>
+    /// In two columns the cards are as high as the page (at least <see cref="MinSessionsHeight"/>): the grids stay bounded
+    /// and virtualized; in one column the page grows and scrolls. Layout only.
+    /// </summary>
+    private void FitSessions()
+    {
+        var viewport = PageScroll.Viewport.Height;
+        if (CardColumnCount == 1 || !double.IsFinite(viewport) || viewport <= 0)
         {
-            Place(SwitchesCard, 0, 2, default);
+            PageRows.Height = double.NaN;
+            return;
         }
-        else
+
+        var height = Math.Max(MinSessionsHeight, Math.Floor(viewport));
+        if (double.IsNaN(PageRows.Height) || Math.Abs(PageRows.Height - height) >= 1)
         {
-            Place(SwitchesCard, 1, 0, new Thickness(0, 16, 0, 0));
+            PageRows.Height = height;
         }
     }
 
-    private static void Place(Control card, int row, int column, Thickness margin)
+    /// <summary>A switch row's ⋯ button: Edit, then Delete in red (the shared row menu). View only.</summary>
+    private void OnSwitchActions(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        Grid.SetRow(card, row);
-        Grid.SetColumn(card, column);
-        card.Margin = margin;
+        if (sender is Button { DataContext: SwitchRowViewModel row } button && _vm is not null)
+        {
+            RowActions.Show(button,
+            [
+                new("Edit", _vm.Switches.EditRowCommand, row),
+                IssuedCertificateAction.Separator,
+                new("Delete", _vm.Switches.DeleteRowCommand, row, IsDanger: true),
+            ]);
+        }
     }
 
     public async Task<bool> ShowSwitchAsync(SwitchDialogViewModel dialog)
@@ -101,9 +159,13 @@ public partial class RadiusView : UserControl, ISwitchDialogs, ILogDialogs
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+        _unfollowTip?.Invoke();
+        _unfollowTip = null;
         _vm = DataContext as RadiusViewModel;
         if (_vm is not null)
         {
+            var vm = _vm;
+            _unfollowTip = Oadm.Plugins.Pki.Client.Servers.PolicyLinesTip.Follow(PoliciesLink, vm, nameof(RadiusViewModel.PolicyLines), () => vm.PolicyLines);
             _vm.Switches.Dialogs = this;
             _vm.Log.Dialogs = this;
         }

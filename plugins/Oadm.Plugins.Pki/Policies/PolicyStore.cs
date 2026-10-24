@@ -386,14 +386,19 @@ public sealed partial class PolicyStore : IDisposable
     public PkiPolicy? ServerCertificateFor(string server) => PoliciesOf(PolicyKinds.ServerCertificate).FirstOrDefault(p => p.Server == server);
 
     /// <summary>
-    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), the last policy of a
-    /// device issuing kind (the task needs one), an issuing policy an EST profile names. Null when it can.
+    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), a system policy
+    /// (<see cref="IsSystem"/>), an issuing policy an EST profile names. Null when it can.
     /// </summary>
     private async Task<string?> DeleteRefusalAsync(PkiPolicy policy, IReadOnlyList<PkiPolicy> list, CancellationToken ct)
     {
         if (policy.Kind == PolicyKinds.ServerCertificate)
         {
             return PolicyTexts.ServerNeedsPolicy(policy.Server);
+        }
+
+        if (IsSystem(policy, list))
+        {
+            return PolicyTexts.SystemPolicy;
         }
 
         if (!PolicyKinds.IsDeviceIssuing(policy.Kind))
@@ -410,12 +415,24 @@ public sealed partial class PolicyStore : IDisposable
             }
         }
 
-        return list.Count(p => p.Kind == policy.Kind) <= 1 ? PolicyTexts.LastIssuing(policy.Kind) : null;
+        return null; // the last of a device issuing kind is its system policy (refused above)
     }
 
     /// <summary>
-    /// The rows of the card: every policy with its summary and the warning of an overlap a tag or site change made later
-    /// (checked against <paramref name="devices"/>: both rows warn and name the one that applies).
+    /// A system policy (decision 2026-10-25): of a kind with system policies (<see cref="PolicyKinds.HasSystemPolicy"/>),
+    /// every Server certificate policy and the first (oldest) policy of the other kinds. It cannot be deleted.
+    /// </summary>
+    public static bool IsSystem(PkiPolicy policy, IReadOnlyList<PkiPolicy> list)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(list);
+        return PolicyKinds.HasSystemPolicy(policy.Kind)
+            && (policy.Kind == PolicyKinds.ServerCertificate || list.FirstOrDefault(p => p.Kind == policy.Kind)?.Id == policy.Id);
+    }
+
+    /// <summary>
+    /// The rows of the card: every policy with its summary, whether it is a system policy, and the warning of an overlap a
+    /// tag or site change made later (checked against <paramref name="devices"/>: both rows warn and name the one that applies).
     /// </summary>
     public IReadOnlyList<PolicyRow> Rows(IReadOnlyList<IDeviceInfo> devices)
     {
@@ -423,10 +440,19 @@ public sealed partial class PolicyStore : IDisposable
         var snapshot = _snapshot;
         var names = CaNames();
         var warnings = Warnings(snapshot, devices);
+        var list = snapshot.Stored.Policies;
         return
         [
-            .. snapshot.Stored.Policies.Select(p => new PolicyRow(p, PolicyKinds.Name(p.Kind), PolicyKinds.GroupOf(p.Kind), Summary(p, names), warnings.GetValueOrDefault(p.Id))),
+            .. list.Select(p => new PolicyRow(p, PolicyKinds.Name(p.Kind), PolicyKinds.GroupOf(p.Kind), Summary(p, names), warnings.GetValueOrDefault(p.Id), IsSystem(p, list))),
         ];
+    }
+
+    /// <summary>The name and summary sentence of every policy of the kinds <paramref name="kinds"/> takes, in age order (the tooltip of a server tab's "N policies applied").</summary>
+    public IReadOnlyList<PolicyLine> LinesOf(Func<string, bool> kinds)
+    {
+        ArgumentNullException.ThrowIfNull(kinds);
+        var names = CaNames();
+        return [.. _snapshot.Stored.Policies.Where(p => kinds(p.Kind)).Select(p => new PolicyLine(p.Name, Summary(p, names)))];
     }
 
     /// <summary>The CAs an Allow CA policy can name (previous OADM CAs follow the OADM CA).</summary>
