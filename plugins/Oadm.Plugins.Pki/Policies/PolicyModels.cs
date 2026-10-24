@@ -397,7 +397,7 @@ public static class PolicyTexts
     public static string VlanBy(int vlan, string? policy) =>
         string.IsNullOrEmpty(policy) ? string.Create(CultureInfo.InvariantCulture, $"VLAN {vlan}") : string.Create(CultureInfo.InvariantCulture, $"VLAN {vlan} by {policy}");
 
-    /// <summary>"Every 60 minutes".</summary>
+    /// <summary>"reauthenticate every 60 minutes", "switch decides reauthentication" (the row's summary).</summary>
     public static string Reauth(int? minutes) =>
         minutes is { } m ? string.Create(CultureInfo.CurrentCulture, $"reauthenticate every {m:N0} minutes") : "switch decides reauthentication";
 

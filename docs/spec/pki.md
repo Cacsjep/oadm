@@ -240,9 +240,10 @@ conservative choice that fits the spec; to be confirmed by the maintainer).
   The default cipher suites (a new server, Reset to default, the fallback of a policy the server cannot use) have one
   source, `PolicyRules.DefaultSuites`: the suites listed for the minimum that the server certificate can use (never the
   ECDHE_RSA ones with its ECDSA key).
-  Reauthentication every N minutes (decision of stage 3: 10 to 1,440 minutes) sends Session-Timeout and Termination-Action
-  RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19). Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN
-  30 by Building B"); refusals name Block and Revoke policies ("Blocked by Storage room", "Certificate revoked by Stolen").
+  Reauthentication (the editor: "Switch decides" or "Every" with Minutes next to it; decision of stage 3: 10 to 1,440
+  minutes) sends Session-Timeout and Termination-Action RADIUS-Request in every Access-Accept (RFC 3580 3.17, 3.19).
+  Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN 30 by Building B"); refusals name Block and Revoke policies
+  ("Blocked by Storage room", "Certificate revoked by Stolen").
 - **Conversion** (once per owner, `PolicyStore.ConvertOnceAsync`, the owner noted in the stored list): PKI at its start
   (`PkiService.ConvertOwnSettings`: "All devices" with the stored warn days, `PolicyDevices.AllDevices`); the 802.1X server's
   core plugin at its start hands its settings over (`RadiusPolicies.ConvertAsync`; PKI starts first, the core plugins of a

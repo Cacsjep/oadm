@@ -324,7 +324,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 {
     public const string OldTlsHint = "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure.";
     public const string UnusableSuiteHint = "Not usable with the server certificate.";
-    public const string ReauthEvery = "Every N minutes";
+    /// <summary>The choice next to the Minutes field ("Every" [60] minutes).</summary>
+    public const string ReauthEvery = "Every";
     public const string OnlyManagedText = PolicyTexts.OnlyManaged;
 
     /// <summary>"Off: any device with a valid certificate of this CA".</summary>

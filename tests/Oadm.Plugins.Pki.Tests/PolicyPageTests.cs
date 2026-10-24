@@ -391,6 +391,8 @@ public sealed class PolicyHeadlessTests
         Assert.Contains("Reset to default", checks.serverTexts);
         Assert.Contains(PolicyRules.EapPacketRange, checks.serverTexts);
         Assert.Contains("Minutes", checks.serverTexts);
+        Assert.Equal([PolicyTexts.SwitchDecides, "Every"], PolicyEditorViewModel.ReauthChoices.Select(c => c.Label)); // no placeholder letter
+        Assert.DoesNotContain(checks.serverTexts, t => t?.Contains(" N ", StringComparison.Ordinal) == true);
         Assert.Contains("Days", checks.expiryTexts);
         Assert.Contains(PolicyTexts.AllDevices, checks.expiryTexts); // the Devices choice; no picker
         Assert.False(checks.expiryPicker);
