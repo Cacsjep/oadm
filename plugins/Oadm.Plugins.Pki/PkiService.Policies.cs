@@ -39,12 +39,63 @@ public sealed partial class PkiService
         return [new PkiPolicy { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.ExpiryWarning, Days = days, Devices = PolicyDevices.Everything }];
     }
 
+    /// <summary>The owner of the conversion of stage 4 (the issuing policies), apart from stage 3's <see cref="PkiPluginInfo.PluginId"/>.</summary>
+    public const string IssuingOwner = PkiPluginInfo.PluginId + ":issuing";
+
+    /// <summary>
+    /// PKI's settings from before the issuing policies (docs/spec/pki.md "Converting existing settings"): the Device
+    /// certificates card's validity becomes the policy "HTTPS", it and the IEEE 802.1X card (EAPOL version, EAP identity,
+    /// RADIUS server CA) the policy "IEEE 802.1X"; the servers' certificates get "802.1X server" (365 days) and "EST server"
+    /// (90 days), as they were made before. The key: ECC on a new server; RSA where an OADM before ran
+    /// (<paramref name="usedBefore"/>), because the tasks made RSA 2048 keys on the devices then (decision of stage 4: what
+    /// the devices get does not change with the update).
+    /// </summary>
+    public static IReadOnlyList<PkiPolicy> ConvertIssuing(PkiConfig config, bool usedBefore)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        var dot1x = config.Dot1x ?? new Dot1xConfig();
+        var days = config.DeviceCertValidityDays is >= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays ? config.DeviceCertValidityDays : PolicyLimits.DefaultValidDays;
+        var key = usedBefore ? PolicyKeys.Rsa : PolicyKeys.Ecc;
+        var radiusPem = dot1x.RadiusCa == RadiusCaSource.Imported && PolicyRules.IsCertificatePem(dot1x.RadiusCaPem) ? dot1x.RadiusCaPem : null;
+        return
+        [
+            new PkiPolicy { Name = PolicyLimits.HttpsName, Kind = PolicyKinds.HttpsCertificate, CaId = CertificateAuthorityInfo.OadmId, ValidDays = days, Key = key },
+            new PkiPolicy
+            {
+                Name = PolicyLimits.Dot1xName,
+                Kind = PolicyKinds.Dot1xCertificate,
+                CaId = CertificateAuthorityInfo.OadmId,
+                ValidDays = days,
+                Key = key,
+                EapolVersion = dot1x.EapolVersion is 1 or 2 ? dot1x.EapolVersion : 1,
+                Identity = PkiValidation.Identity(dot1x.Identity) is null ? dot1x.Identity : Dot1xIdentity.Mac,
+                CustomIdentity = dot1x.CustomIdentity,
+
+                // An imported RADIUS CA that cannot be read stays imported without a certificate: the task refuses until it is
+                // imported again (never a silent switch to the OADM CA, which the RADIUS server may not use).
+                RadiusCa = dot1x.RadiusCa == RadiusCaSource.Imported ? RadiusCaSource.Imported : RadiusCaSource.Oadm,
+                RadiusCaPem = radiusPem,
+            },
+            new PkiPolicy
+            {
+                Name = PolicyLimits.Dot1xServerCertificateName, Kind = PolicyKinds.ServerCertificate, CaId = CertificateAuthorityInfo.OadmId,
+                ValidDays = PolicyLimits.DefaultValidDays, Key = PolicyKeys.Ecc, Server = PolicyServers.Dot1x,
+            },
+            new PkiPolicy
+            {
+                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.ServerCertificate, CaId = CertificateAuthorityInfo.OadmId,
+                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc, Server = PolicyServers.Est,
+            },
+        ];
+    }
+
     /// <summary>Loads the policies, converts PKI's own settings once and starts the minute round of Revoke.</summary>
     private async Task StartPoliciesAsync(CancellationToken ct)
     {
         await Policies.LoadAsync(ct).ConfigureAwait(false);
         var config = _config;
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
+        await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);

@@ -18,8 +18,8 @@ public static class PolicyGroups
     public const string Est = "est";
     public const string Revoke = "revoke";
 
-    /// <summary>The filter chips of this stage, in order: only groups that have kinds (Issuing and EST come with their kinds).</summary>
-    public static IReadOnlyList<string> Shown { get; } = [All, Certificates, Dot1x, Revoke];
+    /// <summary>The filter chips of this stage, in order: only groups that have kinds (EST comes with its kinds).</summary>
+    public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Revoke];
 
     /// <summary>"All", "Issuing", "Certificates", "802.1X", "EST", "Revoke".</summary>
     public static string Label(string group) => group switch
@@ -34,9 +34,18 @@ public static class PolicyGroups
     };
 }
 
-/// <summary>The kinds of policies (docs/spec/pki.md "Policies", the kinds of stage 3).</summary>
+/// <summary>The kinds of policies (docs/spec/pki.md "Policies", the kinds of stages 3 and 4).</summary>
 public static class PolicyKinds
 {
+    /// <summary>Issuing: the certificates of Enable HTTPS and of the EST profiles for HTTPS and RTSPS (no devices).</summary>
+    public const string HttpsCertificate = "httpsCertificate";
+
+    /// <summary>Issuing: the certificates of Enable IEEE 802.1X and of the EST profiles for IEEE 802.1X and MQTT, with the 802.1X settings (no devices).</summary>
+    public const string Dot1xCertificate = "dot1xCertificate";
+
+    /// <summary>Issuing: the certificate of the 802.1X server or of the EST server (one per server, no devices).</summary>
+    public const string ServerCertificate = "serverCertificate";
+
     /// <summary>The 802.1X server's TLS settings, largest EAP packet and reauthentication (one only).</summary>
     public const string Dot1xServer = "dot1xServer";
 
@@ -56,13 +65,16 @@ public static class PolicyKinds
     public const string ExpiryWarning = "expiryWarning";
 
     /// <summary>Every kind in the order of the editor's choice and the card (by group).</summary>
-    public static IReadOnlyList<string> All { get; } = [ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, Revoke];
+    public static IReadOnlyList<string> All { get; } = [HttpsCertificate, Dot1xCertificate, ServerCertificate, ExpiryWarning, Dot1xServer, AllowCa, Vlan, Block, Revoke];
 
     public static bool IsKnown(string? kind) => kind is not null && All.Contains(kind, StringComparer.Ordinal);
 
-    /// <summary>"Expiry warning", "802.1X server", "Allow CA", "VLAN", "Block", "Revoke".</summary>
+    /// <summary>"HTTPS certificate", "Expiry warning", "802.1X server", "Allow CA", "VLAN", "Block", "Revoke".</summary>
     public static string Name(string kind) => kind switch
     {
+        HttpsCertificate => "HTTPS certificate",
+        Dot1xCertificate => "IEEE 802.1X certificate",
+        ServerCertificate => "Server certificate",
         Dot1xServer => "802.1X server",
         AllowCa => "Allow CA",
         Vlan => "VLAN",
@@ -78,8 +90,15 @@ public static class PolicyKinds
         Dot1xServer or AllowCa or Vlan or Block => PolicyGroups.Dot1x,
         Revoke => PolicyGroups.Revoke,
         ExpiryWarning => PolicyGroups.Certificates,
+        HttpsCertificate or Dot1xCertificate or ServerCertificate => PolicyGroups.Issuing,
         _ => PolicyGroups.All,
     };
+
+    /// <summary>An issuing kind: the values a certificate is issued with (CA, valid days, key).</summary>
+    public static bool IsIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate or ServerCertificate;
+
+    /// <summary>An issuing kind of device certificates (the task dialogs and the EST profiles pick one).</summary>
+    public static bool IsDeviceIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate;
 
     /// <summary>The kind chooses devices (the shared device selector).</summary>
     public static bool HasDevices(string kind) => kind is Vlan or Block or Revoke or ExpiryWarning;
@@ -102,6 +121,9 @@ public static class PolicyKinds
     /// <summary>What the kind does, one short line in the editor.</summary>
     public static string? Description(string kind) => kind switch
     {
+        HttpsCertificate => "Certificates for HTTPS from Enable HTTPS and the EST server.",
+        Dot1xCertificate => "Certificates for IEEE 802.1X from Enable IEEE 802.1X and the EST server.",
+        ServerCertificate => "The certificate of the 802.1X server or the EST server.",
         Dot1xServer => "TLS settings of the 802.1X server.",
         AllowCa => "Certificates of this CA may pass the 802.1X server.",
         Vlan => "The 802.1X server puts these devices in this VLAN.",
@@ -130,6 +152,64 @@ public static class PolicyLimits
 
     /// <summary>The name of the default 802.1X server policy.</summary>
     public const string ServerPolicyName = "802.1X server";
+
+    /// <summary>Valid days of an issuing policy (the range of the former Device certificates card).</summary>
+    public const int MinValidDays = 1;
+    public const int MaxValidDays = 3650;
+    public const int DefaultValidDays = 365;
+
+    /// <summary>The EST server's own certificate as before the policies: 90 days.</summary>
+    public const int DefaultEstServerDays = 90;
+
+    /// <summary>A server certificate is made again this long before its end (at most a third of its validity).</summary>
+    public static readonly TimeSpan ServerRenewBefore = TimeSpan.FromDays(30);
+
+    /// <summary>The names of the default issuing policies.</summary>
+    public const string HttpsName = "HTTPS";
+    public const string Dot1xName = "IEEE 802.1X";
+    public const string Dot1xServerCertificateName = "802.1X server";
+    public const string EstServerCertificateName = "EST server";
+
+    /// <summary>When a server certificate valid for <paramref name="validity"/> is made again: 30 days before its end, at most a third of it.</summary>
+    public static TimeSpan RenewBefore(TimeSpan validity) => validity / 3 < ServerRenewBefore ? validity / 3 : ServerRenewBefore;
+}
+
+/// <summary>The key of an issuing policy.</summary>
+public static class PolicyKeys
+{
+    public const string Ecc = "ecc";
+    public const string Rsa = "rsa";
+
+    public static IReadOnlyList<string> All { get; } = [Ecc, Rsa];
+
+    public static bool IsKnown(string? key) => key is Ecc or Rsa;
+
+    /// <summary>"ECC", "RSA".</summary>
+    public static string Name(string? key) => key switch
+    {
+        Ecc => "ECC",
+        Rsa => "RSA",
+        _ => key ?? string.Empty,
+    };
+}
+
+/// <summary>Which server a Server certificate policy is for.</summary>
+public static class PolicyServers
+{
+    public const string Dot1x = "dot1xServer";
+    public const string Est = "estServer";
+
+    public static IReadOnlyList<string> All { get; } = [Dot1x, Est];
+
+    public static bool IsKnown(string? server) => server is Dot1x or Est;
+
+    /// <summary>"802.1X server", "EST server".</summary>
+    public static string Name(string? server) => server switch
+    {
+        Dot1x => "802.1X server",
+        Est => "EST server",
+        _ => server ?? string.Empty,
+    };
 }
 
 /// <summary>
@@ -192,7 +272,10 @@ public sealed record PkiPolicy
     /// <summary>VLAN: 1..4094.</summary>
     public int? Vlan { get; init; }
 
-    /// <summary>Allow CA: PKI's id of the CA (<see cref="CertificateAuthorityInfo.Id"/>; the OADM CA covers its previous ones).</summary>
+    /// <summary>
+    /// Allow CA: PKI's id of the CA (<see cref="CertificateAuthorityInfo.Id"/>; the OADM CA covers its previous ones). Issuing:
+    /// the CA that issues (only the OADM CA issues today).
+    /// </summary>
     public string? CaId { get; init; }
 
     /// <summary>Allow CA: only certificates that name a device OADM manages pass (default); false: any valid certificate of the CA.</summary>
@@ -212,6 +295,30 @@ public sealed record PkiPolicy
 
     /// <summary>Expiry warning: days before the end (1..365).</summary>
     public int? Days { get; init; }
+
+    /// <summary>Issuing: how long a certificate is valid, in days (1..3,650; never past the CA's end).</summary>
+    public int? ValidDays { get; init; }
+
+    /// <summary>Issuing: the key (<see cref="PolicyKeys"/>) the device or the server makes.</summary>
+    public string? Key { get; init; }
+
+    /// <summary>IEEE 802.1X certificate: EAPOL version 1 or 2.</summary>
+    public int? EapolVersion { get; init; }
+
+    /// <summary>IEEE 802.1X certificate: the EAP identity (<c>Dot1xIdentity</c>: mac, hostName, custom).</summary>
+    public string? Identity { get; init; }
+
+    /// <summary>IEEE 802.1X certificate: the custom identity with {serial} and {hostName}.</summary>
+    public string? CustomIdentity { get; init; }
+
+    /// <summary>IEEE 802.1X certificate: the CA the devices check the RADIUS server with (<c>RadiusCaSource</c>: oadm, imported).</summary>
+    public string? RadiusCa { get; init; }
+
+    /// <summary>IEEE 802.1X certificate: the imported RADIUS server CA (PEM, public only).</summary>
+    public string? RadiusCaPem { get; init; }
+
+    /// <summary>Server certificate: the server it is for (<see cref="PolicyServers"/>).</summary>
+    public string? Server { get; init; }
 
     /// <summary>Set by PKI: who saved it last (the user of a revoke policy's later revocations).</summary>
     public string? SavedBy { get; init; }
@@ -320,6 +427,13 @@ public static class PolicyFields
     public const string LargestEapPacket = "largestEapPacket";
     public const string ReauthMinutes = "reauthMinutes";
     public const string Days = "days";
+    public const string ValidDays = "validDays";
+    public const string Key = "key";
+    public const string EapolVersion = "eapolVersion";
+    public const string Identity = "identity";
+    public const string CustomIdentity = "customIdentity";
+    public const string RadiusCa = "radiusCa";
+    public const string Server = "server";
 }
 
 /// <summary>The texts of the policies (one phrase per concept), the same on the page and in the server's refusals.</summary>
@@ -349,6 +463,40 @@ public static class PolicyTexts
     public const string SwitchDecides = "Switch decides";
     public const string NotRunning = "The PKI is not running.";
     public const string Unreadable = "The policies cannot be read. Restore a backup.";
+    public const string ValidDaysRange = "Use 1 to 3,650 days.";
+    public const string ChooseKey = "Choose a key.";
+    public const string OnlyOadmIssues = "Only the OADM CA issues certificates.";
+    public const string ChooseServer = "Choose a server.";
+    public const string ServerKept = "A Server certificate policy keeps its server.";
+    public const string Dot1xServerNeedsEcc = "The 802.1X server uses an ECC key.";
+    public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
+
+    /// <summary>"Another Server certificate policy is for the EST server."</summary>
+    public static string ServerTaken(string? server) => $"Another Server certificate policy is for the {PolicyServers.Name(server)}.";
+
+    /// <summary>"The EST server gets its certificate from this policy. Change it instead." (a Server certificate policy is never deleted).</summary>
+    public static string ServerNeedsPolicy(string? server) => $"The {PolicyServers.Name(server)} gets its certificate from this policy. Change it instead.";
+
+    /// <summary>The refusal to delete the last policy of a device issuing kind (the task needs one).</summary>
+    public static string LastIssuing(string kind) => kind == PolicyKinds.Dot1xCertificate
+        ? "Enable IEEE 802.1X needs an IEEE 802.1X certificate policy. Add another one first."
+        : "Enable HTTPS needs an HTTPS certificate policy. Add another one first.";
+
+    /// <summary>"Used by the EST profile https." / "Used by the EST profiles https and dot1x."</summary>
+    public static string UsedByProfiles(IReadOnlyList<string> profiles)
+    {
+        ArgumentNullException.ThrowIfNull(profiles);
+        return profiles.Count == 1
+            ? $"Used by the EST profile {profiles[0]}."
+            : $"Used by the EST profiles {string.Join(", ", profiles.Take(profiles.Count - 1))} and {profiles[^1]}.";
+    }
+
+    /// <summary>"Contoso RADIUS CA, valid until 2030-01-01" (the imported RADIUS server CA).</summary>
+    public static string RadiusCaLine(string commonName, DateTime notAfterUtc) =>
+        string.Create(CultureInfo.InvariantCulture, $"{commonName}, valid until {notAfterUtc:yyyy-MM-dd}");
+
+    /// <summary>"365 days".</summary>
+    public static string DaysText(int? days) => string.Create(CultureInfo.CurrentCulture, $"{days:N0} {(days == 1 ? "day" : "days")}");
 
     /// <summary>"Another VLAN policy has this name."</summary>
     public static string NameTaken(string kind) => $"Another {PolicyKinds.Name(kind)} policy has this name.";

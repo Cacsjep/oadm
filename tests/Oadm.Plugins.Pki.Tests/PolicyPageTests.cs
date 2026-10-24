@@ -41,14 +41,19 @@ public sealed class PolicyPageTests
         var card = new PoliciesViewModel(Page(pki));
         await card.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["All", "Certificates", "802.1X", "Revoke"], card.Filters.Select(f => f.Label)); // only groups with kinds now
-        Assert.Equal(["All devices", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
-        Assert.Equal(["Expiry warning", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"], card.Rows.Select(r => r.Kind));
+        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "Revoke"], card.Filters.Select(f => f.Label)); // only groups with kinds now
+        Assert.Equal(["All devices", "HTTPS", "IEEE 802.1X", "802.1X server", "EST server", "802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], card.Rows.Select(r => r.Name));
+        Assert.Equal(
+            ["Expiry warning", "HTTPS certificate", "IEEE 802.1X certificate", "Server certificate", "Server certificate", "802.1X server", "Allow CA", "Allow CA", "VLAN", "Block"],
+            card.Rows.Select(r => r.Kind));
         Assert.Equal("30 days", card.Rows[0].Summary);
-        Assert.Equal("TLS 1.2 or later, 1,020 bytes, switch decides reauthentication", card.Rows[1].Summary);
-        Assert.Equal("OADM Root CA SERVER01, only devices OADM manages", card.Rows[2].Summary); // the CA's name in PKI
-        Assert.Equal("VLAN 30", card.Rows[4].Summary);
-        Assert.Equal(["All devices", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
+        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC", card.Rows[1].Summary); // the defaults of a new server
+        Assert.Equal("OADM Root CA SERVER01, 365 days, ECC, 802.1X server", card.Rows[3].Summary);
+        Assert.Equal("OADM Root CA SERVER01, 90 days, ECC, EST server", card.Rows[4].Summary);
+        Assert.Equal("TLS 1.2 or later, 1,020 bytes, switch decides reauthentication", card.Rows[5].Summary);
+        Assert.Equal("OADM Root CA SERVER01, only devices OADM manages", card.Rows[6].Summary); // the CA's name in PKI
+        Assert.Equal("VLAN 30", card.Rows[8].Summary);
+        Assert.Equal(["All devices", "-", "-", "-", "-", "-", "-", "-", "This server, except 1", "1 device"], card.Rows.Select(r => r.Devices));
         Assert.True(card.MayManage);
         Assert.True(card.AddCommand.CanExecute(null));
 
@@ -60,6 +65,8 @@ public sealed class PolicyPageTests
         Assert.Equal("No policies of this group.", card.EmptyText);
         card.SelectFilterCommand.Execute(PolicyGroups.Certificates);
         Assert.Equal(["All devices"], card.Rows.Select(r => r.Name));
+        card.SelectFilterCommand.Execute(PolicyGroups.Issuing);
+        Assert.Equal(["HTTPS", "IEEE 802.1X", "802.1X server", "EST server"], card.Rows.Select(r => r.Name));
     }
 
     [Fact]
@@ -306,7 +313,7 @@ public sealed class PolicyHeadlessTests
         Assert.Equal(columns, checks.count);
         Assert.True(checks.searchFits);
         Assert.Equal(0, checks.tabs); // one page, no tabs
-        foreach (var title in new[] { "Certificate authorities", "Policies", "Certificates", "Add policy", "Generate new CA", "Import CA", "802.1X server", "Building B", "Storage room" })
+        foreach (var title in new[] { "Certificate authorities", "Policies", "Certificates", "Add policy", "Generate new CA", "Import CA", "802.1X server", "HTTPS", "IEEE 802.1X", "EST server" })
         {
             Assert.Contains(title, checks.texts);
         }
@@ -314,7 +321,7 @@ public sealed class PolicyHeadlessTests
         Assert.DoesNotContain("Previous certificate authorities", checks.texts); // previous CAs once: rows of the list
         Assert.Contains("Previous OADM CA", checks.texts);
         Assert.DoesNotContain("Warn before expiry (days)", checks.texts); // the Expiry warning policy
-        Assert.Equal(["All", "Certificates", "802.1X", "Revoke"], checks.segments);
+        Assert.Equal(["All", "Issuing", "Certificates", "802.1X", "Revoke"], checks.segments);
         Assert.Equal(1, checks.primaries); // one accent button: the settings' Save
         Assert.All(checks.texts, t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }

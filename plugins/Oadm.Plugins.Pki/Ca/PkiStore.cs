@@ -44,6 +44,11 @@ public sealed class PkiStore(IPluginSettings settings)
         PkiJson.TryDeserialize<PkiConfig>(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false)) ?? new PkiConfig();
 
     public Task SaveConfigAsync(PkiConfig config, CancellationToken ct) => _settings.SetAsync(ConfigKey, PkiJson.Serialize(config), ct);
+
+    /// <summary>An OADM before the issuing policies ran here: a CA or the settings of the page are stored.</summary>
+    public async Task<bool> UsedBeforeAsync(CancellationToken ct) =>
+        !string.IsNullOrWhiteSpace(await _settings.GetAsync(ConfigKey, ct).ConfigureAwait(false))
+        || !string.IsNullOrWhiteSpace(await _settings.GetAsync(CaKey, ct).ConfigureAwait(false));
 }
 
 /// <summary>Counts of the issued registry for the page (O(n) over the registry).</summary>

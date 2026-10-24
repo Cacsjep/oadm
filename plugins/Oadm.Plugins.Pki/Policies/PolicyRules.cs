@@ -1,3 +1,4 @@
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Pki.Policies;
@@ -56,6 +57,8 @@ public static class PolicyRules
                 return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
             case PolicyKinds.Dot1xServer when ValidateServer(policy, suites) is { } server:
                 return server;
+            case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate or PolicyKinds.ServerCertificate when ValidateIssuing(policy) is { } issuing:
+                return issuing;
         }
 
         if (PolicyKinds.HasDevices(policy.Kind))
@@ -108,6 +111,86 @@ public static class PolicyRules
             : null;
     }
 
+    /// <summary>
+    /// The fields of an issuing policy: the OADM CA (the only CA that issues), the valid days, the key; IEEE 802.1X: EAPOL
+    /// version, EAP identity and the RADIUS server CA (the rules of the former IEEE 802.1X card); Server certificate: the
+    /// server (the 802.1X server only with an ECC key: its cipher suites follow it).
+    /// </summary>
+    public static PolicyFieldError? ValidateIssuing(PkiPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        if (!string.Equals(policy.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase))
+        {
+            return new(PolicyFields.Ca, string.IsNullOrWhiteSpace(policy.CaId) ? PolicyTexts.ChooseCa : PolicyTexts.OnlyOadmIssues);
+        }
+
+        if (policy.ValidDays is not (>= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays))
+        {
+            return new(PolicyFields.ValidDays, PolicyTexts.ValidDaysRange);
+        }
+
+        if (!PolicyKeys.IsKnown(policy.Key))
+        {
+            return new(PolicyFields.Key, PolicyTexts.ChooseKey);
+        }
+
+        if (policy.Kind == PolicyKinds.ServerCertificate)
+        {
+            if (!PolicyServers.IsKnown(policy.Server))
+            {
+                return new(PolicyFields.Server, PolicyTexts.ChooseServer);
+            }
+
+            return policy.Server == PolicyServers.Dot1x && policy.Key != PolicyKeys.Ecc ? new(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc) : null;
+        }
+
+        if (policy.Kind != PolicyKinds.Dot1xCertificate)
+        {
+            return null;
+        }
+
+        if (PkiValidation.EapolVersion(policy.EapolVersion ?? 0) is { } eapol)
+        {
+            return new(PolicyFields.EapolVersion, eapol);
+        }
+
+        if (PkiValidation.Identity(policy.Identity) is { } identity)
+        {
+            return new(PolicyFields.Identity, identity);
+        }
+
+        if (PkiValidation.CustomIdentity(policy.Identity, policy.CustomIdentity) is { } custom)
+        {
+            return new(PolicyFields.CustomIdentity, custom);
+        }
+
+        if (PkiValidation.RadiusCa(policy.RadiusCa, policy.RadiusCaPem) is { } radius)
+        {
+            return new(PolicyFields.RadiusCa, radius);
+        }
+
+        return policy.RadiusCa == RadiusCaSource.Imported && !IsCertificatePem(policy.RadiusCaPem) ? new(PolicyFields.RadiusCa, PolicyTexts.RadiusCaUnreadable) : null;
+    }
+
+    /// <summary>The text is one readable certificate in PEM.</summary>
+    public static bool IsCertificatePem(string? pem)
+    {
+        if (string.IsNullOrWhiteSpace(pem) || pem.Length > PkiPluginInfo.MaxImportBytes)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
+            return true;
+        }
+        catch (Exception ex) when (ex is System.Security.Cryptography.CryptographicException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>0 for "1.0" .. 3 for "1.3"; null for anything else.</summary>
     public static int? MinimumIndex(string? minimumTls)
     {
@@ -141,6 +224,7 @@ public static class PolicyRules
     {
         ArgumentNullException.ThrowIfNull(policy);
         var kind = policy.Kind?.Trim() ?? string.Empty;
+        var dot1x = kind == PolicyKinds.Dot1xCertificate;
         PolicyDevices? devices = null;
         if (PolicyKinds.HasDevices(kind))
         {
@@ -163,13 +247,21 @@ public static class PolicyRules
             Kind = kind,
             Devices = devices,
             Vlan = kind == PolicyKinds.Vlan ? policy.Vlan : null,
-            CaId = kind == PolicyKinds.AllowCa ? policy.CaId?.Trim() : null,
+            CaId = kind == PolicyKinds.AllowCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() : null,
             OnlyManaged = kind == PolicyKinds.AllowCa ? policy.OnlyManaged ?? true : null,
             MinimumTls = kind == PolicyKinds.Dot1xServer ? policy.MinimumTls?.Trim() : null,
             CipherSuites = kind == PolicyKinds.Dot1xServer ? [.. (policy.CipherSuites ?? []).Distinct().Order()] : null,
             LargestEapPacket = kind == PolicyKinds.Dot1xServer ? policy.LargestEapPacket : null,
             ReauthMinutes = kind == PolicyKinds.Dot1xServer ? policy.ReauthMinutes : null,
             Days = kind == PolicyKinds.ExpiryWarning ? policy.Days : null,
+            ValidDays = PolicyKinds.IsIssuing(kind) ? policy.ValidDays : null,
+            Key = PolicyKinds.IsIssuing(kind) ? policy.Key?.Trim().ToLowerInvariant() : null,
+            EapolVersion = dot1x ? policy.EapolVersion : null,
+            Identity = dot1x ? policy.Identity?.Trim() : null,
+            CustomIdentity = dot1x ? policy.Identity?.Trim() == Dot1xIdentity.Custom ? policy.CustomIdentity?.Trim() ?? string.Empty : string.Empty : null,
+            RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
+            RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
+            Server = kind == PolicyKinds.ServerCertificate ? policy.Server?.Trim() : null,
             SavedBy = policy.SavedBy,
         };
 

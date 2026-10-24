@@ -227,6 +227,18 @@ public sealed partial class PolicyStore : IDisposable
                 return Refused(PolicyFields.Kind, PolicyTexts.OneOnly(policy.Kind));
             }
 
+            // A server keeps its policy: it cannot be moved to the other server, which would leave this one without a certificate.
+            if (before is { Kind: PolicyKinds.ServerCertificate } && before.Server != policy.Server)
+            {
+                return Refused(PolicyFields.Server, PolicyTexts.ServerKept);
+            }
+
+            // One Server certificate policy per server (each server gets its certificate from exactly one).
+            if (policy.Kind == PolicyKinds.ServerCertificate && sameKind.Any(p => p.Server == policy.Server))
+            {
+                return Refused(PolicyFields.Server, PolicyTexts.ServerTaken(policy.Server));
+            }
+
             if (policy.Kind == PolicyKinds.AllowCa)
             {
                 if (!_authorities().Any(a => a.Kind != CertificateAuthorityKind.PreviousOadm && string.Equals(a.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
@@ -306,6 +318,11 @@ public sealed partial class PolicyStore : IDisposable
                 return Refused(PolicyFields.Name, PolicyTexts.PolicyGone);
             }
 
+            if (await DeleteRefusalAsync(removed, stored.Policies, ct).ConfigureAwait(false) is { } refusal)
+            {
+                return Refused(PolicyFields.Name, refusal);
+            }
+
             await StoreAsync(stored with { Policies = [.. stored.Policies.Where(p => p.Id != id)] }, ct).ConfigureAwait(false);
             Protect(_snapshot.Stored.Policies);
         }
@@ -318,6 +335,49 @@ public sealed partial class PolicyStore : IDisposable
         LogDeleted(removed.Name, removedKind, userName);
         Changed?.Invoke(this, EventArgs.Empty);
         return new PolicySaveResult(removed, null);
+    }
+
+    /// <summary>
+    /// The EST profiles that name issuing policies (policy id, profile name), set by the EST server's core plugin: an issuing
+    /// policy a profile names is never deleted. Null: no profile names one.
+    /// </summary>
+    public Func<CancellationToken, Task<IReadOnlyList<(Guid PolicyId, string Profile)>>>? ProfileUses { get; set; }
+
+    /// <summary>The policy <paramref name="id"/>; null when there is none.</summary>
+    public PkiPolicy? Find(Guid id) => id == Guid.Empty ? null : All.FirstOrDefault(p => p.Id == id);
+
+    /// <summary>The first (oldest) policy of <paramref name="kind"/>: the default of the task dialogs, renewals and new profiles.</summary>
+    public PkiPolicy? FirstOf(string kind) => PoliciesOf(kind) is { Count: > 0 } list ? list[0] : null;
+
+    /// <summary>The Server certificate policy of <paramref name="server"/> (<see cref="PolicyServers"/>); null when there is none.</summary>
+    public PkiPolicy? ServerCertificateFor(string server) => PoliciesOf(PolicyKinds.ServerCertificate).FirstOrDefault(p => p.Server == server);
+
+    /// <summary>
+    /// Why <paramref name="policy"/> cannot be deleted: a Server certificate policy (its server needs it), the last policy of a
+    /// device issuing kind (the task needs one), an issuing policy an EST profile names. Null when it can.
+    /// </summary>
+    private async Task<string?> DeleteRefusalAsync(PkiPolicy policy, IReadOnlyList<PkiPolicy> list, CancellationToken ct)
+    {
+        if (policy.Kind == PolicyKinds.ServerCertificate)
+        {
+            return PolicyTexts.ServerNeedsPolicy(policy.Server);
+        }
+
+        if (!PolicyKinds.IsDeviceIssuing(policy.Kind))
+        {
+            return null;
+        }
+
+        if (ProfileUses is { } uses)
+        {
+            var profiles = (await uses(ct).ConfigureAwait(false)).Where(u => u.PolicyId == policy.Id).Select(u => u.Profile).ToList();
+            if (profiles.Count > 0)
+            {
+                return PolicyTexts.UsedByProfiles(profiles);
+            }
+        }
+
+        return list.Count(p => p.Kind == policy.Kind) <= 1 ? PolicyTexts.LastIssuing(policy.Kind) : null;
     }
 
     /// <summary>
@@ -388,9 +448,24 @@ public sealed partial class PolicyStore : IDisposable
                 + PolicyTexts.AllowCaScope(policy.OnlyManaged ?? true),
             PolicyKinds.Dot1xServer => string.Create(CultureInfo.CurrentCulture,
                 $"TLS {policy.MinimumTls} or later, {policy.LargestEapPacket:N0} bytes, {PolicyTexts.Reauth(policy.ReauthMinutes)}"),
+            PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate => IssuingSummary(policy, caNames),
+            PolicyKinds.ServerCertificate => IssuingSummary(policy, caNames) + ", " + PolicyServers.Name(policy.Server),
             _ => PolicyKinds.Name(policy.Kind),
         };
     }
+
+    /// <summary>"OADM Root CA SERVER01, 365 days, ECC".</summary>
+    public static string IssuingSummary(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(caNames);
+        var ca = policy.CaId is { } id && caNames.TryGetValue(id, out var name) ? name
+            : string.Equals(policy.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) ? IssuingCaName : PolicyTexts.RemovedCa;
+        return $"{ca}, {PolicyTexts.DaysText(policy.ValidDays)}, {PolicyKeys.Name(policy.Key)}";
+    }
+
+    /// <summary>The OADM CA in a summary while it has no certificate (being made).</summary>
+    public const string IssuingCaName = "OADM CA";
 
     private Dictionary<string, string> CaNames() =>
         _authorities().Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm).GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase)
@@ -568,6 +643,8 @@ public sealed partial class PolicyStore : IDisposable
                 return true;
             case PolicyKinds.Dot1xServer:
                 return list.Any(p => p.Kind == PolicyKinds.Dot1xServer);
+            case PolicyKinds.ServerCertificate:
+                return list.Any(p => p.Kind == PolicyKinds.ServerCertificate && p.Server == policy.Server);
             case PolicyKinds.Vlan when policy.Devices?.AllDevices == true:
                 return list.Any(p => p.Kind == PolicyKinds.Vlan
                     && (p.Devices?.AllDevices == true || string.Equals(p.Name.Trim(), PolicyLimits.AllDevicesName, StringComparison.OrdinalIgnoreCase)));

@@ -118,7 +118,11 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>The active CA (key null when unreadable); null while none exists.</summary>
     public CaMaterial? Ca => _ca;
 
+    /// <summary>The settings of the page before the policies (stage 4: read only by the conversion).</summary>
     public PkiConfig Config => _config;
+
+    /// <summary>The valid days of the first HTTPS certificate policy (365 without one): a certificate asked for without its own validity.</summary>
+    public int DefaultValidDays => Policies.FirstOf(Pki.Policies.PolicyKinds.HttpsCertificate)?.ValidDays ?? Pki.Policies.PolicyLimits.DefaultValidDays;
 
     /// <summary>The registry of issued device certificates (written by the task plugins).</summary>
     public IssuedRegistry Issued => _issued;
@@ -385,7 +389,7 @@ public sealed partial class PkiService : IAsyncDisposable
             return new PkiReply { Errors = One(PkiFields.KeyFile, "The key file cannot be read.") };
         }
 
-        var result = CaImporter.Import(new CaImportInput(file, request.FileName, request.Password, keyFile, request.KeyPassword), Now, _config.DeviceCertValidityDays);
+        var result = CaImporter.Import(new CaImportInput(file, request.FileName, request.Password, keyFile, request.KeyPassword), Now, DefaultValidDays);
         if (result.Ca is not { } material)
         {
             return new PkiReply { Errors = result.Errors };
@@ -671,12 +675,13 @@ public sealed partial class PkiService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Device certificate validity for a certificate issued now: the setting, shortened to the CA's end of validity (logged).
-    /// Used by the issuing task plugins.
+    /// Device certificate validity for a certificate issued now: <paramref name="days"/> (an issuing policy's; null: the first
+    /// HTTPS certificate policy's, else 365), shortened to the CA's end of validity (logged).
     /// </summary>
-    public TimeSpan DeviceCertificateValidity()
+    public TimeSpan DeviceCertificateValidity(int? days = null)
     {
-        var wanted = TimeSpan.FromDays(_config.DeviceCertValidityDays);
+        var validDays = days ?? DefaultValidDays;
+        var wanted = TimeSpan.FromDays(validDays);
         if (_ca is not { } ca)
         {
             return wanted;
@@ -686,7 +691,7 @@ public sealed partial class PkiService : IAsyncDisposable
         if (left < wanted)
         {
             var leftDays = Math.Max(0, (int)left.TotalDays);
-            LogValidityShortened(_config.DeviceCertValidityDays, leftDays);
+            LogValidityShortened(validDays, leftDays);
             return left < TimeSpan.Zero ? TimeSpan.Zero : left;
         }
 
@@ -993,7 +998,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
     }
 
-    private static CertificateSummary? RadiusSummary(string? pem)
+    internal static CertificateSummary? RadiusSummary(string? pem)
     {
         if (string.IsNullOrWhiteSpace(pem))
         {
