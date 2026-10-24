@@ -307,6 +307,7 @@ public sealed class HardeningTests
         Assert.Equal(["Vlan 20", "Vlan 21"], harness.Ctx.FakeProtectedTags.Names.Order(StringComparer.Ordinal));
         Assert.NotNull(harness.Ctx.FakeProtectedTags.RefusalFor("VLAN 21")); // case-insensitive
         Assert.Equal(RadiusTexts.VlanTag("Vlan 20"), harness.Ctx.FakeProtectedTags.RefusalFor("Vlan 20"));
+        Assert.Equal(RadiusTexts.VlanTagChange("Vlan 20"), harness.Ctx.FakeProtectedTags.ChangeRefusalFor("Vlan 20")); // never renamed or deleted
         Assert.Equal("The tag Vlan 20 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed.", RadiusTexts.VlanTag("Vlan 20"));
         await harness.CallAsync<VlanSettings>(RadiusMethods.SaveVlans, settings with { Rules = [settings.Rules[2]] });
         Assert.Empty(harness.Ctx.FakeProtectedTags.Names); // a removed rule frees its tag

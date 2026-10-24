@@ -211,7 +211,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
-                    _protectedTags?.RemoveOwner(registered.Id);
+                    _protectedTags?.Detach(registered.Id); // the set stays while the plugin is installed
                     throw;
                 }
 #pragma warning disable CA1031 // One faulty core plugin must not stop the others or the host.
@@ -224,7 +224,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     DisposePro(entry);
                     await DisposeNetworkAsync(entry).ConfigureAwait(false);
                     _services?.RemoveOwner(registered.Id);
-                    _protectedTags?.RemoveOwner(registered.Id);
+                    _protectedTags?.Detach(registered.Id); // the set stays while the plugin is installed
                     LogStartFailed(ex, registered.Id);
                 }
             }
@@ -291,7 +291,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         entry.State = CorePluginState.Stopping;
         _services?.RemoveOwner(id); // nobody reaches a stopping plugin's services
-        _protectedTags?.RemoveOwner(id); // a stopping plugin protects no tags
+        _protectedTags?.Detach(id); // a stopping plugin sets no tags; its set stays while it is installed
         Jobs.CancelPlugin(id); // a stopping plugin's jobs end
         try
         {

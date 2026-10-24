@@ -193,6 +193,10 @@ public sealed class TagGrpcService(
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, ex.Message));
         }
+        catch (ProtectedTagChangeException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
         catch (TagLimitException ex)
         {
             throw new RpcException(new Status(StatusCode.ResourceExhausted, ex.Message));

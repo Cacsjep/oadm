@@ -1,8 +1,14 @@
 using Grpc.Core;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 using Oadm.Core.Auth;
 using Oadm.Core.Devices;
+using Oadm.Core.Plugins;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Tasks;
 using Oadm.Server.Tests.Support;
 
 using Proto = Oadm.Contracts.V1;
@@ -91,6 +97,84 @@ public sealed class TagScopeTests
     }
 
     [Fact]
+    public async Task AProtectedTagIsNeverRenamedOrDeletedAlsoByAnAdministrator()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        await GroupCallers.DeviceAsync(host, 1, "Vlan 20", "Vlan 30");
+        var registry = host.Get<ProtectedTagRegistry>();
+        registry.For("oadm.radius").Protect(["Vlan 20"], name => name, name => $"The tag {name} sets a VLAN. Change the VLAN rule first. Nothing was changed.");
+        registry.For("other.plugin").Protect(["Vlan 30"], name => name); // no rename-or-delete text: the host's own
+
+        var rename = await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.UpdateAsync(new Proto.UpdateTagRequest { Name = "vlan 20", NewName = "Vlan 21" }));
+        Assert.Equal(StatusCode.FailedPrecondition, rename.StatusCode);
+        Assert.Equal("The tag Vlan 20 sets a VLAN. Change the VLAN rule first. Nothing was changed.", rename.Status.Detail);
+        var delete = await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.DeleteAsync(new Proto.TagName { Name = "Vlan 30" }));
+        Assert.Equal(StatusCode.FailedPrecondition, delete.StatusCode);
+        Assert.Equal(ProtectedTagRegistry.DefaultChangeRefusal("Vlan 30"), delete.Status.Detail);
+        var tags = (await host.Tags.ListAsync(new Proto.Empty())).Tags;
+        Assert.Contains(tags, t => t.Name == "Vlan 20");
+        Assert.Contains(tags, t => t.Name == "Vlan 30");
+
+        // A recolor keeps the name; a stopped plugin still refuses, a removed one no longer.
+        await host.Tags.UpdateAsync(new Proto.UpdateTagRequest { Name = "Vlan 20", Color = Proto.TagColor.Blue });
+        registry.Detach("oadm.radius");
+        Assert.Equal(StatusCode.FailedPrecondition, (await Assert.ThrowsAsync<RpcException>(async () => await host.Tags.DeleteAsync(new Proto.TagName { Name = "Vlan 20" }))).StatusCode);
+        registry.RemoveOwner("oadm.radius");
+        await host.Tags.UpdateAsync(new Proto.UpdateTagRequest { Name = "Vlan 20", NewName = "Vlan 21" });
+        await host.Tags.DeleteAsync(new Proto.TagName { Name = "Vlan 21" });
+    }
+
+    [Fact]
+    public async Task AServerRestartedWithThePluginOffStillRefusesAGroupUserAndForgetsARemovedPlugin()
+    {
+        var host = await TestServerHost.StartAsync(configureServices: s => InstalledVlanPlugin.Install(s));
+        host.KeepDataDirectory = true;
+        var dataDirectory = host.DataDirectory;
+        Guid deviceId;
+        try
+        {
+            deviceId = (await GroupCallers.DeviceAsync(host, 1, "Lobby")).Id;
+            var registry = host.Get<ProtectedTagRegistry>();
+            registry.For(InstalledVlanPlugin.PluginId).Protect(["Vlan 20"], name => $"The tag {name} sets a VLAN.");
+            registry.Detach(InstalledVlanPlugin.PluginId); // the package was turned off
+        }
+        finally
+        {
+            await host.DisposeAsync(); // the server stop waits for the stored set
+        }
+
+        // Started again with the plugin installed but off: nobody calls Protect, the stored set refuses.
+        var restarted = await TestServerHost.StartAsync(configureServices: s => InstalledVlanPlugin.Install(s), dataDirectory: dataDirectory);
+        restarted.KeepDataDirectory = true;
+        try
+        {
+            Assert.False(restarted.Get<PluginRegistry>().IsEnabled("test.vlan.pkg"));
+            var user = await GroupCallers.ForTagAsync(restarted, "lobby", "Lobby");
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await new Proto.TagService.TagServiceClient(user.Invoker).SetDeviceTagsAsync(Request([deviceId], ["vlan 20"])));
+            Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);
+            Assert.Equal("The tag Vlan 20 sets a VLAN.", refused.Status.Detail);
+        }
+        finally
+        {
+            await restarted.DisposeAsync();
+        }
+
+        // Started without the plugin (removed): its set is forgotten.
+        var removed = await TestServerHost.StartAsync(configureServices: s => InstalledVlanPlugin.Install(s, installed: false), dataDirectory: dataDirectory);
+        try
+        {
+            Assert.Empty(removed.Get<ProtectedTagRegistry>().Names);
+            var user = await GroupCallers.UserAsync(removed, "lobby2", (await removed.Get<Core.DeviceGroups.DeviceGroupStore>().ListAsync(CancellationToken.None)).Single().Id);
+            Assert.Equal(1, (await new Proto.TagService.TagServiceClient(user.Invoker).SetDeviceTagsAsync(Request([deviceId], ["Vlan 20"]))).DevicesChanged);
+        }
+        finally
+        {
+            removed.KeepDataDirectory = false;
+            await removed.DisposeAsync();
+        }
+    }
+
+    [Fact]
     public async Task UnknownDeviceIdsRefuseTheCallForUsersWithAllDevicesToo()
     {
         await using var host = await TestServerHost.StartAsync();
@@ -132,4 +216,42 @@ public sealed class TagScopeTests
 
     private static async Task<List<string>> TagsOf(TestServerHost host, Guid id) =>
         (await host.Get<DeviceRepository>().GetAsync(id, CancellationToken.None))!.Tags;
+
+    /// <summary>A core plugin of a package that is off by default: installed, never started.</summary>
+    internal sealed class InstalledVlanPlugin : ICorePlugin
+    {
+        public const string PluginId = "test.vlan";
+
+        public string Id => PluginId;
+
+        public string DisplayName => "VLAN test";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
+
+        public UserRole RequiredRole(string method) => UserRole.Admin;
+
+        /// <summary>The server's plugins: this plugin installed and off (or none: the plugin was removed).</summary>
+        public static void Install(IServiceCollection services, bool installed = true)
+        {
+            services.RemoveAll<PluginRegistry>();
+            services.AddSingleton(_ =>
+            {
+                var registry = new PluginRegistry();
+                if (installed)
+                {
+                    registry.RegisterCorePlugin(new InstalledVlanPlugin(), new PluginOrigin("test.vlan.pkg", "1.0.0", null) { EnabledByDefault = false });
+                }
+
+                return registry;
+            });
+        }
+    }
 }

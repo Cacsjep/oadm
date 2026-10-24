@@ -221,7 +221,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   subscribe and after every change of the definitions; small, no ChangeBatcher needed), `Create(name, color)`
   (ALREADY_EXISTS, INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 500 definitions; `TAG_COLOR_UNSPECIFIED` = next palette
   color), `Update(name, new_name, color)` (Admin; rename and / or recolor, empty / UNSPECIFIED keep; a rename rewrites
-  every device's tag in one transaction; an undefined name gets a definition), `Delete(name)` (Admin; removes the tag
+  every device's tag in one transaction; an undefined name gets a definition; FAILED_PRECONDITION renaming a tag a plugin protects), `Delete(name)` (Admin;
+  FAILED_PRECONDITION for a tag a plugin protects; removes the tag
   from every device in one transaction, reply `devices_changed`), `SetDeviceTags(device_ids, add, remove)` (one call
   and one transaction for the whole selection, names in `add` without a definition are created with the next palette
   color, unknown or outside ids refuse the call with NOT_FOUND, PERMISSION_DENIED for a user with a device group who adds

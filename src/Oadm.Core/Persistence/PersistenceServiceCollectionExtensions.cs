@@ -50,7 +50,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddSingleton<IDeviceChangeFeed>(sp => sp.GetRequiredService<DeviceChangeFeed>());
         services.AddSingleton<DeviceRepository>();
         services.AddSingleton<IDeviceRepository>(sp => sp.GetRequiredService<DeviceRepository>());
-        services.AddSingleton<ProtectedTagRegistry>(); // the tags core plugins protect; DeviceTagStore asks it
+        // The tags core plugins protect, stored in the server settings; DeviceTagStore asks it.
+        services.AddSingleton(sp => new ProtectedTagRegistry(sp.GetRequiredService<ServerSettingsStore>(), sp.GetService<Microsoft.Extensions.Logging.ILogger<ProtectedTagRegistry>>()));
         services.AddSingleton<DeviceTagStore>();
         services.AddSingleton<WaitingDeviceStore>();
 

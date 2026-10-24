@@ -13,7 +13,18 @@ public interface IProtectedTags
     /// Sets this plugin's protected names (case-insensitive; replaces the earlier set, empty protects nothing) and the
     /// refusal a user limited to a device group gets for one of them (<paramref name="refusal"/> gets the tag's name; one
     /// plain sentence plus "Nothing was changed."). The host checks them inside the tag write, so keep
-    /// <paramref name="refusal"/> cheap. The host forgets the set when the plugin stops.
+    /// <paramref name="refusal"/> cheap. The host keeps the set while the plugin is installed, also while it is stopped or
+    /// turned off and over a server restart (with the texts <paramref name="refusal"/> gave), until the plugin sets a new
+    /// one; it forgets the set when the plugin is removed.
     /// </summary>
     void Protect(IReadOnlyCollection<string> names, Func<string, string> refusal);
+
+    /// <summary>
+    /// <see cref="Protect(IReadOnlyCollection{string}, Func{string, string})"/> plus the refusal of a rename or delete of one
+    /// of the tags (SDK 0.4.0). The host refuses both for every user, administrators too, because the plugin's settings name
+    /// the tag ("The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing was changed."); without this text the host
+    /// uses its own. An older host ignores <paramref name="changeRefusal"/>.
+    /// </summary>
+    void Protect(IReadOnlyCollection<string> names, Func<string, string> refusal, Func<string, string> changeRefusal) =>
+        Protect(names, refusal);
 }
