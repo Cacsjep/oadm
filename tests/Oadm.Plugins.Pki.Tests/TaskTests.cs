@@ -176,7 +176,7 @@ public sealed class HttpsTaskTests
 
         Assert.Equal(
         [
-            "Check compatibility: Done", "Read web server settings: Done", "Read network settings: Done", "Install CA certificate: Done",
+            "Check compatibility: Done", "Check device clock: Done", "Read web server settings: Done", "Read network settings: Done", "Install CA certificate: Done",
             "Create key on the device: Done", "Get certificate request: Done", "Sign certificate: Done", "Install certificate: Done",
             "Switch web server to the new certificate: Done", "Verify HTTPS: Done", "Remove previous OADM certificate: Skipped", "Completed: Done",
         ], h.Lines);
@@ -363,19 +363,6 @@ public sealed class Dot1xTaskTests
         Assert.Equal([radiusAlias], p["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Contains(radiusAlias, h.Camera.CaAliases);
         Assert.Contains(CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, h.Pki.Service.Ca!.Id), h.Camera.CaAliases); // chain of the client cert
-    }
-
-    [Fact]
-    public async Task A_device_clock_off_by_more_than_five_minutes_changes_nothing()
-    {
-        await using var h = await TaskHarness.StartAsync();
-        h.Camera.ClockOffset = TimeSpan.FromMinutes(-12.5);
-
-        var ex = await h.RunAsync(PkiTaskIds.Dot1xEnable);
-
-        Assert.Equal("The device clock is 12 min off. Set the date and time first. Nothing was changed.", ex!.Message);
-        Assert.Contains("Check device clock: Failed", h.Lines);
-        Assert.Empty(h.Camera.Writes);
     }
 
     [Fact]
@@ -632,7 +619,7 @@ public sealed class TaskPluginInfoTests
         Assert.All(tasks, t => Assert.False(t.ShowInToolbar));
         Assert.All(tasks, t => Assert.True(t.ShowInMenus));
         Assert.Equal(
-            [PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa],
+            [PkiTaskIds.HttpsEnable, PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa],
             tasks.Where(t => t.RequiresDialog).Select(t => t.Id));
         Assert.Equal(["Enable HTTPS", "Disable HTTPS", "Enable IEEE 802.1X", "Disable IEEE 802.1X", "Renew certificates"],
             tasks.Where(t => t.Id is not (PkiTaskIds.View or PkiTaskIds.Delete or PkiTaskIds.Install or PkiTaskIds.InstallCa)).Select(t => t.GetTaskName(null)));

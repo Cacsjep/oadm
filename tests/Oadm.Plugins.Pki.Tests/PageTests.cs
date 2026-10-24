@@ -62,6 +62,16 @@ internal sealed class FakeDialogs : IPkiDialogs
 
     public Task ShowBackupAsync(BackupViewModel dialog) => RunAsync(dialog);
 
+    public Task ShowImportAuthorityAsync(ImportAuthorityViewModel dialog) => RunAsync(dialog);
+
+    public List<Oadm.Sdk.Client.Controls.CertificateDetails> Shown { get; } = [];
+
+    public Task ShowCertificateAsync(Oadm.Sdk.Client.Controls.CertificateDetails certificate)
+    {
+        Shown.Add(certificate);
+        return Task.CompletedTask;
+    }
+
     private async Task RunAsync(PkiDialogViewModel dialog)
     {
         Last = dialog;

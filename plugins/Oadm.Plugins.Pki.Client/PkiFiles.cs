@@ -25,6 +25,9 @@ public enum PkiFileKind
 
     /// <summary>RADIUS server CA: .crt, .cer, .pem.</summary>
     RadiusCa = 5,
+
+    /// <summary>A CA certificate without key for the list of CAs: .crt, .cer, .pem.</summary>
+    AuthorityCertificate = 6,
 }
 
 /// <summary>A file the user picked (at most 1 MB + 1 byte is read, so "too large" can be told).</summary>
@@ -60,7 +63,7 @@ public sealed class PkiFilePicker(Func<TopLevel?> topLevel) : IPkiFiles
         var filter = kind switch
         {
             PkiFileKind.PrivateKey => KeyFiles,
-            PkiFileKind.RadiusCa => CertificateFiles,
+            PkiFileKind.RadiusCa or PkiFileKind.AuthorityCertificate => CertificateFiles,
             _ => CaFiles,
         };
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions { Title = title, AllowMultiple = false, FileTypeFilter = [filter, FilePickerFileTypes.All] }).ConfigureAwait(true);

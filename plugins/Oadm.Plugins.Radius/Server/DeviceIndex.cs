@@ -56,6 +56,9 @@ public sealed class DeviceIndex(IDeviceRepository devices, TimeProvider time) : 
     /// <summary>The managed device with this id, or null (no read on a miss).</summary>
     public IDeviceInfo? ById(Guid id) => _snapshot.ById.GetValueOrDefault(id);
 
+    /// <summary>Every managed device of the last read.</summary>
+    public IEnumerable<IDeviceInfo> All => _snapshot.ById.Values;
+
     /// <summary>The device a MAC address names (an Axis serial is its MAC address): a guess, never trusted; no read on a miss.</summary>
     public IDeviceInfo? GuessByMac(string? macSerial) =>
         string.IsNullOrEmpty(macSerial) ? null : _snapshot.BySerial.GetValueOrDefault(macSerial);

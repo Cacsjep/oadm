@@ -72,7 +72,32 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
   lazy re-rating in `CertificatePinning`, host context).
 
+## Certificate authorities (docs/spec/pki.md)
+
+- `PkiService.Authorities()` (the CA service's `Authorities`): the OADM CA (`oadm`, `Issues` while its key is readable),
+  the previous OADM CAs not ended (`oadm-previous:<sha256>`, CA certificate then its chain), the Axis device ID (`axis-device-id`,
+  the PEMs of `plugins/Shared/DeviceId` embedded, roots first) and the imported CAs (`imported:<sha256>`, oldest first).
+  Built once per change of the lists (reference check, and again when a previous CA ends). `CaChanged` (the service's
+  `Changed`) after a replace, a removed previous CA, Import CA and Remove.
+- `SetUsedBy(serviceId, serviceName, ids)`: in memory per service (each service tells it again after a start), an empty
+  list clears it; a change publishes the state (no `Changed`). Shown as "Used by" (names in order, "-" for none).
+- Imported CAs: setting `importedCas` (public PEM only, at most 50, part of the backup). `importAuthority` (PEM or DER,
+  one certificate; errors under the file `AuthorityFile`: not a certificate, larger than 1 MB, contains a private key, not
+  a CA, expired, already in the list) and `removeAuthority` (imported only; refused while used: "Used by the 802.1X
+  server. Remove it there first."). Both Admin ("manage", all devices, audited).
+- Page: card **Certificate authorities** after the CA card (Name, Kind, Valid until, Used by; View in `ui:CertificateWindow`,
+  Remove red for imported CAs; **Import CA** opens `ImportAuthorityWindow`). The Previous certificate authorities card stays.
+  Tests: `AuthorityTests`.
+
 ## PKI Security tasks (part 2, contributed by `oadm.pki`)
+
+Clock check (docs/spec/pki.md; `plugins/Shared/DeviceClock/CameraClock.cs`, linked into PKI and EST, `DeviceClock` uses it):
+the Enable HTTPS and Enable IEEE 802.1X dialogs (`ClockCheck`, after the 802.1X confirmation) read the camera clocks
+through the read-only query `readClock` (8 at a time, 10 s each, progress window with Cancel; unreadable cameras left out)
+and ask with `ui:MessageWindow` Yes / No when a camera is more than 5 s behind the certificate's start (5 min back); Yes
+puts `{"clockConfirmed":true}` in the payload. Step "Check device clock" (802.1X, renew, manual install): ahead is fine;
+behind beyond the start fails "The device's time is 9 min 12 s behind. The certificate becomes valid on the device only in
+4 min 12 s. Set the device to use NTP. Nothing was changed." unless confirmed (then a Warning log line). Tests: `ClockTests`.
 
 Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware
 version (+ network-settings 1.x in `Apis` for 802.1X). Device APIs (`Device/`): REST `cert` v1 (`CertApi`: `config/discover`
@@ -89,7 +114,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
   nothing uses (alias prefix + registry serial or the CA as issuer), never others.
-- **Enable HTTPS** (`oadm.pki.https-enable`, no dialog, name "Enable HTTPS"): Check compatibility, Read web server
+- **Enable HTTPS** (`oadm.pki.https-enable`, dialog = the clock check only, name "Enable HTTPS"): Check compatibility, Check device clock, Read web server
   settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
   installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
   to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",
@@ -101,8 +126,7 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   Verify (`UpdateDeviceTlsAsync("http")`).
 - **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, confirmation "Devices on ports that enforce 802.1X become
   unreachable if authentication fails.", name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the
-  RADIUS CA of the page, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (> 5 min off:
-  "The device clock is 12 min off. Set the date and time first. Nothing was changed."), Install CA certificates (RADIUS
+  RADIUS CA of the page, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
   server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
   EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
   CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.

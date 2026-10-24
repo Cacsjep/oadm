@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Nodes;
 
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Est.Device;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Sdk.Devices;
@@ -209,7 +210,6 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         }
 
         ArgumentNullException.ThrowIfNull(device);
-
         var protectNetworkAccess = false;
         var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
@@ -222,6 +222,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
 
             var chain = est.Authority is { IsReady: true } ca ? ca.Chain : throw new InvalidOperationException(EstTaskIds.NoCa);
             await RequireApisAsync(ctx, ct).ConfigureAwait(false);
+            await CheckClockAsync(ctx, device, est.Time, payload.ClockConfirmed, ct).ConfigureAwait(false);
             // supportedServices lists the free services only: those of the camera's profiles count too.
             var (free, existing) = await CameraEstApi.ReadEstAsync(ctx.Vapix, ct).ConfigureAwait(false);
             var services = free.Concat(existing.SelectMany(p => p.Services)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -652,6 +653,28 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     /// Waits until the camera reports ENROLLED (up to 2 minutes); a refusal by the EST server for this device and profile
     /// ends the wait at once with its reason.
     /// </summary>
+    /// <summary>
+    /// The clock check of docs/spec/pki.md "Clock check", before the first write: a camera still behind the certificate's
+    /// start is refused unless the user answered the dialog's question with Yes.
+    /// </summary>
+    private static async Task CheckClockAsync(ITaskExecutionContext ctx, IDeviceInfo device, TimeProvider time, bool confirmed, CancellationToken ct)
+    {
+        var deviceNow = await CameraClock.ReadAsync(ctx.Vapix, device.Apis, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException(CameraClock.Unreadable);
+        var behind = time.GetUtcNow() - deviceNow;
+        if (!CameraClock.NeedsQuestion(behind))
+        {
+            return;
+        }
+
+        if (!confirmed)
+        {
+            throw new InvalidOperationException(CameraClock.Refusal(behind));
+        }
+
+        ctx.Log(TaskLogLevel.Warning, CameraClock.Late(behind) + " The user chose to continue.");
+    }
+
     private static async Task WaitEnrolledAsync(ITaskExecutionContext ctx, EstService est, IDeviceInfo device, EstProfile profile, JsonObject json, DateTime started,
         bool requireNew, CancellationToken ct)
     {
@@ -885,6 +908,11 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     public async Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        if (string.Equals(method, CameraClock.QueryMethod, StringComparison.Ordinal))
+        {
+            return await CameraClock.QueryAsync(ctx.Vapix, device, Service?.Time ?? TimeProvider.System, ct).ConfigureAwait(false); // the dialog's clock check
+        }
+
         if (!string.Equals(method, EstTaskIds.ListProfilesMethod, StringComparison.Ordinal))
         {
             throw new ArgumentException($"Unknown method '{method}'.", nameof(method));

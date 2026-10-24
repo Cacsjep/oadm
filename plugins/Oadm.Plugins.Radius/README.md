@@ -33,14 +33,14 @@ Apache 2.0).
 - Tests: `tests/Oadm.Plugins.Radius.Tests` (a BouncyCastle client as the camera through an in-memory switch, RFC vectors,
   parsing rules, fuzzing, fragmentation, alerts, timeouts; the plugin end to end through its in-memory UDP listener and
   site relays, `ServerTests`; the rules of the first review, `HardeningTests`; the device-group canary and filtering,
-  `PluginTests`; `Category=Perf` for many parallel
+  `PluginTests`; trusted CAs and policies, `TrustedCaTests`, `PolicyTests`; `Category=Perf` for many parallel
   sessions and 30,000 authentications through the plugin).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests
   replay the RFC examples. A new switch quirk becomes a fixture first.
 - Client part (`Oadm.Plugins.Radius.Client.dll`, `plugins/Oadm.Plugins.Radius.Client`): the page "802.1X server" with the
-  fixed tabs Server (General with Advanced, Switches with the switch dialog, VLANs in three, two or one column by the page
-  width, one Save below them), Sessions (live), Log (search, View certificate, Add switch for a sender that is not added,
-  Delete all) and Revoked (Revoke through the shared `ui:IssuedCertificateList` of the client SDK); code
+  cards Server (with the Advanced dialog), Trusted CAs, Switches (with the switch dialog) and Policies (the policy editor on
+  the shared device picker) in four, two or one column by the page width, then Sessions (live) and Log (search, View
+  certificate, Delete all); code
   map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (project reference, like EST).
   Tests: `tests/Oadm.Plugins.Radius.Tests/Client` against `FakeRadiusBackend`
   (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `Category=Perf` for 10,000 sessions and

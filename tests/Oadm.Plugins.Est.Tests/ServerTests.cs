@@ -350,6 +350,74 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sign_in_with_lets_cameras_in_only_through_the_chosen_cas_pki_holds()
+    {
+        _ca.ListDefaults();
+        var (csr, key) = TestPki.Request();
+        using var _ = key;
+        var axisName = "axis-" + Serial.ToLowerInvariant() + ".local";
+        using var own = Leaf(_ca.Certificate, axisName);
+        using var previousCa = TestPki.Root("OADM CA 2025");
+        using var previousLeaf = Leaf(previousCa, axisName);
+        async Task<int> StatusAsync(X509Certificate2 identity, string operation = "simplereenroll") =>
+            (await SendAsync("POST", "/.well-known/est/https/" + operation, identity, Body(csr))).Status;
+        async Task SignInWithAsync(params string[] ids) =>
+            Assert.Null((await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = ids }), CancellationToken.None)).Error);
+
+        // Today's behaviour by default: the Axis device ID and the OADM CA (renewals); a previous CA only when chosen.
+        Assert.Equal(EstConfig.DefaultSignInWith, _service.Store.Config.SignInWith);
+        Assert.Equal(200, await StatusAsync(_deviceId, "simpleenroll"));
+        Assert.Equal(200, await StatusAsync(own));
+        _ca.AuthorityList.Add(new("oadm-previous:AB", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [previousCa.RawData], previousCa.NotAfter.ToUniversalTime(), false));
+        Assert.Equal(401, await StatusAsync(previousLeaf));
+
+        await SignInWithAsync(CertificateAuthorityInfo.AxisDeviceIdId);
+        Assert.Equal(401, await StatusAsync(own));
+        Assert.Equal(200, await StatusAsync(_deviceId, "simpleenroll"));
+
+        await SignInWithAsync(CertificateAuthorityInfo.OadmId, "oadm-previous:AB");
+        Assert.Equal(401, await StatusAsync(_deviceId, "simpleenroll"));
+        Assert.Equal(200, await StatusAsync(own));
+        Assert.Equal(200, await StatusAsync(previousLeaf));
+
+        // A CA that left PKI's list lets nothing in any more (fail closed).
+        _ca.AuthorityList.RemoveAll(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        Assert.Equal(401, await StatusAsync(previousLeaf));
+
+        // The page's choices and the CA that issues come from PKI's list.
+        var state = _service.GetState();
+        Assert.Equal([(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID"), (CertificateAuthorityInfo.OadmId, "OADM CA, for renewals")],
+            state.SignInChoices.Select(c => (c.Id, c.Name)));
+        Assert.Equal("OADM Test CA", state.IssuingCa);
+
+        var none = await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = [] }), CancellationToken.None);
+        Assert.Equal(("signInWith", "Choose at least one."), (none.Field, none.Error));
+    }
+
+    [Fact]
+    public async Task Est_tells_pki_which_cas_it_uses_and_clears_it_when_it_stops()
+    {
+        // At the start (a PKI without the list): the defaults.
+        Assert.Equal("EST server", _ca.UsedBy[EstPluginInfo.PluginId].Name);
+        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
+
+        // Only the Axis device ID chosen: the OADM CA still counts, EST signs with it.
+        _ca.ListDefaults();
+        await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = [CertificateAuthorityInfo.AxisDeviceIdId] }), CancellationToken.None);
+        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
+
+        // A chosen CA PKI no longer holds is not reported; PKI's Changed reports again.
+        await _service.SaveAsync(new SaveRequest(_service.Store.Config with { SignInWith = ["oadm-previous:AB", CertificateAuthorityInfo.AxisDeviceIdId] }), CancellationToken.None);
+        Assert.DoesNotContain("oadm-previous:AB", _ca.UsedBy[EstPluginInfo.PluginId].Ids);
+        _ca.AuthorityList.Add(new("oadm-previous:AB", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [_root.RawData], DateTime.UtcNow.AddYears(1), false));
+        _ca.RaiseChanged();
+        Assert.Contains("oadm-previous:AB", _ca.UsedBy[EstPluginInfo.PluginId].Ids);
+
+        await _service.DisposeAsync();
+        Assert.False(_ca.UsedBy.ContainsKey(EstPluginInfo.PluginId));
+    }
+
+    [Fact]
     public async Task Settings_are_checked_and_a_new_port_opens_a_new_listener()
     {
         var bad = await _service.SaveAsync(new SaveRequest(new EstConfig { Port = 80 }), CancellationToken.None);

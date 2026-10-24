@@ -210,25 +210,37 @@ public sealed partial class EstEndpoint(
             certificate, issued.Certificate);
     }
 
-    /// <summary>The camera's serial: from its Axis device ID, or from the EST certificate it signs in with.</summary>
+    /// <summary>
+    /// The camera's serial: from its Axis device ID, or from a certificate of an OADM CA it signs in with; only through the
+    /// CAs of "Sign in with" that PKI still holds (fail closed).
+    /// </summary>
     private string? SerialOf(X509Certificate2 client, IReadOnlyList<X509Certificate2> presented, IDeviceCertificateAuthority ca)
     {
         var now = _time.GetUtcNow();
-        if (deviceIds.Verify(client, presented, now) is { } serial)
+        var chosen = new HashSet<string>(store.Config.SignInWith, StringComparer.OrdinalIgnoreCase);
+        var authorities = ca.Authorities;
+        var legacy = authorities.Count == 0; // a PKI without the list: the Axis device ID and the OADM CA as before
+        if (chosen.Contains(CertificateAuthorityInfo.AxisDeviceIdId) && (legacy || authorities.Any(a => a.Kind == CertificateAuthorityKind.AxisDeviceId))
+            && deviceIds.Verify(client, presented, now) is { } serial)
         {
             return serial;
         }
+
+        var issuers = legacy
+            ? chosen.Contains(CertificateAuthorityInfo.OadmId) ? [ca.Chain] : []
+            : authorities.Where(a => a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm && chosen.Contains(a.Id)).Select(a => a.Certificates).ToList();
+        return issuers.Any(chain => IssuedByCa(client, chain, now)) ? SerialFromAxisName(client) : null;
+    }
+
+    /// <summary>The one camera serial of the certificate's <c>axis-&lt;serial&gt;.local</c> names; null for none or several.</summary>
+    private static string? SerialFromAxisName(X509Certificate2 client)
+    {
 
         // Any valid certificate the OADM CA itself issued for a camera, also one whose record is gone (the store keeps the
         // newest two per camera and profile; a camera whose answers got lost renews with an older one). Its serial: the one
         // axis-<serial>.local name OADM put in. A certificate naming two serials (a camera that reported another camera's
         // axis name as its host name) names none. The caller still checks that the camera is managed and, with a record,
         // that the record names the same device.
-        if (!IssuedByCa(client, ca.Chain, now))
-        {
-            return null;
-        }
-
         var san = client.Extensions.OfType<X509SubjectAlternativeNameExtension>().FirstOrDefault();
         var serials = (san?.EnumerateDnsNames() ?? []).Select(AxisLocalSerial).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return serials.Count == 1 ? serials[0] : null;

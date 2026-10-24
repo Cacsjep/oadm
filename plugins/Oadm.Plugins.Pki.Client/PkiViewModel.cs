@@ -37,6 +37,37 @@ public sealed class PreviousCaRowViewModel(PreviousCaInfo info)
     };
 }
 
+/// <summary>One row of "Certificate authorities": name, kind, valid until, used by; View, and Remove for imported CAs.</summary>
+public sealed class AuthorityRowViewModel(AuthorityRow row, bool mayManage = true)
+{
+    public AuthorityRow Row { get; } = row;
+
+    public string Id => Row.Id;
+
+    public string Name => Row.Name;
+
+    public string KindText { get; } = KindName(row.Kind);
+
+    public string ValidUntil { get; } = row.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    public string UsedBy { get; } = row.UsedBy.Count == 0 ? "-" : string.Join(", ", row.UsedBy);
+
+    public string Tooltip { get; } = "SHA-256 " + row.Fingerprint;
+
+    public bool IsImported => Row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported;
+
+    /// <summary>Remove is shown: an imported CA and the user may manage the CA.</summary>
+    public bool IsRemovable { get; } = mayManage && row.Kind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported;
+
+    public static string KindName(Oadm.Sdk.Certificates.CertificateAuthorityKind kind) => kind switch
+    {
+        Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm => "OADM CA",
+        Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm => "Previous OADM CA",
+        Oadm.Sdk.Certificates.CertificateAuthorityKind.AxisDeviceId => "Axis device ID",
+        _ => "Imported CA",
+    };
+}
+
 /// <summary>
 /// The PKI page: the certificate authority (details, trusted root store, export, backup, generate, import), the device
 /// certificate settings with the issued summary, the 802.1X settings and the previous CAs. <see cref="Activate"/> while the
@@ -114,6 +145,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     ];
 
     public ObservableCollection<PreviousCaRowViewModel> PreviousCas { get; } = [];
+
+    /// <summary>Every CA PKI holds (the Certificate authorities card).</summary>
+    public ObservableCollection<AuthorityRowViewModel> Authorities { get; } = [];
 
     /// <summary>The last state of the server.</summary>
     public PkiState? State { get; private set; }
@@ -399,6 +433,12 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
         OnPropertyChanged(nameof(HasPreviousCas));
 
+        Authorities.Clear();
+        foreach (var authority in state.Authorities)
+        {
+            Authorities.Add(new AuthorityRowViewModel(authority, MayManage));
+        }
+
         if (!_formLoaded)
         {
             ApplyForm(state);
@@ -556,6 +596,74 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         if (reply.Error is { } error)
         {
             await _ctx.ShowMessageAsync("Remove previous CA", error).ConfigureAwait(true);
+        }
+
+        if (reply.State is { } state)
+        {
+            await ApplyStateAsync(state).ConfigureAwait(true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ViewAuthorityAsync(AuthorityRowViewModel? row)
+    {
+        if (row is null || Dialogs is null || row.Row.CertificatesPem.Count == 0)
+        {
+            return;
+        }
+
+        using var certificate = X509Certificate2.CreateFromPem(row.Row.CertificatesPem[0]);
+        var description = Oadm.Sdk.Certificates.CertificateDescriber.Describe(certificate.RawData);
+        await Dialogs.ShowCertificateAsync(new Oadm.Sdk.Client.Controls.CertificateDetails(description, row.Name, DateTime.UtcNow)).ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task ImportAuthorityAsync()
+    {
+        if (Dialogs is null)
+        {
+            return;
+        }
+
+        await Dialogs.ShowImportAuthorityAsync(new ImportAuthorityViewModel(SubmitImportAuthorityAsync)).ConfigureAwait(true);
+    }
+
+    /// <summary>Import CA of the list: the server checks the file (errors under it), then the state.</summary>
+    internal async Task<bool> SubmitImportAuthorityAsync(ImportAuthorityViewModel dialog, ImportAuthorityRequest request)
+    {
+        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.ImportAuthority, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        if (!reply.Ok)
+        {
+            var message = reply.Errors?.Values.FirstOrDefault() ?? reply.Error ?? "The CA could not be imported.";
+            dialog.SetServerErrors(null, message, nameof(ImportAuthorityViewModel.File));
+            return false;
+        }
+
+        if (reply.State is { } state)
+        {
+            await ApplyStateAsync(state).ConfigureAwait(true);
+        }
+
+        return true;
+    }
+
+    [RelayCommand]
+    private async Task RemoveAuthorityAsync(AuthorityRowViewModel? row)
+    {
+        if (row is not { IsImported: true })
+        {
+            return;
+        }
+
+        if (!await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemoveAuthority, PkiJson.Serialize(new RemoveAuthorityRequest(row.Id)), CancellationToken.None).ConfigureAwait(true));
+        if (reply.Error is { } error)
+        {
+            await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
         }
 
         if (reply.State is { } state)

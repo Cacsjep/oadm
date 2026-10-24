@@ -27,11 +27,13 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
+    <Compile Include="..\Shared\DeviceClock\CameraClock.cs" Link="Common\CameraClock.cs" />
     <Compile Include="..\Shared\DeviceId\AxisDeviceId.cs" Link="DeviceId\AxisDeviceId.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Est.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Est.Client" />
   </ItemGroup>
 
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.est/.

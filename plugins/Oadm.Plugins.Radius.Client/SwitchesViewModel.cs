@@ -140,6 +140,22 @@ public sealed partial class SwitchesViewModel : ObservableObject
 
     private bool CanEdit() => MayManage && Selected is not null;
 
+    /// <summary>The row's Edit button (like the Permissions page): selects the row, then edits it.</summary>
+    [RelayCommand]
+    private Task EditRowAsync(SwitchRowViewModel? row)
+    {
+        Selected = row;
+        return EditCommand.CanExecute(null) ? EditAsync() : Task.CompletedTask;
+    }
+
+    /// <summary>The row's Delete button.</summary>
+    [RelayCommand]
+    private Task DeleteRowAsync(SwitchRowViewModel? row)
+    {
+        Selected = row;
+        return DeleteCommand.CanExecute(null) ? DeleteAsync() : Task.CompletedTask;
+    }
+
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private async Task EditAsync()
     {
@@ -182,23 +198,6 @@ public sealed partial class SwitchesViewModel : ObservableObject
         var state = _state();
         var others = Rows.Where(r => r.Source.Id != existing?.Id).Select(r => r.Source).ToList();
         return new SwitchDialogViewModel(_ctx, existing, _sites(), others, state, address, siteId);
-    }
-
-    /// <summary>
-    /// Add switch of a log row from a sender that is no switch: the switches are read first (the dialog checks names and
-    /// addresses against them), then the dialog opens with the sender's address and site filled in.
-    /// </summary>
-    public async Task<bool> AddSenderAsync(string address, Guid? siteId)
-    {
-        ArgumentNullException.ThrowIfNull(address);
-        await ReloadAsync().ConfigureAwait(true);
-        if (!CanAdd() || Dialogs is not { } dialogs || !await dialogs.ShowSwitchAsync(NewDialog(null, address, siteId)).ConfigureAwait(true))
-        {
-            return false;
-        }
-
-        await ReloadAsync().ConfigureAwait(true);
-        return true;
     }
 
     private async Task ReloadAsync()

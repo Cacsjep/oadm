@@ -230,24 +230,23 @@ internal sealed class EapTlsSession
     }
 
     /// <summary>
-    /// TLS data per EAP-TLS message: the Largest fragment setting, at most Framed-MTU minus 4 octets of 802.1X header
-    /// (RFC 3580 3.10, RFC 3579 2.4) and 10 of EAP and EAP-TLS header; an 802.11 port at most 1,496 EAP octets (RFC 3580 3.10).
+    /// TLS data per EAP-TLS message: the Largest EAP packet setting (RFC 3748 3.1: 1,020 octets by default), at most
+    /// Framed-MTU minus 4 octets of 802.1X header (RFC 3580 3.10, RFC 3579 2.4), an 802.11 port at most 1,496 EAP octets
+    /// (RFC 3580 3.10), minus 10 octets of EAP and EAP-TLS header.
     /// </summary>
     private int FragmentSize()
     {
-        var size = _options.LargestFragment;
+        var eapLimit = _options.LargestFragment;
         if (_framedMtu is { } mtu)
         {
-            var eapLimit = mtu - 4;
+            eapLimit = Math.Min(eapLimit, mtu - 4);
             if (_wireless)
             {
                 eapLimit = Math.Min(eapLimit, 1496);
             }
-
-            size = Math.Min(size, eapLimit - EapPacket.HeaderLength - 1 - EapTlsMessage.MaxHeaderLength);
         }
 
-        return Math.Max(size, 16);
+        return Math.Max(eapLimit - EapPacket.HeaderLength - 1 - EapTlsMessage.MaxHeaderLength, 16);
     }
 
     private EapStep AskIdentity()

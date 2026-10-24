@@ -58,6 +58,33 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sign_in_with_shows_pki_cas_errors_below_the_field_and_saves_the_choice()
+    {
+        _ca.ListDefaults();
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        Assert.Equal(["Axis device ID", "OADM CA, for renewals"], vm.SignIn.Select(s => s.Name));
+        Assert.All(vm.SignIn, s => Assert.True(s.IsChecked));
+        Assert.Equal("OADM Test CA", vm.IssuingCa);
+        Assert.Null(vm.SignInError);
+
+        foreach (var row in vm.SignIn)
+        {
+            row.IsChecked = false;
+        }
+
+        Assert.Equal("Choose at least one.", vm.SignInError);
+        Assert.False(vm.SaveCommand.CanExecute(null));
+
+        vm.SignIn[0].IsChecked = true;
+        Assert.Null(vm.SignInError);
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId], _plugin.Service!.Store.Config.SignInWith);
+        Assert.Equal([true, false], vm.SignIn.Select(s => s.IsChecked));
+    }
+
+    [Fact]
     public async Task An_enrollment_keeps_its_certificate_and_view_certificate_shows_it_in_plain_names()
     {
         var now = DateTimeOffset.UtcNow;
@@ -390,6 +417,51 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Set_up_reads_the_camera_clocks_first_and_asks_when_one_is_behind()
+    {
+        var behind = new FakeDevice { Address = "10.0.0.48", Dot1xEnabled = false };
+        var fine = new FakeDevice { Address = "10.0.0.49", Dot1xEnabled = false };
+        var cameras = new DialogContext { RunsTasks = true };
+        cameras.Profiles[behind.Id] = new CameraProfileList(true, []);
+        cameras.Profiles[fine.Id] = new CameraProfileList(true, []);
+        var server = new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
+        cameras.Clocks[behind.Id] = new Oadm.Plugins.DeviceClocks.ClockReading(server - new TimeSpan(0, 9, 12), server);
+        cameras.Clocks[fine.Id] = new Oadm.Plugins.DeviceClocks.ClockReading(server + TimeSpan.FromMinutes(1), server);
+        var runs = new List<string?>();
+        cameras.Run = (devices, payload, _) =>
+        {
+            runs.Add(payload);
+            return [.. devices.Select(d => new TaskRunState(d, "t", TaskRunStatus.Done, "Completed", ""))];
+        };
+        var vm = new EstSetupViewModel([behind, fine], cameras);
+        await vm.LoadAsync();
+        var questions = new List<string>();
+        var answer = false;
+        vm.AskClock = q =>
+        {
+            questions.Add(q);
+            return Task.FromResult(answer);
+        };
+
+        // No: nothing runs.
+        await vm.OkCommand.ExecuteAsync(null);
+        Assert.Equal(["The time of 1 of 2 cameras is behind, by up to 9 min 12 s. The certificates become valid on them only in up to 4 min 12 s. Set the cameras to use NTP. Continue?"], questions);
+        Assert.Empty(runs);
+        Assert.False(vm.IsRunning);
+
+        // Yes: the task gets the answer.
+        answer = true;
+        await vm.OkCommand.ExecuteAsync(null);
+        Assert.True(SetupPayload.Read(Assert.Single(runs))!.ClockConfirmed);
+
+        // In time: no question, no answer in the payload.
+        cameras.Clocks[behind.Id] = new Oadm.Plugins.DeviceClocks.ClockReading(server - TimeSpan.FromMinutes(2), server);
+        await vm.OkCommand.ExecuteAsync(null);
+        Assert.Equal(2, questions.Count);
+        Assert.False(SetupPayload.Read(runs[^1])!.ClockConfirmed);
+    }
+
+    [Fact]
     public async Task Set_up_and_remove_run_in_the_dialog_which_stays_open_shows_the_step_and_the_result_and_reads_again()
     {
         var camera = new FakeDevice { Address = "10.0.0.48", Model = "AXIS P3265-V", Dot1xEnabled = false };
@@ -548,8 +620,18 @@ public sealed class PageTests : IAsyncLifetime
 
         public Dictionary<Guid, int> Queries { get; } = [];
 
+        /// <summary>The camera clocks the clock check reads (none: unreadable).</summary>
+        public Dictionary<Guid, Oadm.Plugins.DeviceClocks.ClockReading> Clocks { get; } = [];
+
         public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
         {
+            if (method == Oadm.Plugins.DeviceClocks.CameraClock.QueryMethod)
+            {
+                return Task.FromResult(Clocks.TryGetValue(deviceId, out var clock)
+                    ? EstJson.Serialize(clock)
+                    : null);
+            }
+
             Assert.Equal(Oadm.Plugins.Est.Tasks.EstTaskIds.ListProfilesMethod, method);
             Queries[deviceId] = Queries.GetValueOrDefault(deviceId) + 1;
             return Task.FromResult<string?>(EstJson.Serialize(Profiles[deviceId]));

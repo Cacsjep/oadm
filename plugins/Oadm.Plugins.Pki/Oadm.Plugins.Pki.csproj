@@ -20,15 +20,19 @@
 
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Axis device ID CA certificates for the list of CAs (shared with the EST and 802.1X servers). -->
+    <EmbeddedResource Include="..\Shared\DeviceId\*.pem" LogicalName="Oadm.Plugins.Shared.DeviceId.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
     <Compile Include="..\Shared\CachedApiCheck.cs" Link="Common\CachedApiCheck.cs" />
     <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
+    <Compile Include="..\Shared\DeviceClock\CameraClock.cs" Link="Common\CameraClock.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Pki.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Pki.Client" />
   </ItemGroup>
 
   <!-- Development deployment: copy the output to artifacts/plugins/oadm.pki/.

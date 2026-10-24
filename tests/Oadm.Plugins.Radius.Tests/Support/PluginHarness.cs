@@ -113,9 +113,15 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
         get
         {
             Interlocked.Increment(ref _previousReads);
+            Interlocked.Exchange(ref _onPreviousRead, null)?.Invoke();
             return Previous;
         }
     }
+
+    private Action? _onPreviousRead;
+
+    /// <summary>Runs once, on the next read of <see cref="PreviousChains"/> (a test saves in the middle of a rebuild with it).</summary>
+    public void OnNextPreviousRead(Action action) => Volatile.Write(ref _onPreviousRead, action);
 
     /// <summary>How often <see cref="PreviousChains"/> was read (the trusted set is built once per CA change, never per handshake).</summary>
     public int PreviousReads => Volatile.Read(ref _previousReads);
@@ -217,8 +223,9 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
     public Task<IssuedCertificatePage> ListIssuedAsync(IssuedCertificateQuery query, CancellationToken ct)
     {
         IssuedQueries.Add(query);
-        var rows = Issued.Select(i => i.Info)
+        var rows = Issued.Select(i => IsRevoked(i.Info.SerialNumber) ? i.Info with { State = IssuedCertificateState.Revoked } : i.Info)
             .Where(i => query.DeviceIds is null || query.DeviceIds.Contains(i.DeviceId))
+            .Where(i => query.Purpose is null || i.Purpose == query.Purpose)
             .Where(i => query.Search is null || i.SerialNumber.Contains(CertificateSerials.Normalize(query.Search), StringComparison.Ordinal))
             .ToList();
         return Task.FromResult(new IssuedCertificatePage([.. rows.Skip(query.Offset).Take(query.Limit)], rows.Count));
@@ -241,6 +248,20 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, IDisposable
     }
 
     public void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>PKI's list of CAs; null = an older PKI without it (the 802.1X server derives it from the chains).</summary>
+    public List<CertificateAuthorityInfo>? AuthorityList { get; set; }
+
+    public IReadOnlyList<CertificateAuthorityInfo> Authorities => AuthorityList ?? [];
+
+    /// <summary>The calls of <see cref="SetUsedBy"/>.</summary>
+    public ConcurrentQueue<(string Service, string Name, IReadOnlyCollection<string> Ids)> UsedBy { get; } = new();
+
+    public void SetUsedBy(string serviceId, string serviceName, IReadOnlyCollection<string> authorityIds) => UsedBy.Enqueue((serviceId, serviceName, [.. authorityIds]));
+
+    /// <summary>This CA as an entry of PKI's list.</summary>
+    public CertificateAuthorityInfo Info(string id, CertificateAuthorityKind kind, string name = "CA") =>
+        new(id, name, kind, Chain, _ca.NotAfter.ToUniversalTime(), kind == CertificateAuthorityKind.Oadm);
 
     public void Dispose()
     {
@@ -285,6 +306,10 @@ public sealed class TestDeviceIds : IDisposable
     }
 
     public AxisDeviceId Verifier => new([_root, _intermediate]);
+
+    /// <summary>PKI's entry "Axis device ID" with these roots and intermediates.</summary>
+    public CertificateAuthorityInfo Info => new(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID", CertificateAuthorityKind.AxisDeviceId,
+        [_root.RawData, _intermediate.RawData], _root.NotAfter.ToUniversalTime(), false);
 
     /// <summary>The factory certificate of <paramref name="serial"/>; the camera sends it with the intermediate.</summary>
     public TestCertificate Device(string serial)

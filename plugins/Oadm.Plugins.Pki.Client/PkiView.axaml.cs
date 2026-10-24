@@ -32,6 +32,8 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
 
     public Task ShowBackupAsync(BackupViewModel dialog) => ShowAsync(new BackupWindow(), dialog);
 
+    public Task ShowImportAuthorityAsync(ImportAuthorityViewModel dialog) => ShowAsync(new ImportAuthorityWindow(), dialog);
+
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);

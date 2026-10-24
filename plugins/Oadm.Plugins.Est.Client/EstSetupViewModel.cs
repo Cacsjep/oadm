@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Est.Tasks;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
@@ -312,8 +313,59 @@ public sealed partial class EstSetupViewModel : ObservableObject
 
     private bool CanOk() => !IsRunning;
 
+    /// <summary>Shows the clock question (Yes / No) over the dialog; set by the dialog. Without it a question counts as No.</summary>
+    public Func<string, Task<bool>>? AskClock { get; set; }
+
+    /// <summary>
+    /// Set up: reads the camera clocks first (docs/spec/pki.md "Clock check"); a camera behind the certificate's start asks
+    /// before anything runs, Yes goes into the payload.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanOk))]
-    private Task OkAsync() => CompleteAsync(new SetupPayload(ShowDot1x && ReplaceDot1x), "Set up");
+    private async Task OkAsync()
+    {
+        var payload = new SetupPayload(ShowDot1x && ReplaceDot1x);
+        if (_ctx is { } ctx)
+        {
+            IsRunning = true;
+            RunDetail = null;
+            (RunOk, RunWarning, RunError) = (false, false, false);
+            RunText = "Set up: " + ClockText(0);
+            IReadOnlyList<TimeSpan> behind;
+            try
+            {
+                var progress = new Progress<int>(done =>
+                {
+                    if (IsRunning)
+                    {
+                        RunText = "Set up: " + ClockText(done);
+                    }
+                });
+                behind = await CameraClock.ReadBehindAsync([.. Devices.Select(d => d.Device.Id)], (id, ct) => ctx.QueryAsync(id, CameraClock.QueryMethod, null, ct),
+                    progress, null, CancellationToken.None).ConfigureAwait(true);
+            }
+            finally
+            {
+                IsRunning = false;
+                RunText = null;
+            }
+
+            if (CameraClock.Question(behind, CameraClock.Sampled(Devices.Count)) is { } question)
+            {
+                if (AskClock is null || !await AskClock(question).ConfigureAwait(true))
+                {
+                    return;
+                }
+
+                payload = payload with { ClockConfirmed = true };
+            }
+        }
+
+        await CompleteAsync(payload, "Set up").ConfigureAwait(true);
+    }
+
+    private string ClockText(int done) => Devices.Count <= 1
+        ? "reading the camera clock"
+        : string.Create(CultureInfo.InvariantCulture, $"reading the camera clocks ({done:N0} of {CameraClock.Sampled(Devices.Count):N0})");
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);

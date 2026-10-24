@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 
 using Microsoft.Extensions.Time.Testing;
 
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Est.Serving;
 using Oadm.Plugins.Est.Tasks;
 using Oadm.Sdk.Devices;
@@ -65,6 +66,25 @@ public sealed class TaskTests : IAsyncLifetime
         await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, "{}", CancellationToken.None));
         Assert.Equal(writes, _camera.Writes);
         Assert.Contains("Info: " + EstTaskIds.AlreadySetUp, again.LogLines);
+    }
+
+    [Fact]
+    public async Task A_camera_behind_is_refused_before_any_write_unless_the_user_continued()
+    {
+        await _est.SaveAsync(new SaveRequest(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var task = new EstSetupTask(() => _est);
+        _camera.ClockOffset = -TimeSpan.FromMinutes(12);
+
+        var ctx = Context();
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() => task.ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+        Assert.EndsWith(" Set the device to use NTP. Nothing was changed.", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, _camera.Writes);
+        Assert.Empty(_camera.Profiles);
+
+        var yes = Context();
+        await StepRun.RunAsync(yes.Steps, () => task.ExecuteAsync(yes, _device, "{\"clockConfirmed\":true}", CancellationToken.None));
+        Assert.Single(_camera.Profiles);
+        Assert.Contains(yes.LogLines, l => l.EndsWith("The user chose to continue.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -539,6 +559,9 @@ public sealed class TaskTests : IAsyncLifetime
 
         public bool HasEstApi { get; set; } = true;
 
+        /// <summary>The camera's clock against the server's (negative: behind).</summary>
+        public TimeSpan ClockOffset { get; set; }
+
         /// <summary>A new profile reports ENROLLED (else <see cref="ProfileStatus"/> for ever).</summary>
         public bool Enroll { get; set; } = true;
 
@@ -575,6 +598,13 @@ public sealed class TaskTests : IAsyncLifetime
         {
             var path = request.RequestUri!.OriginalString;
             RequestLog.Add($"{request.Method} {path}");
+            if (path == CameraClock.TimePath)
+            {
+                // the clock check reads (a POST that changes nothing)
+                var now = (Server?.Time ?? TimeProvider.System).GetUtcNow() + ClockOffset;
+                return Data(new JsonObject { ["dateTime"] = now.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture) });
+            }
+
             if (request.Method != HttpMethod.Get)
             {
                 Writes++;

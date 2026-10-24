@@ -91,11 +91,9 @@ public sealed partial class LogViewModel : ObservableObject
     private bool _loadedOnce;
     private bool _stale;
     private List<LogRow>? _pending; // live rows that came in while a page was read
-    private readonly Func<string, Guid?, Task<bool>>? _addSwitch;
 
-    public LogViewModel(ICorePluginClientContext ctx, Func<bool> mayManage, TimeProvider? time = null, Func<string, Guid?, Task<bool>>? addSwitch = null)
+    public LogViewModel(ICorePluginClientContext ctx, Func<bool> mayManage, TimeProvider? time = null)
     {
-        _addSwitch = addSwitch;
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _mayManage = mayManage ?? throw new ArgumentNullException(nameof(mayManage));
         _time = time ?? TimeProvider.System;
@@ -127,7 +125,7 @@ public sealed partial class LogViewModel : ObservableObject
     public partial string? Search { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ViewCertificateCommand), nameof(AddSwitchCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ViewCertificateCommand))]
     public partial LogRowViewModel? Selected { get; set; }
 
     [ObservableProperty]
@@ -307,19 +305,6 @@ public sealed partial class LogViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(MayManage));
         DeleteAllCommand.NotifyCanExecuteChanged();
-        AddSwitchCommand.NotifyCanExecuteChanged();
-    }
-
-    private bool CanAddSwitch() => MayManage && _addSwitch is not null && Selected is { IsFromUnknownSender: true };
-
-    /// <summary>Add switch (toolbar): the switch dialog with the address of the chosen row's sender that is no switch.</summary>
-    [RelayCommand(CanExecute = nameof(CanAddSwitch))]
-    private async Task AddSwitchAsync()
-    {
-        if (Selected is { Source.Sender: { Length: > 0 } address } row && _addSwitch is { } add)
-        {
-            await add(address, row.Source.SenderSiteId).ConfigureAwait(true);
-        }
     }
 
     partial void OnSearchChanged(string? value)

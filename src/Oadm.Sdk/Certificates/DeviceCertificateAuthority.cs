@@ -145,4 +145,60 @@ public interface IDeviceCertificateAuthority
     /// </summary>
     Task<RevokeResult> RevokeAsync(IReadOnlyCollection<string> serialNumbers, RevocationReason reason, string userName, CancellationToken ct) =>
         throw new NotSupportedException("This certificate authority keeps no revocation list.");
+
+    /// <summary>
+    /// Every CA PKI holds (docs/spec/pki.md, SDK 0.4.0): the current OADM CA, previous ones, the Axis device ID and imported
+    /// CAs. Services select from it by <see cref="CertificateAuthorityInfo.Id"/> (stable across restarts). Changes raise
+    /// <see cref="Changed"/>. Default: none.
+    /// </summary>
+    IReadOnlyList<CertificateAuthorityInfo> Authorities => [];
+
+    /// <summary>
+    /// Tells PKI which of its CAs <paramref name="serviceName"/> (shown as "Used by") uses now; an empty list clears it. PKI
+    /// refuses to remove a CA a service uses. Default: nothing.
+    /// </summary>
+    void SetUsedBy(string serviceId, string serviceName, IReadOnlyCollection<string> authorityIds)
+    {
+    }
+}
+
+/// <summary>The kind of a CA PKI holds.</summary>
+public enum CertificateAuthorityKind
+{
+    /// <summary>The OADM CA that issues now (id "oadm").</summary>
+    Oadm,
+
+    /// <summary>A replaced OADM CA, kept while its certificates live (id "oadm-previous:&lt;sha256&gt;").</summary>
+    PreviousOadm,
+
+    /// <summary>The Axis device ID roots of the factory certificates (id "axis-device-id"; several certificates).</summary>
+    AxisDeviceId,
+
+    /// <summary>A CA an administrator imported, without key (id "imported:&lt;sha256&gt;").</summary>
+    Imported,
+}
+
+/// <summary>
+/// One CA of PKI's list: a stable id, the name shown, its kind, its certificates (DER; the Axis device ID has its roots and
+/// intermediates), the end of the latest of them, and whether it issues certificates now.
+/// </summary>
+/// <param name="Id">Stable id ("oadm", "oadm-previous:&lt;sha256&gt;", "axis-device-id", "imported:&lt;sha256&gt;").</param>
+/// <param name="Name">The name shown ("OADM CA", "Axis device ID").</param>
+/// <param name="Kind">The kind of CA.</param>
+/// <param name="Certificates">The CA's certificates as DER, the CA certificate first.</param>
+/// <param name="NotAfterUtc">The end of the latest of them (UTC).</param>
+/// <param name="Issues">True for the CA that issues certificates now.</param>
+public sealed record CertificateAuthorityInfo(
+    string Id,
+    string Name,
+    CertificateAuthorityKind Kind,
+    IReadOnlyList<byte[]> Certificates,
+    DateTime NotAfterUtc,
+    bool Issues)
+{
+    /// <summary>Id of the OADM CA that issues now.</summary>
+    public const string OadmId = "oadm";
+
+    /// <summary>Id of the Axis device ID roots.</summary>
+    public const string AxisDeviceIdId = "axis-device-id";
 }

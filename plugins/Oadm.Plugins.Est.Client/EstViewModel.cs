@@ -92,6 +92,23 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
     private static partial Regex NamePattern();
 }
 
+/// <summary>One check box of "Sign in with": a CA of PKI a camera may sign in with.</summary>
+public sealed partial class SignInRowViewModel(EstViewModel owner, SignInChoice choice, bool isChecked) : ObservableObject
+{
+    public string Id { get; } = choice.Id;
+
+    public string Name { get; } = choice.Name;
+
+    [ObservableProperty]
+    public partial bool IsChecked { get; set; } = isChecked;
+
+    public bool MayManage => owner.MayManage;
+
+    internal void NotifyRole() => OnPropertyChanged(nameof(MayManage));
+
+    partial void OnIsCheckedChanged(bool value) => owner.SignInEdited();
+}
+
 /// <summary>An enrollment as the list shows it.</summary>
 public sealed record EnrollmentRow(Enrollment Source)
 {
@@ -176,6 +193,11 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
                 row.NotifyRole();
             }
 
+            foreach (var row in SignIn)
+            {
+                row.NotifyRole();
+            }
+
             SaveCommand.NotifyCanExecuteChanged();
             AddProfileCommand.NotifyCanExecuteChanged();
             ClearEnrollmentsCommand.NotifyCanExecuteChanged();
@@ -184,7 +206,8 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             .Rule(nameof(Port), () => int.TryParse(Port, NumberStyles.None, CultureInfo.InvariantCulture, out var port) && port is >= 1025 and <= 65535
                 ? null : "Use 1025 to 65535.")
             .Rule(nameof(EnrollmentsKept), () => int.TryParse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var kept) && kept is >= 100 and <= 5000
-                ? null : "Keep from 100 to 5,000 enrollments.");
+                ? null : "Keep from 100 to 5,000 enrollments.")
+            .Rule(nameof(SignInWith), () => SignIn.Count == 0 || SignIn.Any(s => s.IsChecked) ? null : "Choose at least one.");
         Validation.Validate();
         Listen.PropertyChanged += (_, e) =>
         {
@@ -211,6 +234,24 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     }
 
     public RangeObservableCollection<ProfileRowViewModel> Profiles { get; } = [];
+
+    /// <summary>"Sign in with": the CAs of PKI a camera may sign in with (a few check boxes).</summary>
+    public RangeObservableCollection<SignInRowViewModel> SignIn { get; } = [];
+
+    /// <summary>The property the "Sign in with" error belongs to (the chosen ids).</summary>
+    public IReadOnlyList<string> SignInWith => [.. SignIn.Where(s => s.IsChecked).Select(s => s.Id)];
+
+    public string? SignInError => ErrorOf(nameof(SignInWith));
+
+    /// <summary>The CA that issues the certificates (PKI's OADM CA).</summary>
+    [ObservableProperty]
+    public partial string IssuingCa { get; set; } = "-";
+
+    internal void SignInEdited()
+    {
+        Validation.Touch(nameof(SignInWith));
+        Validation.Validate();
+    }
 
     /// <summary>The enrollments that match <see cref="EnrollmentSearch"/>, newest first (bound to the grid).</summary>
     public RangeObservableCollection<EnrollmentRow> Enrollments { get; } = [];
@@ -400,6 +441,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
                 InterfaceId = Listen.SelectedId ?? InterfaceOptions.AllId,
                 EnrollmentsKept = int.Parse(EnrollmentsKept, NumberStyles.AllowThousands, CultureInfo.InvariantCulture),
                 Profiles = [.. Profiles.Select(p => p.ToProfile())],
+                SignInWith = SignInWith,
             };
             var reply = EstJson.Deserialize<SaveReply>(await _ctx.InvokeAsync(EstMethods.Save, EstJson.Serialize(new SaveRequest(config)), CancellationToken.None).ConfigureAwait(true));
             if (reply.Error is { } error)
@@ -446,6 +488,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
     {
         SaveCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(SaveTip));
+        OnPropertyChanged(nameof(SignInError));
     }
 
     partial void OnEnrollmentSearchChanged(string value) => FilterEnrollments();
@@ -532,6 +575,9 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             case "interface":
                 Validation.SetServerError(nameof(SelectedInterface), error);
                 break;
+            case "signInWith":
+                Validation.SetServerError(nameof(SignInWith), error);
+                break;
             default:
                 ActionError = error;
                 break;
@@ -546,6 +592,15 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         // The sites' relays only: this server's own listener is the status chip already.
         ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok && l.SiteId is not null).Select(l => l.Text));
         Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
+        IssuingCa = state.IssuingCa ?? "-";
+        if (!form && SignIn.Select(s => s.Id).SequenceEqual(state.SignInChoices.Select(c => c.Id)))
+        {
+            return;
+        }
+
+        // The choices follow PKI's list; the boxes keep what the user changed (a new state) or show the saved setting (a form load).
+        var checkedIds = form ? state.Config.SignInWith : SignInWith;
+        SignIn.ReplaceAll(state.SignInChoices.Select(c => new SignInRowViewModel(this, c, checkedIds.Contains(c.Id, StringComparer.OrdinalIgnoreCase))));
         if (!form)
         {
             return;

@@ -1,12 +1,10 @@
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Client;
-using Oadm.Sdk.Certificates;
-using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Radius.Tests.Client;
 
-/// <summary>Review round 2 of the page: the log's time zone and Delete all during a read, unusable suites, Revoke's progress, VLANs of group users.</summary>
+/// <summary>Review round 2 of the page: the log's time zone and Delete all during a read, unusable suites, policies of group users.</summary>
 public sealed class ReviewRound2PageTests
 {
     private readonly FakeRadiusBackend _server = new();
@@ -15,17 +13,6 @@ public sealed class ReviewRound2PageTests
     public ReviewRound2PageTests()
     {
         _ctx = new FakePageContext(_server);
-    }
-
-    internal sealed class RevokeDialogs : IRevokeDialogs
-    {
-        public async Task<IReadOnlyList<IssuedCertificateRow>?> ChooseCertificatesAsync(RevokePickerViewModel picker)
-        {
-            await picker.LoadAsync();
-            return [picker.Rows[0]];
-        }
-
-        public Task<RevocationReason?> ConfirmRevokeAsync(string title, string message) => Task.FromResult<RevocationReason?>(RevocationReason.KeyCompromised);
     }
 
     /// <summary>The fake's suites with the server's ECDSA key: the ECDHE_RSA suites cannot be negotiated.</summary>
@@ -46,7 +33,7 @@ public sealed class ReviewRound2PageTests
     public async Task Every_log_read_sends_the_time_zone_the_page_shows()
     {
         using var vm = new RadiusViewModel(_ctx);
-        await vm.ShowLogTabCommand.ExecuteAsync(null);
+        await vm.Log.LoadAsync(CancellationToken.None);
         Assert.Equal(TimeZoneInfo.Local.Id, _server.LastPayload<LogQuery>(RadiusMethods.ListLog).TimeZoneId);
 
         vm.Log.Offset = 0;
@@ -108,146 +95,87 @@ public sealed class ReviewRound2PageTests
         _server.State = WithOnlyRsaSuitesChecked(_server.State);
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
+        var advanced = vm.NewAdvanced(_server.State);
 
-        var rsa = vm.Settings.CipherSuites.First(s => s.Name == "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
-        var ecdsa = vm.Settings.CipherSuites.First(s => s.Name == "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256");
-        var tls13 = vm.Settings.CipherSuites.First(s => s.Name == "TLS_AES_128_GCM_SHA256");
-        Assert.Equal((SettingsViewModel.UnusableSuiteHint, true), (rsa.KeyHint, rsa.HasKeyHint));
+        var rsa = advanced.CipherSuites.First(s => s.Name == "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256");
+        var ecdsa = advanced.CipherSuites.First(s => s.Name == "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256");
+        var tls13 = advanced.CipherSuites.First(s => s.Name == "TLS_AES_128_GCM_SHA256");
+        Assert.Equal((AdvancedViewModel.UnusableSuiteHint, true), (rsa.KeyHint, rsa.HasKeyHint));
         Assert.Equal((null, false), (ecdsa.KeyHint, ecdsa.HasKeyHint));
         Assert.Null(tls13.KeyHint);
         Assert.False(rsa.IsUsable("1.2"));
         Assert.False(rsa.IsUsable("1.0"));
         Assert.True(ecdsa.IsUsable("1.2"));
 
-        Assert.False(vm.Settings.IsFormValid);
-        Assert.False(vm.SaveCommand.CanExecute(null));
-        Assert.Equal(RadiusRules.CheckCipherSuite, vm.SaveTip);
-        Assert.Null(vm.Settings.CipherSuitesError); // an untouched form shows no error below the list
+        Assert.False(advanced.IsFormValid);
+        Assert.False(advanced.SaveCommand.CanExecute(null));
+        Assert.Equal(RadiusRules.CheckCipherSuite, advanced.FormError);
+        Assert.Null(advanced.CipherSuitesError); // an untouched form shows no error below the list
+        Assert.True(vm.SaveCommand.CanExecute(null)); // the Server card's Save is not blocked by Advanced
 
         rsa.IsChecked = false;
         rsa.IsChecked = true; // edited: the error shows below the list
-        Assert.Equal(RadiusRules.CheckCipherSuite, vm.Settings.CipherSuitesError);
+        Assert.Equal(RadiusRules.CheckCipherSuite, advanced.CipherSuitesError);
 
         ecdsa.IsChecked = true;
-        Assert.True(vm.Settings.IsFormValid);
-        Assert.True(vm.SaveCommand.CanExecute(null));
-        Assert.Null(vm.SaveTip);
-        Assert.Null(vm.Settings.CipherSuitesError);
+        Assert.True(advanced.IsFormValid);
+        Assert.True(advanced.SaveCommand.CanExecute(null));
+        Assert.Null(advanced.CipherSuitesError);
     }
 
     [Fact]
-    public async Task Revoke_shows_its_progress_and_stays_off_until_the_server_answered()
-    {
-        using var vm = new RadiusViewModel(_ctx);
-        vm.Revoked.Dialogs = new RevokeDialogs();
-        await vm.ShowRevokedTabCommand.ExecuteAsync(null);
-        Assert.Equal(RevokedViewModel.ReadingText, vm.Revoked.ProgressText);
-        Assert.False(vm.Revoked.ShowsProgress);
-
-        var hold = _server.Hold(RadiusMethods.Revoke);
-        var revoking = vm.Revoked.RevokeCommand.ExecuteAsync(null);
-        await Eventually.TrueAsync(() => vm.Revoked.IsRevoking, "Revoke is running");
-
-        Assert.True(vm.Revoked.ShowsProgress);
-        Assert.Equal(RevokedViewModel.RevokingText, vm.Revoked.ProgressText);
-        Assert.False(vm.Revoked.RevokeCommand.CanExecute(null));
-        var readsBefore = _server.CountOf(RadiusMethods.ListRevoked);
-
-        hold.SetResult();
-        await revoking;
-
-        Assert.False(vm.Revoked.IsRevoking);
-        Assert.False(vm.Revoked.ShowsProgress);
-        Assert.True(vm.Revoked.RevokeCommand.CanExecute(null));
-        Assert.Equal(readsBefore + 1, _server.CountOf(RadiusMethods.ListRevoked)); // the page is read again
-        Assert.Equal(3, vm.Revoked.Rows.Count);
-        Assert.Empty(_ctx.Messages);
-    }
-
-    [Fact]
-    public async Task A_refused_revoke_ends_the_progress_before_the_message()
-    {
-        using var vm = new RadiusViewModel(_ctx);
-        vm.Revoked.Dialogs = new RevokeDialogs();
-        await vm.ShowRevokedTabCommand.ExecuteAsync(null);
-        _server.Failures[RadiusMethods.Revoke] = new InvalidOperationException("Only IEEE 802.1X certificates can be revoked here.");
-        bool? messageBeforeTheEnd = null;
-        vm.Revoked.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(RevokedViewModel.IsRevoking) && !vm.Revoked.IsRevoking)
-            {
-                messageBeforeTheEnd = _ctx.Messages.Count > 0;
-            }
-        };
-
-        await vm.Revoked.RevokeCommand.ExecuteAsync(null);
-
-        Assert.False(messageBeforeTheEnd); // the progress ended before the message showed
-        Assert.Single(_ctx.Messages);
-        Assert.False(vm.Revoked.IsRevoking);
-    }
-
-    [Fact]
-    public async Task A_group_user_reads_no_vlans_and_gets_no_tag_choices()
+    public async Task A_group_user_reads_no_policies_and_no_trusted_cas()
     {
         _ctx.AllDevices = false;
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
 
-        Assert.False(vm.SeesVlans);
-        Assert.Equal(0, _server.CountOf(RadiusMethods.GetVlans));
-        Assert.Empty(vm.Vlans.Rules);
-        Assert.Empty(vm.Vlans.TagChoices); // the devices of the group have tags: none is a choice
-        Assert.Empty(vm.Vlans.SiteChoices);
-        Assert.False(vm.Vlans.Enabled);
-        Assert.Equal(string.Empty, vm.Vlans.DefaultVlan);
+        Assert.False(vm.HasAllDevices);
+        Assert.Equal(0, _server.CountOf(RadiusMethods.GetPolicies));
+        Assert.Equal(0, _server.CountOf(RadiusMethods.GetTrustedCas));
+        Assert.Empty(vm.Policies.Rows);
+        Assert.Empty(vm.TrustedCas.Cas);
+        Assert.Equal(string.Empty, vm.Policies.DefaultVlan);
     }
 
     [Fact]
-    public async Task The_server_saying_the_user_is_limited_to_a_group_hides_the_vlans()
+    public async Task The_server_saying_the_user_is_limited_to_a_group_hides_the_cards()
     {
         _server.State = _server.State with { HasAllDevices = false };
-        _server.Vlans = new VlanSettings(); // the server's answer to a group user
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
 
-        Assert.False(vm.SeesVlans);
-        Assert.Equal(0, _server.CountOf(RadiusMethods.GetVlans));
-        Assert.Empty(vm.Vlans.Rules);
-        Assert.Empty(vm.Vlans.TagChoices);
-        Assert.True(vm.Vlans.IsValid);
+        Assert.False(vm.HasAllDevices);
+        Assert.Equal(0, _server.CountOf(RadiusMethods.GetPolicies));
+        Assert.Equal(0, _server.CountOf(RadiusMethods.ListSwitches));
+        Assert.Empty(vm.Policies.Rows);
     }
 
     [Fact]
-    public async Task Rules_and_tags_read_with_all_devices_leave_when_the_user_is_limited_to_a_group()
+    public async Task Policies_and_tags_read_with_all_devices_leave_when_the_user_is_limited_to_a_group()
     {
-        _server.Vlans = _server.Vlans with { TagChoices = [new TagChoice("Lobby", "Lobby")] };
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
-        Assert.True(vm.SeesVlans);
-        Assert.Equal(2, vm.Vlans.Rules.Count);
-        Assert.Equal(["Lobby", "Outdoor", "PTZ"], vm.Vlans.TagChoices.Select(c => c.Label)); // the server's tags too
+        Assert.Equal(3, vm.Policies.Rows.Count);
+        Assert.Contains(vm.Policies.NewEditor(null).Picker.Tags, t => t.Name == "Lobby"); // the server's tags too
 
         _ctx.AllDevices = false;
         _ctx.RaisePermissionsChanged();
 
-        Assert.False(vm.SeesVlans);
-        Assert.Empty(vm.Vlans.Rules);
-        Assert.Empty(vm.Vlans.TagChoices);
-        Assert.False(vm.Vlans.Enabled);
+        Assert.Empty(vm.Policies.Rows);
+        Assert.DoesNotContain(vm.Policies.NewEditor(null).Picker.Tags, t => t.Name == "Lobby");
     }
 
     [Fact]
-    public async Task Empty_vlan_settings_from_the_server_show_an_empty_card()
+    public async Task Empty_policies_from_the_server_show_an_empty_card()
     {
-        _server.Vlans = new VlanSettings();
+        _server.Policies = new PolicySettings();
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
 
-        Assert.True(vm.SeesVlans);
-        Assert.Empty(vm.Vlans.Rules);
-        Assert.False(vm.Vlans.Enabled);
-        Assert.Equal(["Outdoor", "PTZ"], vm.Vlans.TagChoices.Select(c => c.Label));
+        Assert.Empty(vm.Policies.Rows);
+        Assert.False(vm.Policies.HasVlanPolicies);
+        Assert.True(vm.Policies.AddCommand.CanExecute(null));
         Assert.True(vm.SaveCommand.CanExecute(null));
     }
 }

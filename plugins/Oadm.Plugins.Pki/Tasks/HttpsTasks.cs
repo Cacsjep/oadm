@@ -1,3 +1,4 @@
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Pki.Device;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -8,15 +9,22 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// <summary>
 /// "Enable HTTPS": a new key on the device, a certificate from the OADM CA, the web server switched to it (an
 /// HTTP-only policy becomes HTTP and HTTPS), OADM follows the new certificate (scheme https, new pin), the previous OADM
-/// certificate is removed. Steps: Check compatibility, Read web server settings, Read network settings, Install CA
+/// certificate is removed. Steps: Check compatibility, Check device clock, Read web server settings, Read network settings, Install CA
 /// certificate, Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
 /// to the new certificate, Verify HTTPS, Remove previous OADM certificate.
 /// </summary>
-public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(service)
+public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
 {
     public override string Id => PkiTaskIds.HttpsEnable;
 
     public override string DisplayName => PkiTaskIds.HttpsEnableName;
+
+    /// <summary>The dialog reads the camera clocks first and asks when one is behind (docs/spec/pki.md "Clock check").</summary>
+    public override bool RequiresDialog => true;
+
+    /// <summary>The dialog's clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        ClockQuery.QueryAsync(ctx, device, method, Time, ct);
 
     public override string GetTaskName(string? payloadJson) => "Enable HTTPS";
 
@@ -25,10 +33,11 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         ctx.PlanSteps(
-            PkiSteps.CheckCompatibility, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey, PkiSteps.GetCsr,
-            PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
+            PkiSteps.CheckCompatibility, PkiSteps.CheckClock, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey,
+            PkiSteps.GetCsr, PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
 
         var (service, ca, apis) = await CheckCertificateTaskAsync(ctx, device, ct).ConfigureAwait(false);
+        await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
         var network = await ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
         if (webServer.CertificateAlias?.StartsWith(CertificateDeployment.HttpsAliasPrefix, StringComparison.Ordinal) == true)
