@@ -365,6 +365,23 @@ internal sealed class PluginPageContext(PkiPlugin plugin, PluginEventHub hub) : 
 
     public List<string> Opened { get; } = [];
 
+    private readonly Dictionary<string, string> _local = [];
+
+    /// <summary>What the page keeps on this computer (shared by every page made with this context).</summary>
+    public string? GetLocalSetting(string key) => _local.GetValueOrDefault(key);
+
+    public void SetLocalSetting(string key, string? value)
+    {
+        if (value is null)
+        {
+            _local.Remove(key);
+        }
+        else
+        {
+            _local[key] = value;
+        }
+    }
+
     public Task OpenAsync(string hostPage)
     {
         Opened.Add(hostPage);

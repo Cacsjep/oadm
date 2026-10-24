@@ -115,7 +115,8 @@ public sealed class IssuedCertificateList : UserControl
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "State",
-            Width = new DataGridLength(175),
+            Width = new DataGridLength(0.9, DataGridLengthUnitType.Star),
+            MinWidth = 175,
             CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
             {
                 var chip = new StatusChip();
