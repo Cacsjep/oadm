@@ -66,7 +66,7 @@ returns null or throws `NotSupportedException`.
   out while the others serve, `IRelay.BoundAddresses` (SDK 0.4.0 default member, null = the host does not tell: a relay at
   a site, an older host) lists the addresses bound now, empty while not listening; `FakePluginNetwork.LastUdpAddresses` /
   `LastTcpAddresses` and `RefuseAddress` (leave an address out, as the host does) in tests).
-- **SDK 0.4.0 (OADM 4.2), device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`):
+- **SDK 0.4.0 (OADM 4.5), device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`):
   `ICallContext` (UserName, SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`,
   `Tasks`, `EventStreams` scoped to the user's view: outside ids answer null or throw
   `Oadm.Sdk.Devices.DevicesNotAvailableException` = NOT_FOUND `DeviceMessages.NoLongerAvailable`, `Contains`). Overloads
@@ -83,7 +83,7 @@ returns null or throws `NotSupportedException`.
   user who started the task, with the user's view as it is when the task leaves the queue; null for tasks the system
   or a core plugin's background work started; host side `Oadm.Core.Tasks.TaskCallContext`, its `Tasks` from
   `TaskEngine.ForView`). `IPluginEvents.Publish(topic, json, PluginEventAudience)` (AllDevices, Device, DeviceRows,
-  User, Session; the old `Publish` reaches only watchers with all devices on 4.2). `IDeviceInfo.AddedByAllDevices`.
+  User, Session; the old `Publish` reaches only watchers with all devices on 4.5). `IDeviceInfo.AddedByAllDevices`.
   `EventTypeInfo.OwnerScopeKey` (the device scope key of the object behind an event type: a device trigger or a compliance
   check of a group, "all" for one of all devices; null = nobody's): pages that list event types to users hide another
   owner's; the host fills it for compliance checks (`DeviceScope.ScopeKey` of the check's owner) and passes the plugins' own.

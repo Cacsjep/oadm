@@ -37,7 +37,7 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
 - **Device groups** (`docs/spec/device-scope.md`, Shared objects): every check has an owner (`ComplianceCheck.Owner`,
-  columns `OwnerAllDevices` + `OwnerGroupId`; the default checks and every check from before 4.2 belong to all devices). A
+  columns `OwnerAllDevices` + `OwnerGroupId`; the default checks and every check from before 4.5 belong to all devices). A
   new check belongs to the caller's devices; an edit keeps the owner; only administrators choose another one
   (`ComplianceCheckSummary.owner`, else PERMISSION_DENIED "Only administrators choose who owns it."). A check runs only on
   its owner's devices: "All devices", the chosen devices and the tags are intersected with the group in the engine

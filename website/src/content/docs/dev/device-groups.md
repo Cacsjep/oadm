@@ -1,10 +1,10 @@
 ---
 title: Device groups and the call context
-description: How a plugin serves users limited to a device group (SDK 0.4.0, OADM 4.2).
+description: How a plugin serves users limited to a device group (SDK 0.4.0, OADM 4.5).
 ---
 
 An administrator can limit a user to a [device group](../../admin/device-groups/): sites, tags and single devices.
-Everything that user sees and does follows the group, plugins too. Since SDK 0.4.0 (OADM 4.2) every plugin method gets
+Everything that user sees and does follows the group, plugins too. Since SDK 0.4.0 (OADM 4.5) every plugin method gets
 the user's call, `ICallContext`, and reaches devices only through it.
 
 A plugin whose `plugin.json` has `minSdkVersion` below 0.4.0 keeps working for users with all devices. For users with a

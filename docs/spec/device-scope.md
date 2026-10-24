@@ -1,6 +1,6 @@
 # Device groups
 
-Status: built for OADM 4.2 (decisions 2026-10-22 and 2026-10-23, after an independent RBAC review and
+Status: built for OADM 4.5 (decisions 2026-10-22 and 2026-10-23, after an independent RBAC review and
 an independent security review the same day). A user may be limited to part of the devices: everything the user sees and does follows that limit.
 
 ## Model
@@ -14,7 +14,7 @@ an independent security review the same day). A user may be limited to part of t
   device of a chosen site or tag is in the group at once.
 - **On the user**: an explicit choice "All devices" or a group (a flag plus the group id; never "null = all devices").
   The foreign key is `OnDelete(Restrict)`. The migration sets "All devices" on every existing user, so an upgrade or
-  the restore of a backup from before 4.2 changes nobody's devices; after that, a user without the flag and without an
+  the restore of a backup from before 4.5 changes nobody's devices; after that, a user without the flag and without an
   existing group has no devices. The role stays the rights; the group is the
   devices. "Operator" + group "Building B" instead of a role per site. Administrator always has all devices (a group on
   an administrator is ignored and the user form says so).
@@ -47,7 +47,7 @@ an independent security review the same day). A user may be limited to part of t
   also through the plugin task runner); task history is filtered in the query (a temp table or `json_each` for large
   views, never after the 10,000 snapshot limit). History of removed devices: only users with all devices.
 
-## Plugins (SDK 0.4.0, OADM 4.2)
+## Plugins (SDK 0.4.0, OADM 4.5)
 
 - **During the call of a user with a group, `ctx.Devices` / `ctx.Vapix` / `ctx.Tasks` / `ctx.EventStreams` refuse**
   (fail closed): a plugin method uses `call.*`; the full list only through `ctx.System`, outside user calls or from call
@@ -82,8 +82,8 @@ an independent security review the same day). A user may be limited to part of t
   never their device lists or names.
 - **Uploads have an owner:** an upload (`FileService.Upload`) belongs to the user and session that sent it
   (`UploadOwner`); `FileService.Delete`, a backup restore and the tasks of another user or session answer like an unknown
-  id; tasks the system starts (no caller) read any upload. Uploads from before 4.2 and of the system belong to nobody.
-- Every bundled plugin moves to the call context before 4.2. Plugins built against SDK 0.3.0 load and run unchanged for
+  id; tasks the system starts (no caller) read any upload. Uploads from before 4.5 and of the system belong to nobody.
+- Every bundled plugin moves to the call context before 4.5. Plugins built against SDK 0.3.0 load and run unchanged for
   users with all devices (new SDK members are default interface members); their methods are refused for group users.
 - Plugin testing: `Oadm.Sdk.Testing` gets a fake call with a group and the canary test (see Tests).
 - **Built (plugin host):** the call per call, the refusals, jobs with owners, event audiences (plus `DeviceScope(key)` for
@@ -176,7 +176,7 @@ an independent security review the same day). A user may be limited to part of t
   points to, with the same small harm.
 - **Shared waiting entries accepted**: a waiting entry with a site of the group is shared by the group's users: each
   sees it, removes it and uses Try now, and it is added as the user who queued it.
-- **Release:** 4.2 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
+- **Release:** 4.5 (4.1.0 shipped the EST server on 2026-10-23), plugin SDK 0.4.0.
 
 ## The editors
 
