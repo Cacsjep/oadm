@@ -182,18 +182,20 @@ must never break.
   this server's ID; the public keys in the repo, the private keys never; only PRO plugins and the PRO parts of PKI (EST and
   802.1X servers) read it, **OADM itself is never limited**; Settings card License.
 - **[EST server](docs/spec/est-server.md)**: a PRO part of PKI (core plugin `oadm.est` in the PKI package, off by default,
-  Turn on on its page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454, cameras enroll
+  Turn on on its tab of the PKI page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454, cameras enroll
   with their Axis device ID and only if OADM manages them, the OADM CA of PKI signs, cameras renew by themselves (renewals
   the OADM CA issued directly never show Certificate changed), also at sites (a relay of the site node).
 - **[Device groups](docs/spec/device-scope.md)** (OADM 4.5): a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
-- **[PKI, the certificate control center](docs/spec/pki.md)** (stages 1 to 3 built, the rest planned): one package with
-  the EST and 802.1X servers (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); PKI holds every
-  CA (OADM, previous, Axis device ID, imported) and certificate; services such as EST and 802.1X only select from it;
-  certificates start 5 minutes early and the install dialogs ask when the camera's clock is behind.
+- **[PKI, the certificate control center](docs/spec/pki.md)** (OADM 4.5): one package with the EST and 802.1X servers
+  (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates,
+  802.1X server, EST server; every rule about certificates is a PKI policy (issuing, 802.1X, EST, Revoke, Expiry warning;
+  no overlaps; converted once from the old settings), the servers keep no rules of their own; the certificate list holds
+  every CA and certificate with create, sign request, import, export and delete; certificates start 5 minutes early and
+  the install dialogs ask when the camera's clock is behind.
 - **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, a PRO part of PKI: core plugin `oadm.radius`, off by default,
-  Turn on on its page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
+  Turn on on its tab of the PKI page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
   manages with a certificate of a CA of an Allow CA policy pass, fragmentation both ways, a deep session state and plain
   TLS alert texts, switches changed while it runs; its rules (TLS, trusted CAs, VLAN, Block, Revoke) are PKI's policies
   (docs/spec/pki.md), never settings of its own.

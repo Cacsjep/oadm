@@ -246,8 +246,8 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 The two pages are tabs of the PKI page since stage 7 ("The PKI page").
 
 - **802.1X server:** Server (Listen on, Port, Log entries kept; no Advanced dialog: its settings are the 802.1X server
-  policy), Switches, Sessions and Log (a splitter between
-  the two), a line "Rules: Policies on the PKI page". No Trusted CAs card, no Policies card, no Default VLAN.
+  policy, with "6 policies apply" and Edit policies), Switches, Sessions and Log (a splitter between the two). No Trusted
+  CAs card, no Policies card, no Default VLAN.
 - **EST server:** General (with "3 policies apply" and Edit policies), Profiles (name, issuing policy, on), Enrollments in
   its own card. No Sign in with (stage 6: Sign-in CA policies).
 
@@ -574,18 +574,18 @@ Built 2026-10-24 (branch `feature/pki-tabs`). Rules the sections above leave ope
 
 1. Done (on main, 2026-10-24): the CA list with Used by, 802.1X Trusted CAs and policies, EST Sign in with, the clock
    check.
-2. Built (2026-10-24, branch `feature/pki-policies`): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
+2. Done (on main, 2026-10-24): One plugin: EST and 802.1X move into the PKI package (three pages, Turn
    on per server, PRO for the two servers only, taking over the 4.1 data and choices, the site relay), without changing what
    they do.
-3. Built (2026-10-24, branch `feature/pki-policies`): The page with CAs, Policies and Certificates (today's list); 802.1X
+3. Done (on main, 2026-10-24): The page with CAs, Policies and Certificates (today's list); 802.1X
    server, Allow CA, VLAN, Block, Revoke and Expiry warning policies (the expiry events move to PKI) with the conversion; the
    802.1X and EST page changes above. See "Code (stage 3)".
-4. Built (2026-10-24, branch `feature/pki-policies`): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
+4. Done (on main, 2026-10-24): Issuing policies: HTTPS, IEEE 802.1X and Server certificate; the
    task dialogs pick a policy; EST profiles point to one. See "Code (stage 4)".
-5. Built (2026-10-24, branch `pp-certs`): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
+5. Done (on main, 2026-10-24): The Certificates list: server paging, Create, Sign request, Import, Export, Delete.
    See "Code (stage 5)".
-6. Built (2026-10-24, branch `pp-est`): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
+6. Done (on main, 2026-10-24): EST Enrollment and Sign-in CA policies; the EST page's Sign in with goes away. See
    "Code (stage 6)".
-7. Built (2026-10-24, branch `feature/pki-tabs`): One rail entry: the 802.1X and EST servers become tabs of the PKI page;
+7. Done (on main, 2026-10-24): One rail entry: the 802.1X and EST servers become tabs of the PKI page;
    the Certificate authorities card goes away, the Certificates list becomes the full management view (badges, Group by,
    the CA actions). See "The PKI page", "Certificates" and "Code (stage 7)".
