@@ -65,8 +65,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
   after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
 - Page (stage 7 of `docs/spec/pki.md`, `HasOwnCards`, subtitle "Certificates, their policies, and the 802.1X and EST
   servers."): fixed tabs Certificates | Policies | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
-  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: the policy table as
-  high as the tab. Certificates: the Certificates card as high as the tab (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
+  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: cards by area (see
+  below). Certificates: the Certificates card as high as the tab (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
   Generate new CA), Sign request, Import (Certificate; CA: "CA certificate" and "CA with its key", both add a row) and
   Group by, the filters and the search; the OADM CA's status below it only when it needs attention.
   The CAs are rows: the OADM CA's menu has View, Export (PEM / DER: Export public certificate), Install in trusted root
@@ -131,11 +131,19 @@ the only writers of the list of issued certificates (see "Issued certificates an
   of before 2026-10-25 (`serverCertificate`, `revoke`) are converted once on start (`PolicyStore.ConvertKinds` through
   `RewriteOnceAsync`, owner `oadm.pki:kinds-2026-10-25`; never on a store that cannot be read). The 802.1X server inside
   PKI reads the store in process (`IPluginServices`); `Radius/Server/RadiusPolicies.cs` converts its settings once.
-- Page: tab **Policies** (`PoliciesViewModel`): one table grouped by Issuing, Certificates, 802.1X, EST (a header only for
-  groups with rows: `PkiView.PolicyGroupView`), rows (Name, Type, Kind, Summary with the warning of a later overlap,
-  Devices, ⋯ with Edit and Delete), **Add policy**; the editor (`PolicyEditorViewModel`, `PolicyFormView` on the shared
-  `DevicePickerWindow`; the device part only for kinds with devices and not "All devices"): Name, Kind (a new policy only)
-  with VLAN ID or Days on its row, Block's "Also revoke their IEEE 802.1X certificates", Devices ("All devices" or
+- Page: tab **Policies** (`PoliciesViewModel`, decision 2026-10-25), one scrolling column of cards: **Check a device**
+  (`ChooseCheckDeviceCommand`: `DevicePickerWindow.ShowOneAsync` through `IPolicyDialogs.PickDeviceAsync`, then
+  `checkDevice` for that one device; again after every policy change), **Certificates for cameras** (the system HTTPS,
+  IEEE 802.1X and Expiry warning policies in place, rule lists Other issuing and Expiry warnings for some devices),
+  **802.1X network access** (the 802.1X server policy in place, Trusted CAs, VLANs, Blocked), **EST** (the EST server
+  policy in place, Enrollment with its system row "All devices" first, Sign-in CAs). In place: `PolicySettingsView`
+  (heading, `PolicyFormView` with `PolicyEditorViewModel.IsInPlace`: no name, no devices, `ReadOnly` without "manage";
+  Save (secondary) per policy with its status left of it, "Not saved" / "Saved"; a reload keeps a form with changes).
+  Rule lists: `PolicyRulesView` over `PolicySectionViewModel` (Name with the System badge, Devices only for kinds with
+  devices, Summary with the warning of a later overlap, ⋯ with Edit and Delete in red; Add with the kind preset, a menu
+  of the kinds for Other issuing; a DataGrid at most 360 px high: up to 200 policies stay virtualized). The editor
+  (`PolicyEditorViewModel`, `PolicyFormView` on the shared `DevicePickerWindow`; the device part only for kinds with
+  devices and not "All devices"): the kind's description, Name, VLAN ID, Days before the end, Block's "Also revoke their IEEE 802.1X certificates", Devices ("All devices" or
   "Chosen devices"; not for a Block that also revokes), 802.1X trusted CA's CA and "Only devices OADM manages", the
   issuing kinds' and server policies' Issued by (`PolicyList.IssuingCas`), Valid (days), Key, the 802.1X server's Minimum
   TLS version, Cipher suites (Reset to default), Largest EAP packet, Reauthentication, and for IEEE 802.1X EAPOL version,
@@ -144,12 +152,19 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `countRevocations`.
 - Events "Certificate expires soon", "Certificate expired" and their Any device twins (`ExpiryEvents`, group
   "Certificates", the ids of OADM 4.1's built-in events).
-- Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (+ headless `pki-page-1700.png`, `pki-page-1000.png`,
+- Page method `checkDevice` (`PolicyCheckRequest` -> `PolicyCheck`, `PkiService.PolicyCheck.cs`): read only, Operator, a
+  user limited to a device group gets an empty answer; lines per area (HTTPS, IEEE 802.1X, Expiry warning, 802.1X server,
+  EST server) with the deciding policies, decided by `RadiusRuleSet`/`PolicyPlan`, `EstRules` and the Expiry days.
+- Server status: a server policy whose CA cannot issue (or left the PKI) says so (`IssuerChains.NoCertificateReason`,
+  `PolicyTexts.ServerWithoutCertificate`): "The 802.1X server has no certificate: Corp CA cannot issue."
+- Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (sections, in place, Add/Edit/Delete, Check a device,
+  a group user; + headless `pki-page-1700.png`, `pki-page-1000.png`,
   `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`, `pki-policy-block.png`,
   `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `IssueDialogTests` (+ headless
   `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
-  `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`), `SeveralCasTests` (the conversion of the kinds, Used in,
-  no empty group headers), Perf `PolicyPerfTests` (30,000 devices).
+  `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`,
+  `pki-policies-1000.png` and their `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the
+  conversion of the kinds, Used in), Perf `PolicyPerfTests` (30,000 devices).
 
 ## PKI Security tasks (part 2, contributed by `oadm.pki`)
 

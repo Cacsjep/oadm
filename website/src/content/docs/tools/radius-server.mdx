@@ -124,6 +124,7 @@ with all devices change the settings, the switches and the log.
 |---|---|
 | Status **OADM PRO is not active.** | Activate OADM PRO in Settings > License. |
 | Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
+| Status **The 802.1X server has no certificate: Corp CA cannot issue.** | The CA of the 802.1X server policy lost its key. Import it again with its key, or choose another **Issued by** on the PKI page's Policies tab. |
 | Status **Port 1812 is used by another program** | Stop the other RADIUS server, or choose another port and change it on the switches. |
 | Switch shows **Wrong secret** | Enter the same shared secret on the switch and in OADM. |
 | Switch shows **No requests yet** | Check the switch's RADIUS server address and port, and that it reaches the OADM server. |

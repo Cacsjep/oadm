@@ -46,8 +46,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
     "6 policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies; left in the Save row, opens PKI's Policies tab),
-    the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "Port 1812
-    is used by another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
+    the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "The
+    802.1X server has no certificate: Corp CA cannot issue." (docs/spec/pki.md "Policies in cards"), "Port 1812 is used by
+    another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
   - **Switches** (card): name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site
     offline", amber for "No requests yet", the state as its tooltip), address, site, last request (no state column,
