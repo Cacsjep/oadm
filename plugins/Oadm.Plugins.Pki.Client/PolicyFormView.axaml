@@ -64,6 +64,36 @@
       </StackPanel>
     </ui:FormField>
 
+    <!-- Sign-in CA: the CA (Axis device ID, OADM CA, previous OADM CAs) and what cameras may sign in with it for -->
+    <ui:FormField Label="CA" InputWidth="360" IsVisible="{Binding IsSignInCa}">
+      <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding SignInCaChoices}" SelectedItem="{Binding SignInCa}" />
+    </ui:FormField>
+    <ui:FormField Label="For" Hint="{Binding SignInForHint}" IsVisible="{Binding IsSignInCa}">
+      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.SignInForChoices}" SelectedItem="{Binding SignInFor}" />
+    </ui:FormField>
+
+    <!-- Enrollment: all profiles, chosen ones (a few check boxes: no virtualization needed) or no enrollment -->
+    <ui:FormField Label="Profiles" Error="{Binding ProfilesError}" IsVisible="{Binding IsEnrollment}">
+      <StackPanel Spacing="8">
+        <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.ProfileScopeChoices}" SelectedItem="{Binding ProfileScope}" />
+        <ItemsControl ItemsSource="{Binding ProfileChoices}" IsVisible="{Binding IsChosenProfiles}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:EnrollmentProfileViewModel">
+              <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Classes="secondary" Text="{Binding ProfilesEmptyText}">
+          <TextBlock.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.And}">
+              <Binding Path="IsChosenProfiles" />
+              <Binding Path="ProfilesEmptyText" Converter="{x:Static StringConverters.IsNotNullOrEmpty}" />
+            </MultiBinding>
+          </TextBlock.IsVisible>
+        </TextBlock>
+      </StackPanel>
+    </ui:FormField>
+
     <!-- Kinds with devices except Revoke: All devices, or the picker below -->
     <ui:FormField Label="Devices" IsVisible="{Binding OffersAllDevices}">
       <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}" />
