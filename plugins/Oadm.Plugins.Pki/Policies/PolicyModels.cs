@@ -618,6 +618,14 @@ public static class PolicyTexts
     public const string ChooseSignInFor = "Choose new certificates or renewals.";
     public const string NoSignInCa = "Cameras sign in with the Axis device ID or an OADM CA.";
 
+    /// <summary>
+    /// "The 802.1X server has no certificate: Corp CA cannot issue." / "... the CA of its policy is no longer in the PKI."
+    /// (the status of a server whose policy names a CA without its key, or a removed one).
+    /// </summary>
+    public static string ServerWithoutCertificate(string server, string? caName) => caName is null
+        ? $"{server} has no certificate: the CA of its policy is no longer in the PKI."
+        : $"{server} has no certificate: {caName} cannot issue.";
+
     /// <summary>"The EST server has no profile web." (an Enrollment policy names a profile the EST server does not have).</summary>
     public static string UnknownProfile(string profile) => $"The EST server has no profile {profile}.";
 
