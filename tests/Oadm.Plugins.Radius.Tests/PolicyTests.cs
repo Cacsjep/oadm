@@ -186,4 +186,25 @@ public sealed class PolicyTests
         Assert.Equal(99, policies.DefaultVlan);
         Assert.Equal(["PTZ"], harness.Ctx.FakeProtectedTags.Names);
     }
+
+    [Fact]
+    public async Task OnlyTheDefaultVlanOfOadm41MovesIntoAVlanPolicyForEveryDevice()
+    {
+        await using var harness = await PluginHarness.CreateAsync(start: false);
+        var site = harness.Ctx.FakeSites.Add("Building B");
+        var old = new VlanSettings { Enabled = true, Rules = [new VlanRule(VlanRuleKinds.Tag, " ", null, 20)], DefaultVlan = 99 };
+        await harness.Ctx.PluginSettings.SetAsync(RadiusStore.VlansKey, RadiusJson.Serialize(old), CancellationToken.None);
+
+        await harness.StartAsync();
+
+        var policies = await harness.CallAsync<PolicySettings>(RadiusMethods.GetPolicies);
+        var all = Assert.Single(policies.Policies);
+        Assert.Equal((RadiusTexts.AllDevicesPolicy, PolicyKinds.Vlan, 99), (all.Name, all.Kind, all.Vlan!.Value));
+        Assert.True(all.Devices.ThisServer);
+        Assert.Equal([site.Id], all.Devices.SiteIds);
+        Assert.Equal(99, policies.DefaultVlan);
+        var plan = new PolicyPlan(policies);
+        Assert.Equal(99, plan.VlanFor(new FakeDevice { Serial = "ACCC8E000001" }));
+        Assert.Equal(99, plan.VlanFor(new FakeDevice { Serial = "ACCC8E000002", SiteId = Guid.NewGuid() })); // a later site: the default VLAN
+    }
 }

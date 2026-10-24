@@ -513,7 +513,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   certificate authority is not in the PKI."); `SetUsedBy("oadm.radius", "802.1X server", ids)` whenever the ids or the
   offer changed (start, save, CA change, the minute round).
 - **Policies** (setting `policies`, `PolicySettings`; OADM 4.1's `vlans` move in at the first start, only when Assign VLANs
-  was on: one VLAN policy per rule, names made unique with " (2)", then `vlans` is deleted): `getPolicies`,
+  was on: one VLAN policy per rule, names made unique with " (2)"; no usable rule but a default VLAN: one VLAN policy
+  "All devices" (this server and every site) with that VLAN, so every device stays on it; then `vlans` is deleted): `getPolicies`,
   `savePolicies` (the whole ordered list, `RadiusRules.Validate(PolicySettings)`, new ids, serials upper case, sites must
   exist; a revoke policy that is new or whose kind or devices changed needs `oadm.pki:manage`, else nothing is stored;
   `SavedBy` = that user), `countRevocations` (`PolicyDevices` -> `{count}`). `PolicyPlan` (immutable, hash sets of sites,

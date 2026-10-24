@@ -989,6 +989,18 @@ public sealed partial class RadiusService : IAsyncDisposable
 
                 policies.Add(new RadiusPolicy { Id = Guid.NewGuid(), Name = name, Kind = PolicyKinds.Vlan, Vlan = rule.Vlan, Devices = devices });
             }
+
+            if (policies.Count == 0 && vlans.DefaultVlan is { } everyone)
+            {
+                // Only the default VLAN: OADM 4.1 put every device on it, the policies only while a VLAN policy exists. One
+                // VLAN policy for this server and every site keeps it (devices of later sites get the default VLAN).
+                var sites = (_host.Sites?.List ?? []).Select(s => s.Id).ToList();
+                policies.Add(new RadiusPolicy
+                {
+                    Id = Guid.NewGuid(), Name = RadiusTexts.AllDevicesPolicy, Kind = PolicyKinds.Vlan, Vlan = everyone,
+                    Devices = new PolicyDevices { ThisServer = true, SiteIds = sites },
+                });
+            }
         }
 
         var migrated = new PolicySettings { Policies = policies, DefaultVlan = vlans.Enabled ? vlans.DefaultVlan : null };
@@ -2420,6 +2432,9 @@ public static class RadiusTexts
     public const string ServiceName = "802.1X server";
 
     public const string UnknownCa = "This certificate authority is not in the PKI.";
+
+    /// <summary>The name of the VLAN policy the default VLAN of OADM 4.1 moves into when no VLAN rule moved.</summary>
+    public const string AllDevicesPolicy = "All devices";
 
     /// <summary>"The tag Floor 3 is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed."</summary>
     public static string VlanTag(string tag) => $"The tag {tag} is used by an 802.1X policy. Only users with all devices can add or remove it. Nothing was changed.";
