@@ -1,6 +1,6 @@
 # Device groups
 
-Status: built on branch `feature/device-groups` for OADM 4.2 (decisions 2026-10-22 and 2026-10-23, after an independent RBAC review and
+Status: built for OADM 4.2 (decisions 2026-10-22 and 2026-10-23, after an independent RBAC review and
 an independent security review the same day). A user may be limited to part of the devices: everything the user sees and does follows that limit.
 
 ## Model

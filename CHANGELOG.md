@@ -25,7 +25,7 @@ version and date, and the release workflow copies it into the GitHub release.
   answered. **Revoke all of this device** also reads the device first and revokes the OADM certificates it finds there.
 - Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
   Also in the search and the export.
-- Device groups (in work): a user can be limited to the devices of a group (sites, tags, single devices). After the
+- Device groups: a user can be limited to the devices of a group (sites, tags, single devices). After the
   upgrade every user keeps all devices. Such a user sees and runs tasks only on the devices of the group; a queued task
   whose device left the group fails before it starts.
 - Device groups: renaming a group keeps its users' pages open; the DHCP server page shows a group's users the leases of
