@@ -42,8 +42,9 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelText="{Binding CancelText}" CancelCommand="{Binding CancelCommand}">
-      <ui:ToolbarButton IconKey="export" Text="Export PDF" IsPrimary="True" Command="{Binding ExportCommand}"
-                        ToolTip.Tip="{Binding ExportBlockedReason}" ToolTip.ShowOnDisabled="True" />
+      <Button Classes="primary" Command="{Binding ExportCommand}" ToolTip.Tip="{Binding ExportBlockedReason}" ToolTip.ShowOnDisabled="True">
+        <ui:IconLabel Icon="{DynamicResource Icon.export}" Text="Export PDF" />
+      </Button>
     </ui:DialogFooter>
   </Grid>
 </Window>

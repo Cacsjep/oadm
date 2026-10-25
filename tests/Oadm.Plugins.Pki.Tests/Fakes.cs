@@ -219,7 +219,8 @@ internal sealed class PkiHarness : IAsyncDisposable
         MemoryPluginRecords? records = null,
         IReadOnlyList<IDeviceInfo>? devices = null,
         IEventPublisher? publisher = null,
-        FakeSites? sites = null)
+        FakeSites? sites = null,
+        bool pro = true)
     {
         settings ??= new InMemoryPluginSettingsProvider();
         var protector = noSecrets ? null : secrets ?? TestSecrets.Create();
@@ -236,6 +237,7 @@ internal sealed class PkiHarness : IAsyncDisposable
             FakeSites = sites ?? new FakeSites(),
         };
         await plugin.StartAsync(core, CancellationToken.None);
+        plugin.Service!.IsPro = () => pro; // the PRO servers' policies show (the license itself, and what it starts, is tested apart)
         if (waitForDefault)
         {
             await plugin.Service!.Background;

@@ -117,7 +117,9 @@ public sealed class SessionBoard(TimeProvider time)
             PortType = snapshot.PortType,
             Mac = snapshot.Mac.Display,
             Identity = snapshot.EapIdentity,
-            DeviceId = device?.Id,
+            // Only the certificate decides which device a row belongs to (who may see it, the log): a guess from the MAC
+            // address is shown, never stored as the device.
+            DeviceId = guess ? null : device?.Id,
             DeviceName = device is null && snapshot.Tag is CheckedCertificate { Subject: { Length: > 0 } subject } ? subject : DeviceIndex.NameOf(device),
             DeviceGuess = guess,
             IpAddress = DeviceIndex.IpAddressOf(device),

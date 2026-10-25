@@ -191,12 +191,31 @@ internal static class CallDevices
     /// </summary>
     public static async Task<IReadOnlyList<IDeviceInfo>> RequireAsync(ICallContext caller, IEnumerable<Guid> ids, CancellationToken ct)
     {
+        var (found, missing) = await FindAsync(caller, ids, ct).ConfigureAwait(false);
+        return missing > 0 ? throw new DevicesNotAvailableException(missing) : found;
+    }
+
+    /// <summary>
+    /// The ids of a choice a sweep covers: a user with all devices gets the devices that still exist (removed ones are
+    /// skipped); a user limited to a device group gets <see cref="RequireAsync"/> (fail closed, the whole request refused).
+    /// </summary>
+    public static async Task<HashSet<Guid>> KnownAsync(ICallContext caller, IEnumerable<Guid> ids, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var devices = caller.HasAllDevices
+            ? (await FindAsync(caller, ids, ct).ConfigureAwait(false)).Found
+            : await RequireAsync(caller, ids, ct).ConfigureAwait(false);
+        return devices.Select(d => d.Id).ToHashSet();
+    }
+
+    private static async Task<(IReadOnlyList<IDeviceInfo> Found, int Missing)> FindAsync(ICallContext caller, IEnumerable<Guid> ids, CancellationToken ct)
+    {
         ArgumentNullException.ThrowIfNull(caller);
         ArgumentNullException.ThrowIfNull(ids);
         var wanted = ids.Distinct().ToList();
         if (wanted.Count == 0)
         {
-            return [];
+            return ([], 0);
         }
 
         var found = new List<IDeviceInfo>(wanted.Count);
@@ -231,6 +250,6 @@ internal static class CallDevices
             }
         }
 
-        return missing > 0 ? throw new DevicesNotAvailableException(missing) : found;
+        return (found, missing);
     }
 }

@@ -12,7 +12,7 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Pki.Tests;
 
-/// <summary>The dialog context of Enable HTTPS and Enable IEEE 802.1X: the task's query of the policies, read from PKI.</summary>
+/// <summary>The dialog context of Enable HTTPS, Enable IEEE 802.1X, Renew and Install certificates: the task's query of the policies, read from PKI.</summary>
 internal sealed class IssuingDialogContext(PkiService service, string kind) : ITaskDialogContext
 {
     public List<string> Methods { get; } = [];
@@ -24,13 +24,23 @@ internal sealed class IssuingDialogContext(PkiService service, string kind) : IT
         return Task.FromResult<string?>(PkiJson.Serialize(IssuingChoice.List(service, kind)));
     }
 
+    /// <summary>Install certificates' upload: the file's name as its id.</summary>
+    public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) =>
+        Task.FromResult(new UploadedFile("id-" + Path.GetFileName(localPath), Path.GetFileName(localPath), 1, "00"));
+}
+
+/// <summary>A dialog context whose policy read waits for the test.</summary>
+internal sealed class GatedDialogContext(Task<string?> reply) : ITaskDialogContext
+{
+    public Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct) => reply;
+
     public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) => throw new NotSupportedException();
 }
 
 /// <summary>
-/// The dialogs of Enable HTTPS and Enable IEEE 802.1X pick an issuing policy (the first preselected) whose values the user
-/// may change for this run; the payload carries the policy and the values. The policy editor's issuing kinds. Headless
-/// screenshots of both dialogs and the issuing editors.
+/// The dialogs of Enable HTTPS and Enable IEEE 802.1X pick an issuing policy (the first preselected) and show what it
+/// issues in one sentence; the payload carries the policy only (decision 2026-10-25: the policy decides every value). The
+/// issuing policies' forms. Headless screenshots of both dialogs and the forms in the side panel.
 /// </summary>
 public sealed class IssueDialogTests
 {
@@ -44,7 +54,7 @@ public sealed class IssueDialogTests
     }
 
     [Fact]
-    public async Task Enable_https_preselects_the_first_policy_and_sends_it_with_the_values_of_this_run()
+    public async Task Enable_https_preselects_the_first_policy_shows_its_sentence_and_sends_the_policy_only()
     {
         await using var pki = await PkiHarness.StartAsync();
         var twoYears = await AddAsync(pki, new PkiPolicy { Name = "HTTPS 2 years", Kind = PolicyKinds.HttpsCertificate, CaId = CertificateAuthorityInfo.OadmId, ValidDays = 730, Key = PolicyKeys.Rsa });
@@ -54,55 +64,35 @@ public sealed class IssueDialogTests
         await vm.LoadAsync(CancellationToken.None);
 
         Assert.Equal([PkiQueries.ListIssuingPolicies], ctx.Methods); // one read, with the first device
-        Assert.Equal(["HTTPS", "HTTPS 2 years"], vm.Policies.Select(p => p.Label));
-        Assert.Equal("HTTPS", vm.Policy!.Label);
-        Assert.Equal(("365", PolicyKeys.Ecc), (vm.ValidDays, vm.Key.Value));
-        Assert.Equal("OADM Root CA SERVER01", vm.CaName);
+        Assert.Equal(["HTTPS", "HTTPS 2 years"], vm.Choice.Policies.Select(p => p.Label));
+        Assert.Equal("HTTPS", vm.Choice.Policy!.Label);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", vm.Choice.Summary);
         Assert.Null(vm.Warning);
-        Assert.True(vm.EnableCommand.CanExecute(null));
+        Assert.True(vm.StartCommand.CanExecute(null));
 
-        vm.Policy = vm.Policies[1];
-        Assert.Equal(("730", PolicyKeys.Rsa), (vm.ValidDays, vm.Key.Value)); // the policy fills the form
-
-        vm.ValidDays = "0";
-        Assert.Equal(PolicyTexts.ValidDaysRange, vm.ErrorOf(nameof(vm.ValidDays)));
-        Assert.False(vm.EnableCommand.CanExecute(null));
-        vm.ValidDays = "100";
-        vm.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Ecc);
-        vm.EnableCommand.Execute(null);
+        vm.Choice.Policy = vm.Choice.Policies[1];
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", vm.Choice.Summary);
+        vm.StartCommand.Execute(null);
 
         Assert.True(vm.Completed);
-        Assert.Equal(new IssuePayload { PolicyId = twoYears.Id, ValidDays = 100, Key = PolicyKeys.Ecc }, vm.Payload);
-        Assert.Equal(730, pki.Policies.Find(twoYears.Id)!.ValidDays); // this run only
+        Assert.Equal(new IssuePayload { PolicyId = twoYears.Id }, vm.Payload);
     }
 
     [Fact]
-    public async Task Enable_8021x_shows_the_warning_and_the_8021x_settings_of_the_policy()
+    public async Task Enable_8021x_shows_the_warning_and_the_sentence_of_the_policy()
     {
         await using var pki = await PkiHarness.StartAsync();
-        using var radius = TestCa.Root("Corp RADIUS CA");
         var policy = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
-        await AddAsync(pki, policy with { Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = Ca.CaCertificates.ToPem(radius) });
+        await AddAsync(pki, policy with { Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}" });
         var vm = new IssueCertificateViewModel(new IssuingDialogContext(pki.Service, PolicyKinds.Dot1xCertificate), Devices, PolicyKinds.Dot1xCertificate);
 
         await vm.LoadAsync(CancellationToken.None);
 
         Assert.Equal(PkiTaskIds.Dot1xWarning, vm.Warning);
-        Assert.Equal(("IEEE 802.1X", Dot1xIdentity.Custom, "cam-{serial}", RadiusCaSource.Imported), (vm.Policy!.Label, vm.Identity.Value, vm.CustomIdentity, vm.RadiusCa.Value));
-        Assert.StartsWith("Corp RADIUS CA, valid until ", vm.RadiusCaLine, StringComparison.Ordinal);
-        Assert.Equal(["OADM 802.1X server", "Imported CA"], vm.RadiusChoices.Select(c => c.Label));
-
-        vm.CustomIdentity = "cam-{mac}";
-        Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", vm.ErrorOf(nameof(vm.CustomIdentity)));
-        vm.CustomIdentity = "x-{serial}";
-        vm.Eapol = PolicyEditorViewModel.EapolChoices[1];
-        vm.RadiusCa = vm.RadiusChoices[0];
-        vm.EnableCommand.Execute(null);
-
-        Assert.Equal(new IssuePayload
-        {
-            PolicyId = policy.Id, ValidDays = 365, Key = PolicyKeys.Ecc, EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "x-{serial}", RadiusCa = RadiusCaSource.Oadm,
-        }, vm.Payload);
+        Assert.Equal("IEEE 802.1X", vm.Choice.Policy!.Label);
+        Assert.Contains("Cameras sign in as cam-{serial}.", vm.Choice.Summary, StringComparison.Ordinal);
+        vm.StartCommand.Execute(null);
+        Assert.Equal(new IssuePayload { PolicyId = policy.Id }, vm.Payload);
     }
 
     [Fact]
@@ -110,84 +100,177 @@ public sealed class IssueDialogTests
     {
         var vm = new IssueCertificateViewModel(new IssuingDialogContext(null!, PolicyKinds.HttpsCertificate), Devices, PolicyKinds.HttpsCertificate);
 
-        vm.Apply(new IssuingPolicyList());
+        vm.Choice.Apply(new IssuingPolicyList());
 
-        Assert.Equal("There is no HTTPS certificate policy. Add one on the PKI page.", vm.ErrorOf(nameof(vm.Policy)));
-        Assert.False(vm.EnableCommand.CanExecute(null));
+        Assert.Equal("There is no HTTPS certificate policy. Add one on the PKI page.", vm.Choice.ErrorOf(nameof(vm.Choice.Policy)));
+        Assert.Null(vm.Choice.Summary);
+        Assert.False(vm.StartCommand.CanExecute(null));
     }
 
     [Fact]
-    public async Task The_editor_of_an_issuing_policy_checks_its_fields_and_imports_the_radius_ca()
+    public async Task Renew_asks_for_the_8021x_policy_with_its_sentence_and_sends_the_chosen_one()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var builtIn = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+        var siteB = await AddAsync(pki, builtIn with { Id = Guid.Empty, Name = "Site B", Identity = Dot1xIdentity.Custom, CustomIdentity = "b-{serial}" });
+        var ctx = new IssuingDialogContext(pki.Service, PolicyKinds.Dot1xCertificate);
+        var vm = IssueCertificateViewModel.ForRenew(ctx, Devices);
+        Assert.False(vm.StartCommand.CanExecute(null)); // nothing read yet
+        Assert.Equal("Reading the policies.", vm.Choice.NotReadyReason);
+
+        await vm.LoadAsync(CancellationToken.None);
+
+        Assert.Equal((PkiTaskIds.RenewName, "Renew", IssueCertificateViewModel.RenewPolicyLabel), (vm.Title, vm.StartText, vm.Choice.Label));
+        Assert.Equal(PkiTaskIds.Dot1xWarning, vm.Warning);
+        Assert.Equal(["IEEE 802.1X", "Site B"], vm.Choice.Policies.Select(p => p.Label)); // the built-in one preselected
+        Assert.Equal("IEEE 802.1X", vm.Choice.Policy!.Label);
+        vm.Choice.Policy = vm.Choice.Policies[1];
+        Assert.Contains("Cameras sign in as b-{serial}.", vm.Choice.Summary, StringComparison.Ordinal);
+        Assert.Null(vm.Choice.NotReadyReason);
+        vm.StartCommand.Execute(null);
+
+        Assert.True(vm.Completed);
+        Assert.Equal(siteB.Id, vm.Payload!.PolicyId);
+    }
+
+    [Fact]
+    public void A_preset_policy_is_chosen_when_listed_else_the_first()
+    {
+        var first = new PkiPolicy { Id = Guid.NewGuid(), Name = "IEEE 802.1X", Kind = PolicyKinds.Dot1xCertificate };
+        var second = new PkiPolicy { Id = Guid.NewGuid(), Name = "Site B", Kind = PolicyKinds.Dot1xCertificate };
+        var field = new IssuingPolicyFieldViewModel(PolicyKinds.Dot1xCertificate);
+
+        field.Apply(new IssuingPolicyList { Policies = [first, second] }, second.Id);
+        Assert.Equal(second.Id, field.PolicyId);
+        field.Apply(new IssuingPolicyList { Policies = [first, second] }, Guid.NewGuid());
+        Assert.Equal(first.Id, field.PolicyId);
+        Assert.True(field.IsReady);
+    }
+
+    [Fact]
+    public async Task Install_for_8021x_reads_the_policies_once_and_sends_the_chosen_one()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var builtIn = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+        var siteB = await AddAsync(pki, builtIn with { Id = Guid.Empty, Name = "Site B" });
+        using var ca = TestCa.Root("Customer CA");
+        using var leaf = RenewDeleteInstallTests.LeafWithKey(ca, "10.0.0.48");
+        var device = new PkiFakeDevice(Guid.NewGuid());
+        var ctx = new IssuingDialogContext(pki.Service, PolicyKinds.Dot1xCertificate);
+        using var vm = new InstallCertificatesViewModel(ctx, [device], _ => TestCa.Pfx("pw", leaf)) { Password = "pw" };
+        string? payload = null;
+        vm.CloseRequested += (_, p) => payload = p;
+        vm.Confirm = (_, _, _) => Task.FromResult(true);
+        vm.SetFiles(["c:/certs/cam48.pfx"]);
+        Assert.Null(vm.PolicyLoad); // HTTPS: no policy
+        Assert.False(vm.IsDot1x);
+
+        vm.SelectedPurpose = vm.Purposes.Single(p => p.Value == InstallPurpose.Dot1x);
+        await vm.PolicyLoad!;
+        vm.SelectedPurpose = vm.Purposes[0];
+        vm.SelectedPurpose = vm.Purposes.Single(p => p.Value == InstallPurpose.Dot1x);
+
+        Assert.Equal([PkiQueries.ListIssuingPolicies], ctx.Methods); // read once
+        Assert.True(vm.IsDot1x);
+        Assert.Equal("IEEE 802.1X", vm.Policy.Policy!.Label);
+        Assert.NotNull(vm.Policy.Summary);
+        vm.Policy.Policy = vm.Policy.Policies.Single(p => p.Value.Id == siteB.Id);
+        Assert.True(vm.CanInstall);
+        await vm.InstallCommand.ExecuteAsync(null);
+
+        var result = PkiJson.Deserialize<InstallPayload>(payload);
+        Assert.Equal((InstallPurpose.Dot1x, siteB.Id), (result.Purpose, result.PolicyId));
+    }
+
+    [Fact]
+    public void Install_for_8021x_waits_for_a_policy()
+    {
+        using var ca = TestCa.Root("Customer CA");
+        using var leaf = RenewDeleteInstallTests.LeafWithKey(ca, "10.0.0.48");
+        var gate = new TaskCompletionSource<string?>();
+        using var vm = new InstallCertificatesViewModel(new GatedDialogContext(gate.Task), [new PkiFakeDevice(Guid.NewGuid())], _ => TestCa.Pfx("pw", leaf)) { Password = "pw" };
+        vm.SetFiles(["c:/certs/cam48.pfx"]);
+
+        vm.SelectedPurpose = vm.Purposes.Single(p => p.Value == InstallPurpose.Dot1x);
+        Assert.True(vm.Policy.IsLoading);
+        Assert.Equal("Reading the policies.", vm.InstallBlockedReason);
+
+        gate.SetResult(PkiJson.Serialize(new IssuingPolicyList()));
+        Assert.False(vm.Policy.IsLoading);
+        Assert.Equal("There is no IEEE 802.1X certificate policy. Add one on the PKI page.", vm.InstallBlockedReason);
+        Assert.Equal(vm.InstallBlockedReason, vm.Policy.ErrorOf(nameof(vm.Policy.Policy))); // below the field
+        vm.SelectedPurpose = vm.Purposes[0];
+        Assert.True(vm.CanInstall); // HTTPS needs no policy
+    }
+
+    [Fact]
+    public async Task The_form_of_an_issuing_policy_checks_its_fields_and_picks_the_radius_server_ca_from_the_list()
     {
         await using var pki = await PolicyPageTests.StartAsync();
-        var card = new PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub));
-        await card.LoadAsync(CancellationToken.None);
-        // One 802.1X server and one EST server policy, both there: Add policy offers neither.
-        Assert.DoesNotContain(card.NewEditor(null).KindChoices, k => k.Value is PolicyKinds.Dot1xServer or PolicyKinds.EstServer or PolicyKinds.LegacyServerCertificate);
+        var page = new PoliciesViewModel(PolicyPageTests.Page(pki));
+        await page.LoadAsync(CancellationToken.None);
+        // One 802.1X server and one EST server policy, both there: Create offers neither.
+        Assert.DoesNotContain(page.KindChoices, k => k.Kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer or PolicyKinds.LegacyServerCertificate);
 
-        var https = card.NewEditor(null);
-        https.Kind = https.KindChoices.Single(k => k.Value == PolicyKinds.HttpsCertificate);
+        var https = page.NewEditor(PolicyKinds.HttpsCertificate);
         https.Name = "HTTPS 2 years";
         Assert.Equal(("365", PolicyKeys.Ecc, CertificateAuthorityInfo.OadmId), (https.ValidDays, https.Key.Value, https.IssuingCa!.Value));
-        Assert.False(https.ShowsPicker); // no devices
+        Assert.False(https.ShowsDevicesField); // no devices
         https.ValidDays = "3651";
         Assert.Equal(PolicyTexts.ValidDaysRange, https.ErrorOf(nameof(https.ValidDays)));
         https.ValidDays = "730";
         https.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.True(await https.SaveAsync());
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", card.OtherIssuing.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", page.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
 
-        // The system IEEE 802.1X policy is edited in place on its card.
-        var dot1x = card.Dot1x!;
+        // The built-in IEEE 802.1X policy: the identity and the RADIUS server CA, a CA of the list (decision 2026-10-25).
+        using var radius = TestCa.Root("Corp RADIUS CA");
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, new ImportAuthorityRequest(Convert.ToBase64String(radius.RawData), "radius.crt"))).Ok);
+        await page.LoadAsync(CancellationToken.None);
+        var dot1x = PolicyPageTests.Open(page, "IEEE 802.1X");
         Assert.True(dot1x.IsInPlace);
         dot1x.Identity = PolicyEditorViewModel.IdentityChoices.Single(c => c.Value == Dot1xIdentity.Custom);
         dot1x.CustomIdentity = "cam-{mac}";
         Assert.Equal("Unknown placeholder {mac}. Use {serial} or {hostName}.", dot1x.ErrorOf(nameof(dot1x.CustomIdentity)));
         dot1x.CustomIdentity = "cam-{serial}";
-        dot1x.RadiusCa = PolicyEditorViewModel.RadiusChoices.Single(c => c.Value == RadiusCaSource.Imported);
-        Assert.Equal("Import the CA certificate of the RADIUS server.", dot1x.ErrorOf(nameof(dot1x.RadiusCa)));
-        await dot1x.ApplyRadiusFileAsync(new PickedFile("x.crt", [1, 2, 3]));
-        Assert.Equal("The file is not a certificate (.crt or .cer, PEM or DER).", dot1x.ErrorOf(nameof(dot1x.RadiusCa)));
-        using var radius = TestCa.Root("Corp RADIUS CA");
-        await dot1x.ApplyRadiusFileAsync(new PickedFile("radius.cer", radius.RawData));
-        Assert.Null(dot1x.ErrorOf(nameof(dot1x.RadiusCa)));
-        Assert.StartsWith("Corp RADIUS CA, valid until ", dot1x.RadiusCaText, StringComparison.Ordinal);
+        Assert.Contains(dot1x.RadiusCaChoices, c => c.Label == "Corp RADIUS CA");
+        dot1x.RadiusCa = dot1x.RadiusCaChoices.Single(c => c.Label == "Corp RADIUS CA");
         dot1x.Eapol = PolicyEditorViewModel.EapolChoices[1];
         Assert.Equal(PolicyEditorViewModel.NotSavedText, dot1x.SaveStatus);
         Assert.True(await dot1x.SaveAsync());
-        Assert.Equal((PolicyEditorViewModel.SavedText, 2), (card.Dot1x!.SaveStatus, card.Dot1x.Eapol.Value)); // the saved policy's form
         var saved = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
-        Assert.Equal((2, "cam-{serial}", RadiusCaSource.Imported), (saved.EapolVersion!.Value, saved.CustomIdentity, saved.RadiusCa));
-        Assert.NotNull(saved.RadiusCaPem);
+        Assert.Equal((2, "cam-{serial}", "imported:" + Ca.CaCertificates.Fingerprint(radius)), (saved.EapolVersion!.Value, saved.CustomIdentity, saved.RadiusCaId));
 
-        // The 802.1X server policy holds its certificate (Issued by, valid days, key): ECC only.
-        var server = card.Dot1xServer!;
-        Assert.True(server.IsIssuing);
-        Assert.Equal(("365", PolicyKeys.Ecc, CertificateAuthorityInfo.OadmId), (server.ValidDays, server.Key.Value, server.IssuingCa!.Value));
-        server.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
-        Assert.False(await server.SaveAsync());
-        Assert.Equal(PolicyTexts.Dot1xServerNeedsEcc, server.ErrorOf(nameof(server.Key)));
+        // The 802.1X server policy picks a certificate; no Issued by, valid days or key of its own.
+        var server = PolicyPageTests.Open(page, "802.1X server");
+        Assert.True(server.IsServerKind);
+        Assert.False(server.IsIssuing);
 
-        // Other issuing holds the user's own issuing policies only (the system ones are in place); the system policy a task
-        // needs is never deleted (the server refuses it), the user's own one is.
-        Assert.Equal(["HTTPS 2 years"], card.OtherIssuing.Rows.Select(r => r.Name));
-        var refused = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.DeletePolicy, new PolicyRef(card.Dot1x!.PolicyId));
+        // The built-in policy a task needs is never deleted (the server refuses it), the user's own one is.
+        var refused = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.DeletePolicy, new PolicyRef(saved.Id));
         Assert.Equal(PolicyTexts.SystemPolicy, refused.Error!.Message);
-        await card.OtherIssuing.DeleteRowCommand.ExecuteAsync(card.OtherIssuing.Rows.Single(r => r.Name == "HTTPS 2 years"));
-        Assert.Null(card.Error);
-        Assert.Empty(card.OtherIssuing.Rows);
+        PolicyPageTests.Open(page, "HTTPS 2 years");
+        await page.DeleteOpenCommand.ExecuteAsync(null);
+        Assert.Null(page.Error);
+        Assert.DoesNotContain(page.Rows, r => r.Name == "HTTPS 2 years");
     }
+}
+
+/// <summary>Both dialogs and the issuing forms in the side panel, rendered headless (screenshots into OADM_SCREENSHOT_DIR).</summary>
+[Collection(HeadlessSessions.Name)]
+public sealed class IssueDialogHeadlessTests
+{
+    private static readonly IReadOnlyList<IDeviceInfo> Devices = [new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48" }];
 
     [Fact]
-    public async Task The_dialogs_and_the_issuing_editors_render()
+    public async Task The_dialogs_and_the_issuing_forms_render()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var pki = await PolicyPageTests.StartAsync();
-        using var radius = TestCa.Root("Corp RADIUS CA");
-        await AddAsync(pki, new PkiPolicy { Name = "HTTPS 2 years", Kind = PolicyKinds.HttpsCertificate, CaId = CertificateAuthorityInfo.OadmId, ValidDays = 730, Key = PolicyKeys.Rsa });
-        var dot1xPolicy = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
-        await AddAsync(pki, dot1xPolicy with { Identity = Dot1xIdentity.Custom, CustomIdentity = "axis-{serial}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = Ca.CaCertificates.ToPem(radius) });
-        var page = new PluginPageContext(pki.Plugin, pki.Hub);
+        await pki.Service.EnsureServerCertificatesAsync(null, CancellationToken.None);
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy,
+            new PkiPolicy { Name = "HTTPS 2 years", Kind = PolicyKinds.HttpsCertificate, CaId = CertificateAuthorityInfo.OadmId, ValidDays = 730, Key = PolicyKeys.Rsa })).Error);
+        var ctx = PolicyPageTests.Page(pki);
 
         var checks = await HeadlessEntry.Session.Dispatch(async () =>
         {
@@ -206,40 +289,71 @@ public sealed class IssueDialogTests
                 window.Close();
             }
 
-            var card = new PoliciesViewModel(page);
-            await card.LoadAsync(CancellationToken.None);
+            // Renew certificates: the IEEE 802.1X policy with its sentence.
+            var renew = IssueCertificateViewModel.ForRenew(new IssuingDialogContext(pki.Service, PolicyKinds.Dot1xCertificate), Devices);
+            var renewWindow = new IssueCertificateWindow();
+            PkiDialogs.Attach(renewWindow, renew);
+            Oadm.Client.App.ApplyCrispText(renewWindow);
+            renewWindow.Show();
+            await renew.LoadAsync(CancellationToken.None);
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(renewWindow, outDir, "pki-renew.png");
+            texts["renew"] = Texts(renewWindow);
+            renewWindow.Close();
+
+            // Install certificates for IEEE 802.1X: the policy below Use for.
+            using var installVm = new InstallCertificatesViewModel(new IssuingDialogContext(pki.Service, PolicyKinds.Dot1xCertificate), Devices, _ => []);
+            var installWindow = new InstallCertificatesWindow { Width = 1040, Height = 680 };
+            installWindow.Attach(installVm);
+            Oadm.Client.App.ApplyCrispText(installWindow);
+            installWindow.Show();
+            installVm.SelectedPurpose = installVm.Purposes.Single(p => p.Value == InstallPurpose.Dot1x);
+            await installVm.PolicyLoad!;
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(installWindow, outDir, "pki-install-dot1x.png");
+            texts["install"] = Texts(installWindow);
+            installWindow.Close();
+
+            var view = new PkiView();
+            using var page = new PkiViewModel(ctx, new FakeClientTrust());
+            var host = HeadlessPageTests.Host(view, 1700, 1100);
+            host.Show();
+            view.DataContext = page;
+            await page.LoadAsync();
+            await page.Policies.LoadAsync(CancellationToken.None);
+            page.ShowTab(PkiViewModel.PoliciesTabId);
             foreach (var (row, name) in new[] { ("HTTPS 2 years", "pki-policy-https.png"), ("IEEE 802.1X", "pki-policy-dot1x-certificate.png"), ("EST server", "pki-policy-est-server.png"), ("802.1X server", "pki-policy-dot1x-server.png") })
             {
-                var editor = card.NewEditor(card.List.Rows.Single(r => r.Policy.Name == row && PolicyKinds.IsIssuing(r.Policy.Kind)).Policy);
-                var window = PolicyFormView.CreateWindow(editor);
-                Oadm.Client.App.ApplyCrispText(window);
-                window.Show();
+                page.Policies.SelectedRow = page.Policies.Rows.Single(r => r.Name == row);
                 HeadlessPageTests.Pump();
-                HeadlessPageTests.Capture(window, outDir, name);
-                texts[row] = Texts(window);
-                window.Close();
+                HeadlessPageTests.Capture(host, outDir, name);
+                texts[row] = Texts(host);
             }
 
+            host.Close();
             return texts;
         }, CancellationToken.None);
 
         var https = checks[PolicyKinds.HttpsCertificate];
         Assert.Contains("Policy", https);
-        Assert.Contains("Valid (days)", https);
-        Assert.Contains("OADM Root CA SERVER01", https);
+        Assert.Contains("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", https);
+        Assert.DoesNotContain("Valid (days)", https); // the policy decides
         Assert.DoesNotContain(PkiTaskIds.Dot1xWarning, https);
-        Assert.DoesNotContain("EAP identity", https);
         var dot1x = checks[PolicyKinds.Dot1xCertificate];
         Assert.Contains(PkiTaskIds.Dot1xWarning, dot1x);
-        Assert.Contains("EAP identity", dot1x);
-        Assert.Contains("Custom identity", dot1x);
-        Assert.Contains(dot1x, t => t?.StartsWith("Corp RADIUS CA, valid until ", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain("EAP identity", dot1x);
+        Assert.Contains(IssueCertificateViewModel.RenewPolicyLabel, checks["renew"]);
+        Assert.Contains("Renew", checks["renew"]);
+        Assert.Contains(checks["renew"], t => t?.StartsWith("Enable IEEE 802.1X issues certificates from ", StringComparison.Ordinal) == true);
+        Assert.Contains("Policy", checks["install"]);
+        Assert.Contains(checks["install"], t => t?.StartsWith("Enable IEEE 802.1X issues certificates from ", StringComparison.Ordinal) == true);
         Assert.Contains("Valid (days)", checks["HTTPS 2 years"]);
-        Assert.DoesNotContain("Sites", checks["HTTPS 2 years"]); // no devices
+        Assert.DoesNotContain("Choose devices", checks["HTTPS 2 years"]); // no devices
         Assert.Contains("RADIUS server CA", checks["IEEE 802.1X"]);
-        Assert.Contains("Issued by", checks["EST server"]);
-        Assert.DoesNotContain("For", checks["EST server"]); // the kind is the server
-        Assert.Contains("Issued by", checks["802.1X server"]);
+        Assert.Contains("EAP identity", checks["IEEE 802.1X"]);
+        Assert.Contains("Certificate", checks["EST server"]);
+        Assert.DoesNotContain("Issued by", checks["EST server"]); // the server picks a certificate
+        Assert.Contains("Certificate", checks["802.1X server"]);
         Assert.Contains("Minimum TLS version", checks["802.1X server"]);
         Assert.All(checks.Values.SelectMany(t => t), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));
     }

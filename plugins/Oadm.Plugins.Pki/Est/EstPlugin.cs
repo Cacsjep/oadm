@@ -18,6 +18,7 @@ namespace Oadm.Plugins.Est;
 public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 {
     private volatile ServerSwitch<EstService>? _server;
+    private volatile Oadm.Sdk.Licensing.IProLicense? _pro;
 
     public string Id => EstPluginInfo.PluginId;
 
@@ -29,10 +30,10 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     public EstPlugin()
     {
-        TaskPlugins = [new Tasks.EstSetupTask(() => _server?.Service)];
+        TaskPlugins = [new Tasks.EstSetupTask(() => _server?.Service, () => _pro?.IsActive == true)];
     }
 
-    /// <summary>"Certificate enrollment" (device context menu, Security): set up, or remove profiles.</summary>
+    /// <summary>"Certificate enrollment" (device context menu, Security): set up, or remove profiles; only with OADM PRO.</summary>
     public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 
     /// <summary>The running server (null while stopped, turned off or without OADM PRO).</summary>
@@ -73,6 +74,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
+        _pro = ctx.Pro;
         await FollowPoliciesAsync(ctx, ct).ConfigureAwait(false);
         var server = new ServerSwitch<EstService>(EstPluginInfo.DisplayName, ctx.Settings, ctx.Pro, async token =>
         {
@@ -97,10 +99,12 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }, ctx.Events, ctx.Logger);
         _server = server;
         await server.StartAsync(ct).ConfigureAwait(false);
+        ctx.Services?.Find<PolicyStore>()?.ServerPluginStarted(PolicyKinds.EstServer, () => server.On);
     }
 
     /// <summary>
-    /// The profiles name PKI's issuing policies: converts the profiles of OADM 4.1 once (<see cref="EstPolicies.ConvertAsync"/>)
+    /// The profiles name PKI's issuing policies: the profiles of OADM 4.1 name the built-in ones (<see cref="EstPolicies.ConvertAsync"/>; the
+    /// policies the conversion made before 2026-10-25 are cleaned up once, <see cref="EstPolicies.CleanUpAsync"/>)
     /// and tells PKI's store which policies they name (never deleted while named) and the profiles' names (Enrollment
     /// policies choose among them), also while the server is off; converts "Sign in with" and today's enrollment into Sign-in
     /// CA and Enrollment policies once (<see cref="EstPolicies.ConvertRulesAsync"/>). PKI starts first (a package's main plugin starts before the others of
@@ -116,6 +120,13 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         var settings = ctx.Settings;
         store.ProfileUses = token => EstPolicies.UsesAsync(settings, token);
         store.ProfileNames = token => EstPolicies.ProfileNamesAsync(settings, token);
+
+        // The site nodes' addresses the cameras were given, also while the server is off: a server certificate made now names
+        // them (the running server hands its own names instead).
+        var sites = EstStore.Read<Dictionary<Guid, List<string>>>(await settings.GetAsync(EstStore.SitesKey, ct).ConfigureAwait(false)) ?? [];
+        IReadOnlyList<string> siteAddresses = [.. sites.Values.SelectMany(a => a).Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        store.EstServerNames = () => siteAddresses;
+        await EstPolicies.CleanUpAsync(settings, store, ct).ConfigureAwait(false);
         await EstPolicies.ConvertAsync(settings, store, ct).ConfigureAwait(false);
         await EstPolicies.ConvertRulesAsync(settings, store, ct).ConfigureAwait(false);
     }

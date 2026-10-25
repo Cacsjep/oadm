@@ -8,9 +8,7 @@
              ui:PageHeader.Subtitle="The AXIS OS of the chosen devices.">
   <Grid RowDefinitions="Auto,Auto,*,Auto">
     <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
-      <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}">
-        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding Devices.ButtonText}" />
-      </Button>
+      <ui:ToolbarButton IconKey="devices" Text="{Binding Devices.ButtonText}" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}" />
       <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" />
       <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding Summary}" />
     </StackPanel>

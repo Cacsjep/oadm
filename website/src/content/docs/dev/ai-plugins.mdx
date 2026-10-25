@@ -3,19 +3,74 @@ title: Build a plugin with AI
 description: Write an OADM plugin together with an AI coding assistant.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 OADM is developed together with an AI assistant, and the repository is set up for it. You describe what the plugin
 should do; the assistant asks, writes the spec, then builds the plugin with tests.
 
+You work either in a plugin folder made from the NuGet templates (your own plugin) or in a checkout of OADM (a plugin
+that ships with OADM).
+
 ## What the assistant needs
+
+<Tabs syncKey="plugin-source">
+<TabItem label="NuGet packages">
+
+- A plugin folder that builds: `dotnet new oadm-task`, see [Develop with the .NET SDK](../plugin-sdk/).
+- `AGENTS.md` in that folder: the rules of OADM that apply to your plugin (device safety, UI texts, the shared
+  controls, scale, tests), the commands and links to the guides. Assistants that read `AGENTS.md` find it by themselves;
+  the folder's `CLAUDE.md` points Claude Code to it. Tell any other assistant to read it first.
+- The guides it links to: [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/), the tutorial of your kind of
+  plugin, [UI kit](https://oadm.app/dev/ui/), [Testing](https://oadm.app/dev/testing/) and the
+  [SDK reference](https://oadm.app/api/).
+
+</TabItem>
+<TabItem label="Checkout of OADM">
 
 - [`CLAUDE.md`](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md): the spec and the rules for code, UI, wording,
   device safety and tests. Claude Code reads it by itself; give it to other assistants first.
 - [`plugins/README.md`](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md): the plugin SDK with examples.
 - A working checkout that builds: see [Build from source](../build/).
 
+</TabItem>
+</Tabs>
+
 ## How to start
+
+<Tabs syncKey="plugin-source">
+<TabItem label="NuGet packages">
+
+<Steps>
+
+1. Create the plugin folder and open it in your assistant, for example Claude Code:
+
+   ```sh
+   dotnet new install Oadm.Plugin.Templates
+   dotnet new oadm-task -n HostName        # or oadm-page, oadm-action
+   cd HostName
+   dotnet tool restore
+   dotnet build
+   ```
+
+2. Describe the plugin like a user story, name the guides and ask the assistant to ask first:
+
+   ```text
+   Read AGENTS.md and the guides it links to. I want "Set host name" in the Network
+   group, with a dialog for one or many devices. Ask me what is unclear, then build it
+   with tests.
+   ```
+
+3. Answer its questions. Ask it to keep the decisions in a file of the folder, so the next session knows them too.
+
+4. Let it build in small steps. After each step: `dotnet test`.
+
+5. Try the plugin: `dotnet oadm dev start` runs an OADM server with it, `dotnet oadm dev client` (in a second terminal)
+   the client. Every build puts the plugin into `.oadm/plugins/<plugin id>/`, where the development server loads it.
+
+</Steps>
+
+</TabItem>
+<TabItem label="Checkout of OADM">
 
 <Steps>
 
@@ -37,24 +92,31 @@ should do; the assistant asks, writes the spec, then builds the plugin with test
 
 </Steps>
 
+</TabItem>
+</Tabs>
+
 ## How the assistant works
 
-- **Copies what works.** It starts from the closest built-in plugin and uses the shared controls and styles, so the
-  plugin looks and behaves like the rest of OADM.
+- **Copies what works.** It starts from the closest built-in plugin or tutorial and uses the shared controls and
+  styles, so the plugin looks and behaves like the rest of OADM.
 - **Tests everything.** Every non-trivial class gets tests with fake devices; nothing needs a network.
-- **Checks the UI headless.** It renders the dialogs and pages offscreen as screenshots. It never clicks on your
-  desktop.
+- **Checks the UI headless.** In a checkout it renders the dialogs and pages offscreen as screenshots. It never clicks
+  on your desktop.
 - **Keeps devices safe.** A plugin that changes a device checks the device first, validates every input before the
   first write and never locks OADM out.
 
 ## Real devices
 
 <Aside type="caution">
-Put your test cameras into `dev-cameras.yaml` (git-ignored, it holds passwords). The assistant may run the read-only
-hardware tests against them. Tests that change a device run only when you ask, and only against a test device.
+With the NuGet packages, add your test cameras in the client of `dotnet oadm dev start` and try the plugin there. In a
+checkout, put them into `dev-cameras.yaml` (git-ignored, it holds passwords); the assistant may run the read-only
+hardware tests against them. Tests or tries that change a device run only when you ask, and only against a test device.
 </Aside>
 
 ## Share your plugin
 
-Open a pull request on [GitHub](https://github.com/Cacsjep/oadm). Every contributed plugin is reviewed for quality and
-security before it becomes part of a release. Keep the change focused: one plugin, its tests and its spec.
+- **Your own plugin:** `dotnet oadm pack` writes `<plugin id>-<version>.oadmplugin`, the file you give to your users.
+  See [Ship it](../plugin-sdk/#ship-it).
+- **A plugin for OADM itself:** open a pull request on [GitHub](https://github.com/Cacsjep/oadm). Every contributed
+  plugin is reviewed for quality and security before it becomes part of a release. Keep the change focused: one plugin,
+  its tests and its spec.

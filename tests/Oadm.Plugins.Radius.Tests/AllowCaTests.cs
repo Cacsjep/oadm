@@ -18,8 +18,9 @@ public sealed class AllowCaTests
 {
     private const string Serial = "ACCC8E123456";
 
-    private static TestSupplicant Camera(PluginHarness harness, TestCertificate certificate) =>
-        new(new SupplicantOptions { Certificate = certificate, TrustedCa = harness.Ca.CaCertificate, Versions = [ProtocolVersion.TLSv13, ProtocolVersion.TLSv12] });
+    /// <summary>A camera that checks the 802.1X server with <paramref name="serverCa"/> (default: the harness's CA, whose certificate the server shows).</summary>
+    private static TestSupplicant Camera(PluginHarness harness, TestCertificate certificate, TestAuthority? serverCa = null) =>
+        new(new SupplicantOptions { Certificate = certificate, TrustedCa = (serverCa ?? harness.Ca).CaCertificate, Versions = [ProtocolVersion.TLSv13, ProtocolVersion.TLSv12] });
 
     private static async Task<LogRow> LastLogRowAsync(PluginHarness harness)
     {
@@ -95,7 +96,8 @@ public sealed class AllowCaTests
         await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial))); // started before the delete: either answer
         Assert.True(deleted);
 
-        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
+        // The server shows the certificate of the CA PKI offers now: the camera checks the server with that one.
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial), restarted))).Final);
         Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
     }
 
@@ -128,6 +130,24 @@ public sealed class AllowCaTests
         harness.Ca.RaiseChanged();
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, pc))).Final);
         Assert.Equal(CertificateRefusals.NotTrusted, (await LastLogRowAsync(harness)).Reason);
+    }
+
+    [Fact]
+    public async Task TheSubjectOfAnUnmanagedDevicesCertificateIsShownWithoutControlCharacters()
+    {
+        using var company = new TestAuthority("Contoso Root");
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM CA"), harness.DeviceIds.Info,
+            company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Root")];
+        harness.Ca.RaiseChanged();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Contoso", Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = false });
+        var name = new System.Security.Cryptography.X509Certificates.X500DistinguishedNameBuilder();
+        name.AddCommonName("pc\u001b[31m-7‮");
+
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, company.Camera(name.Build(), "ACCC8E999999")))).Final);
+
+        Assert.Equal("CN=pc[31m-7", (await LastLogRowAsync(harness)).DeviceName); // the device chose its subject: no control or format characters
     }
 
     [Fact]

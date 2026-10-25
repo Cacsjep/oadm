@@ -21,9 +21,7 @@
           </Border>
 
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" Margin="0,0,6,0" ToolTip.Tip="Devices by address or tag">
-              <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
-            </Button>
+            <ui:ToolbarButton IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}" Margin="0,0,6,0" ToolTip.Tip="Devices by address or tag" />
             <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the selected devices again" />
             <ui:ToolbarButton IconKey="undo" Text="Undo" Command="{Binding UndoCommand}" IsVisible="{Binding MayManage}" />
           </StackPanel>

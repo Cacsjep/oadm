@@ -12,7 +12,7 @@ Layout, top to bottom:
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), **Show each compliance check** icon button (icon `squareActivity`, class `active`
    while on, only while the Compliance column is on), Columns icon button (tooltip "Choose columns") and search box (host parts);
-   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One primary **Add** button with a menu Discovery (zero-conf scan), Network range,
+   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One main **Add** button (`IsPrimary`: class `main`, flat like every toolbar button) with a menu Discovery (zero-conf scan), Network range,
    Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.

@@ -32,10 +32,13 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private readonly IUiDispatcher _ui;
     private readonly ILogger<ServerConnection> _logger;
     private readonly UserSession? _session;
+    private readonly TimeProvider _time;
     private CancellationTokenSource? _cts;
 
-    public ServerConnection(IOadmApi api, DeviceStore devices, TaskStore tasks, IUiDispatcher ui, ILogger<ServerConnection> logger, UserSession? session = null)
+    public ServerConnection(IOadmApi api, DeviceStore devices, TaskStore tasks, IUiDispatcher ui, ILogger<ServerConnection> logger, UserSession? session = null,
+        TimeProvider? time = null)
     {
+        _time = time ?? TimeProvider.System; // the reconnect back-off; tests pass a fake clock
         _api = api;
         _devices = devices;
         _tasks = tasks;
@@ -154,7 +157,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -205,7 +208,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -245,7 +248,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -290,7 +293,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             _ui.Post(_devices.Waiting.Clear);
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -356,7 +359,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 });
                 try
                 {
-                    await Task.Delay(delay, ct).ConfigureAwait(false);
+                    await Task.Delay(delay, _time, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
@@ -405,7 +408,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             _ui.Post(_devices.Compliance.Clear);
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -468,7 +471,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -509,7 +512,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

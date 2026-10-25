@@ -237,9 +237,9 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         return [.. IssuingPolicies.Where(p => p.Kind == kind).Select(p => new Choice<Guid>(p.Id, p.Name))];
     }
 
-    /// <summary>The CA that issues the certificates (PKI's OADM CA).</summary>
+    /// <summary>A site whose node address the certificate does not name; null when none.</summary>
     [ObservableProperty]
-    public partial string IssuingCa { get; set; } = "-";
+    public partial string? CertificateWarning { get; set; }
 
     /// <summary>The id of PKI's core plugin (Edit policies opens its page).</summary>
     public const string PkiPluginId = "oadm.pki";
@@ -680,7 +680,7 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         // The sites' relays only: this server's own listener is the status chip already.
         ListenersText = string.Join(Environment.NewLine, state.Listeners.Where(l => !l.Ok && l.SiteId is not null).Select(l => l.Text));
         Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
-        IssuingCa = state.IssuingCa ?? "-";
+        CertificateWarning = state.CertificateWarning;
         PoliciesText = state.PoliciesApply is { } count ? PoliciesApplyText(count) : string.Empty;
         PolicyLines = state.PolicyLines ?? [];
         PolicyProblem = state.PolicyProblem;

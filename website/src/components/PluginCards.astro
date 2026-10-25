@@ -2,6 +2,7 @@
 // Landing page: one card per plugin with a picture of its page (from the headless tests), its name and one sentence.
 // A click opens a detail window with the large picture and a link to the plugin's docs page (without JavaScript the
 // card is that link). The first rows show, the rest behind "Show all" (Reveal). Order as in the navigation rail. `path` for a page outside tools/.
+// `pro`: the tool needs OADM PRO (a PRO badge next to the name).
 import { Image, getImage } from 'astro:assets';
 import Reveal from './Reveal.astro';
 import compliance from '../assets/screens/compliance-page.png';
@@ -21,6 +22,8 @@ import liveView from '../assets/screens/live-view-page.png';
 import dashboards from '../assets/screens/dashboards-page.png';
 import edgeExport from '../assets/screens/edge-recording-export.png';
 import edgeStorage from '../assets/screens/edge-storage-page.png';
+import est from '../assets/screens/est-page.png';
+import radius from '../assets/screens/radius-page.png';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
@@ -28,6 +31,8 @@ const plugins = [
 	{ name: 'Compliance', path: 'devices/compliance', image: compliance, text: 'Which devices need attention: unreachable, wrong login, certificate, firmware, apps, configuration.' },
 	{ name: 'NTP server', page: 'ntp-server', image: ntp, text: 'The time for every device, from this server.' },
 	{ name: 'DHCP server', page: 'dhcp-server', image: dhcp, text: 'Addresses for sites without infrastructure. New Axis devices add themselves.' },
+	{ name: 'EST server', page: 'est-server', image: est, pro: true, text: 'Cameras get their certificates from OADM and renew them by themselves.' },
+	{ name: '802.1X server', page: 'radius-server', image: radius, pro: true, text: 'Only your cameras get onto the network: the switch ports ask OADM.' },
 	{ name: 'VAPIX Commander', page: 'vapix-commander', image: commander, text: 'Any VAPIX command, rolled out to hundreds of devices.' },
 	{ name: 'Event rules', page: 'event-rules', image: rules, text: 'Switch a relay, send an email or a command when something happens.' },
 	{ name: 'Device triggers', page: 'device-triggers', image: triggers, text: 'Any event of your devices in event rules.' },
@@ -55,8 +60,8 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 				<Image src={p.image} alt={`${p.name} page of OADM`} width={720} />
 			</span>
 			<span class="plugin-body">
-				<strong>{p.name}</strong>
-				<span>{p.text}</span>
+				<span class="plugin-title"><strong>{p.name}</strong>{p.pro && <small class="plugin-pro">PRO</small>}</span>
+				<span class="plugin-text">{p.text}</span>
 			</span>
 		</a>
 	))}
@@ -91,7 +96,7 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 				shot.src = card.dataset.large!;
 				shot.alt = card.querySelector('strong')!.textContent ?? '';
 				name.textContent = shot.alt;
-				text.textContent = card.querySelector('.plugin-body span')!.textContent;
+				text.textContent = card.querySelector('.plugin-text')!.textContent;
 				docs.href = card.href;
 				dialog.showModal();
 			}),
@@ -149,11 +154,27 @@ const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: 
 		gap: 0.25rem;
 		padding: 0.9rem 1rem 1rem;
 	}
+	.plugin-title {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	/* Needs OADM PRO */
+	.plugin-pro {
+		padding: 0.05rem 0.4rem;
+		border: 1px solid var(--sl-color-accent);
+		border-radius: 4px;
+		color: var(--sl-color-accent-high);
+		font-size: var(--sl-text-xs);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		line-height: 1.4;
+	}
 	.plugin-body strong {
 		color: var(--sl-color-white);
 		font-weight: 600;
 	}
-	.plugin-body span {
+	.plugin-text {
 		color: var(--sl-color-gray-3);
 		font-size: var(--sl-text-sm);
 		line-height: 1.45;

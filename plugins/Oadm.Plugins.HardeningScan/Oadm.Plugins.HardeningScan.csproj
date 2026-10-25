@@ -35,6 +35,7 @@
     <!-- PKI: SOAP GetWebServerTlsConfiguration. -->
     <Compile Include="..\Oadm.Plugins.Pki\Device\WebServerTls.cs" Link="Readers\Pki\WebServerTls.cs" />
     <Compile Include="..\Oadm.Plugins.Pki\Device\DeviceHttp.cs" Link="Readers\Pki\DeviceHttp.cs" />
+    <Compile Include="..\Oadm.Plugins.Pki\Device\DeviceSoap.cs" Link="Readers\Pki\DeviceSoap.cs" />
     <!-- Snapshot report: the short error texts ("Unauthorized - HTTP 401", "Timeout after 15 s") and the refused statuses. -->
     <Compile Include="..\Oadm.Plugins.SnapshotReport\SnapshotRequests.cs" Link="Readers\SnapshotReport\SnapshotRequests.cs" />
     <Compile Include="..\Oadm.Plugins.SnapshotReport\Shared\SnapshotReportModels.cs" Link="Readers\SnapshotReport\SnapshotReportModels.cs" />

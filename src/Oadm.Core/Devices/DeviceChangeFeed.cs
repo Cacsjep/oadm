@@ -14,7 +14,15 @@ public enum DeviceChangeKind
 }
 
 /// <summary>One change of the device table. <see cref="Device"/> is a detached snapshot, null for <see cref="DeviceChangeKind.Removed"/>.</summary>
-public sealed record DeviceChange(DeviceChangeKind Kind, Guid DeviceId, Device? Device);
+public sealed record DeviceChange(DeviceChangeKind Kind, Guid DeviceId, Device? Device)
+{
+    /// <summary>
+    /// The feed's stamp of this change (its <see cref="IDeviceChangeFeed.Sequence"/> when it was published; 0 before, or from a
+    /// feed without stamps). <see cref="IDeviceChangeFeed.Changed"/> runs outside the feed's lock, so two changes of one device
+    /// can reach a handler in the other order: a handler that keeps state per device asks <see cref="IDeviceChangeFeed.IsLatest"/>.
+    /// </summary>
+    public long Stamp { get; init; }
+}
 
 /// <summary>
 /// Live feed of device table changes, consumed by the gRPC DeviceService.Watch stream.
@@ -57,6 +65,14 @@ public interface IDeviceChangeFeed
         PublishMany(changes);
         return changes.Count;
     }
+
+    /// <summary>
+    /// False when a newer change of the same device was published after <paramref name="change"/> (by its
+    /// <see cref="DeviceChange.Stamp"/>): a <see cref="Changed"/> handler that keeps state per device drops it, checking and
+    /// applying under one lock of its own, so an older change raised late never overwrites a newer one (a device that left a
+    /// group never comes back with its old tags). True for unstamped changes and feeds without stamps.
+    /// </summary>
+    bool IsLatest(DeviceChange change) => true;
 }
 
 /// <summary>
@@ -153,7 +169,7 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         lock (_publishing)
         {
             Interlocked.Increment(ref _version);
-            Stamp(delivered);
+            delivered = Stamp(delivered);
             if (MembershipMoved(delivered))
             {
                 Interlocked.Increment(ref _membershipVersion);
@@ -217,14 +233,14 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         var membership = false;
         lock (_publishing)
         {
-            foreach (var change in prepared)
+            foreach (var unstamped in prepared)
             {
-                if ((_lastPublished.TryGetValue(change.DeviceId, out var last) || _removed.TryGetValue(change.DeviceId, out last)) && last > since)
+                if ((_lastPublished.TryGetValue(unstamped.DeviceId, out var last) || _removed.TryGetValue(unstamped.DeviceId, out last)) && last > since)
                 {
                     continue; // a newer change of this device went out after the caller read it
                 }
 
-                Stamp(change);
+                var change = Stamp(unstamped);
                 membership |= MembershipMoved(change);
                 Write(change);
                 delivered.Add(change);
@@ -268,14 +284,31 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
         }
     }
 
-    private void Stamp(DeviceChange change)
+    /// <inheritdoc />
+    public bool IsLatest(DeviceChange change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        if (change.Stamp == 0)
+        {
+            return true;
+        }
+
+        lock (_publishing)
+        {
+            return !((_lastPublished.TryGetValue(change.DeviceId, out var last) || _removed.TryGetValue(change.DeviceId, out last)) && last > change.Stamp);
+        }
+    }
+
+    /// <summary>The change with its stamp (called under the publishing lock).</summary>
+    private DeviceChange Stamp(DeviceChange change)
     {
         var stamp = Interlocked.Increment(ref _sequence);
+        change = change with { Stamp = stamp };
         if (change.Kind != DeviceChangeKind.Removed)
         {
             _lastPublished[change.DeviceId] = stamp;
             _removed.Remove(change.DeviceId);
-            return;
+            return change;
         }
 
         _lastPublished.Remove(change.DeviceId);
@@ -289,6 +322,8 @@ public sealed class DeviceChangeFeed(ISiteStates? sites = null) : IDeviceChangeF
                 _removed.Remove(id);
             }
         }
+
+        return change;
     }
 
     /// <summary>True when the change can move the device into or out of a group (called under the publishing lock).</summary>

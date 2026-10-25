@@ -199,7 +199,7 @@
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="10">
         <ui:CardHeader Title="Target devices" />
         <!-- Which devices: the shared device picker (All devices, chosen devices and tags), like the event rules. -->
-        <Button Grid.Row="1" Classes="primary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}">
+        <Button Grid.Row="1" Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}">
           <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DevicesText}" />
         </Button>
         <TextBlock Grid.Row="2" Classes="secondary small" Text="{Binding TargetSummary}" TextWrapping="Wrap" IsVisible="{Binding HasTargetSummary}" />

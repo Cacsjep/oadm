@@ -139,43 +139,17 @@ public sealed partial class RolesCardView : UserControl
         var grid = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(-10, 0, -25, 0), DataContext = role };
         ToolTip.SetTip(grid, role.DescriptionTip);
         grid.Children.Add(text);
-        if (!role.IsAdministrator && _vm is { } vm)
+        if (_vm is { } vm)
         {
-            var menu = new MenuFlyout();
-            menu.Items.Add(new MenuItem { Header = "Edit", Command = vm.EditRoleCommand, CommandParameter = role });
-            menu.Items.Add(new MenuItem { Header = "Copy", Command = vm.CopyRoleCommand, CommandParameter = role });
-            if (role.CanReset)
-            {
-                menu.Items.Add(new MenuItem { Header = "Reset to default", Command = vm.ResetRoleCommand, CommandParameter = role });
-            }
-
-            if (role.CanDelete)
-            {
-                menu.Items.Add(new Separator());
-                menu.Items.Add(new MenuItem { Header = "Delete", Command = vm.DeleteRoleCommand, CommandParameter = role });
-            }
-
-            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, HorizontalAlignment = HorizontalAlignment.Center };
+            // The shared ⋯ menu of a row (RowActions): Delete in red, last, after a separator.
+            var button = new Button { Classes = { "toolbar", "iconOnly" }, HorizontalAlignment = HorizontalAlignment.Center };
             ToolTip.SetTip(button, "Role actions");
             if (Icon("more") is { } more)
             {
                 button.Content = new OadmIcon { Data = more };
             }
 
-            grid.Children.Add(button);
-        }
-        else if (_vm is { } admin)
-        {
-            var menu = new MenuFlyout();
-            menu.Items.Add(new MenuItem { Header = "Edit", Command = admin.EditRoleCommand, CommandParameter = role });
-            menu.Items.Add(new MenuItem { Header = "Copy", Command = admin.CopyRoleCommand, CommandParameter = role });
-            var button = new Button { Classes = { "toolbar", "iconOnly" }, Flyout = menu, HorizontalAlignment = HorizontalAlignment.Center };
-            ToolTip.SetTip(button, "Role actions");
-            if (Icon("more") is { } more)
-            {
-                button.Content = new OadmIcon { Data = more };
-            }
-
+            button.Click += (_, _) => RowActions.Show(button, vm.MenuOf(role));
             grid.Children.Add(button);
         }
 

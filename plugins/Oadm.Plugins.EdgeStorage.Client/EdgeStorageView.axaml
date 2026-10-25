@@ -19,10 +19,7 @@
     <Border Grid.Row="1" Classes="card">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-          <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}"
-                  ToolTip.Tip="Cameras by address or tag">
-            <ui:IconLabel Icon="{StaticResource Icon.hardDrive}" Text="{Binding DeviceChoice.ButtonText}" />
-          </Button>
+          <ui:ToolbarButton IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Grid.Column="0" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}" ToolTip.Tip="Cameras by address or tag" />
           <!-- Tools that do not fit move into the More menu. -->
           <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">
             <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the SD cards again" />

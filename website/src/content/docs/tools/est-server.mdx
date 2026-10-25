@@ -1,6 +1,6 @@
 ---
 title: EST server
-description: Cameras get and renew their certificates from the OADM CA by themselves.
+description: Cameras get and renew their certificates from OADM by themselves.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
@@ -10,19 +10,18 @@ import dialogShot from '../../../assets/screens/est-setup-dialog.png';
 
 The EST server gives your Axis cameras their certificates for HTTPS, IEEE 802.1X, MQTT and RTSPS, and the cameras
 **renew them by themselves** before they expire. You set up each camera once; after that no task has to run again when a
-certificate gets old. The certificates come from the certificate authority of the [PKI](../pki/) page, so everything
-stays under one CA.
+certificate gets old. The certificates come from the CAs of the [PKI](../pki/) page, so everything stays in one place.
 
 EST (Enrollment over Secure Transport) is the standard the cameras' own certificate client speaks. OADM runs the server
 side, the cameras ask it for certificates.
 
 <Aside type="note" title="OADM PRO">
 The EST server is part of PKI and needs OADM PRO. It runs while you have turned it on and an OADM PRO license or 30-day
-trial is active ([Activate OADM PRO](../../activate/)). Without one, it stays off and the cameras keep the certificates
-they have until these expire. Everything else in OADM works the same with or without a license.
+trial is active. Without one it stays off and the cameras keep the certificates they have until these expire. Everything
+else in OADM works the same with or without a license.
 </Aside>
 
-<Image src={shot} alt="The EST server page with General, the profiles and the enrollments" class="screen" />
+<Image src={shot} alt="The EST server tab with the server, the profiles and the enrollments" class="screen" />
 
 ## What you need
 
@@ -41,7 +40,8 @@ they have until these expire. Everything else in OADM works the same with or wit
 <Steps>
 
 1. Open **PKI** in the navigation (group Security) and the tab **EST server**.
-2. Click **Turn on**. Without an active OADM PRO license or trial the button is off and the page says so.
+2. While the server is off the tab says so in the middle, with **Turn on**. Without an active license or trial it says
+   "The EST server needs OADM PRO" instead: an administrator can click **Start 30-day trial** there (once per server).
 3. The status left of **Save** shows **Running on port 9454** when it is ready.
 
 </Steps>
@@ -49,9 +49,9 @@ they have until these expire. Everything else in OADM works the same with or wit
 **Turn off** next to **Save** stops the server; your settings and the enrollments stay. OADM 4.1 had the EST server on the
 **Plugins** page: if it was on there, it is on after the update.
 
-## The page
+## The tab
 
-### General
+### Server
 
 - **Listen on**: the network interface the cameras reach the server on, or **All interfaces** (default). Cameras set up
   later get this interface's address. When the interface is gone, the status says so and the server listens again once
@@ -59,10 +59,13 @@ they have until these expire. Everything else in OADM works the same with or wit
 - **Port**: the TCP port the cameras connect to, 1025 to 65535 (default 9454). After a change set up the cameras again,
   so they use the new port.
 - **Enrollments kept**: how many enrollments the list keeps, 100 to 5,000 (default 500).
-- **Issued by**: the OADM CA that signs the certificates.
-- **3 policies applied**, the link next to **Save**: which cameras may enroll and which CAs they sign in with are
-  policies on the [PKI](../pki/) page (EST server, Enrollment and EST sign-in CA). Point at it to see them; it opens them. A warning
-  says when no camera can enroll.
+- **4 policies applied**, the link next to **Save**: the server's certificate, which cameras may enroll and which CAs
+  they sign in with are policies on the [PKI](../pki/) page (EST server, Enrollment and EST sign-in CA). Point at it to
+  see them; a click opens them.
+
+A warning below the fields says when no camera can enroll, or when an address of this server or of a site node is not in
+the EST server's certificate. A camera refuses a server whose certificate does not name the address it connects to. See
+[The server's certificate](#the-servers-certificate).
 
 ### Profiles
 
@@ -70,17 +73,17 @@ A profile is one kind of certificate. The cameras ask for it by its name. Two pr
 
 | Profile | Use | What the camera does with it |
 |---|---|---|
-| `https` | HTTPS | The certificate of its web server (server certificate). |
-| `dot1x` | IEEE 802.1X | The certificate it uses for network access (client certificate). |
+| `https` | HTTPS | The certificate of its web server. |
+| `dot1x` | IEEE 802.1X | The certificate it uses for network access. |
 
-You can add profiles for **MQTT** (client certificate) and **RTSPS** (server certificate); each use can have one profile.
+**Add profile** adds one for **MQTT** or **RTSPS**; each use can have one profile.
 
 - **Profile**: the name, 1 to 32 letters, digits or `_`.
-- **Issuing policy**: the certificate policy of the [PKI](../pki/) page the certificates get their days and key from:
-  an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT. A
-  certificate never lasts longer than the CA. The camera creates a key of the policy's kind and signs in with the device
-  ID of the same kind. After an update, each profile names the policy with its former validity and key ("HTTPS", or a
-  new one such as "EST 802.1X").
+- **Use**: HTTPS, IEEE 802.1X, MQTT or RTSPS.
+- **Issuing policy**: the certificate policy of the [PKI](../pki/) page the certificates get their CA, days and key
+  from: an HTTPS certificate policy for HTTPS and RTSPS, an IEEE 802.1X certificate policy for IEEE 802.1X and MQTT. By
+  default the built-in one of its kind. The camera creates a key of the policy's kind and signs in with the device ID
+  of the same kind.
 - **⋯ > Remove** takes a profile away after a confirmation (with **Save**); cameras set up with it then get nothing from
   it.
 
@@ -92,10 +95,11 @@ Errors show below the fields. **Save** applies the changes at once.
 ### Enrollments
 
 Every request of a camera that OADM manages: time, device, profile, **New** or **Renewal**, and the result: **Valid
-until** a date, or the reason it was refused. New rows appear while the page is open. The list keeps the newest
-entries up to **Enrollments kept**.
+until** a date, or the reason it was refused. New rows appear while the tab is open. The list keeps the newest entries up
+to **Enrollments kept**.
 
 - **Search** finds a device, profile, kind, result or reason.
+- **View certificate** (or a double click) shows the certificate an enrollment issued.
 - **Delete all** (red, with a confirmation) empties the list for every client.
 
 ### Not renewed
@@ -104,29 +108,45 @@ Shows only when a camera did not renew a certificate in time: device, profile, v
 **Expired**. See [Renewals](#renewals). The certificates themselves are on the cameras: the PKI page and the device
 details show them.
 
+## The server's certificate
+
+The cameras check the EST server with its certificate. The **EST server** policy of the [PKI](../pki/) page names it: by
+default the shared certificate **802.1X and EST server** that OADM makes when OADM PRO becomes active. It holds this
+computer's addresses and, while the EST server runs, the addresses of your site nodes. It is the same certificate for the
+server and every site.
+
+When you add a site or the server gets another address, the tab warns that the address is not in the certificate.
+Create a certificate with every address on the Certificates tab and choose it in the EST server policy (see
+[Server certificates](../pki/#server-certificates)). Then set up the cameras again, so they trust the CA of the new
+certificate.
+
 ## Set up cameras
 
 <Steps>
 
 1. Select the cameras on the **Devices** page, right-click and open **Security**.
-2. Click **Certificate enrollment**. The dialog shows the enrollment profiles of the first camera; with several cameras,
-   choose one at the top right. When some of the cameras have IEEE 802.1X on, the dialog asks whether to replace their
-   network access certificate too (see below).
-3. Click **Set up**.
-4. Watch the task in the tasks pane. Each camera is one task with its steps.
+2. Click **Certificate enrollment**. The entry shows with OADM PRO only. The dialog shows the enrollment profiles of the
+   first camera; with several cameras, choose one at the top right. When some of the cameras have IEEE 802.1X on, the
+   dialog asks whether to replace their network access certificate too (see below).
+3. Click **Set up**. When a camera's clock is behind, OADM asks first: its new certificate is not valid yet on the camera.
+4. The dialog stays open and shows how the set-up goes, then the result. The tasks pane shows each camera as one task
+   with its steps.
 
 </Steps>
 
 For each camera OADM:
 
-1. Checks that it can: AXIS OS 12.10 or later, the camera's certificate APIs, its Axis device ID and at least one
-   profile it supports. Otherwise the task ends with **Nothing was changed**.
-2. Installs the certificate of the OADM CA on the camera, so the camera trusts the EST server. A CA certificate already
-   there is reused.
+1. Checks that it can: AXIS OS 12.10 or later, the camera's certificate settings, its Axis device ID, at least one
+   profile it supports, an Enrollment policy that holds it, and the camera's address in the EST server's certificate.
+   Otherwise the task ends with **Nothing was changed**.
+2. Installs the CA certificates of the EST server's certificate on the camera, so the camera trusts the EST server. CA
+   certificates already there are reused.
 3. Adds the profiles to the camera, one after the other: this server's address and port, the device ID to sign in with,
    the use, and the names the certificate gets (the camera's address and `axis-<serial>.local`).
 4. Waits until the camera has its certificate (usually a few seconds, at most two minutes).
-5. With HTTPS: OADM keeps talking to the camera with its new certificate. The web server of the camera restarts for a
+5. With the `dot1x` profile and IEEE 802.1X on: installs the **RADIUS server CA** of the profile's IEEE 802.1X policy and
+   sets it in the camera's IEEE 802.1X settings, so the camera checks the RADIUS server with the right CA.
+6. With HTTPS: OADM keeps talking to the camera with its new certificate. The web server of the camera restarts for a
    moment while it switches.
 
 Running the task again is safe: a camera that already has the same profiles is not changed. Profiles OADM did not add
@@ -136,10 +156,11 @@ stay on the camera, unless they serve the same use as one of OADM's.
 A camera with IEEE 802.1X on uses a certificate to get onto the network. A new one that your RADIUS server does not trust
 takes the camera off the network. So the set-up skips the `dot1x` profile on these cameras, leaves the profile they
 have alone, and warns, unless you tick
-**Also replace the network access certificate of ... cameras with IEEE 802.1X on** in the dialog (off by default).
+**Also replace the network access certificate of ... cameras with IEEE 802.1X on** in the dialog (off by default). The
+hint below it names the CA the cameras will check the RADIUS server with.
 
-Tick it only when your RADIUS server trusts the OADM CA, for example after **Enable IEEE 802.1X** of the PKI page set
-these cameras up with the OADM CA. Cameras with IEEE 802.1X off get the `dot1x` profile either way.
+Tick it only when your RADIUS server trusts the CA of the profile's issuing policy, for example OADM's own
+[802.1X server](../radius-server/). Cameras with IEEE 802.1X off get the `dot1x` profile either way.
 </Aside>
 
 ### The dialog
@@ -166,11 +187,11 @@ it; give it to operators who should set up cameras.
 Cameras at a site cannot reach the server. They talk to their site node instead, and the node passes the connection on:
 
 - When you set up the first camera of a site, the node opens the EST port (TCP 9454) at the site. The OADM Site Node app
-  lists it under **Ports** as **Requested**: click **Allow** there. Until then the page shows "EST server at (site name):
+  lists it under **Ports** as **Requested**: click **Allow** there. Until then the tab shows "EST server at (site name):
   waiting for approval in the OADM Site Node app" and the set-up waits; after two minutes it ends with that reason, and
   running it again after Allow is enough.
-- The camera gets the node's address in its site network as EST server, and the EST server answers there with a
-  certificate of its own for that address.
+- The camera gets the node's address in its site network as EST server. That address must be in the EST server's
+  certificate: the tab warns when it is not (see [The server's certificate](#the-servers-certificate)).
 - A camera at a site only enrolls through its own site. Renewals work while the node is online; when it is offline, the
   camera tries again later.
 - When a site is removed, the node gives the port back.
@@ -181,24 +202,24 @@ The camera renews each certificate by itself halfway through its validity (a cer
 months), without OADM running a task. When that fails, it tries again every day. It signs in with its
 current certificate or its device ID and gets a new certificate with the same names.
 
-A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when the OADM CA
-issued it directly for this camera, and remembers it. Any other new certificate still shows Certificate changed.
+A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when a CA of the
+PKI page that can issue issued it directly for this camera, and remembers it. Any other new certificate still shows
+Certificate changed.
 
 ## Who gets a certificate
 
 The EST server only answers cameras that:
 
-- sign in with a certificate of a CA an **EST sign-in CA** policy names: by default their **Axis device ID** (checked
-  against the Axis device ID certificate authorities) for new certificates, and a certificate the OADM CA gave them
-  for renewals. To renew, a camera may also sign in with its current certificate from OADM, whichever CA of the PKI page
-  issued it (also a CA you imported with its key),
+- sign in with a certificate of a CA an **EST sign-in CA** policy names: by default their **Axis device ID** for new
+  certificates, and a certificate of the OADM CA for renewals. To renew, a camera may also sign in with its current
+  certificate from OADM, whichever CA of the PKI page issued it (also a CA you imported with its key),
 - are **managed by OADM**: the serial number in the device ID must be a device in the device list, and
 - are in an **Enrollment** policy that allows the profile (by default "All devices", every profile). A camera no
   Enrollment policy holds is refused; a profile its policy does not allow is answered like a profile that does not
   exist, and the Enrollments list names the policy.
 
 A genuine Axis camera that OADM does not manage gets nothing. OADM sets the names in every certificate itself; what the
-camera asks for does not count. No password or code is needed.
+camera asks for does not count. No password or code is needed. A revoked certificate renews nothing.
 
 ## Event rules
 
@@ -211,20 +232,27 @@ The EST server adds three events to the [event rules](../event-rules/):
 
 For example, send an email when a certificate is not renewed: a certificate of 1 year still has about six months left.
 
+## Users with a device group
+
+Users limited to a [device group](../../admin/device-groups/) see the enrollments of their devices and the tab read
+only. Only users with all devices change the settings and empty the list.
+
 ## Troubleshooting
 
 | What you see | What to do |
 |---|---|
-| Status **OADM PRO is not active.** | Activate OADM PRO in Settings > License. |
+| **The EST server needs OADM PRO** | Start the 30-day trial there, or import a license in Settings > License. |
 | Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
-| Status **The EST server has no certificate: Corp CA cannot issue.** | The CA of the EST server policy lost its key. Import it again with its key, or choose another **Issued by** on the PKI page's Policies tab. |
+| Status **The EST server has no certificate. Choose one in its policy.** | Choose a certificate in the EST server policy on the PKI page's Policies tab. |
+| Status **The EST server cannot use its certificate: ...** | The certificate ended, was removed or its key cannot be read. Choose another one in the EST server policy. |
 | Status **TCP 9454 is used by another program** | Choose another port and set up the cameras again. |
+| Warning **... is not in the certificate of the EST server** | Create a certificate with that address on the Certificates tab and choose it in the EST server policy. |
 | Set-up ends with **Needs AXIS OS 12.10 or later** | Upgrade the camera's AXIS OS. |
 | **The camera has no Axis device ID certificate.** | The camera has no AXIS Edge Vault device ID. It cannot use the EST server. |
 | **The camera supports none of the EST server's profiles.** | Add a profile whose use the camera supports. |
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **No enrollment policy for this device.** | Add the camera to an Enrollment policy on the PKI page. |
-| Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page, or turn the profile off for the camera. |
+| Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page. |
 | **Cameras cannot sign in: there is no EST sign-in CA policy.** | Add an EST sign-in CA policy on the PKI page ("Axis device ID" for new certificates, "OADM CA" for renewals). |
 | **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server (at a site: to the site node) on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |

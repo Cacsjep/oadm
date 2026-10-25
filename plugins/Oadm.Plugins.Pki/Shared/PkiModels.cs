@@ -73,9 +73,6 @@ public static class PkiMethods
     /// <summary>() -> <see cref="InstallReply"/>: the CA into the server's machine root store.</summary>
     public const string InstallServerTrust = "installServerTrust";
 
-    /// <summary><see cref="ImportRadiusCaRequest"/> -> <see cref="RadiusCaReply"/> (checked, not stored: saving the policy stores it).</summary>
-    public const string ImportRadiusCa = "importRadiusCa";
-
     /// <summary>Event: <see cref="PkiState"/> after every change.</summary>
     public const string StateTopic = "state";
 
@@ -186,7 +183,17 @@ public static class Dot1xIdentity
 {
     public const string Mac = "mac";
     public const string HostName = "hostName";
+
+    /// <summary>The device's IP address ("10.0.0.48"; decision 2026-10-25).</summary>
+    public const string IpAddress = "ipAddress";
+
+    /// <summary>The last octet of the device's IPv4 address ("48"; the last group of an IPv6 address; decision 2026-10-25).</summary>
+    public const string IpLastOctet = "ipLastOctet";
+
     public const string Custom = "custom";
+
+    /// <summary>Every mode, in the choice's order.</summary>
+    public static IReadOnlyList<string> All { get; } = [Mac, HostName, IpAddress, IpLastOctet, Custom];
 }
 
 /// <summary>Which CA the devices use to check the RADIUS server.</summary>
@@ -512,8 +519,6 @@ public sealed record RemovePreviousRequest(string? Id);
 
 public sealed record BackupRequest(string? Password);
 
-public sealed record ImportRadiusCaRequest(string? FileBase64);
-
 /// <summary>Reply of the changing methods.</summary>
 public sealed record PkiReply
 {
@@ -533,7 +538,11 @@ public sealed record PkiReply
     public PkiState? State { get; init; }
 }
 
-public sealed record PreviewReplaceReply(int DevicesWithCurrentCa);
+public sealed record PreviewReplaceReply(int DevicesWithCurrentCa)
+{
+    /// <summary>The servers ("802.1X server", "EST server") whose certificate the current CA issued: they keep it after a replace.</summary>
+    public IReadOnlyList<string> Servers { get; init; } = [];
+}
 
 /// <summary>A file for the save dialog.</summary>
 public sealed record FileReply
@@ -548,15 +557,6 @@ public sealed record FileReply
 }
 
 public sealed record InstallReply(bool Installed, string? Error, PkiState? State);
-
-public sealed record RadiusCaReply
-{
-    public string? Pem { get; init; }
-
-    public CertificateSummary? Summary { get; init; }
-
-    public IReadOnlyDictionary<string, string>? Errors { get; init; }
-}
 
 /// <summary>Field names of <see cref="PkiReply.Errors"/> (the page's property names).</summary>
 public static class PkiFields

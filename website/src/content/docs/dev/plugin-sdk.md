@@ -45,6 +45,9 @@ DoorBell/
   DoorBell.slnx
   Directory.Build.props          every project: .NET 10, the plugin folder .oadm/plugins/
   .config/dotnet-tools.json      the oadm command of this SDK version
+  README.md                      the commands
+  AGENTS.md                      the rules for AI assistants, see Build a plugin with AI
+  CLAUDE.md                      points Claude Code to AGENTS.md
   DoorBell/                      the server part: DoorBell.Server.dll
     DoorBell.csproj
   DoorBell.Client/               the client part: DoorBell.Client.dll (dialog or page)
@@ -62,7 +65,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It sets the assembly names (`<
 for a project ending in `.Client`), references the SDK without copying it (OADM brings its own), and writes `plugin.json`:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.2.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.5.0">
   <PropertyGroup>
     <OadmPluginId>acme.door-bell</OadmPluginId>
     <Version>1.0.0</Version>

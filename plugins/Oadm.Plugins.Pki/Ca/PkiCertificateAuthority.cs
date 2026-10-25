@@ -8,12 +8,44 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
+/// The certificate an OADM server (802.1X, EST) shows (decision 2026-10-25: picked by its server policy from the Certificates
+/// list): PKI's <see cref="PkiCertificateAuthority"/>; a test CA in the servers' tests.
+/// </summary>
+public interface IServerCertificateSource
+{
+    /// <summary>The certificate the server of <paramref name="kind"/> shows now, or why it has none.</summary>
+    ServerCertificateLoad ServerCertificate(string kind);
+
+    /// <summary>The issuer chain of that certificate (what cameras must trust); empty without one.</summary>
+    IReadOnlyList<byte[]> ServerIssuerChain(string kind);
+
+    /// <summary>A server policy of <paramref name="kind"/> without a certificate gets one (Turn on, the first start).</summary>
+    Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<ServerCertificateImport?>>? existing, CancellationToken ct);
+}
+
+/// <summary>The CA certificates a camera checks the RADIUS server with (EST's set-up of the dot1x profile); a test CA in EST's tests.</summary>
+public interface IRadiusCaSource
+{
+    /// <summary>
+    /// The CA certificates of the IEEE 802.1X issuing policy <paramref name="policy"/> (its RADIUS server CA and the CAs above
+    /// it); throws <see cref="InvalidOperationException"/> with the reason when they cannot be used.
+    /// </summary>
+    IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy);
+}
+
+/// <summary>
 /// The OADM CA for other plugins (<see cref="IDeviceCertificateAuthority"/>, offered through the plugin services while PKI
 /// runs): signs with <see cref="DeviceCertificateIssuer"/> like PKI's own tasks and lists device certificates in the issued
 /// registry. Refuses requests signed with SHA-1 or MD5.
 /// </summary>
-public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates
+public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates, IServerCertificateSource, IRadiusCaSource
 {
+    /// <summary>
+    /// The CA certificates a camera checks the RADIUS server with, as the IEEE 802.1X issuing policy <paramref name="policy"/>
+    /// names them (its RADIUS server CA and the CAs above it); throws with the reason when they cannot be found.
+    /// </summary>
+    public IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy) => Tasks.CertificateDeployment.RadiusCas(policy, service);
+
     /// <inheritdoc />
     public async Task<string?> CurrentCameraAsync(byte[] certificateDer, CancellationToken ct)
     {
@@ -107,9 +139,18 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
             ? service.Issued.ConfirmAsync(serialNumber, ct)
             : Task.CompletedTask;
 
-    /// <summary>The 802.1X server read its stored certificate at its start: the Certificates list shows it as used by that server.</summary>
-    public void NoteServerCertificate(byte[] leaf, byte[] caCertificate) =>
-        service.NoteServerCertificate(Certificates.ServerCertificateSources.Dot1x, leaf, Convert.ToHexString(SHA256.HashData(caCertificate)));
+    /// <summary>The certificate the server of <paramref name="kind"/> (802.1X server, EST server) shows now, or why it has none (decision 2026-10-25).</summary>
+    public ServerCertificateLoad ServerCertificate(string kind) => service.ServerCertificateOf(kind);
+
+    /// <summary>The issuer chain of the certificate the server of <paramref name="kind"/> shows (what cameras must trust); empty without one.</summary>
+    public IReadOnlyList<byte[]> ServerIssuerChain(string kind) => service.ServerIssuerChain(kind);
+
+    /// <summary>
+    /// The server policy of <paramref name="kind"/> without a certificate gets one: the one <paramref name="existing"/> gives
+    /// (kept by the server before), else a new one from the OADM CA for <paramref name="names"/> (Turn on, the first start).
+    /// </summary>
+    public Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<ServerCertificateImport?>>? existing, CancellationToken ct) =>
+        service.EnsureServerCertificateAsync(kind, names, existing, ct);
 
     /// <summary>
     /// What <see cref="PurposeOf"/> answers for a certificate created, signed or imported on the PKI page: no device
@@ -143,7 +184,7 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
         if (service.IssuingCa(request.IssuerId) is not { } ca)
         {
             throw new CertificateRequestRefusedException(request.IssuerId is null || string.Equals(request.IssuerId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)
-                ? "The PKI has no certificate authority. Generate or import one first."
+                ? "The PKI has no certificate authority. Use New OADM CA first."
                 : "The CA of this policy cannot issue certificates. Choose another CA in the policy.");
         }
 

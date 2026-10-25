@@ -252,23 +252,26 @@ public sealed class ServiceTests
     }
 
     [Fact]
-    public async Task The_radius_ca_import_checks_the_file_and_the_policy_stores_it()
+    public async Task The_radius_server_ca_is_a_ca_of_the_list_and_stays_while_a_policy_names_it()
     {
+        // Decision 2026-10-25: no import of its own; the CA is imported on the Certificates page and picked by its id.
         await using var pki = await PkiHarness.StartAsync();
         using var radius = TestCa.Root("Corp RADIUS CA");
-        Assert.Equal("The file is not a certificate (.crt or .cer, PEM or DER).", (await pki.InvokeAsync<RadiusCaReply>(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String([9, 9])))).Errors![PkiFields.RadiusCa]);
-        Assert.StartsWith("This is not a CA certificate.", (await pki.InvokeAsync<RadiusCaReply>(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String(LeafWithConstraints(radius))))).Errors![PkiFields.RadiusCa], StringComparison.Ordinal);
-        var imported = await pki.InvokeAsync<RadiusCaReply>(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String(radius.RawData)));
-        Assert.Equal("Corp RADIUS CA", imported.Summary!.CommonName);
-        Assert.DoesNotContain("PRIVATE", imported.Pem, StringComparison.Ordinal);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, new ImportAuthorityRequest(Convert.ToBase64String(radius.RawData), "radius.crt"))).Ok);
+        var id = "imported:" + Ca.CaCertificates.Fingerprint(radius);
 
-        // The IEEE 802.1X certificate policy keeps it; back to this CA drops it.
         var policy = pki.Policies.FirstOf(Policies.PolicyKinds.Dot1xCertificate)!;
-        var saved = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, policy with { RadiusCa = RadiusCaSource.Imported, RadiusCaPem = imported.Pem });
+        Assert.Equal(Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId, policy.RadiusCaId); // a new server: the OADM CA
+        var unknown = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, policy with { RadiusCaId = "imported:00" });
+        Assert.Equal((Policies.PolicyFields.RadiusCa, Policies.PolicyTexts.ChooseRadiusCa), (unknown.Error!.Field, unknown.Error.Message));
+
+        var saved = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, policy with { RadiusCaId = id });
         Assert.Null(saved.Error);
-        Assert.Equal(imported.Pem, pki.Policies.Find(policy.Id)!.RadiusCaPem);
-        var back = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy, saved.Saved! with { RadiusCa = RadiusCaSource.Oadm });
-        Assert.Null(back.Saved!.RadiusCaPem);
+        Assert.Equal(id, pki.Policies.Find(policy.Id)!.RadiusCaId);
+
+        // Used: it cannot be removed.
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
+        Assert.Equal(Policies.PolicyTexts.UsedByPolicy(policy.Name), refused.Error);
     }
 
     [Fact]
@@ -310,7 +313,7 @@ public sealed class ServiceTests
         Assert.Equal(ServiceStatus.Warning, PkiService.StatusOf(false, false, null, ca, end.AddDays(-20.5), 30).Kind);
         Assert.Equal("CA expires in 1 day", PkiService.StatusOf(false, false, null, ca, end.AddDays(-1.5), 30).Text);
         Assert.Equal("CA expires today", PkiService.StatusOf(false, false, null, ca, end.AddHours(-2), 30).Text);
-        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}. Generate a new CA or import one."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30));
+        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}. Use New OADM CA."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30));
         Assert.Equal("Creating the certificate authority", PkiService.StatusOf(false, true, null, null, end, 30).Text);
         using var noKey = new CaMaterial(X509CertificateLoader.LoadCertificate(ca.Certificate.RawData), [], null);
         Assert.Equal("CA key cannot be read", PkiService.StatusOf(false, false, null, noKey, end.AddDays(-100), 30).Text);
@@ -367,14 +370,5 @@ public sealed class ServiceTests
         Assert.Equal(300, counts.ExpiringSoon);
         Assert.Equal(3000, counts.DevicesPerCa["OLD"]);
         return watch.Elapsed;
-    }
-
-    private static byte[] LeafWithConstraints(X509Certificate2 issuer)
-    {
-        using var key = System.Security.Cryptography.RSA.Create(2048);
-        var request = new CertificateRequest("CN=radius.example", key, System.Security.Cryptography.HashAlgorithmName.SHA256, System.Security.Cryptography.RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-        using var leaf = request.Create(issuer, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30), [1, 2, 3]);
-        return leaf.RawData;
     }
 }

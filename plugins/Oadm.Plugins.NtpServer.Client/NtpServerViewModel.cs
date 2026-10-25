@@ -50,7 +50,14 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     /// <summary>Wait before watching again after the event stream ended or failed.</summary>
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// How often the page of a user with a device group reads the state again while shown (<see cref="NtpState.Renew"/>):
+    /// the server forgets a group whose pages stopped reading.
+    /// </summary>
+    public static TimeSpan RenewInterval { get; set; } = TimeSpan.FromMinutes(5);
+
     private readonly ICorePluginClientContext _ctx;
+    private bool _renew;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
     private Dictionary<string, string> _devicesByAddress = new(StringComparer.OrdinalIgnoreCase);
     private CancellationTokenSource? _active;
@@ -177,6 +184,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
 
         _active = new CancellationTokenSource();
         _ = RunAsync(_active.Token);
+        _ = RenewAsync(_active.Token);
     }
 
     /// <summary>Page hidden: stop watching.</summary>
@@ -204,6 +212,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
             }
 
             var state = NtpJson.Deserialize<NtpState>(json);
+            _renew = state.Renew;
             ApplyInterfaces(state.Interfaces, state.Config);
             ApplyStatus(state);
             ApplyRequests(state.Requests, replace: true);
@@ -315,6 +324,26 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         }
 
         SetError(nameof(Upstream), error);
+    }
+
+    /// <summary>While shown: the state again every <see cref="RenewInterval"/> when the server asks for it (a device group).</summary>
+    private async Task RenewAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(RenewInterval, ct).ConfigureAwait(true);
+                if (_renew)
+                {
+                    await LoadAsync(ct).ConfigureAwait(true);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page hidden
+        }
     }
 
     private async Task RunAsync(CancellationToken ct)

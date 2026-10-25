@@ -289,12 +289,8 @@ public sealed class RuleEngineTests
             }
         }
 
-        var deadline = DateTime.UtcNow.AddSeconds(30); // the subscription's own loop hands them over
-        while (AnyEvents().Count < 4 && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(10);
-        }
-
+        // The subscription's own loop hands them over.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => AnyEvents().Count >= 4, "four events of any device unreachable");
         var any = AnyEvents();
         lock (events)
         {

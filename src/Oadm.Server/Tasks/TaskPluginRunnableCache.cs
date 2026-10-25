@@ -35,7 +35,8 @@ public sealed partial class TaskPluginRunnableCache(
     DeviceRepository devices,
     DeviceChangeFeed feed,
     TimeProvider time,
-    ILogger<TaskPluginRunnableCache> logger) : IDisposable
+    ILogger<TaskPluginRunnableCache> logger,
+    Core.DeviceGroups.DeviceGroupStore? groups = null) : IDisposable
 {
     public static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(10);
 
@@ -43,7 +44,9 @@ public sealed partial class TaskPluginRunnableCache(
     private readonly HashSet<string> _reasonFailuresLogged = new(StringComparer.Ordinal);
     private Entry? _entry;
 
+    // Per group (never per "none:" key of a user without devices); a deleted group's entry is dropped.
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Scoped> _scoped = new(StringComparer.Ordinal);
+    private int _watchingGroups;
 
     /// <summary>Number of computations so far (tests and diagnostics).</summary>
     public int Computations { get; private set; }
@@ -71,9 +74,28 @@ public sealed partial class TaskPluginRunnableCache(
         }
 
         IReadOnlyList<TaskPluginRunnable> results = [.. all.Select(entry => Within(entry, ids))];
-        _scoped[key] = new Scoped(all, ids, results);
+        if (view.GroupId is not null)
+        {
+            // A user without devices has a key of its own: such keys are never kept (one per user would never go).
+            WatchGroups();
+            _scoped[key] = new Scoped(all, ids, results);
+        }
+
         return results;
     }
+
+    /// <summary>The cached groups now (tests).</summary>
+    internal int ScopedCount => _scoped.Count;
+
+    private void WatchGroups()
+    {
+        if (groups is not null && Interlocked.Exchange(ref _watchingGroups, 1) == 0)
+        {
+            groups.Deleted += OnGroupDeleted;
+        }
+    }
+
+    private void OnGroupDeleted(object? sender, Core.DeviceGroups.DeviceGroupDeleteResult deleted) => _scoped.TryRemove(deleted.Id.ToString(), out _);
 
     /// <summary>The entry with only the devices of <paramref name="ids"/>; reasons keep "most devices first".</summary>
     internal static TaskPluginRunnable Within(TaskPluginRunnable entry, IReadOnlySet<Guid> ids)
@@ -243,7 +265,15 @@ public sealed partial class TaskPluginRunnableCache(
         return reason;
     }
 
-    public void Dispose() => _gate.Dispose();
+    public void Dispose()
+    {
+        if (groups is not null && Volatile.Read(ref _watchingGroups) == 1)
+        {
+            groups.Deleted -= OnGroupDeleted;
+        }
+
+        _gate.Dispose();
+    }
 
     private sealed record Entry(long Version, DateTimeOffset At, IReadOnlyList<RegisteredTaskPlugin> Plugins, IReadOnlyList<TaskPluginRunnable> Results);
 

@@ -544,10 +544,11 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             return [];
         }
 
+        // Both filtered in the query: no count, and only the view's active tasks with their steps.
         var recent = limit is { } take
-            ? (await _store.ListPageAsync(ids, 0, take, ct).ConfigureAwait(false)).Tasks
+            ? await _store.ListRecentAsync(ids, take, ct).ConfigureAwait(false)
             : await _store.ListAsync(ids, ct).ConfigureAwait(false);
-        var active = (await _store.ListActiveAsync(ct).ConfigureAwait(false)).Where(r => ids.Contains(r.DeviceId));
+        var active = await _store.ListActiveAsync(ids, ct).ConfigureAwait(false);
         var seen = new HashSet<Guid>();
         var result = new List<TaskRecord>(recent.Count);
         foreach (var record in active.Concat(recent).OrderByDescending(r => r.CreatedUtc))
@@ -959,10 +960,15 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             // Leaving the queue: the owner's view as it is now (another group, fewer devices, a deleted user). A device that left
             // it fails like an unknown one, before any request and before anything about its state is said.
             DeviceGroups.DeviceView? ownerView = null;
-            if (device is not null && task.Caller is { } caller && task.Views is { } views)
+            if (task.Caller is { } caller && task.Views is { } views)
             {
                 ownerView = await views.ForUserAsync(caller.UserId, ct).ConfigureAwait(false);
-                if (!ownerView.Contains(device))
+                if (device is null)
+                {
+                    // Removed meanwhile: an owner with a device group gets the same answer as for any device outside it.
+                    precondition = ownerView.HasAllDevices ? null : DeviceMessages.NoLongerAvailable(1);
+                }
+                else if (!ownerView.Contains(device))
                 {
                     precondition = DeviceMessages.NoLongerAvailable(1);
                 }

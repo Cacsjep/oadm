@@ -24,10 +24,7 @@
       <Grid RowDefinitions="Auto,Auto,Auto,*">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="10">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-            <Button Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsChecking}" Margin="0,0,6,0"
-                    ToolTip.Tip="Cameras by address or tag">
-              <ui:IconLabel Icon="{StaticResource Icon.eye}" Text="{Binding DeviceChoice.ButtonText}" />
-            </Button>
+            <ui:ToolbarButton IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsChecking}" Margin="0,0,6,0" ToolTip.Tip="Cameras by address or tag" />
             <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}"
                               ToolTip.Tip="Check the cameras again" />
           </StackPanel>

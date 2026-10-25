@@ -72,7 +72,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `sites.view` ("See sites", Operator and
   Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
-  loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
+  loaded plugin (on or off) at start (a task hidden from the menus, `ShowInMenus` false, is left out of the role editor,
+  its page's methods carry the rights, unless it declares permissions of its own: those stay listed and grantable; test
+  `PermissionCatalogTests`); `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
   role has but no loaded plugin declares are kept. **Administrator only, never grantable**: users and roles, the
   credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log. Every gRPC method
@@ -156,7 +158,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
 - **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
   `Settings/UsersPageView` = the users card left and the device groups card right at the height they need, the roles card
-  below across the full width filling the rest, with a splitter): **New user** (secondary button) above the list, then users
+  below across the full width filling the rest, with a splitter): **New user** (a flat `ui:ToolbarButton` in the card's title row) above the list, then users
   with role (plain text), state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
   The list has a **Devices** column: All devices, the user's device group, or No devices (the group was deleted).
@@ -175,10 +177,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   directly below the device list. **Roles
   card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
   rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
-  columns = roles (built in code-behind; header with only the name (description as tooltip) and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),
+  columns = roles (built in code-behind; header with only the name (description as tooltip) and the shared row menu `ui:RowActions` Edit, Copy, Reset to default, Delete (red, last); the Administrator role Edit and Copy),
   the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
   the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
-  plugin that is off. Toolbar New role (secondary button), Save, Discard, search; changes are collected and saved together after one
+  plugin that is off. Toolbar New role (a flat `ui:ToolbarButton`), Save, Discard, search; changes are collected and saved together after one
   confirmation that lists them per role; a new role, a copy and a rename open the dialog `Settings/RoleFormWindow`
   (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
   Administrator role: name and description locked, only the start page).

@@ -228,6 +228,42 @@ public sealed class EfTaskStore(IDbContextFactory<OadmDbContext> dbFactory) : IT
     private static string DeviceIdsJson(IReadOnlySet<Guid> deviceIds) =>
         System.Text.Json.JsonSerializer.Serialize(deviceIds.Select(id => id.ToString("D").ToUpperInvariant()));
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TaskRecord>> ListRecentAsync(IReadOnlySet<Guid> deviceIds, int limit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        if (deviceIds.Count == 0 || limit <= 0)
+        {
+            return [];
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var ids = await OfDevices(db, DeviceIdsJson(deviceIds)).AsNoTracking()
+            .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+            .Take(limit)
+            .Select(t => t.Id)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return await LoadInOrderAsync(db, ids, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(IReadOnlySet<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        if (deviceIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var ids = await OfDevices(db, DeviceIdsJson(deviceIds)).AsNoTracking()
+            .Where(t => ActiveStates.Contains(t.Status))
+            .OrderByDescending(t => t.CreatedUtc).ThenByDescending(t => t.Id)
+            .Select(t => t.Id)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return await LoadInOrderAsync(db, ids, ct).ConfigureAwait(false);
+    }
+
     /// <summary>Queued and Running tasks (Status index), newest first.</summary>
     public async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(CancellationToken ct)
     {

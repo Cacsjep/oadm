@@ -32,11 +32,12 @@ public sealed class IssuingPolicyTests
         var https = Assert.Single(store.PoliciesOf(PolicyKinds.HttpsCertificate));
         Assert.Equal(("HTTPS", CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (https.Name, https.CaId, https.ValidDays!.Value, https.Key));
         var dot1x = Assert.Single(store.PoliciesOf(PolicyKinds.Dot1xCertificate));
-        Assert.Equal(("IEEE 802.1X", 365, PolicyKeys.Ecc, 1, Dot1xIdentity.Mac, RadiusCaSource.Oadm), (dot1x.Name, dot1x.ValidDays!.Value, dot1x.Key, dot1x.EapolVersion!.Value, dot1x.Identity, dot1x.RadiusCa));
-        // The EST server's certificate has its own policy (decision 2026-10-25); the 802.1X server's is part of its 802.1X
-        // server policy (made by the 802.1X server's conversion, not started here).
+        // A new installation: EAPOL version 3 and the IP address as identity, the OADM CA as RADIUS server CA (decision 2026-10-25).
+        Assert.Equal(("IEEE 802.1X", 365, PolicyKeys.Ecc, 3, Dot1xIdentity.IpAddress, CertificateAuthorityInfo.OadmId),
+            (dot1x.Name, dot1x.ValidDays!.Value, dot1x.Key, dot1x.EapolVersion!.Value, dot1x.Identity, dot1x.RadiusCaId));
+        // The EST server's policy picks a certificate of the list (decision 2026-10-25); none before OADM PRO makes one.
         var est = Assert.Single(store.PoliciesOf(PolicyKinds.EstServer));
-        Assert.Equal(("EST server", CertificateAuthorityInfo.OadmId, 90, PolicyKeys.Ecc), (est.Name, est.CaId, est.ValidDays!.Value, est.Key!));
+        Assert.Equal(("EST server", null, null), (est.Name, est.CertificateId, est.ValidDays));
         Assert.DoesNotContain(store.All, p => p.Kind == PolicyKinds.LegacyServerCertificate);
         Assert.All(store.All.Where(p => PolicyKinds.IsIssuing(p.Kind)), p => Assert.Null(PolicyRules.Validate(p, Suites)));
         Assert.Contains(PkiService.IssuingOwner, store.Converted);
@@ -63,25 +64,26 @@ public sealed class IssuingPolicyTests
 
         // IEEE 802.1X: the rules of the former IEEE 802.1X card.
         var dot1x = store.FirstOf(PolicyKinds.Dot1xCertificate)!;
-        Assert.Equal(PolicyFields.EapolVersion, (await RefusedAsync(store, dot1x with { EapolVersion = 3 }))?.Field);
+        Assert.Equal(PolicyFields.EapolVersion, (await RefusedAsync(store, dot1x with { EapolVersion = 4 }))?.Field);
         Assert.Equal(PolicyFields.Identity, (await RefusedAsync(store, dot1x with { Identity = "ip" }))?.Field);
         Assert.Equal(new PolicyFieldError(PolicyFields.CustomIdentity, "Enter the identity."), await RefusedAsync(store, dot1x with { Identity = Dot1xIdentity.Custom, CustomIdentity = " " }));
         Assert.Equal(PolicyFields.CustomIdentity, (await RefusedAsync(store, dot1x with { Identity = Dot1xIdentity.Custom, CustomIdentity = "{mac}" }))?.Field);
-        Assert.Equal(new PolicyFieldError(PolicyFields.RadiusCa, "Import the CA certificate of the RADIUS server."), await RefusedAsync(store, dot1x with { RadiusCa = RadiusCaSource.Imported }));
-        Assert.Equal(new PolicyFieldError(PolicyFields.RadiusCa, PolicyTexts.RadiusCaUnreadable), await RefusedAsync(store, dot1x with { RadiusCa = RadiusCaSource.Imported, RadiusCaPem = "not a certificate" }));
+        Assert.Equal(new PolicyFieldError(PolicyFields.RadiusCa, PolicyTexts.ChooseRadiusCa), await RefusedAsync(store, dot1x with { RadiusCaId = "imported:gone" }));
         var custom = (await store.SaveAsync(dot1x with { Identity = Dot1xIdentity.Custom, CustomIdentity = " cam-{serial} " }, "admin", Suites, CancellationToken.None)).Saved!;
         Assert.Equal("cam-{serial}", custom.CustomIdentity);
         var mac = (await store.SaveAsync(custom with { Identity = Dot1xIdentity.Mac }, "admin", Suites, CancellationToken.None)).Saved!;
         Assert.Equal(string.Empty, mac.CustomIdentity); // only the fields that count are kept
 
-        // The server policies: one each, the 802.1X server with ECC (its cipher suites follow the key).
-        var server = (await store.SaveAsync(TestServerPolicy(), "admin", Suites, CancellationToken.None)).Saved!;
-        Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc), await RefusedAsync(store, server with { Key = PolicyKeys.Rsa }));
-        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.OneOnly(PolicyKinds.Dot1xServer)), await RefusedAsync(store, server with { Id = Guid.Empty, Name = "Second" }));
+        // The server policies: one each, a certificate of the list (decision 2026-10-25; OADM PRO made the shared one).
+        Assert.Equal(PolicyFields.Certificate, (await RefusedAsync(store, TestServerPolicy() with { CertificateId = null }))?.Field);
+        await pki.Service.EnsureServerCertificatesAsync(null, CancellationToken.None);
         var est = store.EstServerPolicy!;
+        Assert.NotNull(est.CertificateId);
+        var server = (await store.SaveAsync(TestServerPolicy() with { CertificateId = est.CertificateId }, "admin", Suites, CancellationToken.None)).Saved!;
+        Assert.Equal(est.CertificateId, server.CertificateId);
+        Assert.Equal(new PolicyFieldError(PolicyFields.Certificate, PolicyTexts.CertificateGone), await RefusedAsync(store, server with { CertificateId = "gone" }));
+        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.OneOnly(PolicyKinds.Dot1xServer)), await RefusedAsync(store, server with { Id = Guid.Empty, Name = "Second" }));
         Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.OneOnly(PolicyKinds.EstServer)), await RefusedAsync(store, est with { Id = Guid.Empty, Name = "Second" }));
-        Assert.Null(await RefusedAsync(store, est with { Key = PolicyKeys.Rsa, ValidDays = 30 }));
     }
 
     [Fact]
@@ -144,10 +146,60 @@ public sealed class IssuingPolicyTests
         await using var pki = await PkiHarness.StartAsync(settings);
 
         var dot1x = Assert.Single(pki.Policies.PoliciesOf(PolicyKinds.Dot1xCertificate));
-        Assert.Equal((397, Dot1xIdentity.Custom, "cam-{serial}", RadiusCaSource.Imported), (dot1x.ValidDays!.Value, dot1x.Identity, dot1x.CustomIdentity, dot1x.RadiusCa));
-        Assert.True(PolicyRules.IsCertificatePem(dot1x.RadiusCaPem));
+        Assert.Equal((397, Dot1xIdentity.Custom, "cam-{serial}"), (dot1x.ValidDays!.Value, dot1x.Identity, dot1x.CustomIdentity));
+        // The imported RADIUS server CA of this fixture is an Axis device ID intermediate CA ("Axis device ID Intermediate CA
+        // ECC 1"): it becomes an imported CA of its own, never the whole Axis device ID entry (the camera would then trust
+        // every Axis root and intermediate as RADIUS server CA).
+        using var intermediate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(
+            System.Text.Json.JsonDocument.Parse(Fixture("pki-config-4.1-imported-radius.json")).RootElement.GetProperty("dot1x").GetProperty("radiusCaPem").GetString());
+        Assert.Equal(PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(intermediate)), dot1x.RadiusCaId);
+        var listed = Assert.Single(pki.Service.Authorities(), a => a.Id == dot1x.RadiusCaId);
+        Assert.Equal((CertificateAuthorityKind.Imported, false), (listed.Kind, listed.Issues));
+        Assert.Equal([intermediate.RawData], listed.Certificates);
         Assert.Null(PolicyRules.Validate(dot1x, Suites));
+        var radius = Tasks.CertificateDeployment.RadiusCas(dot1x, pki.Service);
+        Assert.Equal(CaCertificates.Fingerprint(intermediate), Assert.Single(radius).Fingerprint); // exactly the chosen CA
+        Assert.Contains(PkiService.RadiusCaOwner, pki.Policies.Converted);
         Assert.Equal(397, pki.Policies.FirstOf(PolicyKinds.HttpsCertificate)!.ValidDays);
+    }
+
+    [Fact]
+    public async Task The_radius_ca_conversion_runs_after_every_ca_is_loaded_and_keeps_the_imported_cas()
+    {
+        // A server with an OADM CA, a previous OADM CA and an imported CA with its key.
+        var settings = new InMemoryPluginSettingsProvider();
+        var secrets = TestSecrets.Create();
+        string oadmPem;
+        string importedId;
+        await using (var first = await PkiHarness.StartAsync(settings, secrets))
+        {
+            Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
+            using var root = TestCa.Root("Contoso Root");
+            using var rootPublic = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(root.RawData);
+            Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(TestCa.Pfx("secret", root)), "contoso.pfx", "secret", null, null))).Ok);
+            oadmPem = first.Service.Ca!.CertificatePem;
+            importedId = PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(rootPublic));
+            Assert.Single(first.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        }
+
+        // An update from OADM 4.1 whose IEEE 802.1X settings imported the OADM CA as RADIUS server CA: the policies are made
+        // again from these settings at the next start.
+        var own = settings.GetSettings(PkiPluginInfo.PluginId);
+        var importedBefore = await own.GetAsync(PkiStore.ImportedCasKey, CancellationToken.None);
+        await own.SetAsync(PolicyStore.SettingsKey, null, CancellationToken.None);
+        await own.SetAsync(PkiStore.ConfigKey, PkiJson.Serialize(new PkiConfig
+        {
+            Dot1x = new Dot1xConfig { RadiusCa = RadiusCaSource.Imported, RadiusCaPem = oadmPem },
+        }), CancellationToken.None);
+
+        await using var pki = await PkiHarness.StartAsync(settings, secrets);
+
+        // The PEM is the OADM CA's: the policy names the OADM CA, no duplicate imported CA, the imported CA keeps its key.
+        Assert.Equal(CertificateAuthorityInfo.OadmId, pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!.RadiusCaId);
+        Assert.Equal(importedId, Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.Imported).Id);
+        Assert.NotNull(pki.Service.IssuingCa(importedId));
+        Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        Assert.Equal(importedBefore, await own.GetAsync(PkiStore.ImportedCasKey, CancellationToken.None));
     }
 
     [Fact]
@@ -164,7 +216,7 @@ public sealed class IssuingPolicyTests
                 ["All devices", "802.1X server", "OADM CA", "HTTPS", "IEEE 802.1X", "EST server"],
                 pki.Policies.All.Select(p => p.Name));
             Assert.Equal(45, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days); // nothing of stage 3 converted again
-            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner], pki.Policies.Converted);
+            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner, PkiService.RadiusCaOwner], pki.Policies.Converted);
             var server = pki.Policies.ServerPolicy!; // its certificate's defaults (stage 3 had none)
             Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
         }

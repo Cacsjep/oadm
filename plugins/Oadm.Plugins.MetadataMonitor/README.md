@@ -32,11 +32,11 @@ Read-only for devices.
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
-  One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera button (secondary, it names
+  One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera button (a command button, like every other control of the row; it names
   the chosen camera "10.0.0.48 · P3265-V", else "Choose a camera") opens the shared `DevicePickerWindow.ShowOneAsync`
   (search, virtualized, 30,000 devices) with the managed video and I/O devices (others are not offered); the view hands the
   picker to the view model as `PickCamera`; another camera stops the running stream, a removed one clears the choice. The
-  primary **Start** / **Stop** sits directly right of it, `ui:SearchBox` filter (live, case-insensitive
+  **Start** / **Stop** (command button with the start or stop icon) sits directly right of it, `ui:SearchBox` filter (live, case-insensitive
   over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
   toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
   count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus
@@ -74,10 +74,14 @@ Read-only for devices.
   keep-alive: the page calls `keepAlive` ({streamId}) every 5 s while a stream runs, the server stops streams without one
   for 20 s (client closed or gone; switching pages stops the stream at once). Device groups (SDK 0.4.0): a stream is a
   job of its user (`ctx.Jobs`); `stop` and `keepAlive` look it up for the user, another user's id and an unknown one fail
-  alike ("The event stream has ended.", `MetadataMethods.StreamEnded`; Stop on the page then just shows Stopped).
+  alike ("The event stream has ended.", `MetadataMethods.StreamEnded`; Stop on the page then just shows Stopped), and so
+  does `keepAlive` for a job whose stream already ended (its lease expired): the page then shows Stopped and keeps its
+  messages, never Live without events. `start` takes one of the 16 places (`MaxStreams`) in one step before the job
+  starts and the job gives it back when it ends, so Starts at the same time never open more.
   `start` and `getRtspPort` take the camera from the user's call (outside the user's group: NOT_FOUND "1 device is no
   longer available."), the stream is opened with `caller.EventStreams`, so it ends with Error "1 device is no longer
-  available." when the camera leaves the user's view; messages and states go only to the page's session. The camera is chosen in the shared device
+  available." when the camera alone leaves the user's view, and Stopped when the user's group or its rules change (the
+  host ends the job); messages and states go only to the page's session. The camera is chosen in the shared device
   picker, not a drop-down: a drop-down of every camera cannot be used with tens of thousands of devices. Autoscroll follows the
   grid's vertical scroll bar (wheel and bar: at the end on, above off); the selection is kept through the grid's Reset of
   each batch. Detail height in `LocalApplicationData/Oadm/plugins/oadm.metadata-monitor/client.json`; copy = the shown

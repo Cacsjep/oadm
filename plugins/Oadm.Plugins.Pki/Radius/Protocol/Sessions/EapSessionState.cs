@@ -121,6 +121,7 @@ public static class EapSessionTexts
     public const string TooManySessions = "Too many open sessions";
     public const string SwitchRemoved = "The switch was removed";
     public const string NewSession = "The switch started a new session for the port";
+    public const string TooManyOnPort = "Too many sessions on the port";
     public const string RoleReversal = "The switch sent a request instead of a response";
     public const string AnswerTooLarge = "Answer too large";
 

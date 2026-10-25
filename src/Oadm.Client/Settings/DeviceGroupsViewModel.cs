@@ -158,6 +158,11 @@ public sealed partial class DeviceGroupsViewModel : ObservableObject
             ErrorText = ex.Status.Detail;
             return;
         }
+        catch (Exception ex)
+        {
+            ErrorText = ex.Message; // never a crash of the page: the card shows it
+            return;
+        }
         finally
         {
             IsOpening = false;
@@ -187,6 +192,11 @@ public sealed partial class DeviceGroupsViewModel : ObservableObject
         catch (RpcException ex)
         {
             ErrorText = ex.Status.Detail;
+            return;
+        }
+        catch (Exception ex)
+        {
+            ErrorText = ex.Message;
             return;
         }
 

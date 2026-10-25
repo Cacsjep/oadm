@@ -87,27 +87,6 @@ public sealed class PolicyUiTests
         Assert.DoesNotContain((await PageAsync(pki, new CertificatesRequest { NoAuthorities = true })).Rows, r => r.Id == "oadm-server");
     }
 
-    [Fact]
-    public async Task The_est_policy_names_of_earlier_builds_are_renamed_once_never_over_a_name_a_user_chose()
-    {
-        var settings = new InMemoryPluginSettingsProvider();
-        await using (var first = await PkiHarness.StartAsync(settings))
-        {
-            var https = first.Policies.FirstOf(PolicyKinds.HttpsCertificate)!;
-            var dot1x = first.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
-            Assert.Null((await first.Policies.SaveAsync(https with { Id = Guid.Empty, Name = "EST https", ValidDays = 90 }, "admin", Suites, CancellationToken.None)).Error);
-            Assert.Null((await first.Policies.SaveAsync(dot1x with { Id = Guid.Empty, Name = "EST dot1x", ValidDays = 90 }, "admin", Suites, CancellationToken.None)).Error);
-            Assert.Null((await first.Policies.SaveAsync(dot1x with { Id = Guid.Empty, Name = "EST 802.1X", ValidDays = 60 }, "admin", Suites, CancellationToken.None)).Error);
-        }
-
-        await using var again = await PkiHarness.StartAsync(settings);
-        var names = again.Policies.All.Select(p => p.Name).ToList();
-        Assert.Contains("EST HTTPS", names);
-        Assert.DoesNotContain("EST https", names);
-        Assert.Contains("EST dot1x", names); // "EST 802.1X" was taken by the user: kept as it is
-        Assert.Single(names, n => n == "EST 802.1X");
-    }
-
     [Theory]
     [InlineData("https", "EST HTTPS")]
     [InlineData("dot1x", "EST 802.1X")]

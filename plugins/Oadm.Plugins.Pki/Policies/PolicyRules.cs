@@ -20,7 +20,6 @@ public static class PolicyRules
     public const int MaxVlan = 4094;
 
     public const string ChooseTls = "Choose a TLS version.";
-    public const string CheckCipherSuite = "Check at least one cipher suite for the chosen TLS versions.";
     public const string EapPacketRange = "Use 500 to 1,400 bytes.";
 
     /// <summary>
@@ -55,9 +54,11 @@ public static class PolicyRules
                 return new(PolicyFields.Days, PolicyTexts.DaysRange);
             case PolicyKinds.AllowCa when string.IsNullOrWhiteSpace(policy.CaId):
                 return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
-            case PolicyKinds.Dot1xServer when (ValidateIssuing(policy) ?? ValidateServer(policy, suites)) is { } server:
+            case PolicyKinds.Dot1xServer or PolicyKinds.EstServer when string.IsNullOrWhiteSpace(policy.CertificateId):
+                return new(PolicyFields.Certificate, PolicyTexts.ChooseCertificate);
+            case PolicyKinds.Dot1xServer when ValidateServer(policy, suites) is { } server:
                 return server;
-            case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate or PolicyKinds.EstServer when ValidateIssuing(policy) is { } issuing:
+            case PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate when ValidateIssuing(policy) is { } issuing:
                 return issuing;
             case PolicyKinds.SignInCa when string.IsNullOrWhiteSpace(policy.CaId):
                 return new(PolicyFields.Ca, PolicyTexts.ChooseCa);
@@ -90,23 +91,17 @@ public static class PolicyRules
         return null;
     }
 
-    /// <summary>The 802.1X server policy's fields: TLS version, a usable cipher suite, the largest EAP packet, reauthentication.</summary>
+    /// <summary>
+    /// The 802.1X server policy's fields: TLS version, the largest EAP packet, reauthentication. The cipher suites follow the
+    /// minimum version (decision 2026-10-25: no selection, <see cref="DefaultSuites"/>).
+    /// </summary>
+#pragma warning disable IDE0060 // The suites stay in the signature for the callers; nothing is chosen any more.
     private static PolicyFieldError? ValidateServer(PkiPolicy policy, IReadOnlyList<PolicyCipherSuite> suites)
+#pragma warning restore IDE0060
     {
-        if (MinimumIndex(policy.MinimumTls) is not { } minimum)
+        if (MinimumIndex(policy.MinimumTls) is null)
         {
             return new(PolicyFields.MinimumTls, ChooseTls);
-        }
-
-        if (suites.Count > 0)
-        {
-            var known = suites.ToDictionary(s => s.Id);
-            var chosen = policy.CipherSuites ?? [];
-            var usable = chosen.Any(id => known.TryGetValue(id, out var suite) && suite.Usable && Fits(suite, minimum));
-            if (!usable || !chosen.All(known.ContainsKey))
-            {
-                return new(PolicyFields.CipherSuites, CheckCipherSuite);
-            }
         }
 
         if (policy.LargestEapPacket is not (>= MinEapPacket and <= MaxEapPacket))
@@ -132,7 +127,7 @@ public static class PolicyRules
     /// <summary>
     /// The fields of an issuing policy: a CA named ("Issued by"; whether it can issue, the store checks against PKI's CAs),
     /// the valid days, the key; IEEE 802.1X: EAPOL version, EAP identity and the RADIUS server CA (the rules of the former
-    /// IEEE 802.1X card); the 802.1X server only with an ECC key (its cipher suites follow it).
+    /// IEEE 802.1X card).
     /// </summary>
     public static PolicyFieldError? ValidateIssuing(PkiPolicy policy)
     {
@@ -159,11 +154,6 @@ public static class PolicyRules
             return new(PolicyFields.Key, PolicyTexts.ChooseKey);
         }
 
-        if (policy.Kind == PolicyKinds.Dot1xServer)
-        {
-            return policy.Key != PolicyKeys.Ecc ? new(PolicyFields.Key, PolicyTexts.Dot1xServerNeedsEcc) : null;
-        }
-
         if (policy.Kind != PolicyKinds.Dot1xCertificate)
         {
             return null;
@@ -184,12 +174,8 @@ public static class PolicyRules
             return new(PolicyFields.CustomIdentity, custom);
         }
 
-        if (PkiValidation.RadiusCa(policy.RadiusCa, policy.RadiusCaPem) is { } radius)
-        {
-            return new(PolicyFields.RadiusCa, radius);
-        }
-
-        return policy.RadiusCa == RadiusCaSource.Imported && !IsCertificatePem(policy.RadiusCaPem) ? new(PolicyFields.RadiusCa, PolicyTexts.RadiusCaUnreadable) : null;
+        // A CA of the list (decision 2026-10-25); the store checks that it is still listed.
+        return string.IsNullOrWhiteSpace(policy.RadiusCaId) ? new(PolicyFields.RadiusCa, PolicyTexts.ChooseRadiusCa) : null;
     }
 
     /// <summary>The text is one readable certificate in PEM.</summary>
@@ -227,14 +213,12 @@ public static class PolicyRules
     }
 
     /// <summary>
-    /// The default cipher suites of the 802.1X server policy for a minimum version (the one source of the default: a new
-    /// server, "Reset to default", the fallback of a policy the server cannot use): every suite listed for the minimum that
-    /// the server's certificate can use, in id order.
+    /// The cipher suites of the 802.1X server for a minimum version (decision 2026-10-25: they follow the minimum, no
+    /// selection): every suite listed for the minimum (the old CBC suites only below TLS 1.2) that the server's certificate
+    /// can use, in id order.
     /// </summary>
     public static IReadOnlyList<int> DefaultSuites(IReadOnlyList<PolicyCipherSuite> all, string? minimumTls) =>
         [.. Listed(all, minimumTls).Where(s => s.Usable).Select(s => s.Id).Order()];
-
-    private static bool Fits(PolicyCipherSuite suite, int minimum) => suite.Tls13 || (suite.Legacy ? minimum < 2 : minimum <= 2);
 
     /// <summary>
     /// The policy in one form: trimmed name, only the fields of its kind, the devices without doubles ("All devices" alone; sites: "This server" is
@@ -269,20 +253,20 @@ public static class PolicyRules
             Kind = kind,
             Devices = devices,
             Vlan = kind == PolicyKinds.Vlan ? policy.Vlan : null,
-            CaId = kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() ?? ServerDefault(kind, CertificateAuthorityInfo.OadmId) : null,
+            CaId = kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(kind) ? policy.CaId?.Trim() : null,
+            CertificateId = PolicyKinds.IsServer(kind) && !string.IsNullOrWhiteSpace(policy.CertificateId) ? policy.CertificateId.Trim() : null,
             OnlyManaged = kind == PolicyKinds.AllowCa ? policy.OnlyManaged ?? true : null,
             MinimumTls = kind == PolicyKinds.Dot1xServer ? policy.MinimumTls?.Trim() : null,
-            CipherSuites = kind == PolicyKinds.Dot1xServer ? [.. (policy.CipherSuites ?? []).Distinct().Order()] : null,
+            CipherSuites = null, // no longer read: the suites follow the minimum TLS version (decision 2026-10-25)
             LargestEapPacket = kind == PolicyKinds.Dot1xServer ? policy.LargestEapPacket : null,
             ReauthMinutes = kind == PolicyKinds.Dot1xServer ? policy.ReauthMinutes : null,
             Days = kind == PolicyKinds.ExpiryWarning ? policy.Days : null,
-            ValidDays = PolicyKinds.IsIssuing(kind)
-                ? policy.ValidDays ?? (kind == PolicyKinds.EstServer ? PolicyLimits.DefaultEstServerDays : kind == PolicyKinds.Dot1xServer ? PolicyLimits.DefaultValidDays : null)
-                : null,
-            Key = PolicyKinds.IsIssuing(kind) ? policy.Key?.Trim().ToLowerInvariant() ?? ServerDefault(kind, PolicyKeys.Ecc) : null,
+            ValidDays = PolicyKinds.IsIssuing(kind) ? policy.ValidDays : null,
+            Key = PolicyKinds.IsIssuing(kind) ? policy.Key?.Trim().ToLowerInvariant() : null,
             EapolVersion = dot1x ? policy.EapolVersion : null,
             Identity = dot1x ? policy.Identity?.Trim() : null,
             CustomIdentity = dot1x ? policy.Identity?.Trim() == Dot1xIdentity.Custom ? policy.CustomIdentity?.Trim() ?? string.Empty : string.Empty : null,
+            RadiusCaId = dot1x && !string.IsNullOrWhiteSpace(policy.RadiusCaId) ? policy.RadiusCaId.Trim() : null,
             RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
             RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
             AlsoRevoke = kind == PolicyKinds.Block ? policy.AlsoRevoke ?? false : null,
@@ -293,10 +277,8 @@ public static class PolicyRules
                 : null,
             SignInFor = kind == PolicyKinds.SignInCa ? policy.SignInFor?.Trim() : null,
             SavedBy = policy.SavedBy,
+            Revision = policy.Revision,
         };
-
-        // A server policy without its certificate's values (stored before 2026-10-25): the kind's defaults, as the servers made them.
-        static string? ServerDefault(string kind, string value) => kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer ? value : null;
 
         static IEnumerable<string> Serials(IReadOnlyList<string>? serials) =>
             (serials ?? []).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal);

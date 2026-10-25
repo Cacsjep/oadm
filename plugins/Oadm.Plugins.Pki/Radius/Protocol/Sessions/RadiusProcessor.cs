@@ -43,6 +43,11 @@ public enum RadiusDropReason
     NotEap,
     /// <summary>A Status-Server while the server cannot authenticate (no server certificate): silently discarded (RFC 5997 4.2).</summary>
     NotReady,
+    /// <summary>
+    /// A new session while the switch or the server holds its most open sessions: silently discarded (the switch tries again),
+    /// never an Access-Reject that a flood could make the switch apply to a real device.
+    /// </summary>
+    TooManySessions,
 }
 
 /// <summary>The result of one datagram.</summary>
@@ -73,6 +78,7 @@ public sealed class RadiusProcessor
     private readonly Dictionary<string, EapTlsSession> _sessions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, EapTlsSession> _byPort = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _perClient = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LinkedList<EapTlsSession>> _perSwitchPort = new(StringComparer.Ordinal); // oldest first
     private readonly Lock _table = new();
     private volatile RadiusProtocolOptions _options;
 
@@ -379,7 +385,7 @@ public sealed class RadiusProcessor
         var created = Create(request, client, options);
         if (created is null)
         {
-            return Reject(request, client, eap, null, EapSessionTexts.TooManySessions);
+            return RadiusResult.Dropped(RadiusDropReason.TooManySessions, EapSessionTexts.TooManySessions);
         }
 
         EapStep first;
@@ -467,27 +473,34 @@ public sealed class RadiusProcessor
     private EapTlsSession? Create(AccessRequest request, RadiusClient client, RadiusProtocolOptions options)
     {
         EapTlsSession? previous = null;
+        EapTlsSession? oldestOnPort = null;
         var portKey = EapTlsSession.PortKeyOf(client.Key, request);
+        var switchPort = EapTlsSession.SwitchPortOf(client.Key, request);
         lock (_table)
         {
             if (portKey is not null && _byPort.TryGetValue(portKey, out var existing))
             {
                 previous = existing;
             }
+
+            // One port holds at most a few sessions (other MAC addresses on it, spoofed ones too): the oldest gives way, so one
+            // port never uses up its switch's sessions.
+            if (switchPort is not null && _perSwitchPort.TryGetValue(switchPort, out var onPort) && onPort.Count >= options.MaxSessionsPerPort
+                && onPort.First!.Value is var oldest && !ReferenceEquals(oldest, previous))
+            {
+                oldestOnPort = oldest;
+            }
         }
 
         if (previous is not null)
         {
             // The switch started a new session for the port: the old one is abandoned.
-            lock (previous)
-            {
-                if (!previous.IsEnded)
-                {
-                    previous.End(EapSessionState.Abandoned, EapSessionTexts.NewSession);
-                }
-            }
+            End(previous, EapSessionTexts.NewSession);
+        }
 
-            Remove(previous);
+        if (oldestOnPort is not null)
+        {
+            End(oldestOnPort, EapSessionTexts.TooManyOnPort);
         }
 
         lock (_table)
@@ -507,8 +520,53 @@ public sealed class RadiusProcessor
                 _byPort[key] = session;
             }
 
+            if (session.SwitchPort is { } port)
+            {
+                if (!_perSwitchPort.TryGetValue(port, out var onPort))
+                {
+                    _perSwitchPort[port] = onPort = new LinkedList<EapTlsSession>();
+                }
+
+                onPort.AddLast(session);
+            }
+
             return session;
         }
+    }
+
+    /// <summary>The bytes the open sessions hold for messages being reassembled (tests).</summary>
+    internal long IncomingBytes()
+    {
+        List<EapTlsSession> sessions;
+        lock (_table)
+        {
+            sessions = [.. _sessions.Values];
+        }
+
+        long total = 0;
+        foreach (var session in sessions)
+        {
+            lock (session)
+            {
+                total += session.IncomingCapacity;
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>Ends a session another one takes the place of (abandoned) and removes it.</summary>
+    private void End(EapTlsSession session, string reason)
+    {
+        lock (session)
+        {
+            if (!session.IsEnded)
+            {
+                session.End(EapSessionState.Abandoned, reason);
+            }
+        }
+
+        Remove(session);
     }
 
     private void Remove(EapTlsSession session)
@@ -523,6 +581,15 @@ public sealed class RadiusProcessor
             if (session.PortKey is { } key && _byPort.TryGetValue(key, out var current) && ReferenceEquals(current, session))
             {
                 _byPort.Remove(key);
+            }
+
+            if (session.SwitchPort is { } port && _perSwitchPort.TryGetValue(port, out var onPort))
+            {
+                onPort.Remove(session); // at most MaxSessionsPerPort entries
+                if (onPort.Count == 0)
+                {
+                    _perSwitchPort.Remove(port);
+                }
             }
 
             var count = _perClient.GetValueOrDefault(session.Client) - 1;

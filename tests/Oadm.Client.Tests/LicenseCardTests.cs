@@ -13,7 +13,7 @@ using Oadm.Sdk.Licensing;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>The Settings page's License card: the server ID, the OADM PRO state, import, remove and the oadm.app links.</summary>
+/// <summary>The Settings page's License card: the server ID, the OADM PRO state, the trial, import, remove and the oadm.app link.</summary>
 public sealed class LicenseCardTests
 {
     private static string Sign(bool trial = false, string server = FakeOadmApi.FakeServerId) =>
@@ -58,10 +58,55 @@ public sealed class LicenseCardTests
         Assert.False(license.HasLicense);
         await dialogs.Received(2).ConfirmAsync("Remove license", Arg.Any<string>(), "Remove license");
 
-        await license.StartTrialCommand.ExecuteAsync(null);
         await license.ActivateCommand.ExecuteAsync(null);
-        await launcher.Received(1).OpenAsync(new Uri("https://oadm.app/activate/?server=" + FakeOadmApi.FakeServerId + "&trial=1"));
         await launcher.Received(1).OpenAsync(new Uri("https://oadm.app/activate/?server=" + FakeOadmApi.FakeServerId));
+        Assert.Single(launcher.ReceivedCalls()); // the trial never goes online
+    }
+
+    [Fact]
+    public async Task Start_trial_runs_once_in_the_app_and_others_are_told_who_can()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        var operatorCard = new LicenseViewModel(api, Substitute.For<IDialogService>(), session: Session(UserRole.Operator));
+        await operatorCard.LoadAsync();
+        Assert.Equal((true, false, true), (operatorCard.ShowStartTrial, operatorCard.ShowTrialButton, operatorCard.ShowTrialAdminLine));
+        Assert.False(operatorCard.StartTrialCommand.CanExecute(null));
+
+        var license = new LicenseViewModel(api, Substitute.For<IDialogService>(), session: Session(UserRole.Admin));
+        await license.LoadAsync();
+        Assert.Equal((true, true, false), (license.ShowStartTrial, license.ShowTrialButton, license.ShowTrialAdminLine));
+        var changed = 0;
+        license.LicenseChanged += (_, _) => changed++;
+
+        await license.StartTrialCommand.ExecuteAsync(null);
+
+        var ends = LicenseFile.Day(DateOnly.Parse(license.State.Expires, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("Trial, until " + ends, license.StatusText);
+        Assert.Equal((true, false, false, true), (license.IsTrial, license.ShowStartTrial, license.CanRemove, license.ShowActivate));
+        Assert.Equal(1, changed); // the plugin list and the task catalog follow
+
+        // A plugin page (the 802.1X server's off state) asks through the same card: refused, the card keeps the trial.
+        var refused = await Assert.ThrowsAsync<Grpc.Core.RpcException>(() => license.StartTrialFromPageAsync(CancellationToken.None));
+        Assert.Equal(ProLicenseTexts.TrialUsed, refused.Status.Detail);
+        Assert.True(license.IsTrial);
+        await operatorCard.LoadAsync();
+        Assert.False(operatorCard.ShowTrialAdminLine);
+    }
+
+    [Fact]
+    public async Task A_page_starts_the_trial_through_the_card()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        var license = new LicenseViewModel(api, Substitute.For<IDialogService>(), session: Session(UserRole.Admin));
+        var changed = 0;
+        license.LicenseChanged += (_, _) => changed++;
+
+        var info = await license.StartTrialFromPageAsync(CancellationToken.None);
+
+        Assert.Equal((Oadm.Sdk.Licensing.ProLicenseStatus.Active, true, false), (info.Status, info.IsTrial, info.TrialAvailable));
+        Assert.Equal(license.State.Expires, info.Expires is { } day ? LicenseFile.Day(day) : null);
+        Assert.True(license.IsTrial);
+        Assert.Equal(1, changed);
     }
 
     [Fact]
@@ -114,7 +159,20 @@ public sealed class LicenseCardTests
             window.Show();
             Pump();
             Assert.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<LicenseCardView>(), c => c.IsEffectivelyVisible);
-            Save(window, outDir, "client-page-settings-license-none.png");
+            foreach (var card in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Oadm.Client.Controls.CollapsibleCard>().Where(c => c.Title == "License"))
+            {
+                card.IsExpanded = true; // the card opens like a user would
+            }
+
+            Pump();
+            Save(window, outDir, "client-page-settings-license-none.png"); // with Start 30-day trial
+            Assert.Contains(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<TextBlock>(),
+                t => t.IsEffectivelyVisible && t.Text == ProLicenseTexts.TrialOffer);
+
+            await license.StartTrialCommand.ExecuteAsync(null);
+            Pump();
+            Assert.True(license.IsTrial);
+            Save(window, outDir, "client-page-settings-license-trial-started.png");
 
             await license.ImportTextAsync(Sign());
             Pump();

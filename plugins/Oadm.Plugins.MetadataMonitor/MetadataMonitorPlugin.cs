@@ -24,6 +24,9 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
     private readonly MetadataMonitorOptions _options;
     private readonly ConcurrentDictionary<string, MonitorSession> _sessions = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IPluginJob> _jobs = new(StringComparer.Ordinal);
+
+    /// <summary>Streams whose job was started and has not ended (the limit is checked and taken in one step).</summary>
+    private int _streamSlots;
     private ICorePluginContext? _ctx;
     private CancellationTokenSource? _running;
     private Task _leaseLoop = Task.CompletedTask;
@@ -117,11 +120,14 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
                 stopped.Cancel();
                 return null;
             case MetadataMethods.KeepAlive:
-                if (_sessions.TryGetValue(FindJob(caller, MetadataJson.Deserialize<StreamRequest>(payloadJson).StreamId).Id, out var session))
+                // A job the host still knows whose stream ended (its lease expired) answers like an unknown one: the page
+                // shows it as stopped, never as live without events.
+                if (!_sessions.TryGetValue(FindJob(caller, MetadataJson.Deserialize<StreamRequest>(payloadJson).StreamId).Id, out var session))
                 {
-                    session.KeepAlive();
+                    throw new KeyNotFoundException(MetadataMethods.StreamEnded);
                 }
 
+                session.KeepAlive();
                 return null;
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
@@ -177,8 +183,11 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         }
 
         // The stream uses the RTSP port set with "OADM > RTSP port" (Optics Control); Start never changes it.
-        if (_sessions.Count >= _options.MaxStreams)
+        // The slot is taken before the job starts (two Starts at once never open one stream too many) and given back when
+        // the job ends.
+        if (Interlocked.Increment(ref _streamSlots) > _options.MaxStreams)
         {
+            Interlocked.Decrement(ref _streamSlots);
             return new StartReply(null, $"Too many event streams are open ({_options.MaxStreams}); stop one first");
         }
 
@@ -186,37 +195,28 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         // keep-alives, when the plugin stops and when the user's devices, role or session change (the host cancels it).
         var label = string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} ({device.Address})";
         var opened = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var job = jobs.Start(caller, "stream", async (job, token) =>
+        IPluginJob job;
+        try
         {
-            var session = new MonitorSession(job.Id, deviceId, label, job.Owner.EventStreams!, events, PluginEventAudience.Of(job.Owner), _options, Logger);
-            _sessions[session.Id] = session;
-            _jobs[job.Id] = job;
-            try
+            job = jobs.Start(caller, "stream", async (job, token) =>
             {
-                string? error;
                 try
                 {
-                    error = await session.StartAsync(token).ConfigureAwait(false);
+                    await RunStreamAsync(job, deviceId, label, events, opened, token).ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                finally
                 {
-                    opened.TrySetException(ex);
-                    return;
+                    opened.TrySetCanceled(CancellationToken.None);
+                    Interlocked.Decrement(ref _streamSlots);
                 }
+            });
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _streamSlots); // no job: no stream
+            throw;
+        }
 
-                opened.TrySetResult(error);
-                if (error is null)
-                {
-                    await Task.Delay(Timeout.InfiniteTimeSpan, _options.Time, token).ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                opened.TrySetCanceled(CancellationToken.None);
-                _jobs.TryRemove(job.Id, out _);
-                await StopStreamAsync(job.Id).ConfigureAwait(false);
-            }
-        });
         string? failed;
         try
         {
@@ -233,6 +233,38 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
         }
 
         return failed is null ? new StartReply(job.Id, null) : new StartReply(null, failed);
+    }
+
+    /// <summary>The work of a stream job: opens the stream, answers Start through <paramref name="opened"/>, runs until cancelled.</summary>
+    private async Task RunStreamAsync(IPluginJob job, Guid deviceId, string label, IPluginEvents events, TaskCompletionSource<string?> opened, CancellationToken token)
+    {
+        var session = new MonitorSession(job.Id, deviceId, label, job.Owner.EventStreams!, events, PluginEventAudience.Of(job.Owner), _options, Logger);
+        _sessions[session.Id] = session;
+        _jobs[job.Id] = job;
+        try
+        {
+            string? error;
+            try
+            {
+                error = await session.StartAsync(token).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                opened.TrySetException(ex);
+                return;
+            }
+
+            opened.TrySetResult(error);
+            if (error is null)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, _options.Time, token).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _jobs.TryRemove(job.Id, out _);
+            await StopStreamAsync(job.Id).ConfigureAwait(false);
+        }
     }
 
     private async Task StopStreamAsync(string? streamId)

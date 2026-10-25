@@ -84,7 +84,7 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
 
         service.Viewers.Seen(caller);
         var view = Serving.DhcpGroupView.From(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
-        return DhcpJson.Serialize(service.GetState(view));
+        return DhcpJson.Serialize(service.GetState(view) with { Renew = service.Viewers.Renews });
     }
 
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)

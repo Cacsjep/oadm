@@ -141,6 +141,12 @@ public sealed class DevicePickerWindow : Window
             {
                 accepted = await Accept().ConfigureAwait(true);
             }
+            catch (Exception ex)
+            {
+                // An async click handler must never throw (it would end the client): the error shows below the list.
+                ViewModel.ErrorText = ServerErrors.Message(ex);
+                accepted = false;
+            }
             finally
             {
                 IsAccepting = false;

@@ -194,6 +194,22 @@ public sealed class RolesMatrixTests
     }
 
     [Fact]
+    public async Task Role_menus_are_the_shared_row_menu_with_Delete_red_and_last()
+    {
+        var (vm, _, _) = Create();
+        await vm.LoadAsync();
+
+        Assert.Equal(["Edit", "Copy"], vm.MenuOf(Column(vm, "Administrator")).Select(a => a.Text));
+        Assert.DoesNotContain(vm.MenuOf(Column(vm, "Operator")), a => a.IsDanger);
+
+        var custom = vm.MenuOf(Column(vm, "Contractor"));
+        Assert.True(custom[^2].IsSeparator);
+        Assert.Equal("Delete", custom[^1].Text);
+        Assert.True(custom[^1].IsDanger);
+        Assert.Single(custom, a => a.IsDanger);
+    }
+
+    [Fact]
     public async Task Search_and_collapsed_groups_filter_the_rows()
     {
         var (vm, _, _) = Create();

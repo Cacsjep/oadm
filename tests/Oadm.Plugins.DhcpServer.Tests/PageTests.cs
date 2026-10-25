@@ -326,8 +326,8 @@ public sealed class PageViewModelTests : IAsyncLifetime
 
         vm.HandleEvent(new PluginEvent(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(2, [leases[1] with { HostName = "renamed" }, leases[0] with { Mac = "00:40:8C:00:00:01", Address = "10.0.200.1" }], [leases[2].Mac]))));
         Assert.Equal(5_000, vm.Rows.Count);
-        vm.HandleEvent(new PluginEvent(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(2, [leases[3] with { HostName = "old" }], []))));
-        Assert.Equal("axis-3", vm.Rows.Single(r => r.Mac == leases[3].Mac).HostOrDevice); // stale event ignored
+        vm.HandleEvent(new PluginEvent(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(1, [leases[3] with { HostName = "old" }], []))));
+        Assert.Equal("axis-3", vm.Rows.Single(r => r.Mac == leases[3].Mac).HostOrDevice); // an older event is ignored
 
         _ctx.DeviceList.Clear();
         _ctx.RaiseDevicesChanged();

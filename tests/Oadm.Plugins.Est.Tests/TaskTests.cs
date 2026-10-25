@@ -214,12 +214,12 @@ public sealed class TaskTests : IAsyncLifetime
 
         // No enrollment: nothing allowed, nothing written.
         var writes = _camera.Writes;
-        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.None });
+        await TestPolicies.AddAsync(_policies, _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single() with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.None }); // as stored now
         var none = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
         Assert.Equal(EstTaskIds.NoAllowedProfile, none.Message);
 
         // A camera no Enrollment policy holds is not set up.
-        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.All, Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = ["ACCC8E000001"] } });
+        await TestPolicies.AddAsync(_policies, _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single() with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.All, Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = ["ACCC8E000001"] } });
         var held = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
         Assert.Equal(EstTaskIds.NoEnrollmentPolicy, held.Message);
         Assert.Equal(writes, _camera.Writes);
@@ -278,6 +278,7 @@ public sealed class TaskTests : IAsyncLifetime
         await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var device = _device with { Address = "192.168.5.20", SiteId = site.Id };
         _camera.Server = est;
+        _ca.NameAlso("192.168.5.2"); // the node's address is in the EST server's certificate
         var ctx = new FakeTaskContext(_camera) { Network = new FakeDeviceNetwork(site.Id) { LocalAddress = IPAddress.Parse("192.168.5.2") } };
 
         Assert.Equal(Sdk.Sites.SiteSupport.Full, new EstSetupTask(() => est).SiteSupport);
@@ -548,10 +549,128 @@ public sealed class TaskTests : IAsyncLifetime
         Assert.Equal(("oadm_https", "ENROLLED", "10.0.0.17:9454/.well-known/est/https"), (profile.Id, profile.Status, profile.Server));
         Assert.Equal(["WEBSERVER"], profile.Services);
         Assert.Equal(0, _camera.Writes);
+        Assert.Equal((null, null), (list.RadiusServerCa, list.NetworkAccessCa)); // a PKI without the list of CAs
+
+        // The CAs of the dot1x profile's IEEE 802.1X policy, for the dialog's hint (Set up replaces the RADIUS server CA).
+        _ca.ListDefaults();
+        var named = EstJson.Deserialize<CameraProfileList>(await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None));
+        Assert.Equal(("OADM Test CA", "OADM Test CA"), (named.RadiusServerCa, named.NetworkAccessCa));
+        Assert.Equal("These cameras will check the RADIUS server with OADM Test CA. Only when your RADIUS server trusts OADM Test CA. Otherwise these cameras drop off the network.",
+            Client.EstSetupViewModel.Dot1xHintFor(named.RadiusServerCa, named.NetworkAccessCa));
+        Assert.Equal(Client.EstSetupViewModel.Dot1xHint, Client.EstSetupViewModel.Dot1xHintFor(null, null));
 
         _camera.HasEstApi = false;
         Assert.False(EstJson.Deserialize<CameraProfileList>(await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None)).Supported);
         await Assert.ThrowsAsync<ArgumentException>(() => new EstSetupTask(() => _est).QueryAsync(query, _device, "write", null, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Set_up_gives_the_camera_the_issuer_of_the_est_servers_certificate_not_simply_the_oadm_ca()
+    {
+        // After New OADM CA the EST server policy may still pick a certificate of the previous (or an imported) CA.
+        using var previous = TestPki.Root("Previous OADM CA");
+        _ca.ServerIssuer = [previous.RawData];
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+
+        var alias = Assert.Single(_camera.Profiles["oadm_https"]["caCertificates"]!.AsArray())!.GetValue<string>();
+        using var trusted = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(_camera.CaCertificates[alias]);
+        Assert.Equal(previous.RawData, trusted.RawData);
+        Assert.Single(_camera.CaCertificates); // the OADM CA is not what the camera checks the server with
+    }
+
+    [Fact]
+    public async Task Set_up_refuses_before_any_write_when_the_est_server_cannot_show_a_usable_certificate()
+    {
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var task = new EstSetupTask(() => _est);
+
+        _ca.ServerIssuer = []; // PKI does not know its issuer
+        var unknown = await Assert.ThrowsAsync<InvalidOperationException>(() => task.ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
+        Assert.Equal(EstTaskIds.ServerIssuerUnknown, unknown.Message);
+
+        _ca.ServerIssuer = null;
+        _ca.Revoke(_ca.ServerSerial());
+        var revoked = await Assert.ThrowsAsync<InvalidOperationException>(() => task.ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
+        Assert.Equal("The EST server cannot use its certificate: it is revoked. Nothing was changed.", revoked.Message);
+        Assert.Equal(0, _camera.Writes);
+        Assert.Empty(_camera.Profiles);
+    }
+
+    [Fact]
+    public async Task Set_up_refuses_an_address_that_is_not_in_the_est_servers_certificate()
+    {
+        await _est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
+        var ctx = new FakeTaskContext(_camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.99") } };
+
+        var error = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+
+        Assert.Equal(EstTaskIds.NotInCertificate("10.0.0.99"), error.Message);
+        Assert.Equal(0, _camera.Writes);
+    }
+
+    [Fact]
+    public async Task Set_up_sets_the_radius_server_ca_before_the_https_profile_and_a_second_run_finds_it_set()
+    {
+        _camera.Dot1xOn("old RADIUS CA");
+        var task = new EstSetupTask(() => _est);
+        var payload = EstJson.Serialize(new SetupPayload(ReplaceDot1x: true));
+        var ctx = Context();
+
+        await StepRun.RunAsync(ctx.Steps, () => task.ExecuteAsync(ctx, _device, payload, CancellationToken.None));
+
+        var written = Assert.Single(_camera.Dot1xCaWrites);
+        var alias = Assert.Single(written);
+        Assert.Equal(_ca.Chain[0], System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(_camera.CaCertificates[alias]).RawData);
+        var lines = StepRun.Lines(ctx.Steps).ToList();
+        Assert.Contains(EstTaskIds.RadiusCaStep + ": Done", lines);
+        Assert.True(lines.FindIndex(l => l.StartsWith(EstTaskIds.RadiusCaStep, StringComparison.Ordinal)) < lines.FindIndex(l => l.StartsWith(EstTaskIds.AddStep("https"), StringComparison.Ordinal)),
+            "the RADIUS server CA before the HTTPS profile restarts the web server");
+
+        var again = Context();
+        await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, payload, CancellationToken.None));
+        Assert.StartsWith("Already set: ", StepRun.Detail(again.Steps, EstTaskIds.RadiusCaStep), StringComparison.Ordinal);
+        Assert.Single(_camera.Dot1xCaWrites);
+    }
+
+    [Fact]
+    public async Task The_radius_server_ca_step_is_skipped_without_the_network_settings_api_or_with_8021x_off()
+    {
+        _camera.Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes"; // the parameter says on, the network settings API is not listed
+        var payload = EstJson.Serialize(new SetupPayload(ReplaceDot1x: true));
+        var ctx = Context();
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, payload, CancellationToken.None));
+        Assert.Equal("The camera has no network settings API", StepRun.Detail(ctx.Steps, EstTaskIds.RadiusCaStep));
+
+        _camera.Dot1xOn();
+        _camera.NetworkInfo!["devices"]![0]!["wired"]!["8021X"]!["enabled"] = false;
+        var off = Context();
+        await StepRun.RunAsync(off.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(off, _device, payload, CancellationToken.None));
+        Assert.Equal("IEEE 802.1X with certificates is off on the camera", StepRun.Detail(off.Steps, EstTaskIds.RadiusCaStep));
+        Assert.Empty(_camera.Dot1xCaWrites);
+    }
+
+    [Fact]
+    public async Task A_radius_server_ca_that_cannot_be_used_refuses_only_with_8021x_on()
+    {
+        const string Refusal = "The policy IEEE 802.1X names no CA of the RADIUS server that is in the CA list. Choose one in the policy. Nothing was changed.";
+        _ca.RadiusCaAnswer = _ => throw new InvalidOperationException(Refusal);
+
+        // IEEE 802.1X off: nothing of the RADIUS server CA is written, so it is not needed.
+        var ctx = Context();
+        await StepRun.RunAsync(ctx.Steps, () => new EstSetupTask(() => _est).ExecuteAsync(ctx, _device, "{}", CancellationToken.None));
+        Assert.Equal(["oadm_dot1x", "oadm_https"], _camera.Profiles.Keys.Order(StringComparer.Ordinal));
+
+        // On (the user replaces the network access certificate): refused before the first write.
+        var camera = new EstCamera { Server = _est, Device = _device };
+        camera.Dot1xOn();
+        var on = new FakeTaskContext(camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new EstSetupTask(() => _est).ExecuteAsync(on, _device, EstJson.Serialize(new SetupPayload(ReplaceDot1x: true)), CancellationToken.None));
+        Assert.Equal(Refusal, error.Message);
+        Assert.Empty(camera.Profiles);
+        Assert.Empty(camera.CaCertificates);
     }
 
     private FakeTaskContext Context() => new(_camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
@@ -628,6 +747,64 @@ public sealed class TaskTests : IAsyncLifetime
 
         public new int Writes { get; private set; }
 
+        /// <summary>The answer of <c>getNetworkInfo</c> (network settings API, listed in <see cref="FakeCamera.Apis"/>); null: no answer.</summary>
+        public JsonObject? NetworkInfo { get; set; }
+
+        /// <summary>The CA lists <c>setWired8021XConfiguration</c> wrote, in order.</summary>
+        public List<string[]> Dot1xCaWrites { get; } = [];
+
+        /// <summary>A camera with IEEE 802.1X on with certificates (client certificate oadm_dot1x) checking the RADIUS server with <paramref name="certsCa"/>.</summary>
+        public void Dot1xOn(params string[] certsCa)
+        {
+            Parameters["Network.Interface.I0.dot1x.Enabled"] = "yes";
+            Apis = [.. Apis, new DeviceApi("network-settings", "1.0")];
+            NetworkInfo = new JsonObject
+            {
+                ["devices"] = new JsonArray(new JsonObject
+                {
+                    ["name"] = "eth0",
+                    ["wired"] = new JsonObject
+                    {
+                        ["8021X"] = new JsonObject
+                        {
+                            ["enabled"] = true,
+                            ["mode"] = "WPA-Enterprise-EAPTLS",
+                            ["configurations"] = new JsonArray(new JsonObject
+                            {
+                                ["mode"] = "WPA-Enterprise-EAPTLS",
+                                ["params"] = new JsonObject
+                                {
+                                    ["identity"] = "10.0.0.48",
+                                    ["eapolVersion"] = "EAPoLv3",
+                                    ["certClient"] = "oadm_dot1x",
+                                    ["certsCA"] = new JsonArray([.. certsCa.Select(c => (JsonNode)c)]),
+                                },
+                            }),
+                        },
+                    },
+                }),
+            };
+        }
+
+        private HttpResponseMessage NetworkSettings(string body)
+        {
+            var request = JsonNode.Parse(body)!;
+            if (NetworkInfo is null)
+            {
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            }
+
+            if (request["method"]!.GetValue<string>() == "setWired8021XConfiguration")
+            {
+                var cas = request["params"]!["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray();
+                Dot1xCaWrites.Add(cas);
+                NetworkInfo["devices"]![0]!["wired"]!["8021X"]!["configurations"]![0]!["params"]!["certsCA"] = new JsonArray([.. cas.Select(c => (JsonNode)c)]);
+                return Json("""{"apiVersion":"1.0","method":"setWired8021XConfiguration","data":{}}""");
+            }
+
+            return Json(new JsonObject { ["apiVersion"] = "1.0", ["data"] = NetworkInfo.DeepClone() }.ToJsonString());
+        }
+
         private HttpResponseMessage? Answer(HttpRequestMessage request, string? body)
         {
             var path = request.RequestUri!.OriginalString;
@@ -670,6 +847,7 @@ public sealed class TaskTests : IAsyncLifetime
                     DeleteCertificate(Uri.UnescapeDataString(path["config/rest/cert/v1/certificates/".Length..])),
                 ("GET", "config/rest/cert/v1/ca_certificates") => Data(new JsonArray([.. CaCertificates.Select(c => (JsonNode)new JsonObject { ["alias"] = c.Key, ["certificate"] = c.Value })])),
                 ("POST", "config/rest/cert/v1/ca_certificates") => AddCa(body!),
+                ("POST", "axis-cgi/network_settings.cgi") => NetworkSettings(body!),
                 _ => new HttpResponseMessage(HttpStatusCode.NotFound),
             };
         }

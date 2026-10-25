@@ -48,9 +48,10 @@ public static class ServerSwitchMethods
 
 /// <summary>
 /// A server's switch as its page shows it: the stored choice (<paramref name="On"/>), whether it runs, whether OADM PRO is
-/// active, and the status while it does not run ("Off", <see cref="ProLicenseTexts.NeedsPro"/>, "Could not start: ...").
+/// active, the status while it does not run ("Off", <see cref="ProLicenseTexts.NeedsPro"/>, "Could not start: ...") and
+/// whether the 30-day trial can still be started (<see cref="ProLicenseInfo.TrialAvailable"/>: Start 30-day trial).
 /// </summary>
-public sealed record ServerSwitchState(bool On, bool Running, bool ProActive, string StatusText);
+public sealed record ServerSwitchState(bool On, bool Running, bool ProActive, string StatusText, bool TrialAvailable = false);
 
 /// <summary>
 /// Turn on / Turn off of a server inside PKI (docs/spec/pki.md "One plugin"): the server runs (and opens its port) only
@@ -117,7 +118,7 @@ public sealed class ServerSwitch<TService> : IAsyncDisposable
                 : !_on ? ServerSwitchMethods.OffText
                 : _problem is { } problem ? ServerSwitchMethods.StartFailed(problem)
                 : ServerSwitchMethods.OffText;
-            return new ServerSwitchState(_on, running, ProActive, text);
+            return new ServerSwitchState(_on, running, ProActive, text, _pro?.Current.TrialAvailable == true);
         }
     }
 

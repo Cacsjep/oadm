@@ -82,6 +82,45 @@ public sealed class HostDeviceScopesTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AnOlderChangeRaisedAfterANewerOneNeverPutsADeviceBackIntoItsGroup()
+    {
+        var b = Sites.Add("Building B");
+        var device = await AddDeviceAsync("ACCC8E000001", siteId: b);
+        var key = (await SaveGroupAsync("B", sites: [b])).Group.Id.ToString();
+        using var outOfOrder = new OutOfOrderFeed(Views.Feed);
+        using var scopes = new HostDeviceScopes(Groups, Views, new FakeTimeProvider());
+        await scopes.LoadAsync(Ct);
+        Assert.True(scopes.Contains(key, device.Id));
+
+        // A site loop publishes its copy at site B; the device moves out meanwhile and that change reaches the handlers first.
+        var moved = device.Clone();
+        moved.SiteId = null;
+        await outOfOrder.PublishAsync(
+            new DeviceChange(DeviceChangeKind.Updated, device.Id, device.Clone()),
+            new DeviceChange(DeviceChangeKind.Updated, device.Id, moved));
+
+        Assert.False(scopes.Contains(key, device.Id));
+
+        // Removed, then an older copy: the device stays out.
+        await outOfOrder.PublishAsync(
+            new DeviceChange(DeviceChangeKind.Updated, device.Id, device.Clone()),
+            new DeviceChange(DeviceChangeKind.Removed, device.Id, null));
+        Assert.False(scopes.Contains(key, device.Id));
+    }
+
+    [Fact]
+    public async Task OverlappingLoadsReadTheDevicesOnce()
+    {
+        await AddDeviceAsync("ACCC8E000001");
+        using var scopes = new HostDeviceScopes(Groups, Views, new FakeTimeProvider());
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => scopes.LoadAsync(Ct))));
+        await scopes.LoadAsync(Ct);
+
+        // Two reads that overlap could bring back a device removed between them: every caller shares the one read.
+        Assert.Equal(1, scopes.RowReads);
+    }
+
+    [Fact]
     public async Task ChangedIsRaisedWithoutTheCallerOfThePublishingCall()
     {
         var b = Sites.Add("Building B");

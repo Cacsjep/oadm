@@ -10,13 +10,13 @@ Block (with "Also revoke their IEEE 802.1X certificates", the former Revoke); `d
 policy cleanup".
 
 A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
-source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the page's Server card
+source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the tab's off state
 stores the choice and starts it (UDP 1812 opens), **Turn off** (left of Save, confirmed) stops it; it runs only while it is
-on and OADM PRO is active (without it the page shows only the Server card with "Needs an OADM PRO license or trial." and a
-disabled Turn on; a license that ends stops it, a new one starts it with the kept choice). OADM answers the switches
+on and OADM PRO is active (without it the off state reads "The 802.1X server needs OADM PRO" with "Needs an OADM PRO
+license or trial." and no Turn on; a license that ends stops it, a new one starts it with the kept choice). OADM answers the switches
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
-802.1X). It completes the certificate suite: PKI issues the camera's client certificate and trusts the OADM CA (task
-"IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
+802.1X). It completes the certificate suite: PKI issues the camera's client certificate and installs the RADIUS server CA of
+its IEEE 802.1X certificate policy (task "Enable IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
 the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one covers).
 
 ## Decisions (2026-10-23)
@@ -34,34 +34,39 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 
 ## What the user sees
 
-- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, the Server card's Turn on (disabled
-  without an active license, the status says "Needs an OADM PRO license or trial."); while it does not run the page shows
-  only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
-  their own rule); a 4.1 server whose plugin was on keeps it on.
-- **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
-  their ports." **One page, no tabs**: **Server** | **Switches** side by side from 1,000 px of page width (stacked below),
-  then **Sessions** and **Log** full width with a splitter between them (like the tasks pane of the main window). The rules
+- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, Turn on in the tab's off state
+  (`ui:OffState`; no Turn on without an active license, the off state says "Needs an OADM PRO license or trial." and,
+  while the trial was never used, administrators get **Start 30-day trial**, `docs/spec/licensing.md` "Trial"); while it
+  does not run the tab shows only the off state (Turn off too when it is on but does not run) and reads nothing else. When the license ends, the server stops answering (switches fall back to
+  their own rule); a development build before 4.5 whose plugin was on keeps it on (the 802.1X server never shipped before 4.5).
+- **Tab "802.1X server" of the PKI page** (since stage 7 of `docs/spec/pki.md`; no rail entry of its own): **Server**
+  above **Switches** in a left column (680 px), **Sessions** right, as high as the page (one column on a narrow page;
+  `RadiusView.Arrange`). The off state's text: "Switch ports let only cameras with a trusted certificate into the
+  network." The rules
   are PKI's policies (`docs/spec/pki.md` "Policies"); the page has no Trusted CAs, Policies or Advanced (decision
   2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
-    "6 policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies; left in the Save row, opens PKI's Policies tab),
-    the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "The
-    802.1X server has no certificate: Corp CA cannot issue." (docs/spec/pki.md "Policies in cards"), "Port 1812 is used by
-    another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
-    certificate's end.
+    "N policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies, 3 on a new server; left in the Save row,
+    opens PKI's Policies tab), the status chip ("Running on port 1812", "The PKI has no certificate authority.", "The
+    802.1X server has no certificate. Choose one in its policy.", "The 802.1X server cannot use its certificate: it has
+    ended." (docs/spec/pki.md "Server certificates"), "Port 1812 is used by another program", "Interface Ethernet 2 is not
+    available") and Turn off directly left of **Save**.
   - **Switches** (card): name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site
     offline", amber for "No requests yet", the state as its tooltip), address, site, last request (no state column,
     decision 2026-10-25), each
     column as wide as its longest text; Edit and Delete as row icon buttons; the dialog with the shared secret and Generate.
-  - **Sessions** (full width, live) and **Log** (full width, without **Add switch**, decision 2026-10-24): every column as
+  - **Sessions** (one table, live: the sign-ins in progress on top, then the finished ones of the log; View certificate and
+    Delete all in its header, pages of 500 with Previous / Next): every column as
     wide as its content (the full "2026-10-24 07:21:58", the port, MAC address, EAP identity, device, IP address, the VLAN
     with its policy "VLAN 30 by Building B"), the state or result flexes, Duration right-aligned; on a narrow page the grids
     scroll sideways instead of cutting columns.
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
-- **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
-  EAP identity it sets on the camera (`axis-<serial>`, the default).
+- **PKI task "Enable IEEE 802.1X"**: its dialog picks the IEEE 802.1X certificate policy and shows its summary (the EAP
+  identity, on a new installation the IP address, and the RADIUS server CA the camera checks this server with). The task
+  never compares that CA with this server's certificate (decision 2026-10-25): the user turns 802.1X off on the switch
+  first when they do not match.
 
 ## MAC address, device and IP address
 
@@ -69,7 +74,8 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   vendor's format (`AC-CC-8E-…`, `accc.8e12.3456`, …); empty when the switch sends none.
 - **Device** before the certificate is checked: the managed device whose serial equals the MAC (an Axis serial is its
   MAC address), shown in italics as a guess; after the check: the device the certificate names. Only the certificate
-  decides, never the MAC (it can be faked).
+  decides, never the MAC (it can be faked): a row's device id (who may see it, the log) comes only from the checked
+  certificate, a guess is only shown (fix of 2026-10-25).
 - **MAC does not match:** when the certificate names device A but the MAC is another device's or no managed device's,
   the session still passes, the log row gets the warning "MAC address AC:CC:8E:65:43:21 does not match the certificate
   of ACCC8E123456" (a copied certificate shows this way) and the event rule "Authentication failed" is not raised; a
@@ -155,7 +161,9 @@ certificate").
   secret".
 - **Clients:** a request is answered only from a configured switch address (host names resolved when saved and every
   10 min); anything else is dropped (debug log, counted). The switch table is read for every request from an in-memory
-  snapshot that a change replaces atomically (decision: switches change while the server runs).
+  snapshot that a change replaces atomically (decision: switches change while the server runs). Two switches of one site
+  never share a resolved address (a host name and its IP address): Save refuses it below Address ("Another switch has this
+  address.", fix of 2026-10-25).
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second
   step (RFC 5080 2.2.2). At most 20,000 cached answers (twice the open sessions allowed) and 32 MB, 30 s each, the oldest
   answered ones go first and a request still in work is never evicted. The final answer of every ended session
@@ -180,16 +188,20 @@ certificate").
 - **TLS library** (see Libraries): BouncyCastle TLS in its **non-blocking mode**: one `TlsServerProtocol` per
   session without a stream; the bytes of each incoming EAP-TLS message go in with `OfferInput`, the bytes to send come
   out with `ReadOutput` and are cut into fragments; the handshake lives in memory only, no socket. `TlsServer` overrides
-  give the minimum version and the cipher suites of the 802.1X server policy, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
+  give the minimum version of the 802.1X server policy and the cipher suites that follow it (decision 2026-10-25: no
+  selection), `NotifyAlertReceived` / `NotifyAlertRaised` the alert
   numbers in both directions, `TlsContext.ExportKeyingMaterial` the MSK. `SslStream` offers neither the key export nor the
   alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
   unit test.
-- **Server certificate:** issued by the CA of PKI's 802.1X server policy ("Issued by": the OADM CA by default, or an
-  imported CA with its key; decision 2026-10-25) for the server, names = the listen addresses and the server's host name,
-  valid for the policy's days (365 by default, ECC only: the cipher suites follow the key), renewed automatically 30 days
-  (at most a third of its time) before it expires and at once for another CA; other days apply to the next one; the
-  cameras trust it through the PKI task "Enable IEEE 802.1X" (its RADIUS server CA "OADM 802.1X server" installs the chain
-  of that CA). A CA that cannot issue leaves the server without a certificate (fail closed, the status says so).
+- **Server certificate** (decision 2026-10-25, docs/spec/pki.md "Server certificates"): the certificate PKI's 802.1X
+  server policy picks from the Certificates list (a key OADM holds, ECC only: the cipher suites follow the key and the
+  minimum TLS version). Turn on without one: the certificate the server kept before is imported with its key and picked,
+  else the one OADM makes for both servers (docs/spec/pki.md "Server certificates"). Never renewed by itself (the Expiry
+  warning and the status remind). The cameras trust it through the PKI task "Enable IEEE 802.1X": the RADIUS server CA
+  of the IEEE 802.1X policy is a CA of PKI's list (decision 2026-10-25), and the policy's hint names the CA that issued
+  this certificate. Without a
+  usable certificate the server refuses handshakes and the status says why ("The 802.1X server has no certificate. Choose
+  one in its policy.").
 
 ## Libraries (research 2026-10-23)
 
@@ -250,12 +262,12 @@ Decision 2026-10-23: **PKI owns the list of issued certificates and the revocati
 it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1, built 2026-10-24 (code:
 `plugins/Oadm.Plugins.Pki/README.md` "Issued certificates and revocation").
 
-- **PKI page, tab "Certificates"** (fixed `ui:PageTab`s "Certificate authority" and "Certificates"; nothing is read
-  before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
+- **PKI page, tab "Certificates"** (stage 1; today the tab of `docs/spec/pki.md` "Certificates" with its two cards
+  Certificate authorities and Certificates; nothing is read before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
   EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
-  MQTT, RTSPS), issued by (Task, EST), valid from, valid until, serial number, state chip (Valid, Expires soon (the
+  MQTT, RTSPS), issued by (the issuing CA since stage 5), valid until, state chip (Valid, Expires soon (the
   settings' warning days, 30 by default), Expired, Revoked (tooltip: date, reason, user)); since 2026-10-25 only each
-  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, use, issued by) and search (device address, host name, device serial,
+  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, issued by; the use filter is gone since 2026-10-25) and search (device address, host name, device serial,
   certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
   12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
   **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate
@@ -293,7 +305,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   `IssuedRegistry.PurposeOfFound`; issued by EST for the `oadm_` / `oadm2_` EST profile names, else Task; issued = its
   valid-from); (2) once per server, 5 minutes after the
   start, one background pass reads the certificate list (REST `cert` v1, read only) of every device that answers and has
-  AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
+  AXIS OS 6.53 or later (REST or SOAP), 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
   read, or nothing to read; a round that read no device runs again an hour later, a stop at the next start). Devices that
   did not answer come in by (1) or when renewed.
 - **EST:** `simpleenroll` and `simplereenroll` with a revoked client certificate are refused (403, "Certificate revoked
@@ -348,7 +360,11 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - 30,000 devices may authenticate after a power cut: TLS handshakes run with bounded parallelism (64 at a time, the rest
   wait in a queue; the switch retransmits and gets the cached or next answer), the session table and the log are O(1) per
   change, pushes to the page go through one batched event per 500 ms.
-- Per switch at most 1,000 open sessions; a session costs at most 64 KB.
+- Per switch at most 1,000 open sessions, per switch port at most 8 (fix of 2026-10-25: a new one on a full port ends the
+  oldest there, "Too many sessions on the port", so spoofed MAC addresses on one port never use up the switch). A new
+  session at the switch's or the server's limit is silently dropped (`RadiusDropReason.TooManySessions`; the switch tries
+  again), never an Access-Reject. A session costs at most 64 KB; the buffer of a fragmented message grows with the
+  fragments that arrived (never the announced length up front).
 
 ## Sites
 
@@ -396,7 +412,7 @@ and reason, never secrets or key material.
   fragment sizes 500..1400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
 - Switches added, changed and removed while sessions run (the decision); the 802.1X server policy: minimum version 1.3 refuses a 1.2
-  client with the alert text, an unchecked cipher suite is not offered.
+  client with the alert text, an old CBC suite is offered only with minimum 1.0 or 1.1.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
 
@@ -425,7 +441,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   Reset to default), `LargestFragment` (500..1400), `Reauthentication` (null: none; else Session-Timeout and
   Termination-Action RADIUS-Request in every Access-Accept, `ReauthenticationAttributes`), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
   `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
-  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
+  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000, `MaxSessionsPerPort` 8.
 - **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
   (`TlsSettings.VersionsFor(key)`; TLS 1.3 without a checked TLS 1.3 suite is not offered), `Validate(key)` refuses a set
   the key cannot use (only ECDHE_RSA suites with the ECDSA server certificate). The signature schemes OADM accepts and
@@ -518,12 +534,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   by reference): previous OADM CAs follow the OADM CA ("oadm-previous:<sha256>"), each issuing certificate's hash maps to its
   CA (`TrustedIssuer`: kind, only managed; the Axis device ID through `AxisDeviceId.Verify` with PKI's roots and
   intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block policy
-  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of OADM 4.1 and of
-  development builds (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
+  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of the
+  development builds before 4.5 (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
   `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are; their Revoke policies
   become Block policies with Also revoke, the 802.1X server policy gets its certificate's defaults (OADM CA, 365 days, ECC).
 - **Block policies with Also revoke**: PKI revokes on save and every minute; a handshake that meets a certificate such a policy holds queues
-  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy.
+  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy; a serial
+  queued while that round ends starts another, and a failed round keeps its serials for the minute round (fix of
+  2026-10-25). The subject of a certificate of a device OADM does not manage is shown without control or format characters.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
@@ -547,14 +565,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   manage (...)"), the switch's site (49 "The device belongs to another site"), the policies, the MAC
   warning and the VLAN (`PolicyPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial, the VLAN
   policy) goes with the session; Sessions and Log carry it as `VlanPolicy`.
-- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the CA of the 802.1X server policy (`IssuerId`; the
-  OADM CA without one) for the IPv4 listen addresses (with All
-  interfaces those of every card that is up, without self-assigned 169.254 addresses) and the host name, 365 days, kept in
-  the setting `serverCertificate` (key encrypted with `radius:server-key`), made again with a new CA, a new name or 30 days
-  before its end (checked at the start and every minute; a round asked for while one runs, e.g. a CA change, runs right
-  after it); names that only went away (a card or cable down, virtual adapters that come and go) keep the certificate, so
-  it does not change with every link; a new one goes into the processor's options at once. Without a CA none: handshakes are refused, the status
-  says "The PKI has no certificate authority."
+- **Server certificate** (`ServerIdentityKeeper`, decision 2026-10-25): loads the certificate of the 802.1X server policy
+  with its key (`PkiCertificateAuthority.ServerCertificate`) at the start, every minute and when the policies change; a new
+  pick goes into the processor's options at once. The first time without one it calls
+  `EnsureServerCertificateAsync` with the IPv4 listen addresses (with All interfaces those of every card that is up,
+  without self-assigned 169.254 addresses) and the host name, handing over the certificate of the setting
+  `serverCertificate` (key encrypted with `radius:server-key`, no longer written) to be imported. Without a usable one
+  handshakes are refused and the status says why (`ServerIdentityKeeper.Problem`); without a CA "The PKI has no
+  certificate authority."
 - **Sessions tab** (`SessionBoard`): `SessionChanged` only queues; every 500 ms the tick drains it (rows keyed by session,
   the device the certificate named or a MAC guess), ends timed-out sessions (every second), takes rows ended 10 s ago off
   (`removed`), and publishes the changed rows as `sessions` with `PluginEventAudience.DeviceRows` (500 rows per event;
@@ -617,7 +635,9 @@ data, also for the screenshots; the four, two and one column layout and the rows
   over the whole width. The Sessions card holds one table
   (`AuthenticationsViewModel`, rows `IAuthenticationRow`) with the authentications in progress on top (ended ones leave
   it, the log holds them) and the log's page below them, newest first; the log's search applies to both, View
-  certificate and Delete all are the log's, the pages (Previous, Next) page the log; one reset per change of either list. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
+  certificate and Delete all are the log's, the pages (Previous, Next) page the log; a read of either list or a new search builds the table again (one reset), a
+  batch of the live events applies in place (updated rows change themselves, a new one is inserted on top, an ended one
+  leaves), so scroll and choice stay every 500 ms (fix of 2026-10-25). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
 - **Server**: Listen on, Port, Log entries kept; the Save row: the link "6 policies applied" left (`RadiusState.PoliciesApply`,

@@ -33,9 +33,13 @@ public sealed class TaskViewSubscription : IDisposable
     // Devices whose membership changed; the reader sends their Removed or Added.
     private readonly ConcurrentQueue<Guid> _moved = new();
 
-    // The tasks the watcher has (reader thread only): the last record sent per task, and the tasks per device.
-    private readonly Dictionary<Guid, TaskRecord> _sent = [];
+    // The tasks the watcher has (reader thread only): the device per task sent, and the tasks per device. No records: a
+    // device that leaves gets a slim Removed (the client drops by id), so 50 watchers of 10,000 tasks keep ids only.
+    private readonly Dictionary<Guid, Guid> _sent = [];
     private readonly Dictionary<Guid, HashSet<Guid>> _sentByDevice = [];
+
+    // Device changes are checked and applied under one lock (see OnDeviceChanged).
+    private readonly Lock _deviceGate = new();
     private IReadOnlySet<Guid> _ids = NoIds;
     private long _seq;
     private int _resync;
@@ -240,9 +244,8 @@ public sealed class TaskViewSubscription : IDisposable
             {
                 foreach (var taskId in tasks.ToList())
                 {
-                    var record = _sent[taskId];
                     Forget(taskId);
-                    changes.Add(new TaskChange(TaskChangeKind.Removed, record));
+                    changes.Add(new TaskChange(TaskChangeKind.Removed, Slim(taskId, deviceId)));
                 }
             }
         }
@@ -267,10 +270,9 @@ public sealed class TaskViewSubscription : IDisposable
     /// <summary>Keeps <paramref name="task"/> as sent; true when the watcher did not have it yet.</summary>
     private bool Remember(TaskRecord task)
     {
-        if (!_sent.TryAdd(task.Id, task))
+        if (!_sent.TryAdd(task.Id, task.DeviceId))
         {
-            _sent[task.Id] = task;
-            return false;
+            return false; // a task's device never changes
         }
 
         if (!_sentByDevice.TryGetValue(task.DeviceId, out var tasks))
@@ -285,18 +287,23 @@ public sealed class TaskViewSubscription : IDisposable
     /// <summary>Drops <paramref name="taskId"/>; true when the watcher had it.</summary>
     private bool Forget(Guid taskId)
     {
-        if (!_sent.Remove(taskId, out var task))
+        if (!_sent.Remove(taskId, out var deviceId))
         {
             return false;
         }
 
-        if (_sentByDevice.TryGetValue(task.DeviceId, out var tasks) && tasks.Remove(taskId) && tasks.Count == 0)
+        if (_sentByDevice.TryGetValue(deviceId, out var tasks) && tasks.Remove(taskId) && tasks.Count == 0)
         {
-            _sentByDevice.Remove(task.DeviceId);
+            _sentByDevice.Remove(deviceId);
         }
 
         return true;
     }
+
+    /// <summary>The Removed record of a task the watcher had: its id and device (the client drops the row by id).</summary>
+    private static TaskRecord Slim(Guid taskId, Guid deviceId) =>
+        new(taskId, string.Empty, string.Empty, TaskState.Done, string.Empty, default, null, null, 0, null,
+            [new TaskDeviceRecord(deviceId, TaskState.Done, null, 0)]);
 
     /// <summary>Waits for a task change, or for a membership change of a device, the catalog or the rules.</summary>
     private async ValueTask<bool> WaitAsync(ChannelReader<TaskChange> reader, CancellationToken ct)
@@ -342,9 +349,22 @@ public sealed class TaskViewSubscription : IDisposable
     private void OnDeviceChanged(object? sender, DeviceChange change)
     {
         var inside = change.Kind != DeviceChangeKind.Removed && change.Device is { } device && _view!.Contains(device);
-        var before = InView(change.DeviceId);
-        _changed[change.DeviceId] = (inside, Interlocked.Increment(ref _seq));
-        if (before != inside)
+        bool moved;
+        lock (_deviceGate)
+        {
+            // The feed raises outside its lock: a change raised after a newer one of the same device is dropped, so a
+            // device that left the group never comes back with its old tags.
+            if (!_devices!.IsLatest(change))
+            {
+                return;
+            }
+
+            var before = InView(change.DeviceId);
+            _changed[change.DeviceId] = (inside, Interlocked.Increment(ref _seq));
+            moved = before != inside;
+        }
+
+        if (moved)
         {
             _moved.Enqueue(change.DeviceId);
             Wake();

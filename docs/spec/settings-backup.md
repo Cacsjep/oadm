@@ -23,7 +23,9 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."). The former `Devices.UseHostName` is gone: the add page chooses DNS names or IP addresses
 per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (five cards Polling, Discovery, Tasks, Security, Server, saved
-together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Rail page **Credentials** (Admin only, subtitle "Passwords OADM
+together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Every card of the Settings page
+folds and starts closed (`Controls/CollapsibleCard`, `docs/spec/visual-style.md`); a card opens by itself when an input in
+it shows a validation error. Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
@@ -34,9 +36,9 @@ subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Sett
 terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). The Settings page
-starts with the card **This computer** (every user, saved at once in the client settings file): "Decode video on the
+starts with the card **Client** (every user, saved at once in the client settings file): "Decode video on the
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
-(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
+(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): Client and the server settings left,
 the card **Backup and restore** right (administrators, see "Backup and restore") with the card **License** below it (every
 user, `docs/spec/licensing.md`) and the card **Support** below that (administrators, see "Support report"); narrower than 1100 px the right column
 moves below the server settings. The server
@@ -58,7 +60,9 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
 - **Content** (`BackupArchive`): `manifest.json` (counts per area, plugin packages, plugin data folders), `oadm.db` (a
   consistent `VACUUM INTO` copy without the login sessions), `master.key` (only inside the encrypted body; a backup restores
   on another computer and every stored password and plugin secret stays readable), `plugin-data/**` (files in use skipped).
-  Not in it: the server's TLS certificate (the target keeps its own), uploads, logs.
+  Not in it: the server's TLS certificate (the target keeps its own), `install.json` (this installation's ID and the OADM
+  PRO trials started here, so a running trial never moves to another computer, `docs/spec/licensing.md` "Trial"), uploads,
+  logs.
 - **Versions**: a backup's last migration must be one of this build's: an older one is upgraded by the normal migrations
   at the next start (**migrations are never deleted**), a newer one is refused before the password ("This backup is from
   OADM x, newer than this server (y). Update OADM to x or later first."). Before every migration of an existing database the

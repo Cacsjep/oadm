@@ -43,6 +43,9 @@ public sealed partial class PkiService
     /// </summary>
     public Func<IDeviceInfo, CancellationToken, Task<IReadOnlyList<(string Alias, string Pem)>>>? DeviceCertificateReader { get; set; }
 
+    /// <summary>OADM PRO is active (the policy list shows the kinds of the PRO servers); true without a host check (tests, in process).</summary>
+    public Func<bool> IsPro { get; set; } = () => true;
+
     /// <summary>The latest end of the active and the previous CAs: no certificate they signed lasts longer (null without a CA).</summary>
     public DateTime? LatestCaEnd()
     {
@@ -123,7 +126,8 @@ public sealed partial class PkiService
     /// certificate created, signed or imported here). A certificate of a device outside <paramref name="view"/>, and every row
     /// that is no device certificate for a user limited to a group, answers like one that is not listed.
     /// </summary>
-    internal async Task<CertificateDetailsReply> GetCertificateAsync(CertificateDetailsRequest request, ViewedSet? view, CancellationToken ct)
+    /// <param name="viewDevices">The devices of <paramref name="view"/> (a camera found by its serial); none: only by device id.</param>
+    internal async Task<CertificateDetailsReply> GetCertificateAsync(CertificateDetailsRequest request, ViewedSet? view, CancellationToken ct, IReadOnlyList<IDeviceInfo>? viewDevices = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (CertificateRowDer(request.SerialNumber) is { } rowDer)
@@ -143,9 +147,21 @@ public sealed partial class PkiService
             }
         }
 
-        if (string.IsNullOrWhiteSpace(request.SerialNumber) || _issued.Find(request.SerialNumber) is not { } entry || (view is not null && !view.Contains(entry.DeviceId)))
+        if (string.IsNullOrWhiteSpace(request.SerialNumber) || _issued.Find(request.SerialNumber) is not { } entry)
         {
             return new CertificateDetailsReply { Error = PkiCertificateTexts.NotListed };
+        }
+
+        // The camera as the list finds it: by its serial (also a camera added again under a new id), else by the device id.
+        if (view is not null)
+        {
+            var deviceId = entry.DeviceSerial is { Length: > 0 } camera
+                ? (viewDevices ?? []).FirstOrDefault(d => string.Equals(d.Serial, camera, StringComparison.OrdinalIgnoreCase))?.Id
+                : entry.DeviceId;
+            if (!view.Contains(deviceId))
+            {
+                return new CertificateDetailsReply { Error = PkiCertificateTexts.NotListed };
+            }
         }
 
         var der = await _issued.GetDerAsync(entry.SerialNumber, ct).ConfigureAwait(false);
@@ -182,6 +198,21 @@ public sealed partial class PkiService
         if (serials.Count > PkiPluginInfo.MaxRevokeAtOnce)
         {
             return new RevokeReply { Error = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Choose at most {PkiPluginInfo.MaxRevokeAtOnce:N0} certificates.") };
+        }
+
+        // A certificate a server policy shows stays valid, like Delete (no lock-out: the server's TLS would stop at once).
+        var shown = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var policy in Policies.All.Where(p => Pki.Policies.PolicyKinds.IsServer(p.Kind) && p.CertificateId is not null))
+        {
+            if (_local.Find(policy.CertificateId!) is { } local)
+            {
+                shown.TryAdd(CertificateSerials.Normalize(local.Serial), policy.Name);
+            }
+        }
+
+        if (shown.Count > 0 && serials.Select(CertificateSerials.Normalize).FirstOrDefault(shown.ContainsKey) is { } inUse)
+        {
+            return new RevokeReply { Error = Certificates.CertificateRules.UsedByPolicy(shown[inUse]) };
         }
 
         return Reply(await _issued.RevokeAsync(serials, request.Reason, userName, ct).ConfigureAwait(false));

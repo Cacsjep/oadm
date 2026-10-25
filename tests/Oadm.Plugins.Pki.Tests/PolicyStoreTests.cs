@@ -17,12 +17,22 @@ public sealed class PolicyStoreTests
 {
     private static readonly IReadOnlyList<PolicyCipherSuite> Suites = PkiService.CipherSuites;
 
+    /// <summary>The server certificate of the test stores' Certificates list (the server policies pick it, decision 2026-10-25).</summary>
+    private const string ServerCertificate = "test-server";
+
     private static PolicyStore Store(List<IDeviceInfo> devices, FakeSites? sites = null, FakeProtectedTags? tags = null, IReadOnlyList<CertificateAuthorityInfo>? authorities = null,
         bool unprotected = false) =>
         new(new FakeSettings(), _ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. devices]), () => sites?.List ?? [],
             () => authorities ?? [new CertificateAuthorityInfo(CertificateAuthorityInfo.OadmId, "OADM CA", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(1), true),
                 new CertificateAuthorityInfo(CertificateAuthorityInfo.AxisDeviceIdId, "Axis device ID", CertificateAuthorityKind.AxisDeviceId, [], DateTime.UtcNow.AddYears(9), false)],
-            unprotected ? null : tags ?? new FakeProtectedTags());
+            unprotected ? null : tags ?? new FakeProtectedTags())
+        {
+            ServerCertificates = () => [new PolicyCertificateChoice(ServerCertificate, "802.1X and EST server", "OADM CA", DateTime.UtcNow.AddYears(10), true, ["10.0.0.17"])],
+        };
+
+    /// <summary>A server policy without a certificate shows the one of the list.</summary>
+    private static PkiPolicy WithCertificate(PkiPolicy policy) =>
+        PolicyKinds.IsServer(policy.Kind) && policy.CertificateId is null ? policy with { CertificateId = ServerCertificate } : policy;
 
     private static PkiPolicy Vlan(string name, int vlan, PolicyDevices devices) => new() { Name = name, Kind = PolicyKinds.Vlan, Vlan = vlan, Devices = devices };
 
@@ -30,12 +40,12 @@ public sealed class PolicyStoreTests
 
     private static async Task<PkiPolicy> SaveAsync(PolicyStore store, PkiPolicy policy)
     {
-        var result = await store.SaveAsync(policy, "admin", Suites, CancellationToken.None);
+        var result = await store.SaveAsync(WithCertificate(policy), "admin", Suites, CancellationToken.None);
         Assert.Null(result.Error);
         return result.Saved!;
     }
 
-    private static async Task<PolicyFieldError?> RefusedAsync(PolicyStore store, PkiPolicy policy) => (await store.SaveAsync(policy, "admin", Suites, CancellationToken.None)).Error;
+    private static async Task<PolicyFieldError?> RefusedAsync(PolicyStore store, PkiPolicy policy) => (await store.SaveAsync(WithCertificate(policy), "admin", Suites, CancellationToken.None)).Error;
 
     [Fact]
     public async Task EveryPolicyIsCheckedOnItsOwnAndAgainstTheOthers()
@@ -77,8 +87,9 @@ public sealed class PolicyStoreTests
         Assert.Equal(new PolicyFieldError(PolicyFields.LargestEapPacket, PolicyRules.EapPacketRange), await RefusedAsync(store, saved with { LargestEapPacket = 1401 }));
         Assert.Equal(new PolicyFieldError(PolicyFields.ReauthMinutes, PolicyTexts.ReauthRange), await RefusedAsync(store, saved with { ReauthMinutes = 5 }));
         Assert.Equal(new PolicyFieldError(PolicyFields.MinimumTls, PolicyRules.ChooseTls), await RefusedAsync(store, saved with { MinimumTls = "2.0" }));
-        Assert.Equal(new PolicyFieldError(PolicyFields.CipherSuites, PolicyRules.CheckCipherSuite), await RefusedAsync(store, saved with { CipherSuites = [] }));
-        Assert.Equal(60, (await SaveAsync(store, saved with { ReauthMinutes = 60 })).ReauthMinutes);
+        Assert.True((await SaveAsync(store, saved with { CipherSuites = [] })).CipherSuites is null or { Count: 0 }); // the suites follow the minimum TLS version (decision 2026-10-25)
+        Assert.Equal(60, (await SaveAsync(store, store.ServerPolicy! with { ReauthMinutes = 60 })).ReauthMinutes); // the policy as it is now
+        Assert.Equal(new PolicyFieldError(PolicyFields.Policy, PolicyTexts.ChangedElsewhere), await RefusedAsync(store, saved with { ReauthMinutes = 90 })); // read before the last save
     }
 
     [Fact]
@@ -295,7 +306,6 @@ public sealed class PolicyStoreTests
         Assert.True(all.MayManage);
         Assert.NotEmpty(all.Rows);
         Assert.Equal(["Lobby"], all.Tags);
-        Assert.NotEmpty(all.CipherSuites);
         Assert.Contains(all.Cas, c => c.Id == CertificateAuthorityInfo.AxisDeviceIdId);
 
         var readOnly = new LimitedCall(ctx.CallAsAllDevices());

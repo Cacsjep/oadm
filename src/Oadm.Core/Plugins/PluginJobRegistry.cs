@@ -35,6 +35,9 @@ public sealed partial class PluginJobRegistry
     public const string TooManyJobs = "Wait until your earlier work has finished.";
 
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, Job>> _byPlugin = new(StringComparer.OrdinalIgnoreCase);
+
+    // Plugins stopped or turned off (until they start again): a call still running then starts no job that would survive.
+    private readonly ConcurrentDictionary<string, byte> _stopped = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger;
     private long _sequence;
 
@@ -57,17 +60,30 @@ public sealed partial class PluginJobRegistry
     /// <summary>The jobs of a plugin that still run (tests, diagnostics).</summary>
     public int RunningCount(string pluginId) => Jobs(pluginId).Values.Count(j => !j.Completion.IsCompleted);
 
-    /// <summary>Cancels and forgets every job of a plugin (it stopped or was turned off).</summary>
+    /// <summary>
+    /// Cancels and forgets every job of a plugin (it stopped or was turned off); until <see cref="Resume"/> the plugin starts
+    /// no job (a call that still runs is refused).
+    /// </summary>
     public void CancelPlugin(string pluginId)
     {
+        _stopped[pluginId] = 0; // first: a job registered meanwhile is either refused or found below
         if (_byPlugin.TryRemove(pluginId, out var jobs))
         {
-            foreach (var job in jobs.Values)
+            lock (jobs)
             {
-                job.Cancel();
+                foreach (var job in jobs.Values)
+                {
+                    job.Cancel();
+                }
             }
         }
     }
+
+    /// <summary>The plugin starts (again): it may start jobs.</summary>
+    public void Resume(string pluginId) => _stopped.TryRemove(pluginId, out _);
+
+    /// <summary>The refusal of a job of a plugin that stopped or was turned off.</summary>
+    public const string PluginStopped = "The plugin was turned off.";
 
     /// <summary>
     /// Cancels and forgets every job of a user (other devices, another role, the user was disabled or deleted): their ids
@@ -165,6 +181,13 @@ public sealed partial class PluginJobRegistry
             var mark = CallerContext.PluginCall;
             var job = new Job(NewId(), kind, call, Interlocked.Increment(ref _sequence), shared, ex => LogCancelFailed(ex, pluginId, kind));
             jobs[job.Id] = job;
+            if (_stopped.ContainsKey(pluginId))
+            {
+                // Registered first, then checked: a stop either came before (refused here) or comes after and cancels it.
+                jobs.TryRemove(job.Id, out _);
+                job.Dispose();
+                throw new InvalidOperationException(PluginStopped);
+            }
 
             // Registered first, then checked: an access change either came before (refused here) or comes after and
             // finds the job (CancelOwner, CancelGroup, CancelSession record the change before they look).

@@ -109,10 +109,14 @@ public sealed partial class PkiService : IAsyncDisposable
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
         _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
+        _issued.RevocationChanged += OnRevocationChanged;
         _local = new Certificates.LocalCertificates(records ?? new MemoryPluginRecords(), secrets, options.Time, logger);
         _local.Changed += OnIssuedChanged;
         _sites = sites;
-        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger);
+        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger)
+        {
+            ServerCertificates = ServerCertificateChoices,
+        };
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -171,6 +175,7 @@ public sealed partial class PkiService : IAsyncDisposable
         if (_secrets is null)
         {
             LogNoSecrets();
+            await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
             return;
         }
 
@@ -191,6 +196,10 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         ApplyAnchors();
+
+        // Only once every CA is loaded (the OADM CA, the previous and the imported ones): the conversion matches PEMs against
+        // the list and may add an imported CA, which saves the whole list of imported CAs.
+        await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
@@ -206,6 +215,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued.Changed -= OnIssuedChanged;
+        _issued.RevocationChanged -= OnRevocationChanged;
         _local.Changed -= OnIssuedChanged;
         _local.Dispose();
         await StopPoliciesAsync().ConfigureAwait(false);
@@ -269,7 +279,7 @@ public sealed partial class PkiService : IAsyncDisposable
             DevicesWithPreviousCa = counts.WithPreviousCa,
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
-            Authorities = AuthorityRows(),
+            Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
         };
     }
 
@@ -295,13 +305,13 @@ public sealed partial class PkiService : IAsyncDisposable
 
         if (!ca.HasKey)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key. Use New OADM CA.");
         }
 
         var notAfter = ca.Certificate.NotAfter.ToUniversalTime();
         if (nowUtc > notAfter)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}. Use New OADM CA.");
         }
 
         var days = (int)Math.Floor((notAfter - nowUtc).TotalDays);
@@ -313,7 +323,7 @@ public sealed partial class PkiService : IAsyncDisposable
                 1 => "CA expires in 1 day",
                 _ => string.Create(CultureInfo.InvariantCulture, $"CA expires in {days} days"),
             };
-            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}. Use New OADM CA.");
         }
 
         return new ServiceStatus(ServiceStatus.Ok, string.Create(CultureInfo.InvariantCulture, $"CA valid until {notAfter:yyyy-MM-dd}"));
@@ -405,9 +415,25 @@ public sealed partial class PkiService : IAsyncDisposable
         return await AddImportedAsync(material, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Devices whose newest certificate comes from the current CA (the replace warning).</summary>
+    /// <summary>
+    /// Devices whose newest certificate comes from the current CA and the servers whose certificate it issued (the replace
+    /// warning: those keep their certificate, so cameras given the new CA would not trust them).
+    /// </summary>
     public async Task<PreviewReplaceReply> PreviewReplaceAsync(CancellationToken ct) =>
-        new(await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false));
+        new(await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false)) { Servers = ServersWithCurrentCa() };
+
+    private List<string> ServersWithCurrentCa()
+    {
+        if (_ca is not { } ca)
+        {
+            return [];
+        }
+
+        return [.. new[] { (Kind: Pki.Policies.PolicyKinds.Dot1xServer, Name: "802.1X server"), (Kind: Pki.Policies.PolicyKinds.EstServer, Name: "EST server") }
+            .Where(s => Policies.FirstOf(s.Kind)?.CertificateId is { } id && _local.Find(id) is { } local
+                && string.Equals(local.Stored.IssuerFingerprint, ca.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.Name)];
+    }
 
     public FileReply ExportPublic(ExportRequest request)
     {
@@ -590,47 +616,6 @@ public sealed partial class PkiService : IAsyncDisposable
 
         await PublishAsync().ConfigureAwait(false);
         return new InstallReply(result.Installed, result.Error, await GetStateAsync(ct).ConfigureAwait(false));
-    }
-
-    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); saving the IEEE 802.1X certificate policy stores it.</summary>
-    public static RadiusCaReply ImportRadiusCa(ImportRadiusCaRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (!TryDecode(request.FileBase64, out var bytes) || bytes.Length == 0)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file cannot be read.") };
-        }
-
-        if (bytes.Length > PkiPluginInfo.MaxImportBytes)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file is larger than 1 MB.") };
-        }
-
-        X509Certificate2? certificate;
-        try
-        {
-            certificate = CaCertificates.ReadSingleCertificate(bytes);
-        }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
-        {
-            certificate = null;
-        }
-
-        if (certificate is null)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file is not a certificate (.crt or .cer, PEM or DER).") };
-        }
-
-        using (certificate)
-        {
-            var basic = certificate.Extensions.OfType<X509BasicConstraintsExtension>().FirstOrDefault();
-            if (basic is { CertificateAuthority: false })
-            {
-                return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "This is not a CA certificate. Choose the CA that issued the RADIUS server's certificate.") };
-            }
-
-            return new RadiusCaReply { Pem = CaCertificates.ToPem(certificate), Summary = CaCertificates.Summarize(certificate) };
-        }
     }
 
     /// <summary>

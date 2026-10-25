@@ -408,6 +408,34 @@
     <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
+  <!-- A side panel at the right of a page (PKI's Policies: create and edit a policy, like Intune): closed it has no width;
+       with class open it slides in (a card of 560 px, the page's gap before it) and pushes the content to the left. Its
+       content sits in Border.sidePanelContent, which keeps its width while the panel slides. -->
+  <Style Selector="Border.sidePanel">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+    <Setter Property="Width" Value="0" />
+    <Setter Property="Opacity" Value="0" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="CubicEaseOut" />
+        <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+        <ThicknessTransition Property="Margin" Duration="0:0:0.2" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.sidePanel.open">
+    <Setter Property="Width" Value="560" />
+    <Setter Property="Opacity" Value="1" />
+    <Setter Property="Margin" Value="16,0,0,0" />
+  </Style>
+  <Style Selector="Border.sidePanelContent">
+    <Setter Property="Width" Value="560" />
+    <Setter Property="Padding" Value="{StaticResource Oadm.CardPadding}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+  </Style>
   <!-- Monitoring card (ui:StatCard): status icon + title, a large count, a small detail line. The status colors icon and
        count; neutral without one. -->
   <!-- A StatCard is a Border subclass: Border.card does not reach it (type selectors do not match subclasses). -->
@@ -711,7 +739,8 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
-  <!-- Toolbar buttons: icon + text -->
+  <!-- Toolbar buttons (command buttons, Fluent; decision 2026-10-25): no background, the icon in the accent colour, the
+       text neutral. Icon-only buttons have the text colour (never the dim grey of disabled ones) and take the accent only on hover. No filled buttons in toolbars. -->
   <Style Selector="Button.toolbar">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
@@ -731,6 +760,18 @@
   <Style Selector="Button.toolbar:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <!-- An icon alone (close, more, copy, reveal: the icon is the button's content): the text colour -->
+  <Style Selector="Button.toolbar ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Icon + text (ui:IconLabel, ui:ToolbarButton with its text): the icon in the accent colour -->
+  <Style Selector="Button.toolbar:not(.iconOnly) ui|IconLabel ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <!-- Hover: every toolbar icon takes the accent -->
+  <Style Selector="Button.toolbar:pointerover ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
   </Style>
   <Style Selector="Button.toolbar:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />

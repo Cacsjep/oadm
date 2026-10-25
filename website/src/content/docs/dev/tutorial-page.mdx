@@ -20,7 +20,7 @@ A plugin page is an entry in the navigation rail with a page of its own, like th
 runs a **core plugin**: a service inside the OADM server that keeps state, talks to the devices and answers the page.
 
 In this tutorial you create **Firmware overview**: a page with the AXIS OS version of the devices the user chooses. The
-purple **Choose devices** button picks them (All devices, tags or single devices); the server then reads them, 16 at a
+**Choose devices** button picks them (All devices, tags or single devices); the server then reads them, 16 at a
 time, and the table fills in as soon as the read is done, on every client that shows the page.
 
 ## 1. Create it
@@ -164,12 +164,12 @@ The view model holds the page's state. `RunAsync` is the subscribe, read, apply 
 
 `PageDeviceChoice` is the device choice of the page: it starts with the Devices page selection, else the last choice on
 this computer, else with nothing. While nothing is chosen the page reads nothing and Refresh is off. `ButtonText` is the
-text of the purple button ("Choose devices", "Selected devices: Tag Building A"); `Resolve()` gives the devices of the
+text of the device choice button ("Choose devices", "Selected devices: Tag Building A"); `Resolve()` gives the devices of the
 choice now. All devices goes to the server as "all", not as every id.
 
 <Code code={template(viewModel)} lang="csharp" title="MyCoolPageViewModel.cs" />
 
-The view uses the shared controls: the purple choice button first, a toolbar button, the progress row, a status chip for problems, the error text below
+The view uses the shared controls: the device choice button first (`ui:ToolbarButton` with the devices icon), a toolbar button, the progress row, a status chip for problems, the error text below
 the table. `ui:PageHeader.Subtitle` puts one short sentence next to the page title; the page itself starts with its
 content. No colors or sizes of its own, so the page looks right in dark and light.
 

@@ -11,7 +11,7 @@
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayManage}">
-            <ui:ToolbarButton Text="New trigger" IconKey="add" IsPrimary="True" Command="{Binding NewTriggerCommand}" />
+            <ui:ToolbarButton Text="New trigger" IconKey="add" Command="{Binding NewTriggerCommand}" />
             <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
             <ui:ToolbarButton Text="Duplicate" IconKey="copy" Command="{Binding DuplicateCommand}" />
             <ui:ToolbarSeparator />

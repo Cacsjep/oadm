@@ -21,6 +21,7 @@ namespace Oadm.Client.Shell;
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IOadmApi _api;
+    private readonly Licensing.LicenseViewModel? _license;
     private readonly ILiveVideoAccess? _liveVideo;
     private readonly IClientPluginRegistry _plugins;
     private readonly IUiDispatcher? _ui;
@@ -150,6 +151,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _pluginsItem = pluginList is null ? null : new NavItemViewModel(HostPages.Plugins, "Plugins", "plugin", pluginList);
         _logsItem = new NavItemViewModel(HostPages.Logs, "Logs", "logs", logs);
         _settingsItem = new NavItemViewModel(HostPages.Settings, "Settings", "settings", settings);
+        _license = settings?.License;
         _aboutItem = new NavItemViewModel(HostPages.About, "About", "info", about);
         SyncBottomNavItems();
         UpdateNavGroups();
@@ -396,7 +398,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
             return null;
         }
 
-        var context = new CorePluginClientContext(_api, rail.PluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+        var context = NewPluginContext(rail.PluginId);
         try
         {
             // The window's own copies of the tab views (a control has one parent); disposed with the window's context.
@@ -497,6 +499,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>The newest <see cref="RefreshMyDevicesAsync"/>; an older one drops its answer.</summary>
+    private int _myDevicesGeneration;
+
     private async Task OnConnectedAsync()
     {
         _ = RefreshMyDevicesAsync();
@@ -543,10 +548,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// A user with a device group: reads Your role's devices, so the Add entries know whether the group can add devices
     /// (<see cref="UserSession.AddDevicesRefusal"/>). After every connect (a changed group ends the streams) and when the
-    /// user's devices change.
+    /// user's devices change. Started from both without waiting: only the newest read applies its answer (an older one that
+    /// answers later is dropped).
     /// </summary>
     internal async Task RefreshMyDevicesAsync()
     {
+        int generation = ++_myDevicesGeneration; // UI thread only
         if (!Session.IsLoggedIn || Session.HasAllDevices)
         {
             Session.ApplyDevices(null);
@@ -556,7 +563,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             MyRole role = await _api.GetMyRoleAsync(CancellationToken.None).ConfigureAwait(true);
-            Session.ApplyDevices(role.Devices);
+            if (generation == _myDevicesGeneration)
+            {
+                Session.ApplyDevices(role.Devices);
+            }
         }
         catch (Exception ex)
         {
@@ -795,10 +805,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ClosePluginWindowsRequested?.Invoke(this, hostId);
     }
 
+    /// <summary>
+    /// The context of a plugin page: the host's data and dialogs, and Start 30-day trial through the Settings card's view model
+    /// (the card shows the new state, the plugin list and task catalog follow its LicenseChanged).
+    /// </summary>
+    private CorePluginClientContext NewPluginContext(string pluginId) =>
+        new(_api, pluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id),
+            isAdmin: () => Session.IsAdmin,
+            startTrial: _license is { } license
+                ? license.StartTrialFromPageAsync
+                : async ct => Licensing.LicenseViewModel.ToInfo(await _api.StartTrialAsync(ct).ConfigureAwait(true)));
+
     /// <summary>The page of a plugin shown as a tab: its view with its own context, or the error in its place.</summary>
     private (CorePluginPageViewModel Page, CorePluginTab Tab) CreateTabPage(string pluginId, string title)
     {
-        var context = new CorePluginClientContext(_api, pluginId, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+        var context = NewPluginContext(pluginId);
         Avalonia.Controls.Control view;
         CorePluginPageViewModel page;
         try
@@ -838,7 +859,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ICorePluginPage? page = _plugins.FindPage(plugin.Id);
         if (page is not null)
         {
-            context = new CorePluginClientContext(_api, plugin.Id, Devices.ToolbarContext, _liveVideo, _settings, PluginOn, id => _packages?.LicenseOf(id));
+            context = NewPluginContext(plugin.Id);
             context.SetTabs([.. _tabPages.Where(t => t.HostId == plugin.Id).Select(t => t.Tab)]);
             try
             {
@@ -1008,9 +1029,12 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private bool _disposed;
 
     public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null, IClientSettingsStore? settings = null,
-        Func<string, bool?>? pluginOn = null, Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? licenseOf = null)
+        Func<string, bool?>? pluginOn = null, Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? licenseOf = null,
+        Func<bool>? isAdmin = null, Func<CancellationToken, Task<Oadm.Sdk.Licensing.ProLicenseInfo>>? startTrial = null)
     {
         _licenseOf = licenseOf;
+        _isAdmin = isAdmin;
+        _startTrial = startTrial;
         _api = api;
         _pluginId = pluginId;
         _host = host;
@@ -1077,6 +1101,14 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     private readonly Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? _licenseOf;
 
     public Oadm.Sdk.Licensing.PluginLicenseInfo? LicenseOf(string packageId) => _licenseOf?.Invoke(packageId);
+
+    private readonly Func<bool>? _isAdmin;
+    private readonly Func<CancellationToken, Task<Oadm.Sdk.Licensing.ProLicenseInfo>>? _startTrial;
+
+    public bool IsAdministrator => _isAdmin?.Invoke() ?? false;
+
+    public Task<Oadm.Sdk.Licensing.ProLicenseInfo> StartProTrialAsync(CancellationToken ct) =>
+        _startTrial?.Invoke(ct) ?? Task.FromException<Oadm.Sdk.Licensing.ProLicenseInfo>(new NotSupportedException("This connection has no license."));
 
     /// <summary>Most bytes of one value a plugin keeps on this computer.</summary>
     public const int MaxLocalSettingLength = 64 * 1024;

@@ -67,22 +67,22 @@ public sealed partial class PkiService
                 CaId = CertificateAuthorityInfo.OadmId,
                 ValidDays = days,
                 Key = key,
-                EapolVersion = dot1x.EapolVersion is 1 or 2 ? dot1x.EapolVersion : 1,
-                Identity = PkiValidation.Identity(dot1x.Identity) is null ? dot1x.Identity : Dot1xIdentity.Mac,
+                // A new installation: EAPOL version 3 and the IP address as identity (decision 2026-10-25); one used before
+                // keeps what its cameras were set up with.
+                EapolVersion = !usedBefore ? 3 : dot1x.EapolVersion is 1 or 2 or 3 ? dot1x.EapolVersion : 1,
+                Identity = !usedBefore ? Dot1xIdentity.IpAddress : PkiValidation.Identity(dot1x.Identity) is null ? dot1x.Identity : Dot1xIdentity.Mac,
                 CustomIdentity = dot1x.CustomIdentity,
 
-                // An imported RADIUS CA that cannot be read stays imported without a certificate: the task refuses until it is
-                // imported again (never a silent switch to the OADM CA, which the RADIUS server may not use).
+                // An imported RADIUS CA goes into the CA list with ConvertRadiusCasAsync (RadiusCaId set there); one that cannot
+                // be read keeps no CA: the task refuses until one is chosen (never a silent switch to the OADM CA, which the
+                // RADIUS server may not use).
+                RadiusCaId = dot1x.RadiusCa == RadiusCaSource.Imported ? null : CertificateAuthorityInfo.OadmId,
                 RadiusCa = dot1x.RadiusCa == RadiusCaSource.Imported ? RadiusCaSource.Imported : RadiusCaSource.Oadm,
                 RadiusCaPem = radiusPem,
             },
-            // The 802.1X server's certificate (365 days, ECC) is part of its 802.1X server policy, made by the 802.1X server's
-            // conversion (RadiusPolicies.DefaultServerPolicy); the EST server's has a policy of its own (decision 2026-10-25).
-            new PkiPolicy
-            {
-                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer, CaId = CertificateAuthorityInfo.OadmId,
-                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc,
-            },
+            // The 802.1X server policy comes from the 802.1X server's conversion (RadiusPolicies.DefaultServerPolicy); the EST
+            // server's has a policy of its own. Both get their certificate when the server starts (decision 2026-10-25).
+            new PkiPolicy { Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer },
         ];
     }
 
@@ -92,6 +92,108 @@ public sealed partial class PkiService
     /// </summary>
     public const string KindsOwner = PkiPluginInfo.PluginId + ":kinds-2026-10-25";
 
+    /// <summary>The owner of the conversion of the RADIUS server CA into a CA of the list (<see cref="ConvertRadiusCasAsync"/>).</summary>
+    public const string RadiusCaOwner = PkiPluginInfo.PluginId + ":radius-ca-2026-10-25";
+
+    /// <summary>
+    /// Once (decision 2026-10-25): every IEEE 802.1X policy without a RADIUS server CA of the list gets one. "OADM 802.1X
+    /// server" becomes the CA that issued the 802.1X server policy's certificate (else the OADM CA); a CA imported into the
+    /// policy goes into the CA list (or the listed CA with its fingerprint is used) and the policy names it. A PEM that cannot
+    /// be read stays as it is and is logged: the form says below the field that a CA must be chosen.
+    /// </summary>
+    private async Task ConvertRadiusCasAsync(CancellationToken ct)
+    {
+        if (Policies.IsUnreadable || Policies.Converted.Contains(RadiusCaOwner, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        var chosen = new Dictionary<Guid, string>();
+        foreach (var policy in Policies.All.Where(p => p.Kind == PolicyKinds.Dot1xCertificate && string.IsNullOrWhiteSpace(p.RadiusCaId)))
+        {
+            if (policy.RadiusCa != RadiusCaSource.Imported)
+            {
+                chosen[policy.Id] = AuthorityIdOf(ServerIssuerChain(PolicyKinds.Dot1xServer) is { Count: > 0 } chain ? chain[0] : null) ?? CertificateAuthorityInfo.OadmId;
+                continue;
+            }
+
+            if (await ListedRadiusCaAsync(policy.RadiusCaPem, ct).ConfigureAwait(false) is { } id)
+            {
+                chosen[policy.Id] = id;
+            }
+            else
+            {
+                LogRadiusCaNotConverted(policy.Name);
+            }
+        }
+
+        await Policies.RewriteOnceAsync(RadiusCaOwner, list => [.. list.Select(p => chosen.TryGetValue(p.Id, out var id)
+            ? p with { RadiusCaId = id, RadiusCa = null, RadiusCaPem = null }
+            : p)], ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The id of the listed CA whose certificate is <paramref name="der"/> (its own, not one above it); null when none is. The
+    /// Axis device ID entry never matches: it holds every Axis root and intermediate, and a camera given it would trust all of
+    /// them (a single Axis CA becomes an imported CA of its own).
+    /// </summary>
+    private string? AuthorityIdOf(byte[]? der)
+    {
+        if (der is null)
+        {
+            return null;
+        }
+
+        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(der));
+        return Authorities().FirstOrDefault(a => a.Kind is not (CertificateAuthorityKind.PreviousOadm or CertificateAuthorityKind.AxisDeviceId) && a.Certificates.Count > 0
+            && string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(a.Certificates[0])), fingerprint, StringComparison.OrdinalIgnoreCase))?.Id;
+    }
+
+    /// <summary>The listed CA of a RADIUS server CA imported into a policy before: the one already listed, else imported now; null when the PEM cannot be read.</summary>
+    private async Task<string?> ListedRadiusCaAsync(string? pem, CancellationToken ct)
+    {
+        if (!PolicyRules.IsCertificatePem(pem))
+        {
+            return null;
+        }
+
+        byte[] der;
+        try
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
+            der = certificate.RawData;
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return null;
+        }
+
+        if (AuthorityIdOf(der) is { } listed)
+        {
+            return listed;
+        }
+
+        var reply = await ImportAuthorityAsync(new ImportAuthorityRequest(Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes(pem!)), null), ct).ConfigureAwait(false);
+        return reply.Ok ? AuthorityIdOf(der) : null;
+    }
+
+    /// <summary>The common name of a certificate (DER); empty when it cannot be read.</summary>
+    private static string CommonNameOf(byte[] der)
+    {
+        try
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
+            return Oadm.Plugins.Pki.Ca.CaCertificates.CommonName(certificate);
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return string.Empty;
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the RADIUS server CA of the policy {Policy} cannot be read; choose a CA in the policy")]
+    private partial void LogRadiusCaNotConverted(string policy);
+
     /// <summary>Loads the policies, converts PKI's own settings once and starts the minute round of Revoke.</summary>
     private async Task StartPoliciesAsync(CancellationToken ct)
     {
@@ -99,27 +201,10 @@ public sealed partial class PkiService
         var config = _config;
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
-        await RenameEstPoliciesAsync(ct).ConfigureAwait(false);
         await Policies.RewriteOnceAsync(KindsOwner, list => PolicyStore.ConvertKinds(list, RadiusPolicies.DefaultServerPolicy), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);
-    }
-
-    /// <summary>
-    /// The names of the EST conversion before 2026-10-25 ("EST https", "EST dot1x": the profile as the cameras spell it)
-    /// become the names a new installation gives ("EST HTTPS", "EST 802.1X"); once, never over a name a user chose.
-    /// </summary>
-    private async Task RenameEstPoliciesAsync(CancellationToken ct)
-    {
-        foreach (var (old, renamed) in new[] { ("EST https", "EST HTTPS"), ("EST dot1x", "EST 802.1X") })
-        {
-            if (Policies.All.FirstOrDefault(p => string.Equals(p.Name, old, StringComparison.Ordinal)) is { } policy
-                && !Policies.All.Any(p => p.Id != policy.Id && string.Equals(p.Name, renamed, StringComparison.OrdinalIgnoreCase)))
-            {
-                await Policies.SaveAsync(policy with { Name = renamed }, PkiPluginInfo.DisplayName, CipherSuites, ct).ConfigureAwait(false);
-            }
-        }
     }
 
     private async ValueTask StopPoliciesAsync()
@@ -176,10 +261,15 @@ public sealed partial class PkiService
             IssuingCas = Policies.IssuingCaChoices(),
             SignInCas = Policies.SignInCaChoices(),
             EstProfiles = await Policies.EstProfilesAsync(ct).ConfigureAwait(false),
-            CipherSuites = CipherSuites,
+            ServerCertificates = ServerCertificateChoices(),
+            ServerCertificateCas = Policies.IssuingCaChoices(),
             Sites = [.. (_sites?.List ?? []).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new PolicySite(s.Id, s.Name))],
             Tags = Policies.TagChoices(devices),
             MayManage = mayManage && !unreadable, // nothing can be saved over a list that cannot be read
+            Pro = IsPro(),
+            Dot1xServerIssuer = ServerIssuerChain(PolicyKinds.Dot1xServer) is { Count: > 0 } issuer
+                ? Authorities().FirstOrDefault(a => a.Certificates.Count > 0 && a.Certificates[0].AsSpan().SequenceEqual(issuer[0]))?.Name ?? CommonNameOf(issuer[0])
+                : null,
         };
     }
 

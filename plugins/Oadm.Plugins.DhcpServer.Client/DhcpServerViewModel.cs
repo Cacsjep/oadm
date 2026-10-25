@@ -32,7 +32,14 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
     /// <summary>Wait before watching again after the event stream ended or failed.</summary>
     public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// How often the page of a user with a device group reads the state again while shown (<see cref="DhcpState.Renew"/>):
+    /// the server forgets a group whose pages stopped reading.
+    /// </summary>
+    public static TimeSpan RenewInterval { get; set; } = TimeSpan.FromMinutes(5);
+
     private readonly ICorePluginClientContext _ctx;
+    private bool _renew;
     private readonly Dictionary<string, LeaseRowViewModel> _rows = new(StringComparer.Ordinal);
     private readonly Dictionary<uint, LeaseRowViewModel> _rowsByAddress = [];
     private Dictionary<string, DhcpNetworkInfo> _networks = new(StringComparer.Ordinal);
@@ -155,6 +162,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 
         _active = new CancellationTokenSource();
         _ = RunAsync(_active.Token);
+        _ = RenewAsync(_active.Token);
     }
 
     public void Deactivate()
@@ -186,7 +194,8 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
             }
 
             var state = DhcpJson.Deserialize<DhcpState>(json);
-            _networks = state.Networks.ToDictionary(n => n.InterfaceId, StringComparer.Ordinal);
+            _renew = state.Renew;
+            _networks =state.Networks.ToDictionary(n => n.InterfaceId, StringComparer.Ordinal);
             Listen.Apply(state.Interfaces, state.Config.InterfaceId, state.Config.InterfaceName);
             OnPropertyChanged(nameof(SelectedNetwork));
             OnPropertyChanged(nameof(ClientsGetText));
@@ -451,6 +460,26 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
         }
     }
 
+    /// <summary>While shown: the state again every <see cref="RenewInterval"/> when the server asks for it (a device group).</summary>
+    private async Task RenewAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(RenewInterval, ct).ConfigureAwait(true);
+                if (_renew)
+                {
+                    await LoadAsync(ct).ConfigureAwait(true);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // page hidden
+        }
+    }
+
     private async Task RunAsync(CancellationToken ct)
     {
         try
@@ -519,10 +548,13 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 
     private void ApplyLeaseChanges(LeasesEvent changes)
     {
-        if (changes.Version <= _leaseVersion)
+        if (changes.Version < _leaseVersion)
         {
             return; // already contained in the state read
         }
+
+        // The same version again: another part of one large change, or the change the state read contains already (applying
+        // it once more changes nothing).
 
         var structural = false;
         foreach (var lease in changes.Changed)

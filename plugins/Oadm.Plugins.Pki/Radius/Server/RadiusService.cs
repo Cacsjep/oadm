@@ -161,10 +161,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _log = new RadiusLog(host.Records, host.Time, host.Logger);
         _board = new SessionBoard(host.Time);
         _index = new DeviceIndex(host.Devices, host.Time);
-        _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger)
-        {
-            Policy = () => host.Policies()?.ServerPolicy,
-        };
+        _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Logger);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time, QueuePolicyRevoke);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
@@ -741,8 +738,8 @@ public sealed partial class RadiusService : IAsyncDisposable
             switch (listener.State)
             {
                 case RelayState.Running when _identity.Identity is null:
-                    // The CA of the 802.1X server policy cannot issue: say which, else PKI has no CA.
-                    text = Oadm.Plugins.Pki.Ca.IssuerChains.NoCertificateReason(_host.Authority(), _host.Policies()?.ServerPolicy?.CaId, RadiusTexts.ServerName) ?? RadiusTexts.NoCa;
+                    // The certificate of the 802.1X server policy: none chosen, gone, ended or revoked (decision 2026-10-25).
+                    text = _identity.Problem ?? RadiusTexts.NoCa;
                     break;
                 case RelayState.Running:
                     text = RadiusTexts.Running(config.Port);
@@ -920,6 +917,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             if (store is not null)
             {
                 store.Changed += OnPoliciesChanged;
+                store.Dot1xServerNames = CertificateNames; // Create of the 802.1X server policy offers them
             }
         }
     }
@@ -933,6 +931,7 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         RulesNow();
         PublishState();
+        Track(Task.Run(() => RefreshIdentityAsync(CancellationToken.None))); // another certificate picked: the next handshake shows it
     }
 
     /// <summary>A handshake met a certificate a revoke policy holds: revoked in the background (deduplicated, at most 10,000 waiting).</summary>
@@ -943,7 +942,13 @@ public sealed partial class RadiusService : IAsyncDisposable
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _policyRevoking, 1, 0) == 0)
+        StartPolicyRevokes();
+    }
+
+    /// <summary>Starts the background revocation when serials wait and none runs (also the minute round: those of a failed round).</summary>
+    private void StartPolicyRevokes()
+    {
+        if (!_policyRevokes.IsEmpty && Interlocked.CompareExchange(ref _policyRevoking, 1, 0) == 0)
         {
             Track(Task.Run(DrainPolicyRevokesAsync));
         }
@@ -951,6 +956,7 @@ public sealed partial class RadiusService : IAsyncDisposable
 
     private async Task DrainPolicyRevokesAsync()
     {
+        var failed = false;
         try
         {
             while (!_policyRevokes.IsEmpty && _host.Authority() is { } ca)
@@ -979,12 +985,18 @@ public sealed partial class RadiusService : IAsyncDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            _policyRevokes.Clear();
+            failed = true; // the serials stay queued: the minute round tries them again
             LogMaintainFailed(ex);
         }
         finally
         {
             Volatile.Write(ref _policyRevoking, 0);
+        }
+
+        // A serial queued after the last check and before the flag went down found it set: revoked now, not lost.
+        if (!failed && !_cts.IsCancellationRequested)
+        {
+            StartPolicyRevokes();
         }
     }
 
@@ -1040,6 +1052,14 @@ public sealed partial class RadiusService : IAsyncDisposable
 
             var address = request.Address!.Trim();
             var addresses = await ResolveAsync(address, request.SiteId, ct).ConfigureAwait(false);
+
+            // Two names of one switch (a host name and its IP address): its requests could not tell which secret applies.
+            var resolved = addresses.Select(RadiusRules.Normalize).ToHashSet();
+            if (_switches.All.Any(s => s.Id != request.Id && s.SiteId == request.SiteId && s.Addresses.Any(resolved.Contains)))
+            {
+                throw RadiusErrors.Field("address", RadiusRules.AddressTaken);
+            }
+
             var id = existing?.Id ?? Guid.NewGuid();
             byte[] secretBytes;
             string protectedSecret;
@@ -1348,6 +1368,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     /// </summary>
     internal async Task MaintainAsync(CancellationToken ct)
     {
+        StartPolicyRevokes(); // revocations a failed round left queued
         // A request while a round runs (a CA change in the middle of it) is never lost: the running round goes again.
         Volatile.Write(ref _maintainAgain, 1);
         while (Volatile.Read(ref _maintainAgain) == 1)
@@ -1392,21 +1413,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 _trust = CaTrust.Build(ca, selection, _deviceIds, Volatile.Read(ref _caVersion));
             }
 
-            try
-            {
-                // Also when nothing new was made: after a start the keeper loads the stored certificate, which the
-                // handshakes must get too (they started without one).
-                if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
-                    || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
-                {
-                    _processor.Options = OptionsOf(RulesNow(), _identity.Identity);
-                    PublishState();
-                }
-            }
-            catch (Exception ex) when (ex is CertificateRequestRefusedException or CryptographicException or InvalidOperationException)
-            {
-                LogCertificateFailed(ex.Message);
-            }
+            await RefreshIdentityAsync(ct).ConfigureAwait(false);
 
             if (_lastResolveTicks == 0 || _host.Time.GetElapsedTime(_lastResolveTicks) >= ResolveInterval)
             {
@@ -1423,6 +1430,33 @@ public sealed partial class RadiusService : IAsyncDisposable
 #pragma warning restore CA1031
         {
             LogMaintainFailed(ex);
+        }
+    }
+
+    /// <summary>
+    /// Loads the certificate of the 802.1X server policy (the first time: gives the policy one); the handshakes get the
+    /// new one, also after a start (they began without one).
+    /// </summary>
+    private async Task RefreshIdentityAsync(CancellationToken ct)
+    {
+        try
+        {
+            if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
+                || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
+            {
+                RulesNow(); // the rules of now first
+                lock (_rulesGate)
+                {
+                    // Computed and set under the gate: a policy change in between never leaves the options of older rules.
+                    _processor.Options = OptionsOf(_rules, _identity.Identity);
+                }
+
+                PublishState();
+            }
+        }
+        catch (Exception ex) when (ex is CertificateRequestRefusedException or CryptographicException or InvalidOperationException)
+        {
+            LogCertificateFailed(ex.Message);
         }
     }
 

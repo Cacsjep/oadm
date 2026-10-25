@@ -42,7 +42,8 @@ an independent security review the same day). A user may be limited to part of t
   cache the allowed id set lazily per cache key (see Sessions).
 - **Streams:** each stream keeps the ids it has sent; on a change a device that left the view becomes Removed, one that
   entered becomes Added. Sessions bound to one device (live video, web interface, event streams, I/O and metadata
-  monitors) end when that device leaves the user's view.
+  monitors) end when that device leaves the user's view, always with "1 device is no longer available." (also an event
+  source that ends quietly on the cancel).
 - **Tasks:** the engine checks the caller's view when a task is started (`TaskEngine.RunAsync` with the view passed in,
   also through the plugin task runner); task history is filtered in the query (a temp table or `json_each` for large
   views, never after the 10,000 snapshot limit). History of removed devices: only users with all devices.
@@ -70,7 +71,9 @@ an independent security review the same day). A user may be limited to part of t
   NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
   per scope) is found and stopped by every user with its device scope; it belongs to the scope, not to the user who
   started it (lead decision 2026-10-23): the starter's logout, new role or other devices leave it running, it ends only
-  when the rules of its group change, on a cancel or when its plugin stops. A job started in a call whose user's devices, role
+  when the rules of its group change, on a cancel or when its plugin stops. A plugin that stops or is turned off starts no
+  job until it runs again (`PluginJobRegistry.CancelPlugin` / `Resume`; a call still running then is refused). A row event
+  is parsed once for every group watcher. A job started in a call whose user's devices, role
   or session changed after the call began is refused ("Your devices changed. Connect again.").
   When the owner's devices change (another group, new rules of the group, another role) the owner's own jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
@@ -151,7 +154,11 @@ an independent security review the same day). A user may be limited to part of t
   note. Batch writers, tags and credentials, hold every gate from before their transaction until they published
   (`StoredDevicePublisher.HoldAsync`, gates first, then the database write lock): the rows read inside the transaction
   are what the table holds, published without a second read): a status write that read the tags before a tag change never puts the old tags back into the
-  feed, the scope rows or the grids of the old group. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
+  feed, the scope rows or the grids of the old group. The feed's `Changed` event runs outside its lock, so a handler can
+  get two changes of a device in the other order: each change carries its stamp (`DeviceChange.Stamp`), and the handlers
+  that keep membership per device (`HostDeviceScopes`, `TaskViewSubscription`) check `IDeviceChangeFeed.IsLatest` and apply
+  under one lock of their own, so an older copy raised late (a site or expiry pass) never puts a device back into a group
+  it left. `HostDeviceScopes.LoadAsync` reads the rows once for every caller. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
   the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
@@ -245,7 +252,8 @@ an independent security review the same day). A user may be limited to part of t
   (group id; created or new rules), `Updated` (every save that changed anything, also name or description: Your role) and
   `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
   for compliance checks: owner cleared, turned off) in one transaction, then
-  `UserStore.NotifyDeviceAccessChanged`. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
+  `UserStore.NotifyDeviceAccessChanged`. Once a save or delete is stored, the call's cancel no longer counts: the memory copy
+  is read again, the events are raised and the audit entry is written without it. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
   never "no devices" by choice; the overloads without it give all devices: first administrator, older clients),
   `UpdateAsync(..., DeviceScope? access, ...)`, event `UserDeviceAccessChanged`; texts `DeviceGroupTexts`.
 - **Predicate**: `DeviceGroupFilter.Compile` (hash sets; tags by id resolved through `DeviceScopeCatalog` =
@@ -265,7 +273,10 @@ an independent security review the same day). A user may be limited to part of t
   do this." (`DeviceGroupTexts.AllDevicesOnly`, `AuthInterceptor.RequireAllDevices` for checks inside a call).
 - **Background boundary**: `CallerContext.Suppress`, `RunDetached`, `Detached`, `Raise`: task runs, discovery and login
   work, the retry timer of the local network, and the events of the device and task feeds, tags, users, roles, sessions,
-  waiting list, sites, plugins, settings, compliance and event rules raise without the caller.
+  waiting list, sites, plugins, settings, compliance and event rules raise without the caller. Core plugins start and
+  stop without it (`CorePluginHost.StartAllAsync`, `StopAllAsync`, `SyncEnabledAsync`; `PluginActivation` turning a package
+  on or off), and the OADM PRO license raises `Changed` without it (`ProLicense`, `PluginProLicense`): a plugin started in
+  an administrator's call never keeps that user in its timers and loops.
 - **Streams**: `CallerStreams` ends the non-session streams of a user whose access changed and of the users of a group
   whose rules changed; a stream whose devices changed between check and registration ends with UNAVAILABLE "Your
   devices changed. Connect again.".
@@ -292,7 +303,8 @@ an independent security review the same day). A user may be limited to part of t
 - `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
   session of a discovery session that still exists does not expire by itself, so it keeps that permission, the expected
   device and the typed passwords until `DiscoverySessionOwners` stops the session (a session made again after it expired
-  tries only typed passwords).
+  tries only typed passwords). `Forget` cancels the session's running logins (one token per session): a login of the
+  credential list that runs while the session is stopped for an access change sends no further credential.
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
@@ -354,14 +366,17 @@ an independent security review the same day). A user may be limited to part of t
   (`TaskCallContext` over that view; event streams not offered there yet).
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
   CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
-  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
+  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id; the
+  Watch snapshot reads `ListRecentAsync` and `ListActiveAsync(ids)`, no count and no other group's active tasks);
   `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules),
-  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`): the sent tasks of a
-  device that left go out as Removed at once, the tasks of a device that entered as Added (its active tasks and the newest
+  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`); it keeps only the
+  task id and device id of each sent task, no records: the sent tasks of a device that left go out as Removed at once (a
+  slim record: id and device), the tasks of a device that entered as Added (its active tasks and the newest
   up to the snapshot limit, one query per batch of devices).
   A task is in the view while its device is: tasks of removed devices only for users with all devices.
 - **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
-  sets and the view's ids are the same objects).
+  sets and the view's ids are the same objects; only groups are cached, never a user without devices, and a deleted group's
+  entry is dropped).
 - **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
   call and, for a group, `ITaskQueryContext.Devices` of the view.
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch with devices that

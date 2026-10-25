@@ -113,6 +113,7 @@ public sealed class ListenTests : IAsyncLifetime
         var device = new FakeDevice { Serial = "B8A44F631339", Address = "192.168.50.20", FirmwareVersion = "12.11.77" };
         var camera = new TaskTests.EstCamera { Server = _est, Device = device };
         var ctx = new FakeTaskContext(camera) { Network = new FakeDeviceNetwork { LocalAddress = IPAddress.Parse("10.0.0.17") } };
+        _ca.NameAlso("192.168.50.1"); // the interface's address is in the EST server's certificate
 
         await new EstSetupTask(() => _est).ExecuteAsync(ctx, device, "{}", CancellationToken.None);
 

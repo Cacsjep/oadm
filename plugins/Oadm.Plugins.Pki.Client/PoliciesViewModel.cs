@@ -14,247 +14,268 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Pki.Client;
 
-/// <summary>One line of a rule list: name, devices, the summary sentence and the warning of a later overlap.</summary>
-public sealed class PolicyRowViewModel(PolicyRow row, string devicesText)
+/// <summary>The groups of the policy table, in their order (decision 2026-10-25), and the kinds of each.</summary>
+public static class PolicyTableGroups
+{
+    public const string Issuing = "Issuing policies";
+    public const string Servers = "Server policies";
+    public const string Access = "802.1X access policies";
+    public const string Enrollment = "EST enrollment policies";
+    public const string Expiry = "Expiry warnings";
+
+    public static IReadOnlyList<string> All { get; } = [Issuing, Servers, Access, Enrollment, Expiry];
+
+    /// <summary>The group of a kind.</summary>
+    public static string Of(string kind) => kind switch
+    {
+        PolicyKinds.HttpsCertificate or PolicyKinds.Dot1xCertificate => Issuing,
+        PolicyKinds.Dot1xServer or PolicyKinds.EstServer => Servers,
+        PolicyKinds.AllowCa or PolicyKinds.Vlan or PolicyKinds.Block => Access,
+        PolicyKinds.Enrollment or PolicyKinds.SignInCa => Enrollment,
+        _ => Expiry,
+    };
+}
+
+/// <summary>
+/// One row of the policy table: the name (a red dot when it needs attention: an overlap, a CA that cannot issue; the
+/// Built-in badge), the type and the summary sentence; its group (<see cref="PolicyTableGroups"/>).
+/// </summary>
+public sealed class PolicyRowViewModel(PolicyRow row, string? problem)
 {
     public PolicyRow Row { get; } = row ?? throw new ArgumentNullException(nameof(row));
 
     public PkiPolicy Source => Row.Policy;
 
+    public Guid Id => Source.Id;
+
     public string Name => Source.Name;
 
-    public string Kind => Row.KindName;
+    /// <summary>"VLAN", "802.1X trusted CA".</summary>
+    public string Type => PolicyKinds.Name(Source.Kind);
+
+    /// <summary>"Issuing policies", "802.1X access policies".</summary>
+    public string Group => PolicyTableGroups.Of(Source.Kind);
 
     public string Summary => Row.Summary;
 
-    /// <summary>"Site Building B, Tag PTZ, 3 devices, except 1"; "-" for a kind without devices.</summary>
-    public string Devices { get; } = PolicyKinds.HasDevices(row.Policy.Kind) ? devicesText : "-";
+    /// <summary>What needs attention (the red dot's tooltip); null otherwise.</summary>
+    public string? Problem { get; } = problem;
 
-    public string? Warning => Row.Warning;
+    public bool HasProblem => Problem is not null;
 
-    public bool HasWarning => !string.IsNullOrEmpty(Row.Warning);
-
-    /// <summary>A system policy (OADM needs it): a System badge, no Delete.</summary>
+    /// <summary>A built-in policy (OADM needs it): the Built-in badge, no Delete.</summary>
     public bool IsSystem => Row.IsSystem;
 
-    public bool CanDelete => !Row.IsSystem;
-
-    /// <summary>Why a system policy has no Delete (the badge's tooltip).</summary>
+    /// <summary>Why a built-in policy has no Delete (the panel's badge tooltip).</summary>
     public const string SystemTip = "OADM needs it, so it cannot be deleted";
 }
 
-/// <summary>
-/// One rule list of a card of the Policies tab ("VLANs", "Trusted CAs"): the policies of its kinds in age order, one line
-/// each, Add with the kind preset (a menu of the kinds when it has several), Edit and Delete per row (no Delete for a
-/// system policy). At most 200 policies in all: the view's table is virtualized and bounded in height.
-/// </summary>
-public sealed partial class PolicySectionViewModel : ObservableObject
+/// <summary>A type of the Create panel: its name and what it does in one line.</summary>
+public sealed record PolicyKindChoice(string Kind, string Name, string? Description)
 {
-    private readonly PoliciesViewModel _owner;
-    private readonly string _empty;
-    private readonly string _emptyHowTo;
-
-    internal PolicySectionViewModel(PoliciesViewModel owner, string title, IReadOnlyList<string> kinds, bool withSystem, string empty, string emptyHowTo)
-    {
-        _owner = owner;
-        Title = title;
-        Kinds = kinds;
-        WithSystem = withSystem;
-        _empty = empty;
-        _emptyHowTo = emptyHowTo;
-        AddChoices = [.. kinds.Select(k => new Choice<string>(k, PolicyKinds.Name(k)))];
-    }
-
-    /// <summary>"Other issuing", "Trusted CAs", "VLANs".</summary>
-    public string Title { get; }
-
-    /// <summary>The kinds of the list (Add offers them).</summary>
-    public IReadOnlyList<string> Kinds { get; }
-
-    /// <summary>The system policy of the kind is a row of this list (Enrollment "All devices"); else it is edited in place.</summary>
-    public bool WithSystem { get; }
-
-    /// <summary>The kinds choose devices: the Devices column shows.</summary>
-    public bool HasDevices => Kinds.Any(PolicyKinds.HasDevices);
-
-    /// <summary>The kinds Add offers: one opens the editor at once, several a menu.</summary>
-    public IReadOnlyList<Choice<string>> AddChoices { get; }
-
-    public RangeObservableCollection<PolicyRowViewModel> Rows { get; } = [];
-
-    public bool MayManage => _owner.MayManage;
-
-    /// <summary>One line when the list is empty: what it means, and for users who may change the policies what to do first.</summary>
-    public string? EmptyText => Rows.Count > 0 || _owner.IsLoading ? null : MayManage ? _emptyHowTo : _empty;
-
-    public bool HasEmptyText => EmptyText is not null;
-
-    /// <summary>Why Add is off (at most 200 policies).</summary>
-    public string? AddTip => _owner.AddTip;
-
-    /// <summary>Add is on (the user may manage the policies, fewer than 200).</summary>
-    public bool CanAddRule => _owner.CanAdd();
-
-    /// <summary>Holds <paramref name="policy"/> (its kind, and it is a rule here, not a setting edited in place).</summary>
-    internal bool Holds(PolicyRow row) => Kinds.Contains(row.Policy.Kind, StringComparer.Ordinal) && (WithSystem || !row.IsSystem);
-
-    internal void Fill(IEnumerable<PolicyRowViewModel> rows)
-    {
-        Rows.ReplaceAll(rows);
-        Notify();
-    }
-
-    internal void Notify()
-    {
-        OnPropertyChanged(nameof(EmptyText));
-        OnPropertyChanged(nameof(HasEmptyText));
-        OnPropertyChanged(nameof(MayManage));
-        OnPropertyChanged(nameof(AddTip));
-        OnPropertyChanged(nameof(CanAddRule));
-        AddCommand.NotifyCanExecuteChanged();
-    }
-
-    private bool CanAdd() => _owner.CanAdd();
-
-    /// <summary>Add of the list: the editor with <paramref name="kind"/> preset (the first kind when none is given).</summary>
-    [RelayCommand(CanExecute = nameof(CanAdd))]
-    private Task AddAsync(string? kind) => _owner.AddAsync(kind is not null && Kinds.Contains(kind, StringComparer.Ordinal) ? kind : Kinds[0]);
-
-    /// <summary>Edit of a row (also a double click).</summary>
-    [RelayCommand]
-    private Task EditRowAsync(PolicyRowViewModel? row) => _owner.EditAsync(row);
-
-    [RelayCommand]
-    private Task DeleteRowAsync(PolicyRowViewModel? row) => _owner.DeleteAsync(row);
+    public bool HasDescription => !string.IsNullOrEmpty(Description);
 }
 
-/// <summary>One line of "Check a device": the area, the sentence, the deciding policies (dimmed) and a warning.</summary>
-public sealed class PolicyCheckLineViewModel(PolicyCheckLine line)
-{
-    public string Area { get; } = line.Area;
-
-    public string Text { get; } = line.Text;
-
-    /// <summary>"By Building B", "By OADM CA and Axis device ID"; null when no policy decides it (what happens without one).</summary>
-    public string? By { get; } = line.Policies.Count == 0 ? null
-        : "By " + (line.Policies.Count == 1 ? line.Policies[0] : string.Join(", ", line.Policies.Take(line.Policies.Count - 1)) + " and " + line.Policies[^1]);
-
-    public bool HasBy => By is not null;
-
-    public bool IsWarning { get; } = line.IsWarning;
-}
-
-/// <summary>What the Policies tab asks of the view: the policy editor and the one-device picker.</summary>
+/// <summary>What the Policies tab asks of the view: the shared device picker for a policy's devices, Create server certificate.</summary>
 public interface IPolicyDialogs
 {
-    /// <summary>Shows the editor until it saved (true) or was closed.</summary>
-    Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor);
-
-    /// <summary>The shared picker for one device (<see cref="DevicePickerWindow.ShowOneAsync"/>); null when cancelled.</summary>
-    Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected) => Task.FromResult<Guid?>(null);
+    /// <summary>Shows <paramref name="picker"/> (<see cref="DevicePickerWindow"/> in its group mode); true when OK was clicked.</summary>
+    Task<bool> PickDevicesAsync(DevicePickerViewModel picker, string heading);
 }
 
 /// <summary>
-/// The Policies tab of the PKI page (docs/spec/pki.md "Policies", decision 2026-10-25): cards by area in a fixed order.
-/// Check a device on top (one device, the server says which policies apply to it); Certificates for cameras (the system
-/// HTTPS, IEEE 802.1X and Expiry warning policies edited in place, the rules Other issuing and Expiry warnings); 802.1X
-/// network access (the 802.1X server policy in place, the rules Trusted CAs, VLANs, Blocked); EST (the EST server policy in
-/// place, the rules Enrollment with its system policy as the first row, and Sign-in CAs). Changing needs "Manage the
-/// certificate authority" and all devices; other users see it read only; users limited to a device group do not see it
-/// (the server sends them none).
+/// The Policies tab of the PKI page (docs/spec/pki.md "Policies", decision 2026-10-25, like Intune): one table (Name, Type,
+/// Summary) grouped into Issuing, Server, 802.1X access, EST enrollment policies and Expiry warnings, with Create and a
+/// search above it. A row or Create opens the side panel, which pushes the table to the left:
+/// Create first lists the types with what each does, Next shows the form; a row shows its form at once. Save stores the
+/// policy and closes the panel; Cancel or closing with changes not saved asks first. Changing needs "Manage the certificate
+/// authority" and all devices; other users see it read only; users limited to a device group do not see it (the server
+/// sends them none).
 /// </summary>
 public sealed partial class PoliciesViewModel : ObservableObject
 {
-    /// <summary>The device button before a device is chosen.</summary>
-    public const string ChooseDeviceText = "Choose a device";
+    public const string CreateTitle = "Create a policy";
+
+    /// <summary>The table when the search matches nothing.</summary>
+    public const string NoMatchText = "No policies match the search.";
 
     private readonly ICorePluginClientContext _ctx;
     private PolicyList _list = new();
+    private List<PolicyRowViewModel> _all = [];
     private int _loads;
-    private int _checks;
+    private bool _selecting;
     private IPkiFiles? _files;
 
     public PoliciesViewModel(ICorePluginClientContext ctx)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
-        OtherIssuing = new(this, "Other issuing", [PolicyKinds.HttpsCertificate, PolicyKinds.Dot1xCertificate], false,
-            "No other issuing policies.", "No other issuing policies. Add one to issue with other values, e.g. HTTPS 90 days.");
-        ExpiryRules = new(this, "Expiry warnings for some devices", [PolicyKinds.ExpiryWarning], false,
-            "No other expiry warnings.", "No other expiry warnings. Add one to warn earlier for some devices.");
-        TrustedCas = new(this, "Trusted CAs", [PolicyKinds.AllowCa], false,
-            "No trusted CAs: the 802.1X server lets no device in.", "No trusted CAs: the 802.1X server lets no device in. Add a CA.");
-        Vlans = new(this, "VLANs", [PolicyKinds.Vlan], false,
-            "No VLANs: switch ports keep their own.", "No VLANs: switch ports keep their own. Add one to put devices in a VLAN.");
-        Blocked = new(this, "Blocked", [PolicyKinds.Block], false,
-            "No devices are blocked.", "No devices are blocked. Add a rule to refuse devices.");
-        Enrollment = new(this, "Enrollment", [PolicyKinds.Enrollment], true,
-            "No enrollment: the EST server refuses every camera.", "No enrollment: the EST server refuses every camera. Add a rule.");
-        SignInCas = new(this, "Sign-in CAs", [PolicyKinds.SignInCa], false,
-            "No sign-in CAs: cameras cannot sign in to the EST server.", "No sign-in CAs: cameras cannot sign in to the EST server. Add a CA.");
-        Sections = [OtherIssuing, ExpiryRules, TrustedCas, Vlans, Blocked, Enrollment, SignInCas];
     }
 
-    /// <summary>The editor and the device picker (the page view).</summary>
+    /// <summary>The device picker (the page view).</summary>
     public IPolicyDialogs? Dialogs { get; set; }
 
-    /// <summary>File pickers of the page (the RADIUS server CA of the IEEE 802.1X policy edited in place).</summary>
+    /// <summary>File pickers of the page (none of the policy form uses one any more; kept for the page view).</summary>
     public IPkiFiles? Files
     {
         get => _files;
-        set
-        {
-            _files = value;
-            foreach (var editor in Settings)
-            {
-                editor.Files ??= value;
-            }
-        }
+        set => _files = value;
     }
 
     /// <summary>The list as the server answered it.</summary>
     public PolicyList List => _list;
 
-    // ------------------------------------------------------------------ cards
+    // ------------------------------------------------------------------ table
 
-    /// <summary>Certificates for cameras: the HTTPS certificate system policy, edited in place (null without one).</summary>
+    /// <summary>
+    /// The rows the search shows, grouped by <see cref="PolicyRowViewModel.Group"/> in the order of
+    /// <see cref="PolicyTableGroups.All"/>, built-in first in each group (at most 200 policies; the table is virtualized).
+    /// </summary>
+    public RangeObservableCollection<PolicyRowViewModel> Rows { get; } = [];
+
+    /// <summary>The search over name, type and summary.</summary>
     [ObservableProperty]
-    public partial PolicyEditorViewModel? Https { get; set; }
+    public partial string? SearchText { get; set; }
 
-    /// <summary>Certificates for cameras: the IEEE 802.1X certificate system policy.</summary>
+    /// <summary>The row whose policy is open in the panel.</summary>
     [ObservableProperty]
-    public partial PolicyEditorViewModel? Dot1x { get; set; }
+    public partial PolicyRowViewModel? SelectedRow { get; set; }
 
-    /// <summary>Certificates for cameras: the Expiry warning system policy (its days).</summary>
+    /// <summary>The search hides every policy (one line instead of the table).</summary>
+    public bool HasNoMatch => Rows.Count == 0 && _all.Count > 0;
+
+    partial void OnSearchTextChanged(string? value) => Filter();
+
+    private void Filter()
+    {
+        var text = SearchText?.Trim();
+        Rows.ReplaceAll(string.IsNullOrEmpty(text) ? _all : _all.Where(r =>
+            r.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase)
+            || r.Type.Contains(text, StringComparison.CurrentCultureIgnoreCase)
+            || r.Summary.Contains(text, StringComparison.CurrentCultureIgnoreCase)));
+        OnPropertyChanged(nameof(HasNoMatch));
+        if (SelectedRow is { } selected && !Rows.Contains(selected))
+        {
+            Select(null);
+        }
+    }
+
+    // ------------------------------------------------------------------ panel
+
+    /// <summary>The side panel shows (it slides in and pushes the table to the left).</summary>
     [ObservableProperty]
-    public partial PolicyEditorViewModel? Expiry { get; set; }
+    public partial bool IsPanelOpen { get; set; }
 
-    /// <summary>802.1X network access: the 802.1X server policy.</summary>
+    /// <summary>The panel lists the types (Create, before Next).</summary>
     [ObservableProperty]
-    public partial PolicyEditorViewModel? Dot1xServer { get; set; }
+    [NotifyPropertyChangedFor(nameof(PanelTitle), nameof(IsEditing))]
+    public partial bool IsChoosingKind { get; set; }
 
-    /// <summary>EST: the EST server policy.</summary>
+    /// <summary>The form in the panel; null while the types are listed or the panel is closed.</summary>
     [ObservableProperty]
-    public partial PolicyEditorViewModel? EstServer { get; set; }
+    [NotifyPropertyChangedFor(nameof(PanelTitle), nameof(IsEditing))]
+    public partial PolicyEditorViewModel? Editor { get; set; }
 
-    public PolicySectionViewModel OtherIssuing { get; }
+    /// <summary>The panel shows a form.</summary>
+    public bool IsEditing => Editor is not null && !IsChoosingKind;
 
-    public PolicySectionViewModel ExpiryRules { get; }
+    /// <summary>The System badge next to the panel's title (a system policy).</summary>
+    public bool ShowsSystemBadge => IsEditing && Editor!.IsInPlace;
 
-    public PolicySectionViewModel TrustedCas { get; }
+    /// <summary>The type below the panel's title ("VLAN"); none for a system policy, whose name says it.</summary>
+    public string? PanelKind => IsEditing && !Editor!.IsInPlace ? Editor.KindName : null;
 
-    public PolicySectionViewModel Vlans { get; }
+    public bool HasPanelKind => PanelKind is not null;
 
-    public PolicySectionViewModel Blocked { get; }
+    /// <summary>Delete shows in the panel: a stored user policy, for a user who may change the policies.</summary>
+    public bool CanDelete => IsEditing && Editor!.CanDelete;
 
-    public PolicySectionViewModel Enrollment { get; }
+    /// <summary>Save shows in the panel: a form the user may change.</summary>
+    public bool ShowsSave => IsEditing && Editor!.IsEditable;
 
-    public PolicySectionViewModel SignInCas { get; }
+    /// <summary>"Not saved" left of Save.</summary>
+    public string? SaveStatus => IsEditing ? Editor!.SaveStatus : null;
 
-    /// <summary>Every rule list in the page's order.</summary>
-    public IReadOnlyList<PolicySectionViewModel> Sections { get; }
+    public bool HasSaveStatus => SaveStatus is not null;
 
-    /// <summary>The system policies edited in place, in the page's order (those that exist).</summary>
-    public IEnumerable<PolicyEditorViewModel> Settings => new[] { Https, Dot1x, Expiry, Dot1xServer, EstServer }.OfType<PolicyEditorViewModel>();
+    /// <summary>Why Save is off (its tooltip).</summary>
+    public string? SaveBlockedReason => IsEditing ? Editor!.SaveBlockedReason : null;
+
+    private bool CanSave() => IsEditing && Editor!.CanSave;
+
+    /// <summary>Save of the panel: the form's save (the panel closes when the server stored the policy).</summary>
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private async Task SaveOpenAsync()
+    {
+        if (Editor is { } editor)
+        {
+            await editor.SaveAsync().ConfigureAwait(true);
+        }
+    }
+
+    private bool CanDeleteOpen() => CanDelete && !Editor!.IsBusy;
+
+    /// <summary>Delete of the panel (a stored user policy); waits while a save or a delete runs.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteOpen))]
+    private async Task DeleteOpenAsync()
+    {
+        if (Editor is { } editor)
+        {
+            await DeleteAsync(editor).ConfigureAwait(true);
+        }
+    }
+
+    partial void OnEditorChanged(PolicyEditorViewModel? oldValue, PolicyEditorViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.PropertyChanged -= OnEditorPropertyChanged;
+        }
+
+        if (newValue is not null)
+        {
+            newValue.PropertyChanged += OnEditorPropertyChanged;
+        }
+
+        NotifyPanel();
+    }
+
+    partial void OnIsChoosingKindChanged(bool value) => NotifyPanel();
+
+    private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => NotifyPanel();
+
+    private void NotifyPanel()
+    {
+        OnPropertyChanged(nameof(ShowsSystemBadge));
+        OnPropertyChanged(nameof(PanelKind));
+        OnPropertyChanged(nameof(HasPanelKind));
+        OnPropertyChanged(nameof(CanDelete));
+        OnPropertyChanged(nameof(ShowsSave));
+        OnPropertyChanged(nameof(SaveStatus));
+        OnPropertyChanged(nameof(HasSaveStatus));
+        OnPropertyChanged(nameof(SaveBlockedReason));
+        OnPropertyChanged(nameof(PanelTitle));
+        SaveOpenCommand.NotifyCanExecuteChanged();
+        DeleteOpenCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>"Create a policy" while the types are listed, else the policy's name or "New VLAN policy".</summary>
+    public string PanelTitle => IsChoosingKind || Editor is null ? CreateTitle : Editor.Heading;
+
+    /// <summary>The types Create offers (never a second 802.1X server or EST server policy).</summary>
+    public IReadOnlyList<PolicyKindChoice> KindChoices
+    {
+        get
+        {
+            var taken = _list.Rows.Where(r => PolicyKinds.OneOnly(r.Policy.Kind)).Select(r => r.Policy.Kind).ToHashSet(StringComparer.Ordinal);
+            return [.. PolicyKinds.All.Where(k => !taken.Contains(k) && (_list.Pro || !PolicyKinds.IsPro(k)))
+                .Select(k => new PolicyKindChoice(k, PolicyKinds.Name(k), PolicyKinds.Description(k)))];
+        }
+    }
+
+    /// <summary>The type chosen in the Create panel.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(NextCommand))]
+    public partial PolicyKindChoice? SelectedKind { get; set; }
 
     // ------------------------------------------------------------------ state
 
@@ -262,11 +283,11 @@ public sealed partial class PoliciesViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
-    /// <summary>A later read (the progress row; the cards stay).</summary>
+    /// <summary>A later read (the progress row; the table stays).</summary>
     [ObservableProperty]
     public partial bool IsReloading { get; set; }
 
-    /// <summary>A read or a delete failed (below the Check a device card, above the cards it concerns).</summary>
+    /// <summary>A read or a delete failed (directly below the table).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? Error { get; set; }
@@ -279,102 +300,12 @@ public sealed partial class PoliciesViewModel : ObservableObject
     /// <summary>The user may change the policies (the server's answer, and the role now).</summary>
     public bool MayManage => _list.MayManage && _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
-    /// <summary>Why Add is off.</summary>
-    public string? AddTip => _list.Rows.Count >= PolicyLimits.MaxPolicies ? PolicyTexts.TooMany : null;
-
-    // ------------------------------------------------------------------ Check a device
-
-    /// <summary>The device of Check a device; null before one was chosen.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CheckButtonText))]
-    public partial IDeviceInfo? CheckedDevice { get; set; }
-
-    /// <summary>"10.0.0.48 · AXIS P3265-LVE", or "Choose a device".</summary>
-    public string CheckButtonText => CheckedDevice is { } device ? DeviceLabel(device) : ChooseDeviceText;
-
-    /// <summary>What applies to the chosen device, a few plain lines (at most about seven: no virtualization needed).</summary>
-    public RangeObservableCollection<PolicyCheckLineViewModel> CheckLines { get; } = [];
-
-    /// <summary>The server is checking the chosen device (the ring next to the button).</summary>
-    [ObservableProperty]
-    public partial bool IsChecking { get; set; }
-
-    /// <summary>The check failed, or the device is gone (below the button).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCheckError))]
-    public partial string? CheckError { get; set; }
-
-    public bool HasCheckError => !string.IsNullOrEmpty(CheckError);
-
-    /// <summary>"10.0.0.48 · AXIS P3265-LVE" (the address alone without a model).</summary>
-    internal static string DeviceLabel(IDeviceInfo device) => string.IsNullOrWhiteSpace(device.Model) ? device.Address : device.Address + " · " + device.Model;
-
-    /// <summary>Choose a device (the shared one-device picker over the devices this client knows), then check it.</summary>
-    [RelayCommand]
-    private async Task ChooseCheckDeviceAsync()
-    {
-        if (Dialogs is not { } dialogs || !IsShown)
-        {
-            return;
-        }
-
-        var devices = _ctx.Devices;
-        if (await dialogs.PickDeviceAsync(devices, CheckedDevice?.Id).ConfigureAwait(true) is { } id && devices.FirstOrDefault(d => d.Id == id) is { } chosen)
-        {
-            CheckedDevice = chosen;
-            await CheckAsync(CancellationToken.None).ConfigureAwait(true);
-        }
-    }
-
-    /// <summary>Asks the server which policies apply to the chosen device (one call for one device; nothing before a choice).</summary>
-    public async Task CheckAsync(CancellationToken ct)
-    {
-        if (CheckedDevice is not { } device || !IsShown)
-        {
-            CheckLines.Clear();
-            return;
-        }
-
-        var run = ++_checks;
-        IsChecking = true;
-        CheckError = null;
-        try
-        {
-            var reply = PkiJson.Deserialize<PolicyCheck>(await _ctx.InvokeAsync(PolicyMethods.CheckDevice, PkiJson.Serialize(new PolicyCheckRequest(device.Id)), ct).ConfigureAwait(true));
-            if (run != _checks)
-            {
-                return; // a newer check runs
-            }
-
-            CheckLines.ReplaceAll(reply.Lines.Select(l => new PolicyCheckLineViewModel(l)));
-            CheckError = reply.Error;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-#pragma warning disable CA1031 // Shown below the button.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            if (run == _checks)
-            {
-                CheckLines.Clear();
-                CheckError = ServerErrors.Message(ex);
-            }
-        }
-        finally
-        {
-            if (run == _checks)
-            {
-                IsChecking = false;
-            }
-        }
-    }
+    /// <summary>Why Create is off.</summary>
+    public string? CreateTip => _list.Rows.Count >= PolicyLimits.MaxPolicies ? PolicyTexts.TooMany : null;
 
     // ------------------------------------------------------------------ reading
 
-    /// <summary>Reads the policies (the overlay the first time, the progress row later) and checks the chosen device again.</summary>
+    /// <summary>Reads the policies (the overlay the first time, the progress row later).</summary>
     public async Task LoadAsync(CancellationToken ct)
     {
         if (!IsShown)
@@ -406,139 +337,248 @@ public sealed partial class PoliciesViewModel : ObservableObject
         {
             IsLoading = false;
             IsReloading = false;
-            NotifySections();
-        }
-
-        if (CheckedDevice is not null)
-        {
-            await CheckAsync(ct).ConfigureAwait(true); // a change of the policies changes what applies
         }
     }
 
-    /// <summary>Shows a list of the server (also used by tests and the screenshots).</summary>
-    public void Apply(PolicyList list) => Apply(list, null);
-
     /// <summary>
-    /// Shows <paramref name="list"/>: the rule lists, and a new in-place editor per system policy, except one with changes not
-    /// saved yet (kept as the user left it); <paramref name="saved"/> just saved and is replaced, saying Saved.
+    /// Shows <paramref name="list"/> (also used by tests and the screenshots). The panel stays: a form with changes not saved
+    /// as the user left it, an unchanged form of a stored policy with its new values; it closes when its policy is gone.
     /// </summary>
-    internal void Apply(PolicyList list, PolicyEditorViewModel? saved)
+    public void Apply(PolicyList list)
     {
         ArgumentNullException.ThrowIfNull(list);
         _list = IsShown ? list : new PolicyList();
-        var system = _list.Rows.Where(r => r.IsSystem).GroupBy(r => r.Policy.Kind, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Policy, StringComparer.Ordinal);
-        Https = InPlace(Https, PolicyKinds.HttpsCertificate);
-        Dot1x = InPlace(Dot1x, PolicyKinds.Dot1xCertificate);
-        Expiry = InPlace(Expiry, PolicyKinds.ExpiryWarning);
-        Dot1xServer = InPlace(Dot1xServer, PolicyKinds.Dot1xServer);
-        EstServer = InPlace(EstServer, PolicyKinds.EstServer);
+        var issuing = _list.IssuingCas.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var order = PolicyTableGroups.All.Select((g, i) => (g, i)).ToDictionary(p => p.g, p => p.i, StringComparer.Ordinal);
+        _all = [.. _list.Rows.Where(r => _list.Pro || !PolicyKinds.IsPro(r.Policy.Kind)).Select(r => new PolicyRowViewModel(r, ProblemOf(r, issuing)))
+            .OrderBy(r => order[r.Group]).ThenBy(r => r.IsSystem ? 0 : 1)]; // stable: the server's order within
 
-        var names = SiteNames();
-        foreach (var section in Sections)
+        _selecting = true;
+        try
         {
-            section.Fill(_list.Rows.Where(section.Holds).Select(r => new PolicyRowViewModel(r, PolicyTexts.DevicesText(r.Policy.Devices, names))));
+            Filter();
+            // A form with an open dialog (Choose devices, a question) stays as it is: the dialog works on it.
+            var open = Editor is { IsNew: false } editor ? _all.FirstOrDefault(r => r.Id == editor.PolicyId) : null;
+            if (Editor is { IsNew: false, IsDirty: false, DialogsOpen: 0 } && !IsChoosingKind)
+            {
+                if (open is null)
+                {
+                    ClosePanel();
+                }
+                else
+                {
+                    Editor = NewEditor(open.Row);
+                }
+            }
+
+            Select(IsPanelOpen ? open : null);
+        }
+        finally
+        {
+            _selecting = false;
         }
 
         OnPropertyChanged(nameof(MayManage));
-        OnPropertyChanged(nameof(AddTip));
-
-        PolicyEditorViewModel? InPlace(PolicyEditorViewModel? current, string kind)
-        {
-            if (!system.TryGetValue(kind, out var policy))
-            {
-                return null;
-            }
-
-            if (current is not null && current != saved && current.IsDirty && current.PolicyId == policy.Id)
-            {
-                return current; // the user's changes stay until saved
-            }
-
-            var editor = new PolicyEditorViewModel(_ctx, this, policy, _list, [], inPlace: true) { Files = Files };
-            editor.JustSaved = saved is not null && current == saved;
-            editor.ReadOnly = !MayManage;
-            return editor;
-        }
+        OnPropertyChanged(nameof(CreateTip));
+        OnPropertyChanged(nameof(KindChoices));
+        CreateCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The row's dot: its warning, or an issuing policy whose CA cannot issue (also when no CA can issue at all).</summary>
+    private static string? ProblemOf(PolicyRow row, HashSet<string> issuing) =>
+        row.Warning
+        ?? (PolicyKinds.IsIssuing(row.Policy.Kind) && !issuing.Contains(row.Policy.CaId ?? CertificateAuthorityInfo.OadmId) ? PolicyTexts.CannotIssue : null);
 
     internal void NotifyRole()
     {
         OnPropertyChanged(nameof(IsShown));
         OnPropertyChanged(nameof(MayManage));
-        if (!IsShown && _list.Rows.Count > 0)
-        {
-            CheckedDevice = null;
-            CheckLines.Clear();
-            Apply(new PolicyList()); // nothing server-wide stays for a user limited to a group
-        }
-        else if (_list.Rows.Count > 0)
-        {
-            Apply(_list); // read only, or editable again
-        }
-
-        NotifySections();
+        ClosePanel(); // the open form follows the role
+        Apply(IsShown ? _list : new PolicyList()); // nothing server-wide stays for a user limited to a group
     }
 
-    private void NotifySections()
+    // ------------------------------------------------------------------ opening and closing
+
+    partial void OnSelectedRowChanged(PolicyRowViewModel? oldValue, PolicyRowViewModel? newValue)
     {
-        foreach (var section in Sections)
+        if (_selecting || newValue is null || newValue == oldValue)
         {
-            section.Notify();
+            return;
+        }
+
+        _ = OpenAsync(oldValue, newValue);
+    }
+
+    /// <summary>Opens the policy of <paramref name="row"/> in the panel; changes not saved in the panel ask first.</summary>
+    private async Task OpenAsync(PolicyRowViewModel? previous, PolicyRowViewModel row)
+    {
+        if (Editor is { IsDirty: true })
+        {
+            await Task.Yield(); // the table finishes its own selection first
+            Select(Current(previous));
+            if (!await MayLeaveAsync().ConfigureAwait(true))
+            {
+                return;
+            }
+
+            // A reload during the question made new rows: the one asked for, as it is now (gone: nothing opens).
+            if (Current(row) is not { } now)
+            {
+                return;
+            }
+
+            row = now;
+        }
+
+        Select(row);
+        IsChoosingKind = false;
+        Editor = NewEditor(row.Row);
+        IsPanelOpen = true;
+    }
+
+    /// <summary>The row of the same policy in the list as it is now; null when the policy is gone.</summary>
+    private PolicyRowViewModel? Current(PolicyRowViewModel? row) => row is null ? null : _all.FirstOrDefault(r => r.Id == row.Id);
+
+    private void Select(PolicyRowViewModel? row)
+    {
+        var selecting = _selecting;
+        _selecting = true;
+        try
+        {
+            SelectedRow = row;
+        }
+        finally
+        {
+            _selecting = selecting;
         }
     }
 
-    private Dictionary<Guid, string> SiteNames() => _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name);
+    /// <summary>The open form may go: it has no changes, or the user discards them (a reload meanwhile keeps the form).</summary>
+    private async Task<bool> MayLeaveAsync()
+    {
+        if (Editor is not { IsDirty: true } editor)
+        {
+            return true;
+        }
+
+        editor.DialogsOpen++;
+        try
+        {
+            return await _ctx.ConfirmAsync("Discard changes", $"The changes to {editor.Heading} are not saved.", "Discard").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+    }
+
+    private void ClosePanel()
+    {
+        IsPanelOpen = false;
+        IsChoosingKind = false;
+        Editor = null;
+        SelectedKind = null;
+        Select(null);
+    }
+
+    /// <summary>The form of a stored policy (a system policy keeps its name and devices).</summary>
+    private PolicyEditorViewModel NewEditor(PolicyRow row) =>
+        Configure(new PolicyEditorViewModel(_ctx, this, row.Policy, _list, _ctx.Devices, inPlace: row.IsSystem));
+
+    /// <summary>The form of a new policy of <paramref name="kind"/> (also used by tests).</summary>
+    public PolicyEditorViewModel NewEditor(string kind) => Configure(new PolicyEditorViewModel(_ctx, this, null, _list, _ctx.Devices, kind: kind));
+
+    private PolicyEditorViewModel Configure(PolicyEditorViewModel editor)
+    {
+        editor.ReadOnly = !MayManage;
+        return editor;
+    }
+
+    private bool CanCreate() => MayManage && _list.Rows.Count < PolicyLimits.MaxPolicies;
+
+    /// <summary>Create: the panel with the types.</summary>
+    [RelayCommand(CanExecute = nameof(CanCreate))]
+    private async Task CreateAsync()
+    {
+        if (!await MayLeaveAsync().ConfigureAwait(true))
+        {
+            return;
+        }
+
+        Select(null);
+        Editor = null;
+        SelectedKind = null;
+        IsChoosingKind = true;
+        IsPanelOpen = true;
+    }
+
+    private bool CanNext() => SelectedKind is not null;
+
+    /// <summary>Next of the Create panel: the form of the chosen type.</summary>
+    [RelayCommand(CanExecute = nameof(CanNext))]
+    private void Next()
+    {
+        if (SelectedKind is not { } kind)
+        {
+            return;
+        }
+
+        Editor = NewEditor(kind.Kind);
+        IsChoosingKind = false;
+    }
+
+    /// <summary>Cancel, or the panel's close button: changes not saved ask first.</summary>
+    [RelayCommand]
+    private async Task CloseAsync()
+    {
+        if (await MayLeaveAsync().ConfigureAwait(true))
+        {
+            ClosePanel();
+        }
+    }
 
     // ------------------------------------------------------------------ changing
 
-    /// <summary>The dialog editor for a new policy of <paramref name="kind"/> (null: the existing policy's) or <paramref name="existing"/>.</summary>
-    public PolicyEditorViewModel NewEditor(PkiPolicy? existing, string? kind = null) => new(_ctx, this, existing, _list, _ctx.Devices, kind: kind);
-
-    internal bool CanAdd() => MayManage && _list.Rows.Count < PolicyLimits.MaxPolicies;
-
-    /// <summary>Add of a rule list: the editor with the kind preset (no kind choice).</summary>
-    internal async Task AddAsync(string kind)
+    /// <summary>Delete of the open policy (not a system policy), after a question; the panel then closes.</summary>
+    internal async Task DeleteAsync(PolicyEditorViewModel editor)
     {
-        if (CanAdd() && Dialogs is { } dialogs)
-        {
-            await dialogs.ShowPolicyAsync(NewEditor(null, kind)).ConfigureAwait(true);
-        }
-    }
-
-    internal async Task EditAsync(PolicyRowViewModel? row)
-    {
-        if (row is not null && MayManage && Dialogs is { } dialogs)
-        {
-            await dialogs.ShowPolicyAsync(NewEditor(row.Source)).ConfigureAwait(true);
-        }
-    }
-
-    internal async Task DeleteAsync(PolicyRowViewModel? row)
-    {
-        if (row is null || !MayManage || !row.CanDelete)
+        if (!MayManage || editor.Existing is not { } policy || editor.IsInPlace)
         {
             return;
         }
 
-        var message = row.Source.Kind switch
+        var message = policy.Kind switch
         {
-            PolicyKinds.Block when PolicyRules.Revokes(row.Source) => $"Delete the policy {row.Name}? Revoked certificates stay revoked: the devices need new certificates.",
-            PolicyKinds.AllowCa => $"Delete the policy {row.Name}? Certificates of this CA no longer pass the 802.1X server.",
-            PolicyKinds.SignInCa => $"Delete the policy {row.Name}? Cameras can no longer sign in to the EST server with this CA.",
-            PolicyKinds.Enrollment => $"Delete the policy {row.Name}? The EST server refuses its devices unless another Enrollment policy holds them.",
-            _ => $"Delete the policy {row.Name}?",
+            PolicyKinds.Block when PolicyRules.Revokes(policy) => $"Delete the policy {policy.Name}? Revoked certificates stay revoked: the devices need new certificates.",
+            PolicyKinds.AllowCa => $"Delete the policy {policy.Name}? Certificates of this CA no longer pass the 802.1X server.",
+            PolicyKinds.SignInCa => $"Delete the policy {policy.Name}? Cameras can no longer sign in to the EST server with this CA.",
+            PolicyKinds.Enrollment => $"Delete the policy {policy.Name}? The EST server refuses its devices unless another Enrollment policy holds them.",
+            _ => $"Delete the policy {policy.Name}?",
         };
-        if (!await _ctx.ConfirmAsync("Delete policy", message, "Delete").ConfigureAwait(true))
-        {
-            return;
-        }
-
+        editor.DialogsOpen++;
+        bool confirmed;
         try
         {
-            var reply = PkiJson.Deserialize<PolicySaveReply>(await _ctx.InvokeAsync(PolicyMethods.DeletePolicy, PkiJson.Serialize(new PolicyRef(row.Source.Id)), CancellationToken.None)
+            confirmed = await _ctx.ConfirmAsync("Delete policy", message, "Delete").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        editor.IsBusy = true; // the form waits for the answer
+        try
+        {
+            var reply = PkiJson.Deserialize<PolicySaveReply>(await _ctx.InvokeAsync(PolicyMethods.DeletePolicy, PkiJson.Serialize(new PolicyRef(policy.Id)), CancellationToken.None)
                 .ConfigureAwait(true));
             if (reply.List is { } list)
             {
+                ClosePanel();
                 Apply(list);
             }
 
@@ -550,55 +590,58 @@ public sealed partial class PoliciesViewModel : ObservableObject
         {
             Error = ServerErrors.Message(ex);
         }
+        finally
+        {
+            editor.IsBusy = false;
+        }
     }
 
-    /// <summary>Saves <paramref name="policy"/> of <paramref name="editor"/>; the list after it, or the error that refused it.</summary>
+    /// <summary>Saves <paramref name="policy"/>; the list after it (the panel closes), or the error that refused it.</summary>
     internal async Task<PolicySaveReply> SaveAsync(PkiPolicy policy, PolicyEditorViewModel editor)
     {
         var reply = PkiJson.Deserialize<PolicySaveReply>(await _ctx.InvokeAsync(PolicyMethods.SavePolicy, PkiJson.Serialize(policy), CancellationToken.None).ConfigureAwait(true));
         if (reply.List is { } list && reply.Error is null)
         {
-            Apply(list, editor);
+            if (Editor == editor)
+            {
+                ClosePanel();
+            }
+
+            Apply(list);
         }
 
         return reply;
     }
 
+    /// <summary>Choose devices of the open policy: the shared picker over a copy of its choice, taken over on OK.</summary>
+    internal async Task ChooseDevicesAsync(PolicyEditorViewModel editor)
+    {
+        if (Dialogs is not { } dialogs)
+        {
+            return;
+        }
+
+        var picker = editor.NewPicker();
+        bool ok;
+        editor.DialogsOpen++; // a reload while the dialog is open keeps this form (the dialog's choice goes into it)
+        try
+        {
+            ok = await dialogs.PickDevicesAsync(picker, "Choose devices").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+
+        if (ok)
+        {
+            editor.UsePicker(picker);
+        }
+    }
+
     /// <summary>The IEEE 802.1X certificates a Block policy that also revokes with <paramref name="devices"/> revokes now.</summary>
     internal async Task<int> CountRevocationsAsync(PolicyDevices devices) =>
         PkiJson.Deserialize<PolicyRevocationCount>(await _ctx.InvokeAsync(PolicyMethods.CountRevocations, PkiJson.Serialize(devices), CancellationToken.None).ConfigureAwait(true)).Count;
-}
-
-/// <summary>One cipher suite of the 802.1X server policy: a check box with the suite's name.</summary>
-public sealed partial class CipherSuiteViewModel(PolicyCipherSuite suite, PolicyEditorViewModel owner) : ObservableObject
-{
-    public int Id => suite.Id;
-
-    public string Name => suite.Name;
-
-    /// <summary>An old CBC suite: listed only while the minimum is TLS 1.0 or 1.1.</summary>
-    public bool IsLegacy => suite.Legacy;
-
-    /// <summary>The server's certificate can use it and the minimum version allows it.</summary>
-    public bool IsUsable(string? minimumTls) =>
-        suite.Usable && (suite.Tls13 || (PolicyRules.MinimumIndex(minimumTls) is { } min && (suite.Legacy ? min < 2 : min <= 2)));
-
-    /// <summary>The server's certificate cannot use it: the hint below the suite's name; null otherwise.</summary>
-    public string? KeyHint => suite.Usable ? null : PolicyEditorViewModel.UnusableSuiteHint;
-
-    public bool HasKeyHint => !suite.Usable;
-
-    /// <summary>The server's certificate can use it (whatever the minimum).</summary>
-    public bool IsUsableWithKey => suite.Usable;
-
-    [ObservableProperty]
-    public partial bool IsChecked { get; set; }
-
-    /// <summary>Listed for the chosen minimum.</summary>
-    [ObservableProperty]
-    public partial bool IsListed { get; set; } = !suite.Legacy;
-
-    partial void OnIsCheckedChanged(bool value) => owner.CipherSuitesEdited();
 }
 
 /// <summary>One EST profile of an Enrollment policy: a check box with the profile's name.</summary>
@@ -613,27 +656,23 @@ public sealed partial class EnrollmentProfileViewModel(string name, bool isCheck
 }
 
 /// <summary>
-/// The policy editor (docs/spec/pki.md "Policies"): one dialog with the name and the kind's own fields (the kind is preset
-/// by the rule list Add came from; a policy keeps its kind), and the shared device picker in its group mode where the kind
-/// has devices (sites with "This server", tags, single devices, Except; a Block that also revokes without tags). Save sends
-/// the policy; a Block policy that newly revokes or whose devices changed asks first with the count of certificates it
-/// revokes. Errors directly below the fields. In place (<see cref="IsInPlace"/>, decision 2026-10-25): the same form for a
-/// system policy on its card, without the name and the devices (they stay as stored), Save only with changes, the status
-/// left of Save.
+/// The policy form in the side panel of the Policies tab (docs/spec/pki.md "Policies", decision 2026-10-25): the name and the
+/// kind's own fields (the kind is preset by Add; a policy keeps its kind), and where the kind has devices "All devices" or
+/// the shared device picker in its group mode behind Choose devices (sites with "This server", tags, single devices, Except;
+/// a Block that also revokes without tags). Save sends the policy (a new one at once, a stored one only with changes, the
+/// status left of Save); a Block policy that newly revokes or whose devices changed asks first with the count of
+/// certificates it revokes. Errors directly below the fields. A system policy (<see cref="IsInPlace"/>) keeps its name and
+/// devices and has no Delete.
 /// </summary>
 public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 {
     public const string OldTlsHint = "Only for old devices: TLS 1.0 and 1.1 are no longer considered secure.";
-    public const string UnusableSuiteHint = "Not usable with the server certificate.";
     /// <summary>The choice next to the Minutes field ("Every" [60] minutes).</summary>
     public const string ReauthEvery = "Every";
     public const string OnlyManagedText = PolicyTexts.OnlyManaged;
 
     /// <summary>The check box of a Block policy.</summary>
     public const string AlsoRevokeText = PolicyTexts.AlsoRevoke;
-
-    /// <summary>The RADIUS server CA choice that follows the CA of the 802.1X server policy (decision 2026-10-25).</summary>
-    public const string OadmRadiusServer = "OADM 802.1X server";
 
     /// <summary>"Off: any device with a valid certificate of this CA".</summary>
     public static string OnlyManagedTip { get; } = "Off: " + PolicyTexts.AllowCaScope(onlyManaged: false) + " of this CA";
@@ -650,12 +689,23 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     private readonly PkiPolicy? _existing;
     private readonly PolicyList _list;
     private readonly string _baseline = string.Empty;
+    private readonly IReadOnlyList<IDeviceInfo> _devices;
+    private readonly DeviceGroupPickerOptions _pickerOptions;
     private bool _applying = true;
+    private DeviceGroupChoice _choice; // the chosen sites, tags and devices (the picker is made only when one is needed)
+    private DevicePickerViewModel? _picker;
+    private string _devicesText = NoDevicesText;
+    private bool _dirty;
+
+    /// <summary>The validator's name of the Devices field (its error below the device choice).</summary>
+    internal const string DevicesField = "Devices";
 
     /// <summary>The properties that follow the fields (never a change of the policy themselves).</summary>
     private static readonly HashSet<string> Derived = new(StringComparer.Ordinal)
     {
         nameof(Preview), nameof(IsDirty), nameof(CanSave), nameof(SaveBlockedReason), nameof(SaveStatus), nameof(HasSaveStatus), nameof(IsSaveStatusOk),
+        nameof(ShowsDevicesField), nameof(DevicesText), nameof(DevicesError), nameof(CertificateHint), nameof(HasNoCertificates),
+        nameof(IsEditable), nameof(IsBusy), nameof(HasErrors), nameof(IsFormValid), nameof(FormError), nameof(ProfilesError), nameof(Picker),
     };
 
     /// <param name="ctx">The page's context.</param>
@@ -663,8 +713,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <param name="existing">The policy to change; null for a new one.</param>
     /// <param name="list">The list as the server answered it.</param>
     /// <param name="devices">The devices of the device picker.</param>
-    /// <param name="kind">A new policy's kind (the rule list's Add); null: the existing policy's, or the first kind Add could offer.</param>
-    /// <param name="inPlace">The system policy's form on its card (no name, no devices, Save only with changes).</param>
+    /// <param name="kind">A new policy's kind (Add); null: the existing policy's, or the first kind Add could offer.</param>
+    /// <param name="inPlace">A system policy (no name, no devices to change, no Delete).</param>
     public PolicyEditorViewModel(ICorePluginClientContext ctx, PoliciesViewModel owner, PkiPolicy? existing, PolicyList list, IEnumerable<IDeviceInfo> devices, string? kind = null, bool inPlace = false)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
@@ -680,8 +730,11 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             }
 
             OnPropertyChanged(nameof(Preview)); // the sentence follows every field
-            if (IsInPlace && !_applying)
+            OnPropertyChanged(nameof(ShowsDevicesField));
+            if (!_applying)
             {
+                // One comparison per change (never one per binding that reads IsDirty).
+                _dirty = !string.IsNullOrEmpty(_baseline) && !string.Equals(PkiJson.Serialize(ToPolicy()), _baseline, StringComparison.Ordinal);
                 NotifySaveState();
             }
         };
@@ -698,11 +751,15 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         // "Issued by": every CA with its key (decision 2026-10-25); a CA the policy names that can no longer issue stays shown
         // so the error says so below the field.
         IssuingCaChoices = [.. (list.IssuingCas.Count > 0 ? list.IssuingCas : list.Cas.Where(c => c.Kind == CertificateAuthorityKind.Oadm)).Select(c => new Choice<string>(c.Id, c.Name))];
-        CipherSuites = [.. list.CipherSuites.Select(s => new CipherSuiteViewModel(s, this))];
+        // RADIUS server CA: a CA of the list (decision 2026-10-25), the OADM CA first.
+        RadiusCaChoices = [.. list.Cas.Select(c => new Choice<string>(c.Id, c.Name))];
+        _certificates = list.ServerCertificates;
 
         var policy = existing ?? new PkiPolicy();
         Name = policy.Name;
         Kind = KindChoices.FirstOrDefault(k => k.Value == policy.Kind) ?? KindChoices.FirstOrDefault(k => k.Value == PolicyKinds.Vlan) ?? KindChoices[0];
+        CertificateChoices = ChoicesOf(_certificates, Kind.Value, policy.CertificateId);
+        Certificate = CertificateChoices.FirstOrDefault(c => c.Value == policy.CertificateId);
         Vlan = policy.Vlan?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         Days = (policy.Days ?? PolicyLimits.DefaultExpiryDays).ToString(CultureInfo.InvariantCulture);
         // A new Allow CA starts with the first CA no Allow CA policy names yet.
@@ -729,13 +786,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         var server = existing?.Kind == PolicyKinds.Dot1xServer ? existing : null;
         var serverDefaults = PolicyRules.Normalize(new PkiPolicy { Kind = Kind.Value });
         MinimumTls = TlsVersions.FirstOrDefault(v => v.Value == server?.MinimumTls) ?? TlsVersions[PolicyRules.MinimumIndex(PolicyRules.DefaultMinimumTls) ?? 2];
-        var checkedIds = (server?.CipherSuites ?? PolicyRules.DefaultSuites(list.CipherSuites, MinimumTls.Value)).ToHashSet();
-        foreach (var suite in CipherSuites)
-        {
-            suite.IsChecked = checkedIds.Contains(suite.Id);
-        }
-
-        UpdateListed(lowered: false);
         LargestPacket = (server?.LargestEapPacket ?? PolicyRules.DefaultEapPacket).ToString("N0", CultureInfo.InvariantCulture);
         Reauth = ReauthChoices[server?.ReauthMinutes is null ? 0 : 1];
         ReauthMinutes = (server?.ReauthMinutes ?? 60).ToString(CultureInfo.InvariantCulture);
@@ -750,30 +800,23 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         Eapol = EapolChoices.FirstOrDefault(e => e.Value == (dot1x?.EapolVersion ?? 1)) ?? EapolChoices[0];
         Identity = IdentityChoices.FirstOrDefault(i => i.Value == dot1x?.Identity) ?? IdentityChoices[0];
         CustomIdentity = dot1x?.CustomIdentity ?? string.Empty;
-        RadiusCa = RadiusChoices.FirstOrDefault(r => r.Value == dot1x?.RadiusCa) ?? RadiusChoices[0];
-        RadiusCaPem = dot1x?.RadiusCaPem;
-        RadiusCaLine = RadiusLineOf(RadiusCaPem);
+        RadiusCa = RadiusCaChoices.FirstOrDefault(c => string.Equals(c.Value, dot1x?.RadiusCaId ?? CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase))
+            ?? (dot1x?.RadiusCaId is { } removed ? new Choice<string>(removed, PolicyTexts.RemovedCa) : null);
 
         var chosen = policy.Devices ?? new PolicyDevices();
         Scope = DeviceScopes[chosen.AllDevices ? 0 : 1];
         var tags = list.Tags.Concat(chosen.Tags ?? []).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var options = new DeviceGroupPickerOptions
+        _pickerOptions = new DeviceGroupPickerOptions
         {
             Sites = [new DevicePickerSite(null, PolicyTexts.ThisServer), .. list.Sites.Select(s => new DevicePickerSite(s.Id, s.Name))],
 
             // Plugins know tags by name: the name is the id.
             Tags = [.. tags.Select(t => new DevicePickerTag(t, t))],
         };
-        Picker = new DevicePickerViewModel(devices ?? [], new DeviceGroupChoice(chosen.ThisServer, chosen.SiteIds ?? [], chosen.Tags ?? [], chosen.Serials ?? [], chosen.ExceptSerials ?? []), options);
-        Picker.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(DevicePickerViewModel.CoveredCount) or nameof(DevicePickerViewModel.Summary))
-            {
-                OnPropertyChanged(nameof(CanSave));
-                OnPropertyChanged(nameof(SaveBlockedReason));
-                CheckTags();
-            }
-        };
+        // No copy of the device list and no picker over it for every form (30,000 devices): only Choose devices makes one.
+        _devices = devices as IReadOnlyList<IDeviceInfo> ?? [.. devices ?? []];
+        _choice = new DeviceGroupChoice(chosen.ThisServer, chosen.SiteIds ?? [], chosen.Tags ?? [], chosen.Serials ?? [], chosen.ExceptSerials ?? []);
+        _devicesText = TextOf(_choice);
         _applying = false;
 
         var others = list.Rows.Select(r => r.Policy).Where(p => p.Id != existing?.Id).ToList();
@@ -790,43 +833,112 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             .Rule(nameof(LargestPacket), () => !IsServer || ParseInt(LargestPacket) is >= PolicyRules.MinEapPacket and <= PolicyRules.MaxEapPacket ? null : PolicyRules.EapPacketRange)
             .Rule(nameof(ReauthMinutes), () => !IsServer || !Reauth.Value || ParseInt(ReauthMinutes) is >= PolicyLimits.MinReauthMinutes and <= PolicyLimits.MaxReauthMinutes
                 ? null : PolicyTexts.ReauthRange)
-            .Rule(nameof(CipherSuites), () => !IsServer || CipherSuites.Any(s => s.IsListed && s.IsChecked && s.IsUsable(MinimumTls.Value)) ? null : PolicyRules.CheckCipherSuite)
             .Rule(nameof(IssuingCa), () => !IsIssuing ? null : IssuingCa is null ? PolicyTexts.ChooseCa
                 : IssuingCaChoices.Any(c => string.Equals(c.Value, IssuingCa.Value, StringComparison.OrdinalIgnoreCase)) ? null : PolicyTexts.CannotIssue)
             .Rule(nameof(ValidDays), () => !IsIssuing || ParseInt(ValidDays) is >= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays ? null : PolicyTexts.ValidDaysRange)
-            .Rule(nameof(Key), () => IsServer && Key.Value != PolicyKeys.Ecc ? PolicyTexts.Dot1xServerNeedsEcc : null)
+            .Rule(nameof(Certificate), () => !IsServerKind ? null : Certificate is null ? PolicyTexts.ChooseCertificate
+                : _certificates.FirstOrDefault(c => c.Id == Certificate.Value) is not { } chosen ? PolicyTexts.CertificateGone
+                : chosen.Problem ?? (chosen.UsableFor(Kind.Value) ? null : PolicyTexts.Dot1xServerNeedsEccCertificate))
             .Rule(nameof(CustomIdentity), () => IsDot1xCertificate ? PkiValidation.CustomIdentity(Identity.Value, CustomIdentity) : null)
-            .Rule(nameof(RadiusCa), () => IsDot1xCertificate ? PkiValidation.RadiusCa(RadiusCa.Value, RadiusCaPem) : null);
+            .Rule(nameof(RadiusCa), () => !IsDot1xCertificate ? null
+                : RadiusCa is { } radius && RadiusCaChoices.Any(c => string.Equals(c.Value, radius.Value, StringComparison.OrdinalIgnoreCase)) ? null : PolicyTexts.ChooseRadiusCa)
+            // The devices are a field like the others (CLAUDE.md validation): none chosen, tags for a Block that also revokes,
+            // and the server's refusal (an overlap) below the device choice until the choice changes.
+            .Rule(DevicesField, () => !ShowsPicker ? null
+                : _choice.IsEmpty ? PolicyTexts.ChooseDevices
+                : Revokes && _choice.TagIds.Count > 0 ? PolicyTexts.RevokeNoTags
+                : null);
         Validation.Validate();
         _baseline = PkiJson.Serialize(ToPolicy());
     }
 
-    /// <summary>The system policy's form on its card (decision 2026-10-25): no name, no devices, Save only with changes.</summary>
+    /// <summary>A Choose devices dialog or a question of the form is open: a reload of the list leaves the form as it is.</summary>
+    internal int DialogsOpen { get; set; }
+
+    /// <summary>A system policy (decision 2026-10-25): it keeps its name and devices and cannot be deleted.</summary>
     public bool IsInPlace { get; }
 
     /// <summary>The id of the policy (empty for a new one).</summary>
     public Guid PolicyId => _existing?.Id ?? Guid.Empty;
 
-    /// <summary>The fields cannot be changed (in place for a user who may not manage the policies).</summary>
+    /// <summary>The policy as it was read; null for a new one.</summary>
+    internal PkiPolicy? Existing => _existing;
+
+    /// <summary>Delete shows: a stored user policy, for a user who may change the policies.</summary>
+    public bool CanDelete => _existing is not null && !IsInPlace && !ReadOnly;
+
+    /// <summary>Delete of the open policy (the page asks first); waits while a save or a delete runs.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunDelete))]
+    private Task DeleteAsync() => _owner.DeleteAsync(this);
+
+    private bool CanRunDelete() => CanDelete && !IsBusy;
+
+    partial void OnIsBusyChanged(bool value) => DeleteCommand.NotifyCanExecuteChanged();
+
+    // ------------------------------------------------------------------ devices
+
+    /// <summary>The Devices field shows: "All devices" can be chosen, or the devices are chosen in the picker.</summary>
+    public bool ShowsDevicesField => ShowsDeviceScope || ShowsPicker;
+
+    /// <summary>The chosen sites, tags and devices in one line ("Site Building B, Tag PTZ, 3 devices"), or that none are chosen yet.</summary>
+    public string DevicesText => _devicesText;
+
+    private string TextOf(DeviceGroupChoice choice) =>
+        choice.IsEmpty ? NoDevicesText : PolicyTexts.DevicesText(DevicesOf(choice), _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name));
+
+    public const string NoDevicesText = "No devices chosen yet.";
+
+    /// <summary>Why the devices cannot be saved (below the Devices field, from the validator); null otherwise.</summary>
+    public string? DevicesError => Validation[DevicesField];
+
+    /// <summary>Choose devices: the shared device picker over a copy of the choice, taken over on OK.</summary>
+    [RelayCommand]
+    private Task ChooseDevicesAsync() => _owner.ChooseDevicesAsync(this);
+
+    /// <summary>A picker over the current choice (Cancel leaves the form as it is); its error shows in the picker too.</summary>
+    internal DevicePickerViewModel NewPicker() => new(_devices, _choice, _pickerOptions) { ErrorText = DevicesError };
+
+    /// <summary>Takes over the choice of <paramref name="picker"/> after OK: the Devices field is edited (its server error goes).</summary>
+    internal void UsePicker(DevicePickerViewModel picker)
+    {
+        ArgumentNullException.ThrowIfNull(picker);
+        _picker = picker;
+        _choice = picker.GroupChoice;
+        _devicesText = TextOf(_choice);
+        OnPropertyChanged(nameof(Picker));
+        OnPropertyChanged(nameof(DevicesText));
+        OnPropertyChanged(DevicesField); // touches the field: validates, clears the server's error of the old choice
+        OnPropertyChanged(nameof(DevicesError));
+    }
+
+    private static PolicyDevices DevicesOf(DeviceGroupChoice choice) => new()
+    {
+        ThisServer = choice.ThisServer,
+        SiteIds = choice.SiteIds,
+        Tags = choice.TagIds,
+        Serials = choice.Serials,
+        ExceptSerials = choice.ExceptSerials,
+    };
+
+    /// <summary>The fields cannot be changed (a user who may not manage the policies).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditable))]
     public partial bool ReadOnly { get; set; }
 
-    public bool IsEditable => !ReadOnly;
+    /// <summary>The fields can be changed: a user who may manage the policies, while no save runs.</summary>
+    public bool IsEditable => !ReadOnly && !IsBusy;
 
-    /// <summary>The name field shows (the dialog; in place the system policy keeps its name).</summary>
+    /// <summary>The name field shows (a system policy keeps its name).</summary>
     public bool ShowsName => !IsInPlace;
 
-    /// <summary>The heading of the form in place: "HTTPS", "IEEE 802.1X", "Expiry warning", "802.1X server", "EST server".</summary>
-    public string Heading => Kind.Value switch
-    {
-        PolicyKinds.HttpsCertificate => "HTTPS",
-        PolicyKinds.Dot1xCertificate => "IEEE 802.1X",
-        _ => PolicyKinds.Name(Kind.Value),
-    };
+    /// <summary>The heading of the form: the policy's name, or "New VLAN policy".</summary>
+    public string Heading => _existing?.Name ?? $"New {PolicyKinds.Name(Kind.Value)} policy";
 
-    /// <summary>The fields differ from the policy as it was read (in place: Save is on, the status says Not saved).</summary>
-    public bool IsDirty => !string.IsNullOrEmpty(_baseline) && !string.Equals(PkiJson.Serialize(ToPolicy()), _baseline, StringComparison.Ordinal);
+    /// <summary>"VLAN", "802.1X trusted CA": the kind below the heading.</summary>
+    public string KindName => PolicyKinds.Name(Kind.Value);
+
+    /// <summary>The fields differ from the policy as it was read (Save is on, the status says Not saved); worked out once per change.</summary>
+    public bool IsDirty => _dirty;
 
     /// <summary>This form follows its own save (the status says Saved until the next change).</summary>
     public bool JustSaved { get; set; }
@@ -835,8 +947,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     public const string NotSavedText = "Not saved";
     public const string NoChangesText = "No changes to save.";
 
-    /// <summary>The status left of Save in place: "Not saved" with changes, "Saved" after this form saved, else none.</summary>
-    public string? SaveStatus => !IsInPlace ? null : IsDirty ? NotSavedText : JustSaved ? SavedText : null;
+    /// <summary>The status left of Save: "Not saved" for a new policy or with changes, "Saved" after this form saved, else none.</summary>
+    public string? SaveStatus => IsNew || IsDirty ? NotSavedText : JustSaved ? SavedText : null;
 
     public bool HasSaveStatus => SaveStatus is not null;
 
@@ -852,9 +964,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(IsSaveStatusOk));
     }
 
-    /// <summary>Save of the form in place (the page then replaces this form with the saved policy's).</summary>
+    /// <summary>Save of the form (the page then opens the saved policy's form).</summary>
     [RelayCommand]
-    private async Task SaveInPlaceAsync() => await SaveAsync().ConfigureAwait(true);
+    private async Task SaveChangesAsync() => await SaveAsync().ConfigureAwait(true);
 
     public static IReadOnlyList<Choice<string>> KeyChoices { get; } = [.. PolicyKeys.All.Select(k => new Choice<string>(k, PolicyKeys.Name(k)))];
 
@@ -923,20 +1035,22 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(ProfilesError));
     }
 
-    public static IReadOnlyList<Choice<int>> EapolChoices { get; } = [new(1, "1"), new(2, "2")];
+    public static IReadOnlyList<Choice<int>> EapolChoices { get; } = [new(1, "1"), new(2, "2"), new(3, "3")];
 
     public static IReadOnlyList<Choice<string>> IdentityChoices { get; } =
     [
         new(Dot1xIdentity.Mac, "MAC address"),
         new(Dot1xIdentity.HostName, "Host name"),
+        new(Dot1xIdentity.IpAddress, "IP address"),
+        new(Dot1xIdentity.IpLastOctet, "Last octet of the IP address"),
         new(Dot1xIdentity.Custom, "Custom"),
     ];
 
-    public static IReadOnlyList<Choice<string>> RadiusChoices { get; } =
-    [
-        new(RadiusCaSource.Oadm, OadmRadiusServer),
-        new(RadiusCaSource.Imported, "Imported CA"),
-    ];
+    /// <summary>The CAs of the list (the Certificate authorities card) for the RADIUS server CA.</summary>
+    public IReadOnlyList<Choice<string>> RadiusCaChoices { get; }
+
+    /// <summary>"The 802.1X server's certificate is issued by OADM Root CA." below the RADIUS server CA; null when it has none.</summary>
+    public string? RadiusCaHint => _list.Dot1xServerIssuer is { Length: > 0 } issuer ? $"The 802.1X server's certificate is issued by {issuer}." : null;
 
     /// <summary>The CAs that can issue ("Issued by"): the OADM CA and the imported CAs with their key.</summary>
     public IReadOnlyList<Choice<string>> IssuingCaChoices { get; }
@@ -971,22 +1085,9 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string CustomIdentity { get; set; }
 
+    /// <summary>The CA the cameras check the RADIUS server with (IEEE 802.1X certificate).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsRadiusImported))]
-    public partial Choice<string> RadiusCa { get; set; }
-
-    /// <summary>The imported RADIUS server CA (PEM, public only), checked by the server when it was chosen.</summary>
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ViewRadiusCaCommand))]
-    public partial string? RadiusCaPem { get; set; }
-
-    /// <summary>"Corp RADIUS CA, valid until 2030-01-01"; null without one.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(RadiusCaText))]
-    public partial string? RadiusCaLine { get; set; }
-
-    /// <summary>The line below the RADIUS server CA: the imported CA, or what to do first.</summary>
-    public string RadiusCaText => RadiusCaLine ?? "No CA certificate imported yet.";
+    public partial Choice<string>? RadiusCa { get; set; }
 
     public bool IsIssuing => PolicyKinds.IsIssuing(Kind.Value);
 
@@ -994,118 +1095,28 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     public bool IsCustomIdentity => Identity.Value == Dot1xIdentity.Custom;
 
-    public bool IsRadiusImported => RadiusCa.Value == RadiusCaSource.Imported;
-
-    /// <summary>File pickers owned by the editor window (the RADIUS server CA); set by the window.</summary>
-    public IPkiFiles? Files { get; set; }
-
-    /// <summary>A message owned by the editor window (title, text); set by the window, else the page's.</summary>
-    public Func<string, string, Task>? ShowMessage { get; set; }
-
-    /// <summary>Import of the RADIUS server CA: the server checks the file (a CA certificate, PEM or DER), the policy stores it on Save.</summary>
-    [RelayCommand]
-    private async Task ImportRadiusCaAsync()
-    {
-        if (Files is not { } files || await files.OpenAsync("Choose the CA of the RADIUS server", PkiFileKind.RadiusCa).ConfigureAwait(true) is not { } file)
-        {
-            return;
-        }
-
-        await ApplyRadiusFileAsync(file).ConfigureAwait(true);
-    }
-
-    /// <summary>Checks a RADIUS CA file on the server and puts it into the form (also used by tests).</summary>
-    public async Task ApplyRadiusFileAsync(PickedFile file)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-        var reply = PkiJson.Deserialize<RadiusCaReply>(await _ctx.InvokeAsync(PkiMethods.ImportRadiusCa, PkiJson.Serialize(new ImportRadiusCaRequest(Convert.ToBase64String(file.Data))), CancellationToken.None)
-            .ConfigureAwait(true));
-        if (reply.Errors is { Count: > 0 } errors)
-        {
-            Validation.SetServerError(nameof(RadiusCa), errors.Values.First());
-            return;
-        }
-
-        RadiusCaPem = reply.Pem;
-        RadiusCaLine = reply.Summary is { } summary ? PolicyTexts.RadiusCaLine(summary.CommonName, summary.NotAfterUtc) : RadiusLineOf(reply.Pem);
-        Validation.Touch(nameof(RadiusCa));
-    }
-
-    [RelayCommand(CanExecute = nameof(CanViewRadiusCa))]
-    private async Task ViewRadiusCaAsync()
-    {
-        if (RadiusCaPem is not { } pem)
-        {
-            return;
-        }
-
-        string text;
-        try
-        {
-            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
-            text = string.Join(
-                Environment.NewLine,
-                $"Subject: {certificate.Subject}",
-                $"Issuer: {certificate.Issuer}",
-                string.Create(CultureInfo.InvariantCulture, $"Valid: {certificate.NotBefore.ToUniversalTime():yyyy-MM-dd} to {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}"),
-                $"Fingerprint (SHA-256): {certificate.GetCertHashString(System.Security.Cryptography.HashAlgorithmName.SHA256)}");
-        }
-        catch (System.Security.Cryptography.CryptographicException)
-        {
-            text = PolicyTexts.RadiusCaUnreadable;
-        }
-
-        if (ShowMessage is { } show)
-        {
-            await show("RADIUS server CA", text).ConfigureAwait(true);
-        }
-        else
-        {
-            await _ctx.ShowMessageAsync("RADIUS server CA", text).ConfigureAwait(true);
-        }
-    }
-
-    private bool CanViewRadiusCa() => !string.IsNullOrEmpty(RadiusCaPem);
-
-    /// <summary>"Corp RADIUS CA, valid until 2030-01-01" of a PEM; null when there is none or it cannot be read.</summary>
-    internal static string? RadiusLineOf(string? pem)
-    {
-        if (string.IsNullOrWhiteSpace(pem))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var certificate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(pem);
-            return PolicyTexts.RadiusCaLine(certificate.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, false), certificate.NotAfter.ToUniversalTime());
-        }
-        catch (System.Security.Cryptography.CryptographicException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>"Add VLAN policy" / "Edit Building C".</summary>
     public string Title => _existing is null ? $"Add {PolicyKinds.Name(Kind.Value)} policy" : $"Edit {_existing.Name}";
 
     /// <summary>The kind is chosen for a new policy only (a policy keeps its kind).</summary>
     public bool IsNew => _existing is null;
 
-    public DevicePickerViewModel Picker { get; }
+    /// <summary>The picker of the current choice, made when first asked for (the form itself keeps only the choice).</summary>
+    public DevicePickerViewModel Picker => _picker ??= new DevicePickerViewModel(_devices, _choice, _pickerOptions);
+
+    /// <summary>A picker exists (tests: opening a form or typing makes none over the devices).</summary>
+    internal bool HasPicker => _picker is not null;
 
     public IReadOnlyList<Choice<string>> KindChoices { get; }
 
     public IReadOnlyList<Choice<string>> CaChoices { get; }
-
-    public IReadOnlyList<CipherSuiteViewModel> CipherSuites { get; }
 
     [ObservableProperty]
     public partial string Name { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder),
-        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(ShowsDeviceScope), nameof(Title), nameof(Heading), nameof(IsIssuing), nameof(IsDot1xCertificate), nameof(IsBlock), nameof(Revokes),
+        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(ShowsDeviceScope), nameof(Title), nameof(Heading), nameof(KindName), nameof(IsIssuing), nameof(IsServerKind), nameof(IsDot1xCertificate), nameof(IsBlock), nameof(Revokes),
         nameof(IsSignInCa), nameof(IsEnrollment), nameof(IsChosenProfiles), nameof(ProfilesError))]
     public partial Choice<string> Kind { get; set; }
 
@@ -1148,6 +1159,47 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     public bool IsServer => Kind.Value == PolicyKinds.Dot1xServer;
 
+    /// <summary>The 802.1X or EST server policy: the Certificate field shows (decision 2026-10-25).</summary>
+    public bool IsServerKind => PolicyKinds.IsServer(Kind.Value);
+
+    private IReadOnlyList<PolicyCertificateChoice> _certificates;
+
+    /// <summary>
+    /// The certificates a server policy can pick: those of the Certificates list with a key that this server can show (the
+    /// 802.1X server: ECC keys), and the one it picks now even when it can no longer be used (its error says why).
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<Choice<string>> CertificateChoices { get; set; }
+
+    [ObservableProperty]
+    public partial Choice<string>? Certificate { get; set; }
+
+    /// <summary>The line below the Certificate field: what it names ("10.0.0.5, oadm-server").</summary>
+    public string? CertificateHint => Certificate is { } chosen && _certificates.FirstOrDefault(c => c.Id == chosen.Value) is { Names.Count: > 0 } known
+        ? "Names " + string.Join(", ", known.Names)
+        : null;
+
+    partial void OnCertificateChanged(Choice<string>? value) => OnPropertyChanged(nameof(CertificateHint));
+
+    /// <summary>The empty Certificate field: what to do first.</summary>
+    public const string NoCertificatesText = "No certificate with a key yet. Create one on the Certificates tab.";
+
+    public bool HasNoCertificates => CertificateChoices.Count == 0;
+
+    private static IReadOnlyList<Choice<string>> ChoicesOf(IReadOnlyList<PolicyCertificateChoice> certificates, string kind, string? picked) =>
+        [.. certificates.Where(c => c.UsableFor(kind) || c.Id == picked).Select(c => new Choice<string>(c.Id, c.Label))];
+
+    /// <summary>After Create: the choices of the server's answer, the new certificate picked.</summary>
+    internal void UseCertificates(IReadOnlyList<PolicyCertificateChoice> certificates, string id)
+    {
+        _certificates = certificates;
+        CertificateChoices = ChoicesOf(certificates, Kind.Value, id);
+        OnPropertyChanged(nameof(HasNoCertificates));
+        Certificate = CertificateChoices.FirstOrDefault(c => c.Value == id);
+        Validation.Touch(nameof(Certificate));
+        Validation.Validate();
+    }
+
     public bool IsReauthEvery => Reauth.Value;
 
     /// <summary>The kind chooses devices.</summary>
@@ -1159,13 +1211,13 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>"All devices" is chosen (for a kind that offers it).</summary>
     public bool IsAllDevices => OffersAllDevices && Scope.Value;
 
-    /// <summary>The device picker shows: a kind with devices and not "All devices" (never in place: the devices stay as stored).</summary>
+    /// <summary>The devices are chosen in the picker: a kind with devices and not "All devices" (never for a system policy: its devices stay as stored).</summary>
     public bool ShowsPicker => HasDevices && !IsAllDevices && !IsInPlace;
 
-    /// <summary>The Devices choice shows (the dialog of a kind that offers All devices).</summary>
+    /// <summary>The Devices choice shows (a user policy of a kind that offers All devices).</summary>
     public bool ShowsDeviceScope => OffersAllDevices && !IsInPlace;
 
-    /// <summary>In place, a system Expiry warning for chosen devices: which ones (shown below the days).</summary>
+    /// <summary>A system Expiry warning for chosen devices: which ones (shown below the days).</summary>
     public string? DaysHint => IsInPlace && HasDevices && !IsAllDevices
         ? "For " + PolicyTexts.DevicesText(_existing?.Devices, _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name))
         : null;
@@ -1190,24 +1242,23 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>"Only for old devices ..." for TLS 1.0 and 1.1; null otherwise.</summary>
     public string? TlsHint => PolicyRules.MinimumIndex(MinimumTls.Value) is < 2 ? OldTlsHint : null;
 
-    /// <summary>The error of the cipher suites (a group of check boxes: shown below it by the field).</summary>
-    public string? CipherSuitesError => IsServer ? Validation[nameof(CipherSuites)] : null;
-
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSave), nameof(SaveBlockedReason))]
+    [NotifyPropertyChangedFor(nameof(CanSave), nameof(SaveBlockedReason), nameof(IsEditable), nameof(CanDelete))]
     public partial bool IsBusy { get; set; }
 
-    partial void OnReadOnlyChanged(bool value) => OnPropertyChanged(nameof(CanSave));
+    partial void OnReadOnlyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanSave));
+        OnPropertyChanged(nameof(CanDelete));
+    }
 
-    /// <summary>Asks before a revoke policy revokes (the view sets it, owned by the editor window); null: the page's question.</summary>
+    /// <summary>Asks before a revoke policy revokes; null: the page's question.</summary>
     public Func<string, string, Task<bool>>? ConfirmRevoke { get; set; }
 
-    public bool CanSave => !IsBusy && !ReadOnly && IsFormValid && (!ShowsPicker || HasChosenDevices) && (!IsInPlace || IsDirty);
-
-    private bool HasChosenDevices => Picker is not null && !Picker.GroupChoice.IsEmpty;
+    public bool CanSave => !IsBusy && !ReadOnly && IsFormValid && (IsNew || IsDirty);
 
     /// <summary>Why Save is off (its tooltip).</summary>
-    public string? SaveBlockedReason => FormError ?? (ShowsPicker && !HasChosenDevices ? PolicyTexts.ChooseDevices : IsInPlace && !IsDirty ? NoChangesText : null);
+    public string? SaveBlockedReason => FormError ?? (!IsNew && !IsDirty ? NoChangesText : null);
 
     /// <summary>
     /// What the policy does, in the sentence of its row (<see cref="PolicyStore.Summary"/>), from the fields as they are now;
@@ -1240,7 +1291,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>The policy of the editor (the fields of its kind).</summary>
     public PkiPolicy ToPolicy()
     {
-        var choice = Picker.GroupChoice;
+        var choice = _choice;
         return PolicyRules.Normalize(new PkiPolicy
         {
             Id = _existing?.Id ?? Guid.Empty,
@@ -1257,10 +1308,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             Vlan = ParseInt(Vlan),
             Days = ParseInt(Days),
             CaId = IsIssuing ? IssuingCa?.Value : IsSignInCa ? SignInCa?.Value : Ca?.Value,
+            CertificateId = IsServerKind ? Certificate?.Value : null,
             OnlyManaged = OnlyManaged,
             AlsoRevoke = AlsoRevoke,
             MinimumTls = MinimumTls.Value,
-            CipherSuites = [.. CipherSuites.Where(s => s.IsListed && s.IsChecked).Select(s => s.Id)],
             LargestEapPacket = ParseInt(LargestPacket),
             ReauthMinutes = Reauth.Value ? ParseInt(ReauthMinutes) : null,
             ValidDays = ParseInt(ValidDays),
@@ -1268,31 +1319,30 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             EapolVersion = Eapol.Value,
             Identity = Identity.Value,
             CustomIdentity = CustomIdentity,
-            RadiusCa = RadiusCa.Value,
-            RadiusCaPem = RadiusCaPem,
+            RadiusCaId = RadiusCa?.Value,
             SignInFor = SignInFor.Value,
             ProfileScope = ProfileScope.Value,
             Profiles = [.. ProfileChoices.Where(p => p.IsChecked).Select(p => p.Name)],
             SavedBy = _existing?.SavedBy,
+            Revision = _existing?.Revision ?? 0, // the revision this form read: PKI refuses a save over a later change
         });
     }
 
-    /// <summary>Save (the window's accept): true when the server stored the policy and the window may close.</summary>
+    /// <summary>Save: true when the server stored the policy.</summary>
     public async Task<bool> SaveAsync()
     {
         Validation.ShowAll();
-        OnPropertyChanged(nameof(CipherSuitesError));
         OnPropertyChanged(nameof(ProfilesError));
-        Picker.ErrorText = null;
+        OnPropertyChanged(nameof(DevicesError));
         if (!IsFormValid)
         {
             return false;
         }
 
         var policy = ToPolicy();
-        if (PolicyRules.Validate(policy, _list.CipherSuites) is { } error)
+        if (PolicyRules.Validate(policy, []) is { } error)
         {
-            ShowError(error);
+            await ShowErrorAsync(error).ConfigureAwait(true);
             return false;
         }
 
@@ -1305,9 +1355,19 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
                 var question = count == 0
                     ? "These devices have no IEEE 802.1X certificate now. Every new one is revoked while the policy exists."
                     : string.Create(CultureInfo.CurrentCulture, $"Saving revokes {count:N0} IEEE 802.1X {(count == 1 ? "certificate" : "certificates")} of these devices, and every new one while the policy exists. This cannot be undone.");
-                var confirmed = ConfirmRevoke is { } confirm
-                    ? await confirm(Title, question).ConfigureAwait(true)
-                    : await _ctx.ConfirmAsync(Title, question, "Revoke").ConfigureAwait(true);
+                bool confirmed;
+                DialogsOpen++; // a reload meanwhile keeps this form
+                try
+                {
+                    confirmed = ConfirmRevoke is { } confirm
+                        ? await confirm(Title, question).ConfigureAwait(true)
+                        : await _ctx.ConfirmAsync(Title, question, "Revoke").ConfigureAwait(true);
+                }
+                finally
+                {
+                    DialogsOpen--;
+                }
+
                 if (!confirmed)
                 {
                     return false;
@@ -1317,7 +1377,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             var reply = await _owner.SaveAsync(policy, this).ConfigureAwait(true);
             if (reply.Error is { } refused)
             {
-                ShowError(refused);
+                await ShowErrorAsync(refused).ConfigureAwait(true);
                 return false;
             }
 
@@ -1336,51 +1396,23 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         }
     }
 
-    internal void CipherSuitesEdited()
-    {
-        if (_applying)
-        {
-            return;
-        }
-
-        Validation.Touch(nameof(CipherSuites));
-        OnPropertyChanged(nameof(CipherSuitesError));
-    }
-
-    /// <summary>Reset to default: the default suites of the chosen minimum (<see cref="PolicyRules.DefaultSuites"/>, those the server's certificate can use).</summary>
-    [RelayCommand]
-    private void ResetCipherSuites()
-    {
-        _applying = true;
-        try
-        {
-            var defaults = PolicyRules.DefaultSuites(_list.CipherSuites, MinimumTls.Value).ToHashSet();
-            foreach (var suite in CipherSuites)
-            {
-                suite.IsChecked = defaults.Contains(suite.Id);
-            }
-        }
-        finally
-        {
-            _applying = false;
-        }
-
-        CipherSuitesEdited();
-    }
-
     /// <summary>A new Block policy that revokes, one that starts to revoke, or one whose devices changed: it revokes with the save.</summary>
     private bool RevokeChanged(PkiPolicy policy) =>
         _existing is null || !PolicyRules.Revokes(_existing) || !(_existing.Devices ?? new PolicyDevices()).SameAs(policy.Devices);
 
-    private void ShowError(PolicyFieldError error)
+    /// <summary>
+    /// A refusal below the field it names; one of a field the form does not show (the kind, which Create preset) or of the
+    /// whole policy (changed by someone else) in a message.
+    /// </summary>
+    private async Task ShowErrorAsync(PolicyFieldError error)
     {
         var property = error.Field switch
         {
-            PolicyFields.Name => nameof(Name),
-            PolicyFields.Kind => nameof(Kind),
+            PolicyFields.Name when ShowsName => nameof(Name),
             PolicyFields.Vlan => nameof(Vlan),
             PolicyFields.Days => nameof(Days),
             PolicyFields.Ca => IsIssuing ? nameof(IssuingCa) : IsSignInCa ? nameof(SignInCa) : nameof(Ca),
+            PolicyFields.Certificate => nameof(Certificate),
             PolicyFields.SignInFor => nameof(SignInFor),
             PolicyFields.ProfileScope => nameof(ProfileScope),
             PolicyFields.Profiles => nameof(ProfileChoices),
@@ -1394,47 +1426,19 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.LargestEapPacket => nameof(LargestPacket),
             PolicyFields.ReauthMinutes => nameof(ReauthMinutes),
             PolicyFields.MinimumTls => nameof(MinimumTls),
-            PolicyFields.CipherSuites => nameof(CipherSuites),
             PolicyFields.Devices when IsAllDevices => nameof(Scope), // the picker is hidden: below the Devices choice
+            PolicyFields.Devices when ShowsPicker => DevicesField, // below the device choice until the choice changes
             _ => null,
         };
         if (property is null)
         {
-            Picker.ErrorText = error.Message; // devices: below the device choice
+            await _ctx.ShowMessageAsync(Title, error.Message).ConfigureAwait(true);
             return;
         }
 
         Validation.SetServerError(property, error.Message);
-        OnPropertyChanged(nameof(CipherSuitesError));
         OnPropertyChanged(nameof(ProfilesError));
-    }
-
-    /// <summary>A Block policy that also revokes chooses devices and sites only: said below the device choice at once.</summary>
-    private void CheckTags()
-    {
-        if (Picker is null)
-        {
-            return;
-        }
-
-        if (Revokes && Picker.GroupChoice.TagIds.Count > 0)
-        {
-            Picker.ErrorText = PolicyTexts.RevokeNoTags;
-        }
-        else if (Picker.ErrorText == PolicyTexts.RevokeNoTags)
-        {
-            Picker.ErrorText = null;
-        }
-    }
-
-    partial void OnAlsoRevokeChanged(bool value)
-    {
-        if (_applying)
-        {
-            return;
-        }
-
-        CheckTags();
+        OnPropertyChanged(nameof(DevicesError));
     }
 
     partial void OnKindChanged(Choice<string> value)
@@ -1445,42 +1449,17 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         }
 
         Validation.Validate();
-        OnPropertyChanged(nameof(CipherSuitesError));
         OnPropertyChanged(nameof(ProfilesError));
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
-        CheckTags();
-    }
-
-    partial void OnMinimumTlsChanged(Choice<string> oldValue, Choice<string> newValue)
-    {
-        if (!_applying && oldValue is not null)
-        {
-            UpdateListed(lowered: PolicyRules.MinimumIndex(oldValue.Value) >= 2 && PolicyRules.MinimumIndex(newValue.Value) < 2);
-            CipherSuitesEdited();
-        }
-    }
-
-    /// <summary>The old suites show only below TLS 1.2; those the server's certificate can use are checked when the minimum is lowered there.</summary>
-    private void UpdateListed(bool lowered)
-    {
-        var legacy = PolicyRules.MinimumIndex(MinimumTls.Value) is < 2;
-        foreach (var suite in CipherSuites.Where(s => s.IsLegacy))
-        {
-            suite.IsListed = legacy;
-            if (lowered)
-            {
-                suite.IsChecked = suite.IsUsableWithKey;
-            }
-        }
     }
 
     protected override void OnValidationChanged()
     {
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
-        OnPropertyChanged(nameof(CipherSuitesError));
         OnPropertyChanged(nameof(ProfilesError));
+        OnPropertyChanged(nameof(DevicesError));
     }
 
     /// <summary>"OADM CA (with 2 previous CAs)", "Axis device ID", "Contoso Root".</summary>

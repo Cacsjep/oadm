@@ -25,11 +25,17 @@ public sealed class PolicySentenceTests
             Of(new PkiPolicy { Kind = PolicyKinds.Dot1xCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Ecc, Identity = Dot1xIdentity.Mac }));
         Assert.EndsWith("Cameras sign in as camera-lobby.",
             Of(new PkiPolicy { Kind = PolicyKinds.Dot1xCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Rsa, Identity = Dot1xIdentity.Custom, CustomIdentity = "camera-lobby" }), StringComparison.Ordinal);
-        Assert.Equal("The EST server uses a certificate from OADM Root CA acs, valid 90 days, with an ECC key, renewed 30 days before it ends.",
-            Of(new PkiPolicy { Kind = PolicyKinds.EstServer, CaId = "oadm", ValidDays = 90, Key = PolicyKeys.Ecc }));
+        // The server policies show a certificate of the list (decision 2026-10-25); the suites follow the minimum version.
+        var certificates = new Dictionary<string, string> { ["shared"] = "802.1X and EST server (OADM Root CA acs), until 2036-10-22" };
+        Assert.Equal("The EST server shows the certificate 802.1X and EST server (OADM Root CA acs), until 2036-10-22.",
+            PolicyStore.Summary(new PkiPolicy { Kind = PolicyKinds.EstServer, CertificateId = "shared" }, Cas, certificates));
+        Assert.Equal("The EST server has no certificate yet.", Of(new PkiPolicy { Kind = PolicyKinds.EstServer }));
+        Assert.Equal("The EST server shows a certificate that is no longer in the list.", Of(new PkiPolicy { Kind = PolicyKinds.EstServer, CertificateId = "gone" }));
         Assert.Equal(
-            "The 802.1X server uses a certificate from Contoso Root, valid 365 days, with an ECC key, renewed 30 days before it ends. It accepts TLS 1.2 or later, sends EAP packets of up to 1,020 bytes and asks cameras to sign in again every 60 minutes.",
-            Of(new PkiPolicy { Kind = PolicyKinds.Dot1xServer, CaId = "imported:contoso", ValidDays = 365, Key = PolicyKeys.Ecc, MinimumTls = "1.2", LargestEapPacket = 1020, ReauthMinutes = 60 }));
+            "The 802.1X server shows the certificate 802.1X and EST server (OADM Root CA acs), until 2036-10-22. It accepts TLS 1.2 or later with secure cipher suites, sends EAP packets of up to 1,020 bytes and asks cameras to sign in again every 60 minutes.",
+            PolicyStore.Summary(new PkiPolicy { Kind = PolicyKinds.Dot1xServer, CertificateId = "shared", MinimumTls = "1.2", LargestEapPacket = 1020, ReauthMinutes = 60 }, Cas, certificates));
+        Assert.Equal("Enable IEEE 802.1X issues certificates from OADM Root CA acs, valid 365 days, with an ECC key. Cameras sign in with the last octet of their IP address. Cameras check the RADIUS server with Contoso Root.",
+            Of(new PkiPolicy { Kind = PolicyKinds.Dot1xCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Ecc, Identity = Dot1xIdentity.IpLastOctet, RadiusCaId = "imported:contoso" }));
         Assert.Equal("The 802.1X server lets in devices OADM manages that have a certificate from OADM Root CA acs.",
             Of(new PkiPolicy { Kind = PolicyKinds.AllowCa, CaId = "oadm", OnlyManaged = true }));
         Assert.Equal("The 802.1X server lets in any device with a valid certificate from Contoso Root.",

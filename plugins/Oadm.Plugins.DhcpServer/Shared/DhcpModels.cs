@@ -146,11 +146,20 @@ public sealed record DhcpState
     /// <summary>All leases (full state only).</summary>
     public IReadOnlyList<LeaseInfo>? Leases { get; init; }
 
-    /// <summary>Lease list version (events with a version up to this one are already contained).</summary>
+    /// <summary>
+    /// Lease list version: events with an older version are already contained; the parts of a large change share one version
+    /// (every part of it is applied, also this version's, which changes nothing for leases already read).
+    /// </summary>
     public long LeaseVersion { get; init; }
 
     /// <summary>Other DHCP servers seen by the last check.</summary>
     public IReadOnlyList<string> OtherServers { get; init; } = [];
+
+    /// <summary>
+    /// The state of a user limited to a device group: the page reads it again every few minutes while shown, so the server
+    /// keeps sending the group's events (it forgets a group whose pages stopped reading).
+    /// </summary>
+    public bool Renew { get; init; }
 }
 
 /// <param name="Enabled">Enable DHCP server.</param>

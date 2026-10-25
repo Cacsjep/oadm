@@ -119,6 +119,12 @@ public sealed record NtpState
 
     /// <summary>Every bound site, by name: the choices of "Serve at sites".</summary>
     public IReadOnlyList<SiteChoice> SiteChoices { get; init; } = [];
+
+    /// <summary>
+    /// The state of a user limited to a device group: the page reads it again every few minutes while shown, so the server
+    /// keeps sending the group's events (it forgets a group whose pages stopped reading).
+    /// </summary>
+    public bool Renew { get; init; }
 }
 
 /// <summary>The NTP relay of one site.</summary>

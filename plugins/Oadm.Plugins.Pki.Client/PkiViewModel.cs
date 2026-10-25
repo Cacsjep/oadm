@@ -413,8 +413,30 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     private async Task ExportAsync(string? format)
     {
         var der = string.Equals(format, "der", StringComparison.OrdinalIgnoreCase);
-        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.ExportPublic, PkiJson.Serialize(new ExportRequest(der ? "der" : "pem")), CancellationToken.None).ConfigureAwait(true));
-        await SaveFileAsync("Export public certificate", reply, der ? PkiFileKind.CertificateDer : PkiFileKind.CertificatePem).ConfigureAwait(true);
+        if (await CallAsync<FileReply>("Export public certificate", PkiMethods.ExportPublic, new ExportRequest(der ? "der" : "pem")).ConfigureAwait(true) is { } reply)
+        {
+            await SaveFileAsync("Export public certificate", reply, der ? PkiFileKind.CertificateDer : PkiFileKind.CertificatePem).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// A page call whose failure (the connection, a refusal) goes into a message titled <paramref name="title"/>, never the
+    /// generic crash message; null then.
+    /// </summary>
+    private async Task<T?> CallAsync<T>(string title, string method, object payload)
+        where T : class
+    {
+        try
+        {
+            return PkiJson.Deserialize<T>(await _ctx.InvokeAsync(method, PkiJson.Serialize(payload), CancellationToken.None).ConfigureAwait(true));
+        }
+#pragma warning disable CA1031 // Shown in a message.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(title, ServerErrors.Message(ex)).ConfigureAwait(true);
+            return null;
+        }
     }
 
     private bool CanExport(string? format) => HasCa && !IsUnavailable;
@@ -467,8 +489,10 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return;
         }
 
-        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.ExportPrevious, PkiJson.Serialize(new ExportPreviousRequest(row.Id, "pem")), CancellationToken.None).ConfigureAwait(true));
-        await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
+        if (await CallAsync<FileReply>("Export previous CA certificate", PkiMethods.ExportPrevious, new ExportPreviousRequest(row.Id, "pem")).ConfigureAwait(true) is { } reply)
+        {
+            await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
+        }
     }
 
     private async Task RemovePreviousAsync(PreviousCaRowViewModel? row)
@@ -487,7 +511,11 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return;
         }
 
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemovePrevious, PkiJson.Serialize(new RemovePreviousRequest(row.Id)), CancellationToken.None).ConfigureAwait(true));
+        if (await CallAsync<PkiReply>("Remove previous CA", PkiMethods.RemovePrevious, new RemovePreviousRequest(row.Id)).ConfigureAwait(true) is not { } reply)
+        {
+            return;
+        }
+
         if (reply.Error is { } error)
         {
             await _ctx.ShowMessageAsync("Remove previous CA", error).ConfigureAwait(true);
@@ -552,13 +580,13 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
         else if (await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
         {
-            var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemoveAuthority, PkiJson.Serialize(new RemoveAuthorityRequest(id)), CancellationToken.None).ConfigureAwait(true));
-            if (reply.Error is { } error)
+            var reply = await CallAsync<PkiReply>("Remove CA", PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id)).ConfigureAwait(true);
+            if (reply?.Error is { } error)
             {
                 await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
             }
 
-            if (reply.State is { } state)
+            if (reply?.State is { } state)
             {
                 await ApplyStateAsync(state).ConfigureAwait(true);
             }
@@ -601,7 +629,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     /// <summary>The line without a CA: what to do first.</summary>
-    public const string NoCaYet = "There is no OADM CA yet. Choose New OADM CA under Create, or import one under Import.";
+    public const string NoCaYet = "There is no OADM CA yet. Use New OADM CA.";
 
     /// <summary>The OADM CA row's statuses: whether it is in the trusted root store of the server and of this computer.</summary>
     private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
@@ -714,20 +742,32 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     public const string ReplaceTitle = "Replace the certificate authority";
 
-    /// <summary>The replace confirmation; the count line only when devices are affected.</summary>
-    public static string ReplaceMessage(int devices) => devices switch
+    /// <summary>
+    /// The replace confirmation; the count line only when devices are affected, the server line only when a server's
+    /// certificate comes from the current CA (it stays: cameras given the new CA would not trust that server).
+    /// </summary>
+    public static string ReplaceMessage(int devices, IReadOnlyList<string>? servers = null)
     {
-        0 => "Replace the CA?",
-        1 => "1 device has certificates from the current CA. It keeps working until it is renewed. Replace the CA?",
-        _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. Replace the CA?"),
-    };
+        var count = devices switch
+        {
+            0 => string.Empty,
+            1 => "1 device has certificates from the current CA. It keeps working until it is renewed. ",
+            _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. "),
+        };
+        var kept = servers is { Count: > 0 }
+            ? (servers.Count == 1 ? "The " + servers[0] + " keeps its" : "The " + string.Join(" and the ", servers) + " keep their")
+                + " certificate from the current CA. Choose a certificate of the new CA in "
+                + (servers.Count == 1 ? "its policy" : "their policies") + " before cameras get the new CA. "
+            : string.Empty;
+        return count + kept + "Replace the CA?";
+    }
 
     // ---------------------------------------------------------------- helpers
 
     private async Task<bool> ConfirmReplaceAsync(PkiDialogViewModel dialog)
     {
         var preview = PkiJson.Deserialize<PreviewReplaceReply>(await _ctx.InvokeAsync(PkiMethods.PreviewReplace, null, CancellationToken.None).ConfigureAwait(true));
-        return await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(preview.DevicesWithCurrentCa), "Replace").ConfigureAwait(true);
+        return await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(preview.DevicesWithCurrentCa, preview.Servers), "Replace").ConfigureAwait(true);
     }
 
     private async Task<bool> FinishReplaceAsync(PkiDialogViewModel dialog, PkiReply reply, string fallbackField)

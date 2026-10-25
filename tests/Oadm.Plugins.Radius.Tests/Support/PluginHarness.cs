@@ -75,8 +75,48 @@ public sealed class RecordingPublisher : IEventPublisher
 /// The OADM CA as PKI offers it, for the plugin tests: its own CA (a unique name: Windows caches chains by name), signs the
 /// server certificate, issues camera certificates with <c>axis-&lt;serial&gt;.local</c>, keeps a revocation list.
 /// </summary>
-public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, IDisposable
+public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, Oadm.Plugins.Pki.Ca.IServerCertificateSource, IDisposable
 {
+    private readonly Lock _serverGate = new();
+    private Oadm.Plugins.Pki.ServerCertificateMaterial? _server;
+
+    /// <summary>
+    /// The certificate the servers show (in PKI: the one their policy picks from the Certificates list, decision 2026-10-25):
+    /// one of this CA, made on the first read (counted in <see cref="SignCount"/>); none while the CA is not ready.
+    /// </summary>
+    public Oadm.Plugins.Pki.ServerCertificateLoad ServerCertificate(string kind)
+    {
+        if (!IsReady)
+        {
+            return new(null, null);
+        }
+
+        lock (_serverGate)
+        {
+            _server ??= MakeServerCertificate(); // the server's start and the first connection may read it at once
+            return new(_server with { Pkcs8 = (byte[])_server.Pkcs8.Clone() }, null); // the reader clears its copy of the key
+        }
+    }
+
+    public IReadOnlyList<byte[]> ServerIssuerChain(string kind) => IsReady ? Chain : [];
+
+    public Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<Oadm.Plugins.Pki.ServerCertificateImport?>>? existing, CancellationToken ct) =>
+        Task.CompletedTask;
+
+    private Oadm.Plugins.Pki.ServerCertificateMaterial MakeServerCertificate()
+    {
+        SignCount++;
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=802.1X and EST server", key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid("1.3.6.1.5.5.7.3.1")], false));
+        var san = new SubjectAlternativeNameBuilder();
+        san.AddIpAddress(IPAddress.Parse("10.0.0.17"));
+        request.CertificateExtensions.Add(san.Build());
+        using var signed = request.Create(_ca.SubjectName, X509SignatureGenerator.CreateForECDsa(_key), DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(10), Serial());
+        return new Oadm.Plugins.Pki.ServerCertificateMaterial("test-server", signed.RawData, Chain, key.ExportPkcs8PrivateKey(), signed.NotAfter.ToUniversalTime(), ["10.0.0.17"]);
+    }
+
     private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
     /// <summary>The serials the 802.1X server reported as signed in (PKI confirms a pending IEEE 802.1X certificate).</summary>
@@ -180,10 +220,14 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pk
     }
 
     /// <summary>A camera certificate of this CA naming <paramref name="serial"/> (client authentication unless <paramref name="usage"/> says otherwise).</summary>
-    public TestCertificate Camera(string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames)
+    public TestCertificate Camera(string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames) =>
+        Camera(new X500DistinguishedName("CN=10.0.0.48"), serial, notBefore, notAfter, usage, moreNames);
+
+    /// <summary>A camera certificate of this CA with the subject <paramref name="subject"/>.</summary>
+    public TestCertificate Camera(X500DistinguishedName subject, string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=10.0.0.48", key, HashAlgorithmName.SHA256);
+        var request = new CertificateRequest(subject, key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyAgreement, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid(usage)], false));
@@ -392,8 +436,16 @@ public sealed class PluginHarness : IAsyncDisposable
     public PolicyStore Policies { get; private set; } = null!;
 
     /// <summary>Saves a policy as "admin" (the save must pass).</summary>
+    /// <summary>The id of the test CA's server certificate in the harness's Certificates list.</summary>
+    public const string ServerCertificateId = "test-server";
+
     public async Task<PkiPolicy> SavePolicyAsync(PkiPolicy policy)
     {
+        if (policy.Kind == PolicyKinds.Dot1xServer && policy.CertificateId is null)
+        {
+            policy = policy with { CertificateId = ServerCertificateId }; // the server policy shows a certificate of the list
+        }
+
         var result = await Policies.SaveAsync(policy, "admin", RadiusPolicies.CipherSuites, CancellationToken.None);
         Assert.Null(result.Error);
         return result.Saved!;
@@ -443,6 +495,9 @@ public sealed class PluginHarness : IAsyncDisposable
         harness.Policies = new PolicyStore(harness.PkiSettings, _ => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. ctx.DeviceList]), () => ctx.FakeSites.List,
             () => CaTrust.AuthoritiesOf(ctx.FakeServices.Find<IDeviceCertificateAuthority>(), harness.DeviceIds.Verifier), harness.PkiTags);
         await harness.Policies.LoadAsync(CancellationToken.None);
+
+        // The test CA's server certificate is the one the Certificates list offers (in PKI the server policy picks it).
+        harness.Policies.ServerCertificates = () => [new PolicyCertificateChoice(ServerCertificateId, "802.1X and EST server", "OADM test CA", DateTime.UtcNow.AddYears(10), true, ["10.0.0.17"])];
         ctx.FakeServices.Offer(harness.Policies);
         beforeStart?.Invoke(harness);
         if (start)
@@ -576,6 +631,9 @@ public sealed class PluginSwitch
 
     public string? CallingStationId { get; init; } = "AC-CC-8E-12-34-56";
 
+    /// <summary>The switch port (a port holds at most 8 sessions: many cameras need ports of their own).</summary>
+    public string? NasPortId { get; init; } = "GigabitEthernet1/0/5";
+
     /// <summary>Sends one EAP packet; the checked answer, or null when none came within <paramref name="wait"/>.</summary>
     public async Task<(RadiusPacket? Answer, byte[] Authenticator)> SendAsync(byte[] eap, byte[]? state, TimeSpan? wait = null)
     {
@@ -602,6 +660,7 @@ public sealed class PluginSwitch
             Client = _builder.Client,
             Source = Source,
             CallingStationId = CallingStationId,
+            NasPortId = NasPortId,
             State = _builder.State,
         };
         return builder.Build(eap, authenticator);

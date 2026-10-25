@@ -275,12 +275,12 @@ public sealed class SeveralCasTests
             Assert.Contains(PkiService.KindsOwner, pki.Policies.Converted);
 
             // A change made since stays: the conversion runs once.
-            Assert.Null((await pki.Policies.SaveAsync(pki.Policies.EstServerPolicy! with { ValidDays = 50 }, "admin", Suites, CancellationToken.None)).Error);
+            Assert.Null((await pki.Policies.SaveAsync(pki.Policies.FirstOf(PolicyKinds.Block)! with { AlsoRevoke = false }, "admin", Suites, CancellationToken.None)).Error);
         }
 
         await using (var again = await PkiHarness.StartAsync(settings))
         {
-            Assert.Equal(50, again.Policies.EstServerPolicy!.ValidDays);
+            Assert.False(again.Policies.FirstOf(PolicyKinds.Block)!.AlsoRevoke);
             Assert.Equal(2, again.Policies.All.Count);
         }
 

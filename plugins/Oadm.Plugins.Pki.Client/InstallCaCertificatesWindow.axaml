@@ -17,10 +17,8 @@
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
         <ui:CardHeader Grid.Row="0" Title="CA certificates" Description="{Binding Scope}">
-          <Button Classes="secondary" Command="{Binding AddFilesCommand}"
-                  ToolTip.Tip="Choose one or more CA certificate files (.crt, .pem, .cer, .der; PEM bundles with several certificates too)">
-            <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add files" />
-          </Button>
+          <ui:ToolbarButton Text="Add files" IconKey="add" Command="{Binding AddFilesCommand}"
+                            ToolTip.Tip="Choose one or more CA certificate files (.crt, .pem, .cer, .der; PEM bundles with several certificates too)" />
         </ui:CardHeader>
         <TextBlock Grid.Row="1" Classes="secondary" TextWrapping="Wrap"
                    Text="The selected devices get these CA certificates and then trust certificates the CAs issued, e.g. of a RADIUS server or a video management system. Certificates a device already has are skipped." />

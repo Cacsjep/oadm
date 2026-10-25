@@ -276,8 +276,8 @@ public sealed class PageTests(ITestOutputHelper output)
         try
         {
             Assert.Equal("Choose devices", vm.DeviceChoice.ButtonText);
-            vm.Activate();
-            await Task.Delay(100);
+            vm.Activate(); // without a choice the read ends inside Activate (nothing to wait for), so nothing can follow
+            Assert.False(vm.IsReading);
             Assert.Empty(vm.Groups);
             Assert.DoesNotContain(rig.Context.Calls, call => call.Method == ActionRulesMethods.Read);
             Assert.All(rig.Cameras.Cameras.Values, camera => Assert.Empty(camera.Requests));

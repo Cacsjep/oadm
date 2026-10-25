@@ -223,10 +223,18 @@ internal sealed class PluginPageContext(MetadataMonitorPlugin plugin, PluginEven
     /// <summary>The calls that reached the plugin (a call with a cancelled token does not, like over gRPC).</summary>
     public System.Collections.Concurrent.ConcurrentQueue<string> Calls { get; } = new();
 
+    /// <summary>An error the server answers instead of the plugin (null: the plugin answers), per method.</summary>
+    public Func<string, Exception?>? Refusal { get; set; }
+
     public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         Calls.Enqueue(method);
+        if (Refusal?.Invoke(method) is { } refusal)
+        {
+            throw refusal;
+        }
+
         return await plugin.InvokeAsync(call, method, payloadJson, ct);
     }
 

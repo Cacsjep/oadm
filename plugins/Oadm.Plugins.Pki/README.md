@@ -56,19 +56,20 @@ the only writers of the list of issued certificates (see "Issued certificates an
   "HTTPS" and "IEEE 802.1X"; `PkiValidation` keeps the field rules the policies use): `deviceCertValidityDays` 365 (1..3650), `expiryWarningDays` 30 (1..365; since OADM 4.5 only read once: it becomes the Expiry
   warning policy "All devices"), `dot1x.eapolVersion` 1|2, `dot1x.identity`
   mac|hostName|custom, `dot1x.customIdentity` (1..64 printable, placeholders `{serial}` `{hostName}` only),
-  `dot1x.radiusCa` oadm|imported + `radiusCaPem` (`importRadiusCa` checks a PEM/DER CA certificate; saving the IEEE
-  802.1X certificate policy stores it).|imported + `radiusCaPem` (`importRadiusCa` checks a PEM/DER CA certificate, Save stores it).
+  `dot1x.radiusCa` oadm|imported + `radiusCaPem` (read once by the conversion of 2026-10-25: the RADIUS server CA of the
+  IEEE 802.1X policy becomes a CA of the list, `PkiService.ConvertRadiusCasAsync`).
 - Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
   previousCas, config, serverTrustInstalled (checked every call), counts, radiusCa, `simulated` in fake mode), `generate`,
   `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
-  `importRadiusCa`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
+  `importAuthority`, `removeAuthority`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
   after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
 - Page (stage 7 of `docs/spec/pki.md`, `HasOwnCards`, subtitle "Certificates, their policies, and the 802.1X and EST
   servers."): fixed tabs Certificates | Policies | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
-  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: cards by area (see
-  below). Certificates: the Certificates card as high as the tab (`PkiView.FitList`): one toolbar row with the title, Create (Certificate, New OADM CA = the former
-  Generate new CA), Sign request, Import (Certificate; CA: "CA certificate" and "CA with its key", both add a row) and
-  Group by, the filters and the search; the OADM CA's status below it only when it needs attention.
+  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: one grouped table and a
+  side panel (see below). Certificates: two cards that share the tab's height with a splitter between them: **Certificate
+  authorities** (New OADM CA, Import with "CA certificate" and "CA with its key", both add a row; the search; the OADM CA's
+  status below it only when it needs attention) and **Certificates** (Create, Sign request and Import as plain command
+  buttons; Group by, the state and issuer filters and the search).
   The CAs are rows: the OADM CA's menu has View, Export (PEM / DER: Export public certificate), Install in trusted root
   store and Back up, its Type cell where it is installed ("OS root store: server", "OS root store: client"); previous and
   imported CAs Remove (red, confirmed); an imported CA with its key the badge "Can issue"; the column **Used in** (only
@@ -131,37 +132,32 @@ the only writers of the list of issued certificates (see "Issued certificates an
   of before 2026-10-25 (`serverCertificate`, `revoke`) are converted once on start (`PolicyStore.ConvertKinds` through
   `RewriteOnceAsync`, owner `oadm.pki:kinds-2026-10-25`; never on a store that cannot be read). The 802.1X server inside
   PKI reads the store in process (`IPluginServices`); `Radius/Server/RadiusPolicies.cs` converts its settings once.
-- Page: tab **Policies** (`PoliciesViewModel`, decision 2026-10-25), one scrolling column of cards: **Check a device**
-  (`ChooseCheckDeviceCommand`: `DevicePickerWindow.ShowOneAsync` through `IPolicyDialogs.PickDeviceAsync`, then
-  `checkDevice` for that one device; again after every policy change), **Certificates for cameras** (the system HTTPS,
-  IEEE 802.1X and Expiry warning policies in place, rule lists Other issuing and Expiry warnings for some devices),
-  **802.1X network access** (the 802.1X server policy in place, Trusted CAs, VLANs, Blocked), **EST** (the EST server
-  policy in place, Enrollment with its system row "All devices" first, Sign-in CAs). In place: `PolicySettingsView`
-  (heading, `PolicyFormView` with `PolicyEditorViewModel.IsInPlace`: no name, no devices, `ReadOnly` without "manage";
-  Save (secondary) per policy with its status left of it, "Not saved" / "Saved"; a reload keeps a form with changes).
-  Rule lists: `PolicyRulesView` over `PolicySectionViewModel` (Name with the System badge, Devices only for kinds with
-  devices, Summary with the warning of a later overlap, ⋯ with Edit and Delete in red; Add with the kind preset, a menu
-  of the kinds for Other issuing; a DataGrid at most 360 px high: up to 200 policies stay virtualized). The editor
-  (`PolicyEditorViewModel`, `PolicyFormView` on the shared `DevicePickerWindow`; the device part only for kinds with
-  devices and not "All devices"): the kind's description, Name, VLAN ID, Days before the end, Block's "Also revoke their IEEE 802.1X certificates", Devices ("All devices" or
-  "Chosen devices"; not for a Block that also revokes), 802.1X trusted CA's CA and "Only devices OADM manages", the
-  issuing kinds' and server policies' Issued by (`PolicyList.IssuingCas`), Valid (days), Key, the 802.1X server's Minimum
-  TLS version, Cipher suites (Reset to default), Largest EAP packet, Reauthentication, and for IEEE 802.1X EAPOL version,
-  EAP identity, Custom identity, RADIUS server CA ("OADM 802.1X server": the chain of the 802.1X server policy's CA, or an
-  imported one: Import / View, owned by the editor window). A Block policy that newly revokes asks first with
-  `countRevocations`.
+- Page: tab **Policies** (`PoliciesViewModel`, decision 2026-10-25, like Intune): **Create** and **Search policies** above
+  one virtualized table grouped by `PolicyTableGroups` (Issuing policies, Server policies, 802.1X access policies, EST
+  enrollment policies, Expiry warnings; a group without rows shows no header, the PRO groups hide without OADM PRO):
+  Name (the **Built-in** badge `Border.badge.system`, the red problem dot), Type, Summary. A click on a row or Create opens
+  the side panel (`Border.sidePanel`, 560 px, pushes the table left): Create first lists the types ("Create a policy",
+  Next), then the form; Delete (red, not for built-in policies), "Not saved", Cancel, Save; "Discard changes" before
+  unsaved changes are lost. The form (`PolicyEditorViewModel`, `PolicyFormView`): the kind's description, Name, VLAN ID,
+  Days before the end, Block's "Also revoke their IEEE 802.1X certificates", Devices ("All devices" or the chosen ones
+  with Choose devices: the shared `DevicePickerWindow` in its group mode, made only on that click; not "All devices" for a
+  Block that also revokes), 802.1X trusted CA's CA and "Only devices OADM manages", the issuing kinds' Issued by
+  (`PolicyList.IssuingCas`), Valid (days), Key, for IEEE 802.1X EAPOL version, EAP identity (MAC address, Host name, IP
+  address, Last octet of the IP address, Custom), Custom identity and RADIUS server CA (a CA of the list, the hint names the
+  issuer of the 802.1X server's certificate), the server kinds' Certificate (one of the Certificates list) and the 802.1X
+  server's Minimum TLS version (1.0 to 1.3), Largest EAP packet (500 to 1,400), Reauthentication (Switch decides or 10 to
+  1,440 minutes). A save sends the policy's revision; one over a later change is refused "Changed by someone else.
+  Reload.". A Block policy that newly revokes asks first with `countRevocations`.
 - Events "Certificate expires soon", "Certificate expired" and their Any device twins (`ExpiryEvents`, group
   "Certificates", the ids of OADM 4.1's built-in events).
-- Page method `checkDevice` (`PolicyCheckRequest` -> `PolicyCheck`, `PkiService.PolicyCheck.cs`): read only, Operator, a
-  user limited to a device group gets an empty answer; lines per area (HTTPS, IEEE 802.1X, Expiry warning, 802.1X server,
-  EST server) with the deciding policies, decided by `RadiusRuleSet`/`PolicyPlan`, `EstRules` and the Expiry days.
-- Server status: a server policy whose CA cannot issue (or left the PKI) says so (`IssuerChains.NoCertificateReason`,
-  `PolicyTexts.ServerWithoutCertificate`): "The 802.1X server has no certificate: Corp CA cannot issue."
-- Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (sections, in place, Add/Edit/Delete, Check a device,
-  a group user; + headless `pki-page-1700.png`, `pki-page-1000.png`,
+- Server status without a usable certificate (`PolicyTexts.ServerNoCertificate`, `ServerCertificateUnusable`): "The
+  802.1X server has no certificate. Choose one in its policy." / "The EST server cannot use its certificate: it has
+  ended."
+- Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (the table, the side panel, Create/Edit/Delete, a group
+  user; + headless `pki-page-1700.png`, `pki-page-1000.png`,
   `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`, `pki-policy-block.png`,
-  `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `IssueDialogTests` (+ headless
-  `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
+  `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (+ headless
+  `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-renew.png`, `pki-install-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
   `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`,
   `pki-policies-1000.png` and their `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the
   conversion of the kinds, Used in), Perf `PolicyPerfTests` (30,000 devices).
@@ -169,30 +165,41 @@ the only writers of the list of issued certificates (see "Issued certificates an
 ## PKI Security tasks (part 2, contributed by `oadm.pki`)
 
 Clock check (docs/spec/pki.md; `plugins/Shared/DeviceClock/CameraClock.cs`, linked into PKI and EST, `DeviceClock` uses it):
-the Enable HTTPS and Enable IEEE 802.1X dialogs (`ClockCheck`, after Enable of `IssueCertificateWindow`) read the camera clocks
+the Enable HTTPS, Enable IEEE 802.1X and Renew certificates dialogs (`ClockCheck`, after the main button of `IssueCertificateWindow`) read the camera clocks
 through the read-only query `readClock` (8 at a time, 10 s each, progress window with Cancel; unreadable cameras left out)
 and ask with `ui:MessageWindow` Yes / No when a camera is more than 5 s behind the certificate's start (5 min back); Yes
 puts `{"clockConfirmed":true}` in the payload. Step "Check device clock" (802.1X, renew, manual install): ahead is fine;
 behind beyond the start fails "The device's time is 9 min 12 s behind. The certificate becomes valid on the device only in
 4 min 12 s. Set the device to use NTP. Nothing was changed." unless confirmed (then a Warning log line). Tests: `ClockTests`.
 
-Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware
-version (+ network-settings 1.x in `Apis` for 802.1X). Device APIs (`Device/`): REST `cert` v1 (`CertApi`: `config/discover`
-must list `cert.v1` released, read fresh before the first write, cached 10 min for queries; else "Needs AXIS OS 11.11 or
-later. Nothing was changed."), SOAP web server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration` at
-`/vapix/services`, ciphers sent back as read), network_settings.cgi (`NetworkInfoApi`: getNetworkInfo, setWired8021X
-Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback).
+Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 6.53 from the firmware
+version (all tasks, 802.1X too). Compatibility (docs/spec/pki.md "Older AXIS OS"), decided in `Tasks/PkiCompatibility`
+fresh in every Check compatibility (`RequireAsync` -> `PkiDeviceSupport`: certificate API, AXIS OS version, the web server
+roles before 7.10, the highest EAPOL version) and cached 10 min for queries (`CachedAsync`). Device APIs (`Device/`):
+`DeviceCertificates` (one facade, `CertificateApiKind` Rest / Soap) over REST `cert` v1 (`CertApi`, when `config/discover`
+lists `cert.v1` released) or SOAP (`CertSoapApi`: `tds` Get/Load/Delete certificates and CA certificates,
+`acertificates:CreateCertificate2` / `GetPkcs10Request2` / `LoadPkcs12` / `Get/SetCertSet`; AXIS OS 6.53+ by the version
+read fresh, unknown refuses "The device's AXIS OS version cannot be read. Nothing was changed.", older "Needs AXIS OS 6.53
+or later. Nothing was changed."), `DeviceSoap` (the envelope, `DeviceXml` limits, faults as the device's text), SOAP web
+server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration`, ciphers sent back as read, Operator and Viewer
+policies too before 7.10), 802.1X (`Dot1xSettings` with `Dot1xApiKind`: network_settings.cgi alone where `getNetworkInfo`
+reports the certificates (1.38, 12.11), else `SetCertSet EAPTLS_WIRED` binds them first, with param.cgi
+`Network.Interface.I0.dot1x` where there is no network settings API; `NetworkInfoApi`: getNetworkInfo,
+setWired8021XConfiguration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback). EAPOL version 3 needs
+10.1 ("EAPOL version 3 needs AXIS OS 10.1 or later. Choose a policy with EAPOL version 1 or 2. Nothing was changed."); SOAP
+keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a policy with RSA. Nothing was changed.").
 - Issuing (`CertificateDeployment.IssueAsync`, `DeviceCertificateIssuer`): key on the device (`create_certificate` with the issuing policy's key, EC-P256 or RSA-2048, in
   the default keystore, after the keystore's `key_types` were checked) -> `get_csr` -> OADM signs (its own subject `CN=<OADM address>`, SAN IP addresses, host name, FQDN,
   `axis-<serial>.local`, the reported ones only for a device no group covers; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
   keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity of the issuing policy from now - 5 min, capped at the
-  CA) -> `PATCH certificates/<alias>`; the entry goes into `issued`. A failure after the key was created deletes the
+  CA) -> `PATCH certificates/<alias>` (SOAP: `CreateCertificate2` under "<alias> key", `GetPkcs10Request2`, `LoadCertificates`
+  under the alias, then the placeholder is deleted); the entry goes into `issued`. A failure after the key was created deletes the
   unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
   nothing uses (alias prefix + registry serial or the CA as issuer), never others.
 - **Enable HTTPS** (`oadm.pki.https-enable`, dialog `IssueCertificateWindow`: the HTTPS certificate policy (the first preselected, read
-  with the query `listIssuingPolicies`) and its values for this run, then the clock check; payload `IssuePayload`; name
+  with the query `listIssuingPolicies`) with its summary, then the clock check; the run uses the policy's stored values; payload `IssuePayload`; name
   "Enable HTTPS"): Check compatibility (with the policy and the device's key types), Check device clock, Read web server
   settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
   installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
@@ -204,17 +211,22 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   Basic over HTTP), Read web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"),
   Verify (`UpdateDeviceTlsAsync("http")`).
 - **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, dialog `IssueCertificateWindow` with the warning "Devices on ports
-  that enforce 802.1X become unreachable if authentication fails.", the IEEE 802.1X certificate policy and its values,
-  name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the policy and its RADIUS server CA, the
-  device's key types, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
+  that enforce 802.1X become unreachable if authentication fails.", the IEEE 802.1X certificate policy with its summary,
+  name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the policy and its RADIUS server CA, never
+  compared with the 802.1X server's certificate, the
+  device's key types, the certificate API, the policy's EAPOL version, wired 802.1X by `Dot1xSettings`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
   server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
-  EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
-  CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
+  EAP-TLS, identity MAC = serial / host name / IP address / last octet of the IP address / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
+  CA aliases; below network settings 1.38 the certificates by `SetCertSet` first), Verify 802.1X settings (read back, from
+  `GetCertSet` there; mismatch = Warning), Remove previous OADM certificate.
 - **Disable IEEE 802.1X** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
   (Skipped "Already off"), Verify; certificates stay.
-- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
-  server settings, Read network settings, then per purpose whose current certificate is OADM's the enable flow (the first
-  policy of the kind) with
+- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates", dialog `IssueCertificateWindow` via
+  `IssueCertificateViewModel.ForRenew`: the 802.1X warning and the IEEE 802.1X policy (`IssuingPolicyField`, the first
+  preselected), then the clock check; payload `RenewPayload` {`dot1xPolicyId`, `clockConfirmed`}): Check compatibility (a
+  chosen policy that no longer exists fails here, nothing written), Read certificates, Read web server settings, Read
+  network settings, then per purpose whose current certificate is OADM's the enable flow (HTTPS: the first HTTPS
+  certificate policy; IEEE 802.1X: the chosen one, without one the first) with
   prefixed steps ("HTTPS: Create key on the device", "IEEE 802.1X: ..."; 802.1X adds Check device clock and runs only
   while 802.1X is on); otherwise one Skipped step "Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" with the
   reason ("No OADM HTTPS certificate on this device").
@@ -233,8 +245,11 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table
   File, Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
   `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
-  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}]}` (CA only: deviceId empty =
-  every device). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
+  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId}` (CA only: deviceId
+  empty = every device). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
+  task's query `listIssuingPolicies` when the purpose is first chosen, `ui:LoadingOverlay` over the card); the run sets that
+  policy's identity, EAPOL version and RADIUS server CA (without `policyId` the first policy; a deleted one fails in Check
+  compatibility, nothing written). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
   certificate (`install_from_pkcs12`), Switch web server, Verify HTTPS; 802.1X: Check device clock, Install CA
   certificates, Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
   A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N
@@ -268,6 +283,8 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   certificates with 30,000 devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
   `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
+  Older AXIS OS: `LegacyFirmwareTests.cs` (parsers and request bodies against `Fixtures/Legacy/<version>` of 6.53, 8.40,
+  9.80, 10.12, 11.9, 11.11; the compatibility matrix; every task per family on `FakeCamera.Legacy`).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 
 ## Issued certificates and revocation
@@ -307,7 +324,7 @@ the CA service.
   certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
   naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
   and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS
-  11.11+, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
+  6.53+, REST or SOAP, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
   or none with the certificate API; else again after `PkiOptions.ExistingImportRetry`, 1 hour).
 - Methods: `getCertificates` (`CertificatesRequest`: state, purpose, source, search, offset, limit 500 ->
   `CertificatesReply`; the caller's devices from `call.Devices`; a user with a group: only those, else every row and
@@ -321,7 +338,7 @@ the CA service.
   `PkiOptions.CertificatesEventDelay` (1 s) to `AllDevices` and to each group that read the page.
 - Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): the client SDK's shared list of issued certificates
   (`ui:IssuedCertificateList` with `IssuedCertificateListViewModel`, also the 802.1X server's certificate choice; PKI reads
-  through `PkiCertificateSource`): filters (state, use, issued by), search (300 ms after the last key), Previous / Next,
+  through `PkiCertificateSource`): filters (state, issued by; no use filter since 2026-10-25), search (300 ms after the last key), Previous / Next,
   `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one step and kept over a new
   page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" follows the row's state: each device
   has the days of its Expiry warning policy, `CertificatesReply.WarningDays` is null); the page adds Revoke and Revoke all of
@@ -336,7 +353,8 @@ the CA service.
   `ImportCertificateWindow`, `ExportKeyWindow`; row buttons in `PkiView.axaml`. Create and Sign request refuse a camera's
   `axis-<12 hex>` name (`CertificateRules.IsCameraName`); `PkiCertificateAuthority.PurposeOf` answers `NotDevicePurpose` for
   every local certificate, so EST and the 802.1X server never take one for a camera's. Delete takes created and signed
-  certificates only when revoked or expired.
+  certificates nothing uses; a still valid one is revoked first ("Revoke and delete"); one a server policy shows is
+  refused ("Used by the policy 802.1X server. Pick another certificate first.").
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
   View certificate describes a certificate the fake CA signs; Revoke changes the rows.
 

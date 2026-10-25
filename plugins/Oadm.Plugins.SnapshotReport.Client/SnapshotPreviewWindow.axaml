@@ -50,7 +50,9 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}">
-      <ui:ToolbarButton IconKey="refresh" Text="Take new snapshot" IsPrimary="True" Command="{Binding RefreshCommand}" />
+      <Button Classes="primary" Command="{Binding RefreshCommand}">
+        <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Take new snapshot" />
+      </Button>
     </ui:DialogFooter>
   </Grid>
 </Window>

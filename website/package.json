@@ -3,6 +3,7 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "screens": "node scripts/screens.mjs",
     "predev": "node scripts/changelog.mjs",
     "dev": "astro dev",
     "start": "astro dev",

@@ -246,23 +246,29 @@ public sealed class ExistingCertificateImportTests
         await using var pki = await PkiHarness.StartAsync();
         var settings = pki.Settings;
         var answering = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.48", "B8A44F631339");
-        var old = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.49", "ACCC8E000001", Firmware: "10.12.100"); // no certificate API
+        var old = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.49", "ACCC8E000001", Firmware: "6.50.5"); // older than the PKI tasks support
+        var soap = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.50", "ACCC8E000003", Firmware: "10.12.236"); // the SOAP certificate service
         var camera = new FakeCamera();
         using var issued = RevocationTests.Issue(pki.Service.Ca!, "B8A44F631339", client: false);
         camera.AddCertificate("OADM HTTPS 20240101-120000", CaCertificates.ToPem(issued));
-        var system = new FakeSystem([answering, old], new Dictionary<Guid, FakeCamera> { [answering.Id] = camera });
+        var legacy = FakeCamera.Legacy("10.12");
+        using var legacyIssued = RevocationTests.Issue(pki.Service.Ca!, "ACCC8E000003", client: false);
+        legacy.AddCertificate("OADM HTTPS 20240102-120000", CaCertificates.ToPem(legacyIssued));
+        var system = new FakeSystem([answering, old, soap], new Dictionary<Guid, FakeCamera> { [answering.Id] = camera, [soap.Id] = legacy });
         var import = new ExistingCertificateImport(pki.Service, system, settings, TimeProvider.System, TimeSpan.Zero, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
 
         await import.RunAsync(CancellationToken.None);
 
         Assert.Single(pki.Service.Issued.ForDevice(answering.Id));
+        Assert.Single(pki.Service.Issued.ForDevice(soap.Id));
         Assert.Empty(pki.Service.Issued.ForDevice(old.Id));
-        Assert.Equal([answering.Id], system.Asked);
+        Assert.Equal(new[] { answering.Id, soap.Id }.Order(), system.Asked.Order()); // 4 at a time: any order
         Assert.All(camera.Requests, r => Assert.Equal("GET", r.Method)); // read only
+        Assert.Empty(legacy.Writes); // read only (SOAP reads are POSTs)
         Assert.NotNull(await settings.GetAsync(ExistingCertificateImport.DoneKey, CancellationToken.None));
 
         await import.RunAsync(CancellationToken.None);
-        Assert.Single(system.Asked); // done once per server
+        Assert.Equal(2, system.Asked.Count); // done once per server
     }
 
     [Fact]

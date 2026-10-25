@@ -17,6 +17,9 @@ public interface IIssuedCertificatesDialogs : IIssuedCertificateListDialogs
     /// <summary>The confirmation of Delete (red Delete); true when confirmed.</summary>
     Task<bool> ConfirmDeleteAsync(string title, string message) => Task.FromResult(false);
 
+    /// <summary>The confirmation of Delete with its own red confirm button ("Revoke and delete"); true when confirmed.</summary>
+    Task<bool> ConfirmDeleteAsync(string title, string message, string confirmText) => ConfirmDeleteAsync(title, message);
+
     Task ShowCreateAsync(CreateCertificateViewModel dialog) => Task.CompletedTask;
 
     Task ShowSignRequestAsync(SignRequestViewModel dialog) => Task.CompletedTask;
@@ -335,7 +338,15 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
             return;
         }
 
-        if (!await dialogs.ConfirmDeleteAsync(IssuedCertificateTexts.DeleteTitle(rows), rows.Count == 1 ? IssuedCertificateTexts.DeleteMessageOne : IssuedCertificateTexts.DeleteMessage)
+        // Still valid ones created or signed here are revoked first (decision 2026-10-25: Revoke and delete).
+        var revoking = rows.Count(r => r.DeleteRevokes);
+        var message = rows.Count == 1 ? IssuedCertificateTexts.DeleteMessageOne : IssuedCertificateTexts.DeleteMessage;
+        if (revoking > 0)
+        {
+            message = (rows.Count == 1 ? IssuedCertificateTexts.RevokedFirstOne(rows[0].Name) : IssuedCertificateTexts.RevokedFirst(revoking)) + " " + message;
+        }
+
+        if (!await dialogs.ConfirmDeleteAsync(IssuedCertificateTexts.DeleteTitle(rows), message, revoking > 0 ? IssuedCertificateTexts.RevokeAndDelete : "Delete")
                 .ConfigureAwait(true))
         {
             return;

@@ -13,11 +13,34 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// </summary>
 public static class IssuingChoice
 {
-    /// <summary>
-    /// The policy of the run: <paramref name="payloadJson"/>'s policy with its values over the stored ones.
-    /// </summary>
+    /// <summary>The policy of the run: <paramref name="payloadJson"/>'s policy as stored (else the first of the kind).</summary>
     /// <exception cref="InvalidOperationException">No policy of the kind, or a value that is not allowed ("Nothing was changed").</exception>
-    public static PkiPolicy Resolve(PkiService service, string kind, string? payloadJson)
+    public static PkiPolicy Resolve(PkiService service, string kind, string? payloadJson) =>
+        Resolve(service, kind, (PkiJson.TryDeserialize<IssuePayload>(payloadJson) ?? new IssuePayload()).PolicyId);
+
+    /// <summary>The policy of the run: <paramref name="policyId"/> as stored (null, older payloads: the first of the kind).</summary>
+    /// <exception cref="InvalidOperationException">No policy of the kind, the chosen one is gone, or a value that is not allowed ("Nothing was changed").</exception>
+    public static PkiPolicy Resolve(PkiService service, string kind, Guid? policyId)
+    {
+        var policy = Chosen(service, kind, policyId) ?? service.Policies.FirstOf(kind)
+            ?? throw new InvalidOperationException($"There is no {PolicyKinds.Name(kind)} policy. Add one on the PKI page. Nothing was changed.");
+        var effective = PolicyRules.Normalize(policy);
+        if (PolicyRules.ValidateIssuing(effective) is { } error)
+        {
+            throw new InvalidOperationException($"{effective.Name}: {error.Message} Nothing was changed.");
+        }
+
+        return effective;
+    }
+
+    /// <summary>The refusal of a run whose chosen policy was deleted after the dialog.</summary>
+    public const string PolicyGone = "The chosen policy no longer exists. Start the task again. Nothing was changed.";
+
+    /// <summary>
+    /// The policy the dialog chose, as stored; null without a choice (older payloads). Renew checks it before its first write.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The policies cannot be read, or the chosen one is gone ("Nothing was changed").</exception>
+    public static PkiPolicy? Chosen(PkiService service, string kind, Guid? policyId)
     {
         ArgumentNullException.ThrowIfNull(service);
         var store = service.Policies;
@@ -26,30 +49,12 @@ public static class IssuingChoice
             throw new InvalidOperationException(PolicyTexts.Unreadable + " Nothing was changed.");
         }
 
-        var payload = PkiJson.TryDeserialize<IssuePayload>(payloadJson) ?? new IssuePayload();
-        var chosen = payload.PolicyId is { } id ? store.Find(id) : null;
-        if (payload.PolicyId is not null && (chosen is null || chosen.Kind != kind))
+        if (policyId is not { } id)
         {
-            throw new InvalidOperationException("The chosen policy no longer exists. Start the task again. Nothing was changed.");
+            return null;
         }
 
-        var policy = chosen ?? store.FirstOf(kind)
-            ?? throw new InvalidOperationException($"There is no {PolicyKinds.Name(kind)} policy. Add one on the PKI page. Nothing was changed.");
-        var effective = PolicyRules.Normalize(policy with
-        {
-            ValidDays = payload.ValidDays ?? policy.ValidDays,
-            Key = payload.Key ?? policy.Key,
-            EapolVersion = payload.EapolVersion ?? policy.EapolVersion,
-            Identity = payload.Identity ?? policy.Identity,
-            CustomIdentity = payload.CustomIdentity ?? policy.CustomIdentity,
-            RadiusCa = payload.RadiusCa ?? policy.RadiusCa,
-        });
-        if (PolicyRules.ValidateIssuing(effective) is { } error)
-        {
-            throw new InvalidOperationException($"{effective.Name}: {error.Message} Nothing was changed.");
-        }
-
-        return effective;
+        return store.Find(id) is { } chosen && chosen.Kind == kind ? chosen : throw new InvalidOperationException(PolicyGone);
     }
 
     /// <summary>"HTTPS: OADM CA, 365 days, ECC" (the Check compatibility step).</summary>
@@ -86,15 +91,6 @@ public static class IssuingChoice
         }
 
         var policies = service.Policies.PoliciesOf(kind);
-        var summaries = new Dictionary<Guid, string>();
-        foreach (var policy in policies.Where(p => p.RadiusCa == RadiusCaSource.Imported && p.RadiusCaPem is not null))
-        {
-            if (PkiService.RadiusSummary(policy.RadiusCaPem) is { } summary)
-            {
-                summaries[policy.Id] = PolicyTexts.RadiusCaLine(summary.CommonName, summary.NotAfterUtc);
-            }
-        }
-
         // "Issued by" of each policy by name (decision 2026-10-25: any CA with its key issues).
         var names = service.Authorities().GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
         return new IssuingPolicyList
@@ -102,7 +98,8 @@ public static class IssuingChoice
             Policies = policies,
             CaName = service.Ca is { } ca ? Ca.CaCertificates.CommonName(ca.Certificate) : null,
             CaNames = policies.ToDictionary(p => p.Id, p => names.GetValueOrDefault(p.CaId ?? CertificateAuthorityInfo.OadmId) ?? PolicyTexts.RemovedCa),
-            RadiusCaSummaries = summaries,
+            RadiusCaNames = policies.Where(p => p.RadiusCaId is not null).ToDictionary(p => p.Id, p => names.GetValueOrDefault(p.RadiusCaId!) ?? PolicyTexts.RemovedCa),
+            Summaries = policies.ToDictionary(p => p.Id, p => PolicyStore.Summary(p, names)),
         };
     }
 

@@ -172,7 +172,7 @@ public sealed partial class PluginEventHub
                 var ids = await watcher.VisibleIds(ct).ConfigureAwait(false);
                 return audience.DeviceIds.Count == 1 && ids.Contains(audience.DeviceIds[0]) ? item.Event : null;
             case PluginEventAudienceKind.DeviceRows:
-                return FilterRows(pluginId, item.Event, audience.DeviceIds, await watcher.VisibleIds(ct).ConfigureAwait(false));
+                return FilterRows(pluginId, item, audience.DeviceIds, await watcher.VisibleIds(ct).ConfigureAwait(false));
             case PluginEventAudienceKind.AllDevices:
                 return null;
             default:
@@ -182,35 +182,44 @@ public sealed partial class PluginEventHub
 
     /// <summary>
     /// The elements of a JSON array whose device <paramref name="visible"/> holds, in order; null when none is visible or the
-    /// payload is not an array with one element per device (logged: the plugin's mistake, nothing is sent).
+    /// payload is not an array with one element per device (logged: the plugin's mistake, nothing is sent). The payload is
+    /// parsed once per event (<see cref="Queued.Rows"/>), not once per watcher.
     /// </summary>
-    private PluginEvent? FilterRows(string pluginId, PluginEvent item, IReadOnlyList<Guid> rowDevices, IReadOnlySet<Guid> visible)
+    private PluginEvent? FilterRows(string pluginId, Queued queued, IReadOnlyList<Guid> rowDevices, IReadOnlySet<Guid> visible)
     {
-        JsonArray? rows = null;
-        try
-        {
-            rows = item.PayloadJson is null ? null : JsonNode.Parse(item.PayloadJson) as JsonArray;
-        }
-        catch (JsonException)
-        {
-        }
-
-        if (rows is null || rows.Count != rowDevices.Count)
+        var item = queued.Event;
+        var rows = queued.Rows.Value;
+        if (rows is null || rows.Length != rowDevices.Count)
         {
             LogBadRows(pluginId, item.Topic, rowDevices.Count);
             return null;
         }
 
-        var kept = new JsonArray();
+        var kept = new List<string>();
         for (var i = 0; i < rowDevices.Count; i++)
         {
             if (visible.Contains(rowDevices[i]))
             {
-                kept.Add(rows[i]?.DeepClone());
+                kept.Add(rows[i]);
             }
         }
 
-        return kept.Count == 0 ? null : item with { PayloadJson = kept.ToJsonString() };
+        return kept.Count == 0 ? null : item with { PayloadJson = "[" + string.Join(',', kept) + "]" };
+    }
+
+    /// <summary>The elements of a JSON array payload as JSON text each; null when it is not an array.</summary>
+    private static string[]? ParseRows(string? payloadJson)
+    {
+        try
+        {
+            return payloadJson is not null && JsonNode.Parse(payloadJson) is JsonArray rows
+                ? [.. rows.Select(r => r?.ToJsonString() ?? "null")]
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} event {Topic} dropped: {Length} characters is too large")]
@@ -219,7 +228,11 @@ public sealed partial class PluginEventHub
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} event {Topic} dropped for users with a device group: the payload is not a JSON array of {Count} rows")]
     private partial void LogBadRows(string pluginId, string topic, int count);
 
-    private sealed record Queued(PluginEvent Event, PluginEventAudience Audience);
+    private sealed record Queued(PluginEvent Event, PluginEventAudience Audience)
+    {
+        /// <summary>The rows of a row event, parsed once for every watcher that reads it.</summary>
+        public Lazy<string[]?> Rows { get; } = new(() => ParseRows(Event.PayloadJson));
+    }
 
     private sealed class Subscription(PluginWatcher watcher, Channel<Queued> channel)
     {

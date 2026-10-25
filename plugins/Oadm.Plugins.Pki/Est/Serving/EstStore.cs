@@ -691,7 +691,7 @@ public sealed partial class EstStore : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "EST: saving the enrollments and certificates failed; tried again in a few seconds")]
     private partial void LogFlushFailed(Exception ex);
 
-    private static T? Read<T>(string? json)
+    internal static T? Read<T>(string? json)
         where T : class
     {
         if (string.IsNullOrWhiteSpace(json))

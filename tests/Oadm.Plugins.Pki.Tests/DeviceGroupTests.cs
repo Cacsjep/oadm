@@ -21,7 +21,7 @@ public sealed class DeviceGroupTests
     private static readonly string[] ManageMethods =
     [
         PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
-        PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust, PkiMethods.ImportRadiusCa,
+        PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust,
         PkiMethods.Revoke, PkiMethods.RevokeDevice,
     ];
 

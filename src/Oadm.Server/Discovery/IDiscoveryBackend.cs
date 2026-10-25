@@ -61,6 +61,25 @@ public interface IDiscoveryBackend
     DiscoveredDevice? FindDiscovered(string sessionId, string discoveredId);
 
     /// <summary>
+    /// <see cref="FindDiscovered(string, string)"/> for many ids at once (Commit of a large add): the session's devices are
+    /// read once, not once per id. Unknown ids are left out; the keys are the ids as given.
+    /// </summary>
+    IReadOnlyDictionary<string, DiscoveredDevice> FindDiscovered(string sessionId, IReadOnlyCollection<string> discoveredIds)
+    {
+        ArgumentNullException.ThrowIfNull(discoveredIds);
+        var found = new Dictionary<string, DiscoveredDevice>(StringComparer.OrdinalIgnoreCase);
+        foreach (var id in discoveredIds)
+        {
+            if (FindDiscovered(sessionId, id) is { } device)
+            {
+                found[id] = device;
+            }
+        }
+
+        return found;
+    }
+
+    /// <summary>
     /// True while the session exists (started, not stopped): what belongs to it (its owner, its logins) is kept as long,
     /// however long the add page stays open. The default: false (kept only by use).
     /// </summary>

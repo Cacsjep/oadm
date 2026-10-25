@@ -10,7 +10,8 @@ the device safety HARD RULE are in `docs/spec/plugins.md` ("Plugin system").
 Outside this repository (guide on the website: Developers > Develop with the .NET SDK):
 `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task|oadm-page|oadm-action -n <Name>`, then
 `dotnet tool restore`, `dotnet build`, `dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
-`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release.
+`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release, with a README and an AGENTS.md (the
+rules for AI assistants outside this repository) written by `tools/Oadm.NewPlugin/Templates.cs`.
 
 In this repository: `./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the
 plugin of the matching developer tutorial under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It
@@ -44,7 +45,9 @@ with `dotnet run` of server and client. Installed plugins live in `<datafolder>/
 next to the published exe.
 
 The server loads `*.Server.dll`, the client `*.Client.dll`, each in its own load context. Shared assemblies come from
-the host and are never copied into the plugin folder:
+the host and are never copied into the plugin folder. Outside this repository the plugin project SDK `Oadm.Plugin.Sdk`
+does this by itself (the SDK packages without copies, Avalonia and the MVVM toolkit without a version). The bundled
+plugins of this repository that do not use it reference the SDK by hand:
 
 ```xml
 <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
@@ -199,7 +202,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:CardHeader Title Description` | heading of every card; child controls go right of the title (e.g. a device picker). Class `flush` when the content below is optional and adds `Margin="{DynamicResource Oadm.GapTop}"` itself |
   | `ui:DialogFooter CancelCommand` | last row: Cancel left; children are the right-hand buttons (`Button.secondary` for Back, one `Button.primary`) |
   | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content |
-  | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary IsIconOnly` | every toolbar button: `Button.toolbar` (or `Button.primary`) with an `IconLabel`; `IsIconOnly` shows only the icon with `Text` as tooltip |
+  | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary IsIconOnly` | every toolbar button: a flat `Button.toolbar` with an `IconLabel` (`IsPrimary` marks the main one with the class `main`, never filled); `IsIconOnly` shows only the icon with `Text` as tooltip |
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:ToolbarOverflowPanel Spacing` | every row of toolbar buttons on a page: entries that do not fit (small or scaled screens) go behind its own More button; keep the device choice button and the search box outside it |
   | `ui:SearchBox Text` | every search field |
@@ -220,18 +223,23 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:ProgressRing` | a spinning ring in place while a list or card loads |
   | `ui:DeviceIcon Category Status ShowStatusToolTip` | every device icon in a list: the category icon, amber or red by status, the status as tooltip |
   | `DevicePickerWindow.ShowOneAsync(...)` | the picker for one device (checking one unchecks the other); returns its id or null |
-  | `PageDeviceChoice` | the device choice of a page that reads many devices (the purple "Selected devices" button), see "Choose devices first" |
+  | `PageDeviceChoice` | the device choice of a page that reads many devices (the "Selected devices" command button), see "Choose devices first" |
   | `ui:TileGrid Source` | a grid of tiles that fills the page (Live View, Dashboards), see "Shared lists and tabs" |
   | `ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}"` | a select field with check boxes (`ICheckChoice` items, `CheckChoice`; `CheckChoiceList` offers "All" or chosen items); the list stays open while the user ticks |
   | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | every tab of a page with tabs; without `CloseCommand` a fixed tab without an X; `Count` above 0 shows a badge |
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
-  | `ui:IssuedCertificateList Toolbar RowContextMenu` | every list of the certificates the OADM CA issued (DataContext an `IssuedCertificateListViewModel` with an `IIssuedCertificateSource`): filters, search, pages of 500, several rows chosen, View certificate; a derived list sets `WorkText` while its own write runs (the progress row shows it, `IsWorking`, `OnWorkChanged` for its commands); `IssuedCertificateList.ConfirmRevokeAsync` asks for the reason of a revocation |
+  | `ui:IssuedCertificateList Toolbar Banner` | every list of the certificates the OADM CA issued (DataContext an `IssuedCertificateListViewModel` with an `IIssuedCertificateSource`): filters, search, pages of 500, several rows chosen, View certificate, one ⋯ menu per row (the view model's `MenuOf`, the same as the right click); a derived list sets `WorkText` while its own write runs (the progress row shows it, `IsWorking`, `OnWorkChanged` for its commands); `IssuedCertificateList.ConfirmRevokeAsync` asks for the reason of a revocation |
+  | `ui:OffState Icon Title Text` | the state of a page or tab whose feature is off (Sites, Compliance, PKI's 802.1X and EST servers): a large icon, the title ("Site nodes are off"), one or two sentences, and the host's controls below (the Turn on button, the line for users who may not, the error), all centered |
+  | `RowActions.Show(anchor, actions)` | the ⋯ menu of a table row (`Button.toolbar.iconOnly` with `Icon.more`, tooltip `RowActions.Tip`): the everyday entries, a separator, the red ones last |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
 - Styles and classes from the host theme (`src/Oadm.Theme/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
-  `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
-  `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
-  `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
+  `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary` (filled accent:
+  only the one main action of a dialog or form, e.g. Save, Create, Next, OK), `Button.secondary` (its other actions, e.g.
+  Cancel, Choose file), `Button.toolbar` (command buttons of toolbars and card headers: flat, the icon in the accent colour,
+  the text neutral, never filled; icon-only buttons in the text colour with a tooltip), `Button.danger` (red fill: only the
+  confirming button of a dialog that deletes or removes; `Button.toolbar.danger` for flat red buttons everywhere else and
+  `Button.link.danger` for row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
   of a radio button choice, indented below it), `DataGrid.wrapRows` (rows grow, status chips show two lines), numeric columns
   (`CellStyleClasses="number"` + header `TextBlock.numberHeader`), `ui|SearchBox.stretch` (fills a narrow card),
   `Border.tile` (a picture tile; selection is its check box), `Border.liveViewSurface` (dark picture surface),
@@ -355,7 +363,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
   fails to create is logged and left out.
 - The host orders entries by group, order and id, with a `ToolbarSeparator` between groups that show something (a
   hidden control does not count, so an empty group leaves no stray line).
-- Build buttons with `ui:ToolbarButton`; the toolbar has one `IsPrimary` button (Add). Enable and disable them from
+- Build buttons with `ui:ToolbarButton`; the toolbar has one `IsPrimary` button (Add: the class `main`, still flat). Enable and disable them from
   `SelectionChanged` / `TaskPluginsChanged`; never cache the selection.
 - Sample: `tests/TestPlugins/Oadm.TestPlugins.Sample.Client/SampleToolbarPlugin.cs` ("Sample (n)" with the selection
   count, runs the sample task), loaded by `ToolbarPluginTests`.
@@ -438,7 +446,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   `Border.card`s. The context also offers the managed devices and the Devices page selection (`Devices`,
   `SelectedDevices`, `DevicesChanged`), `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)`
   (or another plugin's page: `OpenAsync("plugin:" + id)`, while it is on), `IsPluginOn(packageId)` (whether a plugin is
-  turned on; null when the host cannot tell), `LicenseOf(packageId)`, `OpenDeviceRequested` (the host asks the page to
+  turned on; null when the host cannot tell), `LicenseOf(packageId)`, `IsAdministrator` and `StartProTrialAsync` (Start
+  30-day trial of OADM PRO on a page that needs it, once per server), `OpenDeviceRequested` (the host asks the page to
   open a device; Web View opens devices at a site this way) and `Owner`.
 - **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
@@ -862,7 +871,7 @@ reads the user text of a failed server call without a gRPC reference.
 ### Choose devices first
 
 A page that reads or changes devices never reaches out to every device by itself: a server can manage 30,000, and the
-user may want one building. The page starts with the purple choice button (`PageDeviceChoice`: All devices, tags, chosen
+user may want one building. The page starts with the choice command button (`PageDeviceChoice`: All devices, tags, chosen
 devices; the Devices page selection to start with, else the last choice on this computer, kept through
 `GetLocalSetting`) as the first control of its toolbar, reads nothing while `IsEmpty`, and sends only the ids of
 `Resolve()` to the server (or "all" for All devices, so the request does not grow with the device count). A page for

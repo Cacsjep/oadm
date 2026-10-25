@@ -7,28 +7,24 @@
              x:Class="Oadm.Plugins.Est.Client.EstView"
              x:DataType="vm:EstViewModel"
              ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
-  <!-- Own cards (ICorePluginPage.HasOwnCards), two columns (decision 2026-10-25): General (with Save and the status left of
+  <!-- Own cards (ICorePluginPage.HasOwnCards), two columns (decision 2026-10-25): Server (with Save and the status left of
        it) above Profiles left, the enrollments and, only when there are any, the certificates the cameras did not renew in
        time right, as high as the page; one column on narrower pages (EstView.Arrange). Shared controls and theme classes only. -->
   <Panel>
-    <!-- The server does not run (turned off, no OADM PRO, a start that failed): only General with Turn on (docs/spec/pki.md
+    <!-- The server does not run (turned off, no OADM PRO, a start that failed): the off state with Turn on (docs/spec/pki.md
          "One plugin"). -->
-    <Border Classes="card" HorizontalAlignment="Left" MinWidth="360" VerticalAlignment="Top" IsVisible="{Binding Server.ShowOffState}">
-      <StackPanel Classes="form">
-        <TextBlock Classes="cardTitle" Text="General" />
-        <srv:ServerSwitchView DataContext="{Binding Server}" HorizontalAlignment="Left" />
-      </StackPanel>
-    </Border>
+    <srv:ServerOffStateView DataContext="{Binding Server}" IsVisible="{Binding ShowOffState}" Icon="{DynamicResource Icon.lock}"
+                            Text="Cameras get and renew their certificates from OADM by themselves." />
 
   <Grid x:Name="PageColumns" ColumnDefinitions="680,16,*" RowDefinitions="*,0" IsVisible="{Binding Server.Running}">
-    <!-- General (listen on, port, enrollments kept, the policies; Save with the status at its right edge, it saves the
+    <!-- Server (listen on, port, enrollments kept, the policies; Save with the status at its right edge, it saves the
          profiles too) above Profiles; the column scrolls on a low page. -->
     <ScrollViewer x:Name="LeftColumn" Grid.Row="0" Grid.Column="0" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Spacing="16">
       <Border x:Name="GeneralCard" Classes="card" VerticalAlignment="Top">
         <StackPanel>
           <StackPanel Classes="form">
-            <TextBlock Classes="cardTitle" Text="General" />
+            <TextBlock Classes="cardTitle" Text="Server" />
             <!-- Same shared select as the NTP and DHCP server pages. -->
             <ui:FormField Label="Listen on" InputWidth="320">
               <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
@@ -46,9 +42,9 @@
             <ui:FormField Label="Enrollments kept">
               <TextBox Text="{Binding EnrollmentsKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
             </ui:FormField>
-            <ui:FormField Label="Issued by">
-              <TextBlock Text="{Binding IssuingCa}" TextTrimming="CharacterEllipsis" />
-            </ui:FormField>
+            <!-- The certificate is the EST server policy's (shown there); here only what is wrong with it (a site not in it). -->
+            <TextBlock Classes="warning" Text="{Binding CertificateWarning}" TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
+                       IsVisible="{Binding CertificateWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <TextBlock Classes="warning" Text="{Binding PolicyProblem}" TextWrapping="Wrap" MaxWidth="440" HorizontalAlignment="Left"
                        IsVisible="{Binding PolicyProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>

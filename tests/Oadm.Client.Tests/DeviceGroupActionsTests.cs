@@ -129,6 +129,26 @@ public sealed class DeviceGroupActionsTests
         Assert.Null(session.AddDevicesRefusal);
     }
 
+    [Fact]
+    public async Task An_older_read_of_Your_role_that_answers_late_is_dropped()
+    {
+        UserSession session = GroupUser();
+        using var f = new DevicesFixture(session: session);
+        var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel shell = Shell(f, connection, session);
+        var older = new TaskCompletionSource<MyRole>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newer = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SiteNames = { "Building B" } } };
+        f.Api.GetMyRoleAsync(Arg.Any<CancellationToken>()).Returns(older.Task, Task.FromResult(newer));
+
+        Task first = shell.RefreshMyDevicesAsync(); // e.g. after a connect, still waiting
+        await shell.RefreshMyDevicesAsync(); // the user's devices changed meanwhile: the newer read answers first
+        Assert.Null(session.AddDevicesRefusal);
+
+        older.SetResult(new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby" } }); // no site
+        await first;
+        Assert.Null(session.AddDevicesRefusal); // the late answer of the older read is dropped
+    }
+
     /// <summary>
     /// A change of the group's rules keeps the group's name, so the session says nothing; the server ends the user's device
     /// stream instead (docs/spec/device-scope.md, Sessions). Its reconnect (a new snapshot, <see cref="ServerConnection.Connected"/>)
@@ -144,7 +164,8 @@ public sealed class DeviceGroupActionsTests
         f.Api.WatchDevicesAsync(Arg.Any<CancellationToken>()).Returns(_ => Interlocked.Increment(ref watches) == 1 ? EndsAfterSnapshot() : StaysAfterSnapshot(hang.Token));
         var mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SingleDeviceCount = 2, DeviceCount = 2 } };
         f.Api.GetMyRoleAsync(Arg.Any<CancellationToken>()).Returns(_ => mine);
-        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance, time: time);
         MainWindowViewModel shell = Shell(f, connection, session);
         var connects = 0;
         connection.Connected += (_, _) => Interlocked.Increment(ref connects);
@@ -154,7 +175,12 @@ public sealed class DeviceGroupActionsTests
 
         // An administrator gives the group a site: same name, new rules. The server ends the stream; the client reconnects.
         mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SiteNames = { "Building B" } } };
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => Volatile.Read(ref watches) >= 2 && Volatile.Read(ref connects) >= 2, "the device stream reconnected");
+        // The reconnect waits its back-off on the fake clock: moved on until the second watch starts.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() =>
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            return Volatile.Read(ref watches) >= 2 && Volatile.Read(ref connects) >= 2;
+        }, "the device stream reconnected");
         await Oadm.Sdk.Testing.Eventually.TrueAsync(() => session.AddDevicesRefusal is null, "Add follows the new rules");
         Assert.Equal("Lobby", session.DeviceGroupName);
         connection.Stop();

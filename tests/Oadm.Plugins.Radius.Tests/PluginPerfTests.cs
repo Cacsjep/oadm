@@ -48,6 +48,7 @@ public sealed class PluginPerfTests(ITestOutputHelper output)
                     System.Text.Encoding.ASCII.GetBytes(PluginHarness.Secret))
                 {
                     CallingStationId = string.Join('-', Enumerable.Range(0, 6).Select(b => serial.Substring(b * 2, 2))),
+                    NasPortId = "GigabitEthernet1/0/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), // one camera per port
                 };
                 var camera = new TestSupplicant(new SupplicantOptions
                 {

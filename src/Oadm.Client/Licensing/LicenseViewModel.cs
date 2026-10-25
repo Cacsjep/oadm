@@ -14,12 +14,12 @@ namespace Oadm.Client.Licensing;
 
 /// <summary>
 /// The Settings page's card "License" (docs/spec/licensing.md): the server ID with a copy button, the state of the OADM PRO
-/// license, Import license and Remove license (administrators) and the links to start a trial or activate a license on
-/// oadm.app. OADM itself never depends on the license.
+/// license, Start 30-day trial (once per server), Import license and Remove license (administrators) and the link to
+/// activate a bought license on oadm.app. OADM itself never depends on the license.
 /// </summary>
 public sealed partial class LicenseViewModel : ObservableObject
 {
-    /// <summary>The page on oadm.app that turns a license code or a trial request into a license file.</summary>
+    /// <summary>The page on oadm.app that turns a bought license code into a license file.</summary>
     public const string ActivatePage = "https://oadm.app/activate/";
 
     public static readonly FileType LicenseFileType = new("OADM license", "oadmlicense", "text/plain");
@@ -45,8 +45,11 @@ public sealed partial class LicenseViewModel : ObservableObject
                 {
                     OnPropertyChanged(nameof(IsAdmin));
                     OnPropertyChanged(nameof(CanRemove));
+                    OnPropertyChanged(nameof(ShowTrialButton));
+                    OnPropertyChanged(nameof(ShowTrialAdminLine));
                     ImportCommand.NotifyCanExecuteChanged();
                     RemoveCommand.NotifyCanExecuteChanged();
+                    StartTrialCommand.NotifyCanExecuteChanged();
                 }
             };
         }
@@ -62,8 +65,9 @@ public sealed partial class LicenseViewModel : ObservableObject
     public bool HasServerId => ServerId.Length > 0;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasLicense), nameof(IsActive), nameof(IsProblem), nameof(IsTrial), nameof(CanRemove), nameof(ShowStartTrial), nameof(ShowActivate), nameof(ShowLinks))]
-    [NotifyCanExecuteChangedFor(nameof(RemoveCommand))]
+    [NotifyPropertyChangedFor(nameof(HasLicense), nameof(IsActive), nameof(IsProblem), nameof(IsTrial), nameof(CanRemove), nameof(ShowStartTrial), nameof(ShowTrialButton),
+        nameof(ShowTrialAdminLine), nameof(ShowActivate))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveCommand), nameof(StartTrialCommand))]
     public partial ProLicenseState State { get; private set; } = new() { Reason = ProLicenseTexts.NoLicense };
 
     /// <summary>"Up to 500 devices, until 2028-10-22", "No license", "Expired on 2028-10-22." ...</summary>
@@ -80,15 +84,27 @@ public sealed partial class LicenseViewModel : ObservableObject
 
     public bool IsProblem => HasLicense && State.Status != Contracts.V1.ProLicenseStatus.ProLicenseActive;
 
-    public bool CanRemove => IsAdmin && HasLicense;
+    /// <summary>Remove license while a key is imported (a server before the trial in OADM: any license but a trial).</summary>
+    public bool CanRemove => IsAdmin && (State.HasKey || (HasLicense && !State.Trial));
 
-    /// <summary>"Start 30-day trial" while the server has no license.</summary>
-    public bool ShowStartTrial => !HasLicense;
+    /// <summary>The trial row: no trial ran on this server yet and OADM PRO is not active.</summary>
+    public bool ShowStartTrial => State.TrialAvailable;
+
+    /// <summary>Start 30-day trial for administrators.</summary>
+    public bool ShowTrialButton => ShowStartTrial && IsAdmin;
+
+    /// <summary><see cref="ProLicenseTexts.TrialAdminLine"/> for everyone else.</summary>
+    public bool ShowTrialAdminLine => ShowStartTrial && !IsAdmin;
 
     /// <summary>"Activate license" unless a bought license is active.</summary>
     public bool ShowActivate => !IsActive;
 
-    public bool ShowLinks => ShowStartTrial || ShowActivate;
+    /// <summary>A start of the trial that failed: below the trial button.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTrialError))]
+    public partial string? TrialError { get; private set; }
+
+    public bool HasTrialError => !string.IsNullOrEmpty(TrialError);
 
     [ObservableProperty]
     public partial string? Message { get; private set; }
@@ -97,7 +113,7 @@ public sealed partial class LicenseViewModel : ObservableObject
     public partial bool MessageIsError { get; private set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ImportCommand), nameof(RemoveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand), nameof(RemoveCommand), nameof(StartTrialCommand))]
     public partial bool IsBusy { get; private set; }
 
     public async Task LoadAsync()
@@ -195,17 +211,70 @@ public sealed partial class LicenseViewModel : ObservableObject
         }
     }
 
-    /// <summary>Raised after this client imported or removed the license: PRO plugins may have turned on or off.</summary>
+    /// <summary>
+    /// Raised after this client imported or removed the license or started the trial: PRO plugins may have turned on or off.
+    /// </summary>
     public event EventHandler? LicenseChanged;
-
-    /// <summary>The trial page of oadm.app with this server's ID.</summary>
-    public Uri StartTrialUri => new(ActivatePage + "?server=" + Uri.EscapeDataString(ServerId) + "&trial=1");
 
     /// <summary>The activation page of oadm.app with this server's ID.</summary>
     public Uri ActivateUri => new(ActivatePage + "?server=" + Uri.EscapeDataString(ServerId));
 
-    [RelayCommand]
-    private Task StartTrialAsync() => _launcher?.OpenAsync(StartTrialUri) ?? Task.CompletedTask;
+    private bool CanStartTrial => IsAdmin && !IsBusy && ShowStartTrial;
+
+    /// <summary>Start 30-day trial on the card; a failure shows below the button.</summary>
+    [RelayCommand(CanExecute = nameof(CanStartTrial))]
+    private async Task StartTrialAsync()
+    {
+        TrialError = null;
+        try
+        {
+            await StartTrialCoreAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (RpcException ex)
+        {
+            TrialError = ex.Status.Detail;
+            await LoadAsync().ConfigureAwait(true); // e.g. started meanwhile from another client: the row goes away
+        }
+    }
+
+    /// <summary>
+    /// Starts the trial for a plugin page (the 802.1X and EST servers' off state, <c>ICorePluginClientContext.StartProTrialAsync</c>):
+    /// the card shows the new state and <see cref="LicenseChanged"/> follows. Throws the server's refusal.
+    /// </summary>
+    public Task<ProLicenseInfo> StartTrialFromPageAsync(CancellationToken ct) => StartTrialCoreAsync(ct);
+
+    private async Task<ProLicenseInfo> StartTrialCoreAsync(CancellationToken ct)
+    {
+        try
+        {
+            IsBusy = true;
+            Message = null;
+            var state = await _api.StartTrialAsync(ct).ConfigureAwait(true);
+            Apply(state);
+            TrialError = null;
+            LicenseChanged?.Invoke(this, EventArgs.Empty);
+            return ToInfo(state);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>The SDK form of the server's license state (plugin pages).</summary>
+    public static ProLicenseInfo ToInfo(ProLicenseState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        return new ProLicenseInfo(
+            (Oadm.Sdk.Licensing.ProLicenseStatus)(int)state.Status,
+            state.Reason,
+            state.Customer.Length > 0 ? state.Customer : null,
+            state.Plan.Length > 0 ? state.Plan : null,
+            state.HasMaxDevices ? state.MaxDevices : null,
+            DateOnly.TryParseExact(state.Expires, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day)
+                ? day : null,
+            state.Trial) { TrialAvailable = state.TrialAvailable };
+    }
 
     [RelayCommand]
     private Task ActivateAsync() => _launcher?.OpenAsync(ActivateUri) ?? Task.CompletedTask;

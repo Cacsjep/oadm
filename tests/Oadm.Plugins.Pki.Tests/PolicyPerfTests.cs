@@ -88,7 +88,7 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Check_a_device_and_the_cards_with_150_rules_at_30000_devices_stay_fast()
+    public async Task The_policy_table_and_its_search_with_150_policies_at_30000_devices_stay_fast()
     {
         const int Rules = 150;
         var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
@@ -104,27 +104,72 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
             {
                 Name = "VLAN " + i.ToString(CultureInfo.InvariantCulture),
                 Kind = PolicyKinds.Vlan,
-                Vlan = 100 + i,
+                Vlan = 1000 + i, // summaries "VLAN 1014": the search below matches names only
                 Devices = new PolicyDevices { Tags = ["Tag " + i.ToString(CultureInfo.InvariantCulture)] },
             })).Error);
         }
 
-        // The server checks one device: one pass over the devices to find it, then O(policies).
+        // The server's list: the rows with their device texts and warnings at 30,000 devices.
         var watch = Stopwatch.StartNew();
-        var check = await pki.InvokeAsync<PolicyCheck>(PolicyMethods.CheckDevice, new PolicyCheckRequest(devices[^1].Id));
-        var checkTime = watch.Elapsed;
-        Assert.Contains(check.Lines, l => l.Text == "It gets VLAN " + (100 + (Devices - 1) % Rules).ToString(CultureInfo.InvariantCulture) + ".");
-
-        // The page: the rule lists and the settings in place from one list (one reset per list).
         var list = await pki.InvokeAsync<PolicyList>(PolicyMethods.GetPolicies);
-        var card = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
-        watch.Restart();
-        card.Apply(list);
-        var apply = watch.Elapsed;
-        Assert.Equal(Rules, card.Vlans.Rows.Count);
+        var read = watch.Elapsed;
 
-        output.WriteLine($"30,000 devices, {Rules} VLAN rules: Check a device {checkTime.TotalMilliseconds:F0} ms; the cards {apply.TotalMilliseconds:F0} ms");
-        Assert.True(checkTime < TimeSpan.FromMilliseconds(500), $"Check a device took {checkTime.TotalMilliseconds:F0} ms");
-        Assert.True(apply < TimeSpan.FromMilliseconds(500), $"the cards took {apply.TotalMilliseconds:F0} ms");
+        // The page: one table from one list (one reset), then a search.
+        var page = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
+        watch.Restart();
+        page.Apply(list);
+        var apply = watch.Elapsed;
+        Assert.Equal(Rules, page.Rows.Count(r => r.Source.Kind == PolicyKinds.Vlan));
+        watch.Restart();
+        page.SearchText = "VLAN 14";
+        var search = watch.Elapsed;
+        Assert.Equal(11, page.Rows.Count); // VLAN 14 and VLAN 140..149
+
+        output.WriteLine($"30,000 devices, {Rules} VLAN policies: the list {read.TotalMilliseconds:F0} ms; the table {apply.TotalMilliseconds:F0} ms; the search {search.TotalMilliseconds:F0} ms");
+        Assert.True(read < TimeSpan.FromSeconds(3), $"the list took {read.TotalMilliseconds:F0} ms");
+        Assert.True(apply < TimeSpan.FromMilliseconds(500), $"the table took {apply.TotalMilliseconds:F0} ms");
+        Assert.True(search < TimeSpan.FromMilliseconds(200), $"the search took {search.TotalMilliseconds:F0} ms");
+    }
+
+    [Fact]
+    public async Task Opening_policies_and_typing_in_their_form_at_30000_devices_build_no_device_picker()
+    {
+        var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
+        {
+            Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture),
+            Address = "10.2." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+        }).ToList();
+        await using var pki = await PkiHarness.StartAsync(devices: devices);
+        var page = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
+        await page.LoadAsync(CancellationToken.None);
+
+        // Every row clicked, three rounds: a form each time, no picker over the 30,000 devices (Choose devices makes one).
+        var watch = Stopwatch.StartNew();
+        for (var round = 0; round < 3; round++)
+        {
+            foreach (var row in page.Rows.ToList())
+            {
+                page.SelectedRow = row;
+                Assert.False(page.Editor!.HasPicker);
+            }
+        }
+
+        var opens = watch.Elapsed / (3 * page.Rows.Count);
+
+        // 500 keystrokes in the name of a new VLAN policy: one comparison with the stored form per change.
+        var editor = page.NewEditor(PolicyKinds.Vlan);
+        watch.Restart();
+        for (var i = 0; i < 500; i++)
+        {
+            editor.Name = "Building " + i.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var keystroke = watch.Elapsed / 500;
+        Assert.False(editor.HasPicker);
+        Assert.NotNull(editor.NewPicker()); // the dialog's picker, only now
+
+        output.WriteLine($"30,000 devices: open a policy {opens.TotalMilliseconds:F2} ms; a keystroke {keystroke.TotalMilliseconds:F3} ms");
+        Assert.True(opens < TimeSpan.FromMilliseconds(25), $"opening a policy took {opens.TotalMilliseconds:F1} ms");
+        Assert.True(keystroke < TimeSpan.FromMilliseconds(2), $"a keystroke took {keystroke.TotalMilliseconds:F2} ms");
     }
 }

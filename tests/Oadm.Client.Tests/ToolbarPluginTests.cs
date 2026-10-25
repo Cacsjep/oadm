@@ -91,7 +91,8 @@ public sealed class ToolbarPluginTests
             // Scan Scan-IP-range Add-manually | Remove | (tasks: none yet, separator hidden) | Sample, AXIS OS - Release Notes
             ToolbarButton[] buttons = panel.Children.OfType<ToolbarButton>().ToArray();
             Assert.Equal(["Add", "Remove", "Refresh", "Export", "Sample (0)", "AXIS OS - Release Notes"], buttons.Select(b => b.Text ?? "").ToArray());
-            Assert.Contains("primary", buttons[0].Classes);
+            Assert.Contains("main", buttons[0].Classes); // the main command, flat like the others (Fluent, decision 2026-10-25)
+            Assert.Contains("toolbar", buttons[0].Classes);
             Assert.Contains("toolbar", buttons[1].Classes);
             Assert.NotNull(buttons[0].Label.Icon);
             var addMenu = Assert.IsType<MenuFlyout>(buttons[0].Flyout); // Add: one menu with the four ways to add devices

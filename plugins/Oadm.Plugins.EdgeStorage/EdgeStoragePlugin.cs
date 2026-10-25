@@ -101,8 +101,9 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
 
     /// <summary>
-    /// The page's calls: the table of the caller's devices (one per device group); chosen cameras and the cameras of a run
-    /// must all be in the caller's view (else NOT_FOUND, nothing read or started).
+    /// The page's calls: the table of the caller's devices (one per device group); the cameras of a run, and chosen cameras of
+    /// a group user, must all be in the caller's view (else NOT_FOUND, nothing read or started); a user with all devices reads
+    /// the chosen cameras that still exist.
     /// </summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
@@ -114,7 +115,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
                 var ids = ReadIds(payloadJson);
                 if (ids is not null)
                 {
-                    await CallDevices.RequireAsync(caller, ids, ct).ConfigureAwait(false);
+                    ids = await CallDevices.KnownAsync(caller, ids, ct).ConfigureAwait(false);
                 }
 
                 sweeps.For(caller)?.Start(ids);

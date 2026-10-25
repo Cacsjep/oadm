@@ -46,7 +46,7 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon,
+                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
                        WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
@@ -344,16 +344,23 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   in `Border.dialogBody` (theme, padded like `ui:MessageWindow`) between title bar and footer, and the window sizes to its
   content (`SizeToContent="Height"`, fixed width). Cards only in dialogs with several sections or a list.
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
-  "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
-  one); the flat `ui:ToolbarButton` is only for toolbars, also the header row of a card that holds a table (PKI's
-  Policies and certificate cards, like the device toolbar: the main one `IsPrimary`; decision 2026-10-25).
-- One accent button per view (exception, the purple device choice button: "Selected devices" of the event rule and
-  trigger dialogs and of VAPIX Commander's target devices, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+  "Choose file").
+- **HARD RULE, buttons follow Fluent** (decision 2026-10-25, like Intune), all in the theme, never per view:
+  - **Command buttons**: toolbars and the header row of a card or list (actions left, search right): the flat
+    `ui:ToolbarButton` / `Button.toolbar`, icon + text, the icon in the accent colour, the text neutral, no background.
+    Never a filled button there (`ToolbarButton.IsPrimary` no longer fills).
+  - **Icon-only buttons** (close, ⋯, copy, reveal, row actions): the text colour, the accent only on hover, always a
+    tooltip; never coloured, never filled. Only disabled buttons are dimmed.
+  - **Filled accent** `Button.primary`: only the one main action of a dialog or form (Save, Create in a dialog, Enable,
+    Next, OK). `Button.secondary` for its other actions (Cancel, Turn off, Choose file, Import in a form).
+- One accent button per view (no exception: the device choice button is a command button in a page toolbar and a
+  `Button.secondary` in a form or dialog, with the devices icon; decision 2026-10-25): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
-- **Destructive actions are red**: `Button.danger` (red fill, white text) instead of primary for
-  buttons that delete or remove (Remove users, Delete certificates), `Button.toolbar.danger` for flat toolbar and icon
-  buttons (Delete all, Delete tag, credential Remove, user Delete), `Button.link.danger` for row links (DHCP Delete and
-  Release, PKI Remove). `ui:MessageWindow` makes its confirm button red when the confirm text starts with Delete, Remove
+- **Destructive actions are red**: `Button.danger` (red fill, white text) only for the confirming button of a dialog
+  whose operation deletes or removes (Remove users, Delete certificates, the confirmation's Delete);
+  `Button.toolbar.danger` (red text and icon, flat) everywhere else: toolbars, card headers, form rows, panels (Delete
+  all, Delete tag, credential Remove, Remove license, a policy's Delete); `Button.link.danger` for row links (DHCP Delete
+  and Release, PKI Remove). `ui:MessageWindow` makes its confirm button red when the confirm text starts with Delete, Remove
   or Release (`MessageWindow.IsDestructive`, `IsDanger` overrides). Destructive entries sit apart from everyday ones
   (separator, last in a menu).
 - `ui:DialogFooter` with no visible action puts its lone Close / Cancel on the right.

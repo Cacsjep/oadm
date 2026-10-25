@@ -30,7 +30,8 @@ returns null or throws `NotSupportedException`.
 - `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
-  `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only), `GetTaskName`
+  `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only; the role editor then lists only the permissions it declares,
+  none without), `GetTaskName`
   (see Tasks), `Permissions` (`PermissionDefinition` {Key, Name, Description, OperatorDefault, ViewerDefault,
   FullDeviceControl}: finer rights inside the task, "task:<id>:<key>"; empty = one "task:<id>") and
   `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional
@@ -202,7 +203,9 @@ the UI thread.
   `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server),
   `GetLocalSetting` / `SetLocalSetting` (short texts a plugin keeps on this computer, `ClientSettings.PluginSettings`,
   at most 64 KB each; e.g. a page's last device choice), `IsPluginOn(packageId)` (from the client's package list, null
-  when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on.
+  when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on,
+  `IsAdministrator` and `StartProTrialAsync(ct)` (SDK 0.4.0: Start 30-day trial of OADM PRO from a page, see
+  `docs/spec/licensing.md` "Trial"; older hosts false / NotSupportedException).
 - **Pages shown as tabs** (SDK 0.4.0, stage 7 of `docs/spec/pki.md`): `ICorePluginPage.TabOf` (DIM null) names the core
   plugin whose page shows this page as a tab. The host then adds no rail entry for it; it creates the view as for a rail
   page (its own `ICorePluginClientContext`, its own plugin id for `InvokeAsync` and events) and hands it to the host page:
@@ -222,15 +225,15 @@ the UI thread.
 
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): **Add** (`oadm.toolbar.add`,
-group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
+group Add, the main one (`IsPrimary`, flat), icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
 (`AddIpRange`, `range`), Add manually (`AddManually`, `add`), Import from file (`AddImport`, `download`) and Import from ADM
 (`AddImportAdm`, `download`): see "Add Devices Page"), Remove (Manage; confirmation, the context menu
 uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Tags, Site, Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
-Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
+Tags, Site, Host name, Model, Firmware, SoC, Architecture, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
 failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
@@ -240,7 +243,7 @@ tag and Columns), opens https://help.axis.com/en-us/axis-os-release-notes in the
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
 show something and moves the same controls into a new page view. Buttons are `ui:ToolbarButton`
-(icon key + text, `IsPrimary`). The Columns button and the search box are host parts. Sample:
+(icon key + text; `IsPrimary` marks the main one, still flat). The Columns button and the search box are host parts. Sample:
 `tests/TestPlugins/Oadm.TestPlugins.Sample.Client` (deployed to `artifacts/test-plugins/oadm.sample`).
 API guide: `plugins/README.md`.
 
@@ -262,6 +265,24 @@ bodies are streamed, never buffered. `VapixRequestOptions.StreamResponse` (`Http
 the caller reads the body as a stream (e.g. into a file in `ICorePluginContext.DataDirectory`), enforces its own size
 limit and bounds the body read with its own token (the timeout covers the headers only); the 16 MB limit of buffered
 answers is unchanged. Used by the System report for server reports.
+
+## Behaviour changes since OADM 4.1 (SDK 0.4.0)
+
+What a plugin built for 4.1 (SDK 0.3.0) or rebuilt for 4.5 notices:
+
+- `ui:FileRow.IsSingleButton` defaults to true: the button alone, without the "No file chosen" line; set it false for
+  the older row.
+- `ui:ToolbarButton.IsPrimary` no longer fills the button: it adds the class `main` (toolbars have no filled buttons,
+  decision 2026-10-25).
+- `IPluginEvents.Publish(topic, payload)` (without an audience) reaches only watchers with all devices; events for users
+  with a device group need `Publish(topic, json, PluginEventAudience)`.
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.4.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.4.0
+  into `plugin.json`, so a 4.1 host refuses it. A plugin that uses no 0.4.0 member may set `OadmMinSdkVersion` 0.3.0 in
+  its project to stay loadable on 4.1 (it is then refused for users with a device group).
+- `Oadm.Sdk.Client` references `Avalonia.Controls.DataGrid` 12.1.2 (for `IssuedCertificateList`); the host ships it,
+  plugins never copy it.
+- `SdkInfo.Version` and `SdkInfo.CallContextVersion` are constants: a plugin that reads them gets the value of the SDK
+  it was built against, not the host's.
 
 ## Loading and packaging
 
@@ -337,10 +358,12 @@ is always on.
   server (`oadm.est`) and the 802.1X server (`oadm.radius`) are core plugins of the always-on PKI package. The core plugins
   always run; each server inside runs, and opens its port, only while its stored choice (plugin setting `serverOn` of its
   core plugin, JSON true / false, none = off) is on **and** `ICorePluginContext.Pro` is active; it follows `Pro.Changed`
-  with the kept choice. Page methods `getServer` (everyone with the page), `turnOn` (refused with `NeedsPro` without the
-  license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their pages
-  show only the Server / General card with the status and **Turn on** while the server does not run, **Turn off** left of
-  Save while it runs (`plugins/Oadm.Plugins.Pki.Client/Servers/ServerSwitchView`). The PKI row of the Plugins page has no
+  with the kept choice. Page methods `getServer` (everyone with the page; `ServerSwitchState` also says whether the trial
+  can still be started), `turnOn` (refused with `NeedsPro` without the license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their tabs
+  show only the off state while the server does not run (`ui:OffState` with the status, **Turn on**, **Start 30-day trial**
+  while the trial is available, **Turn off** for a server that is on but does not run;
+  `plugins/Oadm.Plugins.Pki.Client/Servers/ServerOffStateView`), **Turn off** left of Save while it runs
+  (`Servers/ServerSwitchView`). The PKI row of the Plugins page has no
   PRO chip; its description says "802.1X and EST servers need OADM PRO.".
 - **Plugin services** (`ICorePluginContext.Services`, `IPluginServices`: `Offer<T>`, `Withdraw<T>`, `Find<T>`; server
   `PluginServiceRegistry`): core plugins offer each other services. The contract is an SDK interface (plugins load in

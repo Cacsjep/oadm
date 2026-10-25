@@ -14,7 +14,7 @@
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
           <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
-            <ui:ToolbarButton Text="New rule" IconKey="add" IsPrimary="True" Command="{Binding NewRuleCommand}"
+            <ui:ToolbarButton Text="New rule" IconKey="add" Command="{Binding NewRuleCommand}"
                               ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
             <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
             <ui:ToolbarButton Text="Duplicate" IconKey="copy" Command="{Binding DuplicateCommand}" />

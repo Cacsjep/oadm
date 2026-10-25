@@ -6,25 +6,39 @@ description: HTTPS, IEEE 802.1X and CA certificates on many devices.
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/pki-install-ca.png';
+import enableShot from '../../../assets/screens/pki-enable-dot1x.png';
+import renewShot from '../../../assets/screens/pki-renew.png';
 
-The context menu group **Security** holds the certificate tasks. Most of them use the certificate authority (CA) of
-the [PKI](../../tools/pki/) page: OADM signs the device certificates itself, and devices with such a certificate show
-as **Trusted** in the device list.
+The context menu group **Security** holds the certificate tasks. Most of them use the policies and CAs of the
+[PKI](../../tools/pki/) page: OADM signs the device certificates itself, and devices with such a certificate show as
+**Trusted** in the device list.
 
 <Aside>
-Every certificate task needs AXIS OS 11.11 or later. IEEE 802.1X also needs the device's network settings function.
-Other devices show the entries greyed with the reason.
+Every certificate task needs AXIS OS 6.53 or later. Other devices show the entries greyed with the reason.
 </Aside>
+
+## Supported AXIS OS
+
+| AXIS OS | HTTPS | IEEE 802.1X | Keys |
+|---|---|---|---|
+| 12.x | Yes | Yes, EAPOL version 1, 2 or 3 | ECC or RSA |
+| 10.1 to 11.11 | Yes | Yes, EAPOL version 1, 2 or 3 | RSA |
+| 6.53 to 10.0 | Yes | Yes, EAPOL version 1 or 2 | RSA |
+
+On AXIS OS before 12, choose policies with an RSA key. Before 10.1, choose an IEEE 802.1X policy with EAPOL version 1
+or 2. A new server's built-in policies use ECC and EAPOL version 3: add a policy for older devices on the PKI page. A
+device that cannot use the chosen policy is not changed. Enrollment on the [EST server](../../tools/est-server/) needs
+AXIS OS 12.10 or later.
 
 ## Enable or disable HTTPS
 
-**Enable HTTPS** gives each device its own HTTPS certificate from the OADM CA. The dialog shows the **Policy** (an HTTPS
-certificate policy of the [PKI](../../tools/pki/) page, the first one is chosen) with its **Valid (days)** and **Key**;
-you can change them for this run. Then:
+**Enable HTTPS** gives each device its own HTTPS certificate. The dialog shows the **Policy** (an HTTPS certificate policy
+of the [PKI](../../tools/pki/) page, the first one is chosen) and below it what the policy issues: the CA, the days and
+the key. To change these values, change the policy or choose another one. Then:
 
 1. The device creates a key of the policy's kind (ECC or RSA). The private key never leaves the device. A device that
    cannot create that key is not changed.
-2. OADM signs the request with the device's IP addresses and host names.
+2. OADM signs the request with the policy's CA, with the device's IP addresses and host names.
 3. OADM installs the certificate, switches the web server to it (HTTP only becomes HTTP and HTTPS) and connects again
    over HTTPS.
 4. Older OADM certificates that nothing uses any more are removed.
@@ -34,24 +48,36 @@ certificates stay on the device.
 
 ## Enable or disable IEEE 802.1X
 
-**Enable IEEE 802.1X** installs the RADIUS server CA and the OADM CA, issues a client certificate and turns on 802.1X
-with EAP-TLS. The dialog shows the **Policy** (an IEEE 802.1X certificate policy) with its valid days, key, EAPOL
-version, EAP identity and RADIUS server CA; you can change them for this run. Before it
-changes anything, OADM checks the device clock: more than 5 minutes off fails with "Set the date and time first.
-Nothing was changed."
+<Image src={enableShot} alt="The Enable IEEE 802.1X dialog with the policy and what it issues" class="screen" />
+
+**Enable IEEE 802.1X** installs the RADIUS server CA and the CA of the policy, issues a client certificate and turns on
+802.1X with that certificate. The dialog shows the **Policy** (an IEEE 802.1X certificate policy) and what it does: the
+CA, days and key, the EAP identity the camera signs in with and the CA it checks the RADIUS server with.
 
 <Aside type="danger">
 Devices on switch ports that enforce 802.1X become unreachable if authentication fails. The dialog says so above the
-policy.
+policy. OADM always installs the policy's RADIUS server CA and does not check it against your RADIUS server: turn 802.1X
+off on the switch ports first, or try one device.
 </Aside>
 
 **Disable IEEE 802.1X** turns 802.1X off. The certificates stay.
 
 ## Renew certificates
 
-**Renew certificates** renews the HTTPS and 802.1X certificates that OADM issued, with a new key and the first policy of
-each kind. A purpose without an
-OADM certificate is skipped, for example "No OADM HTTPS certificate on this device".
+<Image src={renewShot} alt="The Renew certificates dialog with the IEEE 802.1X policy" class="screen" />
+
+**Renew certificates** renews the HTTPS and IEEE 802.1X certificates that OADM issued, with a new key. HTTPS uses the
+first HTTPS certificate policy. For IEEE 802.1X the dialog asks for the **IEEE 802.1X policy**: the renewal sets its EAP
+identity, EAPOL version and RADIUS server CA on the camera, so choose the policy the cameras were set up with. A use
+without an OADM certificate is skipped, for example "No OADM HTTPS certificate on this device".
+
+## The camera's clock
+
+Every certificate starts 5 minutes in the past, so small differences do not matter. Before Enable HTTPS, Enable IEEE
+802.1X and Renew certificates start, the dialog reads the camera clocks. When a camera is further behind, it asks, for
+example "The camera's time is 9 min 12 s behind. The certificate becomes valid on the camera only in 4 min 12 s. Set the
+camera to use NTP. Continue?" With **No** nothing starts. Set the time first with
+[Date and time](../date-and-time/).
 
 ## View and delete certificates
 
@@ -69,8 +95,9 @@ are greyed and cannot be deleted. Choose the certificates, click **Delete certif
 <Steps>
 
 1. Choose **Use for**: **HTTPS (server certificate)**, **IEEE 802.1X (client certificate)** or **CA certificates
-   only**.
-2. Choose the files and enter their password.
+   only**. For IEEE 802.1X also choose the **Policy**: its EAP identity, EAPOL version and RADIUS server CA go to the
+   devices with the file.
+2. Click **Choose files** and enter their password.
 3. Each file goes to the selected device whose MAC address, IP address or host name it names. The table shows the
    match and any problem.
 4. Click **Install** and confirm.
@@ -97,9 +124,16 @@ video management system. It does not need the OADM CA.
 
 Certificates a device already has are skipped. At most 150 certificates per run.
 
+## Certificate enrollment
+
+With OADM PRO, **Certificate enrollment** sets the cameras up for the [EST server](../../tools/est-server/), so they renew
+their certificates by themselves.
+
 ## What OADM checks first
 
-- The device has AXIS OS 11.11 or later, read fresh from the device.
+- The device has AXIS OS 6.53 or later, read fresh from the device, and can make the policy's key and use its EAPOL
+  version.
+- The chosen policy still exists and its CA can issue.
 - A device whose certificate changed is refused; remove it and add it again once you know why the certificate
   changed.
 - The CA certificates are valid CA certificates and not expired.

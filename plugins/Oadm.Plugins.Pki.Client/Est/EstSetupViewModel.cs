@@ -69,6 +69,18 @@ public sealed partial class EstSetupViewModel : ObservableObject
 
     public const string Dot1xHint = "Only when your RADIUS server trusts the OADM CA. Otherwise these cameras drop off the network.";
 
+    /// <summary>
+    /// The hint once the server named the CAs of the IEEE 802.1X policy: Set up also replaces the CA the cameras check the
+    /// RADIUS server with (device safety: the user sees which one before choosing).
+    /// </summary>
+    public static string Dot1xHintFor(string? radiusCa, string? issuingCa) => radiusCa is null || issuingCa is null
+        ? Dot1xHint
+        : $"These cameras will check the RADIUS server with {radiusCa}. Only when your RADIUS server trusts {issuingCa}. Otherwise these cameras drop off the network.";
+
+    /// <summary>The hint below the IEEE 802.1X choice (<see cref="Dot1xHintFor"/>).</summary>
+    [ObservableProperty]
+    public partial string Dot1xHintText { get; set; } = Dot1xHint;
+
     private readonly ITaskDialogContext? _ctx;
     private readonly Dictionary<Guid, Task<CameraProfileList>> _cache = [];
     private bool _started;
@@ -216,6 +228,10 @@ public sealed partial class EstSetupViewModel : ObservableObject
             if (!list.Supported)
             {
                 ErrorMessage = EstTaskIds.NeedsApis.Replace(" Nothing was changed.", string.Empty, StringComparison.Ordinal);
+            }
+            else if (list.RadiusServerCa is not null)
+            {
+                Dot1xHintText = Dot1xHintFor(list.RadiusServerCa, list.NetworkAccessCa);
             }
 
             Profiles.ReplaceAll(list.Profiles.Select(p => new EnrollmentProfileRow(p)));

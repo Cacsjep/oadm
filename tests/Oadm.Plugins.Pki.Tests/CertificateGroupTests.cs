@@ -145,7 +145,7 @@ public sealed class CertificateGroupTests
         Assert.Equal((null, "802.1X: OADM CA (only devices OADM manages)" + Environment.NewLine + "Issuing: HTTPS"), (used.UsedByText, used.UsedByTip));
         Assert.Equal(("10.0.0.48", (string?)null), (Row(new IssuedCertificateInfo { UsedBy = "10.0.0.48" }).UsedByText, Row(new IssuedCertificateInfo()).UsedByTip));
         Assert.Equal(["802.1X", "Issuing", "EST"], new[] { "802.1X: OADM CA (only devices OADM manages)", "Issuing: HTTPS", "EST server" }.Select(PkiService.UsedByGroup));
-        Assert.Equal(["HTTPS", "Created"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Created, Purpose = DeviceCertificatePurposes.Https }).Badges);
+        Assert.Equal(["HTTPS"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Created, Purpose = DeviceCertificatePurposes.Https }).Badges);
         Assert.Equal(["IEEE 802.1X", "Signed"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.SignedRequest, Purpose = DeviceCertificatePurposes.Dot1x }).Badges);
         Assert.Equal(["Imported"], Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Imported, Purpose = ListedCertificateUses.Other }).Badges);
         var expired = Row(new IssuedCertificateInfo { State = IssuedCertificateState.Expired, NotAfterUtc = now.AddDays(-1) });

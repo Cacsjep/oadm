@@ -51,9 +51,13 @@ internal sealed class NtpGroupView
     {
         ArgumentNullException.ThrowIfNull(state);
         var choices = state.SiteChoices.Where(s => _view.CoversSite(s.Id)).ToList();
+        IReadOnlyList<Guid> serves = [.. state.Config.ServeSites.Where(id => _view.CoversSite(id))];
+
+        // Chosen sites none of which is the group's: no site of the group is served (an empty list would read "every site").
+        var servesNone = state.Config.ServeSites.Count > 0 && serves.Count == 0;
         return state with
         {
-            Config = state.Config with { ServeSites = [.. state.Config.ServeSites.Where(id => _view.CoversSite(id))] },
+            Config = state.Config with { ServeSites = serves, ServeAtSites = state.Config.ServeAtSites && !servesNone },
             Requests = Filter(state.Requests),
             Sites = [.. state.Sites.Where(s => _view.CoversSite(s.SiteId))],
             SiteChoices = choices,

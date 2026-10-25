@@ -111,12 +111,12 @@ public sealed class DeviceApiTests
 /// <summary>A started PKI plugin, a fake 10.0.0.48 and a task context with the engine's step semantics.</summary>
 internal sealed class TaskHarness : IAsyncDisposable
 {
-    private TaskHarness(PkiHarness pki, FakeTimeProvider time)
+    private TaskHarness(PkiHarness pki, FakeTimeProvider time, FakeCamera? camera)
     {
         Pki = pki;
         Time = time;
-        Camera = new FakeCamera();
-        Device = new PkiFakeDevice(Guid.NewGuid());
+        Camera = camera ?? new FakeCamera();
+        Device = new PkiFakeDevice(Guid.NewGuid(), Firmware: Camera.Firmware) { Apis = Camera.ApiList };
     }
 
     public PkiHarness Pki { get; }
@@ -129,12 +129,13 @@ internal sealed class TaskHarness : IAsyncDisposable
 
     public PkiTaskContext Context { get; set; } = null!;
 
-    public static async Task<TaskHarness> StartAsync()
+    /// <summary>A harness with the fake 10.0.0.48 (AXIS OS 12.11), or with <paramref name="camera"/> (e.g. <see cref="FakeCamera.Legacy"/>).</summary>
+    public static async Task<TaskHarness> StartAsync(FakeCamera? camera = null)
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var pki = await PkiHarness.StartAsync(time: time);
         PkiCompatibility.ClearCache();
-        return new TaskHarness(pki, time);
+        return new TaskHarness(pki, time, camera);
     }
 
     public T Task<T>(string id)
@@ -246,12 +247,20 @@ public sealed class HttpsTaskTests
     {
         await using var h = await TaskHarness.StartAsync();
         h.Camera.HasCertApi = false;
+        h.Camera.Firmware = "6.50.5";
         var ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
-        Assert.Equal(CertApi.NeedsNewerFirmware, ex!.Message);
+        Assert.Equal(PkiCompatibility.NeedsNewerFirmware, ex!.Message);
         Assert.Equal("Check compatibility: Failed", h.Lines[0]);
         Assert.Empty(h.Camera.Writes);
 
+        // A version the device does not tell is never taken as new enough.
+        h.Camera.HasBasicDeviceInfo = false;
+        ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
+        Assert.Equal(PkiCompatibility.UnknownFirmware, ex!.Message);
+        Assert.Empty(h.Camera.Writes);
+
         PkiCompatibility.ClearCache();
+        h.Camera.HasBasicDeviceInfo = true;
         h.Camera.HasCertApi = true;
         h.Camera.HasWebServerService = false;
         ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
@@ -341,8 +350,8 @@ public sealed class Dot1xTaskTests
         Assert.StartsWith("OADM 802.1X ", alias, StringComparison.Ordinal);
         Assert.True(h.Camera.Dot1x["enabled"]!.GetValue<bool>());
         Assert.Equal(NetworkInfoApi.EapTlsMode, h.Camera.Dot1x["mode"]!.GetValue<string>());
-        Assert.Equal("B8A44F631339", p["identity"]!.GetValue<string>()); // MAC address = serial
-        Assert.Equal("EAPoLv1", p["eapolVersion"]!.GetValue<string>());
+        Assert.Equal("10.0.0.48", p["identity"]!.GetValue<string>()); // a new installation: the IP address (decision 2026-10-25)
+        Assert.Equal("EAPoLv3", p["eapolVersion"]!.GetValue<string>());
         var caAlias = CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, h.Pki.Service.Ca!.Id);
         Assert.Equal([caAlias], p["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()));
         using var certificate = h.Served(alias);
@@ -351,14 +360,15 @@ public sealed class Dot1xTaskTests
     }
 
     [Fact]
-    public async Task Custom_identity_eapol_and_an_imported_radius_ca_from_the_policy()
+    public async Task Custom_identity_eapol_and_a_radius_server_ca_of_the_list_from_the_policy()
     {
         await using var h = await TaskHarness.StartAsync();
         using var radius = TestCa.Root("Corp RADIUS CA");
+        Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, new ImportAuthorityRequest(Convert.ToBase64String(radius.RawData), "radius.crt"))).Ok);
         var policy = h.Pki.Service.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
         var saved = await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy with
         {
-            EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}@{hostName}", RadiusCa = RadiusCaSource.Imported, RadiusCaPem = CaCertificates.ToPem(radius),
+            EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "cam-{serial}@{hostName}", RadiusCaId = "imported:" + CaCertificates.Fingerprint(radius),
         });
         Assert.Null(saved.Error);
 
@@ -367,7 +377,7 @@ public sealed class Dot1xTaskTests
         var p = h.Camera.EapTlsParams;
         Assert.Equal("cam-B8A44F631339@axis-b8a44f631339", p["identity"]!.GetValue<string>());
         Assert.Equal("EAPoLv2", p["eapolVersion"]!.GetValue<string>());
-        var radiusAlias = CertificateDeployment.CaAlias(CertificateDeployment.RadiusCaAliasPrefix, CaCertificates.Fingerprint(radius));
+        var radiusAlias = CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, CaCertificates.Fingerprint(radius)); // a CA of the list (decision 2026-10-25)
         Assert.Equal([radiusAlias], p["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()));
         Assert.Contains(radiusAlias, h.Camera.CaAliases);
         Assert.Contains(CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, h.Pki.Service.Ca!.Id), h.Camera.CaAliases); // chain of the client cert
@@ -606,8 +616,8 @@ public sealed class RenewDeleteInstallTests
 
         PkiCompatibility.ClearCache();
         h.Camera.HasCertApi = false;
-        reply = PkiJson.Deserialize<CertificateListReply>(await h.Task<DeleteCertificatesTask>(PkiTaskIds.Delete).QueryAsync(ctx, h.Device with { Id = Guid.NewGuid() }, PkiQueries.ListCertificates, null, CancellationToken.None));
-        Assert.Equal("Needs AXIS OS 11.11 or later.", reply.Error);
+        reply = PkiJson.Deserialize<CertificateListReply>(await h.Task<DeleteCertificatesTask>(PkiTaskIds.Delete).QueryAsync(ctx, h.Device with { Id = Guid.NewGuid(), Firmware = "6.50.5" }, PkiQueries.ListCertificates, null, CancellationToken.None));
+        Assert.Equal("Needs AXIS OS 6.53 or later.", reply.Error);
     }
 
     [Fact]
@@ -661,6 +671,26 @@ public sealed class RenewDeleteInstallTests
     }
 
     [Fact]
+    public async Task Install_certificates_for_8021x_installs_the_policys_radius_server_ca_also_after_a_new_oadm_ca()
+    {
+        // The 802.1X server keeps its certificate of the previous OADM CA: no refusal (decision 2026-10-25, the user turns
+        // 802.1X off on the switch first).
+        await using var h = await TaskHarness.StartAsync();
+        await h.Pki.Service.EnsureServerCertificatesAsync(null, CancellationToken.None);
+        var server = Radius.Server.RadiusPolicies.DefaultServerPolicy() with { CertificateId = h.Pki.Policies.EstServerPolicy!.CertificateId };
+        Assert.Null((await h.Pki.Policies.SaveAsync(server, "admin", PkiService.CipherSuites, CancellationToken.None)).Error);
+        Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
+        using var ca = TestCa.Root("Customer CA");
+        using var leaf = LeafWithKey(ca, "10.0.0.48");
+        var payload = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.Dot1x, Password = "secret", Files = [new InstallFile(h.Device.Id, "f1", "cam48.pfx")] });
+
+        var ex = await RunWithFileAsync(h, payload, TestCa.Pfx("secret", leaf));
+
+        Assert.Null(ex);
+        Assert.DoesNotContain("Check compatibility: Failed", h.Lines);
+    }
+
+    [Fact]
     public void Certificate_files_match_devices_by_mac_ip_or_host_name()
     {
         Assert.True(CertificateFiles.Matches(["axis-b8a44f631339"], "B8A44F631339", "10.0.0.9", null));
@@ -682,7 +712,7 @@ public sealed class RenewDeleteInstallTests
         return signed.CopyWithPrivateKey(key);
     }
 
-    private static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
+    internal static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
     {
         h.Time.Advance(TimeSpan.FromSeconds(2));
         var ctx = new PkiTaskContext(h.Camera);
@@ -717,26 +747,30 @@ public sealed class TaskPluginInfoTests
         Assert.All(tasks, t => Assert.False(t.ShowInToolbar));
         Assert.All(tasks, t => Assert.True(t.ShowInMenus));
         Assert.Equal(
-            [PkiTaskIds.HttpsEnable, PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa],
+            [PkiTaskIds.HttpsEnable, PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa, PkiTaskIds.Renew],
             tasks.Where(t => t.RequiresDialog).Select(t => t.Id));
         Assert.Equal(["Enable HTTPS", "Disable HTTPS", "Enable IEEE 802.1X", "Disable IEEE 802.1X", "Renew certificates"],
             tasks.Where(t => t.Id is not (PkiTaskIds.View or PkiTaskIds.Delete or PkiTaskIds.Install or PkiTaskIds.InstallCa)).Select(t => t.GetTaskName(null)));
 
         var device = new PkiFakeDevice(Guid.NewGuid());
         Assert.All(tasks, t => Assert.True(t.CanRun(device)));
-        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "11.10.61" })));
-        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "10.12.236" })));
-        Assert.True(tasks[0].CanRun(device with { Firmware = "11.11.135" }));
-        var noNetworkSettings = device with { Apis = [new("param-cgi", "1.0")] };
-        Assert.False(tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).CanRun(noNetworkSettings));
-        Assert.True(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).CanRun(noNetworkSettings));
+        // AXIS OS 6.53 and later (the SOAP certificate service before 11.11); 802.1X also without the network settings API.
+        foreach (var firmware in new[] { "6.53.4", "8.40.104", "9.80.3", "10.12.236", "11.9.65", "11.10.61", "11.11.135" })
+        {
+            Assert.All(tasks, t => Assert.True(t.CanRun(device with { Firmware = firmware }), firmware));
+        }
+
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "6.50.5" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "5.51.7" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "unknown" })));
+        var noNetworkSettings = device with { Apis = [new("param-cgi", "1.0")], Firmware = "8.40.104" };
+        Assert.All(tasks, t => Assert.True(t.CanRun(noNetworkSettings)));
 
         // Reasons of the greyed menu entries.
-        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later (this device has 11.9.65)", t.NotSupportedReason(device with { Firmware = "11.9.65" })));
-        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later", t.NotSupportedReason(device with { Firmware = "" })));
-        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
-        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xDisable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
-        Assert.Null(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).NotSupportedReason(noNetworkSettings));
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 6.53 or later (this device has 6.50.5)", t.NotSupportedReason(device with { Firmware = "6.50.5" })));
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 6.53 or later", t.NotSupportedReason(device with { Firmware = "" })));
+        Assert.All(tasks, t => Assert.Null(t.NotSupportedReason(noNetworkSettings)));
     }
 
     [Fact]

@@ -1,0 +1,1 @@
+{"apiVersion":"1.6","context":"oadm","method":"setWired8021XConfiguration","params":{"deviceName":"eth0","enabled":true,"mode":"WPA-Enterprise-EAPTLS","identity":"oadm-test","eapolVersion":"EAPoLv2","certClient":"OADM research signed","certsCA":["OADM research CA 3"]}}

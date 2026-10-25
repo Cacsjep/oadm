@@ -173,7 +173,7 @@ public sealed class PkiTabsTests
         Assert.False(checks.toolbar.NewCaPrimary);
         Assert.Equal([("CA certificate", (System.Windows.Input.ICommand)checks.ImportAuthority), ("CA with its key", checks.ImportOwn)], checks.toolbar.ImportCa);
         Assert.Same(checks.Create, checks.toolbar.Create);
-        Assert.True(checks.toolbar.CreatePrimary);
+        Assert.False(checks.toolbar.CreatePrimary); // every button of the card is flat (decision 2026-10-25)
         Assert.Same(checks.Sign, checks.toolbar.Sign);
         Assert.Same(checks.ImportCertificate, checks.toolbar.Import);
         Assert.True(checks.toolbar.NoMenus);

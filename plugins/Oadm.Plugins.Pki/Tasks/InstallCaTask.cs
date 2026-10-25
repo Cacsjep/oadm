@@ -68,20 +68,21 @@ public sealed class InstallCaTask(Func<PkiService?> service) : PkiTaskBase(servi
         var installSteps = StepNames([.. wanted.Select(w => w.Name)]);
         ctx.PlanSteps([PkiSteps.CheckCompatibility, ReadInstalledCas, .. installSteps, VerifyCas]);
 
-        await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        var api = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
             if (problem is not null)
             {
                 throw new InvalidOperationException(problem);
             }
 
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
-            step.Complete("cert " + support.Version);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
+            step.Complete(support.Describe());
+            return support.Certificates;
         }).ConfigureAwait(false);
 
         var (byFingerprint, aliases) = await ctx.StepAsync(ReadInstalledCas, async step =>
         {
-            var installed = await CertApi.ListCaCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            var installed = await DeviceCertificates.ListCaAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
             var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var certificate in installed)
             {
@@ -114,7 +115,7 @@ public sealed class InstallCaTask(Func<PkiService?> service) : PkiTaskBase(servi
             await ctx.StepAsync(installSteps[i], async step =>
             {
                 var alias = FreeAlias(CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, certificate.Fingerprint), aliases);
-                await CertApi.AddCaCertificateAsync(ctx.Vapix, alias, certificate.Pem, ct).ConfigureAwait(false);
+                await DeviceCertificates.AddCaAsync(ctx.Vapix, api, alias, certificate.Pem, ct).ConfigureAwait(false);
                 aliases.Add(alias);
                 byFingerprint[certificate.Fingerprint] = alias;
                 added.Add(alias);
@@ -125,7 +126,7 @@ public sealed class InstallCaTask(Func<PkiService?> service) : PkiTaskBase(servi
 
         await ctx.StepAsync(VerifyCas, async step =>
         {
-            var installed = await CertApi.ListCaCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            var installed = await DeviceCertificates.ListCaAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
             var fingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var certificate in installed)
             {

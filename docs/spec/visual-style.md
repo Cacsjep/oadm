@@ -4,7 +4,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 
 Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
-**Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
+**Appearance** Dark or Light per computer (Settings > Client, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
 colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
 `Oadm.Theme.OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
@@ -59,12 +59,22 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
   (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
+- The Settings page's cards fold (decision 2026-10-25): `Controls/CollapsibleCard` (the card title with the chevron of a
+  group as its header, the whole row toggles it; closed by default). Every card of the page: Client, Polling,
+  Discovery, Tasks, Security, Server, Backup and restore, License, Support. A card opens by itself when an input inside
+  it shows a validation error; a stored server value the form refuses shows its error when the page loads, so Save
+  (outside the cards) is never disabled by an error in a closed card.
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page) (menus compact: entries padded 10,6, at least 160 px wide, separators 3 px apart; decision 2026-10-25), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
   the tasks pane; the split is persisted per client.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
   buttons and status pills. Secondary accent teal `#7FC8D0`.
+- Buttons follow Fluent (decision 2026-10-25, CLAUDE.md "buttons follow Fluent"): command buttons of toolbars and card
+  or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
+  `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right); icon-only buttons in the text colour, the accent on
+  hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
+  for the confirming button of a destructive dialog, flat red text elsewhere.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
 - Status is never a chip: everywhere a status or result is shown (device certificate columns,
@@ -75,8 +85,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
-  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and Used by: Root
-  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. Who made a PKI policy is `Border.badge.system` (violet text: System) or `Border.badge.user` (blue text: User), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill).
+  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and the CA list's Used in: Root
+  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text) stays in the theme.
   Menu entries that delete, revoke or remove are red (`MenuItem.danger`), last after a separator.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
@@ -114,7 +124,7 @@ toolbar buttons: what does not fit goes behind its own More button; the search b
 dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
 `FileRow` (every file chooser, decision 2026-10-25: one wide button that shows "Choose file" until a file is chosen,
 then its name, the details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the older
-row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
+row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable), `OffState` (a page or tab whose feature is off: a card with a large icon, "Site nodes are off", what it does and the Turn on button, all centered; Sites, Compliance, PKI's 802.1X and EST servers),
 `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
 inline "I understand" risk sections; line breaks start a new line, text between `**` is bold; `ConfirmWithChoiceAsync`: one
 select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
@@ -165,7 +175,7 @@ not listed are kept); the window's constructor takes a form shown on top of the 
 window closes only when it returns true), `IsPickerVisible` false shows the form alone (the window as high as the form: a
 PKI policy kind without devices), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
 list; 30,000 devices tested) and
-`PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
+`PageDeviceChoice` (the device choice of every page that reads many devices: the "Selected devices" button text (a flat command button with the devices icon in a page toolbar, decision 2026-10-25),
 All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this
 computer; Action Rule Editor, Edge storage, Image Health Dashboard, Hardening scan, Snapshot report) and
 `DeviceIcon` (every device icon in a list: the category icon `Icon.device.*`, neutral when OK, amber for Credentials
@@ -180,7 +190,7 @@ the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSourc
 frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
 dragged item lands, `ShowSelectionArea` a selection rectangle, `TileLayout.PlaceSized` the first free place of a size,
 `ITileGridSource.CopyText` the copy icon's tooltip; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
-Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles, the role columns of Permissions; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
 puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
 row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
 every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
@@ -190,3 +200,8 @@ choices indented below them, like the event list of a device), `ICheckChoice` / 
 `PlaceholderText`, each entry a check box with an optional grey second line, a click keeps the list open;
 `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none; the NTP server's sites, the OADM Site Node app's
 networks).
+
+Shared controls of the client only (`src/Oadm.Client/Controls`): `PageTitleBar` (every host page header), `CollapsibleCard`
+(every card that folds: the Settings page; closed by default, opens by itself when an input inside shows a validation
+error), `TagChipList` (the tags of a device as chips), `LiveViewPanel` (the live view beside the device grid),
+`GridSelection` (a grid's multi-item selection to its view model in one step).

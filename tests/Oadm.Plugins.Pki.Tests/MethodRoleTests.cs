@@ -13,7 +13,7 @@ public sealed class MethodRoleTests
         foreach (var method in new[]
                  {
                      PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
-                     PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust, PkiMethods.ImportRadiusCa,
+                     PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust,
                  })
         {
             Assert.Equal(UserRole.Admin, plugin.RequiredRole(method));

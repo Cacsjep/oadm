@@ -4,15 +4,13 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.DeviceGroupsCardView"
              x:DataType="settings:DeviceGroupsViewModel">
-  <!-- Card "Device groups" of the Permissions page (Admin only): the groups with rules and users. New and Edit
+  <!-- Card "Device groups" of the Permissions page (Admin only): the groups with rules, device count and users. New and Edit
        open the group editor (the shared device picker with sites and tags); Delete asks first. -->
   <Border Classes="card">
     <StackPanel Spacing="12">
       <StackPanel Orientation="Horizontal" Spacing="4">
         <TextBlock Classes="cardTitle" Text="Device groups" VerticalAlignment="Center" Margin="0,0,12,0" />
-        <Button Classes="secondary" Command="{Binding NewCommand}" VerticalAlignment="Center">
-          <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New device group" />
-        </Button>
+        <ui:ToolbarButton Text="New device group" IconKey="add" Command="{Binding NewCommand}" VerticalAlignment="Center" />
       </StackPanel>
       <ui:ProgressRow Text="Reading the device groups" IsVisible="{Binding IsLoading}" />
       <ui:ProgressRow Text="Opening the device group" IsVisible="{Binding IsOpening}" />
@@ -35,6 +33,11 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
+          <DataGridTextColumn Width="100" Binding="{Binding DeviceCountText}" SortMemberPath="DeviceCount" x:DataType="settings:DeviceGroupRowViewModel" CellStyleClasses="number">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Devices" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
           <DataGridTextColumn Header="Users" Width="*" Binding="{Binding UsersText}" x:DataType="settings:DeviceGroupRowViewModel" />
           <!-- Row actions: icon buttons in fixed places, Delete in red -->
           <DataGridTemplateColumn Width="80" CanUserSort="False" x:DataType="settings:DeviceGroupRowViewModel">

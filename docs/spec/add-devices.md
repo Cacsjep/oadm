@@ -207,7 +207,10 @@ devices); the groups it entered are audited "Entered device group" (target the g
 group" ("moved"). The waiting list is scoped by site (`WaitingScope`: the group's sites and the user's own entries for
 everywhere, never another user's entries for everywhere, also with "This server"; ids outside: NOT_FOUND "Some of these devices are no longer
 waiting.", a line of another site: NOT_FOUND; a line without a site of a group with one site and without "This server"
-waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (routes,
+waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (the
+reach read once per round per user and again when `AccessEpochs` shows a change of the user's access or group since that
+read; a change during a try ends it before the probe, the credential list and the first login, nothing written, the next
+round tries again; routes,
 no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any
 more is not tried and nothing is sent ("Not added: the user who kept it cannot add devices here.", held until Try now);
 an entry kept before device groups (no user id) is tried as before. Tests `AddDevicesScopeTests`, `CanaryTests`,
@@ -216,7 +219,9 @@ groups), `DiscoverySitesTests`.
 
 **Device limit**: one server manages at most 30,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
 `TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
-every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored; the add page
+every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored (Prepare
+and Commit read the managed serials once for "managed already" and the limit, and look the session's devices up in one
+step, `IDiscoveryBackend.FindDiscovered(session, ids)`: linear at 30,000, Perf test `AddCommitScaleTests`); the add page
 shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
 warning at most once an hour. Plugin runs are sized by the same limit (System report 50, Device triggers 10,000 watched
 devices). Tests `DeviceLimitTests`.

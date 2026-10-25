@@ -66,9 +66,7 @@
     <Border DockPanel.Dock="Right" Width="560" Classes="card" Margin="0,0,16,0" IsVisible="{Binding IsLicenseMode}">
       <Grid RowDefinitions="Auto,*,Auto">
         <ui:CardHeader Grid.Row="0" Title="{Binding LicenseTitle}" Description="{Binding LicenseFilesText}">
-          <Button Classes="secondary" Command="{Binding PickLicenseKeysCommand}">
-            <ui:IconLabel Icon="{DynamicResource Icon.key}" Text="Choose other keys" />
-          </Button>
+          <ui:ToolbarButton Text="Choose other keys" IconKey="key" Command="{Binding PickLicenseKeysCommand}" />
         </ui:CardHeader>
         <DataGrid Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding LicenseRows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>

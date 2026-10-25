@@ -238,11 +238,18 @@ public sealed class FormValidationTests
             vm.ListenUrl = "ftp://server";
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal("Enter a whole number from 5 to 3600.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
+            Assert.Equal("Enter a whole number from 5 to 86400.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
             Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
             Assert.Equal("Enter a URL like https://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
             Assert.False(vm.SaveCommand.CanExecute(null));
-            Assert.Equal("Enter a whole number from 5 to 3600.", vm.SaveBlockedReason);
+            Assert.Equal("Enter a whole number from 5 to 86400.", vm.SaveBlockedReason);
+
+            // The cards with an error opened by themselves (closed by default); the others stay closed.
+            Dictionary<string, Oadm.Client.Controls.CollapsibleCard> cards = Cards(window);
+            Assert.True(cards["Polling"].IsExpanded);
+            Assert.True(cards["Server"].IsExpanded);
+            Assert.False(cards["Discovery"].IsExpanded);
+            Assert.False(cards["Tasks"].IsExpanded);
 
             List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
             Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
@@ -254,6 +261,47 @@ public sealed class FormValidationTests
             vm.ListenUrl = "http://*:5080";
             Assert.True(vm.SaveCommand.CanExecute(null));
             Assert.Null(vm.SaveBlockedReason);
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Stored_values_in_range_load_clean_and_a_refused_one_opens_its_card()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(async () =>
+        {
+            var api = new Oadm.Client.Api.FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            using var f = new DevicesFixture(api);
+            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
+            var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
+            var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            window.Show();
+
+            // Two hours of status polling is within the server's range (5..86400 s): Save works with every card closed.
+            Oadm.Contracts.V1.ServerSettings stored = await api.GetSettingsAsync(CancellationToken.None);
+            stored.PollingIntervalSeconds = 7200;
+            await api.SetSettingsAsync(stored, CancellationToken.None);
+            await vm.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(vm.HasErrors);
+            Assert.True(vm.SaveCommand.CanExecute(null));
+            Assert.All(Cards(window).Values, c => Assert.False(c.IsExpanded));
+
+            // A stored value the form refuses shows its error at once and opens its card, so Save is not blocked unseen.
+            stored.ScanParallelism = 1000;
+            await api.SetSettingsAsync(stored, CancellationToken.None);
+            await vm.LoadAsync();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Enter a whole number from 1 to 256.", vm.ErrorOf(nameof(vm.ScanParallelism)));
+            Assert.False(vm.SaveCommand.CanExecute(null));
+            Dictionary<string, Oadm.Client.Controls.CollapsibleCard> cards = Cards(window);
+            Assert.True(cards["Discovery"].IsExpanded);
+            Assert.False(cards["Polling"].IsExpanded);
+            Assert.True(window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Addresses scanned at once" && x.IsEffectivelyVisible).HasError);
+            Capture(window, Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR"), "settings-card-opened-by-error.png");
             window.Close();
         }, CancellationToken.None);
     }
@@ -311,6 +359,7 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
+            OpenCards(window); // the Settings cards are closed by default
             FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin" && x.IsEffectivelyVisible);
             Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or firmware updates.", field.Hint);
 
@@ -356,6 +405,7 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1300, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
+            OpenCards(window); // the Settings cards are closed by default
             FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Device login" && x.IsEffectivelyVisible);
             Assert.Equal("Sends passwords unencrypted. Only for devices without HTTPS.", field.Hint);
             Assert.Contains(field.GetVisualDescendants().OfType<CheckBox>(), c => Equals(c.Content, "Allow Basic login over HTTP"));
@@ -382,5 +432,20 @@ public sealed class FormValidationTests
             Directory.CreateDirectory(outDir);
             frame.Save(Path.Combine(outDir, name), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         }
+    }
+
+    private static Dictionary<string, Oadm.Client.Controls.CollapsibleCard> Cards(Window window) =>
+        window.GetVisualDescendants().OfType<Oadm.Client.Controls.CollapsibleCard>().Where(c => c.Title is not null)
+            .GroupBy(c => c.Title!).ToDictionary(g => g.Key, g => g.First());
+
+    /// <summary>Opens every card of the Settings page (closed by default, decision 2026-10-25).</summary>
+    private static void OpenCards(Window window)
+    {
+        foreach (var card in window.GetVisualDescendants().OfType<Oadm.Client.Controls.CollapsibleCard>().ToList())
+        {
+            card.IsExpanded = true;
+        }
+
+        Dispatcher.UIThread.RunJobs();
     }
 }

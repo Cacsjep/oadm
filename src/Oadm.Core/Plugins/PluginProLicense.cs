@@ -63,6 +63,6 @@ public sealed class PluginProLicense : IProLicense, IDisposable
             handlers = _handlers;
         }
 
-        handlers?.Invoke(this, e);
+        Auth.CallerContext.Raise(handlers, this, e); // the plugin's handlers never see the user whose call changed the license
     }
 }

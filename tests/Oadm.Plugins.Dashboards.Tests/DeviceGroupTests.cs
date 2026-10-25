@@ -299,6 +299,35 @@ public sealed class DeviceGroupTests
         await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(now, DashboardsMethods.Save, Json(new SaveDashboardRequest(doors.Id, "Doors 3", saved.Version, [.. saved.Widgets, Widget(b.Id) with { Id = "2", X = 4 }])), CancellationToken.None));
     }
 
+    [Fact]
+    public async Task A_group_without_devices_sees_nothing_and_a_deleted_groups_page_gets_no_more_values()
+    {
+        var (fake, feed, plugin, a, _, keyA, time) = await StartAsync();
+        using var _ = plugin;
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        var admin = fake.CallAsAllDevices();
+        var doors = Read<Dashboard>(await plugin.InvokeAsync(anna, DashboardsMethods.Save, Json(new SaveDashboardRequest(null, "Doors", 0, [Widget(a.Id)])), CancellationToken.None));
+
+        // A group whose rules match no device: no events, no dashboards, no device, no watch of another group's device.
+        var emptyKey = fake.FakeScopes.Add("Empty", []);
+        var nora = Testing.FakeCallContext.WithGroup(fake, [], "nora", emptyKey);
+        Assert.Empty(Read<CatalogReply>(await plugin.InvokeAsync(nora, DashboardsMethods.Catalog, null, CancellationToken.None)).Events);
+        Assert.Empty(Read<DashboardList>(await plugin.InvokeAsync(nora, DashboardsMethods.List, null, CancellationToken.None)).Dashboards);
+        Assert.Equal([], Read<DevicesReply>(await plugin.InvokeAsync(nora, DashboardsMethods.Devices, Json(new DevicesRequest(Trigger)), CancellationToken.None)).DeviceIds!);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(nora, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None));
+        Assert.Equal(0, plugin.WatchedCount);
+
+        // Building A is deleted while its page watches: the administrator keeps its dashboard (owner kept), its page gets no value.
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        await plugin.InvokeAsync(admin, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Trigger, a.Id)])), CancellationToken.None);
+        fake.FakeScopes.Delete(keyA);
+        Assert.Equal(keyA, Assert.Single(Read<DashboardList>(await plugin.InvokeAsync(admin, DashboardsMethods.List, null, CancellationToken.None)).Dashboards, d => d.Id == doors.Id).Owner);
+        feed.Publish(Trigger, a.Id, PublishedEventKind.On);
+        time.Advance(DashboardsPluginInfo.PushInterval);
+        await Testing.Eventually.TrueAsync(() => fake.EventsSeenBy(admin).Any(e => e.Topic == DashboardsMethods.ValuesTopic), "the push went out");
+        Assert.DoesNotContain(fake.EventsSeenBy(anna), e => e.Topic == DashboardsMethods.ValuesTopic);
+    }
+
     /// <summary>The plugin over a fake host with two devices (a in Building A at a site, b outside) and their triggers.</summary>
     private static async Task<(Testing.FakeCoreContext Fake, FakeEventSubscriptions Feed, DashboardsPlugin Plugin, Testing.FakeDevice A, Testing.FakeDevice B, string KeyA, FakeTimeProvider Time)> StartAsync()
     {

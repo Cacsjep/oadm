@@ -66,6 +66,23 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task A_user_with_all_devices_reads_the_chosen_cameras_that_still_exist()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var camera = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1", Apis = Slot });
+        await using var plugin = new EdgeStoragePlugin(Options());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var all = ctx.CallAsAllDevices();
+
+        // A removed camera in the choice is skipped; a group user's choice stays refused as a whole (the canary above).
+        await ctx.InvokeAsync(plugin, all, EdgeStorageMethods.Read, $$"""{"deviceIds":["{{camera.Id}}","{{Guid.NewGuid()}}"]}""");
+        await plugin.Sweeps!.For(all)!.Current;
+
+        var state = EdgeStorageJson.Deserialize<StorageState>(await ctx.InvokeAsync(plugin, all, EdgeStorageMethods.GetState, null));
+        Assert.Equal([camera.Id], state.Rows.Select(r => r.DeviceId));
+    }
+
+    [Fact]
     public async Task A_camera_that_left_the_group_drops_out_of_the_rows_and_the_counts_before_any_prune()
     {
         var ctx = new Testing.FakeCoreContext();
