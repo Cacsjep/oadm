@@ -60,8 +60,8 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     public DhcpServerService(DhcpServerOptions? options = null, IPluginSettings? settings = null, IPluginEvents? events = null, ILogger? logger = null, IFirewallRules? firewall = null, Sdk.Devices.IDeviceAutoAdd? autoAdd = null, Sdk.Sites.IDeviceNetwork? network = null, IDeviceScopes? scopes = null)
     {
         _scopes = scopes;
-        Viewers = new ViewerScopes(scopes);
         _options = options ?? new DhcpServerOptions();
+        Viewers = new ViewerScopes(scopes, _options.Time, ViewerScopes.PageKeyLifetime);
         _settings = settings;
         _events = events;
         _logger = logger ?? NullLogger.Instance;
@@ -163,6 +163,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         }
 
         _engine.Dispose();
+        Viewers.Dispose();
         _cts.Dispose();
         _gate.Dispose();
     }
@@ -175,6 +176,9 @@ public sealed partial class DhcpServerService : IAsyncDisposable
 
     /// <summary>The device groups whose users opened the page: their pages get the leases of their own devices.</summary>
     internal ViewerScopes Viewers { get; }
+
+    /// <summary>The leases (tests).</summary>
+    internal LeaseStore Store => _store;
 
     /// <summary>The state as a user with a device group sees it (the leases of the group's devices).</summary>
     internal DhcpState GetState(DhcpGroupView view) => view.Filter(GetState(full: true));
@@ -480,9 +484,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
                     StartCheck();
                 }
 
-                PublishLeases();
-                PublishState(force: false);
-                await PublishToGroupsAsync(ct).ConfigureAwait(false);
+                await PublishAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -569,6 +571,14 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             CancellationToken.None);
     }
 
+    /// <summary>One publish round of the background loop: the lease changes and a changed state, to every page (tests call it).</summary>
+    internal async Task PublishAsync(CancellationToken ct)
+    {
+        PublishLeases();
+        PublishState(force: false);
+        await PublishToGroupsAsync(ct).ConfigureAwait(false);
+    }
+
     private void PublishLeases()
     {
         if (_store.TakeChanges() is { } changes)
@@ -582,21 +592,9 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             }
 
             // Large changes (e.g. thousands at once) are split so each event stays far below the event size limit.
-            const int chunk = 2_000;
-            if (changes.Changed.Count + changes.Removed.Count <= chunk)
+            foreach (var part in Parts(changes))
             {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(changes), PluginEventAudience.AllDevices);
-                return;
-            }
-
-            foreach (var part in changes.Changed.Chunk(chunk))
-            {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, part, [])), PluginEventAudience.AllDevices);
-            }
-
-            foreach (var part in changes.Removed.Chunk(chunk))
-            {
-                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(new LeasesEvent(changes.Version, [], part)), PluginEventAudience.AllDevices);
+                _events?.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(part), PluginEventAudience.AllDevices);
             }
         }
     }
@@ -627,7 +625,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             _groupPending.Clear();
         }
 
-        if (_events is not { } events || _scopes is not { } scopes)
+        if (_events is not { } events || _scopes is null)
         {
             return;
         }
@@ -654,20 +652,38 @@ public sealed partial class DhcpServerService : IAsyncDisposable
                 continue;
             }
 
-            var view = DhcpGroupView.From(await scopes.Devices(key).ListAsync(ct).ConfigureAwait(false));
+            var view = await Viewers.ViewAsync(key, DhcpGroupView.From, ct).ConfigureAwait(false); // read again only when the group changed
             foreach (var changes in pending)
             {
-                foreach (var part in changes.Changed.Chunk(2_000).Select(c => changes with { Changed = c, Removed = [] })
-                    .Concat(changes.Removed.Chunk(2_000).Select(r => changes with { Changed = [], Removed = r })))
+                if (view.Filter(changes) is { } mine)
                 {
-                    if (view.Filter(part) is { } mine)
+                    foreach (var part in Parts(mine))
                     {
-                        events.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(mine), audience);
+                        events.Publish(DhcpServerMethods.LeasesTopic, DhcpJson.Serialize(part), audience);
                     }
                 }
             }
         }
     }
+
+    /// <summary>
+    /// The events of one lease change: one event (changes and removals together) up to <see cref="LeaseChunk"/> leases, else
+    /// parts of that size with the same version, so each event stays far below the event size limit. The page applies every
+    /// part of a version (a version it read already only once more, which changes nothing).
+    /// </summary>
+    internal static IEnumerable<LeasesEvent> Parts(LeasesEvent changes)
+    {
+        if (changes.Changed.Count + changes.Removed.Count <= LeaseChunk)
+        {
+            return [changes];
+        }
+
+        return changes.Changed.Chunk(LeaseChunk).Select(c => changes with { Changed = c, Removed = [] })
+            .Concat(changes.Removed.Chunk(LeaseChunk).Select(r => changes with { Changed = [], Removed = r }));
+    }
+
+    /// <summary>Leases per lease event at most.</summary>
+    internal const int LeaseChunk = 2_000;
 
     private DhcpNetworkInfo? CurrentNetwork()
     {

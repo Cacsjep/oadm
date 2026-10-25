@@ -173,8 +173,14 @@ with a device group see the page with the leases of their devices only, by MAC a
 address; `Serving/DhcpGroupView`). Never by address: the lease of another device at an address a group device had would
 show to the group. Their pages get the state and the lease
 changes of their devices through `PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page
-(`plugins/Shared/ViewerScopes.cs`, filtered in the background loop; a removed lease only by its MAC address). Tests:
-`CanaryTests` (the canary, filtered leases and live changes), `PageViewModelTests` (no changes for a group).
+(`plugins/Shared/ViewerScopes.cs`, filtered in the background loop; a removed lease only by its MAC address). A publish
+round never reads the device table: each group's `DhcpGroupView` is kept (`ViewerScopes.ViewAsync`) and built again on
+`IDeviceScopes.Changed` for the group or after 5 minutes. A group's `getState` answers `Renew`: its page reads the state
+again every 5 minutes while shown (`DhcpServerViewModel.RenewInterval`), and a group not read for 15 minutes is forgotten.
+Lease changes go in one event (changes and removals together); only beyond 2,000 leases in parts that share the version
+(`DhcpServerService.Parts`), and the page applies every event whose version is not older than its own. Tests: `CanaryTests`
+(the canary, filtered leases and live changes), `PageViewModelTests` (no changes for a group), `GroupScaleTests` (5 groups
+at 30,000 devices: no read per round, + Perf; a change and a removal of one batch, the parts, `Renew`, the page's renewal).
 
 ## Permissions
 

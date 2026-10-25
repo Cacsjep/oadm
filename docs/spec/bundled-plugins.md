@@ -104,7 +104,10 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   in plain words (`NtpStatusTexts`: port in use, permission, interface missing, upstream not answering).
 - Roles: `save` is Admin and audited. The Windows service opens UDP 123 in the firewall while enabled.
 - Device groups (SDK 0.4.0): `save` only for users with all devices (the form is read-only for the others); users with a
-  group see the requests and sites of their own devices, live through their group's scope.
+  group see the requests and sites of their own devices, live through their group's scope. NTP and DHCP: a publish round
+  never reads the device table (each group's view is kept, built again when the group's devices change or after 5
+  minutes); a group page reads the state again every 5 minutes while shown (`Renew`), a group not read for 15 minutes is
+  forgotten.
 - Tests: `tests/Oadm.Plugins.NtpServer.Tests` (loopback with random ports, never port 123 on a real interface).
 
 ## DHCP server (core plugin)
@@ -123,7 +126,8 @@ setup and the manual test plan: plugin `README.md`.
 - Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
   UDP 67 in the firewall while enabled.
 - Device groups (SDK 0.4.0): every change only for users with all devices; users with a group see the leases of their
-  own devices (by MAC address = serial, or address), live through their group's scope.
+  own devices (by MAC address = serial only, never by address), live through their group's scope. A change and a removal
+  of one batch go in one event (parts of one version only beyond 2,000 leases; the page applies every part of a version).
 - Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (in-memory network and loopback with random ports).
 
 ## PKI (core plugin)
