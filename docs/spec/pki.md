@@ -827,7 +827,10 @@ policies and are checked against the trusted / sign-in CA policies, the two are 
   (created, use Server), naming this computer's addresses and name, the names the running servers give and, while the EST
   server runs, the site nodes' addresses. Exception: the 802.1X server's stored certificate of before is imported with its
   key for its policy (cameras keep working). Nothing while the OADM CA cannot issue (tried again at the next start, minute
-  or connection).
+  or connection). Start order (fix of 2026-10-25): PKI's own start and license change make it only once both server
+  plugins started (`PolicyStore.ServerPluginStarted`, also while their servers are off; the EST plugin hands the site
+  nodes' addresses from its stored `sites` then) and neither server is turned on: a server that is on makes it at its
+  own start with its names, the 802.1X server after it took over its kept certificate (`PkiPlugin.MakesServerCertificates`).
 - **No automatic renewal**: nothing makes a server certificate again. The Expiry warning and the server's status remind;
   the user picks another one in the policy.
 - **The servers** load the picked certificate with its key (`PkiCertificateAuthority.ServerCertificate`;

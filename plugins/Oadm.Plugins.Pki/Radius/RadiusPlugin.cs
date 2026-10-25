@@ -114,6 +114,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }, ctx.Events, ctx.Logger);
         _server = server;
         await server.StartAsync(ct).ConfigureAwait(false);
+        ctx.Services?.Find<PolicyStore>()?.ServerPluginStarted(PolicyKinds.Dot1xServer, () => server.On);
     }
 
     public async Task StopAsync(CancellationToken ct)

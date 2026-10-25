@@ -508,8 +508,34 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>The names a new 802.1X server certificate gets (this server's addresses and host name), set by the 802.1X server.</summary>
     public Func<IReadOnlyList<string>>? Dot1xServerNames { get; set; }
 
-    /// <summary>The names a new EST server certificate gets (this server's addresses and host name, the site nodes' addresses), set by the EST server.</summary>
+    /// <summary>
+    /// The names a new EST server certificate gets (this server's addresses and host name, the site nodes' addresses), set by
+    /// the EST server; while it is off by its plugin (the site nodes' addresses the cameras were given).
+    /// </summary>
     public Func<IReadOnlyList<string>>? EstServerNames { get; set; }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Func<bool>> _serverSwitches = new(StringComparer.Ordinal);
+
+    /// <summary>Raised when a server plugin of the package started (<see cref="ServerPluginStarted"/>).</summary>
+    public event EventHandler? ServerPluginsChanged;
+
+    /// <summary>
+    /// The 802.1X or EST server plugin started (also while its server is off) and tells whether its server is turned on: PKI
+    /// makes the shared server certificate only once both told (their names are known then) and leaves it to a server that
+    /// is on (its start makes it with its names, the 802.1X server first takes over the certificate it kept).
+    /// </summary>
+    public void ServerPluginStarted(string kind, Func<bool> turnedOn)
+    {
+        ArgumentNullException.ThrowIfNull(turnedOn);
+        _serverSwitches[kind] = turnedOn;
+        ServerPluginsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Both server plugins started.</summary>
+    public bool ServerPluginsKnown => _serverSwitches.ContainsKey(PolicyKinds.Dot1xServer) && _serverSwitches.ContainsKey(PolicyKinds.EstServer);
+
+    /// <summary>A server is turned on (its own start makes the server certificate).</summary>
+    public bool AnyServerTurnedOn => _serverSwitches.Values.Any(on => on());
 
     /// <summary>Why a server policy cannot show the certificate it picks; null when it can.</summary>
     private string? CertificateRefusal(PkiPolicy policy)
