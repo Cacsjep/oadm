@@ -4,6 +4,7 @@ using Avalonia.VisualTree;
 
 using Oadm.Plugins.Pki;
 using Oadm.Plugins.Pki.Client;
+using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Client;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
@@ -74,6 +75,46 @@ public sealed class PkiTabHeadlessTests
 
         Assert.True(checks.IsCertificatesTab);
         Assert.False(checks.radiusShown); // only the shown tab's view is in the window
+    }
+
+    [Fact]
+    public async Task Without_oadm_pro_the_tab_shows_the_off_state_with_the_trial()
+    {
+        // The website's picture of the off state (pki-tab-802-1x-trial.png): the tab as the user sees it, inside the PKI page.
+        var server = new FakeRadiusBackend
+        {
+            Switch = new ServerSwitchState(false, false, false, Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, TrialAvailable: true),
+        };
+        var ctx = new FakePageContext(server);
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var radius = new RadiusView();
+            using var radiusVm = new RadiusViewModel(ctx);
+            var est = new TextBlock { Text = "EST server" };
+            var pkiCtx = new PkiContext([new CorePluginTab(RadiusPluginInfo.PluginId, RadiusPluginInfo.DisplayName, radius), new CorePluginTab("oadm.est", "EST server", est)]);
+            var page = new PkiView();
+            using var pkiVm = new PkiViewModel(pkiCtx, new NoTrust());
+            pkiCtx.RequestTab(RadiusPluginInfo.PluginId);
+            var window = PkiHost(page, 1600, 900);
+            window.Show();
+            page.DataContext = pkiVm;
+            HeadlessPageTests.Pump();
+            radius.DataContext = radiusVm;
+            await radiusVm.LoadAllAsync(CancellationToken.None);
+            HeadlessPageTests.Pump();
+            HeadlessPageTests.Capture(window, "pki-tab-802-1x-trial.png");
+
+            var tabs = window.GetVisualDescendants().OfType<PageTab>().Where(t => t.IsEffectivelyVisible).Select(t => (t.Title, t.IsActive)).ToList();
+            var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text).ToList();
+            window.Close();
+            return (tabs, texts);
+        }, CancellationToken.None);
+
+        Assert.Contains(("802.1X server", true), checks.tabs);
+        Assert.Contains("PKI", checks.texts);
+        Assert.Contains("The 802.1X server needs OADM PRO", checks.texts);
+        Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.StartTrial, checks.texts);
+        Assert.DoesNotContain("Switches", checks.texts);
     }
 
     /// <summary>The real host page of PKI (title, subtitle, own cards).</summary>
