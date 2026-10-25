@@ -139,8 +139,13 @@ public sealed class TaskServiceTests
 
         var unknownPlugin = await Assert.ThrowsAsync<RpcException>(() =>
             host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = "nope", DeviceIds = { device.Id.ToString() } }).ResponseAsync);
-        Assert.Equal(StatusCode.InvalidArgument, unknownPlugin.StatusCode);
+        // Answered at the lookup (never later without the permission check): NOT_FOUND like every unknown object.
+        Assert.Equal((StatusCode.NotFound, "Unknown task plugin 'nope'."), (unknownPlugin.StatusCode, unknownPlugin.Status.Detail));
+        var unknownQuery = await Assert.ThrowsAsync<RpcException>(() =>
+            host.Tasks.QueryAsync(new Proto.TaskQueryRequest { PluginId = "nope", DeviceId = device.Id.ToString(), Method = "read" }).ResponseAsync);
+        Assert.Equal((StatusCode.NotFound, "Unknown task plugin 'nope'."), (unknownQuery.StatusCode, unknownQuery.Status.Detail));
 
+        Assert.True(host.Get<PluginRegistry>().RegisterTaskPlugin(new RestartTaskPlugin(), new PluginOrigin("oadm.restart", "1.0.0", null)));
         var noDevices = await Assert.ThrowsAsync<RpcException>(() =>
             host.Tasks.RunAsync(new Proto.RunTaskRequest { PluginId = RestartTaskPlugin.PluginId }).ResponseAsync);
         Assert.Equal(StatusCode.InvalidArgument, noDevices.StatusCode);

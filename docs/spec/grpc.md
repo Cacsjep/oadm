@@ -133,7 +133,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `Query(pluginId, deviceId, method, payloadJson)` (read-only `ITaskPluginQuery` for task
   dialogs, 30 s timeout; NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device,
   changed certificate or rejected credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT;
-  the status detail is the user message).
+  the status detail is the user message). `Run` and `Query` answer a task plugin their permission lookup does not find
+  with NOT_FOUND "Unknown task plugin 'x'." at once (one turned on meanwhile never runs unchecked).
   Device groups (`docs/spec/device-scope.md`, Tasks): every method works on the caller's view. `Run` and `Query` take
   their devices from it (any unknown or outside id: NOT_FOUND "N devices are no longer available.", the whole run
   refused, the same for every user); `ListTaskPlugins` intersects every runnable set and reason with the view before it
@@ -158,7 +159,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   each event only to the watchers its audience covers. `ListCorePlugins` (navigation pages; `CorePluginInfo.no_page = 4` for a core plugin without a page,
   `ICorePlugin.HasPage` false: the client adds no rail entry), per-plugin generic
   `Invoke(pluginId, method, payloadJson)` for Core plugin UI pages (NOT_FOUND unknown plugin or
-  object, FAILED_PRECONDITION not running, INVALID_ARGUMENT for an `ArgumentException` of the
+  object, FAILED_PRECONDITION not running or turned off; a plugin the permission lookup does not find is answered there,
+  never called later unchecked, INVALID_ARGUMENT for an `ArgumentException` of the
   plugin, INTERNAL otherwise; the status detail is the message), `Watch(plugin_id)` (stream of `PluginEvent`
   {plugin_id, topic, payload_json} the plugin publishes through `ICorePluginContext.Events` from the call on; NOT_FOUND
   unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out with 256 events buffered per watcher, oldest dropped),
