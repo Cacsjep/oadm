@@ -8,7 +8,7 @@ description: Network ports, the data folder and what to back up.
 | Port | Used by |
 |---|---|
 | TCP 5080 | Client to server (encrypted, login required) |
-| TCP 5081 | [Site nodes](../sites/) to server, only while **Accept site nodes** is on |
+| TCP 5081 | [Site nodes](../../sites/overview/) to server, only while **Accept site nodes** is on |
 | UDP 123 | [NTP server](../../tools/ntp-server/), only when enabled |
 | UDP 67 | [DHCP server](../../tools/dhcp-server/), only when enabled |
 | TCP 9454 | [EST server](../../tools/est-server/): cameras get their certificates, only while it runs (the port can be changed) |

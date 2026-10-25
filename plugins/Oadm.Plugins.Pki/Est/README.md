@@ -12,19 +12,20 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   - `Serving/EstService`: listens on TCP 9454 (setting `config.port`, 1025..65535) on the server's network through
     `ICorePluginContext.Network.ListenTcpAsync`; TLS 1.2+ (`SslStream`, client certificate requested, checked per request);
     at most 64 connections, 20 requests and 30 s idle per connection.
-  - `Serving/ServerCertificates`: the server's TLS certificate from the CA of PKI's EST server policy ("Issued by", the
-    OADM CA by default; key made in memory with the policy's days and key, 90 days ECC P-256 by default; made again 30
-    days, at most a third, before its end, when the addresses, the CA or the policy's key change); `cacerts` and the
-    answers carry the chain of the CA of the profile's issuing policy (`Ca/IssuerChains`, `DeviceCertificateRequest.IssuerId`);
+  - `Serving/ServerCertificates`: the server's TLS certificate is the one PKI's EST server policy picks from the
+    Certificates list (docs/spec/pki.md "Server certificates": by default the shared "802.1X and EST server", OADM CA,
+    ECC P-256, 10 years), loaded with its key and again when the policies change; one certificate for this server and
+    every site, never renewed by itself; the TLS chain is its issuer's chain; `cacerts` and the answers carry the chain of
+    the CA of the profile's issuing policy (`Ca/IssuerChains`, `DeviceCertificateRequest.IssuerId`);
   - `Serving/EstPolicies`: a profile's issuing policy (`EstProfile.PolicyId`; HTTPS certificate for HTTPS and RTSPS, IEEE
     802.1X certificate for IEEE 802.1X and MQTT): its valid days for enrollments and renewals, its key for Set up; none
     readable: 503 "The issuing policy of this profile cannot be read."; the once-only conversion of the profiles of 4.1
     (owner `oadm.est:profiles`) and the profiles' uses PKI checks before deleting a policy; SAN = the server's addresses (network cards that
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
-    `POST .../simplereenroll`; everything else and unknown or disabled profiles 404. Who may enroll: the camera's Axis
-    device ID (or a valid certificate of the OADM CA for it, with or without a record) whose serial is a managed device of
-    the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
+    `POST .../simplereenroll`; everything else and unknown profiles 404. Who may enroll: the camera's Axis device ID
+    (or a valid certificate of an OADM CA for it; to renew also its current certificate from OADM, whatever CA of PKI
+    issued it) whose serial is a managed device of the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
     identity), 403 (not managed, other site, certificate of another camera, a certificate on PKI's revocation list:
     `IDeviceCertificateAuthority.IsRevoked`, "Certificate revoked on ... (reason)"), 400 (request unreadable or refused by
     the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
@@ -35,8 +36,9 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     certificates also renews, for renewals only `simplereenroll`; only those PKI still lists count; no store, an unreadable
     one or none: nothing signs in); Enrollment policies hold the devices and their profiles (`Check(device, profile)`: none
     holds it 403 "No enrollment policy for this device.", a profile not allowed the 404 of an unknown profile, listed with
-    the policy). `EstState.PoliciesApply` and `PolicyLines` (the link "3 policies applied" with its tooltip) and `PolicyProblem` (null for group users);
-    "Issued by" (the OADM CA by its name in PKI, else the name in its certificate). EST reports
+    the policy). `EstState.PoliciesApply` and `PolicyLines` (the link "4 policies applied" on a new server, with its
+    tooltip), `PolicyProblem` (null for group users) and the warning when a site's node address or one of this server's
+    addresses is not in the server certificate. EST reports
     `SetUsedBy("oadm.est", "EST server", sign-in CAs ∩ listed + oadm)` at the start, on a policy change and on PKI's
     `Changed`, and clears it when it stops. `config.signInWith` ("Sign in with" of before) is read only by the conversion
     (`EstPolicies.ConvertRulesAsync`, owner `oadm.est`) and kept by a save; the store gets `ProfileNames` for the editor.
@@ -72,17 +74,19 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set
   up with the IEEE 802.1X choice): set up
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` or `oadm2_<profile>` with
-  the device ID, the OADM CA chain, this server as EST server; waits until the camera holds the new certificate; pins a new
+  the device ID, the issuer chain of the EST server's certificate, this server as EST server; with the dot1x profile also
+  the RADIUS server CA of the profile's IEEE 802.1X policy, installed and set; waits until the camera holds the new certificate; pins a new
   HTTPS certificate; deletes OADM's older certificates no use holds any more). The camera never stores a certificate over
   an older one of the same name and keeps a removed profile's certificate bound to its use, so a changed profile or one
   set up again after Remove takes the other name (spec "Two names per profile") or remove the chosen profiles (any
   profile; payload `SetupPayload.Action`). At a site the camera gets the node's address; `EstService.ServeSiteAsync`
-  stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`), whose connections get the site's own
-  server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
+  stores it (setting `sites`) and opens the site's relay (`ISites.OpenTcpRelayAsync`); the relay's connections get the
+  same server certificate. `Device/CameraEstApi.cs`: the camera's REST calls.
 - Client part (in `Oadm.Plugins.Pki.Client.dll`, `Est/`, namespace `Oadm.Plugins.Est.Client`): while the server does not run
-  only General with its status and Turn on (`Servers/ServerSwitchView`); else General (listen on, port, enrollments kept) and Profiles (name, use, days,
-  key, on; at most one per use) in one card (side by side when wide, `WrapPanel`), Save with the status and Turn off left
-  of it; Enrollments in its own card (live, search, Delete all; `EstPage.HasOwnCards`); Not renewed (only while there
+  only the off state (`Servers/ServerOffStateView`: Turn on, Start 30-day trial, the needs-PRO title); else Server (listen
+  on, port, enrollments kept; Save with the status and Turn off left of it, the "N policies applied" link) above Profiles
+  (name, use, issuing policy; at most one per use; Add profile) in the left column, Enrollments right (live, search,
+  View certificate, Delete all; `EstPage.HasOwnCards`, one column on a narrow page); Not renewed (only while there
   are any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (card
   Certificates, docs/spec/radius-server.md "Certificates and revocation").
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device

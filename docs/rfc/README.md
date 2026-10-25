@@ -24,7 +24,7 @@ source of truth for the protocol code: read the RFC, not a summary, and cite the
 | [8446](rfc8446.txt) | TLS 1.3: handshake, alerts (6) |
 | [5705](rfc5705.txt) | TLS keying material exporters |
 | [8996](rfc8996.txt) | TLS 1.0 and 1.1 deprecated (why the default minimum is 1.2 and lower ones warn) |
-| [9325](rfc9325.txt) | TLS recommendations: cipher suites (the default set of Advanced) |
+| [9325](rfc9325.txt) | TLS recommendations: cipher suites (the ones the 802.1X server offers for its minimum TLS version) |
 
 Not an RFC, also read: the Blast-RADIUS advisory (2024, blastradius.fail): why Message-Authenticator is required on every
 request and sent first in every answer.

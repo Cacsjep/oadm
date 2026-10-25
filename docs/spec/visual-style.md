@@ -4,7 +4,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 
 Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
-**Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
+**Appearance** Dark or Light per computer (Settings > Client, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
 colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
 `Oadm.Theme.OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`
@@ -85,8 +85,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
-  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and Used by: Root
-  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. Who made a PKI policy is `Border.badge.system` (violet text: System) or `Border.badge.user` (blue text: User), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill).
+  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and the CA list's Used in: Root
+  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text) stays in the theme.
   Menu entries that delete, revoke or remove are red (`MenuItem.danger`), last after a separator.
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.

@@ -1,16 +1,20 @@
 ---
 title: Settings
-description: The server settings and the settings of this computer on the Settings page.
+description: The server settings and the client settings on the Settings page.
 ---
 
 import { Image } from 'astro:assets';
 import settings from '../../../assets/screens/client-page-settings.png';
 import backup from '../../../assets/screens/settings-backup.png';
 import restore from '../../../assets/screens/settings-restore.png';
+import license from '../../../assets/screens/settings-license.png';
 
 <Image src={settings} alt="Settings page" class="screen" />
 
-## This computer
+Each topic is a card that folds. The cards start closed: click a card's title to open it. A card opens by itself when a
+field in it shows an error.
+
+## Client
 
 The first card is for the computer you sit at. Every user can change it, and it is saved at once.
 
@@ -24,7 +28,7 @@ The first card is for the computer you sit at. Every user can change it, and it 
 ## Server
 
 Administrators change the server settings; operators see them. They apply to every client of the server. The settings
-stand in five cards: Polling, Discovery, Tasks, Security and Server. **Save** below the five cards saves all of them;
+stand in five cards: Polling, Discovery, Tasks, Security and Server. **Save** below the cards saves all five;
 **Reload** reads them again.
 
 | Setting | Default | What it does |
@@ -69,6 +73,8 @@ A backup of an older OADM is upgraded when it is restored. A backup of a newer O
 The **License** card shows this server's OADM PRO license. OADM itself works the same with or without one; PRO adds
 commercial support, the EST and 802.1X servers and PRO plugins.
 
+<Image src={license} alt="The License card without a license, with Start 30-day trial" class="screen" />
+
 - **Server ID**: the ID a license is made for. The copy button puts it on the clipboard.
 - **OADM PRO**: the plan and the last day, **Trial** and its last day during the 30-day trial, or what is wrong
   (expired, trial ended, made for another server, not valid).
@@ -86,11 +92,11 @@ does not move to another computer.
 ## Support
 
 **Create support report** (administrators) saves one ZIP file for a support request: the server's log files, a summary
-of the server (versions, system, counts of devices, tasks and plugins, the settings) and the log files of this computer.
+of the server (versions, system, counts of devices, tasks and plugins, the settings) and the log files of the client you work on.
 No passwords or keys are included. The logs name devices by address and serial number, like the Logs page. Attach it to your post in the
 [Support Forum](https://support.oadm.app/) or your issue.
 
-## On this computer
+## Kept by each client
 
-Each client also keeps its own settings on the computer: the servers you used, the device list columns, group by tag,
-the size of the tasks pane, the **This computer** card above, and whether the add page uses DNS names.
+Each client also keeps its own settings on its computer: the servers you used, the device list columns, group by tag,
+the size of the tasks pane, the **Client** card above, and whether the add page uses DNS names.

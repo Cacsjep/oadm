@@ -37,10 +37,13 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:PageTab` | Every tab of a page with tabs: title, X, the active one underlined. `Count` above 0 shows a badge; without `CloseCommand` the tab is fixed (no X) |
 | `ui:TileGrid` | A grid of tiles that fills the page (Live View, Dashboards): your tab implements `ITileGridSource`, its tiles `ITileGridItem` (`FrameClass`: a theme class of the frame, `CopyCommand`: a copy icon left of the X); the rules are an `Oadm.Sdk.Layout.TileLayout` (`TileRect`, `Place`, `PlaceSized`, `Fit`, `Drag`) the server checks again |
 | `ui:ProgressRing` | A spinning ring in place while a list or card loads |
+| `ui:OffState` | A page or tab whose feature is off: icon, title, one or two sentences, and the button that turns it on, centered |
+| `ui:RowActions` | The ⋯ menu of a table row: everyday entries, a separator, the red ones last |
+| `ui:IssuedCertificateList` | A paged list of certificates with groups, filters, search and row menus (the PKI page) |
 | `ui:PageHeader` | `Subtitle` and `IsHidden` of the host page header, set on your page view |
 | `MessageWindow` | Every message and confirmation: `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` |
 | `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 30,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |
-| `PageDeviceChoice` | The device choice of a page that reads many devices: the purple "Selected devices" button, see [Core plugins](../core-plugins/) |
+| `PageDeviceChoice` | The device choice of a page that reads many devices: a toolbar button with the devices icon ("Choose devices", "Selected devices: ..."), see [Core plugins](../core-plugins/) |
 | `ComboBox Classes="grouped"` + `GroupedChoice` | A select field with group headers |
 | `ComboBox Classes="multiSelect"` + `CheckChoice` / `CheckChoiceList` | A select field with check boxes (`ICheckChoice` items); `CheckChoiceList` offers "All" or chosen items: `<ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}" />` |
 
@@ -109,9 +112,15 @@ public sealed partial class UserViewModel : ValidatingViewModel
 
 ## Buttons
 
-- **One accent button per view** (`Button.primary`): the main action. Everything else is `Button.secondary`.
-- **Destructive actions are red**: `Button.danger`, `Button.toolbar.danger` for flat buttons, `Button.link.danger` for
-  row links. `MessageWindow` turns its confirm button red when the text starts with Delete, Remove or Release.
+- **Command buttons** in toolbars and card headers are flat: `ui:ToolbarButton` (or `Button.toolbar`), icon and text, the
+  icon in the accent colour, never filled. Actions left, search right.
+- **Icon-only buttons** (close, ⋯, copy, row actions) use the text colour, the accent only on hover, and always have a
+  tooltip.
+- **One accent button per view** (`Button.primary`, filled): the one main action of a dialog or form (Save, Create, OK).
+  Its other actions are `Button.secondary`. The device choice of a page is a command button in its toolbar, a
+  `Button.secondary` in a form or dialog.
+- **Destructive actions are red**: `Button.danger` (filled) only for the confirming button of a dialog that deletes or
+  removes, `Button.toolbar.danger` for flat buttons everywhere else, `Button.link.danger` for row links. `MessageWindow` turns its confirm button red when the text starts with Delete, Remove or Release.
   Destructive entries sit apart from everyday ones (a separator, last in a menu).
 - Button and menu labels never end with "...", also when they open a dialog or a file picker.
 
