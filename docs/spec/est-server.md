@@ -11,9 +11,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 ## What the user sees
 
 - **Turn on / Turn off** (since OADM 4.5 the EST server is a PRO part of PKI, `docs/spec/pki.md` "One plugin"; OADM 4.1 had
-  it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's Server card stores the
+  it as its own plugin with the Plugins page check box): off by default; **Turn on** in the tab's off state (`ui:OffState`, "The EST server is off") stores the
   choice and starts the server (TCP 9454 opens), **Turn off** (left of Save, confirmed) stops it. It runs only while it is on
-  and an OADM PRO license or trial is active: without one the page shows only Server with
+  and an OADM PRO license or trial is active: without one the off state reads "The EST server needs OADM PRO" with
   `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and no Turn on, while the trial was never used
   **Start 30-day trial** for administrators (`docs/spec/licensing.md` "Trial"); when the license ends or is
   removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
@@ -141,7 +141,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   EST server policy picks from the Certificates list, **one for this server and every site** (cameras dial an IP, there is
   no SNI): it names the server's addresses and host name and the site nodes' addresses toward the cameras. There is no
   Create in the policy: Turn on without one makes the shared one (10 years, ECC); another one comes from the Certificates
-  tab (Create) and is chosen in the EST server policy. Never renewed or re-issued by itself; the EST tab shows it and warns
+  tab (Create) and is chosen in the EST server policy. Never renewed or re-issued by itself; the EST tab shows no
+  certificate row (its policy does) but warns
   when a site's node address or one of this server's addresses is not in it ("Site Parking is not in the certificate of
   the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server
   policy.", `PolicyTexts.AddressNotInCertificate` for an own address). A revoked one is never shown again, also not from
@@ -168,8 +169,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 ## Certificate renewals and pinning
 
 A camera that renews its HTTPS certificate by EST presents a new certificate every period. OADM accepts a new device
-certificate **without** Certificate changed when an OADM CA issued it **directly** (the PKI's active or a previous CA,
-`ITrustAnchors.SetRenewalIssuers`; never the roots above an imported CA, never another plugin's anchors), it is valid now,
+certificate **without** Certificate changed when a CA of PKI issued it **directly** (the OADM CA, a previous OADM CA or an
+imported CA with its key, `ITrustAnchors.SetRenewalIssuers`; never the roots above an imported CA, never another plugin's
+anchors), it is valid now,
 has serverAuth and names the same device (`axis-<serial>.local`), and pins it again. Any other change still shows **Certificate changed**. Applies to all OADM-CA certificates
 (also PKI's own HTTPS task).
 
@@ -235,13 +237,13 @@ removes the chosen profile ids); the profiles come from the EST server page. Dev
 
 Compatibility first (CLAUDE.md device safety): AXIS OS **12.10+** (`CanRun`), and before the first write a fresh
 `config/discover` with `cert` v1 and `cert-est` v1, an Axis device ID certificate of this camera's serial on the camera
-(found by its chain, not its alias), and at least one enabled profile whose service the camera has and that an
+(found by its chain, not its alias), and at least one profile whose service the camera has and that an
 Enrollment policy allows the camera (none holds it: "No enrollment policy for this device. Add one on the PKI page.";
 a profile not allowed is skipped with a warning). Others: Nothing was changed. Checked on 10.0.0.48 (P3265-V, 12.11.77): device ID certificates ECC P-256, RSA 2048 and RSA 4096, subject
 `serialNumber` = the serial in lower case, issued by "Axis device ID Intermediate CA ECC 2" / "RSA 2" (in the shipped
 bundles), valid to 9999; the camera starts with no EST profiles.
 
-1. Check compatibility; the profiles: the enabled ones of the EST server whose service the camera has, at most 2.
+1. Check compatibility; the profiles: those of the EST server whose service the camera has, at most 2.
    `supportedServices` lists only the services no profile uses yet, so the services of the camera's profiles count too.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the issuer chain of the certificate the EST server policy picks (fix of 2026-10-25: it
