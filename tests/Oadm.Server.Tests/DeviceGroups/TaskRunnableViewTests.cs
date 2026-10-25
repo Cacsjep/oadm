@@ -32,6 +32,23 @@ public sealed class TaskRunnableViewTests
         Assert.Empty(TaskPluginRunnableCache.Within(entry, new HashSet<Guid>()).NotRunnable);
     }
 
+    [Fact]
+    public async Task OnlyGroupsAreCachedAndADeletedGroupIsDropped()
+    {
+        await using var host = await Support.TestServerHost.StartAsync();
+        var groups = host.Get<Core.DeviceGroups.DeviceGroupStore>();
+        var views = host.Get<Core.DeviceGroups.DeviceViewFactory>();
+        var cache = host.Get<TaskPluginRunnableCache>();
+        var group = (await groups.SaveAsync(null, "Singles", "", new Core.DeviceGroups.DeviceGroupRules(false, [], [], ["ACCC8E000001"], []), 0, CancellationToken.None)).Group;
+
+        await cache.GetAsync(await views.ForScopeAsync(Core.Auth.DeviceScope.Group(group.Id), "anna", CancellationToken.None), CancellationToken.None);
+        await cache.GetAsync(await views.ForScopeAsync(Core.Auth.DeviceScope.None, "bert", CancellationToken.None), CancellationToken.None);
+        Assert.Equal(1, cache.ScopedCount); // a user without devices is never kept
+
+        await groups.DeleteAsync(group.Id, CancellationToken.None);
+        Assert.Equal(0, cache.ScopedCount);
+    }
+
     private sealed class TaskRunnableViewPlugin : Sdk.Plugins.ITaskPlugin
     {
         public string Id => "test.within";

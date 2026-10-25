@@ -370,7 +370,8 @@ an independent security review the same day). A user may be limited to part of t
   up to the snapshot limit, one query per batch of devices).
   A task is in the view while its device is: tasks of removed devices only for users with all devices.
 - **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the
-  sets and the view's ids are the same objects).
+  sets and the view's ids are the same objects; only groups are cached, never a user without devices, and a deleted group's
+  entry is dropped).
 - **Query**: `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
   call and, for a group, `ITaskQueryContext.Devices` of the view.
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch with devices that
