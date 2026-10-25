@@ -339,7 +339,8 @@ an independent security review the same day). A user may be limited to part of t
 - **Sites page**: `SiteService.ListSites` / `WatchSites` (and the page `SetAccept` returns): users with all devices see every
   row with `Site.group_names` (`DeviceGroupStore.GroupsUsingSite`); a group sees only bound sites its rules name
   (`DeviceGroupFilter.CoversSite`; no removed sites, no waiting nodes) with `device_count` from
-  `DeviceView.CountsBySiteAsync` (one read of the scope rows per push, at most once a second).
+  `DeviceView.CountsBySiteAsync` (cached per group revision, catalog and `MembershipVersion` like the allowed ids: one
+  read of the scope rows per change of the device table, never per push).
 - **Address checks**: none in this area name another device (Log in and Set password say "Another device answers at this
   address."); the address checks of plugins (Network settings, DHCP) belong to their packages.
 - **Tests**: `Oadm.Core.Tests/DeviceGroups/DeviceViewStreamsTests` (feed, catalog changes, pages, counts by site, leases,

@@ -194,6 +194,29 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheCountsPerSiteAreReadOncePerDeviceTableChange()
+    {
+        var b = Sites.Add("Building B");
+        var w = Sites.Add("Warehouse");
+        var first = await AddDeviceAsync("ACCC8E000001", siteId: b);
+        await AddDeviceAsync("ACCC8E000002", siteId: w);
+        var group = (await SaveGroupAsync("G", sites: [b, w])).Group;
+        var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
+
+        var counts = await view.CountsBySiteAsync(Ct);
+        Assert.Equal((1, 1), (counts[b], counts[w]));
+        Assert.Same(counts, await view.CountsBySiteAsync(Ct)); // the Sites page asks every second: no new read
+
+        await Devices.UpdateAsync(first.Id, d => d.Status = DeviceStatus.Unreachable, Ct);
+        Assert.Same(counts, await view.CountsBySiteAsync(Ct)); // a status change keeps them
+
+        await Devices.UpdateAsync(first.Id, d => d.SiteId = w, Ct);
+        var moved = await view.CountsBySiteAsync(Ct);
+        Assert.Equal(2, moved[w]);
+        Assert.False(moved.ContainsKey(b));
+    }
+
+    [Fact]
     public async Task TheSharedReadOfTheAllowedIdsNeverRunsOnTheFirstCallersToken()
     {
         var b = Sites.Add("Building B");
