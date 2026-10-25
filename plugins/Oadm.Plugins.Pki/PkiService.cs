@@ -174,6 +174,7 @@ public sealed partial class PkiService : IAsyncDisposable
         if (_secrets is null)
         {
             LogNoSecrets();
+            await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
             return;
         }
 
@@ -194,6 +195,10 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         ApplyAnchors();
+
+        // Only once every CA is loaded (the OADM CA, the previous and the imported ones): the conversion matches PEMs against
+        // the list and may add an imported CA, which saves the whole list of imported CAs.
+        await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()

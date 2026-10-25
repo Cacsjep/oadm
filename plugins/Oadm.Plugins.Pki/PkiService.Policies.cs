@@ -132,7 +132,11 @@ public sealed partial class PkiService
             : p)], ct).ConfigureAwait(false);
     }
 
-    /// <summary>The id of the listed CA whose certificate is <paramref name="der"/> (its own, not one above it); null when none is.</summary>
+    /// <summary>
+    /// The id of the listed CA whose certificate is <paramref name="der"/> (its own, not one above it); null when none is. The
+    /// Axis device ID entry never matches: it holds every Axis root and intermediate, and a camera given it would trust all of
+    /// them (a single Axis CA becomes an imported CA of its own).
+    /// </summary>
     private string? AuthorityIdOf(byte[]? der)
     {
         if (der is null)
@@ -141,7 +145,7 @@ public sealed partial class PkiService
         }
 
         var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(der));
-        return Authorities().FirstOrDefault(a => a.Kind != CertificateAuthorityKind.PreviousOadm && a.Certificates.Count > 0
+        return Authorities().FirstOrDefault(a => a.Kind is not (CertificateAuthorityKind.PreviousOadm or CertificateAuthorityKind.AxisDeviceId) && a.Certificates.Count > 0
             && string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(a.Certificates[0])), fingerprint, StringComparison.OrdinalIgnoreCase))?.Id;
     }
 
@@ -198,7 +202,6 @@ public sealed partial class PkiService
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
         await Policies.RewriteOnceAsync(KindsOwner, list => PolicyStore.ConvertKinds(list, RadiusPolicies.DefaultServerPolicy), ct).ConfigureAwait(false);
-        await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
         _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);

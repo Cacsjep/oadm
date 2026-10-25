@@ -258,8 +258,10 @@ public sealed partial class PkiService
                     return Field("This certificate has expired.");
                 }
 
+                // A single Axis device ID CA may be listed on its own (a camera then trusts exactly that one, not the whole
+                // Axis device ID entry with every Axis root and intermediate).
                 var id = CaCertificates.Fingerprint(certificate);
-                if (Authorities().Any(a => a.Certificates.Any(der => Convert.ToHexString(SHA256.HashData(der)) == id)))
+                if (Authorities().Any(a => a.Kind != CertificateAuthorityKind.AxisDeviceId && a.Certificates.Any(der => Convert.ToHexString(SHA256.HashData(der)) == id)))
                 {
                     return Field("This CA is already in the list.");
                 }

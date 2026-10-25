@@ -739,7 +739,11 @@ It supersedes "only the OADM CA issues" of stage 4 and the Server certificate an
   The summary adds "Cameras check the RADIUS server with OADM Root CA.". Converted once on start (owner
   `oadm.pki:radius-ca-2026-10-25`, never on a list that cannot be read): "OADM 802.1X server" becomes the CA that issued
   the 802.1X server's certificate (else the OADM CA); a CA imported into the policy goes into the CA list (or the listed
-  CA with its fingerprint) and is named; one that cannot be read stays without a CA (logged; the form asks for one).
+  CA with its fingerprint) and is named; one that cannot be read stays without a CA (logged; the form asks for one). The
+  conversion runs at the end of the start, once the OADM CA, the previous and the imported CAs are loaded (it matches
+  against them, and an import saves the whole list of imported CAs). The Axis device ID entry never matches: an Axis root
+  or intermediate becomes an imported CA of its own, so the camera trusts exactly that CA, never every Axis root and
+  intermediate; `importAuthority` accepts a CA that is only inside the Axis device ID entry for the same reason.
   `RadiusCa` and `RadiusCaPem` are read only by this conversion; the page method `importRadiusCa` is gone.
 - **Trust**: the server's trust anchors and the renewal issuers (`ITrustAnchors.SetRenewalIssuers`) take every imported CA
   with its key (anchors with its chain), so EST renewals of its certificates pin without "Certificate changed". The
