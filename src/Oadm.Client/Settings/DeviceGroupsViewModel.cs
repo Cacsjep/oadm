@@ -10,6 +10,7 @@ using Oadm.Client.Dialogs;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Settings;
@@ -174,6 +175,14 @@ public sealed partial class DeviceGroupsViewModel : ObservableObject
             UsersAffected?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>The row's ⋯ menu (<c>ui:RowActions</c>): Edit, then Delete in red.</summary>
+    public IReadOnlyList<IssuedCertificateAction> RowActionsOf(DeviceGroupRowViewModel row) =>
+    [
+        new("Edit", EditCommand, row),
+        IssuedCertificateAction.Separator,
+        new("Delete", DeleteCommand, row, IsDanger: true),
+    ];
 
     /// <summary>The row's Delete (red): asks first, naming the users who lose their devices.</summary>
     [RelayCommand]

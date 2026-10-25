@@ -256,6 +256,38 @@ public sealed class PolicyPageTests
     }
 
     [Fact]
+    public async Task A_role_change_keeps_the_open_form_unless_what_the_user_may_do_here_changed()
+    {
+        await using var pki = await StartAsync();
+        var ctx = Page(pki);
+        var page = new PoliciesViewModel(ctx);
+        await page.LoadAsync(CancellationToken.None);
+        var vlan = Open(page, "Building B");
+        vlan.Name = "Building B, floor 2";
+        Assert.True(vlan.IsDirty);
+
+        // Another role changed (or a device group that leaves this user as before): the typed name stays.
+        page.NotifyRole();
+        Assert.Same(vlan, page.Editor);
+        Assert.Equal("Building B, floor 2", vlan.Name);
+
+        // Manage taken away: the same form, read only.
+        ctx.Manage = false;
+        page.NotifyRole();
+        Assert.Same(vlan, page.Editor);
+        Assert.True(vlan.ReadOnly);
+        Assert.False(page.ShowsSave);
+        Assert.Equal("Building B, floor 2", vlan.Name);
+
+        // Limited to a device group: the tab hides, the form closes.
+        ctx.HasAllDevices = false;
+        page.NotifyRole();
+        Assert.Null(page.Editor);
+        Assert.False(page.IsPanelOpen);
+        Assert.Empty(page.Rows);
+    }
+
+    [Fact]
     public async Task Without_oadm_pro_the_groups_of_the_pro_servers_and_their_types_are_hidden()
     {
         await using var pki = await StartAsync(pro: false);

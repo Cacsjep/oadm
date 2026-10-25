@@ -194,6 +194,21 @@ public sealed class RobustnessTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task UnreadableStoredTriggersAreKeptAndNeverOverwrittenByTheNextSave()
+    {
+        await using var rig = new Rig();
+        var device = rig.AddDevice("10.0.0.48");
+        const string broken = "[{\"id\": \"not a guid";
+        rig.Settings.Values[DeviceTriggersPlugin.SettingsKey] = broken;
+
+        await rig.StartAsync();
+        await rig.CallAsync<SaveReply>(DeviceTriggersMethods.Save, new SaveRequest(Fixture.VirtualInputTrigger("Gate open", [device.Id]) with { Id = Guid.Empty }));
+
+        Assert.Equal(broken, rig.Settings.Values[DeviceTriggersPlugin.UnreadableKey]);
+        Assert.Contains("Gate open", rig.Settings.Values[DeviceTriggersPlugin.SettingsKey], StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task TurnedOffTriggersAndTriggersWithoutDevicesReportAtOnce()
     {
         await using var rig = new Rig();

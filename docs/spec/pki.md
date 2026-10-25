@@ -77,7 +77,7 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   (`docs/spec/plugins.md` "Pages shown as tabs"). The server parts keep their pages (`HasPage`), so the "show" and
   "manage" permissions stay as they are. While a server does not run its tab shows the off state; a server that is on
   but does not run (the license ended, a start that failed) offers Turn off there too, and Turn on and Turn off show a
-  progress row ("Starting the EST server") while they run (fix of 2026-10-25).
+  progress row ("Starting the EST server") while they run (fix of 2026-10-25), Start 30-day trial "Starting the trial".
 - A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
   pages the role may show, the host follows role changes). With no server tab the tab row is left out.
 - The link **"N policies applied"** on a server tab (decision 2026-10-25: left in its Save row) opens the Policies tab;
@@ -165,7 +165,9 @@ which are gone):** the cards made the tab about two screens long. The Policies t
   opens the row as it is after the question. Every stored policy has a `Revision` (PKI counts its saves and the system's
   certificate write); a save sends the revision it read and PKI refuses one over a later change ("Changed by someone else.
   Reload.", `PolicyFields.Policy`), so no save overwrites another user's change unseen (fix of 2026-10-25). Read only
-  (inputs disabled, no Create, Save or Delete) without "Manage the certificate authority".
+  (inputs disabled, no Create, Save or Delete) without "Manage the certificate authority". A role change keeps the open
+  form and what was typed in it; only a change of what the user may do here acts: losing Manage makes the form of a stored
+  policy read only and closes a new one, a device group that hides the tab closes it (`PoliciesViewModel.NotifyRole`).
 
 System policies (decision 2026-10-25, `PolicyStore.IsSystem`): OADM needs them, so they have no Delete (the server refuses
 it: "OADM needs this policy. Change its values instead."); their values stay editable. They are the first (oldest) policy

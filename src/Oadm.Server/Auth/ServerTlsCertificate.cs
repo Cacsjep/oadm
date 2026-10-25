@@ -140,8 +140,19 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
 
             if (OperatingSystem.IsWindows())
             {
-                // Only the named key; a file of an older build (encrypted key) gets a new certificate with a named key.
-                return string.Equals(stored.KeyName, KeyName, StringComparison.Ordinal) ? OpenWithNamedKey(stored.CertificatePem) : null;
+                // Only the named key; a file of an older build (encrypted key) gets a new certificate with a named key. The key
+                // name follows the data folder's path: a moved or copied folder gets a new certificate, and says so.
+                if (!string.Equals(stored.KeyName, KeyName, StringComparison.Ordinal))
+                {
+                    if (!string.IsNullOrEmpty(stored.KeyName))
+                    {
+                        LogOtherDataFolder(FilePath);
+                    }
+
+                    return null;
+                }
+
+                return OpenWithNamedKey(stored.CertificatePem);
             }
 
             if (string.IsNullOrEmpty(stored.EncryptedKey))
@@ -331,6 +342,9 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The server TLS certificate {Path} could not be read (for example after the master key was replaced); creating a new one. Clients show \"The server certificate changed\" and must use Forget server and confirm the new fingerprint")]
     private partial void LogLoadFailed(Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The server TLS certificate {Path} belongs to another data folder (the folder was moved or copied; on Windows its key is tied to the folder's path); creating a new one. Clients show \"The server certificate changed\" and must use Forget server and confirm the new fingerprint")]
+    private partial void LogOtherDataFolder(string path);
 }
 
 /// <summary>Content of server-tls.json.</summary>

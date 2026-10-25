@@ -18,7 +18,7 @@ namespace Oadm.Core.Plugins;
 /// group changed after the call began is refused (<see cref="AccessEpochs"/>), so no job keeps the old access. Jobs run detached (no caller: the background boundary) with the owner's call as their device access, and
 /// with the owner's plugin call mark, so a job of a user with a device group refuses <c>ctx.Devices</c> like the call.
 /// A job ends when its work ends, when it is cancelled, when its plugin stops and when its owner's devices, role or
-/// sessions change (<see cref="CancelOwner"/>, <see cref="CancelSession"/>, <see cref="CancelGroup"/>: such a job is also
+/// sessions change or their role is changed (<see cref="CancelOwner"/>, <see cref="CancelRoles"/>, <see cref="CancelSession"/>, <see cref="CancelGroup"/>: such a job is also
 /// forgotten, so a finished result made for the old devices is no longer found). A shared job belongs to its scope, not to
 /// the user who started it: the starter's logout or new role leaves it running for the scope's other users; it ends only
 /// when the scope's rules change (<see cref="CancelGroup"/>), when it is cancelled or its plugin stops (lead decision
@@ -93,6 +93,26 @@ public sealed partial class PluginJobRegistry
     {
         Epochs.UserChanged(userId); // first: a job registered meanwhile is either refused or seen by Forget
         Forget(j => !j.Shared && j.UserId == userId);
+    }
+
+    /// <summary>
+    /// Cancels and forgets every job of the users who started them with one of <paramref name="roleIds"/> (those roles'
+    /// permissions changed), like <see cref="CancelOwner"/> for each of them; shared jobs stay (they belong to their scope).
+    /// </summary>
+    public void CancelRoles(IReadOnlyCollection<Guid> roleIds)
+    {
+        ArgumentNullException.ThrowIfNull(roleIds);
+        if (roleIds.Count == 0)
+        {
+            return;
+        }
+
+        var roles = roleIds as IReadOnlySet<Guid> ?? roleIds.ToHashSet();
+        var users = _byPlugin.Values.SelectMany(jobs => jobs.Values).Where(j => !j.Shared && roles.Contains(j.RoleId)).Select(j => j.UserId).ToHashSet();
+        foreach (var user in users)
+        {
+            CancelOwner(user);
+        }
     }
 
     /// <summary>
@@ -279,6 +299,9 @@ public sealed partial class PluginJobRegistry
         public ICallContext Owner => owner;
 
         public Guid UserId => owner.UserId;
+
+        /// <summary>The owner's role when the job started.</summary>
+        public Guid RoleId => owner.Caller.Caller.RoleId;
 
         /// <summary>
         /// The caller has the devices the job was started with (the same scope) and is the job's user in the job's session;

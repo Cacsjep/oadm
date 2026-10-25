@@ -47,6 +47,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     /// <summary>Registers in flight per session (from <see cref="SessionJob"/> to the end of <see cref="Register"/>): a session with one is busy.</summary>
     private readonly Dictionary<string, int> _registering = new(StringComparer.Ordinal);
     private readonly HashSet<ValueKey> _watched = [];
+
+    /// <summary><see cref="_watched"/> by device: a device's status event marks only its own keys (no walk over every key).</summary>
+    private readonly Dictionary<Guid, List<ValueKey>> _watchedByDevice = [];
     private readonly HashSet<ValueKey> _dirty = [];
     private readonly Dictionary<Guid, Dictionary<string, string>> _deviceProblems = [];
     private readonly Dictionary<Guid, string> _offlineSites = [];
@@ -154,6 +157,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             _sessionJobs.Clear();
             _watchers.Clear();
             _watched.Clear();
+            _watchedByDevice.Clear();
             _dirty.Clear();
             _deviceProblems.Clear();
             _offlineSites.Clear();
@@ -541,9 +545,14 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     private void MarkDevice(Guid device, Func<ValueKey, bool> match)
     {
-        foreach (var key in _watched)
+        if (!_watchedByDevice.TryGetValue(device, out var keys))
         {
-            if (key.DeviceId == device && match(key))
+            return;
+        }
+
+        foreach (var key in keys)
+        {
+            if (match(key))
             {
                 _dirty.Add(key);
             }
@@ -1010,9 +1019,23 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private void RebuildWatched()
     {
         _watched.Clear();
+        _watchedByDevice.Clear();
         foreach (var watcher in _watchers.Values)
         {
             _watched.UnionWith(watcher.Keys);
+        }
+
+        foreach (var key in _watched)
+        {
+            if (key.DeviceId is { } device)
+            {
+                if (!_watchedByDevice.TryGetValue(device, out var keys))
+                {
+                    _watchedByDevice[device] = keys = [];
+                }
+
+                keys.Add(key);
+            }
         }
 
         _dirty.IntersectWith(_watched);

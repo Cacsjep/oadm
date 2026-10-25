@@ -479,12 +479,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         if (!_registry.TryGetCorePlugin(pluginId, out var registered))
         {
-            if (_registry.AllCorePlugins.FirstOrDefault(c => string.Equals(c.Id, pluginId, StringComparison.OrdinalIgnoreCase)) is { } off)
-            {
-                throw new InvalidOperationException($"The {off.Origin.DisplayName} plugin is turned off.");
-            }
-
-            throw new KeyNotFoundException($"Unknown core plugin '{pluginId}'.");
+            throw NotAvailableError(pluginId);
         }
 
         if (!_entries.TryGetValue(registered.Id, out var entry) || entry.State != CorePluginState.Running)
@@ -494,6 +489,16 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
         return (registered, entry);
     }
+
+    /// <summary>
+    /// Why a core plugin cannot be called now: <see cref="InvalidOperationException"/> when it is turned off,
+    /// <see cref="KeyNotFoundException"/> when there is none. PluginService answers with it when <see cref="AccessOf"/> found
+    /// no plugin, so a plugin turned on meanwhile is never called without its permission check.
+    /// </summary>
+    public Exception NotAvailableError(string pluginId) =>
+        _registry.AllCorePlugins.FirstOrDefault(c => string.Equals(c.Id, pluginId, StringComparison.OrdinalIgnoreCase)) is { } off
+            ? new InvalidOperationException($"The {off.Origin.DisplayName} plugin is turned off.")
+            : new KeyNotFoundException($"Unknown core plugin '{pluginId}'.");
 
     /// <summary>
     /// The access rule of a page method: the permission it needs, whether calls are audited

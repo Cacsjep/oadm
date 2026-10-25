@@ -67,7 +67,9 @@ OADM PRO can be tried for 30 days without going online: **Start 30-day trial** i
   install file knows it (an older backup restored on the same computer: still used, the earlier first day wins). A backup
   restored on another computer brings the record of another installation: the trial counts as used and does not run
   there (Expired, "The trial was used on another computer."); a license key still works there. An unreadable record
-  counts as used. The trial follows the server ID like a license, so a new server (new ID) can try PRO once.
+  counts as used. An `install.json` that exists but cannot be read is never taken for a missing one: the database's record
+  counts as this computer's (a running trial keeps running), and when OADM writes the file again it keeps the unreadable
+  one as `install.json.unreadable`. The trial follows the server ID like a license, so a new server (new ID) can try PRO once.
 - Starting raises `IProLicense.Changed` at once (PRO plugins turn on with the host's `PluginActivation.FollowPro`, the
   EST and 802.1X servers start when turned on and publish their switch state), and the hourly check ends it the same day.
 - Where: Settings > License (the button, secondary, with "Try OADM PRO free for 30 days. Once per server."; others see

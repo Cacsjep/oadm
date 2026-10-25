@@ -338,7 +338,8 @@ public interface IToolbarPlugin            // Oadm.Sdk.Client
 
 public interface IToolbarContext           // UI thread only; events are raised on the UI thread
 {
-    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }   event EventHandler? SelectionChanged;
+    IReadOnlyList<IDeviceInfo> SelectedDevices { get; }   event EventHandler? SelectionChanged;  // a new list per call
+    int SelectedCount { get; }                            // the count without a copy: enable buttons with it
     IReadOnlyList<IDeviceInfo> Devices { get; }           event EventHandler? DevicesChanged;
     IReadOnlyList<ToolbarTaskPlugin> TaskPlugins { get; } event EventHandler? TaskPluginsChanged;
     bool CanRunTask(string pluginId);                     // CanRun for the whole selection
@@ -389,7 +390,7 @@ public sealed class SampleToolbarPlugin : IToolbarPlugin
     public Control CreateControl(IToolbarContext ctx)
     {
         var button = new ToolbarButton { IconKey = "plugin" };
-        void Update() { button.Text = $"Sample ({ctx.SelectedDevices.Count})"; button.IsEnabled = ctx.SelectedDevices.Count > 0; }
+        void Update() { button.Text = $"Sample ({ctx.SelectedCount})"; button.IsEnabled = ctx.SelectedCount > 0; }
         ctx.SelectionChanged += (_, _) => Update();
         button.Click += async (_, _) => await ctx.RunTaskAsync("oadm.sample.standalone", CancellationToken.None);
         Update();

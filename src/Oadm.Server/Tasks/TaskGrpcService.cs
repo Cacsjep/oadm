@@ -47,8 +47,14 @@ public sealed partial class TaskGrpcService(
         var deviceId = GrpcGuard.ParseId(request.DeviceId, "device id");
         var caller = AuthInterceptor.CallerOf(context); // fail closed: never "no caller = any device"
 
-        // The dialog's reads: any permission of the task (a role that may run some of its choices opens the dialog).
-        if (registry.TryGetTaskPlugin(request.PluginId, out var plugin) && !caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
+        // The dialog's reads: any permission of the task (a role that may run some of its choices opens the dialog). A plugin
+        // the lookup does not find answers at once (never queried unchecked when it is turned on meanwhile).
+        if (!registry.TryGetTaskPlugin(request.PluginId, out var plugin))
+        {
+            throw GrpcGuard.NotFound(UnknownTaskPlugin(request.PluginId));
+        }
+
+        if (!caller.Permissions.HasAny(PermissionCatalog.TaskKeys(plugin.Plugin)))
         {
             throw new RpcException(new Status(StatusCode.PermissionDenied, AccessPolicy.DeniedMessage(PermissionCatalog.TaskKeys(plugin.Plugin)[0], roles.Catalog)));
         }
@@ -121,6 +127,8 @@ public sealed partial class TaskGrpcService(
         return reply;
     }
 
+    private static string UnknownTaskPlugin(string pluginId) => $"Unknown task plugin '{pluginId}'.";
+
     /// <summary>One task per device of the caller's view; any device outside it (or unknown) refuses the whole run.</summary>
     public override async Task<Proto.RunTaskReply> Run(Proto.RunTaskRequest request, ServerCallContext context)
     {
@@ -128,13 +136,16 @@ public sealed partial class TaskGrpcService(
         var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
         var caller = AuthInterceptor.CallerOf(context);
 
-        // Every permission this run needs (from its payload), before any task is created.
-        if (registry.TryGetTaskPlugin(request.PluginId, out var task))
+        // Every permission this run needs (from its payload), before any task is created. A plugin the lookup does not find
+        // answers at once: one turned on meanwhile never runs without this check.
+        if (!registry.TryGetTaskPlugin(request.PluginId, out var task))
         {
-            foreach (var key in PermissionCatalog.RunKeys(task.Plugin, payload))
-            {
-                AuthInterceptor.Require(key, roles.Catalog);
-            }
+            throw GrpcGuard.NotFound(UnknownTaskPlugin(request.PluginId));
+        }
+
+        foreach (var key in PermissionCatalog.RunKeys(task.Plugin, payload))
+        {
+            AuthInterceptor.Require(key, roles.Catalog);
         }
 
         var view = await views.ForAsync(context).ConfigureAwait(false);

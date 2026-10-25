@@ -378,6 +378,7 @@ public sealed partial class PoliciesViewModel : ObservableObject
             _selecting = false;
         }
 
+        _role = (IsShown, MayManage);
         OnPropertyChanged(nameof(MayManage));
         OnPropertyChanged(nameof(CreateTip));
         OnPropertyChanged(nameof(KindChoices));
@@ -389,13 +390,45 @@ public sealed partial class PoliciesViewModel : ObservableObject
         row.Warning
         ?? (PolicyKinds.IsIssuing(row.Policy.Kind) && !issuing.Contains(row.Policy.CaId ?? CertificateAuthorityInfo.OadmId) ? PolicyTexts.CannotIssue : null);
 
+    /// <summary>
+    /// The user's role or device group changed. The open form stays (with its changes) unless what the user may do here
+    /// changed: the tab hidden closes it, losing Manage makes a stored policy's form read only and closes a new one.
+    /// </summary>
     internal void NotifyRole()
     {
+        (bool Shown, bool Manage) role = (IsShown, MayManage);
+        if (_role == role)
+        {
+            return; // another role, or a group that leaves the tab as it was: nothing typed is lost
+        }
+
+        bool onlyManage = _role is { } before && before.Shown == role.Shown && role.Shown;
+        _role = role;
         OnPropertyChanged(nameof(IsShown));
         OnPropertyChanged(nameof(MayManage));
-        ClosePanel(); // the open form follows the role
-        Apply(IsShown ? _list : new PolicyList()); // nothing server-wide stays for a user limited to a group
+        if (!onlyManage)
+        {
+            ClosePanel();
+            Apply(IsShown ? _list : new PolicyList()); // nothing server-wide stays for a user limited to a group
+            return;
+        }
+
+        if (!role.Manage && (IsChoosingKind || Editor is { IsNew: true }))
+        {
+            ClosePanel(); // a new policy cannot be created any more
+        }
+        else if (Editor is { } editor)
+        {
+            editor.ReadOnly = !role.Manage;
+        }
+
+        OnPropertyChanged(nameof(CreateTip));
+        OnPropertyChanged(nameof(KindChoices));
+        CreateCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>What the role allowed when the tab last followed it (<see cref="NotifyRole"/>).</summary>
+    private (bool Shown, bool Manage)? _role;
 
     // ------------------------------------------------------------------ opening and closing
 

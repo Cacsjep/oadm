@@ -44,9 +44,33 @@ public sealed class ServerSwitchViewModelTests
         Assert.True(vm.Running);
     }
 
+    [Fact]
+    public async Task Start_trial_shows_its_progress_while_the_server_starts_the_trial()
+    {
+        var trial = new TaskCompletionSource<Oadm.Sdk.Licensing.ProLicenseInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var vm = new ServerSwitchViewModel(new Context((_, _) => Task.FromResult<string?>(null)) { Trial = trial.Task },
+            "oadm.est", "EST server", "Cameras stop renewing.");
+        vm.Apply(new ServerSwitchState(On: false, Running: false, ProActive: false, "Needs an OADM PRO license or trial.", TrialAvailable: true));
+        Assert.True(vm.ShowStartTrial);
+
+        var starting = vm.StartTrialCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsBusy);
+        Assert.Equal(ServerSwitchViewModel.StartingTrialText, vm.BusyText);
+        trial.SetResult(new Oadm.Sdk.Licensing.ProLicenseInfo(Oadm.Sdk.Licensing.ProLicenseStatus.Active, "Trial"));
+        await starting;
+        Assert.False(vm.IsBusy);
+    }
+
     private sealed class Context(Func<string, string?, Task<string?>> answer) : ICorePluginClientContext
     {
         public IReadOnlyList<IDeviceInfo> Devices { get; } = [];
+
+        public bool IsAdministrator => true;
+
+        public Task<Oadm.Sdk.Licensing.ProLicenseInfo>? Trial { get; init; }
+
+        public Task<Oadm.Sdk.Licensing.ProLicenseInfo> StartProTrialAsync(CancellationToken ct) => Trial ?? throw new NotSupportedException();
 
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => answer(method, payloadJson);
     }

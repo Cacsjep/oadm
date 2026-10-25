@@ -16,6 +16,9 @@ public sealed class FakePluginJobs : IPluginJobs
     /// <summary>Every job started, any user.</summary>
     public IReadOnlyCollection<IPluginJob> All => [.. _jobs.Values];
 
+    /// <summary>Thrown by the next starts instead of a job (the host refuses one, e.g. too many jobs of the user); null: jobs start.</summary>
+    public Exception? StartFailure { get; set; }
+
     /// <inheritdoc />
     public IPluginJob Start(ICallContext owner, string kind, Func<IPluginJob, CancellationToken, Task> work) => Start(owner, kind, work, shared: false);
 
@@ -26,6 +29,11 @@ public sealed class FakePluginJobs : IPluginJobs
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(work);
+        if (StartFailure is { } failure)
+        {
+            throw failure;
+        }
+
         var job = new Job(Guid.NewGuid().ToString("N"), kind, owner, shared);
         _jobs[job.Id] = job;
         job.Run(work);

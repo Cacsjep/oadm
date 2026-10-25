@@ -75,8 +75,9 @@ an independent security review the same day). A user may be limited to part of t
   job until it runs again (`PluginJobRegistry.CancelPlugin` / `Resume`; a call still running then is refused). A row event
   is parsed once for every group watcher. A job started in a call whose user's devices, role
   or session changed after the call began is refused ("Your devices changed. Connect again.").
-  When the owner's devices change (another group, new rules of the group, another role) the owner's own jobs end and are
-  forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
+  When the owner's devices change (another group, new rules of the group, another role, or the owner's role got or lost a
+  permission: `RoleStore.PermissionsChanged`, `PluginJobRegistry.CancelRoles`; never a rename or the catalog sync of a new
+  plugin) the owner's own jobs end and are forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
   of the group (tag, site, add, remove; the coalesced `HostDeviceScopes.Changed`) the finished jobs of its users are
   forgotten (a Snapshot Report PDF, an event list read) and the running ones when they end. Tasks a call or a job
   starts through `call.Tasks` belong to the caller (`TaskEngine.ForView`: owner, queue check, `ITaskExecutionContext.Caller`).
@@ -199,7 +200,9 @@ an independent security review the same day). A user may be limited to part of t
   out for a server before device groups (UNIMPLEMENTED).
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary. For an
   administrator the field is locked and shows what the account stores (a group stays stored and applies once the role
-  changes); every role change below Administrator sends the Devices choice the form shows.
+  changes); every role change below Administrator sends the Devices choice the form shows. A chosen group deleted while
+  the form is open leaves the field empty with "Choose All devices or a device group." below it (Add and Edit), never All
+  devices.
 - Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
   `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
   `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md),

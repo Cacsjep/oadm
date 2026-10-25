@@ -46,6 +46,50 @@ public sealed partial class ActionRulesPlugin
         _deviceEvents[deviceId] = key;
     }
 
+    /// <summary>Shared event lists and template sets in memory (tests).</summary>
+    internal (int EventLists, int TemplateSets) CacheCounts => (_eventLists.Count, _templateSets.Count);
+
+    /// <summary>
+    /// After a sweep: forgets the events of devices no table has a row of, then every event list and template set no device or
+    /// row refers to. Skipped while a sweep still reads (its rows are not all there yet).
+    /// </summary>
+    internal void PruneCaches()
+    {
+        var sweeps = _sweeps?.All ?? [];
+        if (sweeps.Any(s => s.IsRunning))
+        {
+            return; // the last sweep to finish prunes
+        }
+
+        var rows = sweeps.SelectMany(s => s.Snapshot().Rows).ToList();
+        var devices = rows.Select(r => r.DeviceId).ToHashSet();
+        foreach (var device in _deviceEvents.Keys)
+        {
+            if (!devices.Contains(device))
+            {
+                _deviceEvents.TryRemove(device, out _);
+            }
+        }
+
+        var lists = _deviceEvents.Values.ToHashSet(StringComparer.Ordinal);
+        foreach (var key in _eventLists.Keys)
+        {
+            if (!lists.Contains(key))
+            {
+                _eventLists.TryRemove(key, out _);
+            }
+        }
+
+        var templates = rows.Select(r => r.TemplateSetId).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        foreach (var id in _templateSets.Keys)
+        {
+            if (!templates.Contains(id))
+            {
+                _templateSets.TryRemove(id, out _);
+            }
+        }
+    }
+
     private static bool IsScheduleTopic(string topic) => RuleText.Topic(topic).StartsWith("tns1:UserAlarm/tnsaxis:Recurring", StringComparison.Ordinal);
 
     /// <summary>The events of the devices merged by topic, with the values every device lists for each item.</summary>

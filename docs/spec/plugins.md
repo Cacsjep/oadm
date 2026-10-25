@@ -97,7 +97,7 @@ returns null or throws `NotSupportedException`.
   0.4.0; older packages keep working for users with all devices. Test fakes: `Oadm.Sdk.Testing.FakeCallContext`
   (`AllDevices`, `WithGroup`, `Refused`; `Over`, `OverGroup` over a test's own device and VAPIX fakes; task
   `IsActive` / `Cancel` / `AnyActiveAsync` like the host, also over a test's own runner: unknown and ended tasks false; a
-  cancelled task of `FakeCoreContext` ends at once, the host's when its run stops), `FakePluginJobs`, `FakeDeviceScopes` (also over a test's own
+  cancelled task of `FakeCoreContext` ends at once, the host's when its run stops), `FakePluginJobs` (`StartFailure`: a start the host refuses), `FakeDeviceScopes` (also over a test's own
   device list), `FakeCoreContext.EndTask` (its tasks stay active until then), `FakeCoreContext.CallAsGroup` /
   `CallAsAllDevices`.
 - **Host side of the call context** (`src/Oadm.Core/Plugins/PluginCalls.cs`, `CorePluginHost`, `PluginGrpcService`):
@@ -218,7 +218,8 @@ the UI thread.
   comes closes the host's windows. Older hosts ignore `TabOf` (every page in the rail). First user: PKI with the 802.1X
   and EST servers (`MainWindowViewModel` `TabPages`, tests `Oadm.Client.Tests` `PluginTabTests`).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
-  the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
+  the entry hides while the role lacks it) with `IToolbarContext` (selection: `SelectedDevices`, a copy per call, and `SelectedCount` without one for
+  enabling buttons; devices, task plugins, `CanRunTask` /
   `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
   `UploadAsync`, `InvokePluginAsync`, `Has` + `PermissionsChanged`, messages).
 

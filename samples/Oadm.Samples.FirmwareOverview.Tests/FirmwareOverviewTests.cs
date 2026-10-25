@@ -49,6 +49,20 @@ public sealed class FirmwareOverviewTests
     }
 
     [Fact]
+    public async Task A_read_the_host_refuses_to_start_leaves_the_table_ready_for_the_next_one()
+    {
+        var (plugin, server) = await StartAsync(("10.0.0.48", DeviceStatus.Ok, "12.11.77"));
+        server.FakeJobs.StartFailure = new InvalidOperationException("Too many jobs.");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, [])));
+        Assert.False((await NextStateAsync(server, s => !s.Reading)).Reading);
+
+        server.FakeJobs.StartFailure = null;
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, [])); // not "being read already"
+        Assert.Single((await NextStateAsync(server, s => !s.Reading && s.Rows.Count > 0)).Rows);
+    }
+
+    [Fact]
     public async Task An_unknown_method_is_refused()
     {
         var (plugin, server) = await StartAsync();

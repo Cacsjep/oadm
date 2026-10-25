@@ -75,6 +75,7 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         var payload = Validate(ActionRulesJson.Deserialize<RuleTaskPayload>(payloadJson));
         var gate = _owner?.DeviceGate(device.Id);
         var held = false;
+        var bound = false; // the run let this task in: only then does its end count for the run
         Run? run = null;
         try
         {
@@ -83,6 +84,8 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
             {
                 throw new ArgumentException(refusal); // before the device is read or written
             }
+
+            bound = true;
 
             if (gate is not null)
             {
@@ -137,7 +140,8 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
                 gate!.Release();
             }
 
-            if (_owner is not null)
+            // A refused task (another run's id named by hand) neither ends a task of that run nor read the device.
+            if (_owner is not null && bound)
             {
                 _owner.TaskEnded(payload.RunId);
                 await _owner.RefreshRowAsync(device.Id).ConfigureAwait(false);

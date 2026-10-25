@@ -75,6 +75,48 @@ public sealed class ReportJobLifetimeTests
     }
 
     [Fact]
+    public async Task One_user_keeps_at_most_four_finished_reports_and_the_oldest_goes_first()
+    {
+        var (ctx, camera, _) = Setup();
+        var time = new FakeTimeProvider();
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix, timeout: TimeSpan.FromHours(1));
+        using var reports = new ReportJobs(service, time);
+        var admin = ctx.CallAsAllDevices();
+        var ids = new List<string>();
+        for (var i = 0; i < ReportJobs.MaxFinishedPerUser + 1; i++)
+        {
+            var started = await reports.StartAsync(admin, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
+            await Testing.Eventually.TrueAsync(() => reports.Status(admin, ctx.FakeJobs, started.JobId).State == ReportJobStates.Done, "the report is ready");
+            ids.Add(started.JobId);
+            time.Advance(TimeSpan.FromSeconds(1)); // finished one after the other
+        }
+
+        await Testing.Eventually.TrueAsync(() => reports.Count == ReportJobs.MaxFinishedPerUser, "the oldest report was dropped");
+        Assert.Throws<KeyNotFoundException>(() => reports.Status(admin, ctx.FakeJobs, ids[0]));
+        Assert.All(ids.Skip(1), id => Assert.Equal(ReportJobStates.Done, reports.Status(admin, ctx.FakeJobs, id).State));
+    }
+
+    [Fact]
+    public async Task Finished_reports_beyond_the_byte_budget_drop_the_oldest_but_never_the_one_that_just_finished()
+    {
+        var (ctx, camera, _) = Setup();
+        var time = new FakeTimeProvider();
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix, timeout: TimeSpan.FromHours(1));
+        using var reports = new ReportJobs(service, time, maxFinishedBytes: 1); // every PDF is larger
+        var first = ctx.CallAsAllDevices();
+        var second = ctx.CallAsAllDevices("other");
+        var theirs = await reports.StartAsync(first, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
+        await Testing.Eventually.TrueAsync(() => reports.Status(first, ctx.FakeJobs, theirs.JobId).State == ReportJobStates.Done, "the first report is ready");
+        Assert.Equal(1, reports.Count); // alone over the budget: kept
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        var mine = await reports.StartAsync(second, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
+        await Testing.Eventually.TrueAsync(() => reports.Status(second, ctx.FakeJobs, mine.JobId).State == ReportJobStates.Done, "the second report is ready");
+        await Testing.Eventually.TrueAsync(() => reports.Count == 1, "the older report was dropped");
+        Assert.Throws<KeyNotFoundException>(() => reports.Status(first, ctx.FakeJobs, theirs.JobId));
+    }
+
+    [Fact]
     public async Task A_start_that_fails_after_the_job_started_leaves_no_job_waiting()
     {
         var (ctx, camera, _) = Setup();

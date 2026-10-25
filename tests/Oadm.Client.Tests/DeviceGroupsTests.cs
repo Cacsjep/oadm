@@ -167,6 +167,22 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public void Select_all_takes_excepted_devices_back_and_never_lists_a_device_as_chosen_and_excepted()
+    {
+        var initial = new DeviceGroupChoice(false, [SiteB], [], [], ["ACCC8E000003"]);
+        var picker = new DevicePickerViewModel(Devices(), initial, Options);
+        Assert.True(picker.Visible.Single(i => i.Address == "192.168.0.3").IsExcepted);
+
+        picker.SelectAllCommand.Execute(null);
+
+        DeviceGroupChoice choice = picker.GroupChoice;
+        Assert.Contains("ACCC8E000003", choice.Serials);
+        Assert.Empty(choice.ExceptSerials);
+        Assert.Empty(choice.Serials.Intersect(choice.ExceptSerials));
+        Assert.Equal("6 of 6 devices", picker.Summary);
+    }
+
+    [Fact]
     public void The_other_picker_modes_stay_as_they_were()
     {
         var picker = new DevicePickerViewModel(Devices(), DeviceChoice.Devices([], ["PTZ"]), DevicePickerOptions.Full());
@@ -308,6 +324,36 @@ public sealed class DeviceGroupsTests
         Assert.Null(users.EditDevices);
         Assert.Equal("Choose All devices or a device group.", users.FormBlockedReason);
         Assert.False(users.SaveFormCommand.CanExecute(null));
+        users.CloseForm();
+    }
+
+    [Fact]
+    public async Task A_new_users_group_deleted_meanwhile_leaves_no_choice_instead_of_all_devices()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance);
+        await users.LoadAsync();
+
+        users.OpenAddCommand.Execute(null);
+        users.NewUserName = "lobby-only";
+        users.NewPassword = "Lobby-only-pass-1";
+        users.NewDevices = users.DeviceOptions.Single(o => o.Title == "Head office");
+        await users.DeviceGroups.DeleteCommand.ExecuteAsync(users.DeviceGroups.Groups.Single(g => g.Name == "Head office"));
+        await TestSupport.WaitUntilAsync(() => users.DeviceOptions.All(o => o.Title != "Head office"));
+
+        Assert.Null(users.NewDevices);
+        Assert.Equal(DeviceGroupWords.ChooseDevices, users.ErrorOf(nameof(users.NewDevices)));
+        Assert.False(users.SaveFormCommand.CanExecute(null));
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(await api.ListUsersAsync(CancellationToken.None), u => u.UserName == "lobby-only");
+
+        // An unchosen All devices stays All devices.
+        users.NewDevices = DeviceAccessOption.All;
+        await users.DeviceGroups.DeleteCommand.ExecuteAsync(users.DeviceGroups.Groups.Single(g => g.Name == "Lobby"));
+        await TestSupport.WaitUntilAsync(() => users.DeviceOptions.All(o => o.Title != "Lobby"));
+        Assert.Equal(DeviceAccessOption.All, users.NewDevices);
         users.CloseForm();
     }
 
@@ -503,6 +549,14 @@ public sealed class DeviceGroupsTests
             // The Devices column: right-aligned like every numeric column (docs/spec/security.md).
             Assert.Contains(page.GetVisualDescendants().OfType<TextBlock>(), t => t.Classes.Contains("numberHeader") && t.Text == "Devices");
             Assert.Contains(groups.Groups.Single(g => g.Name == "Building B").DeviceCountText, texts);
+            // Row actions: one ⋯ menu (Fluent rule), Edit then Delete in red; no red icon-only button.
+            Assert.Contains(page.GetVisualDescendants().OfType<Button>(), b => Equals(ToolTip.GetTip(b), RowActions.Tip) && b.IsEffectivelyVisible);
+            Assert.DoesNotContain(view.GetVisualDescendants().OfType<DeviceGroupsCardView>().Single().GetVisualDescendants().OfType<Button>(),
+                b => b.Classes.Contains("iconOnly") && b.Classes.Contains("danger"));
+            IReadOnlyList<IssuedCertificateAction> actions = groups.RowActionsOf(groups.Groups.Single(g => g.Name == "Building B"));
+            Assert.Equal(["Edit", "-", "Delete"], actions.Select(a => a.Text));
+            Assert.True(actions[2].IsDanger);
+            Assert.Same(groups.DeleteCommand, actions[2].Command);
             Capture(page, outDir, "client-device-groups-card.png");
             page.Close();
 

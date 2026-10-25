@@ -316,6 +316,22 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task JobsEndWhenTheRoleTheirOwnerHasIsChanged()
+    {
+        await using var rig = await RigAsync();
+        rig.Plugin.HoldJobs = true;
+        await rig.InvokeAsync(rig.Anna, "job.start", null);
+        await rig.InvokeAsync(rig.Admin, "job.start", null);
+        Assert.Equal(2, rig.Host.Jobs.RunningCount(PluginId));
+
+        rig.Host.Jobs.CancelRoles([BuiltInRoles.AdministratorId]); // another role: nothing ends
+        Assert.Equal(2, rig.Host.Jobs.RunningCount(PluginId));
+
+        rig.Host.Jobs.CancelRoles([BuiltInRoles.OperatorId]); // both users have it
+        await Eventually.TrueAsync(() => rig.Host.Jobs.RunningCount(PluginId) == 0, "the jobs of the role's users ended");
+    }
+
+    [Fact]
     public async Task ACancelCallbackOfThePluginThatThrowsNeverEscapesTheHostsEvents()
     {
         await using var rig = await RigAsync();

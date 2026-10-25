@@ -38,6 +38,20 @@ public sealed class RunTrackingTests(ITestOutputHelper output) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_refused_task_naming_another_run_does_not_count_as_one_of_its_tasks()
+    {
+        var run = await DeleteOnAsync(2);
+        Assert.Equal(2, _plugin.OpenTasksOf(run.RunId));
+
+        // Started by hand with the run's id: an undo of a run that Undo never marked is refused before anything is read.
+        var forged = new RuleTaskPayload(RuleTaskActions.Undo, run.RunId, "Undo", [new DeviceTargets(_devices.Items[0].Id, [new RuleRef("1", "a")])], null, UndoOf: run.RunId);
+        var task = (RuleTaskPlugin)_plugin.TaskPlugins[0];
+        await Assert.ThrowsAsync<ArgumentException>(() => task.ExecuteAsync(new RecordingContext(new RuleCamera()), _devices.Items[0], ActionRulesJson.Serialize(forged), CancellationToken.None));
+
+        Assert.Equal(2, _plugin.OpenTasksOf(run.RunId)); // the run still waits for both of its tasks
+    }
+
+    [Fact]
     public async Task A_task_end_never_asks_the_task_engine_and_the_last_one_ends_the_run()
     {
         var run = await DeleteOnAsync(3);

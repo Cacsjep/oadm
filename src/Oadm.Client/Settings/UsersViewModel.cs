@@ -457,7 +457,9 @@ public sealed partial class UsersViewModel : ValidatingViewModel
             return;
         }
 
-        if (NewRole is null)
+        // No fallback to All devices: a choice that vanished (its group was deleted) blocks until a new one is made.
+        DeviceAccessOption? devices = NewRole?.Kind == RoleKind.Administrator ? DeviceAccessOption.All : NewDevices;
+        if (NewRole is null || devices is null)
         {
             return;
         }
@@ -465,7 +467,6 @@ public sealed partial class UsersViewModel : ValidatingViewModel
         try
         {
             var request = new AddUserRequest { UserName = NewUserName.Trim(), Password = NewPassword, RoleId = NewRole.Id };
-            DeviceAccessOption devices = NewRole.Kind == RoleKind.Administrator ? DeviceAccessOption.All : NewDevices ?? DeviceAccessOption.All;
             request.AllDevices = devices.IsAll;
             if (!devices.IsAll)
             {
@@ -609,10 +610,24 @@ public sealed partial class UsersViewModel : ValidatingViewModel
     private void OnGroupsChanged()
     {
         DeviceOptions = [DeviceAccessOption.All, .. DeviceGroups.Groups.Select(g => new DeviceAccessOption(g.Id, g.Name))];
-        NewDevices = DeviceOptions.FirstOrDefault(o => o.GroupId == NewDevices?.GroupId) ?? DeviceAccessOption.All;
+        // A chosen group that was deleted meanwhile leaves no choice (never All devices); the field says so below it.
+        if (NewDevices is { } chosen)
+        {
+            NewDevices = DeviceOptions.FirstOrDefault(o => o.GroupId == chosen.GroupId);
+            if (NewDevices is null)
+            {
+                Validation.Touch(nameof(NewDevices));
+            }
+        }
+
         if (EditTarget is { } row)
         {
+            bool hadChoice = EditDevices is not null;
             EditDevices = EditDevices is null ? CurrentDevices(row) : DeviceOptions.FirstOrDefault(o => o.GroupId == EditDevices.GroupId);
+            if (hadChoice && EditDevices is null)
+            {
+                Validation.Touch(nameof(EditDevices));
+            }
         }
     }
 

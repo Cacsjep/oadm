@@ -83,7 +83,10 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(TurnOnCommand), nameof(TurnOffCommand), nameof(StartTrialCommand))]
     public partial bool IsBusy { get; private set; }
 
-    /// <summary>"Starting the EST server" / "Stopping the EST server" while a Turn on or Turn off runs (its progress row).</summary>
+    /// <summary>The progress row while Start 30-day trial runs.</summary>
+    public const string StartingTrialText = "Starting the trial";
+
+    /// <summary>"Starting the EST server" / "Stopping the EST server" while a Turn on or Turn off runs (its progress row), <see cref="StartingTrialText"/> for the trial.</summary>
     [ObservableProperty]
     public partial string? BusyText { get; private set; }
 
@@ -216,6 +219,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanStartTrial))]
     private async Task StartTrialAsync()
     {
+        BusyText = StartingTrialText;
         IsBusy = true;
         Error = null;
         try

@@ -75,6 +75,33 @@ public sealed class ProTrialTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AnUnreadableInstallFileKeepsTheRunningTrialAndIsKeptWhenWrittenAgain()
+    {
+        var folder = Folder("a");
+        using (var license = NewLicense(dataDirectory: folder))
+        {
+            await license.InitializeAsync(CancellationToken.None);
+            await license.StartTrialAsync(CancellationToken.None);
+        }
+
+        var file = Path.Combine(folder, ProLicense.InstallFileName);
+        await File.WriteAllTextAsync(file, "{ not json");
+
+        // Not like a missing file: the trial the database recorded still runs.
+        using var restarted = NewLicense(dataDirectory: folder);
+        await restarted.InitializeAsync(CancellationToken.None);
+        Assert.Equal((ProLicenseStatus.Active, true, false), (restarted.Current.Status, restarted.Current.IsTrial, restarted.Current.TrialAvailable));
+
+        // A new database on this computer: the trial starts and the unreadable file is kept next to the new one.
+        await using var fresh = await TestDatabase.CreateAsync();
+        using var other = NewLicense(fresh, folder);
+        await other.InitializeAsync(CancellationToken.None);
+        await other.StartTrialAsync(CancellationToken.None);
+        Assert.Equal("{ not json", await File.ReadAllTextAsync(file + ProLicense.UnreadableSuffix));
+        Assert.Contains(Server, await File.ReadAllTextAsync(file), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task AnImportedLicenseWinsOverTheTrial()
     {
         using var license = NewLicense();

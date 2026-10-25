@@ -315,15 +315,18 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         return total;
     }
 
-    /// <summary>Checks the permission of a page method (Invoke, Download); returns its access rule.</summary>
-    private CorePluginMethodAccess? Authorize(Proto.InvokeRequest request)
+    /// <summary>
+    /// Checks the permission of a page method (Invoke, Download); returns its access rule. A plugin the lookup does not find
+    /// answers at once (NOT_FOUND, or FAILED_PRECONDITION when turned off): one turned on meanwhile is never called unchecked.
+    /// </summary>
+    private CorePluginMethodAccess Authorize(Proto.InvokeRequest request)
     {
-        var access = host.AccessOf(request.PluginId, request.Method);
+        var access = host.AccessOf(request.PluginId, request.Method) ?? throw ToRpc(request.PluginId, host.NotAvailableError(request.PluginId));
         if (access is { AdminOnly: true })
         {
             Auth.AuthInterceptor.RequireAdmin();
         }
-        else if (access?.Permission is { } permission)
+        else if (access.Permission is { } permission)
         {
             Auth.AuthInterceptor.Require(permission, roles.Catalog);
         }

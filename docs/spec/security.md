@@ -20,8 +20,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   with the master key, purpose `oadm:server-tls`). On Windows the key is instead one persisted named CNG key "OADM Server
   TLS <hash of the data folder>" (machine key store as a service, else the user store; not exportable; opened by name on
   every start, overwritten on regenerate) and the file holds its name. A key that cannot be read (e.g. after a master key
-  replacement) creates a new certificate and logs that clients must use Forget server. `--Oadm:RegenerateTlsCertificate`
-  makes a new one.
+  replacement) creates a new certificate and logs that clients must use Forget server. On Windows the key name follows the
+  data folder's path: a moved or copied data folder gets a new certificate, with the same warning in the log ("belongs to
+  another data folder"; clients show "The server certificate changed"). `--Oadm:RegenerateTlsCertificate` makes a new one.
 - Kestrel serves HTTP/2 over TLS on the listen URL (default `https://0.0.0.0:5080`; an `http://` URL is accepted for tests
   and logs a warning; a stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the https default). The
   server binds to all interfaces so clients on other machines can connect.
@@ -170,8 +171,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   a device group view the NTP server, DHCP server and PKI pages but cannot change them." (`DeviceGroupWords`, also in
   the role dialog); a user without devices must get a choice before Save. **Device groups card** right of or below the users (see the layout above)
   (`DeviceGroupsCardView`, `DeviceGroupsViewModel`, `DeviceGroupService`): Group (description as tooltip), Rules ("Site
-  Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, row
-  Edit and Delete (red; the confirmation names the users who have no devices afterwards). New and Edit open the group
+  Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, the
+  row menu `ui:RowActions` Edit and Delete (red, last; the confirmation names the users who have no devices afterwards). New and Edit open the group
   editor (`DeviceGroupEditorViewModel`, `DeviceGroupFormView.CreateWindow`): the shared device picker in its group mode
   with Name and Description (Optional) on top; the device list is built off the UI thread; Save sends the rules with the
   revision the editor started from; name errors below the name, refusals of the rules (too many, changed meanwhile)

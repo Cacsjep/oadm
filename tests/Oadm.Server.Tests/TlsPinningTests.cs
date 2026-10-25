@@ -21,7 +21,7 @@ namespace Oadm.Server.Tests;
 /// <summary>The real Kestrel endpoint over TLS with the server's own certificate and the client's trust on first use.</summary>
 public sealed class TlsPinningTests
 {
-    private static async Task<(WebApplication App, Uri Address, string DataDirectory)> StartTlsServerAsync(string? dataDirectory = null)
+    private static async Task<(WebApplication App, Uri Address, string DataDirectory)> StartTlsServerAsync(string? dataDirectory = null, Action<IServiceCollection>? more = null)
     {
         dataDirectory ??= TestServerHost.NewDataDirectory();
         var app = OadmServerHost.Build([], new OadmServerHostOptions
@@ -36,6 +36,7 @@ public sealed class TlsPinningTests
                 services.AddSingleton(new PasswordHasher(1_000));
                 services.RemoveAll<IMdnsBrowser>();
                 services.AddSingleton<IMdnsBrowser, SilentBrowser>();
+                more?.Invoke(services);
             },
         });
         await OadmServerHost.StartAsync(app);
@@ -224,6 +225,85 @@ public sealed class TlsPinningTests
             }
         }
     }
+
+    [Fact]
+    public async Task OnWindowsAMovedDataFolderGetsANewCertificateAndSaysSoInTheLog()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // Linux and macOS: the key is in server-tls.json and moves with the folder.
+        }
+
+        var original = TestServerHost.NewDataDirectory();
+        var moved = TestServerHost.NewDataDirectory();
+        string? originalKey = null;
+        try
+        {
+            var (first, _, _) = await StartTlsServerAsync(original);
+            var fingerprint = first.Services.GetRequiredService<ServerTlsCertificate>().Fingerprint;
+            originalKey = first.Services.GetRequiredService<ServerTlsCertificate>().KeyName;
+            await StopAsync(first, original, deleteData: false);
+            foreach (var file in Directory.GetFiles(original, "*", SearchOption.AllDirectories).Where(f => !f.Contains(Path.DirectorySeparatorChar + "logs" + Path.DirectorySeparatorChar, StringComparison.Ordinal)))
+            {
+                var target = Path.Combine(moved, Path.GetRelativePath(original, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target, overwrite: true);
+            }
+
+            var log = new RecordingLogger<ServerTlsCertificate>();
+            var (second, _, _) = await StartTlsServerAsync(moved, s => s.AddSingleton<Microsoft.Extensions.Logging.ILogger<ServerTlsCertificate>>(log));
+            Assert.NotEqual(fingerprint, second.Services.GetRequiredService<ServerTlsCertificate>().Fingerprint);
+            await StopAsync(second, moved, deleteData: false);
+
+            var warning = Assert.Single(log.Messages, m => m.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+            Assert.Contains("belongs to another data folder", warning.Text, StringComparison.Ordinal);
+            Assert.Contains("The server certificate changed", warning.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            foreach (var name in new[] { originalKey, originalKey is null ? null : KeyNameOf(moved) })
+            {
+                if (name is not null && System.Security.Cryptography.CngKey.Exists(name))
+                {
+                    using var key = System.Security.Cryptography.CngKey.Open(name);
+                    key.Delete();
+                }
+            }
+
+            SqliteConnection.ClearAllPools();
+            foreach (var folder in new[] { original, moved })
+            {
+                try
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
+                catch (IOException)
+                {
+                }
+                catch (UnauthorizedAccessException)
+                {
+                }
+            }
+        }
+    }
+
+    /// <summary>Records what one class logs (a closed <c>ILogger&lt;T&gt;</c> registration wins over the host's).</summary>
+    private sealed class RecordingLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Text)> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Enqueue((logLevel, formatter(state, exception)));
+    }
+
+    /// <summary>The Windows key name of a data folder (as <see cref="ServerTlsCertificate.KeyName"/> makes it).</summary>
+    private static string KeyNameOf(string dataDirectory) =>
+        "OADM Server TLS " + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(dataDirectory).ToUpperInvariant())))[..16];
 
     /// <summary>The certificate's private key is the persisted named CNG key; returns its key file name.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
