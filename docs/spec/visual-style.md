@@ -190,7 +190,7 @@ the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSourc
 frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
 dragged item lands, `ShowSelectionArea` a selection rectangle, `TileLayout.PlaceSized` the first free place of a size,
 `ITileGridSource.CopyText` the copy icon's tooltip; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
-Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles, the role columns of Permissions; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
 puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
 row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
 every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,
@@ -200,3 +200,8 @@ choices indented below them, like the event list of a device), `ICheckChoice` / 
 `PlaceholderText`, each entry a check box with an optional grey second line, a click keeps the list open;
 `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none; the NTP server's sites, the OADM Site Node app's
 networks).
+
+Shared controls of the client only (`src/Oadm.Client/Controls`): `PageTitleBar` (every host page header), `CollapsibleCard`
+(every card that folds: the Settings page; closed by default, opens by itself when an input inside shows a validation
+error), `TagChipList` (the tags of a device as chips), `LiveViewPanel` (the live view beside the device grid),
+`GridSelection` (a grid's multi-item selection to its view model in one step).
