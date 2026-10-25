@@ -10,6 +10,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - **EST server**: after the update from 4.1, EST certificates follow the built-in HTTPS and IEEE 802.1X policies (their
   days and key), not the values of the 4.1 profiles.
+- **Install certificates**: when some devices are reached over HTTP, the dialog says how many and asks you to confirm
+  before their private keys are sent unencrypted.
 
 ### Fixed
 

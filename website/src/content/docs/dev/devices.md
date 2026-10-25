@@ -21,6 +21,7 @@ sees each device as a read-only `IDeviceInfo` and talks to it through an `IVapix
 | `SiteId`, `SiteName` | The site OADM reaches the device through ("Building B"); null on the server's own network. Two sites may use the same addresses: key devices by `Id` |
 | `CredentialUserName` | The account OADM logs in with. Never remove or demote it. Never the password |
 | `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` | Network facts from the last full refresh; null while unknown |
+| `ConnectsOverHttps` | How OADM connects: false over HTTP, so what you send crosses the network unencrypted; null while unknown |
 | `CertNotAfterUtc`, `CertTrustName` | The HTTPS certificate's end date and its rating |
 
 The server polls every device's status every 60 s and reads everything else in a full refresh every 10 minutes, after

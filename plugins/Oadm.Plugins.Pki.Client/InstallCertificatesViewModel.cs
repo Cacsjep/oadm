@@ -156,7 +156,27 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
         : IsDot1x && !Policy.IsReady ? Policy.NotReadyReason
         : Files.Count == 0 ? "Choose the certificate files."
         : Files.Any(f => f.IsError) ? "Some files cannot be installed; see the Status column."
+        : HttpWarning is not null && !SendKeysOverHttp ? "Tick " + SendKeysText + "."
         : null;
+
+    /// <summary>The confirmation of <see cref="HttpWarning"/>.</summary>
+    public const string SendKeysText = "Send the keys anyway";
+
+    /// <summary>
+    /// HTTPS and IEEE 802.1X send each file with its private key and password to its device: "2 of the 3 devices that get a
+    /// file are reached over HTTP: their private keys cross the network unencrypted."; null when none is (or CA only).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasHttpWarning))]
+    public partial string? HttpWarning { get; private set; }
+
+    public bool HasHttpWarning => HttpWarning is not null;
+
+    /// <summary>The user ticked <see cref="SendKeysText"/>: Install runs although keys go over HTTP.</summary>
+    [ObservableProperty]
+    public partial bool SendKeysOverHttp { get; set; }
+
+    partial void OnSendKeysOverHttpChanged(bool value) => NotifyInstall();
 
     public bool CanInstall => InstallBlockedReason is null;
 
@@ -318,6 +338,12 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
         Summary = Files.Count == 0 ? "No files chosen."
             : string.Create(CultureInfo.InvariantCulture, $"{matched} of {Files.Count} files matched")
               + (without == 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" · {without:N0} selected devices get no certificate"));
+
+        // The keys go to the devices that get a file (one per device): those OADM reaches over HTTP, counted once (O(files)).
+        var overHttp = caOnly ? 0 : Files.Count(f => f.IsOk && f.Device?.ConnectsOverHttps == false);
+        HttpWarning = overHttp == 0 ? null
+            : withFile.Count == 1 ? "The device is reached over HTTP: its private key crosses the network unencrypted."
+            : string.Create(CultureInfo.InvariantCulture, $"{overHttp:N0} of the {withFile.Count:N0} devices that get a file are reached over HTTP: their private keys cross the network unencrypted.");
         NotifyInstall();
     }
 

@@ -997,8 +997,17 @@ made fresh in Check compatibility before the first write; the menus use the cach
 - **Install certificates, CA certificates only**: a file with a certificate that is not a CA certificate is refused, in
   the dialog's row ("Cannot be used") and again in "Read certificate file" ("&lt;file&gt;: &lt;name&gt; is not a CA
   certificate. Choose a file with CA certificates only. Nothing was changed.", `CertificateFiles.NotCaProblem`).
+- **Install certificates, keys over HTTP** (maintainer decision 2026-10-25, the CodeQL alert "sensitive data
+  transmission" is used as intended): HTTPS and IEEE 802.1X send each file with its private key and password to its
+  device. When OADM reaches some of the devices that get a file over HTTP (`IDeviceInfo.ConnectsOverHttps` false, from the
+  device's connection scheme), the dialog shows one line ("2 of the 3 devices that get a file are reached over HTTP: their
+  private keys cross the network unencrypted.") and the check box **Send the keys anyway**; Install stays disabled until
+  it is ticked ("Tick Send the keys anyway."). Never one question per device; counted once over the files (O(files));
+  nothing extra without an HTTP device or for CA certificates only. The task runs anyway and logs a Warning line per
+  device it sent a key to over HTTP ("cam48.pfx was sent with its private key over HTTP: unencrypted on the network.",
+  never the password or the key).
 - Tests: `TaskSafetyFixesTests` (REST and `FakeCamera.Legacy`), `DeviceSoapErrorTests`, `StoredCaUnreadableTests`,
-  `AuthorityTests` (Used by).
+  `AuthorityTests` (Used by), `KeysOverHttpTests` (none, some, all over HTTP; the task's warning).
 
 ## Not planned
 

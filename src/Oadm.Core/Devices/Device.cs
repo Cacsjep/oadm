@@ -36,6 +36,9 @@ public sealed class Device : IDeviceInfo
     public DeviceStatus Status { get; set; } = DeviceStatus.Unknown;
     public DeviceScheme Scheme { get; set; } = DeviceScheme.Https;
 
+    /// <summary>From <see cref="Scheme"/> (explicit: not a column).</summary>
+    bool? IDeviceInfo.ConnectsOverHttps => Scheme == DeviceScheme.Https;
+
     /// <summary>TOFU certificate fingerprint (hex SHA-256), null for HTTP devices.</summary>
     public string? CertFingerprintSha256 { get; set; }
 

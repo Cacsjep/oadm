@@ -64,6 +64,8 @@ internal sealed record PkiFakeDevice(Guid Id, string Address = "10.0.0.48", stri
 
     /// <summary>False: a user limited to a device group added it (no host names in its certificates).</summary>
     public bool AddedByAllDevices { get; init; } = true;
+
+    public bool? ConnectsOverHttps { get; init; } = true;
 }
 
 /// <summary>One request the fake received.</summary>

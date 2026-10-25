@@ -509,6 +509,11 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 ctx.Vapix, api, CertificateDeployment.NewAlias(CertificateDeployment.ImportAliasPrefix, Time), Convert.ToBase64String(pkcs12), password ?? string.Empty, ct).ConfigureAwait(false);
             step.Complete($"{alias} from {file.FileName}");
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" installed from {file.FileName}.");
+            if (string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                // The user confirmed it in the dialog ("Send the keys anyway"); never the password or the key in the log.
+                ctx.Log(TaskLogLevel.Warning, $"{file.FileName} was sent with its private key over HTTP: unencrypted on the network.");
+            }
             return alias;
         });
 }
