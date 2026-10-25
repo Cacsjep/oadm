@@ -45,7 +45,7 @@ public sealed class DeviceGroupGrpcService(DeviceGroupStore groups, DeviceViewFa
             var result = await groups.SaveAsync(id, request.Name, request.Description, RulesOf(request.Rules), request.Revision, ct).ConfigureAwait(false);
             if (result.Created || result.Changes.Length > 0)
             {
-                await audit.WriteAsync(result.Created ? AuditActions.DeviceGroupCreated : AuditActions.DeviceGroupChanged, result.Group.Name, result.Changes, ct).ConfigureAwait(false);
+                await audit.WriteAsync(result.Created ? AuditActions.DeviceGroupCreated : AuditActions.DeviceGroupChanged, result.Group.Name, result.Changes, CancellationToken.None).ConfigureAwait(false); // stored: always audited
             }
 
             return await InfoAsync(result.Group, ct).ConfigureAwait(false);
@@ -67,7 +67,7 @@ public sealed class DeviceGroupGrpcService(DeviceGroupStore groups, DeviceViewFa
                 result.UserNames.Count == 0 ? null : "no devices now: " + string.Join(", ", result.UserNames),
                 result.DisabledObjects.Count == 0 ? null : "turned off: " + string.Join(", ", result.DisabledObjects),
             }.OfType<string>());
-            await audit.WriteAsync(AuditActions.DeviceGroupDeleted, result.Name, detail, context.CancellationToken).ConfigureAwait(false);
+            await audit.WriteAsync(AuditActions.DeviceGroupDeleted, result.Name, detail, CancellationToken.None).ConfigureAwait(false); // deleted: always audited
             var reply = new Proto.DeleteDeviceGroupReply();
             reply.UserNames.AddRange(result.UserNames);
             reply.Disabled.AddRange(result.DisabledObjects);

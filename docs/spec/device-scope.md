@@ -249,7 +249,8 @@ an independent security review the same day). A user may be limited to part of t
   (group id; created or new rules), `Updated` (every save that changed anything, also name or description: Your role) and
   `Deleted`). Delete: users to no devices and every `IDeviceGroupOwnedObjects` (core: `CoreOwnedObjects`
   for compliance checks: owner cleared, turned off) in one transaction, then
-  `UserStore.NotifyDeviceAccessChanged`. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
+  `UserStore.NotifyDeviceAccessChanged`. Once a save or delete is stored, the call's cancel no longer counts: the memory copy
+  is read again, the events are raised and the audit entry is written without it. `UserStore`: `AddAsync`/`CreateAsync` with a `DeviceScope` (a group must exist,
   never "no devices" by choice; the overloads without it give all devices: first administrator, older clients),
   `UpdateAsync(..., DeviceScope? access, ...)`, event `UserDeviceAccessChanged`; texts `DeviceGroupTexts`.
 - **Predicate**: `DeviceGroupFilter.Compile` (hash sets; tags by id resolved through `DeviceScopeCatalog` =
