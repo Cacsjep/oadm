@@ -77,7 +77,7 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   (`docs/spec/plugins.md` "Pages shown as tabs"). The server parts keep their pages (`HasPage`), so the "show" and
   "manage" permissions stay as they are. While a server does not run its tab shows the off state; a server that is on
   but does not run (the license ended, a start that failed) offers Turn off there too, and Turn on and Turn off show a
-  progress row ("Starting the EST server") while they run (fix of 2026-10-25).
+  progress row ("Starting the EST server") while they run (fix of 2026-10-25), Start 30-day trial "Starting the trial".
 - A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
   pages the role may show, the host follows role changes). With no server tab the tab row is left out.
 - The link **"N policies applied"** on a server tab (decision 2026-10-25: left in its Save row) opens the Policies tab;
