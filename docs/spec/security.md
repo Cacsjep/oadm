@@ -20,8 +20,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   with the master key, purpose `oadm:server-tls`). On Windows the key is instead one persisted named CNG key "OADM Server
   TLS <hash of the data folder>" (machine key store as a service, else the user store; not exportable; opened by name on
   every start, overwritten on regenerate) and the file holds its name. A key that cannot be read (e.g. after a master key
-  replacement) creates a new certificate and logs that clients must use Forget server. `--Oadm:RegenerateTlsCertificate`
-  makes a new one.
+  replacement) creates a new certificate and logs that clients must use Forget server. On Windows the key name follows the
+  data folder's path: a moved or copied data folder gets a new certificate, with the same warning in the log ("belongs to
+  another data folder"; clients show "The server certificate changed"). `--Oadm:RegenerateTlsCertificate` makes a new one.
 - Kestrel serves HTTP/2 over TLS on the listen URL (default `https://0.0.0.0:5080`; an `http://` URL is accepted for tests
   and logs a warning; a stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the https default). The
   server binds to all interfaces so clients on other machines can connect.
