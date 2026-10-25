@@ -4,13 +4,16 @@ option csharp_namespace = "Oadm.Contracts.V1";
 import "Protos/common.proto";
 
 // The server's OADM PRO license (Settings page, card License; docs/spec/licensing.md). OADM itself never depends on it:
-// it only tells PRO plugins whether PRO is active. Reading is open to every signed-in user; Import and Remove are
-// Administrator only and audited.
+// it only tells PRO plugins whether PRO is active. Reading is open to every signed-in user; Import, Remove and StartTrial
+// are Administrator only and audited.
 service LicenseService {
   rpc GetLicense (Empty) returns (ProLicenseState);
   // Checks and stores a license key (the text of a .oadmlicense file). INVALID_ARGUMENT with the reason.
   rpc ImportLicense (ImportLicenseRequest) returns (ProLicenseState);
   rpc RemoveLicense (Empty) returns (ProLicenseState);
+  // Starts the 30-day trial, once per server. FAILED_PRECONDITION "The trial was already used on this server." /
+  // "OADM PRO is already active."
+  rpc StartTrial (Empty) returns (ProLicenseState);
 }
 
 // Oadm.Sdk.Licensing.ProLicenseStatus.
@@ -30,7 +33,9 @@ message ProLicenseState {
   string plan = 5;             // "Up to 500 devices"
   optional int64 max_devices = 6;   // unset = no limit
   string expires = 7;          // "2028-10-22", empty = never
-  bool trial = 8;
+  bool trial = 8;              // the trial OADM started, or a trial license key
+  bool trial_available = 9;    // Start 30-day trial is possible: no trial yet and PRO not active
+  bool has_key = 10;           // a license key is imported (Remove license)
 }
 
 message ImportLicenseRequest { string license = 1; }

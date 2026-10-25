@@ -348,7 +348,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<ServerSettingsStore>(),
             () => sp.GetRequiredService<PluginLicenses>().ServerId,
             sp.GetRequiredService<TimeProvider>(),
-            logger: sp.GetRequiredService<ILogger<Core.Licensing.ProLicense>>()));
+            logger: sp.GetRequiredService<ILogger<Core.Licensing.ProLicense>>(),
+            dataDirectory: sp.GetRequiredService<OadmPaths>().DataDirectory));
         services.AddHostedService<PluginLicenseRefreshHostedService>();
         services.AddSingleton(sp => new CorePluginHost(
             sp.GetRequiredService<PluginRegistry>(),

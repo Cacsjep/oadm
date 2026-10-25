@@ -191,6 +191,7 @@ public static class AccessPolicy
         ["/oadm.v1.LicenseService/GetLicense"] = AccessRule.SignedIn,
         ["/oadm.v1.LicenseService/ImportLicense"] = AccessRule.Admin,
         ["/oadm.v1.LicenseService/RemoveLicense"] = AccessRule.Admin,
+        ["/oadm.v1.LicenseService/StartTrial"] = AccessRule.Admin,
         ["/oadm.v1.SupportService/CreateReport"] = AccessRule.Admin,
 
         ["/oadm.v1.BackupService/GetState"] = AccessRule.Admin,

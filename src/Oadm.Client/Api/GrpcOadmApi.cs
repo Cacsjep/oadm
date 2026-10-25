@@ -556,6 +556,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
 
     public async Task<ProLicenseState> RemoveLicenseAsync(CancellationToken ct) => await C.License.RemoveLicenseAsync(new Empty(), cancellationToken: ct);
 
+    public async Task<ProLicenseState> StartTrialAsync(CancellationToken ct) => await C.License.StartTrialAsync(new Empty(), cancellationToken: ct);
+
     public async Task<BackupState> GetBackupStateAsync(CancellationToken ct) => await C.Backup.GetStateAsync(new Empty(), cancellationToken: ct);
 
     public async Task<BackupState> SetBackupScheduleAsync(BackupSchedule schedule, CancellationToken ct) => await C.Backup.SetScheduleAsync(schedule, cancellationToken: ct);

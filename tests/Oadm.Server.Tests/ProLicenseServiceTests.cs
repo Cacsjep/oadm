@@ -58,6 +58,40 @@ public sealed class ProLicenseServiceTests
     }
 
     [Fact]
+    public async Task TheTrialStartsOnceIsAuditedAndReachesThePlugins()
+    {
+        await using var host = await StartAsync();
+        var licenses = new Proto.LicenseService.LicenseServiceClient(host.Invoker);
+        var state = await licenses.GetLicenseAsync(new Proto.Empty());
+        Assert.Equal((true, false), (state.TrialAvailable, state.HasKey));
+        var pro = host.Get<PluginRegistry>().Pro!;
+        var changed = 0;
+        pro.Changed += (_, _) => Interlocked.Increment(ref changed);
+
+        state = await licenses.StartTrialAsync(new Proto.Empty());
+
+        Assert.Equal((Proto.ProLicenseStatus.ProLicenseActive, true, false, false), (state.Status, state.Trial, state.TrialAvailable, state.HasKey));
+        Assert.Equal("Trial, until " + state.Expires, state.Reason); // the days themselves: ProTrialTests (fake clock)
+        Assert.True(pro.IsActive);
+        Assert.Equal(1, Volatile.Read(ref changed)); // 802.1X and EST can be turned on at once
+
+        var again = await Assert.ThrowsAsync<RpcException>(async () => await licenses.StartTrialAsync(new Proto.Empty()));
+        Assert.Equal((StatusCode.FailedPrecondition, ProLicenseTexts.TrialUsed), (again.StatusCode, again.Status.Detail));
+
+        // Remove license never ends the trial (there is no key); an imported key wins and can be removed again.
+        await licenses.RemoveLicenseAsync(new Proto.Empty());
+        Assert.True(pro.IsActive);
+        state = await licenses.ImportLicenseAsync(new Proto.ImportLicenseRequest { License = Sign(state.ServerId) });
+        Assert.Equal((false, true), (state.Trial, state.HasKey));
+        state = await licenses.RemoveLicenseAsync(new Proto.Empty());
+        Assert.Equal((Proto.ProLicenseStatus.ProLicenseActive, true), (state.Status, state.Trial));
+
+        var audit = await host.Audit.ListAsync(new Proto.ListAuditRequest());
+        Assert.Single(audit.Entries, e => e.Action == AuditActions.ProTrialStarted && e.Target == "OADM PRO");
+        Assert.Single(audit.Entries, e => e.Action == AuditActions.ProLicenseRemoved); // only the removal of the key
+    }
+
+    [Fact]
     public async Task KeysThatDoNotFitAreRefusedWithTheReason()
     {
         await using var host = await StartAsync();
@@ -90,6 +124,8 @@ public sealed class ProLicenseServiceTests
             await operatorClient.ImportLicenseAsync(new Proto.ImportLicenseRequest { License = Sign(server) }))).StatusCode);
         Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(async () =>
             await operatorClient.RemoveLicenseAsync(new Proto.Empty()))).StatusCode);
+        Assert.Equal(StatusCode.PermissionDenied, (await Assert.ThrowsAsync<RpcException>(async () =>
+            await operatorClient.StartTrialAsync(new Proto.Empty()))).StatusCode);
         Assert.Equal(Proto.ProLicenseStatus.ProLicenseActive, (await admin.GetLicenseAsync(new Proto.Empty())).Status);
     }
 }

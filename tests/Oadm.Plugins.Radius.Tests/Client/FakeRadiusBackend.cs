@@ -345,6 +345,29 @@ internal sealed class FakePageContext(FakeRadiusBackend backend) : ICorePluginCl
 
     public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
 
+    /// <summary>The user is an administrator (Start 30-day trial).</summary>
+    public bool Administrator { get; set; } = true;
+
+    public bool IsAdministrator => Administrator;
+
+    /// <summary>How often the page started the trial.</summary>
+    public int TrialStarts { get; private set; }
+
+    /// <summary>Like the host and server: the trial starts once, the server part then sees OADM PRO.</summary>
+    public Task<Oadm.Sdk.Licensing.ProLicenseInfo> StartProTrialAsync(CancellationToken ct)
+    {
+        TrialStarts++;
+        if (!backend.Switch.TrialAvailable)
+        {
+            return Task.FromException<Oadm.Sdk.Licensing.ProLicenseInfo>(new InvalidOperationException(Oadm.Sdk.Licensing.ProLicenseTexts.TrialUsed));
+        }
+
+        backend.Switch = backend.Switch with { ProActive = true, TrialAvailable = false, StatusText = ServerSwitchMethods.OffText };
+        var ends = new DateOnly(2026, 11, 23);
+        return Task.FromResult(new Oadm.Sdk.Licensing.ProLicenseInfo(Oadm.Sdk.Licensing.ProLicenseStatus.Active,
+            Oadm.Sdk.Licensing.ProLicenseTexts.Active(null, ends, trial: true), Expires: ends, IsTrial: true));
+    }
+
     /// <summary>Answers a method itself instead of the fake server (an older server part); null = the fake server answers.</summary>
     public Func<string, string?, string?>? Answer { get; set; }
 

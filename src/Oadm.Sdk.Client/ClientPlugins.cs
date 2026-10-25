@@ -239,6 +239,21 @@ public interface ICorePluginClientContext
     }
 
     /// <summary>
+    /// Whether the user is an administrator (SDK 0.4.0), e.g. to offer Start 30-day trial (<see cref="StartProTrialAsync"/>);
+    /// others see who can. Changes come with PermissionsChanged. Default (older hosts): false.
+    /// </summary>
+    bool IsAdministrator => false;
+
+    /// <summary>
+    /// Starts the server's 30-day OADM PRO trial (SDK 0.4.0; administrators, once per server, docs/spec/licensing.md) and
+    /// returns the new state; the host refreshes its plugin list and Settings card, the server raises <c>IProLicense.Changed</c>
+    /// for the server parts. Offer it only while <see cref="Oadm.Sdk.Licensing.ProLicenseInfo.TrialAvailable"/>. Throws with
+    /// the server's reason ("The trial was already used on this server."). Default (older hosts): NotSupportedException.
+    /// </summary>
+    Task<Oadm.Sdk.Licensing.ProLicenseInfo> StartProTrialAsync(CancellationToken ct) =>
+        Task.FromException<Oadm.Sdk.Licensing.ProLicenseInfo>(new NotSupportedException("This version of OADM cannot start the trial here."));
+
+    /// <summary>
     /// A short text this plugin keeps on this computer (the client settings file), e.g. a page's last device choice; null
     /// when none. Not shared with other computers or users of them. Default (older hosts): nothing is kept.
     /// </summary>

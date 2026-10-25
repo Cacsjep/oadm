@@ -39,6 +39,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   column and load just the changed rows), `TagNames` the rules.
 - Plugin licenses: no table; settings `Server.Id` (the server ID, a random GUID made at the first start, in backups),
   `Plugins.Licenses` (package id -> license text) and `Plugins.TrialStarted` (package id -> first day), see "Plugin licenses".
+  OADM PRO: `License.Pro` (the key text) and `License.ProTrial` (the trial: server ID, install ID, first day; with the
+  data folder's `install.json`, which no backup holds), see `docs/spec/licensing.md`.
 - `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list";
   QueuedByUserId (migration `DeviceGroups`): the user who queued it (a try checks that user's current devices).
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),

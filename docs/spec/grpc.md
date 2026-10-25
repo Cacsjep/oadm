@@ -230,6 +230,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `devices_changed`, `created`). Every write publishes one Updated device change per changed device; moves into or out of
   device groups are audited per group.
 - `LicenseService` (`license.proto`, see `docs/spec/licensing.md`): `GetLicense` (every signed-in user), `ImportLicense`
-  and `RemoveLicense` (Admin, audited; INVALID_ARGUMENT with the reason).
+  and `RemoveLicense` (Admin, audited; INVALID_ARGUMENT with the reason), `StartTrial` (Admin, audited, once per server;
+  FAILED_PRECONDITION with the reason).
 - `SupportService` (`support.proto`, see `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
