@@ -225,13 +225,18 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}"` | a select field with check boxes (`ICheckChoice` items, `CheckChoice`; `CheckChoiceList` offers "All" or chosen items); the list stays open while the user ticks |
   | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | every tab of a page with tabs; without `CloseCommand` a fixed tab without an X; `Count` above 0 shows a badge |
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
-  | `ui:IssuedCertificateList Toolbar RowContextMenu` | every list of the certificates the OADM CA issued (DataContext an `IssuedCertificateListViewModel` with an `IIssuedCertificateSource`): filters, search, pages of 500, several rows chosen, View certificate; a derived list sets `WorkText` while its own write runs (the progress row shows it, `IsWorking`, `OnWorkChanged` for its commands); `IssuedCertificateList.ConfirmRevokeAsync` asks for the reason of a revocation |
+  | `ui:IssuedCertificateList Toolbar Banner` | every list of the certificates the OADM CA issued (DataContext an `IssuedCertificateListViewModel` with an `IIssuedCertificateSource`): filters, search, pages of 500, several rows chosen, View certificate, one ⋯ menu per row (the view model's `MenuOf`, the same as the right click); a derived list sets `WorkText` while its own write runs (the progress row shows it, `IsWorking`, `OnWorkChanged` for its commands); `IssuedCertificateList.ConfirmRevokeAsync` asks for the reason of a revocation |
+  | `ui:OffState Icon Title Text` | the state of a page or tab whose feature is off (Sites, Compliance, PKI's 802.1X and EST servers): a large icon, the title ("Site nodes are off"), one or two sentences, and the host's controls below (the Turn on button, the line for users who may not, the error), all centered |
+  | `RowActions.Show(anchor, actions)` | the ⋯ menu of a table row (`Button.toolbar.iconOnly` with `Icon.more`, tooltip `RowActions.Tip`): the everyday entries, a separator, the red ones last |
   | `ui:CodeEditor Text Language PlaceholderText` | **every editable code field** (request bodies): a monospace text box (caret, selection, undo) with the text colored like `ui:CodeView` while typing; `Language` `Json`, `Xml`, `KeyValue` or `Plain`; the text stays exactly as typed |
 
 - Styles and classes from the host theme (`src/Oadm.Theme/OadmTheme.axaml`), e.g. `Border.card`, `Border.dialogBody`,
-  `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary`,
-  `Button.secondary`, `Button.toolbar`, `Button.danger` (red: delete or remove; `Button.toolbar.danger` and
-  `Button.link.danger` for flat buttons and row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
+  `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error`, `Button.primary` (filled accent:
+  only the one main action of a dialog or form, e.g. Save, Create, Next, OK), `Button.secondary` (its other actions, e.g.
+  Cancel, Choose file), `Button.toolbar` (command buttons of toolbars and card headers: flat, the icon in the accent colour,
+  the text neutral, never filled; icon-only buttons in the text colour with a tooltip), `Button.danger` (red fill: only the
+  confirming button of a dialog that deletes or removes; `Button.toolbar.danger` for flat red buttons everywhere else and
+  `Button.link.danger` for row links), `Border.vseparator`, `StackPanel.optionDetail` (the inputs
   of a radio button choice, indented below it), `DataGrid.wrapRows` (rows grow, status chips show two lines), numeric columns
   (`CellStyleClasses="number"` + header `TextBlock.numberHeader`), `ui|SearchBox.stretch` (fills a narrow card),
   `Border.tile` (a picture tile; selection is its check box), `Border.liveViewSurface` (dark picture surface),
@@ -355,7 +360,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
   fails to create is logged and left out.
 - The host orders entries by group, order and id, with a `ToolbarSeparator` between groups that show something (a
   hidden control does not count, so an empty group leaves no stray line).
-- Build buttons with `ui:ToolbarButton`; the toolbar has one `IsPrimary` button (Add). Enable and disable them from
+- Build buttons with `ui:ToolbarButton`; the toolbar has one `IsPrimary` button (Add: the class `main`, still flat). Enable and disable them from
   `SelectionChanged` / `TaskPluginsChanged`; never cache the selection.
 - Sample: `tests/TestPlugins/Oadm.TestPlugins.Sample.Client/SampleToolbarPlugin.cs` ("Sample (n)" with the selection
   count, runs the sample task), loaded by `ToolbarPluginTests`.
