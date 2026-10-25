@@ -748,6 +748,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             return;
         }
 
+        var gone = devices as IReadOnlySet<Guid> ?? devices.ToHashSet(); // one lookup per stored device (10,000 per trigger)
         try
         {
             await ChangeAsync(ctx, list =>
@@ -755,9 +756,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
                 var changed = false;
                 for (var i = 0; i < list.Count; i++)
                 {
-                    if (list[i].DeviceIds.Any(devices.Contains))
+                    if (list[i].DeviceIds.Any(gone.Contains))
                     {
-                        list[i] = list[i] with { DeviceIds = [.. list[i].DeviceIds.Where(d => !devices.Contains(d))] };
+                        list[i] = list[i] with { DeviceIds = [.. list[i].DeviceIds.Where(d => !gone.Contains(d))] };
                         changed = true;
                     }
                 }

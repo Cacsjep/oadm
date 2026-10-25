@@ -692,7 +692,7 @@ internal sealed class TriggerRuntime : IAsyncDisposable
         try
         {
             var known = (await _ctx.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
-            var gone = used.Where(d => !known.Contains(d)).ToList();
+            var gone = used.Where(d => !known.Contains(d)).ToHashSet(); // looked up once per stored device
             if (gone.Count > 0)
             {
                 DevicesRemoved?.Invoke(this, gone);
