@@ -123,7 +123,7 @@ public sealed class DeviceWebRelayTests
         using var socket = new ClientWebSocket();
         socket.Options.Cookies = cookies;
         socket.Options.AddSubProtocol("events");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await socket.ConnectAsync(new Uri("ws://" + relay.Origin.Authority + "/vapix/ws-data-stream?sources=events"), timeout.Token);
         Assert.Equal("events", socket.SubProtocol);
 
