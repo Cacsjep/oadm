@@ -44,7 +44,7 @@ public sealed class KeysOverHttpTests
     {
         var vm = Dialog(true, false, true);
 
-        Assert.Equal("1 of the 3 devices that get a file are reached over HTTP: their private keys cross the network unencrypted.", vm.HttpWarning);
+        Assert.Equal("1 of the 3 devices that get a file is reached over HTTP: its private key crosses the network unencrypted.", vm.HttpWarning);
         Assert.False(vm.CanInstall);
         Assert.Equal("Tick Send the keys anyway.", vm.InstallBlockedReason);
 

@@ -343,7 +343,7 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
         var overHttp = caOnly ? 0 : Files.Count(f => f.IsOk && f.Device?.ConnectsOverHttps == false);
         HttpWarning = overHttp == 0 ? null
             : withFile.Count == 1 ? "The device is reached over HTTP: its private key crosses the network unencrypted."
-            : string.Create(CultureInfo.InvariantCulture, $"{overHttp:N0} of the {withFile.Count:N0} devices that get a file are reached over HTTP: their private keys cross the network unencrypted.");
+            : string.Create(CultureInfo.InvariantCulture, $"{overHttp:N0} of the {withFile.Count:N0} devices that get a file {(overHttp == 1 ? "is" : "are")} reached over HTTP: {(overHttp == 1 ? "its private key crosses" : "their private keys cross")} the network unencrypted.");
         NotifyInstall();
     }
 
