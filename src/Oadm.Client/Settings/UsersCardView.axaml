@@ -10,9 +10,7 @@
     <StackPanel Spacing="12">
       <StackPanel Orientation="Horizontal" Spacing="4">
         <TextBlock Classes="cardTitle" Text="Users" VerticalAlignment="Center" Margin="0,0,12,0" />
-        <Button Classes="secondary" Command="{Binding OpenAddCommand}" VerticalAlignment="Center">
-          <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New user" />
-        </Button>
+        <ui:ToolbarButton Text="New user" IconKey="add" Command="{Binding OpenAddCommand}" VerticalAlignment="Center" />
       </StackPanel>
       <DataGrid x:Name="UsersGrid" ItemsSource="{Binding Users}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                 SelectionMode="Single" MaxHeight="360">

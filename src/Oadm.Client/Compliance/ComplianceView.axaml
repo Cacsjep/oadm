@@ -57,7 +57,7 @@
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
           <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
-            <ui:ToolbarButton Text="New check" IconKey="add" IsPrimary="True" Command="{Binding NewCheckCommand}" IsVisible="{Binding MayManage}" />
+            <ui:ToolbarButton Text="New check" IconKey="add" Command="{Binding NewCheckCommand}" IsVisible="{Binding MayManage}" />
             <ui:ToolbarButton Text="Check now" IconKey="refresh" Command="{Binding CheckNowCommand}" ToolTip.Tip="The selected devices, else all" />
           </ui:ToolbarOverflowPanel>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">

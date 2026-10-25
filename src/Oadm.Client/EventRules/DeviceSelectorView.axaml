@@ -6,7 +6,7 @@
              x:DataType="vm:DeviceSelectorViewModel">
   <!-- Which devices: one purple button that says what is chosen ("Selected devices: Tag Building A") and opens the shared
        device picker (the device of the event, All devices, or chosen devices and tags); the addresses as tooltip. -->
-  <Button Classes="primary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}" ToolTip.Tip="{Binding ChosenText}">
+  <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}" ToolTip.Tip="{Binding ChosenText}">
     <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding ButtonText}" />
   </Button>
 </UserControl>

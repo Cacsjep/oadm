@@ -164,7 +164,7 @@ public sealed class HeadlessSmokeTests
                 ["users"] = "Who can log in, which devices they reach and what each role may do.",
                 ["credentials"] = "Passwords OADM tries when it adds devices.",
                 ["plugins"] = "A plugin that is off shows no page, menu entry or toolbar button.",
-                ["settings"] = "Discovery duration (s)",
+                ["settings"] = "Polling", // a card title: the cards are closed by default
                 ["about"] = "Version and licenses.",
             };
             foreach (NavItemViewModel item in vm.NavItems.Concat(vm.BottomNavItems).ToList())

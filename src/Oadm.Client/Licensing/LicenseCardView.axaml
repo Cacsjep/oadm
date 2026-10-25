@@ -28,7 +28,7 @@
           <Button Classes="secondary" Command="{Binding ImportCommand}">
             <ui:IconLabel Icon="{StaticResource Icon.key}" Text="Import license" />
           </Button>
-          <Button Classes="danger" Content="Remove license" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}" />
+          <ui:ToolbarButton Classes="danger" Text="Remove license" IconKey="remove" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}" />
           <!-- The result sits next to the buttons it reports on. -->
           <TextBlock Text="{Binding Message}" Classes.error="{Binding MessageIsError}" Classes.secondary="{Binding !MessageIsError}" VerticalAlignment="Center"
                      IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

@@ -17,8 +17,8 @@
         <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding CameraButtonText}" />
       </Button>
       <ui:SearchBox Grid.Column="3" Width="220" VerticalAlignment="Center" Text="{Binding FilterText}" Placeholder="Filter events" />
-      <Button Grid.Column="4" Classes="secondary" VerticalAlignment="Center" Content="Clear" Command="{Binding ClearCommand}"
-              ToolTip.Tip="Empty the list; the stream keeps running" />
+      <ui:ToolbarButton Grid.Column="4" VerticalAlignment="Center" Text="Clear" IconKey="eraser" Command="{Binding ClearCommand}"
+                        ToolTip.Tip="Empty the list; the stream keeps running" />
       <CheckBox Grid.Column="5" VerticalAlignment="Center" Content="Autoscroll" IsChecked="{Binding Autoscroll}"
                 ToolTip.Tip="Keep the newest message visible" />
       <TextBlock Grid.Column="6" Classes="secondary" VerticalAlignment="Center" Text="{Binding SummaryText}" />

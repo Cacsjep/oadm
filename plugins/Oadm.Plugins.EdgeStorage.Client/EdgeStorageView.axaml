@@ -19,9 +19,9 @@
     <Border Grid.Row="1" Classes="card">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-          <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}"
+          <Button Grid.Column="0" Classes="toolbar" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding !IsReading}"
                   ToolTip.Tip="Cameras by address or tag">
-            <ui:IconLabel Icon="{StaticResource Icon.hardDrive}" Text="{Binding DeviceChoice.ButtonText}" />
+            <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
           </Button>
           <!-- Tools that do not fit move into the More menu. -->
           <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">

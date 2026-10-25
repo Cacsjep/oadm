@@ -8,9 +8,9 @@
   <!-- Inside the host's page card: toolbar, status line, progress, tile grid. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto,*">
     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-      <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" IsVisible="{Binding MayReport}"
+      <Button Grid.Column="0" Classes="toolbar" Command="{Binding ChooseDevicesCommand}" IsVisible="{Binding MayReport}"
               ToolTip.Tip="Cameras by address or tag">
-        <ui:IconLabel Icon="{StaticResource Icon.snapshot}" Text="{Binding DeviceChoice.ButtonText}" />
+        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
       </Button>
       <!-- Entries that do not fit move into the More menu. -->
       <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayReport}">
@@ -22,7 +22,7 @@
         <CheckBox Content="Select all" IsChecked="{Binding IsAllSelected}" VerticalAlignment="Center" Margin="8,0"
                   ToolTip.Tip="Select or clear every shown picture for the report" />
         <ui:ToolbarSeparator />
-        <ui:ToolbarButton IconKey="export" Text="Export PDF" IsPrimary="True" Command="{Binding ExportPdfCommand}"
+        <ui:ToolbarButton IconKey="export" Text="Export PDF" Command="{Binding ExportPdfCommand}"
                           ToolTip.Tip="Create the maintenance report of the selected pictures" />
       </ui:ToolbarOverflowPanel>
 

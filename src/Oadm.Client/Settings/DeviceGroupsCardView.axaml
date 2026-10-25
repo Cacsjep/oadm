@@ -10,9 +10,7 @@
     <StackPanel Spacing="12">
       <StackPanel Orientation="Horizontal" Spacing="4">
         <TextBlock Classes="cardTitle" Text="Device groups" VerticalAlignment="Center" Margin="0,0,12,0" />
-        <Button Classes="secondary" Command="{Binding NewCommand}" VerticalAlignment="Center">
-          <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New device group" />
-        </Button>
+        <ui:ToolbarButton Text="New device group" IconKey="add" Command="{Binding NewCommand}" VerticalAlignment="Center" />
       </StackPanel>
       <ui:ProgressRow Text="Reading the device groups" IsVisible="{Binding IsLoading}" />
       <ui:ProgressRow Text="Opening the device group" IsVisible="{Binding IsOpening}" />

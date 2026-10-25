@@ -146,9 +146,7 @@
           <StackPanel Spacing="12">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock Classes="cardTitle" Text="Ports" VerticalAlignment="Center" />
-              <Button Grid.Column="1" Classes="secondary" Command="{Binding AddPortCommand}">
-                <ui:IconLabel Icon="{StaticResource Icon.add}" Text="Add" />
-              </Button>
+              <ui:ToolbarButton Grid.Column="1" Text="Add" IconKey="add" Command="{Binding AddPortCommand}" />
             </Grid>
             <DataGrid ItemsSource="{Binding Ports}" IsReadOnly="True" CanUserReorderColumns="False" CanUserSortColumns="False"
                       HeadersVisibility="Column" MaxHeight="360">

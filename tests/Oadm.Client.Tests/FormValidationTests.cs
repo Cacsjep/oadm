@@ -311,6 +311,7 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
+            OpenCards(window); // the Settings cards are closed by default
             FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin" && x.IsEffectivelyVisible);
             Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or firmware updates.", field.Hint);
 
@@ -356,6 +357,7 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1300, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
+            OpenCards(window); // the Settings cards are closed by default
             FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Device login" && x.IsEffectivelyVisible);
             Assert.Equal("Sends passwords unencrypted. Only for devices without HTTPS.", field.Hint);
             Assert.Contains(field.GetVisualDescendants().OfType<CheckBox>(), c => Equals(c.Content, "Allow Basic login over HTTP"));
@@ -382,5 +384,16 @@ public sealed class FormValidationTests
             Directory.CreateDirectory(outDir);
             frame.Save(Path.Combine(outDir, name), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         }
+    }
+
+    /// <summary>Opens every card of the Settings page (closed by default, decision 2026-10-25).</summary>
+    private static void OpenCards(Window window)
+    {
+        foreach (var card in window.GetVisualDescendants().OfType<Oadm.Client.Controls.CollapsibleCard>().ToList())
+        {
+            card.IsExpanded = true;
+        }
+
+        Dispatcher.UIThread.RunJobs();
     }
 }

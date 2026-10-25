@@ -68,6 +68,11 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   the tasks pane; the split is persisted per client.
 - Accent violet `#6C5CE7` (hover `#7D6EF0`), used for selection, progress bars, primary
   buttons and status pills. Secondary accent teal `#7FC8D0`.
+- Buttons follow Fluent (decision 2026-10-25, CLAUDE.md "buttons follow Fluent"): command buttons of toolbars and card
+  or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
+  `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right); icon-only buttons in the text colour, the accent on
+  hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
+  for the confirming button of a destructive dialog, flat red text elsewhere.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
 - Status is never a chip: everywhere a status or result is shown (device certificate columns,
@@ -168,7 +173,7 @@ not listed are kept); the window's constructor takes a form shown on top of the 
 window closes only when it returns true), `IsPickerVisible` false shows the form alone (the window as high as the form: a
 PKI policy kind without devices), and `DevicePickerViewModel.ErrorText` shows a refusal directly below the
 list; 30,000 devices tested) and
-`PageDeviceChoice` (the device choice of every page that reads many devices: the purple "Selected devices" button text,
+`PageDeviceChoice` (the device choice of every page that reads many devices: the "Selected devices" button text (a flat command button with the devices icon in a page toolbar, decision 2026-10-25),
 All devices / tags / chosen devices resolved now, the Devices page selection to start with, the last choice kept on this
 computer; Action Rule Editor, Edge storage, Image Health Dashboard, Hardening scan, Snapshot report) and
 `DeviceIcon` (every device icon in a list: the category icon `Icon.device.*`, neutral when OK, amber for Credentials

@@ -33,7 +33,7 @@
           <StackPanel Spacing="10">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
               <ui:CardHeader Grid.Column="0" Title="Devices" Description="{Binding DevicesSummary}" />
-              <Button Grid.Column="1" Classes="primary" VerticalAlignment="Top" Command="{Binding ChooseDevicesCommand}">
+              <Button Grid.Column="1" Classes="secondary" VerticalAlignment="Top" Command="{Binding ChooseDevicesCommand}">
                 <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DevicesButtonText}" />
               </Button>
             </Grid>

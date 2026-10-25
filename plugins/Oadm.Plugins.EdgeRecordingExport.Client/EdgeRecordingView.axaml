@@ -11,9 +11,9 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
       <!-- Wraps on a narrow window: Search moves to a second line instead of out of the card. -->
       <WrapPanel Grid.Row="0" Classes="inputRow">
-        <Button Classes="primary" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}"
+        <Button Classes="toolbar" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}"
                 ToolTip.Tip="Video devices, by address or tag">
-          <ui:IconLabel Icon="{StaticResource Icon.video}" Text="{Binding CamerasText}" />
+          <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding CamerasText}" />
         </Button>
         <RadioButton GroupName="range" Content="All recordings" IsChecked="{Binding AllRecordings}" IsEnabled="{Binding IsIdle}" />
         <RadioButton GroupName="range" Content="Time range" IsChecked="{Binding IsRange}" IsEnabled="{Binding IsIdle}" />

@@ -41,7 +41,7 @@
     <Border x:Name="PoliciesCard" Grid.Column="0" Classes="card">
       <DockPanel>
         <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="0,0,0,8">
-          <ui:ToolbarButton Text="Create" IconKey="add" IsPrimary="True" Command="{Binding CreateCommand}" IsVisible="{Binding MayManage}"
+          <ui:ToolbarButton Text="Create" IconKey="add" Command="{Binding CreateCommand}" IsVisible="{Binding MayManage}"
                             ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True" />
           <ui:SearchBox Grid.Column="2" Width="260" Text="{Binding SearchText}" Placeholder="Search policies" />
         </Grid>
@@ -51,7 +51,7 @@
           <TextBlock Classes="secondary" Text="{x:Static vm:PoliciesViewModel.NoMatchText}" IsVisible="{Binding HasNoMatch}" />
           <!-- Grouped like the Plugins page (PkiView.GroupPolicies: a collapsible header per group). At most 200 policies:
                virtualized. A click opens the policy in the panel. -->
-          <DataGrid x:Name="PoliciesGrid" SelectedItem="{Binding SelectedRow, Mode=TwoWay}" IsReadOnly="True" CanUserSortColumns="False"
+          <DataGrid x:Name="PoliciesGrid" Classes="groups" SelectedItem="{Binding SelectedRow, Mode=TwoWay}" IsReadOnly="True" CanUserSortColumns="False"
                     CanUserReorderColumns="False" SelectionMode="Single" IsVisible="{Binding !HasNoMatch}">
             <DataGrid.Columns>
               <DataGridTemplateColumn Header="Name" Width="300" x:DataType="vm:PolicyRowViewModel">
@@ -105,7 +105,7 @@
 
           <!-- The buttons: Delete apart on the left (a custom policy); the status, Cancel, then Next (types) or Save. -->
           <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,12,0,0">
-            <Button Grid.Column="0" Classes="danger" Content="Delete" Command="{Binding DeleteOpenCommand}" IsVisible="{Binding CanDelete}" />
+            <ui:ToolbarButton Grid.Column="0" Classes="danger" Text="Delete" IconKey="remove" Command="{Binding DeleteOpenCommand}" IsVisible="{Binding CanDelete}" />
             <ui:StatusChip Grid.Column="2" VerticalAlignment="Center" Text="{Binding SaveStatus}" IsWarning="True" IsVisible="{Binding HasSaveStatus}" />
             <Button Grid.Column="3" Classes="secondary" Content="Cancel" Command="{Binding CloseCommand}" />
             <Button Grid.Column="4" Classes="primary" Content="Next" Command="{Binding NextCommand}" IsVisible="{Binding IsChoosingKind}" />

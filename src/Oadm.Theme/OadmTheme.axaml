@@ -739,7 +739,8 @@
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
-  <!-- Toolbar buttons: icon + text -->
+  <!-- Toolbar buttons (command buttons, Fluent; decision 2026-10-25): no background, the icon in the accent colour, the
+       text neutral. Icon-only buttons have the text colour (never the dim grey of disabled ones) and take the accent only on hover. No filled buttons in toolbars. -->
   <Style Selector="Button.toolbar">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
@@ -759,6 +760,18 @@
   <Style Selector="Button.toolbar:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
+  </Style>
+  <!-- An icon alone (close, more, copy, reveal: the icon is the button's content): the text colour -->
+  <Style Selector="Button.toolbar ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Icon + text (ui:IconLabel, ui:ToolbarButton with its text): the icon in the accent colour -->
+  <Style Selector="Button.toolbar:not(.iconOnly) ui|IconLabel ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <!-- Hover: every toolbar icon takes the accent -->
+  <Style Selector="Button.toolbar:pointerover ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
   </Style>
   <Style Selector="Button.toolbar:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />

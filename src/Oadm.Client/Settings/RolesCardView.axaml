@@ -12,11 +12,9 @@
       <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
           <TextBlock Classes="cardTitle" Text="Roles" VerticalAlignment="Center" Margin="0,0,12,0" />
-          <Button Classes="secondary" Command="{Binding NewRoleCommand}" VerticalAlignment="Center">
-            <ui:IconLabel Icon="{StaticResource Icon.add}" Text="New role" />
-          </Button>
+          <ui:ToolbarButton Text="New role" IconKey="add" Command="{Binding NewRoleCommand}" VerticalAlignment="Center" />
           <ui:ToolbarSeparator />
-          <ui:ToolbarButton Text="Save" IconKey="save" IsPrimary="True" Command="{Binding SaveCommand}"
+          <ui:ToolbarButton Text="Save" IconKey="save" Command="{Binding SaveCommand}"
                             ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
           <ui:ToolbarButton Text="Discard" IconKey="cancel" Command="{Binding DiscardCommand}" />
         </StackPanel>

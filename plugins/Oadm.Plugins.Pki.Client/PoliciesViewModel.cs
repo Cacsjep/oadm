@@ -1116,7 +1116,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     partial void OnCertificateChanged(Choice<string>? value) => OnPropertyChanged(nameof(CertificateHint));
 
     /// <summary>The empty Certificate field: what to do first.</summary>
-    public const string NoCertificatesText = "No certificate with a key yet. Create one.";
+    public const string NoCertificatesText = "No certificate with a key yet. Create one on the Certificates tab.";
 
     public bool HasNoCertificates => CertificateChoices.Count == 0;
 

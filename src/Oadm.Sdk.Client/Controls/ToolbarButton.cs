@@ -6,8 +6,8 @@ using Avalonia.Styling;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The one toolbar button: <see cref="IconLabel"/> (icon + text) in a <c>Button.toolbar</c>, or
-/// <c>Button.primary</c> when <see cref="IsPrimary"/>. The icon is a geometry or a theme icon key
+/// The one toolbar button: <see cref="IconLabel"/> (icon + text) in a <c>Button.toolbar</c>, flat (Fluent command button,
+/// decision 2026-10-25: the icon in the accent colour, the text neutral; icon only: the text colour). The icon is a geometry or a theme icon key
 /// ("restart" resolves the application resource <c>Icon.restart</c>; unknown keys show the plugin
 /// icon). Used by every Devices page toolbar entry, built-in or plugin.
 /// </summary>
@@ -57,7 +57,7 @@ public class ToolbarButton : Button
         set => SetValue(TextProperty, value);
     }
 
-    /// <summary>The accent button of the toolbar (one per toolbar: Scan).</summary>
+    /// <summary>The main command of the toolbar: class <c>main</c> only, never filled (toolbars have no filled buttons, decision 2026-10-25).</summary>
     public bool IsPrimary
     {
         get => GetValue(IsPrimaryProperty);
@@ -123,8 +123,8 @@ public class ToolbarButton : Button
         }
         else if (change.Property == IsPrimaryProperty)
         {
-            Classes.Set("primary", IsPrimary);
-            Classes.Set("toolbar", !IsPrimary);
+            // Toolbars have no filled buttons (Fluent, decision 2026-10-25): the main one is a command button like the others.
+            Classes.Set("main", IsPrimary);
         }
     }
 

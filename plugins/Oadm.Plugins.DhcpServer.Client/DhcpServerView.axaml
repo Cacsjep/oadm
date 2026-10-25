@@ -53,12 +53,13 @@
       </ui:FormField>
     </StackPanel>
 
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto" Margin="{DynamicResource Oadm.GapTop}">
+    <!-- The title, the action (left, like the device toolbar), the summary, the search on the right. -->
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" Margin="{DynamicResource Oadm.GapTop}">
       <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Leases" VerticalAlignment="Center" />
-      <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding LeaseSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
-      <ui:SearchBox Grid.Column="2" Text="{Binding SearchText}" Placeholder="Search MAC, IP address, name" Width="260" Margin="0,0,8,0" />
-      <ui:ToolbarButton Grid.Column="3" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}" IsVisible="{Binding MayManage}"
+      <ui:ToolbarButton Grid.Column="1" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}" IsVisible="{Binding MayManage}" Margin="12,0,0,0"
                         ToolTip.Tip="Reserve an IP address for a device (by its MAC address)" />
+      <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding LeaseSummary}" VerticalAlignment="Center" Margin="12,0,0,0" />
+      <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" Placeholder="Search MAC, IP address, name" Width="260" />
     </Grid>
 
     <Panel Grid.Row="2" Margin="0,8,0,0">

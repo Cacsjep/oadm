@@ -20,7 +20,7 @@
       <RowDefinition Height="240" MinHeight="120" />
     </Grid.RowDefinitions>
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
-      <Button Grid.Column="0" Classes="primary" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
+      <Button Grid.Column="0" Classes="toolbar" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
               ToolTip.Tip="Devices by address or tag">
         <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
       </Button>
