@@ -96,6 +96,42 @@ public sealed class WaitingDeviceTests
     }
 
     [Fact]
+    public async Task AKeeperLimitedDuringTheRoundIsReadAgainBeforeTheCredentialListIsSent()
+    {
+        var network = new FakeAxisNetwork();
+        var camera = network.Add("10.9.5.9", FakeSerials.Make(59), "list-Pass-1");
+        await using var host = await TestServerHost.StartAsync(network);
+        await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = "list-Pass-1" });
+        var users = host.Get<UserStore>();
+        var singles = (await host.Get<Oadm.Core.DeviceGroups.DeviceGroupStore>().SaveAsync(null, "Singles", "",
+            new Oadm.Core.DeviceGroups.DeviceGroupRules(false, [], [], [FakeSerials.Make(1)], []), 0, CancellationToken.None)).Group;
+        var keeper = await users.AddAsync("keeper", "pw-Keeper-1", BuiltInRoles.OperatorId, DeviceScope.All, CancellationToken.None);
+        await host.Get<WaitingDeviceStore>().AddAsync([new WaitingLine("10.9.5.9", null, null, null, [])], "Import", "keeper", keeper.Id, CancellationToken.None);
+        var runner = host.Get<WaitingDeviceRunner>();
+        var reads = 0;
+        runner.ReachOf = async (views, user, name, ct) =>
+        {
+            var reach = await AddReach.ForUserAsync(views, user, name, ct);
+            if (Interlocked.Increment(ref reads) == 1)
+            {
+                // Right after the round read the reach (all devices, the credential list), the keeper is limited to a group
+                // of single devices, which cannot add devices.
+                await users.UpdateAsync(keeper.Id, null, null, null, DeviceScope.Group(singles.Id), null, ct);
+            }
+
+            return reach;
+        };
+
+        Assert.Equal(0, await runner.RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None));
+
+        Assert.Equal(2, reads);
+        Assert.Empty(camera.CredentialRequests);
+        Assert.Null(await host.Get<DeviceRepository>().FindBySerialAsync(FakeSerials.Make(59), CancellationToken.None));
+        var entry = Assert.Single((await host.Get<WaitingDeviceStore>().ListAsync(null, 0, CancellationToken.None)).Items);
+        Assert.Equal(AddDeviceTexts.KeeperCannotAdd, entry.LastResult);
+    }
+
+    [Fact]
     public async Task AFailedLoginIsNotTriedAgainUntilTryNow()
     {
         var network = new FakeAxisNetwork();

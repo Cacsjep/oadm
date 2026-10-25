@@ -89,6 +89,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger<DiscoveryAuthenticator> _logger;
     private readonly ConcurrentDictionary<string, AuthSession> _sessions = new(StringComparer.Ordinal);
+    private long _lastPruneTicks = long.MinValue / 2; // the first look prunes
     private readonly SemaphoreSlim _parallel = new(Parallelism);
     private readonly CancellationTokenSource _stopping = new();
     private readonly BasicOverHttpSetting? _basicOverHttp;
@@ -122,6 +123,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         _sessions.TryGetValue(sessionId, out var session) ? session.Get(serial)?.Result ?? DeviceAuthResult.Pending : DeviceAuthResult.Pending;
 
     /// <summary>The credentials that worked for a serial of a session, server side only.</summary>
+    /// <summary>Logins running now (tests: a forgotten session's login has ended).</summary>
+    internal int RunningLogins => Parallelism - _parallel.CurrentCount;
+
     internal DeviceCredentials? MatchedCredentials(string sessionId, string serial) =>
         _sessions.TryGetValue(sessionId, out var session) ? session.Get(serial)?.Credentials : null;
 
@@ -170,10 +174,10 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         switch (device.Status)
         {
             case DiscoveredDeviceStatus.PasswordNotSet:
-                session.Track(Core.Auth.CallerContext.RunDetached(() => ReadPolicyAsync(session, device, version, _stopping.Token)));
+                session.Track(Core.Auth.CallerContext.RunDetached(() => ReadPolicyAsync(session, device, version, session.Token)));
                 break;
             case DiscoveredDeviceStatus.CredentialsRequired or DiscoveredDeviceStatus.AnonymousAccess:
-                session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
+                session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, session.Token)));
                 break;
         }
     }
@@ -370,7 +374,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         foreach (var (device, version) in claimed)
         {
             session.Notify(device.Serial);
-            session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, _stopping.Token)));
+            session.Track(Core.Auth.CallerContext.RunDetached(() => TryKnownCredentialsAsync(session, device, version, session.Token)));
         }
 
         if (claimed.Count > 0)
@@ -438,25 +442,48 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     public void Dispose()
     {
         _credentialList.Changed -= OnCredentialListChanged;
+        foreach (var session in _sessions.Values)
+        {
+            session.End();
+        }
+
         _stopping.Cancel();
         _stopping.Dispose();
         _parallel.Dispose();
     }
 
-    private AuthSession Session(string sessionId)
+    /// <summary>
+    /// Drops sessions unused for <see cref="SessionLifetime"/>, now and then (at most once a minute, or once per lifetime when
+    /// shorter), not on every call: a Commit of 30,000 devices looks its session up once per device.
+    /// </summary>
+    private void PruneSessions(DateTimeOffset now)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        var now = _time.GetUtcNow();
+        var every = SessionLifetime < TimeSpan.FromMinutes(1) ? SessionLifetime : TimeSpan.FromMinutes(1);
+        var last = Interlocked.Read(ref _lastPruneTicks);
+        if (now.UtcTicks - last < every.Ticks || Interlocked.CompareExchange(ref _lastPruneTicks, now.UtcTicks, last) != last)
+        {
+            return;
+        }
+
         foreach (var (id, old) in _sessions)
         {
             // A session that still exists keeps its logins and its settings (credential list, expected device): recreated it
             // would try only typed credentials.
             if (now - old.LastUsed > SessionLifetime && old.Running().Length == 0 && _discovery?.IsActive(id) != true)
             {
-                _sessions.TryRemove(id, out _);
+                if (_sessions.TryRemove(id, out var gone))
+                {
+                    gone.End();
+                }
             }
         }
+    }
 
+    private AuthSession Session(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        var now = _time.GetUtcNow();
+        PruneSessions(now);
         var session = _sessions.GetOrAdd(sessionId, _ => new AuthSession());
         session.LastUsed = now;
         return session;
@@ -494,6 +521,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         return; // superseded by a retry or a new observation
                     }
 
+                    ct.ThrowIfCancellationRequested(); // forgotten: no further credential is sent
                     var candidates = await AllCandidatesAsync(session).ConfigureAwait(false);
                     var candidate = entry.Attempts >= MaxAttemptsPerDevice
                         ? null
@@ -694,8 +722,17 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         return notAxis ?? noAnswer ?? new AxisVerdict(AxisVerdictKind.NoAnswer, "The device did not answer on HTTPS or HTTP.");
     }
 
-    /// <summary>Forgets a session at once (the automatic add uses one session per device).</summary>
-    public void Forget(string sessionId) => _sessions.TryRemove(sessionId, out _);
+    /// <summary>
+    /// Forgets a session at once (the automatic add uses one session per device; an add page session stopped for an access
+    /// change): its running logins end before their next credential, so none keeps the credential list.
+    /// </summary>
+    public void Forget(string sessionId)
+    {
+        if (_sessions.TryRemove(sessionId, out var session))
+        {
+            session.End();
+        }
+    }
 
     /// <summary>Whether anonymous basicdeviceinfo properties are a valid Axis answer for the expected serial.</summary>
     internal static AxisVerdict Judge(IReadOnlyDictionary<string, string> properties, string expectedSerial)
@@ -889,9 +926,31 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         public ImmutableHashSet<string> Tried => TriedKeys ?? [];
     }
 
-    private sealed class AuthSession
+    private sealed class AuthSession : IDisposable
     {
         private readonly Dictionary<string, AuthEntry> _entries = new(StringComparer.OrdinalIgnoreCase);
+        private readonly CancellationTokenSource _ended = new();
+        private int _endedOnce;
+
+        public AuthSession()
+        {
+            Token = _ended.Token;
+        }
+
+        /// <summary>Cancelled when the session is forgotten or the server stops: its logins end.</summary>
+        public CancellationToken Token { get; }
+
+        /// <summary>Ends the session's running work (once).</summary>
+        public void End()
+        {
+            if (Interlocked.Exchange(ref _endedOnce, 1) == 0)
+            {
+                _ended.Cancel();
+                _ended.Dispose();
+            }
+        }
+
+        public void Dispose() => End();
         private readonly List<Task> _running = [];
         private Task<IReadOnlyList<Candidate>>? _candidates;
         private readonly List<Candidate> _entered = [];

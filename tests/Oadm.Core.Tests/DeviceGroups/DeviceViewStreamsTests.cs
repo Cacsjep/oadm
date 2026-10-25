@@ -167,14 +167,16 @@ public sealed class DeviceViewStreamsTests : DeviceGroupTestBase
         Assert.Equal(0, watcher.Count);
     }
 
-    [Fact]
-    public async Task EventStreamsOfAViewOpenOnlyItsDevicesAndEndWhenTheDeviceLeaves()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)] // a source that ends quietly on the cancel: still "no longer available", never a normal end
+    public async Task EventStreamsOfAViewOpenOnlyItsDevicesAndEndWhenTheDeviceLeaves(bool endsQuietly)
     {
         var tagged = await AddDeviceAsync("ACCC8E000001", tags: ["PTZ"]);
         var outside = await AddDeviceAsync("ACCC8E000002");
         var group = (await SaveGroupAsync("G", tags: [await TagIdAsync("PTZ")])).Group;
         var view = await Views.ForScopeAsync(DeviceScope.Group(group.Id), "anna", Ct);
-        var inner = new EndlessStreams();
+        var inner = new EndlessStreams(endsQuietly);
         var streams = new ViewedEventStreams(inner, view, Db.Get<DeviceViewWatcher>());
 
         await Assert.ThrowsAsync<DevicesNotAvailableException>(() => streams.OpenAsync(outside.Id, Ct));
@@ -225,24 +227,31 @@ public sealed class DeviceViewStreamsTests : DeviceGroupTestBase
         return changes;
     }
 
-    /// <summary>Event streams that never deliver a document until they are cancelled.</summary>
-    private sealed class EndlessStreams : IDeviceEventStreams
+    /// <summary>Event streams that never deliver a document until they are cancelled (then they throw, or end quietly).</summary>
+    private sealed class EndlessStreams(bool endsQuietly = false) : IDeviceEventStreams
     {
         public List<Guid> Opened { get; } = [];
 
         public Task<IDeviceEventSource> OpenAsync(Guid deviceId, CancellationToken ct)
         {
             Opened.Add(deviceId);
-            return Task.FromResult<IDeviceEventSource>(new Endless());
+            return Task.FromResult<IDeviceEventSource>(new Endless(endsQuietly));
         }
 
-        private sealed class Endless : IDeviceEventSource
+        private sealed class Endless(bool endsQuietly) : IDeviceEventSource
         {
             public int LostDocuments => 0;
 
             public async IAsyncEnumerable<DeviceMetadataDocument> ReadAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
             {
-                await Task.Delay(Timeout.Infinite, ct);
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+                catch (OperationCanceledException) when (endsQuietly)
+                {
+                }
+
                 yield break;
             }
 

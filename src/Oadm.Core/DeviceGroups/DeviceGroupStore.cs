@@ -228,7 +228,9 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
                 throw new DeviceGroupException(DeviceGroupError.Precondition, DeviceGroupTexts.ChangedMeanwhile);
             }
 
-            _groups = await ReadAllAsync(db, ct).ConfigureAwait(false);
+            // Stored: from here on the call's cancel must not leave the memory copy, the views and the events behind.
+            AfterSave?.Invoke();
+            _groups = await ReadAllAsync(db, CancellationToken.None).ConfigureAwait(false);
             Interlocked.Increment(ref _version);
             result = new DeviceGroupSaveResult(group.Clone(), created, string.Join(", ", changes));
         }
@@ -245,6 +247,9 @@ public sealed class DeviceGroupStore(IDbContextFactory<OadmDbContext> dbFactory,
         CallerContext.Raise(Updated, this, result.Group.Id);
         return result;
     }
+
+    /// <summary>Tests: runs right after a save was stored (a cancel at that moment).</summary>
+    internal Action? AfterSave { get; set; }
 
     /// <summary>
     /// Deletes a group: in one transaction its users get no devices and every <see cref="IDeviceGroupOwnedObjects"/> turns off

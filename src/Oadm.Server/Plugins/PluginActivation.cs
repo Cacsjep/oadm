@@ -82,7 +82,12 @@ public sealed partial class PluginActivation(
                 throw;
             }
 
-            await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
+            using (Core.Auth.CallerContext.Suppress())
+            {
+                // The background boundary: the started plugins' timers and loops never keep the administrator's caller.
+                await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
             LogChanged(logger, packageId, enabled ? "on" : "off");
         }
         finally

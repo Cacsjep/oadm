@@ -191,15 +191,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         Assert.Equal(0, Engine.RunningCount("t.wait"));
     }
 
-    private static async Task WaitUntilAsync(Func<bool> condition)
-    {
-        var deadline = DateTime.UtcNow + Timeout;
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < deadline, "Condition not met in time.");
-            await Task.Delay(10);
-        }
-    }
+    private static Task WaitUntilAsync(Func<bool> condition) => Eventually.TrueAsync(condition, "the condition", Timeout);
 
     [Fact]
     public async Task TasksBeyondThePluginLimitWaitQueued()
@@ -667,19 +659,7 @@ public sealed class TaskEngineTests : IAsyncLifetime
         return list;
     }
 
-    private static async Task WaitUntilAsync(Func<Task<bool>> condition)
-    {
-        var deadline = DateTime.UtcNow + Timeout;
-        while (!await condition())
-        {
-            if (DateTime.UtcNow > deadline)
-            {
-                throw new TimeoutException();
-            }
-
-            await Task.Delay(5);
-        }
-    }
+    private static Task WaitUntilAsync(Func<Task<bool>> condition) => Eventually.TrueAsync(condition, "the condition", Timeout);
 
     private sealed class OwnerCorePlugin(ITaskPlugin contributed) : ICorePlugin
     {

@@ -51,8 +51,9 @@ public sealed class LiveViewServiceTests
         Assert.Single(factory.Opened);
 
         await cancelA.CancelAsync();
-        await Task.Delay(100);
+        await TestHelpers.WaitUntilAsync(() => Task.FromResult(host.Get<LiveViewHub>().ActiveViewers == 1), "viewer A left");
         Assert.False(source.Disposed);
+        Assert.Equal(1, host.Get<LiveViewHub>().ActiveUpstreams);
 
         await cancelB.CancelAsync();
         await TestHelpers.WaitUntilAsync(() => Task.FromResult(source.Disposed), "upstream closed after the last viewer");

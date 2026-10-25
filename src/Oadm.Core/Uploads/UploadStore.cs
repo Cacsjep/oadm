@@ -418,7 +418,7 @@ public sealed partial class UploadStore : IUploadedFiles
 
     private sealed record Metadata(string Id, string Name, long Size, string Sha256, DateTime CreatedUtc)
     {
-        /// <summary>The user who uploaded it; null for uploads of the system and from before 4.2 (no user reads those).</summary>
+        /// <summary>The user who uploaded it; null for uploads of the system and from before 4.5 (no user reads those).</summary>
         public Guid? UserId { get; init; }
 
         /// <summary>The session it was uploaded in (<see cref="UploadOwner.SessionId"/>).</summary>

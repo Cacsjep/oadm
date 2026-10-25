@@ -82,6 +82,12 @@ public sealed class ViewedEventStreams(IDeviceEventStreams inner, DeviceView vie
 
                     if (!more)
                     {
+                        // A source that ends quietly on the cancel: the device left, never a normal end.
+                        if (lease.HasLeft && !ct.IsCancellationRequested)
+                        {
+                            throw new DevicesNotAvailableException(1);
+                        }
+
                         yield break;
                     }
 

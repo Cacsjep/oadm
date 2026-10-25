@@ -29,6 +29,9 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
     private readonly DeviceViewFactory _views;
     private readonly ConcurrentDictionary<Guid, DeviceScopeRow> _rows = new();
     private readonly ConcurrentDictionary<Guid, byte> _removedWhileLoading = new();
+    private readonly Lock _rowsGate = new();
+    private readonly Lock _loadGate = new();
+    private Task? _load;
     private readonly HashSet<Guid> _dirty = [];
     private readonly Lock _dirtyGate = new();
     private readonly ITimer _flush;
@@ -58,18 +61,50 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
     {
         await _groups.LoadAsync(ct).ConfigureAwait(false);
         await _views.Catalog.EnsureLoadedAsync(ct).ConfigureAwait(false);
-        if (Volatile.Read(ref _loaded) != 0)
+
+        // One read for every caller: two reads that overlap could bring back a device removed between them.
+        Task load;
+        lock (_loadGate)
         {
-            return;
+            load = _load ??= LoadRowsAsync();
         }
 
-        // Subscribed before the read: a change during the read wins over the row read (TryAdd), a removed device stays out.
-        var rows = await _views.Devices.ListScopeRowsAsync(ct).ConfigureAwait(false);
-        foreach (var row in rows)
+        try
         {
-            if (!_removedWhileLoading.ContainsKey(row.Id))
+            await load.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception) when (load.IsFaulted || load.IsCanceled)
+        {
+            lock (_loadGate)
             {
-                _rows.TryAdd(row.Id, row);
+                if (ReferenceEquals(_load, load))
+                {
+                    _load = null; // the next call reads again
+                }
+            }
+
+            throw;
+        }
+    }
+
+    /// <summary>Reads of the device rows so far (tests: one, however many callers load).</summary>
+    internal int RowReads => Volatile.Read(ref _rowReads);
+
+    private int _rowReads;
+
+    private async Task LoadRowsAsync()
+    {
+        Interlocked.Increment(ref _rowReads);
+        // Subscribed before the read: a change during the read wins over the row read (TryAdd), a removed device stays out.
+        var rows = await _views.Devices.ListScopeRowsAsync(CancellationToken.None).ConfigureAwait(false);
+        lock (_rowsGate)
+        {
+            foreach (var row in rows)
+            {
+                if (!_removedWhileLoading.ContainsKey(row.Id))
+                {
+                    _rows.TryAdd(row.Id, row);
+                }
             }
         }
 
@@ -155,6 +190,19 @@ public sealed class HostDeviceScopes : IDeviceScopes, IDisposable
     private void OnCatalogChanged(object? sender, EventArgs e) => MarkDirty(AllGroups());
 
     private void OnDeviceChanged(object? sender, DeviceChange change)
+    {
+        // Checked and applied under one lock: a change raised after a newer one of the same device (the feed raises outside
+        // its lock) is dropped, so a device that left a group never comes back with its old fields.
+        lock (_rowsGate)
+        {
+            if (_views.Feed.IsLatest(change))
+            {
+                Apply(change);
+            }
+        }
+    }
+
+    private void Apply(DeviceChange change)
     {
         if (_groups.Loaded is not { Count: > 0 })
         {

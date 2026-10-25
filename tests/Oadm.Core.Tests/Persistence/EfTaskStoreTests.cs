@@ -105,6 +105,28 @@ public sealed class EfTaskStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheRecentAndActiveTasksOfSomeDevicesAreFilteredInTheQuery()
+    {
+        var mine = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var start = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var oldDone = NewTask(start, mine) with { State = TaskState.Done };
+        var queued = NewTask(start.AddHours(1), mine);
+        var newDone = NewTask(start.AddHours(2), mine) with { State = TaskState.Done };
+        var otherQueued = NewTask(start.AddHours(3), other);
+        foreach (var task in new[] { oldDone, queued, newDone, otherQueued })
+        {
+            await _store.AddAsync(task, CancellationToken.None);
+        }
+
+        var ids = new HashSet<Guid> { mine };
+        Assert.Equal([newDone.Id, queued.Id], (await _store.ListRecentAsync(ids, 2, CancellationToken.None)).Select(t => t.Id));
+        Assert.Equal([queued.Id], (await _store.ListActiveAsync(ids, CancellationToken.None)).Select(t => t.Id));
+        Assert.Empty(await _store.ListRecentAsync(new HashSet<Guid>(), 2, CancellationToken.None));
+        Assert.Empty(await _store.ListActiveAsync(new HashSet<Guid>(), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task EngineRunsAndRecoversAgainstTheDatabase()
     {
         var registry = new PluginRegistry();

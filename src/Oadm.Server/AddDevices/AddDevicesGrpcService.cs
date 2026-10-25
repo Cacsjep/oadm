@@ -164,7 +164,10 @@ public sealed partial class AddDevicesGrpcService(
         }
 
         var reach = await ReachAsync(context).ConfigureAwait(false);
-        var resolved = await ResolveAsync(request.SessionId, request.DiscoveredIds, reach, context).ConfigureAwait(false);
+
+        // One read of the managed serials for "managed already" and the limit (not one query per selected device).
+        var managed = await adder.ManagedSerialsAsync(ct).ConfigureAwait(false);
+        var resolved = ResolveCommit(request.SessionId, request.DiscoveredIds, reach, managed, context);
 
         // A user with a device group adds only devices that land inside the group (an excepted serial is not added).
         var selected = resolved.Where(f => reach.Takes(f.Serial, f.Route)).ToList();
@@ -174,7 +177,7 @@ public sealed partial class AddDevicesGrpcService(
         }
 
         // The device limit for the whole add up front: nothing of an add that would go over it is stored.
-        if (await adder.WouldExceedLimitAsync(selected.Select(f => f.Serial), ct).ConfigureAwait(false))
+        if (adder.WouldExceedLimit(managed, selected.Select(f => f.Serial)))
         {
             throw new RpcException(new Status(StatusCode.ResourceExhausted, DeviceLimits.TooManyDevicesText));
         }
@@ -229,7 +232,7 @@ public sealed partial class AddDevicesGrpcService(
             }
 
             var caller = AuthInterceptor.CallerOf(context);
-            await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct).ConfigureAwait(false);
+            await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct, logger).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(request.SessionId))
@@ -279,18 +282,28 @@ public sealed partial class AddDevicesGrpcService(
     /// </summary>
     private async Task<List<DiscoveredDevice>> ResolveAsync(string sessionId, IEnumerable<string> discoveredIds, AddReach reach, ServerCallContext context)
     {
-        var ct = context.CancellationToken;
+        var managed = await adder.ManagedSerialsAsync(context.CancellationToken).ConfigureAwait(false);
+        return ResolveCommit(sessionId, discoveredIds, reach, managed, context);
+    }
+
+    /// <summary>
+    /// <see cref="ResolveAsync"/> with the managed serials read once: the session's devices are looked up in one step and
+    /// "managed already" is a set lookup, so a Commit of 30,000 devices is linear.
+    /// </summary>
+    private List<DiscoveredDevice> ResolveCommit(string sessionId, IEnumerable<string> discoveredIds, AddReach reach, IReadOnlySet<string> managed, ServerCallContext context)
+    {
         var owned = owners.Owns(sessionId, AuthInterceptor.CallerOf(context));
-        var result = new List<DiscoveredDevice>();
-        foreach (var id in discoveredIds.Distinct(StringComparer.OrdinalIgnoreCase))
+        var ids = discoveredIds.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var known = owned ? discovery.FindDiscovered(sessionId, ids) : new Dictionary<string, DiscoveredDevice>();
+        var result = new List<DiscoveredDevice>(ids.Count);
+        foreach (var id in ids)
         {
-            var found = owned ? discovery.FindDiscovered(sessionId, id) : null;
-            if (found is null || !reach.Allows(found.Route))
+            if (!known.TryGetValue(id, out var found) || !reach.Allows(found.Route))
             {
                 throw GrpcGuard.NotFound($"Discovered device '{id}' is unknown (discovery session '{sessionId}').");
             }
 
-            if (Equals(found.Address, IPAddress.None) || await adder.IsManagedAsync(found.Serial, ct).ConfigureAwait(false))
+            if (Equals(found.Address, IPAddress.None) || (DeviceSerial.TryNormalize(found.Serial, out var serial) && managed.Contains(serial)))
             {
                 continue;
             }

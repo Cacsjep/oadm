@@ -21,8 +21,13 @@ public sealed class DeviceGroupsMigrationTests
 {
     private const string Before = "20261023062817_DeviceArchitecture";
 
-    /// <summary>A database as OADM 4.1 left it: an operator, a device, an event rule and a compliance check.</summary>
-    private static async Task SeedOlderAsync(OadmDbContext db)
+    /// <summary>
+    /// A database as OADM 4.1 left it: an operator with a login session, a device with its stored login, an event rule and a
+    /// compliance check (the child rows must survive the rebuilds of the Users and Devices tables).
+    /// </summary>
+    /// <param name="db">The database.</param>
+    /// <param name="protector">Encrypts the stored login (a restore drops logins the master key cannot read); null: any bytes.</param>
+    private static async Task SeedOlderAsync(OadmDbContext db, CredentialProtector? protector = null)
     {
         await db.GetService<IMigrator>().MigrateAsync(Before);
         await db.Database.ExecuteSqlRawAsync(
@@ -31,6 +36,13 @@ public sealed class DeviceGroupsMigrationTests
         await db.Database.ExecuteSqlRawAsync(
             "INSERT INTO \"Devices\" (\"Id\", \"Serial\", \"Address\", \"UseHostName\", \"Status\", \"Scheme\", \"Category\", \"CertTrust\", \"Tags\", \"Apis\") " +
             "VALUES ('22222222-2222-2222-2222-222222222222', 'ACCC8E000001', '10.0.0.1', 0, 'Ok', 'Https', 'Camera', 'Unknown', '[]', '[]')");
+        var password = protector?.Protect("pass", Guid.Parse("22222222-2222-2222-2222-222222222222").ToByteArray()) ?? [1, 2];
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"DeviceCredentials\" (\"DeviceId\", \"EncryptedPassword\", \"UserName\") " +
+            "VALUES ('22222222-2222-2222-2222-222222222222', {0}, 'root')", password);
+        await db.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"AuthTokens\" (\"TokenHash\", \"ClientAddress\", \"CreatedUtc\", \"ExpiresUtc\", \"Remember\", \"UserId\") " +
+            "VALUES ('h-tech', 'pc', '2026-01-01 00:00:00', '2099-01-01 00:00:00', 0, '11111111-1111-1111-1111-111111111111')");
         await db.Database.ExecuteSqlRawAsync(
             "INSERT INTO \"EventRules\" (\"Id\", \"Name\", \"Enabled\", \"DefinitionJson\", \"CreatedUtc\", \"UpdatedUtc\") " +
             "VALUES ('33333333-3333-3333-3333-333333333333', 'Old rule', 1, '{{}}', '2026-01-01 00:00:00', '2026-01-01 00:00:00')");
@@ -39,13 +51,16 @@ public sealed class DeviceGroupsMigrationTests
             "VALUES ('44444444-4444-4444-4444-444444444444', 'Old check', 't', '{{}}', '{{}}', 0, 0, 1, 0, 1, '2026-01-01 00:00:00', '2026-01-01 00:00:00')");
     }
 
-    private static async Task AssertNobodyLostDevicesAsync(OadmDbContext db)
+    private static async Task AssertNobodyLostDevicesAsync(OadmDbContext db, bool sessionsKept = true)
     {
         var user = await db.Users.AsNoTracking().SingleAsync(u => u.UserName == "tech");
         Assert.True(user.AllDevices);
         Assert.Null(user.DeviceGroupId);
         Assert.Equal(DeviceScope.All, user.DeviceAccess);
         Assert.True((await db.Devices.AsNoTracking().SingleAsync()).AddedByAllDevices);
+        Assert.Equal(1, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS \"Value\" FROM \"DeviceCredentials\"").SingleAsync()); // the device's stored login survived the Devices rebuild
+        // The login session survived the Users rebuild (a backup never carries login sessions).
+        Assert.Equal(sessionsKept ? 1 : 0, await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS \"Value\" FROM \"AuthTokens\"").SingleAsync());
         Assert.True((await db.EventRules.AsNoTracking().SingleAsync()).Enabled); // rules have no owner (EventRulesWithoutOwner)
         var ruleColumns = await db.Database.SqlQueryRaw<string>("SELECT \"name\" AS \"Value\" FROM pragma_table_info('EventRules')").ToListAsync();
         Assert.DoesNotContain("OwnerAllDevices", ruleColumns);
@@ -95,9 +110,9 @@ public sealed class DeviceGroupsMigrationTests
             olderPaths.EnsureDirectories();
             using (var provider = new ServiceCollection().AddOadmPersistence(olderPaths).BuildServiceProvider())
             {
+                var protector = provider.GetRequiredService<CredentialProtector>(); // writes master.key
                 await using var db = await provider.GetRequiredService<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync();
-                await SeedOlderAsync(db);
-                _ = provider.GetRequiredService<CredentialProtector>(); // writes master.key
+                await SeedOlderAsync(db, protector);
             }
 
             SqliteConnection.ClearAllPools();
@@ -117,7 +132,7 @@ public sealed class DeviceGroupsMigrationTests
             await using (var ctx = await restored.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync())
             {
                 Assert.Empty(await ctx.Database.GetPendingMigrationsAsync());
-                await AssertNobodyLostDevicesAsync(ctx);
+                await AssertNobodyLostDevicesAsync(ctx, sessionsKept: false);
             }
 
             // The restored operator's view is every device.

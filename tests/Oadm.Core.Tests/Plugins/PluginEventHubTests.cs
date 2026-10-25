@@ -96,15 +96,7 @@ public sealed class PluginEventHubTests
         Assert.NotNull(plugin.Events);
     }
 
-    private static async Task WaitAsync(Func<bool> condition)
-    {
-        for (var i = 0; i < 500 && !condition(); i++)
-        {
-            await Task.Delay(10);
-        }
-
-        Assert.True(condition());
-    }
+    private static Task WaitAsync(Func<bool> condition) => Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "the condition");
 
     private sealed class CapturingPlugin : ICorePlugin
     {

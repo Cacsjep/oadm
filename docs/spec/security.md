@@ -72,7 +72,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `sites.view` ("See sites", Operator and
   Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
-  loaded plugin (on or off) at start; `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
+  loaded plugin (on or off) at start (a task hidden from the menus, `ShowInMenus` false, is left out of the role editor,
+  its page's methods carry the rights, unless it declares permissions of its own: those stay listed and grantable; test
+  `PermissionCatalogTests`); `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
   role has but no loaded plugin declares are kept. **Administrator only, never grantable**: users and roles, the
   credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log. Every gRPC method

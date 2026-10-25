@@ -41,6 +41,17 @@ public sealed partial class DeviceAdder(
     {
         ArgumentNullException.ThrowIfNull(serials);
         var managed = await devices.ListSerialsAsync(ct).ConfigureAwait(false);
+        return WouldExceedLimit(managed, serials);
+    }
+
+    /// <summary>The serials of every managed device, read once (a large add checks "managed already" and the limit with it).</summary>
+    public Task<IReadOnlySet<string>> ManagedSerialsAsync(CancellationToken ct) => devices.ListSerialsAsync(ct);
+
+    /// <summary><see cref="WouldExceedLimitAsync"/> with the serials of <see cref="ManagedSerialsAsync"/>.</summary>
+    public bool WouldExceedLimit(IReadOnlySet<string> managed, IEnumerable<string> serials)
+    {
+        ArgumentNullException.ThrowIfNull(managed);
+        ArgumentNullException.ThrowIfNull(serials);
         var newOnes = serials.Select(DeviceSerial.Normalize).Distinct(StringComparer.Ordinal).Count(serial => !managed.Contains(serial));
         return managed.Count + newOnes > devices.MaxDevices;
     }

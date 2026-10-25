@@ -92,4 +92,60 @@ public sealed class CallerBoundaryTests
 
         Assert.Equal(2, calls);
     }
+
+    [Fact]
+    public async Task CorePluginsStartedOrStoppedInAnAdministratorsCallNeverSeeTheCaller()
+    {
+        var registry = new PluginRegistry();
+        var devices = new FakeDeviceRepository();
+        var vapix = new FakeVapixClientFactory();
+        await using var engine = new TaskEngine(new InMemoryTaskStore(), registry, devices, vapix);
+        await using var host = new CorePluginHost(registry, devices, vapix, engine, new InMemoryPluginSettingsProvider());
+        var plugin = new CallerProbe();
+        Assert.True(registry.RegisterCorePlugin(plugin, new PluginOrigin("test.probe", "1.0.0", null)));
+
+        // Turned on, off and on again in a call (Plugins page): start, stop and the work the plugin starts see no user.
+        using (CallerContext.Use(Caller()))
+        {
+            await host.StartAllAsync(CancellationToken.None);
+            registry.SetEnabled("test.probe", false);
+            await host.SyncEnabledAsync(CancellationToken.None);
+            registry.SetEnabled("test.probe", true);
+            await host.SyncEnabledAsync(CancellationToken.None);
+            await host.StopAllAsync(CancellationToken.None);
+            Assert.NotNull(CallerContext.Current);
+        }
+
+        Assert.Equal(["start", "loop", "stop", "start", "loop", "stop"], plugin.Seen.Select(s => s.Step));
+        Assert.All(plugin.Seen, s => Assert.Null(s.Caller));
+    }
+
+    /// <summary>Records the caller at its start and stop, and in the work its start begins (a loop, a timer).</summary>
+    private sealed class CallerProbe : Sdk.Plugins.ICorePlugin
+    {
+        public List<(string Step, AuthenticatedCaller? Caller)> Seen { get; } = [];
+
+        public string Id => "test.probe";
+
+        public string DisplayName => "Probe";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<Sdk.Plugins.ITaskPlugin> TaskPlugins => [];
+
+        public async Task StartAsync(Sdk.Plugins.ICorePluginContext ctx, CancellationToken ct)
+        {
+            Seen.Add(("start", CallerContext.Current));
+            var loop = await Task.Run(() => CallerContext.Current, ct);
+            Seen.Add(("loop", loop));
+        }
+
+        public Task StopAsync(CancellationToken ct)
+        {
+            Seen.Add(("stop", CallerContext.Current));
+            return Task.CompletedTask;
+        }
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
+    }
 }

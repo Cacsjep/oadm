@@ -72,7 +72,8 @@ public sealed partial class WaitingDeviceRunner(
     Core.DeviceGroups.DeviceViewFactory views,
     TimeProvider time,
     ILogger<WaitingDeviceRunner> logger,
-    Core.Sites.ISiteStates? sites = null) : BackgroundService
+    Core.Sites.ISiteStates? sites = null,
+    AccessEpochs? epochs = null) : BackgroundService
 {
     /// <summary>Waiting devices tried at the same time (the logins are limited by the authenticator as well).</summary>
     public const int Parallelism = 32;
@@ -286,20 +287,20 @@ public sealed partial class WaitingDeviceRunner(
                 }
             }
 
-            // The reach of each user who kept entries, read once per round (the add itself checks again). A user whose reach
-            // cannot be read is skipped this round; the other users' entries are tried.
-            var reaches = new ConcurrentDictionary<Guid, Lazy<Task<AddReach?>>>();
+            // The reach of each user who kept entries, read once per round and again when the user's access or group changed
+            // since that read (a round can run for many minutes; the add itself checks again). A user whose reach cannot be
+            // read is skipped this round; the other users' entries are tried.
+            var reaches = new ConcurrentDictionary<Guid, Lazy<KeeperReach>>();
             await Parallel.ForEachAsync(entries, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (entry, token) =>
             {
-                var reach = await reaches.GetOrAdd(entry.QueuedByUserId ?? Guid.Empty,
-                    _ => new Lazy<Task<AddReach?>>(() => ReachOrNullAsync(entry, token))).Value.ConfigureAwait(false);
-                if (reach is null)
+                var keeper = await CurrentReachAsync(reaches, entry, token).ConfigureAwait(false);
+                if (keeper is null)
                 {
                     _checking.TryRemove(entry.Id, out _);
                     return;
                 }
 
-                var outcome = await TryOneAsync(entry, reach, token).ConfigureAwait(false);
+                var outcome = await TryOneAsync(entry, keeper, token).ConfigureAwait(false);
                 _checking.TryRemove(entry.Id, out _);
                 switch (outcome.Kind)
                 {
@@ -382,6 +383,7 @@ public sealed partial class WaitingDeviceRunner(
     {
         ArgumentNullException.ThrowIfNull(entry);
         AddReach reach;
+        var epoch = epochs?.Capture() ?? 0;
         try
         {
             reach = await AddReach.ForUserAsync(views, entry.QueuedByUserId, entry.AddedBy, ct).ConfigureAwait(false);
@@ -392,12 +394,67 @@ public sealed partial class WaitingDeviceRunner(
             return new WaitingOutcome(WaitingOutcomeKind.StillWaiting, $"No Axis device answered at {entry.Address}.");
         }
 
-        return await TryOneAsync(entry, reach, ct).ConfigureAwait(false);
+        return await TryOneAsync(entry, new KeeperReach(reach, epoch), ct).ConfigureAwait(false);
     }
 
-    /// <summary>One try of one waiting device with the reach of the user who kept it. Never throws (one entry's failure must not end the round for the others).</summary>
-    private async Task<WaitingOutcome> TryOneAsync(WaitingTry entry, AddReach reach, CancellationToken ct)
+    /// <summary>
+    /// The reach of the entry's keeper from this round's cache, read again when the keeper's access or group changed after
+    /// the cached read (<see cref="AccessEpochs"/>); null when it cannot be read.
+    /// </summary>
+    private async Task<KeeperReach?> CurrentReachAsync(ConcurrentDictionary<Guid, Lazy<KeeperReach>> reaches, WaitingTry entry, CancellationToken ct)
     {
+        var key = entry.QueuedByUserId ?? Guid.Empty;
+        while (true)
+        {
+            var lazy = reaches.GetOrAdd(key, _ => new Lazy<KeeperReach>(() =>
+            {
+                var epoch = epochs?.Capture() ?? 0; // before the read: a change during it counts as after
+                return new KeeperReach(ReachOrNullAsync(entry, ct), epoch);
+            }));
+            var keeper = lazy.Value;
+            if (await keeper.ReachAsync.ConfigureAwait(false) is not { } reach)
+            {
+                return null;
+            }
+
+            if (!IsStale(keeper, reach))
+            {
+                return keeper;
+            }
+
+            reaches.TryRemove(new KeyValuePair<Guid, Lazy<KeeperReach>>(key, lazy)); // read again
+        }
+    }
+
+    /// <summary>True when the keeper's access, devices or group changed after <paramref name="reach"/> was read.</summary>
+    private bool IsStale(KeeperReach keeper, AddReach reach) =>
+        epochs is not null && epochs.ChangedSince(keeper.Epoch, reach.UserId ?? Guid.Empty, null, reach.View.GroupId?.ToString());
+
+    /// <summary>A try ended because the keeper's access changed during it: nothing is written, the next round tries again.</summary>
+    private static readonly WaitingOutcome AccessChanged = new(WaitingOutcomeKind.Changed, "The access of the user who kept it changed meanwhile.");
+
+    /// <summary>A keeper's reach (null when it could not be read) and the access epoch captured before the read.</summary>
+    private sealed record KeeperReach(Task<AddReach?> ReachAsync, long Epoch)
+    {
+        public KeeperReach(AddReach reach, long epoch)
+            : this(Task.FromResult<AddReach?>(reach), epoch)
+        {
+        }
+    }
+
+    /// <summary>
+    /// One try of one waiting device with the reach of the user who kept it. Never throws (one entry's failure must not end
+    /// the round for the others). A change of the keeper's access during the try ends it before the next step that sends
+    /// anything (the probe, the credential list, a login): nothing is written, the next round tries with the new reach.
+    /// </summary>
+    private async Task<WaitingOutcome> TryOneAsync(WaitingTry entry, KeeperReach keeper, CancellationToken ct)
+    {
+        var reach = (await keeper.ReachAsync.ConfigureAwait(false))!;
+        if (IsStale(keeper, reach))
+        {
+            return AccessChanged;
+        }
+
         if (!reach.CanAdd || (entry.SiteId is { } entrySite && !reach.Routes.Allows(entrySite)))
         {
             // The user cannot add devices there any more: nothing is sent to the address, it waits for Try now.
@@ -423,6 +480,11 @@ public sealed partial class WaitingDeviceRunner(
 
         try
         {
+            if (IsStale(keeper, reach))
+            {
+                return AccessChanged;
+            }
+
             if (reach.UsesCredentialList)
             {
                 authenticator.AllowCredentialList(session); // a user with a device group: only the entry's own login
@@ -486,6 +548,11 @@ public sealed partial class WaitingDeviceRunner(
             {
                 // It would not be in the group of the user who kept it: no login, no password sent.
                 return new WaitingOutcome(WaitingOutcomeKind.Held, AddDeviceTexts.KeeperCannotAdd);
+            }
+
+            if (IsStale(keeper, reach))
+            {
+                return AccessChanged; // before the first login
             }
 
             authenticator.Ensure(session, found, alreadyManaged: false);
@@ -575,7 +642,7 @@ public sealed partial class WaitingDeviceRunner(
         LogAdded(found.Serial, found.ConnectAddress, entry.Source);
         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceAddedAutomatically, $"{found.ConnectAddress} ({found.Serial})",
             $"{entry.Source} (waiting list, kept by {entry.AddedBy}): {message}", ct).ConfigureAwait(false);
-        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct, logger).ConfigureAwait(false);
         return new WaitingOutcome(WaitingOutcomeKind.Added, message);
     }
 

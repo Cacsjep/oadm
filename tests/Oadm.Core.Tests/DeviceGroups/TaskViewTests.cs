@@ -242,6 +242,33 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AQueuedTaskWhoseDeviceWasRemovedSaysTheSameAsOneOutsideTheGroup()
+    {
+        var first = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var removed = await AddDeviceAsync("ACCC8E000002", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Register(new DelegateTaskPlugin("t.gated", async (_, device, ct) =>
+        {
+            started.TrySetResult();
+            await gate.Task.WaitAsync(ct);
+        })
+        { Limit = 1 });
+        await using var engine = Engine();
+
+        var ids = await engine.RunAsync("t.gated", await view.GetAsync([first.Id, removed.Id], Ct), null, TaskCaller.Of(caller), Ct);
+        await started.Task.WaitAsync(Eventually.DefaultTimeout);
+        await Devices.RemoveAsync(removed.Id, Ct);
+        gate.SetResult();
+        await engine.WaitForCompletionAsync(ids[1], Ct);
+
+        var task = await engine.GetAsync(ids[1], Ct);
+        Assert.Equal(TaskState.Failed, task!.State);
+        Assert.Equal(DeviceMessages.NoLongerAvailable(1), task.Devices[0].Message);
+    }
+
+    [Fact]
     public async Task QueuedTasksOfAUserWhoLostTheGroupFail()
     {
         var first = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
@@ -551,6 +578,36 @@ public sealed class TaskViewTests : DeviceGroupTestBase
             Assert.Equal([olderOfEntering.Id, ofEntering.Id], received.Where(c => c.Kind == TaskChangeKind.Added).Select(c => c.Task.Id));
             Assert.DoesNotContain(received, c => c.Task.Id == ofInside.Id);
             Assert.Equal(3, subscription.SentCount);
+        }
+    }
+
+    [Fact]
+    public async Task AnOlderDeviceChangeRaisedAfterANewerOneNeverPutsTheDeviceBackIntoTheWatch()
+    {
+        var device = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var (_, _, view) = await GroupUserAsync();
+        var ofDevice = Finished(device.Id, DateTimeOffset.UtcNow.AddHours(-1));
+        await Db.Get<EfTaskStore>().AddRangeAsync([ofDevice], Ct);
+        using var outOfOrder = new OutOfOrderFeed(Views.Feed);
+        await using var engine = Engine();
+
+        var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(view, 100, Ct);
+        using (subscription)
+        {
+            Assert.Equal([ofDevice.Id], snapshot.Select(t => t.Id));
+
+            // A copy with the tag is raised late, after the untagging reached the watch: the device stays out.
+            var untagged = device.Clone();
+            untagged.Tags = [];
+            await outOfOrder.PublishAsync(
+                new DeviceChange(DeviceChangeKind.Updated, device.Id, device.Clone()),
+                new DeviceChange(DeviceChangeKind.Updated, device.Id, untagged));
+
+            Assert.False(subscription.InView(device.Id));
+            var received = await ReadUntilAsync(subscription, r => Has(r, TaskChangeKind.Removed, ofDevice.Id));
+            var removed = Assert.Single(received);
+            Assert.Equal(device.Id, removed.Task.DeviceId);
+            Assert.Equal(0, subscription.SentCount);
         }
     }
 

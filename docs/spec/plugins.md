@@ -30,7 +30,8 @@ returns null or throws `NotSupportedException`.
 - `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
-  `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only), `GetTaskName`
+  `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only; the role editor then lists only the permissions it declares,
+  none without), `GetTaskName`
   (see Tasks), `Permissions` (`PermissionDefinition` {Key, Name, Description, OperatorDefault, ViewerDefault,
   FullDeviceControl}: finer rights inside the task, "task:<id>:<key>"; empty = one "task:<id>") and
   `RequiredPermissions(payload)` (the keys one run needs; no answer = all declared), `ExecuteAsync`. Optional

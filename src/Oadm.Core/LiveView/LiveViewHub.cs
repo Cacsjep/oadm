@@ -54,6 +54,18 @@ public sealed partial class LiveViewHub : IAsyncDisposable
         }
     }
 
+    /// <summary>Viewers of every open upstream (diagnostics and tests).</summary>
+    public int ActiveViewers
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _upstreams.Values.Sum(u => u.Subscribers.Count);
+            }
+        }
+    }
+
     /// <summary>
     /// Negotiates codec (H.265 &gt; H.264 among camera and client codecs) and resolution, then joins
     /// or opens the upstream. When a codec fails to open, the next one in the list is tried.

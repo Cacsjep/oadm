@@ -89,7 +89,7 @@ public sealed partial class DeviceRelocationHostedService(
                     {
                         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceMoved, serial,
                             "Found again: " + DeviceMoveText.Of(DeviceConnections.RouteOf(before), before.Address, route, address, sites), ct).ConfigureAwait(false);
-                        await AddDevices.MembershipAudit.MovedAsync(views, audit, before, ct).ConfigureAwait(false);
+                        await AddDevices.MembershipAudit.MovedAsync(views, audit, before, ct, logger).ConfigureAwait(false);
                     }
 
                     break;

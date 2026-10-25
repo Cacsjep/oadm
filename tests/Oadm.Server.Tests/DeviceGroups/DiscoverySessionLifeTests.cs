@@ -23,6 +23,49 @@ public sealed class DiscoverySessionLifeTests
     private static readonly AuthenticatedCaller Anna = new(Guid.NewGuid(), "anna", BuiltInRoles.OperatorId, PermissionSet.All, "local", "", "h-anna");
 
     [Fact]
+    public async Task ALoginRunningWhenItsSessionIsForgottenSendsNoFurtherCredential()
+    {
+        var network = new FakeAxisNetwork();
+        var camera = network.Add("10.9.7.1", FakeSerials.Make(71), "the-real-password");
+        await using var host = await TestServerHost.StartAsync(network);
+        foreach (var password in new[] { "wrong-1", "wrong-2", "wrong-3" })
+        {
+            await host.Settings.AddCredentialAsync(new Contracts.V1.AddCredentialRequest { UserName = "root", Password = password });
+        }
+
+        var authenticator = host.Get<DiscoveryAuthenticator>();
+        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var logins = 0;
+        network.BeforeLoginAnswer = async (_, ct) =>
+        {
+            if (Interlocked.Increment(ref logins) == 1)
+            {
+                held.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct); // until the session's login is cancelled
+                }
+                finally
+                {
+                    ended.TrySetResult();
+                }
+            }
+        };
+        authenticator.AllowCredentialList("stopped");
+        authenticator.Ensure("stopped", new DiscoveredDevice(camera.Serial, camera.Serial, System.Net.IPAddress.Parse("10.9.7.1"), null, "P3265-V", "12.6.85",
+            DiscoveredDeviceStatus.CredentialsRequired, "http", DiscoverySources.RangeScan, DateTimeOffset.UtcNow), alreadyManaged: false);
+        await held.Task.WaitAsync(Eventually.DefaultTimeout);
+
+        // The session is stopped for an access change while a login of the credential list waits for its answer.
+        authenticator.Forget("stopped");
+        await ended.Task.WaitAsync(Eventually.DefaultTimeout);
+        await Eventually.TrueAsync(() => authenticator.RunningLogins == 0, "the login to end");
+
+        Assert.Equal(1, Volatile.Read(ref logins));
+    }
+
+    [Fact]
     public async Task AWatchedSessionStaysAndAnIdleOneIsStoppedAndForgottenAfterTheLifetime()
     {
         await using var host = await TestServerHost.StartAsync();

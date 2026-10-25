@@ -542,7 +542,6 @@ public sealed partial class DeviceTagStore(
     private IReadOnlyDictionary<Guid, string>? _names;
     private readonly SemaphoreSlim _namesLock = new(1, 1);
 
-    /// <summary>Reads the committed definitions again (after a write, never cancelled) and moves <see cref="Version"/>.</summary>
     /// <summary>
     /// The names after a committed write: a failed read never keeps the change from being published (the devices and the
     /// definitions changed already). The names stay as they were (fail closed: a group's new or renamed tag covers no
@@ -572,6 +571,7 @@ public sealed partial class DeviceTagStore(
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the tag names after a change failed; device groups keep the names they had until the next change")]
     private static partial void LogNamesReloadFailed(ILogger logger, Exception ex);
 
+    /// <summary>Reads the committed definitions again (after a write, never cancelled) and moves <see cref="Version"/>.</summary>
     private async Task ReloadNamesAsync()
     {
         BeforeNamesReload?.Invoke();

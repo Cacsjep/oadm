@@ -57,6 +57,24 @@ public sealed class DeviceGroupStoreTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task ACancelRightAfterTheSaveStillUpdatesTheMemoryAndRaisesTheEvents()
+    {
+        var created = (await SaveGroupAsync("B", serials: ["ACCC8E000001"])).Group;
+        var changed = new List<Guid>();
+        Groups.Changed += (_, id) => changed.Add(id);
+        using var cancel = new CancellationTokenSource();
+        Groups.AfterSave = cancel.Cancel;
+
+        var saved = await Groups.SaveAsync(created.Id, "B", "", new DeviceGroupRules(false, [], [], ["ACCC8E000002"], []), created.Revision, cancel.Token);
+
+        Assert.True(cancel.IsCancellationRequested);
+        Assert.Equal(["ACCC8E000002"], saved.Group.Serials);
+        Assert.Equal(saved.Group.Revision, Groups.RevisionOf(created.Id));
+        Assert.Equal(["ACCC8E000002"], (await Groups.GetAsync(created.Id, Ct))!.Serials);
+        Assert.Equal([created.Id], changed);
+    }
+
+    [Fact]
     public async Task ASaveOnAnOlderRevisionANameInUseAndABadSerialAreRefused()
     {
         var group = (await SaveGroupAsync("North")).Group;
