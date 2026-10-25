@@ -41,10 +41,11 @@ public sealed class CertificateAndCategoryDisplayTests
         Assert.Equal(PillKind.Ok, CertificateDisplay.ExpiryKind(notAfter, Now, 0)); // the server said nothing: 30
 
         Device device = TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V");
-        device.CertNotAfter = Timestamp.FromDateTime(DateTime.UtcNow.AddDays(40).AddHours(1));
-        Assert.Equal(PillKind.Ok, new DeviceRowViewModel(device).CertExpires.Kind);
+        var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(Now));
+        device.CertNotAfter = Timestamp.FromDateTime(Now.AddDays(40));
+        Assert.Equal(PillKind.Ok, new DeviceRowViewModel(device, time: clock).CertExpires.Kind);
         device.CertWarningDays = 60;
-        Assert.Equal(new ChipInfo("40 days", PillKind.Warning), new DeviceRowViewModel(device).CertExpires);
+        Assert.Equal(new ChipInfo("40 days", PillKind.Warning), new DeviceRowViewModel(device, time: clock).CertExpires);
     }
 
     [Fact]
