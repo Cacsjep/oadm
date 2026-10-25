@@ -190,7 +190,7 @@ public sealed class ReversedConnectionTests
             {
                 var socket = await serverPort.AcceptTcpClientAsync();
                 var tls = new SslStream(socket.GetStream(), leaveInnerStreamOpen: false);
-                using var timeout = new CancellationTokenSource(SiteTls.HandshakeTimeout);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 await tls.AuthenticateAsServerAsync(SiteTls.ServerOptions(serverIdentity, fp => fp is not null && fp.AsSpan().SequenceEqual(nodeFingerprint)), timeout.Token);
                 return tls;
             }
@@ -200,7 +200,7 @@ public sealed class ReversedConnectionTests
                 var socket = new TcpClient();
                 await socket.ConnectAsync(IPAddress.Loopback, port);
                 var tls = new SslStream(socket.GetStream(), leaveInnerStreamOpen: false);
-                using var timeout = new CancellationTokenSource(SiteTls.HandshakeTimeout);
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 await tls.AuthenticateAsClientAsync(SiteTls.ClientOptions(nodeIdentity, fp => nodeAcceptsServer && fp is not null && fp.AsSpan().SequenceEqual(serverFingerprint)), timeout.Token);
                 return tls;
             }
@@ -231,7 +231,15 @@ public sealed class ReversedConnectionTests
             await _nodeSide.DisposeAsync();
             _serverPort.Stop();
             using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await _node.StopAsync(stop.Token);
+            try
+            {
+                await _node.StopAsync(stop.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // A slow stop only shortens the graceful part: the dispose below ends the rest.
+            }
+
             await _node.DisposeAsync();
         }
     }

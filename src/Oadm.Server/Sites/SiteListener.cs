@@ -34,6 +34,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
     private readonly Dictionary<string, int> _perAddress = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _running = new();
     private int _refusedPerAddress;
+    private readonly TimeSpan _handshakeTimeout;
     private int _handshakesRunning;
     private int _disposed;
     private Task _loop = Task.CompletedTask;
@@ -42,8 +43,10 @@ internal sealed partial class SiteListener : IAsyncDisposable
     /// New connections per source address (IPv6 per /64), counted at accept before any TLS work; null = no limit.
     /// </param>
     /// <param name="maxHandshakesPerAddress">Handshakes in progress from one address (IPv6 per /64) at most.</param>
-    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger, AddressRateLimiter? connections = null, int maxHandshakesPerAddress = int.MaxValue)
+    /// <param name="handshakeTimeout">How long a TLS handshake may take; null = <see cref="SiteTls.HandshakeTimeout"/>.</param>
+    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger, AddressRateLimiter? connections = null, int maxHandshakesPerAddress = int.MaxValue, TimeSpan? handshakeTimeout = null)
     {
+        _handshakeTimeout = handshakeTimeout ?? SiteTls.HandshakeTimeout;
         _connections = connections;
         _stopping = _stop.Token;
         _maxPerAddress = maxHandshakesPerAddress;
@@ -200,7 +203,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
             tls = new SslStream(new NetworkStream(socket, ownsSocket: true), leaveInnerStreamOpen: false);
             socket.NoDelay = true;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopping);
-            timeout.CancelAfter(SiteTls.HandshakeTimeout);
+            timeout.CancelAfter(_handshakeTimeout);
             await tls.AuthenticateAsServerAsync(SiteTls.ServerOptions(_identity(), fingerprint => fingerprint is not null), timeout.Token).ConfigureAwait(false);
             if (!_stopping.IsCancellationRequested)
             {

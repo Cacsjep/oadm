@@ -28,7 +28,8 @@ public sealed class SiteListenerLimitTests
         using var identity = SiteTls.CreateIdentity("server");
         var handedOver = 0;
         var loopback = PrivateLoopback();
-        var listener = new SiteListener(new IPEndPoint(loopback, 0).ToString(), () => identity, maxHandshakes: 64, _ => Interlocked.Increment(ref handedOver), NullLogger.Instance, maxHandshakesPerAddress: 2);
+        var listener = new SiteListener(new IPEndPoint(loopback, 0).ToString(), () => identity, maxHandshakes: 64, _ => Interlocked.Increment(ref handedOver), NullLogger.Instance, maxHandshakesPerAddress: 2,
+            handshakeTimeout: TimeSpan.FromSeconds(60)); // the two held handshakes outlast any slow check
         listener.Start();
         var clients = new List<TcpClient>();
         try
@@ -72,6 +73,7 @@ public sealed class SiteListenerLimitTests
             WorkerWait = TimeSpan.FromSeconds(30),
             CallTimeout = TimeSpan.FromSeconds(30),
             MaxPendingLinks = 1,
+            HandshakeTimeout = TimeSpan.FromSeconds(30), // the stranger's handshake on a slow machine
             HelloTimeout = TimeSpan.FromMinutes(5), // the stranger holds its place for the whole test
         });
         await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
@@ -192,7 +194,8 @@ public sealed class SiteListenerLimitTests
         var client = new TcpClient();
         await client.ConnectAsync(IPAddress.Loopback, port);
         var tls = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
-        await tls.AuthenticateAsClientAsync(SiteTls.ClientOptions(identity, _ => true));
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await tls.AuthenticateAsClientAsync(SiteTls.ClientOptions(identity, _ => true), limit.Token);
         return tls;
     }
 
