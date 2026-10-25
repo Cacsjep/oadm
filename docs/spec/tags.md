@@ -30,7 +30,7 @@ with the labels in the grid, the search, the export and the import; plugins read
   PKI's policies, docs/spec/pki.md "Code (stage 3)"; until OADM 4.5 the 802.1X server's VLAN rules). Only users with all devices add them to or remove them from devices; for a view of a
   group `SetDeviceTagsAsync` refuses an added or removed protected name (by name, case-insensitive, with or without a
   definition) in the same transaction as the group guard (`ProtectedTagException`, PERMISSION_DENIED with the plugin's
-  text: "The tag Floor 3 sets a VLAN. Only users with all devices can add or remove it. Nothing was changed."; a plugin
+  text: "The tag Floor 3 is used by a PKI policy. Only users with all devices can add or remove it. Nothing was changed."; a plugin
   text that fails or is empty: "Only users with all devices can add or remove the tag Floor 3. Nothing was changed.").
   Both refusals are `TagNeedsAllDevicesException` (the waiting list logs them like the group one). Rename and delete need
   all devices anyway. Users with all devices (also an Operator with all devices and "Tag devices") add and remove protected
@@ -38,8 +38,8 @@ with the labels in the grid, the search, the export and the import; plugins read
   **While the plugin runs, rename and delete of a protected tag are refused for every user, administrators too** (decision
   2026-10-24, 802.1X round 3: the plugin's rules keep tags by name and would silently stop matching): `UpdateAsync` with a
   new name (a change of case only is no rename: `TagNames.Comparer`) and `DeleteAsync` throw `ProtectedTagChangeException` (FAILED_PRECONDITION) with the plugin's text
-  (`Protect(names, refusal, changeRefusal)`: "The tag Floor 3 sets a VLAN. Change the VLAN rule first. Nothing was
-  changed.") or the host's "A plugin's settings use the tag Floor 3. Change them first. Nothing was changed."; a recolor
+  (`Protect(names, refusal, changeRefusal)`: "The tag Floor 3 is used by a PKI policy. Change the policy first.
+  Nothing was changed.") or the host's "A plugin's settings use the tag Floor 3. Change them first. Nothing was changed."; a recolor
   is allowed. The client shows the text below the tag list. **While the plugin is stopped, off or faulted** (also a lapsed
   PRO license, which turns a PRO package off) **the rename or delete is allowed** (decision 2026-10-24, final review:
   nobody could change the plugin's settings): only a running plugin's set (`Live`) refuses it, the add and remove refusal

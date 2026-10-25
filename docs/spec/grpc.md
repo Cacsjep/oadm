@@ -173,7 +173,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `ListPackages` (every loaded plugin package with id, display name, version, enabled, enabled_by_default, has_page,
   menu_task_count, always_on, description, pro; the list's pro_active; any user) and `SetPackageEnabled(id, enabled)`
   (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin without an active license; reply:
-  the whole list), see "Plugins on and off".
+  the whole list), see "Plugins on and off". `SetPackageLicense(id, license)` and `RemovePackageLicense(id)` (Admin;
+  reply: the whole list), see `docs/spec/plugins.md` "Plugin licenses".
 - `SettingsService`: `Get`, `Set` (`ServerSettings.zero_conf_seconds = 8`, 0 keeps the stored value; read-only
   `server_version = 21` in both replies for the About page),
   `ListCredentials`, `AddCredential(user_name, password)`
@@ -234,3 +235,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   FAILED_PRECONDITION with the reason).
 - `SupportService` (`support.proto`, see `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
+- `BackupService` (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,
+  `Restore`, see `docs/spec/settings-backup.md`.
+- `SiteService` (`sites.proto`; reading needs "See sites", every change Administrator): `ListSites`, `WatchSites`,
+  `SetAccept`, `BindSite`, `RenameSite`, `ReplaceSite`, `RemoveSite`, see `docs/spec/sites.md`. `SiteNodeService`
+  (`site_node.proto`) is hosted by the node and called by the server over the link the node opened.
+- `WaitingDeviceService` (`waiting.proto`, "Add and remove devices"): `Add`, `List`, `Watch`, `Remove`, `TryNow`, see
+  `docs/spec/add-devices.md` "Waiting list".

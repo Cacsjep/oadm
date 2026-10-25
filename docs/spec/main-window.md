@@ -103,3 +103,42 @@ X: action Y on 10.0.0.48 failed: <reason>", with the exception when it was unexp
 its limits Information (`ActionRunner.Write`, `RuleEngine.LogRule`). Fake mode: 650 sample entries
 (`FakeOadmApi.ServerLog.cs`). Tests: `tests/Oadm.Server.Tests/ServerLogTests`, `tests/Oadm.Client.Tests/LogsPageTests`,
 `RuleEngineTests.ActionsRunInOrderAndAFailureDoesNotStopTheNext`.
+
+Device grid columns, default order (Address first: installers find a device by address and model; the column chooser
+and the saved per-client order cover other preferences):
+
+| Column | Source |
+|---|---|
+| (icon) | category icon (camera, encoder, speaker, audio, intercom, radar, I/O module, door controller, generic), tooltip "Camera (Dome Camera)" |
+| Address | IP or host name, hyperlink opens device web UI in default browser |
+| Model | ProdNbr |
+| Status | computed, see enum |
+| Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See "Compliance" |
+| MAC address | SerialNumber from basicdeviceinfo |
+| Firmware | Version |
+| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |
+| Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export |
+| Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
+| Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
+| DHCP | Network.BootProto == dhcp -> Yes/No |
+| HTTPS | HTTPS enabled -> Enabled/Disabled |
+| Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than the device's days of PKI's Expiry warning policy (`Device.cert_warning_days`, 30 without PKI or without a policy for the device): plain text, warn chip within them, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
+| Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
+| IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
+
+Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
+default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
+certificate info + server name) on add, after a task finishes on that device,
+every **10 minutes** per device that is Ok (`Polling.FullRefreshMinutes`, checked every 30 s; devices that are not Ok
+are left to the status poll), immediately when a status poll sees a device go from any non-Ok status back to Ok, and
+immediately when it sees a new firmware version or model (a new API list). All full refreshes go through one deduplicating
+queue, at most `RefreshParallelism` = 64 at once. Scale: a poll round starts every interval and spreads
+its device starts evenly over 90 % of it (`PollRoundAsync`, at most `MaxParallelism` = 200 at once, no setting: the
+spread keeps about 40 busy for 30,000 devices answering in 70 ms, the cap only matters while devices are slow or dead);
+each device row is read right before its poll. A device that stops answering (timeout, refused connection) is asked once
+more at the end of the round before it turns Unreachable; in an outage (more than `OutageShare` = 10 % of the round
+failed) there is no second try (30,000 dead devices: one round of 7.6 minutes). More than half of a round failing logs one
+warning "Most devices do not answer (F of P). Check the server's network.", and one information when they answer again; single
+failed polls are Debug only. After a server start the first scheduled full refresh is staggered: the n-th of N devices
+is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is written but not published to watchers (no
+30,000 identical updates per minute to every client). Tests `DevicePollingRoundTests`, `DevicePollingScheduleTests`.

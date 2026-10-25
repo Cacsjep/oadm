@@ -207,7 +207,8 @@ server, Enrollment, two EST sign-in CA).
   is preselected and its summary sentence shows below the field. The run uses the policy's values as stored (decision
   2026-10-25: no values of their own in the dialog, the policy decides). EST issues by profile: an EST profile names its
   issuing policy (the profile name stays what the camera uses in its URL). Users add more issuing policies, e.g. "HTTPS 2
-  years", or one with RSA and EAPOL version 2 for devices before AXIS OS 12 or 10.1 (see "Older AXIS OS").
+  years", or an IEEE 802.1X one with RSA for devices before AXIS OS 12 (the built-in one already uses EAPOL version 2; see
+  "Older AXIS OS").
 - **No overlaps** (decision 2026-10-24): saving is refused when a device is in two policies of the same kind
   ("10.0.0.48 is in Building B and PTZ."), checked against the devices of now; the same CA in two 802.1X trusted CA or two
   EST sign-in CA policies is refused too. When a tag or site change creates an overlap later, both policies show a warning

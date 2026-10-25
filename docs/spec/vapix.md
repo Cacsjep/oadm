@@ -81,9 +81,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
   (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
 - **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`
-  (Socket, TcpClient, UdpClient, Ping, Dns, HttpClientHandler, SocketsHttpHandler, ClientWebSocket.ConnectAsync): errors in
+  (Socket, TcpClient, UdpClient, Ping, Dns, HttpClientHandler, SocketsHttpHandler, ClientWebSocket.ConnectAsync, `new
+  HttpClient()`, WebRequest, HttpWebRequest): errors in
   src/ and plugins/ (`OadmBannedApis=error`), warnings RS0030 in every plugin built with Oadm.Plugin.Sdk
   (`OadmBannedApis=warning`, `none` turns it off; version `OadmBannedApiAnalyzersVersion` in Oadm.Plugin.Versions.props);
   tools/ and tests/ outside. Exceptions carry a SuppressMessage with a justification and are listed in
-  `RoutingRulesTests.AllowedBannedApiUsers` (`AddressProbe`, `NtpServerService`, `UseOadmNtpServerTask` until they use
-  `IDeviceNetwork`).
+  `RoutingRulesTests.AllowedBannedApiUsers` (the router, routed DNS, `LocalNetwork` behind `IDeviceNetwork` and
+  `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay`, and the
+  sockets of the DHCP and NTP servers and the Notifications actions).

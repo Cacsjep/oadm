@@ -10,9 +10,9 @@ Two kinds of plugins, one packaging format, one loader.
   own UI page in the navigation rail, e.g. NTP server, DHCP server, IDP. They get full access
   to the device table and VAPIX via `ICorePluginContext`. **A Core plugin can also contribute
   Task plugins**: `ICorePlugin.TaskPlugins` returns the Task plugins it owns. Example: a PKI
-  Core plugin runs an internal CA with its own page, and contributes a "Deploy certificate"
+  Core plugin runs an internal CA with its own page, and contributes an "Enable HTTPS"
   task that issues a cert for the selected cameras and installs it over VAPIX. Likewise an
-  NTP Core plugin contributes "Use this NTP server". The loader registers contributed tasks
+  NTP Core plugin contributes "Use OADM as NTP server". The loader registers contributed tasks
   exactly like standalone Task plugins, so the context menu does not care where a task came
   from, and a contributed task can reach its owning Core plugin's state via the context.
 
