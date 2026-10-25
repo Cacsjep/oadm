@@ -32,11 +32,11 @@ Read-only for devices.
   (topic `messages`, batched every 250 ms, at most 500 per batch; above that the oldest of the batch are dropped and counted)
   and a `state` event (Connecting, Live, Reconnecting, Stopped, Error + text, message count, lost count).
 - **Page (client, `HasOwnCards` false: one card):** `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
-  One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera button (secondary, it names
+  One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera button (a command button, like every other control of the row; it names
   the chosen camera "10.0.0.48 · P3265-V", else "Choose a camera") opens the shared `DevicePickerWindow.ShowOneAsync`
   (search, virtualized, 30,000 devices) with the managed video and I/O devices (others are not offered); the view hands the
   picker to the view model as `PickCamera`; another camera stops the running stream, a removed one clears the choice. The
-  primary **Start** / **Stop** sits directly right of it, `ui:SearchBox` filter (live, case-insensitive
+  **Start** / **Stop** (command button with the start or stop icon) sits directly right of it, `ui:SearchBox` filter (live, case-insensitive
   over topic, info and raw XML; "Filter events"), **Clear** (empties the list, the stream keeps running), **Autoscroll**
   toggle (on: the newest row stays visible; scrolling up turns it off, scrolling to the end turns it on again) and the
   count ("134 messages", "5 of 15 messages"); on the right the status chip (Connecting accent, Live ok "Live", plus

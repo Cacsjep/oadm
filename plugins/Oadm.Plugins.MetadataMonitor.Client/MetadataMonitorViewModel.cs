@@ -86,6 +86,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StartStopText))]
     [NotifyPropertyChangedFor(nameof(StartStopTip))]
+    [NotifyPropertyChangedFor(nameof(StartStopIconKey))]
     [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
     [NotifyCanExecuteChangedFor(nameof(StartStopCommand))]
     public partial bool IsRunning { get; set; }
@@ -122,6 +123,8 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
     public bool HasStatus => StatusText.Length > 0;
 
     public string StartStopText => IsRunning ? "Stop" : "Start";
+
+    public string StartStopIconKey => IsRunning ? "stop" : "start";
 
     public string StartStopTip => IsRunning
         ? "End the event stream (the list stays)"

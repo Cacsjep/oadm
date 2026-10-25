@@ -54,8 +54,9 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   page keeps the rows of its own cameras (`SweepRows.Scope`).
 - **Device groups** (SDK 0.4.0, `minSdkVersion` 0.4.0): one table per device scope (`DeviceSweeps<ImageHealthRow>`):
   the users of a device group share the table of their group's cameras, users with all devices the table of every
-  camera. `check` refuses the whole choice when any id is outside the caller's devices (NOT_FOUND "1 device is no longer
-  available.", the same as an unknown id, nothing read); no payload = the caller's video devices. `rows` and `state` go
+  camera. `check` of a user limited to a device group refuses the whole choice when any id is outside the caller's devices
+  (NOT_FOUND "1 device is no longer available.", the same as an unknown id, nothing read); a user with all devices gets the
+  cameras that still exist (`CallDevices.KnownAsync`: removed ones are skipped); no payload = the caller's video devices. `rows` and `state` go
   only to the users of that scope (`PluginEventAudience.DeviceScope`). A deleted group has no table (empty state). The
   reads are background work of the sweep (the context's VAPIX clients over the scope's devices). `check` and `getState`
   answer only rows of cameras the caller sees now (`DeviceSweep.SnapshotAsync`): a camera that left the group drops out

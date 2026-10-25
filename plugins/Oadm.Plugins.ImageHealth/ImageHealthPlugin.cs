@@ -64,8 +64,9 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
         InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
 
     /// <summary>
-    /// The page's calls: the table of the caller's devices (one per device group). A check's chosen cameras must all be in
-    /// the caller's view (else NOT_FOUND, nothing read); without a choice it covers the caller's video devices.
+    /// The page's calls: the table of the caller's devices (one per device group). A group user's chosen cameras must all be
+    /// in the caller's view (else NOT_FOUND, nothing read), a user with all devices checks the chosen cameras that still
+    /// exist; without a choice it covers the caller's video devices.
     /// </summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
@@ -77,7 +78,7 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
                 var ids = CheckIds(payloadJson);
                 if (ids is not null)
                 {
-                    await CallDevices.RequireAsync(caller, ids, ct).ConfigureAwait(false);
+                    ids = await CallDevices.KnownAsync(caller, ids, ct).ConfigureAwait(false);
                 }
 
                 monitor.StartCheck(caller.DeviceScopeKey, ids);

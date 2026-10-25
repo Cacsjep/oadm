@@ -9,13 +9,11 @@
        The description lives in the host page header; the status chip sits left of the Start / Stop button.
        Shared controls and theme classes only. -->
   <Grid x:Name="Root" RowDefinitions="Auto,*,Auto,260">
-    <!-- One row: the camera button (the shared picker) with Start / Stop right of it, filter, Clear, Autoscroll and the message count;
-         the status on the right. -->
+    <!-- One toolbar row (command buttons, like I/O Monitor): the camera button (the shared picker) with Start / Stop right of
+         it, filter, Clear, Autoscroll and the message count; the status on the right. -->
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="12">
-      <Button Grid.Column="0" Classes="secondary" VerticalAlignment="Center" MinWidth="220" MaxWidth="320"
-              Command="{Binding ChooseCameraCommand}" ToolTip.Tip="Find a camera by address or model">
-        <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding CameraButtonText}" />
-      </Button>
+      <ui:ToolbarButton Grid.Column="0" IconKey="video" Text="{Binding CameraButtonText}" VerticalAlignment="Center" MaxWidth="320"
+                        Command="{Binding ChooseCameraCommand}" ToolTip.Tip="Find a camera by address or model" />
       <ui:SearchBox Grid.Column="3" Width="220" VerticalAlignment="Center" Text="{Binding FilterText}" Placeholder="Filter events" />
       <ui:ToolbarButton Grid.Column="4" VerticalAlignment="Center" Text="Clear" IconKey="eraser" Command="{Binding ClearCommand}"
                         ToolTip.Tip="Empty the list; the stream keeps running" />
@@ -25,9 +23,8 @@
       <ui:StatusChip Grid.Column="8" VerticalAlignment="Center" IsVisible="{Binding HasStatus}"
                      Text="{Binding StatusText}" IsOk="{Binding IsStatusOk}" IsWarning="{Binding IsStatusWarning}"
                      IsError="{Binding IsStatusError}" IsAccent="{Binding IsStatusAccent}" ToolTip.Tip="{Binding StatusDetail}" />
-      <Button Grid.Column="2" Classes="primary" VerticalAlignment="Center" MinWidth="72" HorizontalContentAlignment="Center"
-              Content="{Binding StartStopText}"
-              Command="{Binding StartStopCommand}" ToolTip.Tip="{Binding StartStopTip}" ToolTip.ShowOnDisabled="True" />
+      <ui:ToolbarButton Grid.Column="2" VerticalAlignment="Center" IconKey="{Binding StartStopIconKey}" Text="{Binding StartStopText}"
+                        Command="{Binding StartStopCommand}" ToolTip.Tip="{Binding StartStopTip}" ToolTip.ShowOnDisabled="True" />
     </Grid>
 
     <!-- Up to 10,000 rows: virtualized, batches arrive as one collection change. -->
