@@ -19,7 +19,7 @@ that ships with OADM).
 - A plugin folder that builds: `dotnet new oadm-task`, see [Develop with the .NET SDK](../plugin-sdk/).
 - `AGENTS.md` in that folder: the rules of OADM that apply to your plugin (device safety, UI texts, the shared
   controls, scale, tests), the commands and links to the guides. Assistants that read `AGENTS.md` find it by themselves;
-  tell the others, Claude Code among them, to read it first.
+  the folder's `CLAUDE.md` points Claude Code to it. Tell any other assistant to read it first.
 - The guides it links to: [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/), the tutorial of your kind of
   plugin, [UI kit](https://oadm.app/dev/ui/), [Testing](https://oadm.app/dev/testing/) and the
   [SDK reference](https://oadm.app/api/).

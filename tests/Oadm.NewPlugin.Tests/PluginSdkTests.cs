@@ -79,6 +79,7 @@ public sealed partial class PluginSdkTests : IDisposable
             Assert.Contains($"https://oadm.app/dev/tutorial-{sample.Kind}/", agents, StringComparison.Ordinal);
             Assert.Contains("dotnet oadm dev start", agents, StringComparison.Ordinal);
             Assert.Contains("Device safety", agents, StringComparison.Ordinal);
+            Assert.Equal("@AGENTS.md\n", File.ReadAllText(Path.Combine(root, "CLAUDE.md")));
             foreach (var repoOnly in new[] { "manage ", "CLAUDE.md", "docs/spec", "artifacts/", "src/Oadm", "dev-cameras" })
             {
                 Assert.DoesNotContain(repoOnly, agents, StringComparison.Ordinal);

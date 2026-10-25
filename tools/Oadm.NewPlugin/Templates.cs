@@ -11,7 +11,7 @@ namespace Oadm.NewPlugin;
 /// <c>oadm-page</c>, <c>oadm-action</c>): each sample's projects under the sample's short name (the template's
 /// sourceName), the plugin parts on <c>Oadm.Plugin.Sdk/&lt;version&gt;</c>, the tests on the Oadm.Sdk packages of the same
 /// version, plus a solution, the local tool manifest (the <c>oadm</c> tool of the same version), a .gitignore, a README and the
-/// AGENTS.md for AI assistants.
+/// AGENTS.md for AI assistants (and a CLAUDE.md that imports it).
 /// The samples stay the single source: a template is never edited by hand.
 /// </summary>
 internal static partial class Templates
@@ -57,6 +57,7 @@ internal static partial class Templates
             WriteFile(root, Path.Combine(".config", "dotnet-tools.json"), ToolManifest(version));
             WriteFile(root, "README.md", Readme(sample));
             WriteFile(root, "AGENTS.md", Agents(sample));
+            WriteFile(root, "CLAUDE.md", "@AGENTS.md\n"); // Claude Code reads CLAUDE.md; it imports AGENTS.md
             WriteFile(root, Path.Combine(".template.config", "template.json"), TemplateJson(sample, projects));
             written.Add(root);
         }

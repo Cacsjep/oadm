@@ -47,6 +47,7 @@ DoorBell/
   .config/dotnet-tools.json      the oadm command of this SDK version
   README.md                      the commands
   AGENTS.md                      the rules for AI assistants, see Build a plugin with AI
+  CLAUDE.md                      points Claude Code to AGENTS.md
   DoorBell/                      the server part: DoorBell.Server.dll
     DoorBell.csproj
   DoorBell.Client/               the client part: DoorBell.Client.dll (dialog or page)
