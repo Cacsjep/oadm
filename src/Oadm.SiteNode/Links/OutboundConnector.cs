@@ -315,7 +315,7 @@ public sealed partial class OutboundConnector(
                 return false;
             });
             using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            handshake.CancelAfter(SiteTls.HandshakeTimeout);
+            handshake.CancelAfter(options.HandshakeTimeout);
             try
             {
                 await tls.AuthenticateAsClientAsync(accept, handshake.Token).ConfigureAwait(false);

@@ -73,6 +73,9 @@ public sealed class SiteOptions
     /// </summary>
     public int MaxPendingLinks { get; init; } = 64;
 
+    /// <summary>How long the TLS handshake of a new connection to the site port may take (tests on slow machines wait longer).</summary>
+    public TimeSpan HandshakeTimeout { get; init; } = Oadm.Sites.Transport.SiteTls.HandshakeTimeout;
+
     /// <summary>How long the first Hello on a new link may take.</summary>
     public TimeSpan HelloTimeout { get; init; } = TimeSpan.FromSeconds(5);
 }

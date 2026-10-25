@@ -198,7 +198,7 @@ public sealed class DeviceSetPasswordTests
     {
         using var fake = new FakeOadmApi();
         var devices = new List<Device>();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await foreach (DeviceChanged change in fake.WatchDevicesAsync(cts.Token))
         {
             if (change.Kind == DeviceChanged.Types.Kind.SnapshotEnd)

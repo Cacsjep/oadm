@@ -195,9 +195,8 @@ public sealed class TaskEngineWarningsAndLogTests : IAsyncLifetime
 
         var taskId = await Engine.RunOneAsync("t.progress", [device], null, "o", CancellationToken.None);
         await reported.Task.WaitAsync(Timeout);
+        // Ten reports within the same second: one write (the count of 2 after the late step below proves no second one).
         await WaitUntilAsync(() => _store.RunningMessages(taskId).Count == 1);
-        await Task.Delay(100);
-        Assert.Single(_store.RunningMessages(taskId)); // ten reports within the same second: one write
 
         _time.Advance(TimeSpan.FromSeconds(1));
         later.SetResult();

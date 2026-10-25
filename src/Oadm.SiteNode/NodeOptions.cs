@@ -29,6 +29,9 @@ public sealed class NodeOptions
 
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
+    /// <summary>How long the TLS handshake with the server may take (tests on slow machines wait longer).</summary>
+    public TimeSpan HandshakeTimeout { get; set; } = Oadm.Sites.Transport.SiteTls.HandshakeTimeout;
+
     /// <summary>Tests only: loopback counts as a camera network (the fake cards put one there). Never set by the program.</summary>
     public bool AllowLoopbackDevices { get; set; }
 

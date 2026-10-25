@@ -330,7 +330,7 @@ internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
 
         Interlocked.Increment(ref Connections);
         var (client, server) = DuplexPipe.CreatePair();
-        var connection = new Connection(this, WebSocket.CreateFromStream(server, new WebSocketCreationOptions { IsServer = true }));
+        var connection = new Connection(this, WebSocket.CreateFromStream(server, new WebSocketCreationOptions { IsServer = true }), (DuplexPipe)server);
         lock (_sync)
         {
             _current = connection;
@@ -356,7 +356,7 @@ internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
         }
     }
 
-    private sealed class Connection(FakeCamera camera, WebSocket socket)
+    private sealed class Connection(FakeCamera camera, WebSocket socket, DuplexPipe stream)
     {
         private readonly SemaphoreSlim _send = new(1, 1);
         private volatile HashSet<string> _topics = [];
@@ -449,10 +449,20 @@ internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
                     }
 
                     _topics = topics;
-                    await SendAsync($$$"""{"apiVersion":"1.0","context":"{{{context}}}","method":"events:configure","data":{}}""");
-                    foreach (var (topic, source, data) in camera.StatesOf(_topics))
+                    // The reply and the states reach the plugin together, like one burst of a real device: the plugin's
+                    // settle time then never depends on how fast the test machine is.
+                    stream.Hold();
+                    try
                     {
-                        await SendAsync(Notify(topic, source, data));
+                        await SendAsync($$$"""{"apiVersion":"1.0","context":"{{{context}}}","method":"events:configure","data":{}}""");
+                        foreach (var (topic, source, data) in camera.StatesOf(_topics))
+                        {
+                            await SendAsync(Notify(topic, source, data));
+                        }
+                    }
+                    finally
+                    {
+                        await stream.ReleaseAsync();
                     }
                 }
             }
@@ -466,6 +476,45 @@ internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
 /// <summary>Two connected in-memory streams (a WebSocket client and server without a network).</summary>
 internal sealed class DuplexPipe(Stream reader, Stream writer) : Stream
 {
+    private readonly SemaphoreSlim _write = new(1, 1);
+    private MemoryStream? _held;
+
+    /// <summary>Keeps what is written from now on until <see cref="ReleaseAsync"/> writes it in one piece.</summary>
+    public void Hold()
+    {
+        _write.Wait();
+        try
+        {
+            _held ??= new MemoryStream();
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    /// <summary>Writes what was kept since <see cref="Hold"/>.</summary>
+    public async Task ReleaseAsync()
+    {
+        await _write.WaitAsync();
+        try
+        {
+            if (_held is { } held)
+            {
+                _held = null;
+                await writer.WriteAsync(held.ToArray());
+                await writer.FlushAsync();
+            }
+        }
+        catch (Exception ex) when (ex is ObjectDisposedException or IOException or InvalidOperationException)
+        {
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
     public static (Stream Client, Stream Server) CreatePair()
     {
         var toServer = new Pipe();
@@ -483,17 +532,48 @@ internal sealed class DuplexPipe(Stream reader, Stream writer) : Stream
 
     public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
 
-    public override void Flush() => writer.Flush();
+    public override void Flush() => FlushAsync(CancellationToken.None).GetAwaiter().GetResult();
 
-    public override Task FlushAsync(CancellationToken cancellationToken) => writer.FlushAsync(cancellationToken);
+    public override async Task FlushAsync(CancellationToken cancellationToken)
+    {
+        await _write.WaitAsync(cancellationToken);
+        try
+        {
+            if (_held is null)
+            {
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
 
     public override int Read(byte[] buffer, int offset, int count) => reader.Read(buffer, offset, count);
 
     public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => reader.ReadAsync(buffer, cancellationToken);
 
-    public override void Write(byte[] buffer, int offset, int count) => writer.Write(buffer, offset, count);
+    public override void Write(byte[] buffer, int offset, int count) => WriteAsync(buffer.AsMemory(offset, count)).AsTask().GetAwaiter().GetResult();
 
-    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => writer.WriteAsync(buffer, cancellationToken);
+    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        await _write.WaitAsync(cancellationToken);
+        try
+        {
+            if (_held is { } held)
+            {
+                held.Write(buffer.Span);
+                return;
+            }
+
+            await writer.WriteAsync(buffer, cancellationToken);
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
 
     public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
@@ -505,6 +585,7 @@ internal sealed class DuplexPipe(Stream reader, Stream writer) : Stream
         {
             reader.Dispose();
             writer.Dispose();
+            _write.Dispose();
         }
 
         base.Dispose(disposing);
@@ -590,7 +671,8 @@ internal sealed class FakeContext(FakeDevices devices, FakeCameras cameras, IPlu
 internal sealed class Rig : IAsyncDisposable
 {
     /// <param name="lostDelay">"Connection lost" after this (default 400 ms; tests that look at the state before it use more).</param>
-    public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null, int? maxWatched = null)
+    /// <param name="time">The plugin's clock; null = the system clock.</param>
+    public Rig(DeviceTriggersOptions? options = null, TimeSpan? lostDelay = null, int? maxWatched = null, TimeProvider? time = null)
     {
         var fast = FastOptions();
         Plugin = new DeviceTriggersPlugin(options ?? new DeviceTriggersOptions
@@ -606,7 +688,7 @@ internal sealed class Rig : IAsyncDisposable
             RecheckInterval = fast.RecheckInterval,
             ResolveInterval = fast.ResolveInterval,
             MaxWatchedDevices = maxWatched ?? DeviceTriggersPluginInfo.MaxWatchedDevices,
-        });
+        }, time);
     }
 
     public PluginEventHub Hub { get; } = new();
@@ -632,10 +714,10 @@ internal sealed class Rig : IAsyncDisposable
     public static DeviceTriggersOptions FastOptions(int connectParallelism = 16, TimeSpan? sweep = null) => new()
     {
         LostDelay = TimeSpan.FromMilliseconds(400),
-        // The fake camera sends its states right after the filter reply; what arrives within this time is its full report.
-        // Generous, so a stalled thread on a busy machine never splits the report (the exact report lines are tested).
+        // The fake camera writes the filter reply and its states in one go (FakeCamera.Connection): when the plugin reads
+        // the reply the full report is already there, so a stalled thread never splits it.
         SettleTime = TimeSpan.FromSeconds(3),
-        RequestTimeout = TimeSpan.FromSeconds(5),
+        RequestTimeout = TimeSpan.FromSeconds(30),
         KeepAlive = TimeSpan.FromSeconds(10),
         Backoff = [TimeSpan.FromMilliseconds(50)],
         StatusRetry = TimeSpan.FromMilliseconds(100),
@@ -677,4 +759,17 @@ internal static class Wait
 {
     public static Task UntilAsync(Func<bool> condition, string what, int timeoutMs = 30_000) =>
         Oadm.Sdk.Testing.Eventually.TrueAsync(condition, what, TimeSpan.FromMilliseconds(timeoutMs));
+}
+
+/// <summary>
+/// The system clock with timers in real time, whose "now" a test moves forward: a long wait of the plugin ("connection lost")
+/// passes exactly when the test says so, however slow the machine is.
+/// </summary>
+internal sealed class ShiftedClock : TimeProvider
+{
+    private long _offsetTicks;
+
+    public override DateTimeOffset GetUtcNow() => System.GetUtcNow() + TimeSpan.FromTicks(Interlocked.Read(ref _offsetTicks));
+
+    public void Shift(TimeSpan by) => Interlocked.Add(ref _offsetTicks, by.Ticks);
 }

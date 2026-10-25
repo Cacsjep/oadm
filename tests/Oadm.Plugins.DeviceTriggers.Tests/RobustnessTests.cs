@@ -27,7 +27,7 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         var hold = rig.Devices.HoldNextList(out var held);
         await held;
         var delete = rig.Plugin.InvokeAsync(DeviceTriggersMethods.Delete, TriggerJson.Serialize(new IdRequest(trigger.Id)), CancellationToken.None);
-        await Task.Delay(50);
+        await Wait.UntilAsync(() => rig.Plugin.Triggers.All(t => t.Id != trigger.Id), "the delete stored"); // its round queues behind the held one
         hold.SetResult();
         await delete;
 
@@ -51,8 +51,8 @@ public sealed class RobustnessTests(ITestOutputHelper output)
         var hold = rig.Devices.HoldNextList(out var held);
         await held;
         var stop = rig.Plugin.StopAsync(CancellationToken.None);
-        await Task.Delay(100);
-        Assert.False(stop.IsCompleted); // waits for the resolve that holds the runtime
+        // Waits for the resolve that holds the runtime (no sign of the wait itself: it must simply not end).
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => !stop.IsCompleted, "stop waits for the held resolve", TimeSpan.FromMilliseconds(300));
         hold.SetResult();
         await stop;
 

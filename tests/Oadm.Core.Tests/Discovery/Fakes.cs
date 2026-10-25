@@ -53,6 +53,13 @@ internal sealed class FakeProbe(IReadOnlyDictionary<string, DeviceProbeResult> d
 internal sealed class FakeMdnsBrowser : IMdnsBrowser
 {
     private readonly Channel<MdnsServiceInstance> _instances = Channel.CreateUnbounded<MdnsServiceInstance>();
+    private int _browsing;
+
+    /// <summary>Browses running now (the service stopped browsing when it is 0).</summary>
+    public int Browsing => Volatile.Read(ref _browsing);
+
+    /// <summary>Announcements nobody read yet.</summary>
+    public int Unread => _instances.Reader.Count;
 
     public void Announce(string address, string? serial, string host = "axis-host")
         => _instances.Writer.TryWrite(new MdnsServiceInstance(
@@ -66,9 +73,17 @@ internal sealed class FakeMdnsBrowser : IMdnsBrowser
 
     public async IAsyncEnumerable<MdnsServiceInstance> BrowseAsync(MdnsBrowseOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var i in _instances.Reader.ReadAllAsync(cancellationToken))
+        Interlocked.Increment(ref _browsing);
+        try
         {
-            yield return i;
+            await foreach (var i in _instances.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return i;
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _browsing);
         }
     }
 }

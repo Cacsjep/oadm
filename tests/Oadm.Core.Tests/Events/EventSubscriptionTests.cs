@@ -125,7 +125,8 @@ public sealed class EventSubscriptionTests
 
         gate.Set();
         var events = await handled.WaitForAsync(3);
-        await Task.Delay(100); // nothing more may come than the queue held
+        // The newest event is handled last: once it is there, the queue is empty and nothing more can come.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => handled.Snapshot() is { Count: > 0 } done && done[^1].Data["n"] == "9", "the newest event to be handled");
         var all = handled.Snapshot();
 
         Assert.True(subscription.Dropped >= 6, $"dropped {subscription.Dropped}");

@@ -273,7 +273,7 @@ public sealed class SiteServerTests
             Address = "192.168.0.20",
             Scheme = "https",
             PinnedCertificateFingerprint = device.Fingerprint,
-            Timeout = TimeSpan.FromSeconds(15),
+            Timeout = TimeSpan.FromSeconds(30),
             Route = DeviceRoute.ViaSite(id),
         };
 

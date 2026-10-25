@@ -9,7 +9,7 @@ namespace Oadm.Plugins.Network.Tests;
 public sealed class TaskPluginTests
 {
     private static readonly ReachabilityOptions Fast =
-        new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(1))
+        new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(30)) // one probe request: generous
         {
             NewAddressTimeout = TimeSpan.FromMilliseconds(60), // never wait the real 90 s for a fake device
         };

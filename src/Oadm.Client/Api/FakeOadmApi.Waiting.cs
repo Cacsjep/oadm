@@ -23,6 +23,9 @@ public sealed partial class FakeOadmApi
     /// <summary>How long a fake Try now "checks" (tests set it to zero).</summary>
     public TimeSpan FakeWaitingTryTime { get; set; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>The clock of <see cref="FakeWaitingTryTime"/> (tests pass a fake clock and advance it).</summary>
+    public TimeProvider FakeWaitingClock { get; set; } = TimeProvider.System;
+
     /// <summary>The lines kept (tests), with the passwords they came with.</summary>
     public IReadOnlyList<WaitingLine> KeptWaitingLines => _keptWaitingLines;
 
@@ -161,7 +164,7 @@ public sealed partial class FakeOadmApi
             }
             else
             {
-                _ = Task.Delay(FakeWaitingTryTime, CancellationToken.None).ContinueWith(_ =>
+                _ = Task.Delay(FakeWaitingTryTime, FakeWaitingClock, CancellationToken.None).ContinueWith(_ =>
                 {
                     lock (_gate)
                     {

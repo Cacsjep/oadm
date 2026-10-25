@@ -67,7 +67,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         _logger = logger ?? NullLogger.Instance;
         _limiter = new KeyedRateLimiter<ulong>(_options.RateLimits.PerMac, _options.Time);
         _firewallRule = new FirewallRuleKeeper(Sdk.Network.FirewallRule.ForService("DHCP", FirewallProtocol.Udp, _options.ServerPort), firewall, _logger);
-        _check = new OtherServerCheck(_options.Sockets, _options.ServerPort, _options.ClientPort, _logger) { Wait = _options.OtherServerWait };
+        _check = new OtherServerCheck(_options.Sockets, _options.ServerPort, _options.ClientPort, _logger) { Wait = _options.OtherServerWait, StopAfter = _options.OtherServerStopAfter };
         _engine = new DhcpEngine(_store, _options.Probe ?? Network.NetworkAddressProbe.For(network), _options.Engine with { ClientPort = _options.ClientPort }, _options.Time, _logger)
         {
             IgnoreMac = _check.IsProbeMac,

@@ -524,6 +524,15 @@ jobs:
           # "latest" links stay on the last real release.
           case "$version" in *-*) kind=(--prerelease --latest=false) ;; *) kind=(--latest) ;; esac
           if gh release view "$tag" >/dev/null 2>&1; then
+            # A re-run of a moved tag: assets of an earlier run that this run did not build go, so the release holds
+            # exactly the files SHA256SUMS.txt lists.
+            built=$(cd installers && ls -1)
+            gh release view "$tag" --json assets --jq '.assets[].name' | while IFS= read -r asset; do
+              if ! printf '%s\n' "$built" | grep -Fxq -- "$asset"; then
+                echo "Removing the old asset $asset"
+                gh release delete-asset "$tag" "$asset" --yes
+              fi
+            done
             gh release upload "$tag" installers/* --clobber
             gh release edit "$tag" "${kind[@]}"
             if [ -f release-notes.md ]; then gh release edit "$tag" --notes-file release-notes.md; fi

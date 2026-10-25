@@ -6,6 +6,7 @@ using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -132,7 +133,8 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
     [Fact]
     public async Task Try_now_shows_the_rows_as_checking_until_the_round_ends()
     {
-        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { FakeWaitingTryTime = TimeSpan.FromMilliseconds(300) };
+        var clock = new FakeTimeProvider();
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { FakeWaitingTryTime = TimeSpan.FromMinutes(1), FakeWaitingClock = clock };
         await KeepAsync(api, 4);
         var state = new WaitingDevicesState();
         var vm = new WaitingDevicesViewModel(api, Substitute.For<IDialogService>(), state);
@@ -146,6 +148,7 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
         Assert.Equal("Checking: 2 left", vm.ScheduleText);
 
         // The round ends: the list is read again with the results.
+        clock.Advance(TimeSpan.FromMinutes(1));
         await TestSupport.WaitUntilAsync(() => !api.ListWaitingAsync(null, 0, CancellationToken.None).Result.Devices.Any(d => d.Checking));
         state.Apply(new WaitingSummary { Count = 4 });
         vm.OnRoundEnded();

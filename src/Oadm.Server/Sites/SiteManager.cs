@@ -959,7 +959,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var url = await ListenUrlAsync(ct).ConfigureAwait(false);
         _listenPort = SiteListener.Parse(url).Port;
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
-            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress);
+            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress, _options.HandshakeTimeout);
         try
         {
             listener.Start();

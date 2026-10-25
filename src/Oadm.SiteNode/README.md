@@ -33,7 +33,7 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   pairing proves it); bound: only the pinned key, another one is noted with where it came from (a waiting one is not
   replaced for an hour, never once accepted); **Accept** lets that identity pair with the code, it binds nothing by
   itself; binding closed: no connection. `OpenConnections` adds worker links to the same address (at most 8). Every
-  handshake ends within `SiteTls.HandshakeTimeout`.
+  handshake ends within `NodeOptions.HandshakeTimeout` (default `SiteTls.HandshakeTimeout`, 5 s; tests wait longer).
 - **Calls** (`Service/SiteNodeGrpcService`): Hello to anyone; a bound node tells strangers its state, version and
   protocol version only (the bound server also gets its name and the site's). PairStart and Bind while not bound (or for
   an accepted new server identity), J-PAKE: PairStart answers with a fresh participant's rounds 1 and 2, Bind checks the

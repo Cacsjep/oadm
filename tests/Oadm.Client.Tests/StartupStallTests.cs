@@ -77,6 +77,9 @@ public sealed class StartupStallTests(ITestOutputHelper output)
             await TestSupport.WaitUntilAsync(() => lifetime.MainWindow is MainWindow && !splash.IsVisible);
             TimeSpan done = probe.Now;
             Assert.NotEqual(TimeSpan.Zero, ready);
+
+            // The splash waits for the devices at most its 15 s: on a slow machine they may still be on their way.
+            await TestSupport.WaitUntilAsync(() => main.Devices.FilteredDevices.Count >= devices + FakeSampleDevices && main.Devices.Tasks.Tasks.Count >= tasks);
             var m = new StartMeasure(shown, probe.LongestStall(shown, ready), probe.LongestStall(ready, done), ready - shown,
                 main.Devices.FilteredDevices.Count, main.Devices.Tasks.Tasks.Count);
 

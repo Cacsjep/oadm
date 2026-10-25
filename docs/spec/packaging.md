@@ -42,7 +42,8 @@ heartbeat with free memory and the busiest processes while a program runs; its o
 sometimes stops answering there, so a re-run repeats only this job; removals run with Restart Manager off, so they
 never close a program of the runner, and a failed one prints the failed MSI action) and job `smoke-windows-node` (needs installers, 15 min: the OADM Site Node MSI the same way, on
 a runner of its own) -> job `release` (needs all; the GitHub
-release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`)
+release of the tag with the installers, the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` and `SHA256SUMS.txt`;
+a re-run of a moved tag first deletes the release's assets it did not build, so the release holds exactly what `SHA256SUMS.txt` lists)
 -> job `nuget` (needs release and `nuget-pack`; skipped without the repository variable `NUGET_USER`: `dotnet nuget push`
 with NuGet Trusted Publishing (`NuGet/login`, `id-token: write`, no API key in GitHub)). Job `nuget-pack` (needs tests,
 before the release): `manage package nuget` with the tag's version, every template created, built and tested against

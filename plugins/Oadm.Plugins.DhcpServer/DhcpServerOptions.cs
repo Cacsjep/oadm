@@ -32,6 +32,9 @@ public sealed record DhcpServerOptions
     /// <summary>How long the check for other DHCP servers collects answers.</summary>
     public TimeSpan OtherServerWait { get; init; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>The check ends once this many other servers answered; null (the product) = always the whole wait (tests).</summary>
+    public int? OtherServerStopAfter { get; init; }
+
     /// <summary>While running, other DHCP servers are checked for this often.</summary>
     public TimeSpan OtherServerInterval { get; init; } = TimeSpan.FromMinutes(10);
 

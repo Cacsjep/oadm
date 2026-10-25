@@ -35,7 +35,7 @@ pairing code in the app). Add port in the app never marks a port as the server's
   `SiteListener` (TCP `Sites.ListenUrl`, default 0.0.0.0:5081, only while `Sites.Accept`; Windows service: the rule
   "OADM Server (Site nodes, TCP 5081)" through `FirewallRuleKeeper` while it is on, the first sync at start always
   applies, removed when off or stopped; 120 new connections a minute per address before TLS (IPv6 per /64,
-  `Oadm.Sites.Transport.AddressRateLimiter`: full = the oldest address makes room), handshake timeout, 64 handshakes at
+  `Oadm.Sites.Transport.AddressRateLimiter`: full = the oldest address makes room), handshake timeout 5 s (`SiteOptions.HandshakeTimeout`, tests wait longer), 64 handshakes at
   once and 8 per address, closing waits for every handshake, 64 links of unknown keys before Hello (5 s; a bound site's
   key is not capped), 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`), Hello checked by
   `HelloRules`, 10 new unknown connections a minute per address, 50 waiting nodes kept by key fingerprint, 3 per address,

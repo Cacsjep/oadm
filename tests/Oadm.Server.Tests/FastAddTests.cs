@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 using Oadm.Core.Security;
+using Oadm.Sdk.Testing;
 using Oadm.Server.Discovery;
 using Oadm.Server.Tests.Support;
 
@@ -209,9 +210,16 @@ public sealed class FastAddTests
         Assert.All(devices.Values, d => Assert.Equal(Proto.AuthState.LoginFailed, d.AuthState));
 
         var entry = await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = Password });
+        // Both follow-up logins end: 10.9.0.1 gets in, 10.9.0.2 rejected the new entry and is back to LoginFailed.
         await TestHelpers.WaitUntilAsync(
-            async () => (await TestHelpers.WatchToEndAsync(host, session)).Values.Single(d => d.Address == "10.9.0.1").AuthState == Proto.AuthState.Authenticated,
-            "follow-up login with the new list entry");
+            async () =>
+            {
+                var watched = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
+                return watched["10.9.0.1"].AuthState == Proto.AuthState.Authenticated
+                    && network["10.9.0.2"].RejectedLogins == 1
+                    && watched["10.9.0.2"].AuthState == Proto.AuthState.LoginFailed;
+            },
+            "both follow-up logins with the new list entry");
 
         var now = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
         Assert.Equal("list:" + Guid.Parse(entry.Id).ToString("N"), now["10.9.0.1"].CredentialId);
@@ -220,8 +228,7 @@ public sealed class FastAddTests
 
         // Removing an entry tries nothing new.
         await host.Settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
-        await Task.Delay(200);
-        Assert.Equal(1, network["10.9.0.2"].RejectedLogins);
+        await Eventually.StaysTrueAsync(() => network["10.9.0.2"].RejectedLogins == 1, "no login after a removed entry", TimeSpan.FromSeconds(1));
     }
 
     [Fact]

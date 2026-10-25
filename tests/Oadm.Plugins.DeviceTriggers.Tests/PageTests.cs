@@ -25,12 +25,14 @@ public sealed class PageTests(ITestOutputHelper output)
 {
     private static readonly Dictionary<string, string> Port3 = new() { ["port"] = "3" };
     private static readonly Dictionary<string, string> On = new() { ["active"] = "1" };
+    private static readonly TimeSpan FastPoll = TimeSpan.FromMilliseconds(20); // the editor asks for its reads this often
 
     [Fact]
     public async Task The_page_lists_triggers_with_their_state_and_the_devices_of_the_selected_one()
     {
-        // Long enough to see the state before "connection lost" also on a busy machine; the test then waits for it.
-        await using var rig = new Rig(lostDelay: TimeSpan.FromSeconds(10));
+        // "Connection lost" waits an hour of the plugin's clock: the test moves the clock once it saw the state before.
+        var clock = new ShiftedClock();
+        await using var rig = new Rig(lostDelay: TimeSpan.FromHours(1), time: clock);
         var a = rig.AddDevice("10.0.0.48");
         var b = rig.AddDevice("10.0.0.49", status: DeviceStatus.CredentialsRequired);
         rig.Cameras[a.Id].SetState(Fixture.VirtualInput, Port3, On);
@@ -54,6 +56,7 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal("1 of 2 devices connected · 1 on", vm.DevicesSummary);
 
         // Lost after the delay, pushed through the plugin's events.
+        clock.Shift(TimeSpan.FromHours(1));
         await Wait.UntilAsync(() => vm.Triggers[0].StateText == "On for 1 of 2 · 1 connection lost" && vm.Devices[1].ConnectionText == "Connection lost", "connection lost");
         Assert.Equal(DeviceMessages.CredentialsRequired, vm.Devices[1].Problem);
 
@@ -78,9 +81,8 @@ public sealed class PageTests(ITestOutputHelper output)
         rig.Cameras[b.Id].Declarations = WithoutVirtualInput();
         rig.Cameras[offline.Id].Refuse = new HttpRequestException("Connection refused");
         await rig.StartAsync();
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
         var ctx = new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None));
-        using var editor = new TriggerEditorViewModel(ctx, null, ["Existing"]);
+        using var editor = new TriggerEditorViewModel(ctx, null, ["Existing"]) { ReadPollInterval = FastPoll };
         Guid[] pick = [a.Id, b.Id, offline.Id];
         DevicePickerViewModel? shown = null;
         editor.ShowPicker = picker =>
@@ -159,8 +161,7 @@ public sealed class PageTests(ITestOutputHelper output)
         await rig.StartAsync();
         var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id], "5"));
         rig.Cameras[a.Id].Refuse = new HttpRequestException("Connection refused");
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []) { ReadPollInterval = FastPoll };
 
         await editor.StartAsync();
 
@@ -177,8 +178,7 @@ public sealed class PageTests(ITestOutputHelper output)
         var a = rig.AddDevice("10.0.0.48");
         await rig.StartAsync();
         var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id], "5"));
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, ["Other"]);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, ["Other"]) { ReadPollInterval = FastPoll };
 
         await editor.StartAsync();
 
@@ -199,8 +199,7 @@ public sealed class PageTests(ITestOutputHelper output)
         var trigger = await rig.SaveAsync(Fixture.VirtualInputTrigger("Gate open", [a.Id], "5") with { AllDevices = true });
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         rig.Cameras[b.Id].HoldReads = release.Task; // a slow device of All devices
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []);
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), trigger, []) { ReadPollInterval = FastPoll };
 
         var start = editor.StartAsync();
         var chosen = editor.VisibleDevices.Single(d => d.Id == a.Id);
@@ -223,8 +222,7 @@ public sealed class PageTests(ITestOutputHelper output)
         await rig.StartAsync();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         rig.Cameras[a.Id].HoldReads = release.Task;
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), null, []) { Name = "Gate open" };
+        using var editor = new TriggerEditorViewModel(new PageContext(rig.Plugin, rig.Hub, await rig.Devices.ListAsync(CancellationToken.None)), null, []) { Name = "Gate open", ReadPollInterval = FastPoll };
         editor.ShowPicker = picker =>
         {
             picker.SelectAllCommand.Execute(null);
@@ -360,8 +358,7 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal(3, vm.Triggers.Count);
         Assert.Contains(vm.Triggers, t => t.Name == "Gate contact" && t.StateText == "Off · 1 connection lost");
 
-        TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-        using var editor = new TriggerEditorViewModel(ctx, null, [.. vm.Triggers.Select(t => t.Name)]);
+        using var editor = new TriggerEditorViewModel(ctx, null, [.. vm.Triggers.Select(t => t.Name)]) { ReadPollInterval = FastPoll };
         editor.Name = "Person at the door";
         editor.ShowPicker = picker =>
         {
@@ -422,8 +419,7 @@ public sealed class PageTests(ITestOutputHelper output)
             window.Close();
             vm.Dispose();
 
-            TriggerEditorViewModel.ReadPollInterval = TimeSpan.FromMilliseconds(20);
-            var editor = new TriggerEditorViewModel(ctx, rig.Plugin.Triggers.Single(t => t.Name == "Gate open"), ["Camera tampering", "Alarm panel"]);
+            var editor = new TriggerEditorViewModel(ctx, rig.Plugin.Triggers.Single(t => t.Name == "Gate open"), ["Camera tampering", "Alarm panel"]) { ReadPollInterval = FastPoll };
             var dialog = new TriggerEditorWindow { Height = 1000 };
             dialog.Attach(editor);
             dialog.Show();

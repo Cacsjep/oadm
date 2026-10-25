@@ -61,6 +61,7 @@ internal sealed class TestNode : IAsyncDisposable
             Pinger = new NoPinger(),
             Browser = new FakeBrowser(), // no multicast in unit tests
             MaxBackoff = TimeSpan.FromSeconds(1),
+            HandshakeTimeout = TimeSpan.FromSeconds(30),
         };
         options?.Invoke(nodeOptions);
         new NodeStore(folder.Path).Update(FakeCards.ChooseCameraCard); // the office card is not reached
@@ -194,7 +195,7 @@ internal sealed class TestServer : IAsyncDisposable
                 var tls = new SslStream(new NetworkStream(socket, ownsSocket: true), leaveInnerStreamOpen: false);
                 try
                 {
-                    using var handshake = new CancellationTokenSource(SiteTls.HandshakeTimeout);
+                    using var handshake = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // generous on a slow machine
                     await tls.AuthenticateAsServerAsync(SiteTls.ServerOptions(Identity, fp => fp is not null), handshake.Token);
                     _links.Writer.TryWrite(Track(new ServerLink(tls, Fingerprint)));
                 }

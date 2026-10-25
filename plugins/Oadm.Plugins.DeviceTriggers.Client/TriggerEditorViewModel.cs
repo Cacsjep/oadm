@@ -133,7 +133,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
 
     public event EventHandler<bool>? CloseRequested;
 
-    public static TimeSpan ReadPollInterval { get; set; } = TimeSpan.FromMilliseconds(300);
+    public TimeSpan ReadPollInterval { get; init; } = TimeSpan.FromMilliseconds(300);
 
     public bool IsNew => _initial is null;
 

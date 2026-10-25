@@ -51,6 +51,12 @@ public sealed partial class OtherServerCheck : IOtherServerCheck
     /// <summary>How long offers are collected.</summary>
     public TimeSpan Wait { get; init; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>
+    /// Ends the collection once this many other servers answered; null = always the whole <see cref="Wait"/>. Tests set it
+    /// with a long wait, so a slow machine never ends the window before the fake server's offer.
+    /// </summary>
+    public int? StopAfter { get; init; }
+
     /// <summary>True for the MAC address of a running check (the own server ignores these messages).</summary>
     public bool IsProbeMac(ulong mac) => _probeMacs.ContainsKey(mac);
 
@@ -92,7 +98,7 @@ public sealed partial class OtherServerCheck : IOtherServerCheck
 
                 using var window = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 window.CancelAfter(Wait);
-                var receive = ReceiveOffersAsync(socket, xid, own, found, window.Token);
+                var receive = ReceiveOffersAsync(socket, xid, own, found, StopAfter, window);
                 await socket.SendAsync(bytes.AsMemory(0, length), target, ct).ConfigureAwait(false);
                 try
                 {
@@ -125,8 +131,9 @@ public sealed partial class OtherServerCheck : IOtherServerCheck
         return new OtherServerResult(found, null);
     }
 
-    private static async Task ReceiveOffersAsync(IDhcpSocket socket, uint xid, IPAddress own, List<string> found, CancellationToken ct)
+    private static async Task ReceiveOffersAsync(IDhcpSocket socket, uint xid, IPAddress own, List<string> found, int? stopAfter, CancellationTokenSource window)
     {
+        var ct = window.Token;
         var buffer = new byte[DhcpMessage.MaxLength];
         while (!ct.IsCancellationRequested)
         {
@@ -162,6 +169,12 @@ public sealed partial class OtherServerCheck : IOtherServerCheck
                 if (!found.Contains(text))
                 {
                     found.Add(text);
+                }
+
+                if (found.Count >= stopAfter)
+                {
+                    window.Cancel(); // also ends the wait for the second probe
+                    return;
                 }
             }
         }

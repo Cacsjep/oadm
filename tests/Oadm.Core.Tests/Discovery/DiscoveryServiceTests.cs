@@ -160,8 +160,9 @@ public class DiscoveryServiceTests
         var replay = await Collect(service, session.Id);
         Assert.True(replay[^1].Finished);
 
-        browser.Announce("10.0.0.49", "B8A44F631340"); // browsing has ended
-        await Task.Delay(50);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => browser.Browsing == 0, "browsing ended");
+        browser.Announce("10.0.0.49", "B8A44F631340"); // nobody reads it any more
+        Assert.Equal(1, browser.Unread);
         Assert.Single(service.GetDevices(session.Id));
         Assert.Throws<ArgumentOutOfRangeException>(() => service.StartZeroConf(duration: TimeSpan.Zero));
     }
