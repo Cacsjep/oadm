@@ -106,7 +106,7 @@ public sealed class CertificateGroupTests
         Assert.All(rows.Where(r => r.Kind == ListedCertificateKind.Device), r => Assert.Null(r.KeyText));
 
         // Used by in short: one badge per group of a CA, every use in the full text (the tooltip and View).
-        Assert.Equal(["Issuing"], oadm.UsedByBadges);
+        Assert.Equal(["Issuing", "RADIUS server CA"], oadm.UsedByBadges); // the IEEE 802.1X policy checks the RADIUS server with it
         Assert.StartsWith("Issuing: HTTPS", oadm.UsedBy, StringComparison.Ordinal);
     }
 

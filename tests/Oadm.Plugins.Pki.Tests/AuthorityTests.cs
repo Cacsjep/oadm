@@ -5,6 +5,7 @@ using System.Text;
 using Oadm.Core.Plugins;
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Client;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Plugins;
@@ -126,7 +127,7 @@ public sealed class AuthorityTests
         ca.SetUsedBy("oadm.radius", "802.1X server", [id, CertificateAuthorityInfo.OadmId]);
         ca.SetUsedBy("oadm.est", "EST server", [CertificateAuthorityInfo.OadmId]);
         var state = await pki.StateAsync();
-        Assert.Equal(["Issuing: HTTPS, IEEE 802.1X", "802.1X server", "EST server"],
+        Assert.Equal(["Issuing: HTTPS, IEEE 802.1X", "RADIUS server CA: IEEE 802.1X", "802.1X server", "EST server"],
             state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy);
         Assert.Equal(["802.1X server"], state.Authorities.Single(a => a.Id == id).UsedBy);
         Assert.Empty(state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.AxisDeviceIdId).UsedBy);
@@ -207,8 +208,9 @@ public sealed class AuthorityTests
             await vm.Authorities.LoadAsync();
             IssuedCertificateRow[] Cas() => [.. vm.Authorities.Rows.Where(r => r.AuthorityKind is not null)];
             Assert.Equal(["OADM CA", "Axis device ID"], Cas().Select(r => r.Badges[1]).Distinct());
-            // Used by: the issuing policies name the OADM CA (they issue with it); the Axis device ID is used by nothing yet.
-            Assert.Equal("Issuing: HTTPS, IEEE 802.1X", Cas()[0].UsedBy); // one prefix per group (the server policies pick a certificate, decision 2026-10-25)
+            // Used by: the issuing policies name the OADM CA (they issue with it) and the IEEE 802.1X policy checks the RADIUS
+            // server with it; the Axis device ID is used by nothing yet.
+            Assert.Equal("Issuing: HTTPS, IEEE 802.1X; RADIUS server CA: IEEE 802.1X", Cas()[0].UsedBy); // one prefix per group (the server policies pick a certificate, decision 2026-10-25)
             Assert.All(Cas().Skip(1), row => Assert.Equal("-", row.UsedBy));
 
             // Used in (decision 2026-10-25): the names of the policies that use the CA, the first as a badge and "+N", every name as tooltip.
@@ -268,5 +270,21 @@ public sealed class AuthorityTests
         {
             File.Delete(settingsFile);
         }
+    }
+
+    [Fact]
+    public async Task Used_by_names_the_ieee_8021x_policies_of_a_radius_server_ca()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        using var root = TestCa.Root("Contoso Root");
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, new ImportAuthorityRequest(Convert.ToBase64String(root.RawData), "contoso.cer"))).Ok);
+        var id = PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(root));
+        var dot1x = pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+        Assert.Null((await pki.Policies.SaveAsync(dot1x with { RadiusCaId = id }, "admin", PkiService.CipherSuites, CancellationToken.None)).Error);
+
+        var state = await pki.StateAsync();
+
+        Assert.Equal(["RADIUS server CA: IEEE 802.1X"], state.Authorities.Single(a => a.Id == id).UsedBy);
+        Assert.DoesNotContain(state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.OadmId).UsedBy, u => u.StartsWith("RADIUS", StringComparison.Ordinal));
     }
 }

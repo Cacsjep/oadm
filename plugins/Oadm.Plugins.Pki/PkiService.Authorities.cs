@@ -442,11 +442,20 @@ public sealed partial class PkiService
     ];
 
     /// <summary>
-    /// What uses a CA, for its Used by: one prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X"), then the
-    /// services; fits the column in two lines.
+    /// What uses a CA, for its Used by: one prefix per group ("802.1X: ...", "Issuing: HTTPS, IEEE 802.1X", "RADIUS server
+    /// CA: IEEE 802.1X"), then the services.
     /// </summary>
     private List<string> AuthorityUsedBy(CertificateAuthorityInfo a) =>
-        [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
+        [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]), PolicyTexts.RadiusServerCa([.. RadiusPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
+
+    /// <summary>
+    /// The IEEE 802.1X certificate policies whose cameras check the RADIUS server with the CA (its RADIUS server CA; a
+    /// previous OADM CA is never one, <see cref="Tasks.CertificateDeployment.RadiusCas"/>).
+    /// </summary>
+    private IEnumerable<string> RadiusPoliciesOf(CertificateAuthorityInfo authority) =>
+        authority.Kind == CertificateAuthorityKind.PreviousOadm
+            ? []
+            : Policies.PoliciesOf(PolicyKinds.Dot1xCertificate).Where(p => string.Equals(p.RadiusCaId, authority.Id, StringComparison.OrdinalIgnoreCase)).Select(p => p.Name);
 
     /// <summary>The names of the issuing policies that name the CA (the OADM CA or an imported CA; previous OADM CAs never issue).</summary>
     private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>
