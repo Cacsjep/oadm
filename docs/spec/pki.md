@@ -145,10 +145,18 @@ which are gone):** the cards made the tab about two screens long. The Policies t
   **Choose devices** (the shared `DevicePickerWindow` in its group mode over a copy of the choice; Cancel changes nothing),
   the devices' error below that field. A system policy (`IsInPlace`) keeps its name and devices (a system Expiry warning
   for chosen devices names them below the days). Save is off without a change ("No changes to save."). Errors directly
-  below each field. The policy dialog is gone.
+  below each field. The policy dialog is gone. Fixes of 2026-10-25: the Devices field is a field of the form's validator
+  (none chosen, tags of a Block that also revokes, the server's overlap refusal until the choice changes), so it blocks
+  Save like any other error; the form keeps only the choice and makes the device picker only for Choose devices (never
+  one over 30,000 devices per click on a row); it works out "changed" once per edit; a save locks the form and its
+  Delete; a refusal of a field the form does not show (the kind) or of the whole policy goes into a message. An issuing
+  policy whose CA cannot issue has its row's dot also when no CA can issue at all.
 - A reload (another user's change) keeps a form with changes not saved, refreshes an unchanged one and closes the panel
-  when its policy is gone. Read only (inputs disabled, no Create, Save or Delete) without "Manage the certificate
-  authority".
+  when its policy is gone; a form whose dialog is open (Choose devices, a question) stays as it is, and a click on a row
+  opens the row as it is after the question. Every stored policy has a `Revision` (PKI counts its saves and the system's
+  certificate write); a save sends the revision it read and PKI refuses one over a later change ("Changed by someone else.
+  Reload.", `PolicyFields.Policy`), so no save overwrites another user's change unseen (fix of 2026-10-25). Read only
+  (inputs disabled, no Create, Save or Delete) without "Manage the certificate authority".
 
 System policies (decision 2026-10-25, `PolicyStore.IsSystem`): OADM needs them, so they have no Delete (the server refuses
 it: "OADM needs this policy. Change its values instead."); their values stay editable. They are the first (oldest) policy

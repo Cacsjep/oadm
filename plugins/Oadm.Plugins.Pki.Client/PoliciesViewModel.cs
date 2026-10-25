@@ -212,8 +212,10 @@ public sealed partial class PoliciesViewModel : ObservableObject
         }
     }
 
-    /// <summary>Delete of the panel (a stored user policy).</summary>
-    [RelayCommand]
+    private bool CanDeleteOpen() => CanDelete && !Editor!.IsBusy;
+
+    /// <summary>Delete of the panel (a stored user policy); waits while a save or a delete runs.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteOpen))]
     private async Task DeleteOpenAsync()
     {
         if (Editor is { } editor)
@@ -253,6 +255,7 @@ public sealed partial class PoliciesViewModel : ObservableObject
         OnPropertyChanged(nameof(SaveBlockedReason));
         OnPropertyChanged(nameof(PanelTitle));
         SaveOpenCommand.NotifyCanExecuteChanged();
+        DeleteOpenCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>"Create a policy" while the types are listed, else the policy's name or "New VLAN policy".</summary>
@@ -354,8 +357,9 @@ public sealed partial class PoliciesViewModel : ObservableObject
         try
         {
             Filter();
+            // A form with an open dialog (Choose devices, a question) stays as it is: the dialog works on it.
             var open = Editor is { IsNew: false } editor ? _all.FirstOrDefault(r => r.Id == editor.PolicyId) : null;
-            if (Editor is { IsNew: false, IsDirty: false } && !IsChoosingKind)
+            if (Editor is { IsNew: false, IsDirty: false, DialogsOpen: 0 } && !IsChoosingKind)
             {
                 if (open is null)
                 {
@@ -380,9 +384,10 @@ public sealed partial class PoliciesViewModel : ObservableObject
         CreateCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>The row's dot: its warning, or an issuing policy whose CA cannot issue (also when no CA can issue at all).</summary>
     private static string? ProblemOf(PolicyRow row, HashSet<string> issuing) =>
         row.Warning
-        ?? (PolicyKinds.IsIssuing(row.Policy.Kind) && issuing.Count > 0 && row.Policy.CaId is { } ca && !issuing.Contains(ca) ? PolicyTexts.CannotIssue : null);
+        ?? (PolicyKinds.IsIssuing(row.Policy.Kind) && !issuing.Contains(row.Policy.CaId ?? CertificateAuthorityInfo.OadmId) ? PolicyTexts.CannotIssue : null);
 
     internal void NotifyRole()
     {
@@ -410,13 +415,19 @@ public sealed partial class PoliciesViewModel : ObservableObject
         if (Editor is { IsDirty: true })
         {
             await Task.Yield(); // the table finishes its own selection first
-            Select(previous);
+            Select(Current(previous));
             if (!await MayLeaveAsync().ConfigureAwait(true))
             {
                 return;
             }
 
-            Select(row);
+            // A reload during the question made new rows: the one asked for, as it is now (gone: nothing opens).
+            if (Current(row) is not { } now)
+            {
+                return;
+            }
+
+            row = now;
         }
 
         Select(row);
@@ -424,6 +435,9 @@ public sealed partial class PoliciesViewModel : ObservableObject
         Editor = NewEditor(row.Row);
         IsPanelOpen = true;
     }
+
+    /// <summary>The row of the same policy in the list as it is now; null when the policy is gone.</summary>
+    private PolicyRowViewModel? Current(PolicyRowViewModel? row) => row is null ? null : _all.FirstOrDefault(r => r.Id == row.Id);
 
     private void Select(PolicyRowViewModel? row)
     {
@@ -439,10 +453,24 @@ public sealed partial class PoliciesViewModel : ObservableObject
         }
     }
 
-    /// <summary>The open form may go: it has no changes, or the user discards them.</summary>
-    private async Task<bool> MayLeaveAsync() =>
-        Editor is not { IsDirty: true } editor
-        || await _ctx.ConfirmAsync("Discard changes", $"The changes to {editor.Heading} are not saved.", "Discard").ConfigureAwait(true);
+    /// <summary>The open form may go: it has no changes, or the user discards them (a reload meanwhile keeps the form).</summary>
+    private async Task<bool> MayLeaveAsync()
+    {
+        if (Editor is not { IsDirty: true } editor)
+        {
+            return true;
+        }
+
+        editor.DialogsOpen++;
+        try
+        {
+            return await _ctx.ConfirmAsync("Discard changes", $"The changes to {editor.Heading} are not saved.", "Discard").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+    }
 
     private void ClosePanel()
     {
@@ -527,11 +555,23 @@ public sealed partial class PoliciesViewModel : ObservableObject
             PolicyKinds.Enrollment => $"Delete the policy {policy.Name}? The EST server refuses its devices unless another Enrollment policy holds them.",
             _ => $"Delete the policy {policy.Name}?",
         };
-        if (!await _ctx.ConfirmAsync("Delete policy", message, "Delete").ConfigureAwait(true))
+        editor.DialogsOpen++;
+        bool confirmed;
+        try
+        {
+            confirmed = await _ctx.ConfirmAsync("Delete policy", message, "Delete").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+
+        if (!confirmed)
         {
             return;
         }
 
+        editor.IsBusy = true; // the form waits for the answer
         try
         {
             var reply = PkiJson.Deserialize<PolicySaveReply>(await _ctx.InvokeAsync(PolicyMethods.DeletePolicy, PkiJson.Serialize(new PolicyRef(policy.Id)), CancellationToken.None)
@@ -549,6 +589,10 @@ public sealed partial class PoliciesViewModel : ObservableObject
 #pragma warning restore CA1031
         {
             Error = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            editor.IsBusy = false;
         }
     }
 
@@ -578,7 +622,18 @@ public sealed partial class PoliciesViewModel : ObservableObject
         }
 
         var picker = editor.NewPicker();
-        if (await dialogs.PickDevicesAsync(picker, "Choose devices").ConfigureAwait(true))
+        bool ok;
+        editor.DialogsOpen++; // a reload while the dialog is open keeps this form (the dialog's choice goes into it)
+        try
+        {
+            ok = await dialogs.PickDevicesAsync(picker, "Choose devices").ConfigureAwait(true);
+        }
+        finally
+        {
+            editor.DialogsOpen--;
+        }
+
+        if (ok)
         {
             editor.UsePicker(picker);
         }
@@ -637,12 +692,20 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private readonly DeviceGroupPickerOptions _pickerOptions;
     private bool _applying = true;
+    private DeviceGroupChoice _choice; // the chosen sites, tags and devices (the picker is made only when one is needed)
+    private DevicePickerViewModel? _picker;
+    private string _devicesText = NoDevicesText;
+    private bool _dirty;
+
+    /// <summary>The validator's name of the Devices field (its error below the device choice).</summary>
+    internal const string DevicesField = "Devices";
 
     /// <summary>The properties that follow the fields (never a change of the policy themselves).</summary>
     private static readonly HashSet<string> Derived = new(StringComparer.Ordinal)
     {
         nameof(Preview), nameof(IsDirty), nameof(CanSave), nameof(SaveBlockedReason), nameof(SaveStatus), nameof(HasSaveStatus), nameof(IsSaveStatusOk),
         nameof(ShowsDevicesField), nameof(DevicesText), nameof(DevicesError), nameof(CertificateHint), nameof(HasNoCertificates),
+        nameof(IsEditable), nameof(IsBusy), nameof(HasErrors), nameof(IsFormValid), nameof(FormError), nameof(ProfilesError), nameof(Picker),
     };
 
     /// <param name="ctx">The page's context.</param>
@@ -668,9 +731,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
             OnPropertyChanged(nameof(Preview)); // the sentence follows every field
             OnPropertyChanged(nameof(ShowsDevicesField));
-            OnPropertyChanged(nameof(DevicesText));
             if (!_applying)
             {
+                // One comparison per change (never one per binding that reads IsDirty).
+                _dirty = !string.IsNullOrEmpty(_baseline) && !string.Equals(PkiJson.Serialize(ToPolicy()), _baseline, StringComparison.Ordinal);
                 NotifySaveState();
             }
         };
@@ -749,9 +813,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             // Plugins know tags by name: the name is the id.
             Tags = [.. tags.Select(t => new DevicePickerTag(t, t))],
         };
-        _devices = [.. devices ?? []];
-        Picker = new DevicePickerViewModel(_devices, new DeviceGroupChoice(chosen.ThisServer, chosen.SiteIds ?? [], chosen.Tags ?? [], chosen.Serials ?? [], chosen.ExceptSerials ?? []), _pickerOptions);
-        Picker.PropertyChanged += OnPickerChanged;
+        // No copy of the device list and no picker over it for every form (30,000 devices): only Choose devices makes one.
+        _devices = devices as IReadOnlyList<IDeviceInfo> ?? [.. devices ?? []];
+        _choice = new DeviceGroupChoice(chosen.ThisServer, chosen.SiteIds ?? [], chosen.Tags ?? [], chosen.Serials ?? [], chosen.ExceptSerials ?? []);
+        _devicesText = TextOf(_choice);
         _applying = false;
 
         var others = list.Rows.Select(r => r.Policy).Where(p => p.Id != existing?.Id).ToList();
@@ -776,10 +841,19 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
                 : chosen.Problem ?? (chosen.UsableFor(Kind.Value) ? null : PolicyTexts.Dot1xServerNeedsEccCertificate))
             .Rule(nameof(CustomIdentity), () => IsDot1xCertificate ? PkiValidation.CustomIdentity(Identity.Value, CustomIdentity) : null)
             .Rule(nameof(RadiusCa), () => !IsDot1xCertificate ? null
-                : RadiusCa is { } radius && RadiusCaChoices.Any(c => string.Equals(c.Value, radius.Value, StringComparison.OrdinalIgnoreCase)) ? null : PolicyTexts.ChooseRadiusCa);
+                : RadiusCa is { } radius && RadiusCaChoices.Any(c => string.Equals(c.Value, radius.Value, StringComparison.OrdinalIgnoreCase)) ? null : PolicyTexts.ChooseRadiusCa)
+            // The devices are a field like the others (CLAUDE.md validation): none chosen, tags for a Block that also revokes,
+            // and the server's refusal (an overlap) below the device choice until the choice changes.
+            .Rule(DevicesField, () => !ShowsPicker ? null
+                : _choice.IsEmpty ? PolicyTexts.ChooseDevices
+                : Revokes && _choice.TagIds.Count > 0 ? PolicyTexts.RevokeNoTags
+                : null);
         Validation.Validate();
         _baseline = PkiJson.Serialize(ToPolicy());
     }
+
+    /// <summary>A Choose devices dialog or a question of the form is open: a reload of the list leaves the form as it is.</summary>
+    internal int DialogsOpen { get; set; }
 
     /// <summary>A system policy (decision 2026-10-25): it keeps its name and devices and cannot be deleted.</summary>
     public bool IsInPlace { get; }
@@ -793,9 +867,13 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>Delete shows: a stored user policy, for a user who may change the policies.</summary>
     public bool CanDelete => _existing is not null && !IsInPlace && !ReadOnly;
 
-    /// <summary>Delete of the open policy (the page asks first).</summary>
-    [RelayCommand]
+    /// <summary>Delete of the open policy (the page asks first); waits while a save or a delete runs.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunDelete))]
     private Task DeleteAsync() => _owner.DeleteAsync(this);
+
+    private bool CanRunDelete() => CanDelete && !IsBusy;
+
+    partial void OnIsBusyChanged(bool value) => DeleteCommand.NotifyCanExecuteChanged();
 
     // ------------------------------------------------------------------ devices
 
@@ -803,51 +881,34 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     public bool ShowsDevicesField => ShowsDeviceScope || ShowsPicker;
 
     /// <summary>The chosen sites, tags and devices in one line ("Site Building B, Tag PTZ, 3 devices"), or that none are chosen yet.</summary>
-    public string DevicesText
-    {
-        get
-        {
-            var choice = Picker.GroupChoice;
-            return choice.IsEmpty ? NoDevicesText : PolicyTexts.DevicesText(DevicesOf(choice), _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name));
-        }
-    }
+    public string DevicesText => _devicesText;
+
+    private string TextOf(DeviceGroupChoice choice) =>
+        choice.IsEmpty ? NoDevicesText : PolicyTexts.DevicesText(DevicesOf(choice), _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name));
 
     public const string NoDevicesText = "No devices chosen yet.";
 
-    /// <summary>Why the devices cannot be saved (below the Devices field); null otherwise.</summary>
-    public string? DevicesError => Picker.ErrorText;
+    /// <summary>Why the devices cannot be saved (below the Devices field, from the validator); null otherwise.</summary>
+    public string? DevicesError => Validation[DevicesField];
 
     /// <summary>Choose devices: the shared device picker over a copy of the choice, taken over on OK.</summary>
     [RelayCommand]
     private Task ChooseDevicesAsync() => _owner.ChooseDevicesAsync(this);
 
-    /// <summary>A picker over the current choice (Cancel leaves the form as it is).</summary>
-    internal DevicePickerViewModel NewPicker() => new(_devices, Picker.GroupChoice, _pickerOptions) { ErrorText = Picker.ErrorText };
+    /// <summary>A picker over the current choice (Cancel leaves the form as it is); its error shows in the picker too.</summary>
+    internal DevicePickerViewModel NewPicker() => new(_devices, _choice, _pickerOptions) { ErrorText = DevicesError };
 
-    /// <summary>Takes over the choice of <paramref name="picker"/> after OK.</summary>
+    /// <summary>Takes over the choice of <paramref name="picker"/> after OK: the Devices field is edited (its server error goes).</summary>
     internal void UsePicker(DevicePickerViewModel picker)
     {
         ArgumentNullException.ThrowIfNull(picker);
-        Picker.PropertyChanged -= OnPickerChanged;
-        Picker = picker;
-        Picker.PropertyChanged += OnPickerChanged;
+        _picker = picker;
+        _choice = picker.GroupChoice;
+        _devicesText = TextOf(_choice);
         OnPropertyChanged(nameof(Picker));
+        OnPropertyChanged(nameof(DevicesText));
+        OnPropertyChanged(DevicesField); // touches the field: validates, clears the server's error of the old choice
         OnPropertyChanged(nameof(DevicesError));
-        CheckTags();
-    }
-
-    private void OnPickerChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(DevicePickerViewModel.CoveredCount) or nameof(DevicePickerViewModel.Summary))
-        {
-            OnPropertyChanged(nameof(CanSave));
-            OnPropertyChanged(nameof(SaveBlockedReason));
-            CheckTags();
-        }
-        else if (e.PropertyName == nameof(DevicePickerViewModel.ErrorText))
-        {
-            OnPropertyChanged(nameof(DevicesError));
-        }
     }
 
     private static PolicyDevices DevicesOf(DeviceGroupChoice choice) => new()
@@ -864,7 +925,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     [NotifyPropertyChangedFor(nameof(IsEditable))]
     public partial bool ReadOnly { get; set; }
 
-    public bool IsEditable => !ReadOnly;
+    /// <summary>The fields can be changed: a user who may manage the policies, while no save runs.</summary>
+    public bool IsEditable => !ReadOnly && !IsBusy;
 
     /// <summary>The name field shows (a system policy keeps its name).</summary>
     public bool ShowsName => !IsInPlace;
@@ -875,8 +937,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>"VLAN", "802.1X trusted CA": the kind below the heading.</summary>
     public string KindName => PolicyKinds.Name(Kind.Value);
 
-    /// <summary>The fields differ from the policy as it was read (Save is on, the status says Not saved).</summary>
-    public bool IsDirty => !string.IsNullOrEmpty(_baseline) && !string.Equals(PkiJson.Serialize(ToPolicy()), _baseline, StringComparison.Ordinal);
+    /// <summary>The fields differ from the policy as it was read (Save is on, the status says Not saved); worked out once per change.</summary>
+    public bool IsDirty => _dirty;
 
     /// <summary>This form follows its own save (the status says Saved until the next change).</summary>
     public bool JustSaved { get; set; }
@@ -1039,7 +1101,11 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>The kind is chosen for a new policy only (a policy keeps its kind).</summary>
     public bool IsNew => _existing is null;
 
-    public DevicePickerViewModel Picker { get; private set; }
+    /// <summary>The picker of the current choice, made when first asked for (the form itself keeps only the choice).</summary>
+    public DevicePickerViewModel Picker => _picker ??= new DevicePickerViewModel(_devices, _choice, _pickerOptions);
+
+    /// <summary>A picker exists (tests: opening a form or typing makes none over the devices).</summary>
+    internal bool HasPicker => _picker is not null;
 
     public IReadOnlyList<Choice<string>> KindChoices { get; }
 
@@ -1177,7 +1243,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     public string? TlsHint => PolicyRules.MinimumIndex(MinimumTls.Value) is < 2 ? OldTlsHint : null;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSave), nameof(SaveBlockedReason))]
+    [NotifyPropertyChangedFor(nameof(CanSave), nameof(SaveBlockedReason), nameof(IsEditable), nameof(CanDelete))]
     public partial bool IsBusy { get; set; }
 
     partial void OnReadOnlyChanged(bool value)
@@ -1189,12 +1255,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>Asks before a revoke policy revokes; null: the page's question.</summary>
     public Func<string, string, Task<bool>>? ConfirmRevoke { get; set; }
 
-    public bool CanSave => !IsBusy && !ReadOnly && IsFormValid && (!ShowsPicker || HasChosenDevices) && (IsNew || IsDirty);
-
-    private bool HasChosenDevices => Picker is not null && !Picker.GroupChoice.IsEmpty;
+    public bool CanSave => !IsBusy && !ReadOnly && IsFormValid && (IsNew || IsDirty);
 
     /// <summary>Why Save is off (its tooltip).</summary>
-    public string? SaveBlockedReason => FormError ?? (ShowsPicker && !HasChosenDevices ? PolicyTexts.ChooseDevices : !IsNew && !IsDirty ? NoChangesText : null);
+    public string? SaveBlockedReason => FormError ?? (!IsNew && !IsDirty ? NoChangesText : null);
 
     /// <summary>
     /// What the policy does, in the sentence of its row (<see cref="PolicyStore.Summary"/>), from the fields as they are now;
@@ -1227,7 +1291,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>The policy of the editor (the fields of its kind).</summary>
     public PkiPolicy ToPolicy()
     {
-        var choice = Picker.GroupChoice;
+        var choice = _choice;
         return PolicyRules.Normalize(new PkiPolicy
         {
             Id = _existing?.Id ?? Guid.Empty,
@@ -1260,6 +1324,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             ProfileScope = ProfileScope.Value,
             Profiles = [.. ProfileChoices.Where(p => p.IsChecked).Select(p => p.Name)],
             SavedBy = _existing?.SavedBy,
+            Revision = _existing?.Revision ?? 0, // the revision this form read: PKI refuses a save over a later change
         });
     }
 
@@ -1268,7 +1333,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     {
         Validation.ShowAll();
         OnPropertyChanged(nameof(ProfilesError));
-        Picker.ErrorText = null;
+        OnPropertyChanged(nameof(DevicesError));
         if (!IsFormValid)
         {
             return false;
@@ -1277,7 +1342,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         var policy = ToPolicy();
         if (PolicyRules.Validate(policy, []) is { } error)
         {
-            ShowError(error);
+            await ShowErrorAsync(error).ConfigureAwait(true);
             return false;
         }
 
@@ -1290,9 +1355,19 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
                 var question = count == 0
                     ? "These devices have no IEEE 802.1X certificate now. Every new one is revoked while the policy exists."
                     : string.Create(CultureInfo.CurrentCulture, $"Saving revokes {count:N0} IEEE 802.1X {(count == 1 ? "certificate" : "certificates")} of these devices, and every new one while the policy exists. This cannot be undone.");
-                var confirmed = ConfirmRevoke is { } confirm
-                    ? await confirm(Title, question).ConfigureAwait(true)
-                    : await _ctx.ConfirmAsync(Title, question, "Revoke").ConfigureAwait(true);
+                bool confirmed;
+                DialogsOpen++; // a reload meanwhile keeps this form
+                try
+                {
+                    confirmed = ConfirmRevoke is { } confirm
+                        ? await confirm(Title, question).ConfigureAwait(true)
+                        : await _ctx.ConfirmAsync(Title, question, "Revoke").ConfigureAwait(true);
+                }
+                finally
+                {
+                    DialogsOpen--;
+                }
+
                 if (!confirmed)
                 {
                     return false;
@@ -1302,7 +1377,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             var reply = await _owner.SaveAsync(policy, this).ConfigureAwait(true);
             if (reply.Error is { } refused)
             {
-                ShowError(refused);
+                await ShowErrorAsync(refused).ConfigureAwait(true);
                 return false;
             }
 
@@ -1325,12 +1400,15 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     private bool RevokeChanged(PkiPolicy policy) =>
         _existing is null || !PolicyRules.Revokes(_existing) || !(_existing.Devices ?? new PolicyDevices()).SameAs(policy.Devices);
 
-    private void ShowError(PolicyFieldError error)
+    /// <summary>
+    /// A refusal below the field it names; one of a field the form does not show (the kind, which Create preset) or of the
+    /// whole policy (changed by someone else) in a message.
+    /// </summary>
+    private async Task ShowErrorAsync(PolicyFieldError error)
     {
         var property = error.Field switch
         {
-            PolicyFields.Name => nameof(Name),
-            PolicyFields.Kind => nameof(Kind),
+            PolicyFields.Name when ShowsName => nameof(Name),
             PolicyFields.Vlan => nameof(Vlan),
             PolicyFields.Days => nameof(Days),
             PolicyFields.Ca => IsIssuing ? nameof(IssuingCa) : IsSignInCa ? nameof(SignInCa) : nameof(Ca),
@@ -1349,44 +1427,18 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.ReauthMinutes => nameof(ReauthMinutes),
             PolicyFields.MinimumTls => nameof(MinimumTls),
             PolicyFields.Devices when IsAllDevices => nameof(Scope), // the picker is hidden: below the Devices choice
+            PolicyFields.Devices when ShowsPicker => DevicesField, // below the device choice until the choice changes
             _ => null,
         };
         if (property is null)
         {
-            Picker.ErrorText = error.Message; // devices: below the device choice
+            await _ctx.ShowMessageAsync(Title, error.Message).ConfigureAwait(true);
             return;
         }
 
         Validation.SetServerError(property, error.Message);
         OnPropertyChanged(nameof(ProfilesError));
-    }
-
-    /// <summary>A Block policy that also revokes chooses devices and sites only: said below the device choice at once.</summary>
-    private void CheckTags()
-    {
-        if (Picker is null)
-        {
-            return;
-        }
-
-        if (Revokes && Picker.GroupChoice.TagIds.Count > 0)
-        {
-            Picker.ErrorText = PolicyTexts.RevokeNoTags;
-        }
-        else if (Picker.ErrorText == PolicyTexts.RevokeNoTags)
-        {
-            Picker.ErrorText = null;
-        }
-    }
-
-    partial void OnAlsoRevokeChanged(bool value)
-    {
-        if (_applying)
-        {
-            return;
-        }
-
-        CheckTags();
+        OnPropertyChanged(nameof(DevicesError));
     }
 
     partial void OnKindChanged(Choice<string> value)
@@ -1400,7 +1452,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(ProfilesError));
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
-        CheckTags();
     }
 
     protected override void OnValidationChanged()
@@ -1408,6 +1459,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(SaveBlockedReason));
         OnPropertyChanged(nameof(ProfilesError));
+        OnPropertyChanged(nameof(DevicesError));
     }
 
     /// <summary>"OADM CA (with 2 previous CAs)", "Axis device ID", "Contoso Root".</summary>

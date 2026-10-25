@@ -313,6 +313,11 @@ public sealed partial class PolicyStore : IDisposable
             }
 
             var before = index >= 0 ? list[index] : null;
+            if (before is not null && before.Revision != policy.Revision)
+            {
+                return Refused(PolicyFields.Policy, PolicyTexts.ChangedElsewhere); // optimistic: the form read an older one
+            }
+
             if (before is not null && before.Kind != policy.Kind)
             {
                 return Refused(PolicyFields.Kind, PolicyTexts.KindKept);
@@ -404,7 +409,7 @@ public sealed partial class PolicyStore : IDisposable
                 }
             }
 
-            policy = policy with { Id = before?.Id ?? Guid.NewGuid(), SavedBy = userName };
+            policy = policy with { Id = before?.Id ?? Guid.NewGuid(), SavedBy = userName, Revision = (before?.Revision ?? 0) + 1 };
             if (index >= 0)
             {
                 list[index] = policy;
@@ -570,7 +575,7 @@ public sealed partial class PolicyStore : IDisposable
                 return false;
             }
 
-            changed = stored.Policies[index] with { CertificateId = certificateId };
+            changed = stored.Policies[index] with { CertificateId = certificateId, Revision = stored.Policies[index].Revision + 1 }; // an open form reads it again
             var list = stored.Policies.ToList();
             list[index] = changed;
             await StoreAsync(stored with { Policies = list }, ct).ConfigureAwait(false);

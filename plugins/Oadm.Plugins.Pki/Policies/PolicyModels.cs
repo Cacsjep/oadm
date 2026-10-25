@@ -429,6 +429,12 @@ public sealed record PkiPolicy
 
     /// <summary>Set by PKI: who saved it last (the user of a Block policy that also revokes's later revocations).</summary>
     public string? SavedBy { get; init; }
+
+    /// <summary>
+    /// Set by PKI: counts the changes of the stored policy. A save sends the revision it read; PKI refuses it when the policy
+    /// changed since ("Changed by someone else. Reload."), so a later save never overwrites another user's change unseen.
+    /// </summary>
+    public int Revision { get; init; }
 }
 
 /// <summary>One row of the Policies card: the policy with its kind's name, its group, the summary and a warning.</summary>
@@ -584,6 +590,9 @@ public static class PolicyFields
     public const string Profiles = "profiles";
     public const string SignInFor = "signInFor";
     public const string AlsoRevoke = "alsoRevoke";
+
+    /// <summary>A refusal of the whole policy, of no field (the page shows it in a message).</summary>
+    public const string Policy = "policy";
 }
 
 /// <summary>The texts of the policies (one phrase per concept), the same on the page and in the server's refusals.</summary>
@@ -600,6 +609,9 @@ public static class PolicyTexts
     public const string AlsoRevoke = "Also revoke their IEEE 802.1X certificates";
     public const string SiteGone = "This site no longer exists.";
     public const string PolicyGone = "This policy no longer exists.";
+
+    /// <summary>The stored policy changed after the form read it (another user, or OADM itself).</summary>
+    public const string ChangedElsewhere = "Changed by someone else. Reload.";
     public const string KindKept = "A policy keeps its kind. Add a new policy instead.";
     public const string ChooseCa = "Choose a CA.";
     public const string UnknownCa = "This certificate authority is not in the PKI.";

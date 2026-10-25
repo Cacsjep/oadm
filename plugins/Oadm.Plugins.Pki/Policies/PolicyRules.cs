@@ -277,6 +277,7 @@ public static class PolicyRules
                 : null,
             SignInFor = kind == PolicyKinds.SignInCa ? policy.SignInFor?.Trim() : null,
             SavedBy = policy.SavedBy,
+            Revision = policy.Revision,
         };
 
         static IEnumerable<string> Serials(IReadOnlyList<string>? serials) =>

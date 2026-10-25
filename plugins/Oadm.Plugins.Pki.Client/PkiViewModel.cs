@@ -413,8 +413,30 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     private async Task ExportAsync(string? format)
     {
         var der = string.Equals(format, "der", StringComparison.OrdinalIgnoreCase);
-        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.ExportPublic, PkiJson.Serialize(new ExportRequest(der ? "der" : "pem")), CancellationToken.None).ConfigureAwait(true));
-        await SaveFileAsync("Export public certificate", reply, der ? PkiFileKind.CertificateDer : PkiFileKind.CertificatePem).ConfigureAwait(true);
+        if (await CallAsync<FileReply>("Export public certificate", PkiMethods.ExportPublic, new ExportRequest(der ? "der" : "pem")).ConfigureAwait(true) is { } reply)
+        {
+            await SaveFileAsync("Export public certificate", reply, der ? PkiFileKind.CertificateDer : PkiFileKind.CertificatePem).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// A page call whose failure (the connection, a refusal) goes into a message titled <paramref name="title"/>, never the
+    /// generic crash message; null then.
+    /// </summary>
+    private async Task<T?> CallAsync<T>(string title, string method, object payload)
+        where T : class
+    {
+        try
+        {
+            return PkiJson.Deserialize<T>(await _ctx.InvokeAsync(method, PkiJson.Serialize(payload), CancellationToken.None).ConfigureAwait(true));
+        }
+#pragma warning disable CA1031 // Shown in a message.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(title, ServerErrors.Message(ex)).ConfigureAwait(true);
+            return null;
+        }
     }
 
     private bool CanExport(string? format) => HasCa && !IsUnavailable;
@@ -467,8 +489,10 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return;
         }
 
-        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.ExportPrevious, PkiJson.Serialize(new ExportPreviousRequest(row.Id, "pem")), CancellationToken.None).ConfigureAwait(true));
-        await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
+        if (await CallAsync<FileReply>("Export previous CA certificate", PkiMethods.ExportPrevious, new ExportPreviousRequest(row.Id, "pem")).ConfigureAwait(true) is { } reply)
+        {
+            await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
+        }
     }
 
     private async Task RemovePreviousAsync(PreviousCaRowViewModel? row)
@@ -487,7 +511,11 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             return;
         }
 
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemovePrevious, PkiJson.Serialize(new RemovePreviousRequest(row.Id)), CancellationToken.None).ConfigureAwait(true));
+        if (await CallAsync<PkiReply>("Remove previous CA", PkiMethods.RemovePrevious, new RemovePreviousRequest(row.Id)).ConfigureAwait(true) is not { } reply)
+        {
+            return;
+        }
+
         if (reply.Error is { } error)
         {
             await _ctx.ShowMessageAsync("Remove previous CA", error).ConfigureAwait(true);
@@ -552,13 +580,13 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
         else if (await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
         {
-            var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.RemoveAuthority, PkiJson.Serialize(new RemoveAuthorityRequest(id)), CancellationToken.None).ConfigureAwait(true));
-            if (reply.Error is { } error)
+            var reply = await CallAsync<PkiReply>("Remove CA", PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id)).ConfigureAwait(true);
+            if (reply?.Error is { } error)
             {
                 await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
             }
 
-            if (reply.State is { } state)
+            if (reply?.State is { } state)
             {
                 await ApplyStateAsync(state).ConfigureAwait(true);
             }
