@@ -89,7 +89,13 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         _ctx = ctx;
         Undo = new UndoStore(ctx.DataDirectory is { } data ? Path.Combine(data, "undo") : null, ctx.Secrets, _options.Time);
         // One table per device scope: the users of a device group share the table of their group's devices.
-        _sweeps = new DeviceSweeps<DeviceRulesRow>(ctx, _options, _ => true, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address, PublishRows, PublishState);
+        // A finished sweep drops the shared event lists and template sets no row refers to any more (they would only grow).
+        _sweeps = new DeviceSweeps<DeviceRulesRow>(ctx, (key, devices) => new DeviceSweep<DeviceRulesRow>(
+            ctx, devices, _options, _ => true, async (d, _, t) => await ReadAsync(d, t).ConfigureAwait(false), r => r.Address,
+            (rows, removed) => PublishRows(key, rows, removed), () => PublishState(key))
+        {
+            Finished = PruneCaches,
+        });
     }
 
     public async Task StopAsync(CancellationToken ct)

@@ -50,6 +50,21 @@ public sealed class BuildTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task A_finished_sweep_forgets_the_event_lists_and_templates_no_device_has_any_more()
+    {
+        Assert.Equal((2, 2), _plugin.CacheCounts); // read directly: AXIS OS 12 and 10 offer different events and templates
+
+        _devices.Items.Remove(_os10); // removed: the next sweep has no row of it
+        await _plugin.InvokeAsync(ActionRulesMethods.Read, null, CancellationToken.None);
+        var sweep = _plugin.Sweeps!.All.Single();
+        await sweep.Current;
+
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => _plugin.CacheCounts == (1, 1), "the caches were pruned");
+        var reply = _plugin.Events(new EventsRequest([_os12.Id]));
+        Assert.Equal((1, 0), (reply.Devices, reply.Unknown)); // the remaining device keeps its events
+    }
+
     private static NewFilter Input(string port) => new(VirtualInputTopic, [new("port", port)]);
 
     private static Dictionary<string, string> TcpSettings() => new()
