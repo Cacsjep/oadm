@@ -204,12 +204,14 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   settings, Read network settings (Skipped without network-settings), Install CA certificate (Skipped "Already
   installed"), Create key on the device, Get certificate request, Sign certificate, Install certificate, Switch web server
   to the new certificate (policy kept; HTTP only becomes HTTP and HTTPS), Verify HTTPS (`ctx.UpdateDeviceTlsAsync("https",
-  fingerprint)`, retried up to 60 s while the web server restarts: OADM pins the new certificate, scheme https), Remove
-  previous OADM certificate.
+  fingerprint)`, retried up to 60 s while the web server restarts, step text "Waiting for the web server to restart": OADM
+  pins the new certificate, scheme https; the failure says what was changed), Remove previous OADM certificate.
 - **Disable HTTPS** (`oadm.pki.https-disable`, confirmation "Video systems that use HTTPS lose the connection to these
-  devices.", name "Disable HTTPS"): Check compatibility (fails when `Network.HTTP.AuthenticationPolicy=basic`: OADM sends no
-  Basic over HTTP), Read web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"),
-  Verify (`UpdateDeviceTlsAsync("http")`).
+  devices.", name "Disable HTTPS"): Check compatibility (with `Network.HTTP.AuthenticationPolicy=basic` it fails unless the
+  server setting Allow Basic login over HTTP is on, `IVapixClient.AllowsBasicOverHttp`; the refusal names the setting), Read
+  web server settings, Set HTTP only (policy `Http`, certificates stay; Skipped "Already HTTP only"), Verify
+  (`UpdateDeviceTlsAsync("http")`, then HTTP must keep answering for 10 s while the web server restarts, at most 60 s;
+  docs/spec/pki.md "Web server restart and Basic login").
 - **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, dialog `IssueCertificateWindow` with the warning "Devices on ports
   that enforce 802.1X become unreachable if authentication fails.", the IEEE 802.1X certificate policy with its summary,
   name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the policy and its RADIUS server CA, never

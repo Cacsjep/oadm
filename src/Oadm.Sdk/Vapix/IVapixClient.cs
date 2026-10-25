@@ -5,6 +5,13 @@ public interface IVapixClient
 {
     /// <summary>The device's address with its scheme ("https://10.0.0.48/"). Requests use paths relative to it.</summary>
     Uri BaseAddress { get; }
+
+    /// <summary>
+    /// True when OADM may send Basic login over plain HTTP to this device (the server setting "Allow Basic login over HTTP"
+    /// in Settings > Security); Digest stays preferred. A plugin that switches a device to HTTP uses it to know whether
+    /// OADM can still log in to a device that accepts only Basic. False for hosts without it.
+    /// </summary>
+    bool AllowsBasicOverHttp => false;
     /// <summary>Reads <c>basicdeviceinfo.cgi getAllProperties</c>: serial number, product, AXIS OS version.</summary>
     Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct);
     /// <summary>

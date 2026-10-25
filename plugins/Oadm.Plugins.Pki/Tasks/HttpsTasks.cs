@@ -95,12 +95,20 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
 
 /// <summary>
 /// "Disable HTTPS": connection policy HTTP only (like ADM), certificates stay, OADM switches its own connection to HTTP.
-/// Steps: Check compatibility (the device must accept Digest over HTTP, else OADM would lock itself out), Read web server
-/// settings, Set HTTP only, Verify.
+/// Steps: Check compatibility (the device must accept Digest over HTTP, or Basic with the server setting "Allow Basic login
+/// over HTTP" on, else OADM would lock itself out), Read web server settings, Set HTTP only, Verify (waits for the web server
+/// restart, <see cref="CertificateDeployment.FollowWebServerAsync"/>).
 /// </summary>
 public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(service)
 {
     public const string AuthenticationPolicyParameter = "Network.HTTP.AuthenticationPolicy";
+
+    /// <summary>
+    /// The refusal for a device that accepts only Basic login over HTTP while the server setting "Allow Basic login over
+    /// HTTP" is off (OADM could not log in after the change). With the setting on, the user chose Basic over HTTP: the task runs.
+    /// </summary>
+    public const string BasicOnlyRefusal =
+        "The device accepts only Basic login over HTTP. To disable HTTPS on it, turn on Allow Basic login over HTTP in Settings > Security. Nothing was changed.";
 
     public override string Id => PkiTaskIds.HttpsDisable;
 
@@ -126,13 +134,13 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
             apis.Require("param-cgi", "1.0");
             var parameters = await ctx.Vapix.ListParametersAsync([AuthenticationPolicyParameter], ct).ConfigureAwait(false);
             var policy = parameters.TryGetValue(AuthenticationPolicyParameter, out var value) ? value.Trim() : null;
-            if (string.Equals(policy, "basic", StringComparison.OrdinalIgnoreCase))
+            var basicOnly = string.Equals(policy, "basic", StringComparison.OrdinalIgnoreCase);
+            if (basicOnly && !ctx.Vapix.AllowsBasicOverHttp)
             {
-                throw new DeviceNotCompatibleException(
-                    "The device accepts only Basic authentication over HTTP, which OADM never sends unencrypted. Change the HTTP authentication policy first. Nothing was changed.");
+                throw new DeviceNotCompatibleException(BasicOnlyRefusal);
             }
 
-            step.Complete($"{support.Describe()} · HTTP authentication {policy ?? "unknown"}");
+            step.Complete($"{support.Describe()} · HTTP authentication {policy ?? "unknown"}{(basicOnly ? " · Basic login over HTTP allowed" : string.Empty)}");
             return support;
         }).ConfigureAwait(false);
 

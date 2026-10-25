@@ -9,7 +9,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   Axis check (server network only, see `docs/spec/security.md`), and every device connection while the server setting
   `Devices.AllowBasicOverHttp` is on (Settings > Security "Allow Basic login over HTTP", default off, every route, a site
   too; `BasicOverHttpSetting` read live, a change drops every cached client of `VapixClientFactory`). Digest stays
-  preferred when the device offers it.
+  preferred when the device offers it. Plugins read the setting from `IVapixClient.AllowsBasicOverHttp` (default member,
+  false for other hosts): PKI's Disable HTTPS runs on a device that accepts only Basic over HTTP only while it is on
+  (`docs/spec/pki.md` "Web server restart and Basic login").
 - A 401 over HTTP whose challenge offers only Basic (`WWW-Authenticate: Basic realm="AXIS_<serial>"`, a device set to
   Basic login) while Basic was not allowed sets `VapixAuthenticationException.BasicOnlyOverHttp`: Log in and the add
   page say `DeviceMessages.BasicOnlyOverHttp` ("The device accepts only Basic login over HTTP. Turn on HTTPS on the

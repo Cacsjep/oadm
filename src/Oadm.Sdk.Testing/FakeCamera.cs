@@ -17,6 +17,9 @@ public class FakeCamera : IVapixClient
     /// <inheritdoc />
     public Uri BaseAddress { get; init; } = new("https://192.0.2.10/");
 
+    /// <summary>The server setting "Allow Basic login over HTTP" as the client reports it (default off).</summary>
+    public bool AllowsBasicOverHttp { get; set; }
+
     /// <summary>The device's parameters (param.cgi), e.g. <c>["Network.UPnP.FriendlyName"] = "Entrance"</c>.</summary>
     public Dictionary<string, string> Parameters { get; } = new(StringComparer.Ordinal);
 

@@ -358,9 +358,26 @@ public sealed class HttpsTaskTests
 
         var ex = await h.RunAsync(PkiTaskIds.HttpsDisable);
 
-        Assert.Contains("only Basic authentication over HTTP", ex!.Message, StringComparison.Ordinal);
+        // "Allow Basic login over HTTP" is off: OADM could not log in after the change.
+        Assert.Equal(HttpsDisableTask.BasicOnlyRefusal, ex!.Message);
+        Assert.Equal("The device accepts only Basic login over HTTP. To disable HTTPS on it, turn on Allow Basic login over HTTP in Settings > Security. Nothing was changed.", ex.Message);
         Assert.Empty(h.Camera.Writes);
         Assert.Equal(ConnectionPolicy.HttpAndHttps, h.Camera.Policy);
+    }
+
+    [Fact]
+    public async Task Disable_runs_on_a_basic_only_device_when_basic_login_over_http_is_allowed()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        h.Camera.Parameters[HttpsDisableTask.AuthenticationPolicyParameter] = "basic";
+        h.Camera.AllowsBasicOverHttp = true; // the user turned the setting on
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsDisable));
+
+        Assert.Equal(["Check compatibility: Done", "Read web server settings: Done", "Set HTTP only: Done", "Verify: Done", "Completed: Done"], h.Lines);
+        Assert.EndsWith("HTTP authentication basic · Basic login over HTTP allowed", h.Detail(PkiSteps.CheckCompatibility), StringComparison.Ordinal);
+        Assert.Equal(ConnectionPolicy.Http, h.Camera.Policy);
+        Assert.Equal("http", h.Context.Scheme);
     }
 }
 
