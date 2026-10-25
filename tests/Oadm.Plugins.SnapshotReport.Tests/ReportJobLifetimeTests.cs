@@ -56,19 +56,22 @@ public sealed class ReportJobLifetimeTests
         var second = await reports.StartAsync(admin, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
         var third = await reports.StartAsync(admin, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
 
-        // Two take their snapshots (held), the third waits its turn; another user's report does not wait for them.
-        await Testing.Eventually.TrueAsync(() => Message(third.JobId) == ReportJobs.WaitingForEarlier, "the third report waits");
-        Assert.NotEqual(ReportJobs.WaitingForEarlier, Message(first.JobId));
-        Assert.NotEqual(ReportJobs.WaitingForEarlier, Message(second.JobId));
+        // Two take their snapshots (held), one waits its turn (the jobs start in any order); another user's report does not
+        // wait for them.
+        string[] ids = [first.JobId, second.JobId, third.JobId];
+        await Testing.Eventually.TrueAsync(() => ids.Count(id => Message(id) == ReportJobs.WaitingForEarlier) == 1
+            && ids.All(id => Message(id) != "Read video sources"), "one report waits, two run");
+        var waiting = ids.Single(id => Message(id) == ReportJobs.WaitingForEarlier);
+        var running = ids.First(id => id != waiting);
         var other = ctx.CallAsAllDevices("other");
         var theirs = await reports.StartAsync(other, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
         await Testing.Eventually.TrueAsync(() => reports.Status(other, ctx.FakeJobs, theirs.JobId).Message != "Read video sources", "the other user's report runs");
         Assert.NotEqual(ReportJobs.WaitingForEarlier, reports.Status(other, ctx.FakeJobs, theirs.JobId).Message);
 
-        reports.Delete(admin, ctx.FakeJobs, first.JobId); // one ended: the third takes its turn
-        await Testing.Eventually.TrueAsync(() => Message(third.JobId) != ReportJobs.WaitingForEarlier, "the third report started");
+        reports.Delete(admin, ctx.FakeJobs, running); // one ended: the waiting one takes its turn
+        await Testing.Eventually.TrueAsync(() => Message(waiting) != ReportJobs.WaitingForEarlier, "the waiting report started");
         gate.SetResult();
-        await Testing.Eventually.TrueAsync(() => reports.Status(admin, ctx.FakeJobs, third.JobId).State == ReportJobStates.Done, "the third report is ready");
+        await Testing.Eventually.TrueAsync(() => reports.Status(admin, ctx.FakeJobs, waiting).State == ReportJobStates.Done, "the waiting report is ready");
     }
 
     [Fact]
