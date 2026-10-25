@@ -123,7 +123,8 @@ of the level is Warn or Fail.
 - Not contacted: CertificateChanged, CredentialsRequired, PasswordNotSet (the snapshot report's texts) and Unreachable
   ("Unreachable - the device did not answer the last status check").
 - `Scanning/HardeningScanService.cs`: one scan at a time (`startScan` while one runs returns it), at most 16 devices at once
-  (plugin setting `config` `{"parallelism": 1..64}`), progress and changed rows as events every 500 ms (`results` split at
+  for the plugin, the scans of every device scope together (one `SemaphoreSlim`; plugin setting `config`
+  `{"parallelism": 1..64}`), progress and changed rows as events every 500 ms (`results` split at
   1,000 rows and below the 1 M character event limit), `cancelScan` keeps what was scanned.
 - `Scanning/ResultStore.cs`: the last result per device and level, written to the plugin setting `results` at most every
   2 s and at the end of a scan; at most 10,000 devices per level (oldest dropped), values cut at 160 and details at 600

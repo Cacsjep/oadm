@@ -28,7 +28,7 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   disabled. A tag means its cameras at the moment of each check.
 - Only on request: one check when the page opens, **Refresh**, and **Auto refresh** (off by default) every 10 s while
   the page is open, each over the chosen cameras only. No background polling.
-- 24 cameras at a time, 3 s per request.
+- 24 cameras at a time for the plugin (the checks of every device group together), 3 s per request.
 - A camera with the app stopped stays in the table as **Not running**; cameras without the app are only counted.
 - Five count cards above the table (`ImageHealthCounts`, shared `ui:StatCard`): Good, Detected, Pending,
   Detection off, Errors. Each camera with the app counts in one of Good, Detected, Pending, Errors, the worst state wins
