@@ -172,7 +172,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         }
 
         Validation
-            .Rule(nameof(PollingIntervalSeconds), () => RangeError(PollingIntervalSeconds, 5, 3600))
+            .Rule(nameof(PollingIntervalSeconds), () => RangeError(PollingIntervalSeconds, 5, 86400))
             .Rule(nameof(FullRefreshMinutes), () => RangeError(FullRefreshMinutes, 1, 1440))
             .Rule(nameof(ScanParallelism), () => RangeError(ScanParallelism, 1, 256))
             .Rule(nameof(ScanTimeoutMs), () => RangeError(ScanTimeoutMs, 100, 30000))
@@ -205,7 +205,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         SaveCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>"Enter a value from 5 to 3600." for an empty or out-of-range number field.</summary>
+    /// <summary>"Enter a whole number from 5 to 86400." for an empty or out-of-range number field.</summary>
     public static string? RangeError(decimal? value, int min, int max) =>
         value is null || value < min || value > max || decimal.Truncate(value.Value) != value
             ? string.Create(CultureInfo.CurrentCulture, $"Enter a whole number from {min} to {max}.")
@@ -278,6 +278,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             IsBusy = true;
             Apply(await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true));
             Validation.Reset(ServerFields); // loaded values: nothing edited yet
+            if (!Validation.IsValidFor(ServerFields))
+            {
+                Validation.ShowAll(ServerFields); // a stored value the form refuses: shown (its card opens), else Save stays disabled without a reason in sight
+            }
+
             IsLoaded = true;
             ServerMessage = null;
             if (ShowBackup)

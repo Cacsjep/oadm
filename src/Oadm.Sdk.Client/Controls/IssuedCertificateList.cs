@@ -160,13 +160,7 @@ public sealed class IssuedCertificateList : UserControl
                 {
                     if (button.DataContext is IssuedCertificateRow row && _vm is not null)
                     {
-                        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedRight };
-                        foreach (var item in MenuItems(_vm.MenuOf(row)))
-                        {
-                            flyout.Items.Add(item);
-                        }
-
-                        flyout.ShowAt(button);
+                        RowActions.Show(button, _vm.MenuOf(row));
                     }
                 };
                 return button;

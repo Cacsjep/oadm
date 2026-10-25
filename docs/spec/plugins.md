@@ -223,15 +223,15 @@ the UI thread.
 
 The Devices page toolbar is made of toolbar plugins. Built in (compiled into the client,
 `Devices/Toolbar/BuiltInToolbarPlugins.cs`, registered in the container like plugin parts): **Add** (`oadm.toolbar.add`,
-group Add, primary, icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
+group Add, the main one (`IsPrimary`, flat), icon `add`, a `MenuFlyout` with Discovery (`HostPages.AddScan`, icon `search`), Network range
 (`AddIpRange`, `range`), Add manually (`AddManually`, `add`), Import from file (`AddImport`, `download`) and Import from ADM
 (`AddImportAdm`, `download`): see "Add Devices Page"), Remove (Manage; confirmation, the context menu
 uses the same flow), **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection; `IToolbarContext.RefreshDevicesAsync`
 = one `DeviceService.Refresh` for the whole selection: the server queues a full refresh per device; the context menu entry
 "Refresh" uses the same flow), **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`, the selected devices, or every device the search shows when none is selected, the
 tooltip says which; `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address,
-Tags, Site, Host name, Model, Firmware, SoC, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
-Certificate, IEEE 802.1X) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
+Tags, Site, Host name, Model, Firmware, SoC, Architecture, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date yyyy-MM-dd,
+Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order, RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with
 BOM, a cell starting with = + - @ gets a leading `'` (no formula injection), no password (the client has none);
 save picker `IDialogService.SaveFileAsync`, default name `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a
 failed save = `ui:MessageWindow`; O(n), 5,000 devices tested), one generic plugin with a button per task plugin that declares
@@ -241,7 +241,7 @@ tag and Columns), opens https://help.axis.com/en-us/axis-os-release-notes in the
 `*.Client.dll` like dialogs and pages. `DeviceToolbar` orders them by group, order, id, creates each
 control once (failures logged, entry left out), keeps a `ToolbarSeparator` only between groups that
 show something and moves the same controls into a new page view. Buttons are `ui:ToolbarButton`
-(icon key + text, `IsPrimary`). The Columns button and the search box are host parts. Sample:
+(icon key + text; `IsPrimary` marks the main one, still flat). The Columns button and the search box are host parts. Sample:
 `tests/TestPlugins/Oadm.TestPlugins.Sample.Client` (deployed to `artifacts/test-plugins/oadm.sample`).
 API guide: `plugins/README.md`.
 
@@ -263,6 +263,24 @@ bodies are streamed, never buffered. `VapixRequestOptions.StreamResponse` (`Http
 the caller reads the body as a stream (e.g. into a file in `ICorePluginContext.DataDirectory`), enforces its own size
 limit and bounds the body read with its own token (the timeout covers the headers only); the 16 MB limit of buffered
 answers is unchanged. Used by the System report for server reports.
+
+## Behaviour changes since OADM 4.1 (SDK 0.4.0)
+
+What a plugin built for 4.1 (SDK 0.3.0) or rebuilt for 4.5 notices:
+
+- `ui:FileRow.IsSingleButton` defaults to true: the button alone, without the "No file chosen" line; set it false for
+  the older row.
+- `ui:ToolbarButton.IsPrimary` no longer fills the button: it adds the class `main` (toolbars have no filled buttons,
+  decision 2026-10-25).
+- `IPluginEvents.Publish(topic, payload)` (without an audience) reaches only watchers with all devices; events for users
+  with a device group need `Publish(topic, json, PluginEventAudience)`.
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.4.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.4.0
+  into `plugin.json`, so a 4.1 host refuses it. A plugin that uses no 0.4.0 member may set `OadmMinSdkVersion` 0.3.0 in
+  its project to stay loadable on 4.1 (it is then refused for users with a device group).
+- `Oadm.Sdk.Client` references `Avalonia.Controls.DataGrid` 12.1.2 (for `IssuedCertificateList`); the host ships it,
+  plugins never copy it.
+- `SdkInfo.Version` and `SdkInfo.CallContextVersion` are constants: a plugin that reads them gets the value of the SDK
+  it was built against, not the host's.
 
 ## Loading and packaging
 

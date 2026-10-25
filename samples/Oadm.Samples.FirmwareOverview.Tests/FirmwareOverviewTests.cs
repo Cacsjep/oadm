@@ -116,6 +116,46 @@ public sealed class FirmwareOverviewTests
         Assert.Equal("10.0.0.48", Assert.Single(state.Rows).Address);
     }
 
+    [Fact]
+    public async Task A_group_change_during_a_read_keeps_the_page_reading()
+    {
+        var server = new FakeCoreContext();
+        var camera = new HeldCamera();
+        server.Add(new FakeDevice { Address = "10.0.0.48", Status = DeviceStatus.Ok }, camera);
+        var plugin = new FirmwareOverviewPlugin();
+        await plugin.StartAsync(server, CancellationToken.None);
+        var ids = server.DeviceList.Select(d => d.Id).ToList();
+        var key = server.FakeScopes.Add("Building B", ids);
+
+        await CallAsync(server, plugin, FirmwareOverview.Refresh, new RefreshRequest(true, []), FakeCallContext.WithGroup(server, ids, groupId: key));
+        await NextStateAsync(server, s => s.Reading);
+        await camera.Started.Task.WaitAsync(TimeSpan.FromSeconds(30)); // the read is on the camera now
+
+        // The group changes while the read runs: the old rows go, the page keeps showing that it reads.
+        server.FakeScopes.Delete(key);
+        var changed = await NextStateAsync(server, _ => true);
+        Assert.True(changed.Reading);
+        Assert.Empty(changed.Rows);
+
+        camera.Release.SetResult();
+        Assert.False((await NextStateAsync(server, s => !s.Reading)).Reading);
+    }
+
+    /// <summary>A camera whose firmware read waits until the test releases it (no timeout can end it first).</summary>
+    private sealed class HeldCamera : FakeCamera
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async Task<Oadm.Sdk.Vapix.BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct)
+        {
+            Started.TrySetResult();
+            await Release.Task;
+            return Info;
+        }
+    }
+
     /// <summary>The canary: a user whose group holds only "inside" calls every method with "outside" and with an unknown id.</summary>
     [Fact]
     public async Task No_method_reaches_a_device_outside_the_users_group()

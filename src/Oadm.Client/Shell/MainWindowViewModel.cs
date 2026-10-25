@@ -497,6 +497,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    /// <summary>The newest <see cref="RefreshMyDevicesAsync"/>; an older one drops its answer.</summary>
+    private int _myDevicesGeneration;
+
     private async Task OnConnectedAsync()
     {
         _ = RefreshMyDevicesAsync();
@@ -543,10 +546,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// A user with a device group: reads Your role's devices, so the Add entries know whether the group can add devices
     /// (<see cref="UserSession.AddDevicesRefusal"/>). After every connect (a changed group ends the streams) and when the
-    /// user's devices change.
+    /// user's devices change. Started from both without waiting: only the newest read applies its answer (an older one that
+    /// answers later is dropped).
     /// </summary>
     internal async Task RefreshMyDevicesAsync()
     {
+        int generation = ++_myDevicesGeneration; // UI thread only
         if (!Session.IsLoggedIn || Session.HasAllDevices)
         {
             Session.ApplyDevices(null);
@@ -556,7 +561,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             MyRole role = await _api.GetMyRoleAsync(CancellationToken.None).ConfigureAwait(true);
-            Session.ApplyDevices(role.Devices);
+            if (generation == _myDevicesGeneration)
+            {
+                Session.ApplyDevices(role.Devices);
+            }
         }
         catch (Exception ex)
         {

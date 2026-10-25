@@ -140,8 +140,11 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
     private FirmwareState InGroup(string scope, FirmwareState state) =>
         state with { Rows = [.. state.Rows.Where(r => InGroup(scope, r.DeviceId))] };
 
-    /// <summary>A group's devices changed or the group was deleted: its table may show devices it no longer has.</summary>
-    private void OnGroupChanged(object? sender, string scope) => Publish(scope, new FirmwareState(0, false, []));
+    /// <summary>
+    /// A group's devices changed or the group was deleted: its table may show devices it no longer has. A read that runs
+    /// keeps running (and the page keeps showing it), so only the rows go.
+    /// </summary>
+    private void OnGroupChanged(object? sender, string scope) => Publish(scope, StateOf(scope) with { Rows = [] });
 
     private FirmwareState StateOf(string scope)
     {

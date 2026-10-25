@@ -102,6 +102,32 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public Task The_cards_name_the_owning_group_only_while_the_user_has_all_devices() => _ui.RunAsync(async () =>
+    {
+        var (api, store, dialogs) = await CreateAsync();
+        var session = new Oadm.Client.Shell.UserSession();
+        UserInfo User(bool allDevices) => new()
+        {
+            UserName = "tech2", Role = UserRole.Operator, RoleId = FakeOadmApi.OperatorRoleId, RoleName = "Operator",
+            Permissions = { "compliance.view" }, AllDevices = allDevices, DeviceGroupId = allDevices ? "" : "g1", DeviceGroupName = allDevices ? "" : "Lobby",
+        };
+        session.SignIn(User(allDevices: true), "fake");
+        using var page = new ComplianceViewModel(api, dialogs, store, _ui, new InMemoryClientSettingsStore(), session);
+        Assert.NotEmpty(page.Cards);
+        Assert.All(page.Cards, c => Assert.True(c.ShowOwner));
+
+        // The administrator puts the user into a group: the cards stop naming owners without a new page.
+        var details = new List<string>();
+        page.Cards[0].PropertyChanged += (_, e) => details.Add(e.PropertyName ?? "");
+        session.Update(User(allDevices: false));
+        Assert.All(page.Cards, c => Assert.False(c.ShowOwner));
+        Assert.Contains(nameof(ComplianceCardViewModel.Detail), details);
+
+        session.Update(User(allDevices: true));
+        Assert.All(page.Cards, c => Assert.True(c.ShowOwner));
+    });
+
+    [Fact]
     public Task The_page_shows_problems_first_and_a_card_shows_the_devices_failing_its_check() => _ui.RunAsync(async () =>
     {
         var (api, store, dialogs) = await CreateAsync();

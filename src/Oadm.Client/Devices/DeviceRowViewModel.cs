@@ -30,10 +30,13 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     private TagStore? _tagStore;
     private Compliance.ComplianceStore? _complianceStore;
     private Compliance.DeviceCompliance? _compliance;
+    private readonly TimeProvider _time;
 
-    public DeviceRowViewModel(Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null)
+    /// <param name="time">The clock of the certificate chips ("40 days"); tests pass a fake one.</param>
+    public DeviceRowViewModel(Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(device);
+        _time = time ?? TimeProvider.System;
         Id = device.Id;
         _tagStore = tags;
         _complianceStore = compliance;
@@ -205,7 +208,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
             _changed = true;
         }
 
-        DateTime now = DateTime.UtcNow;
+        DateTime now = _time.GetUtcNow().UtcDateTime;
         CertNotAfterUtc = device.CertNotAfter?.ToDateTime();
         CertExpires = CertificateDisplay.Expiry(CertNotAfterUtc, now, device.CertWarningDays); // PKI's days of the device (0: 30)
         CertTrust = CertificateDisplay.Trust(device.CertTrust, CertNotAfterUtc, now);
