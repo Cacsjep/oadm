@@ -199,7 +199,9 @@ an independent security review the same day). A user may be limited to part of t
   out for a server before device groups (UNIMPLEMENTED).
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary. For an
   administrator the field is locked and shows what the account stores (a group stays stored and applies once the role
-  changes); every role change below Administrator sends the Devices choice the form shows.
+  changes); every role change below Administrator sends the Devices choice the form shows. A chosen group deleted while
+  the form is open leaves the field empty with "Choose All devices or a device group." below it (Add and Edit), never All
+  devices.
 - Client code: `Settings/DeviceGroupsViewModel` + `DeviceGroupsCardView`, `DeviceGroupEditorViewModel` +
   `DeviceGroupFormView` (the picker's group mode, see visual-style.md "Shared controls"), `UsersViewModel.DeviceOptions`,
   `MyRoleViewModel.DevicesText`, `UserSession.HasAllDevices` (hides the all-devices-only actions, see security.md),

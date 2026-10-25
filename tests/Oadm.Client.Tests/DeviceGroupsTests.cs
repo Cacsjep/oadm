@@ -312,6 +312,36 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task A_new_users_group_deleted_meanwhile_leaves_no_choice_instead_of_all_devices()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        var users = new UsersViewModel(api, dialogs, Admin(), NullLogger<UsersViewModel>.Instance);
+        await users.LoadAsync();
+
+        users.OpenAddCommand.Execute(null);
+        users.NewUserName = "lobby-only";
+        users.NewPassword = "Lobby-only-pass-1";
+        users.NewDevices = users.DeviceOptions.Single(o => o.Title == "Head office");
+        await users.DeviceGroups.DeleteCommand.ExecuteAsync(users.DeviceGroups.Groups.Single(g => g.Name == "Head office"));
+        await TestSupport.WaitUntilAsync(() => users.DeviceOptions.All(o => o.Title != "Head office"));
+
+        Assert.Null(users.NewDevices);
+        Assert.Equal(DeviceGroupWords.ChooseDevices, users.ErrorOf(nameof(users.NewDevices)));
+        Assert.False(users.SaveFormCommand.CanExecute(null));
+        await users.SaveFormCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(await api.ListUsersAsync(CancellationToken.None), u => u.UserName == "lobby-only");
+
+        // An unchosen All devices stays All devices.
+        users.NewDevices = DeviceAccessOption.All;
+        await users.DeviceGroups.DeleteCommand.ExecuteAsync(users.DeviceGroups.Groups.Single(g => g.Name == "Lobby"));
+        await TestSupport.WaitUntilAsync(() => users.DeviceOptions.All(o => o.Title != "Lobby"));
+        Assert.Equal(DeviceAccessOption.All, users.NewDevices);
+        users.CloseForm();
+    }
+
+    [Fact]
     public async Task An_administrators_form_shows_the_stored_group_and_a_role_change_sends_the_devices_choice()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);
