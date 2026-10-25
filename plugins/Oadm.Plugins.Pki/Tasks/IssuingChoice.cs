@@ -15,23 +15,14 @@ public static class IssuingChoice
 {
     /// <summary>The policy of the run: <paramref name="payloadJson"/>'s policy as stored (else the first of the kind).</summary>
     /// <exception cref="InvalidOperationException">No policy of the kind, or a value that is not allowed ("Nothing was changed").</exception>
-    public static PkiPolicy Resolve(PkiService service, string kind, string? payloadJson)
+    public static PkiPolicy Resolve(PkiService service, string kind, string? payloadJson) =>
+        Resolve(service, kind, (PkiJson.TryDeserialize<IssuePayload>(payloadJson) ?? new IssuePayload()).PolicyId);
+
+    /// <summary>The policy of the run: <paramref name="policyId"/> as stored (null, older payloads: the first of the kind).</summary>
+    /// <exception cref="InvalidOperationException">No policy of the kind, the chosen one is gone, or a value that is not allowed ("Nothing was changed").</exception>
+    public static PkiPolicy Resolve(PkiService service, string kind, Guid? policyId)
     {
-        ArgumentNullException.ThrowIfNull(service);
-        var store = service.Policies;
-        if (store.IsUnreadable)
-        {
-            throw new InvalidOperationException(PolicyTexts.Unreadable + " Nothing was changed.");
-        }
-
-        var payload = PkiJson.TryDeserialize<IssuePayload>(payloadJson) ?? new IssuePayload();
-        var chosen = payload.PolicyId is { } id ? store.Find(id) : null;
-        if (payload.PolicyId is not null && (chosen is null || chosen.Kind != kind))
-        {
-            throw new InvalidOperationException("The chosen policy no longer exists. Start the task again. Nothing was changed.");
-        }
-
-        var policy = chosen ?? store.FirstOf(kind)
+        var policy = Chosen(service, kind, policyId) ?? service.Policies.FirstOf(kind)
             ?? throw new InvalidOperationException($"There is no {PolicyKinds.Name(kind)} policy. Add one on the PKI page. Nothing was changed.");
         var effective = PolicyRules.Normalize(policy);
         if (PolicyRules.ValidateIssuing(effective) is { } error)
@@ -40,6 +31,30 @@ public static class IssuingChoice
         }
 
         return effective;
+    }
+
+    /// <summary>The refusal of a run whose chosen policy was deleted after the dialog.</summary>
+    public const string PolicyGone = "The chosen policy no longer exists. Start the task again. Nothing was changed.";
+
+    /// <summary>
+    /// The policy the dialog chose, as stored; null without a choice (older payloads). Renew checks it before its first write.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The policies cannot be read, or the chosen one is gone ("Nothing was changed").</exception>
+    public static PkiPolicy? Chosen(PkiService service, string kind, Guid? policyId)
+    {
+        ArgumentNullException.ThrowIfNull(service);
+        var store = service.Policies;
+        if (store.IsUnreadable)
+        {
+            throw new InvalidOperationException(PolicyTexts.Unreadable + " Nothing was changed.");
+        }
+
+        if (policyId is not { } id)
+        {
+            return null;
+        }
+
+        return store.Find(id) is { } chosen && chosen.Kind == kind ? chosen : throw new InvalidOperationException(PolicyGone);
     }
 
     /// <summary>"HTTPS: OADM CA, 365 days, ECC" (the Check compatibility step).</summary>

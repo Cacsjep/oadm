@@ -703,7 +703,7 @@ public sealed class RenewDeleteInstallTests
         return signed.CopyWithPrivateKey(key);
     }
 
-    private static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
+    internal static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
     {
         h.Time.Advance(TimeSpan.FromSeconds(2));
         var ctx = new PkiTaskContext(h.Camera);
@@ -738,7 +738,7 @@ public sealed class TaskPluginInfoTests
         Assert.All(tasks, t => Assert.False(t.ShowInToolbar));
         Assert.All(tasks, t => Assert.True(t.ShowInMenus));
         Assert.Equal(
-            [PkiTaskIds.HttpsEnable, PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa],
+            [PkiTaskIds.HttpsEnable, PkiTaskIds.HttpsDisable, PkiTaskIds.Dot1xEnable, PkiTaskIds.View, PkiTaskIds.Delete, PkiTaskIds.Install, PkiTaskIds.InstallCa, PkiTaskIds.Renew],
             tasks.Where(t => t.RequiresDialog).Select(t => t.Id));
         Assert.Equal(["Enable HTTPS", "Disable HTTPS", "Enable IEEE 802.1X", "Disable IEEE 802.1X", "Renew certificates"],
             tasks.Where(t => t.Id is not (PkiTaskIds.View or PkiTaskIds.Delete or PkiTaskIds.Install or PkiTaskIds.InstallCa)).Select(t => t.GetTaskName(null)));

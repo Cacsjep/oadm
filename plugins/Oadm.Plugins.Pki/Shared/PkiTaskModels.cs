@@ -37,8 +37,9 @@ public static class PkiQueries
     public const string ListCertificates = "listCertificates";
 
     /// <summary>
-    /// () -> <see cref="IssuingPolicyList"/>: the issuing policies of the task's kind (Enable HTTPS: HTTPS certificate,
-    /// Enable IEEE 802.1X: IEEE 802.1X certificate), oldest first. Asked once with the first selected device.
+    /// () -> <see cref="IssuingPolicyList"/>: the issuing policies of the task's kind (Enable HTTPS: HTTPS certificate;
+    /// Enable IEEE 802.1X, Renew certificates, Install certificates: IEEE 802.1X certificate), oldest first. Asked once with
+    /// the first selected device.
     /// </summary>
     public const string ListIssuingPolicies = "listIssuingPolicies";
 }
@@ -76,6 +77,19 @@ public sealed record IssuePayload
     public bool ClockConfirmed { get; init; }
 
     public Guid? PolicyId { get; init; }
+}
+
+/// <summary>
+/// Payload of "Renew certificates": the IEEE 802.1X certificate policy the dialog chose (HTTPS renews with the first HTTPS
+/// certificate policy) and the clock answer. No policy id (older payloads): the first IEEE 802.1X policy. Never stored.
+/// </summary>
+public sealed record RenewPayload
+{
+    /// <summary>The user answered the clock question with Yes (<c>CameraClock</c>).</summary>
+    public bool ClockConfirmed { get; init; }
+
+    /// <summary>The IEEE 802.1X certificate policy of the renewal.</summary>
+    public Guid? Dot1xPolicyId { get; init; }
 }
 
 /// <summary>Group of an installed certificate in the view and delete dialogs.</summary>
@@ -159,6 +173,12 @@ public sealed record InstallPayload
     public string? Password { get; init; }
 
     public IReadOnlyList<InstallFile> Files { get; init; } = [];
+
+    /// <summary>
+    /// IEEE 802.1X: the IEEE 802.1X certificate policy whose settings and RADIUS server CA the run sets (the file brings the
+    /// certificate). Null (older payloads): the first of the kind.
+    /// </summary>
+    public Guid? PolicyId { get; init; }
 }
 
 /// <summary>One CA certificate of "Install CA certificates": the name for the step and the PEM.</summary>

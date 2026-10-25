@@ -319,7 +319,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
 /// certificate, Switch web server to the new certificate, Verify HTTPS; 802.1X: Check device clock, Install CA certificates,
 /// Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
 /// </summary>
-public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTaskBase(service)
+public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
 {
     public override string Id => PkiTaskIds.Install;
 
@@ -340,6 +340,10 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             _ => string.Create(CultureInfo.InvariantCulture, $"Install {files.Count} certificates"),
         };
     }
+
+    /// <summary>The dialog's IEEE 802.1X certificate policies (<see cref="PkiQueries.ListIssuingPolicies"/>), read only.</summary>
+    public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
+        IssuingChoice.QueryAsync(ctx, device, method, Service, Policies.PolicyKinds.Dot1xCertificate, Time, ct);
 
     public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
     {
@@ -370,14 +374,14 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         var dot1x = purpose == InstallPurpose.Dot1x;
         var (apis, network, dot1xPolicy, radiusCas) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
-            // 802.1X: the settings of the first IEEE 802.1X certificate policy (the file brings its own certificate) and its
-            // RADIUS server CA, resolved before anything is read from or written to the device.
+            // 802.1X: the settings of the IEEE 802.1X certificate policy the dialog chose (the file brings its own certificate)
+            // and its RADIUS server CA, resolved before anything is read from or written to the device.
             Policies.PkiPolicy? policy = null;
             IReadOnlyList<(string Alias, string Pem, string Fingerprint)> radius = [];
             if (dot1x)
             {
                 var running = CertificateDeployment.RequireService(Service);
-                policy = IssuingChoice.Resolve(running, Policies.PolicyKinds.Dot1xCertificate, null);
+                policy = IssuingChoice.Resolve(running, Policies.PolicyKinds.Dot1xCertificate, payload.PolicyId);
                 radius = CertificateDeployment.RadiusCas(policy, running);
             }
 
