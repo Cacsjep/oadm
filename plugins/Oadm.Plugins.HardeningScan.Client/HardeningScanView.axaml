@@ -20,10 +20,7 @@
       <RowDefinition Height="240" MinHeight="120" />
     </Grid.RowDefinitions>
     <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="10">
-      <Button Grid.Column="0" Classes="toolbar" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center"
-              ToolTip.Tip="Devices by address or tag">
-        <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceChoice.ButtonText}" />
-      </Button>
+      <ui:ToolbarButton IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Grid.Column="0" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center" ToolTip.Tip="Devices by address or tag" />
       <Border Grid.Column="1" Classes="segmented" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal">
           <Button Classes="segment" Classes.selected="{Binding IsBasic}" Content="Basic" Command="{Binding ShowBasicCommand}"
