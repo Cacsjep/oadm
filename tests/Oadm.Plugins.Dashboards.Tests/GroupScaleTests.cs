@@ -9,6 +9,7 @@ using NSubstitute;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
+using Oadm.Tests.Shared;
 
 using Xunit.Abstractions;
 
@@ -152,7 +153,7 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
         var fake = new Testing.FakeCoreContext();
         var site = Guid.NewGuid();
         var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "Q1656") { SiteId = i % 2 == 0 ? site : null }).ToList();
-        var scopes = new CountingScopes(devices);
+        var scopes = new CountingDeviceScopes(devices);
         var members = new List<List<Guid>>();
         var keys = new List<string>();
         for (var g = 0; g < Groups; g++)
@@ -187,82 +188,13 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
         Testing.FakeCoreContext Fake,
         FakeEventSubscriptions Feed,
         DashboardsPlugin Plugin,
-        CountingScopes Scopes,
+        CountingDeviceScopes Scopes,
         FakeTimeProvider Time,
         List<List<Guid>> Members,
         List<string> Keys,
         List<Testing.FakeCallContext> Sessions) : IDisposable
     {
         public void Dispose() => Plugin.Dispose();
-    }
-
-    /// <summary>Device groups like the host's: membership by hash lookups, and every read of a group's devices counted.</summary>
-    private sealed class CountingScopes(IReadOnlyList<IDeviceInfo> devices) : IDeviceScopes
-    {
-        private readonly Dictionary<string, HashSet<Guid>> _groups = new(StringComparer.OrdinalIgnoreCase);
-        private int _reads;
-
-        public IReadOnlyList<IDeviceInfo> All => devices;
-
-        public event EventHandler<string>? Changed;
-
-        public int Reads => Volatile.Read(ref _reads);
-
-        public string Add(IEnumerable<Guid> ids)
-        {
-            var key = Guid.NewGuid().ToString();
-            lock (_groups)
-            {
-                _groups[key] = [.. ids];
-            }
-
-            return key;
-        }
-
-        /// <summary>Moves a device into or out of a group without raising <see cref="Changed"/> (the host raises it a moment later).</summary>
-        public void Move(string key, Guid id, bool into)
-        {
-            lock (_groups)
-            {
-                _ = into ? _groups[key].Add(id) : _groups[key].Remove(id);
-            }
-        }
-
-        public void RaiseChanged(string key) => Changed?.Invoke(this, key);
-
-        public bool Exists(string scopeKey)
-        {
-            lock (_groups)
-            {
-                return scopeKey == ICallContext.AllDevicesScopeKey || _groups.ContainsKey(scopeKey);
-            }
-        }
-
-        public bool Contains(string scopeKey, IDeviceInfo device) => Contains(scopeKey, device.Id);
-
-        public bool Contains(string scopeKey, Guid deviceId)
-        {
-            lock (_groups)
-            {
-                return scopeKey == ICallContext.AllDevicesScopeKey || (_groups.TryGetValue(scopeKey, out var ids) && ids.Contains(deviceId));
-            }
-        }
-
-        public IDeviceRepository Devices(string scopeKey) => new Repository(this, scopeKey);
-
-        public string? NameOf(string scopeKey) => Exists(scopeKey) ? "Group" : null;
-
-        private sealed class Repository(CountingScopes scopes, string key) : IDeviceRepository
-        {
-            public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct)
-            {
-                Interlocked.Increment(ref scopes._reads);
-                return Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. scopes.All.Where(d => scopes.Contains(key, d.Id))]);
-            }
-
-            public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) =>
-                Task.FromResult(scopes.Contains(key, id) ? scopes.All.FirstOrDefault(d => d.Id == id) : null);
-        }
     }
 
     /// <summary>A call of the same login session with other devices (the user was moved to another group).</summary>

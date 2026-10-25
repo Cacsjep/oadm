@@ -57,10 +57,10 @@ public sealed partial class NtpServerService : IAsyncDisposable
         IPluginNetwork? network = null, ISites? sites = null, IDeviceScopes? scopes = null)
     {
         _scopes = scopes;
-        Viewers = new ViewerScopes(scopes);
         _network = network;
         _sites = sites;
         _options = options ?? new NtpServerOptions();
+        Viewers = new ViewerScopes(scopes, _options.Time, ViewerScopes.PageKeyLifetime);
         _settings = settings;
         _events = events;
         _logger = logger ?? NullLogger.Instance;
@@ -153,6 +153,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
         }
 
         await StopSitesAsync().ConfigureAwait(false);
+        Viewers.Dispose();
         _cts.Dispose();
         _gate.Dispose();
     }
@@ -505,9 +506,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
                     }
                 }
 
-                var entries = PublishRequests();
-                PublishState(force: false);
-                await PublishToGroupsAsync(entries, ct).ConfigureAwait(false);
+                await PublishAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -520,6 +519,14 @@ public sealed partial class NtpServerService : IAsyncDisposable
                 LogBackgroundFailed(ex);
             }
         }
+    }
+
+    /// <summary>One publish round of the background loop: the new requests and a changed state, to every page (tests call it).</summary>
+    internal async Task PublishAsync(CancellationToken ct)
+    {
+        var entries = PublishRequests();
+        PublishState(force: false);
+        await PublishToGroupsAsync(entries, ct).ConfigureAwait(false);
     }
 
     /// <summary>The new requests to the pages of users with all devices; returns them (empty when none).</summary>
@@ -544,7 +551,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
     /// </summary>
     private async Task PublishToGroupsAsync(IReadOnlyList<RequestEntry> entries, CancellationToken ct)
     {
-        if (_events is not { } events || _scopes is not { } scopes)
+        if (_events is not { } events || _scopes is null)
         {
             return;
         }
@@ -561,7 +568,7 @@ public sealed partial class NtpServerService : IAsyncDisposable
 
         foreach (var key in keys)
         {
-            var view = NtpGroupView.From(await scopes.Devices(key).ListAsync(ct).ConfigureAwait(false));
+            var view = await Viewers.ViewAsync(key, NtpGroupView.From, ct).ConfigureAwait(false); // read again only when the group changed
             var audience = PluginEventAudience.DeviceScope(key);
             if (stateChanged)
             {
