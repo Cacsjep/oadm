@@ -10,7 +10,8 @@ the device safety HARD RULE are in `docs/spec/plugins.md` ("Plugin system").
 Outside this repository (guide on the website: Developers > Develop with the .NET SDK):
 `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task|oadm-page|oadm-action -n <Name>`, then
 `dotnet tool restore`, `dotnet build`, `dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
-`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release.
+`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release, with a README and an AGENTS.md (the
+rules for AI assistants outside this repository) written by `tools/Oadm.NewPlugin/Templates.cs`.
 
 In this repository: `./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the
 plugin of the matching developer tutorial under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It
