@@ -61,16 +61,20 @@ public sealed record EstHost(
 /// <summary>
 /// The EST server (docs/spec/est-server.md): listens on the server's network (TCP 9454 by default), TLS 1.2+ with the
 /// server's certificate from the OADM CA and the camera's Axis device ID as client certificate, a small HTTP/1.1 per
-/// connection (at most 20 requests, 30 s idle) and <see cref="EstEndpoint"/> for the operations. At most 64 connections
-/// at once. One log line per request (never keys or requests). Page methods: <see cref="EstMethods"/>.
+/// connection (at most 20 requests, 30 s idle) and <see cref="EstEndpoint"/> for the operations. Connection slots:
+/// <see cref="EstConnectionSlots"/>; a connection without a client certificate gets 10 s for its handshake and its one
+/// request. One log line per request (never keys or requests). Page methods: <see cref="EstMethods"/>.
 /// </summary>
 public sealed partial class EstService : IAsyncDisposable
 {
-    private const int MaxConnections = 64;
-    private const int MaxConnectionsPerAddress = 4;
     private static readonly TimeSpan MaxConnectionTime = TimeSpan.FromMinutes(2);
     private const int MaxRequestsPerConnection = 20;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a camera with a certificate may stay silent between requests.</summary>
+    internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>The TLS handshake, and the one request of a connection without a client certificate.</summary>
+    internal static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DeviceIndexAge = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RenewalCheckDelay = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan RenewalCheckInterval = TimeSpan.FromHours(1);
@@ -89,9 +93,8 @@ public sealed partial class EstService : IAsyncDisposable
     private readonly EstEndpoint _endpoint;
     private readonly AxisDeviceId _deviceIds;
     private readonly ServerCertificates _certificates;
-    private readonly Dictionary<(Guid? Site, System.Net.IPAddress Address), int> _perAddress = []; // per site: the same address may be a camera at each
+    private readonly EstConnectionSlots _slots = new();
     private readonly HashSet<Task> _serving = [];
-    private int _open;
     private readonly SemaphoreSlim _apply = new(1, 1);
     private readonly SemaphoreSlim _index = new(1, 1);
     private readonly CancellationTokenSource _cts = new();
@@ -728,8 +731,8 @@ public sealed partial class EstService : IAsyncDisposable
                 continue;
             }
 
-            var address = (connection.SiteId, connection.Remote.Address);
-            if (!TryEnter(address))
+            var slot = _slots.TryEnter(connection.SiteId, connection.Remote.Address);
+            if (slot is null)
             {
                 await connection.DisposeAsync().ConfigureAwait(false); // too many at once (in all, or from this address): the camera tries again later
                 continue;
@@ -739,9 +742,9 @@ public sealed partial class EstService : IAsyncDisposable
             {
                 try
                 {
-                    using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    lifetime.CancelAfter(MaxConnectionTime);
-                    await ServeAsync(connection, lifetime.Token).ConfigureAwait(false);
+                    using var limit = new CancellationTokenSource(MaxConnectionTime, _host.Time);
+                    using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, limit.Token);
+                    await ServeAsync(connection, lifetime.Token, slot.Identified).ConfigureAwait(false);
                 }
 #pragma warning disable CA1031 // One broken connection must not end the server; the reason is logged.
                 catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -751,38 +754,10 @@ public sealed partial class EstService : IAsyncDisposable
                 }
                 finally
                 {
-                    Leave(address);
+                    slot.Dispose();
                 }
             }, CancellationToken.None);
             Track(serving);
-        }
-    }
-
-    /// <summary>A connection slot: at most 64 in all and 4 per address (of a site, or of this server's network), so one host cannot lock the cameras out.</summary>
-    private bool TryEnter((Guid? Site, System.Net.IPAddress Address) address)
-    {
-        lock (_perAddress)
-        {
-            if (_open >= MaxConnections || _perAddress.GetValueOrDefault(address) >= MaxConnectionsPerAddress)
-            {
-                return false;
-            }
-
-            _open++;
-            _perAddress[address] = _perAddress.GetValueOrDefault(address) + 1;
-            return true;
-        }
-    }
-
-    private void Leave((Guid? Site, System.Net.IPAddress Address) address)
-    {
-        lock (_perAddress)
-        {
-            _open--;
-            if (--_perAddress[address] <= 0)
-            {
-                _perAddress.Remove(address);
-            }
         }
     }
 
@@ -795,8 +770,11 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    /// <summary>One camera connection: TLS, then requests until it closes, is idle or reached the limit.</summary>
-    internal async Task ServeAsync(IIncomingConnection connection, CancellationToken ct)
+    /// <summary>
+    /// One camera connection: TLS, then requests until it closes, is idle or reached the limit. <paramref name="identified"/>
+    /// runs once the handshake showed a client certificate.
+    /// </summary>
+    internal async Task ServeAsync(IIncomingConnection connection, CancellationToken ct, Action? identified = null)
     {
         await using var _ = connection.ConfigureAwait(false);
         // One certificate everywhere (decision 2026-10-25): it names this server and the site nodes.
@@ -847,12 +825,20 @@ public sealed partial class EstService : IAsyncDisposable
 
         try
         {
-            using var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            handshake.CancelAfter(IdleTimeout);
-            await tls.AuthenticateAsServerAsync(options, handshake.Token).ConfigureAwait(false);
+            using (var handshakeLimit = new CancellationTokenSource(HandshakeTimeout, _host.Time))
+            using (var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct, handshakeLimit.Token))
+            {
+                await tls.AuthenticateAsServerAsync(options, handshake.Token).ConfigureAwait(false);
+            }
+
             if (client is null && tls.RemoteCertificate is { } remote)
             {
                 client = X509CertificateLoader.LoadCertificate(remote.GetRawCertData()); // a resumed session skips the callback
+            }
+
+            if (client is not null)
+            {
+                identified?.Invoke(); // a camera: no longer one of the few slots without a certificate
             }
 
             var identity = new ClientIdentity(client, presented);
@@ -860,8 +846,8 @@ public sealed partial class EstService : IAsyncDisposable
             var reader = EstHttp.Reader(tls);
             for (var count = 1; count <= MaxRequestsPerConnection; count++)
             {
-                using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                idle.CancelAfter(IdleTimeout);
+                using var idleLimit = new CancellationTokenSource(client is null ? HandshakeTimeout : IdleTimeout, _host.Time);
+                using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct, idleLimit.Token);
                 HttpRequest? request;
                 try
                 {

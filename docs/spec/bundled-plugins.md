@@ -120,7 +120,9 @@ setup and the manual test plan: plugin `README.md`.
 
 - Rules that must hold: before a new address is offered it is probed (ping + TCP 80 / 443; static leases are not
   probed); another DHCP server on the network is checked on Save, every 10 minutes and at start, and enabling next to one
-  needs an explicit "Enable anyway"; abuse protection per MAC and overall, pending offers capped at half the pool; mask,
+  needs an explicit "Enable anyway"; abuse protection per MAC and overall, pending offers capped at half the pool; a
+  DECLINE counts only from the MAC that holds the address (bound or offered; dynamic ones inside the pool), any other is
+  ignored (debug log), so a forged one never moves a lease; mask,
   router, DNS and domain come from the interface, never asked; leases survive restarts; the automatic add uses the add
   page's pipeline on the server (Axis MAC blocks only, the Axis check before any credential, the credential list only)
   and follows managed devices to their new address also when it is off; tests never send DHCP on a real interface.

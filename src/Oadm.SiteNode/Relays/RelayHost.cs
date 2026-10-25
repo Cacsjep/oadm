@@ -22,7 +22,8 @@ namespace Oadm.SiteNode.Relays;
 /// the node may not use is reported and tried again every 30 seconds and after every change in the app or of the cards
 /// (a card that gets a new address binds again). Only senders inside the reached networks are relayed and answered; a UDP
 /// sender is forgotten 2 minutes after its last datagram (<see cref="UdpSenders"/>); a TCP relay holds at most
-/// <see cref="MaxTcpConnections"/> connections. A release from the server (the plugin no longer serves at this site) ends the
+/// <see cref="MaxTcpConnections"/> connections, and each connection queues at most <see cref="MaxQueuedBytes"/> from the server for
+/// its device (its own send pump: a device that stops reading only loses its own connection, never stalls the others). A release from the server (the plugin no longer serves at this site) ends the
 /// relay and gives the port back (<see cref="PortPolicy.Release"/>) unless another relay still uses it; a lost link or a
 /// stop never does.
 /// </summary>
@@ -32,6 +33,9 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
 
     /// <summary>Open connections of one TCP relay; more are closed at once.</summary>
     public const int MaxTcpConnections = 256;
+
+    /// <summary>Bytes from the server waiting for one device connection; more close that connection.</summary>
+    public const int MaxQueuedBytes = 1024 * 1024;
 
     private readonly ConcurrentDictionary<long, RelayView> _relays = new();
     private long _nextId;
@@ -215,7 +219,7 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         NetworkScope networks, TimeProvider time)
     {
         private readonly Lock _lock = new();
-        private readonly ConcurrentDictionary<ulong, Socket> _connections = new();
+        private readonly ConcurrentDictionary<ulong, TcpLink> _connections = new();
         private readonly UdpSenders _senders = new(time);
         private List<Socket> _sockets = [];
         private CancellationTokenSource? _running;
@@ -343,20 +347,45 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                 return;
             }
 
-            if (!_connections.TryGetValue(packet.ConnectionId, out var connection))
+            // Queued for the connection's own send pump: the read loop never waits for one device.
+            if (!_connections.TryGetValue(packet.ConnectionId, out var link) || link.TryQueue(packet))
                 return;
+            if (Close(packet.ConnectionId, link))
+            {
+                log.Add(server, $"{AdminTexts.Name(protocol)} {port} from {link.Remote}", "Relay", "Not reading");
+                outgoing.TryWrite(new RelayMessage { Packet = new RelayPacket { ConnectionId = packet.ConnectionId, Closed = true, RemoteAddress = link.Remote } });
+            }
+        }
+
+        private async Task SendTcpAsync(ulong id, TcpLink link, CancellationToken ct)
+        {
             try
             {
-                if (!packet.Data.IsEmpty)
-                    await connection.SendAsync(packet.Data.Memory, SocketFlags.None, ct).ConfigureAwait(false);
-                if (packet.End)
-                    connection.Shutdown(SocketShutdown.Send);
-                if (packet.Closed && _connections.TryRemove(packet.ConnectionId, out _))
-                    connection.Dispose();
+                await foreach (var packet in link.Queued.ReadAllAsync(ct).ConfigureAwait(false))
+                {
+                    if (!packet.Data.IsEmpty)
+                    {
+                        await link.Socket.SendAsync(packet.Data.Memory, SocketFlags.None, ct).ConfigureAwait(false);
+                        link.Sent(packet.Data.Length);
+                    }
+
+                    if (packet.End)
+                        link.Socket.Shutdown(SocketShutdown.Send);
+                    if (packet.Closed)
+                    {
+                        Close(id, link);
+                        return;
+                    }
+                }
             }
             catch (Exception e) when (e is SocketException or ObjectDisposedException)
             {
-                Close(packet.ConnectionId, connection);
+                if (Close(id, link))
+                    outgoing.TryWrite(new RelayMessage { Packet = new RelayPacket { ConnectionId = id, Closed = true, RemoteAddress = link.Remote } });
+            }
+            catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
+            {
+                Close(id, link);
             }
         }
 
@@ -427,7 +456,8 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                 }
 
                 var id = (ulong)Interlocked.Increment(ref _nextConnection);
-                _connections[id] = connection;
+                var link = new TcpLink(connection, remote);
+                _connections[id] = link;
                 log.Add(server, $"{AdminTexts.Name(protocol)} {port} from {remote}", "Relay", "Accepted");
                 try
                 {
@@ -435,16 +465,19 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
                 }
                 catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
                 {
-                    Close(id, connection);
+                    Close(id, link);
                     return;
                 }
 
-                _ = PumpTcpAsync(id, connection, remote, ct);
+                _ = PumpTcpAsync(id, link, ct);
+                _ = SendTcpAsync(id, link, ct);
             }
         }
 
-        private async Task PumpTcpAsync(ulong id, Socket connection, string remote, CancellationToken ct)
+        private async Task PumpTcpAsync(ulong id, TcpLink link, CancellationToken ct)
         {
+            var connection = link.Socket;
+            var remote = link.Remote;
             var buffer = new byte[32 * 1024];
             try
             {
@@ -462,19 +495,19 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
             }
             catch (Exception e) when (e is SocketException or ObjectDisposedException)
             {
-                if (Close(id, connection))
+                if (Close(id, link))
                     outgoing.TryWrite(new RelayMessage { Packet = new RelayPacket { ConnectionId = id, Closed = true, RemoteAddress = remote } });
             }
             catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
             {
-                Close(id, connection);
+                Close(id, link);
             }
         }
 
-        private bool Close(ulong id, Socket connection)
+        private bool Close(ulong id, TcpLink link)
         {
             var removed = _connections.TryRemove(id, out _);
-            connection.Dispose();
+            link.Dispose();
             return removed;
         }
 
@@ -482,6 +515,35 @@ public sealed class RelayHost(NodeStore store, PortPolicy ports, NetworkScope ne
         {
             lock (_lock)
                 _failed.TrySetResult();
+        }
+    }
+
+    /// <summary>One device connection of a TCP relay and what the server sent it that is not written yet.</summary>
+    private sealed class TcpLink(Socket socket, string remote) : IDisposable
+    {
+        private readonly Channel<RelayPacket> _queue = Channel.CreateUnbounded<RelayPacket>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        private long _queued;
+
+        public Socket Socket => socket;
+
+        public string Remote => remote;
+
+        public ChannelReader<RelayPacket> Queued => _queue.Reader;
+
+        /// <summary>False when the device is <see cref="MaxQueuedBytes"/> behind (or the connection is gone).</summary>
+        public bool TryQueue(RelayPacket packet)
+        {
+            if (Interlocked.Add(ref _queued, packet.Data.Length) > MaxQueuedBytes)
+                return false;
+            return _queue.Writer.TryWrite(packet);
+        }
+
+        public void Sent(int bytes) => Interlocked.Add(ref _queued, -bytes);
+
+        public void Dispose()
+        {
+            _queue.Writer.TryComplete();
+            socket.Dispose();
         }
     }
 }

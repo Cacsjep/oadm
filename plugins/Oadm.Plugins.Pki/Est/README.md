@@ -11,7 +11,8 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
 - Server part (in `Oadm.Plugins.Pki.Server.dll`, namespace `Oadm.Plugins.Est`):
   - `Serving/EstService`: listens on TCP 9454 (setting `config.port`, 1025..65535) on the server's network through
     `ICorePluginContext.Network.ListenTcpAsync`; TLS 1.2+ (`SslStream`, client certificate requested, checked per request);
-    at most 64 connections, 20 requests and 30 s idle per connection.
+    at most 64 connections (`Serving/EstConnectionSlots`: 4 per address, IPv6 per /64, 16 without a client certificate
+    with 10 s for the handshake), 20 requests and 30 s idle per connection.
   - `Serving/ServerCertificates`: the server's TLS certificate is the one PKI's EST server policy picks from the
     Certificates list (docs/spec/pki.md "Server certificates": by default the shared "802.1X and EST server", OADM CA,
     ECC P-256, 10 years), loaded with its key and again when the policies change; one certificate for this server and

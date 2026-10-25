@@ -20,6 +20,7 @@ public sealed class DeviceViewFactory
     private readonly UserStore _users;
     private readonly ConcurrentDictionary<Guid, DeviceGroupFilter> _filters = new();
     private readonly ConcurrentDictionary<Guid, IdsEntry> _ids = new();
+    private readonly ConcurrentDictionary<Guid, SiteCountsEntry> _siteCounts = new();
 
     public DeviceViewFactory(DeviceGroupStore groups, DeviceScopeCatalog catalog, DeviceRepository devices, IDeviceChangeFeed feed, UserStore users)
     {
@@ -195,6 +196,57 @@ public sealed class DeviceViewFactory
         }
     }
 
+    /// <summary>
+    /// The devices of a view per site, cached like <see cref="AllowedIdsAsync"/> (a device's site is part of its membership,
+    /// so a status change keeps the counts): the Sites page of a group user asks for them about every second.
+    /// </summary>
+    internal async Task<IReadOnlyDictionary<Guid, int>> SiteCountsAsync(DeviceView view, CancellationToken ct)
+    {
+        if (view.Kind == ViewKind.None)
+        {
+            return EmptyCounts;
+        }
+
+        var feedVersion = _feed is DeviceChangeFeed feed ? feed.MembershipVersion : -1;
+        var filter = view.Filter;
+        var cacheKey = view.HasAllDevices ? Guid.Empty : view.GroupId!.Value;
+        var key = new IdsKey(filter.Revision, filter.Catalog, feedVersion);
+        if (feedVersion >= 0 && _siteCounts.TryGetValue(cacheKey, out var entry) && entry.Key == key)
+        {
+            return await entry.Counts.WaitAsync(ct).ConfigureAwait(false);
+        }
+
+        var load = LoadSiteCountsAsync(filter, CancellationToken.None);
+        if (feedVersion >= 0)
+        {
+            _siteCounts[cacheKey] = new SiteCountsEntry(key, load);
+        }
+
+        try
+        {
+            return await load.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch when (load.IsFaulted || load.IsCanceled)
+        {
+            _siteCounts.TryRemove(new KeyValuePair<Guid, SiteCountsEntry>(cacheKey, new SiteCountsEntry(key, load)));
+            throw;
+        }
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, int>> LoadSiteCountsAsync(DeviceGroupFilter filter, CancellationToken ct)
+    {
+        var counts = new Dictionary<Guid, int>();
+        foreach (var row in await Devices.ListScopeRowsAsync(ct).ConfigureAwait(false))
+        {
+            if (row.SiteId is { } site && filter.Contains(row))
+            {
+                counts[site] = counts.GetValueOrDefault(site) + 1;
+            }
+        }
+
+        return counts;
+    }
+
     /// <summary>The cached allowed ids of a view when the cache entry is current and read, else null (never reads).</summary>
     internal IReadOnlySet<Guid>? CachedIds(DeviceView view)
     {
@@ -234,9 +286,13 @@ public sealed class DeviceViewFactory
 
     private static readonly IReadOnlySet<Guid> EmptyIds = new HashSet<Guid>();
 
+    private static readonly IReadOnlyDictionary<Guid, int> EmptyCounts = new Dictionary<Guid, int>();
+
     private readonly record struct IdsKey(long Revision, DeviceScopeCatalogKey Catalog, long FeedVersion);
 
     private sealed record IdsEntry(IdsKey Key, Task<IReadOnlySet<Guid>> Ids);
+
+    private sealed record SiteCountsEntry(IdsKey Key, Task<IReadOnlyDictionary<Guid, int>> Counts);
 }
 
 /// <summary>The texts of a group's rules with names ("Site Building B, tag PTZ, 3 devices, except 1").</summary>

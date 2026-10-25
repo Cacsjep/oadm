@@ -194,6 +194,24 @@ public sealed class HardeningTests
         Assert.Equal(0, row.DroppedCount);
     }
 
+    [Fact]
+    public async Task ADatagramLongerThanARadiusPacketIsDroppedBeforeTheQueue()
+    {
+        await using var harness = await PluginHarness.CreateAsync();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        var switchAddress = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 51812);
+
+        harness.Listener.Deliver(new byte[RadiusPacket.MaxLength + 1], switchAddress);
+        await Eventually.TrueAsync(() => harness.Service.TooLongDrops == 1, "the long datagram dropped");
+
+        // A request after it is handled: the long one never reached a worker (it would count as dropped on the switch).
+        var request = RadiusPacketWriter.Request(RadiusCode.AccessRequest, 1, RandomNumberGenerator.GetBytes(16), "a-shared-secret-of-24-ch"u8,
+            [RadiusAttribute.Text(RadiusAttributeType.UserName, "accc8e123456"), RadiusAttribute.Text(RadiusAttributeType.CallingStationId, "AC-CC-8E-12-34-56")], messageAuthenticator: false)!;
+        harness.Listener.Deliver(request, switchAddress);
+        await Eventually.TrueAsync(() => harness.Service.ListSwitches().Switches[0].MacOnlyCount == 1, "the next request handled");
+        Assert.Equal(0, harness.Service.ListSwitches().Switches[0].DroppedCount);
+    }
+
     // ------------------------------------------------------------------ device list, maintenance, server certificate, listening
 
     [Fact]

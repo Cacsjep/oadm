@@ -141,10 +141,16 @@ public sealed partial class DhcpEngine : IDisposable
             case DhcpMessageType.Decline:
                 if ((request.ServerId is null || request.ServerId == scope.ServerAddress) && request.RequestedAddress is { } declined)
                 {
-                    _store.Decline(mac, declined, now + _options.ConflictHold);
-                    if (_logger.IsEnabled(LogLevel.Warning))
+                    if (_store.Decline(mac, declined, scope.Pool, now, now + _options.ConflictHold))
                     {
-                        LogDeclined(MacAddress.Format(mac), Ip4.Format(declined));
+                        if (_logger.IsEnabled(LogLevel.Warning))
+                        {
+                            LogDeclined(MacAddress.Format(mac), Ip4.Format(declined));
+                        }
+                    }
+                    else if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        LogDeclineIgnored(MacAddress.Format(mac), Ip4.Format(declined));
                     }
                 }
 
@@ -413,6 +419,9 @@ public sealed partial class DhcpEngine : IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "DHCP: {Mac} declined {Address} (in use by another device); skipped for a while")]
     private partial void LogDeclined(string mac, string address);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "DHCP: ignored a decline of {Address} from {Mac}, which does not hold it")]
+    private partial void LogDeclineIgnored(string mac, string address);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "DHCP: {Address} answers the in-use probe; skipped for a while")]
     private partial void LogConflict(string address);

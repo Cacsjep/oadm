@@ -153,6 +153,31 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
+    public async Task A_decline_from_a_client_that_does_not_hold_the_address_is_ignored()
+    {
+        var address = await Acquire(A);
+        var now = _time.GetUtcNow().UtcDateTime;
+
+        // Another MAC declines A's address (a forged decline): A keeps its lease, no conflict.
+        await Handle(Msg(B, DhcpMessageType.Decline, m => { m.ServerId = Ip.Of("10.0.0.17"); m.RequestedAddress = address; }));
+        Assert.Equal(LeaseInfo.Active, _store.Find(A)!.State);
+        Assert.False(_store.IsConflict(address, now));
+
+        // A declines an address it does not hold, inside or outside the pool: nothing is stored.
+        await Handle(Msg(A, DhcpMessageType.Decline, m => { m.ServerId = Ip.Of("10.0.0.17"); m.RequestedAddress = address + 1; }));
+        await Handle(Msg(A, DhcpMessageType.Decline, m => { m.ServerId = Ip.Of("10.0.0.17"); m.RequestedAddress = Ip.Of("192.168.77.1"); }));
+        Assert.False(_store.IsConflict(address + 1, now));
+        Assert.False(_store.IsConflict(Ip.Of("192.168.77.1"), now));
+        Assert.Equal(address, Ip.Of(_store.Find(A)!.Address));
+
+        // A released lease is no longer held: its decline is ignored too.
+        await Handle(Msg(A, DhcpMessageType.Release, m => { m.ServerId = Ip.Of("10.0.0.17"); m.ClientAddress = address; }));
+        await Handle(Msg(A, DhcpMessageType.Decline, m => { m.ServerId = Ip.Of("10.0.0.17"); m.RequestedAddress = address; }));
+        Assert.False(_store.IsConflict(address, now));
+        Assert.Equal(LeaseInfo.Released, _store.Find(A)!.State);
+    }
+
+    [Fact]
     public async Task Release_keeps_the_record_and_the_client_gets_the_same_address_again()
     {
         var address = await Acquire(A);

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Plugins.DeviceIds;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
+using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Protocol.Sessions;
 using Oadm.Plugins.Radius.Protocol.Tls;
 using Oadm.Plugins.Shared;
@@ -143,6 +144,7 @@ public sealed partial class RadiusService : IAsyncDisposable
     private long _unknownCount;
     private (string Address, string? Site, DateTime At)? _lastUnknown;
     private long _busyDrops;
+    private long _tooLongDrops;
     private int _tickCount;
     private int _maintainAgain; // 1 = a maintenance round was asked for
     private int _switchesDirty; // 1 = a state changed: publish at the next tick
@@ -177,6 +179,9 @@ public sealed partial class RadiusService : IAsyncDisposable
     internal RadiusLog Log => _log;
 
     internal DroppedRequests Dropped => _dropped;
+
+    /// <summary>Datagrams longer than a RADIUS packet, dropped before the queue.</summary>
+    internal long TooLongDrops => Interlocked.Read(ref _tooLongDrops);
 
     internal SessionBoard Board => _board;
 
@@ -316,14 +321,21 @@ public sealed partial class RadiusService : IAsyncDisposable
     // ------------------------------------------------------------------ datagrams
 
     /// <summary>
-    /// One datagram from <paramref name="replyTo"/> (this server's listener or a site's relay): an unknown sender is dropped
-    /// and counted, the rest waits for a worker (a full queue drops it: the switch retransmits).
+    /// One datagram from <paramref name="replyTo"/> (this server's listener or a site's relay): one longer than a RADIUS
+    /// packet can be (<see cref="RadiusPacket.MaxLength"/>) is dropped and counted (<see cref="TooLongDrops"/>), never queued;
+    /// an unknown sender is dropped and counted, the rest waits for a worker (a full queue drops it: the switch retransmits).
     /// </summary>
     internal void Accept(Datagram datagram, IDatagramEndpoint replyTo, Guid? siteId)
     {
         if (!_host.ProActive())
         {
             return; // without OADM PRO the server answers nothing (switches fall back to their own rule)
+        }
+
+        if (datagram.Data.Length > RadiusPacket.MaxLength)
+        {
+            Interlocked.Increment(ref _tooLongDrops);
+            return;
         }
 
         var entry = _switches.Find(siteId, datagram.Remote.Address);

@@ -151,27 +151,10 @@ public sealed class DeviceView
 
     /// <summary>
     /// The number of devices of the view per site (devices without a site are left out): the Sites page of a user with a
-    /// device group shows the group's counts. One read of the scope rows, no device rows.
+    /// device group shows the group's counts. One read of the scope rows, no device rows, cached like <see cref="IdsAsync"/>
+    /// (a status change keeps them).
     /// </summary>
-    public async Task<IReadOnlyDictionary<Guid, int>> CountsBySiteAsync(CancellationToken ct)
-    {
-        var counts = new Dictionary<Guid, int>();
-        if (Kind == ViewKind.None)
-        {
-            return counts;
-        }
-
-        var filter = Filter;
-        foreach (var row in await _factory.Devices.ListScopeRowsAsync(ct).ConfigureAwait(false))
-        {
-            if (row.SiteId is { } site && filter.Contains(row))
-            {
-                counts[site] = counts.GetValueOrDefault(site) + 1;
-            }
-        }
-
-        return counts;
-    }
+    public Task<IReadOnlyDictionary<Guid, int>> CountsBySiteAsync(CancellationToken ct) => _factory.SiteCountsAsync(this, ct);
 
     /// <summary>
     /// Every device of the view as <see cref="ViewedDevices"/>: what "empty means all" means (Refresh, Check now, sweeps,

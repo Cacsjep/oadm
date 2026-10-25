@@ -33,6 +33,9 @@ public static class EstHttp
     public const int MaxHeaderBytes = 16 * 1024;
     public const int MaxBodyBytes = 64 * 1024;
 
+    /// <summary>Trailer lines after a chunked body (all of them together at most <see cref="MaxHeaderBytes"/>).</summary>
+    public const int MaxTrailerLines = 32;
+
     /// <summary>A reader for the requests of one connection (keeps what it read ahead).</summary>
     public static HttpRequestReader Reader(Stream stream) => new(stream);
 
@@ -146,9 +149,16 @@ public static class EstHttp
 
             if (size == 0)
             {
-                // trailers until the empty line
-                while (await reader.ReadLineAsync(MaxHeaderBytes, ct).ConfigureAwait(false) is { Length: > 0 })
+                // trailers until the empty line, never more than a header's worth
+                var lines = 0;
+                var total = 0;
+                while (await reader.ReadLineAsync(MaxHeaderBytes - total, ct).ConfigureAwait(false) is { Length: > 0 } trailer)
                 {
+                    total += trailer.Length + 2;
+                    if (++lines > MaxTrailerLines || total >= MaxHeaderBytes)
+                    {
+                        throw new HttpFormatException("The request has too many trailers.");
+                    }
                 }
 
                 return body.ToArray();
