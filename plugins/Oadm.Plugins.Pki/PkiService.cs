@@ -413,9 +413,25 @@ public sealed partial class PkiService : IAsyncDisposable
         return await AddImportedAsync(material, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Devices whose newest certificate comes from the current CA (the replace warning).</summary>
+    /// <summary>
+    /// Devices whose newest certificate comes from the current CA and the servers whose certificate it issued (the replace
+    /// warning: those keep their certificate, so cameras given the new CA would not trust them).
+    /// </summary>
     public async Task<PreviewReplaceReply> PreviewReplaceAsync(CancellationToken ct) =>
-        new(await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false));
+        new(await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false)) { Servers = ServersWithCurrentCa() };
+
+    private List<string> ServersWithCurrentCa()
+    {
+        if (_ca is not { } ca)
+        {
+            return [];
+        }
+
+        return [.. new[] { (Kind: Pki.Policies.PolicyKinds.Dot1xServer, Name: "802.1X server"), (Kind: Pki.Policies.PolicyKinds.EstServer, Name: "EST server") }
+            .Where(s => Policies.FirstOf(s.Kind)?.CertificateId is { } id && _local.Find(id) is { } local
+                && string.Equals(local.Stored.IssuerFingerprint, ca.Id, StringComparison.OrdinalIgnoreCase))
+            .Select(s => s.Name)];
+    }
 
     public FileReply ExportPublic(ExportRequest request)
     {

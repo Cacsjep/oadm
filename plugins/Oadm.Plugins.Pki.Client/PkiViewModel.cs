@@ -714,20 +714,32 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     public const string ReplaceTitle = "Replace the certificate authority";
 
-    /// <summary>The replace confirmation; the count line only when devices are affected.</summary>
-    public static string ReplaceMessage(int devices) => devices switch
+    /// <summary>
+    /// The replace confirmation; the count line only when devices are affected, the server line only when a server's
+    /// certificate comes from the current CA (it stays: cameras given the new CA would not trust that server).
+    /// </summary>
+    public static string ReplaceMessage(int devices, IReadOnlyList<string>? servers = null)
     {
-        0 => "Replace the CA?",
-        1 => "1 device has certificates from the current CA. It keeps working until it is renewed. Replace the CA?",
-        _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. Replace the CA?"),
-    };
+        var count = devices switch
+        {
+            0 => string.Empty,
+            1 => "1 device has certificates from the current CA. It keeps working until it is renewed. ",
+            _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. "),
+        };
+        var kept = servers is { Count: > 0 }
+            ? (servers.Count == 1 ? "The " + servers[0] + " keeps its" : "The " + string.Join(" and the ", servers) + " keep their")
+                + " certificate from the current CA. Choose a certificate of the new CA in "
+                + (servers.Count == 1 ? "its policy" : "their policies") + " before cameras get the new CA. "
+            : string.Empty;
+        return count + kept + "Replace the CA?";
+    }
 
     // ---------------------------------------------------------------- helpers
 
     private async Task<bool> ConfirmReplaceAsync(PkiDialogViewModel dialog)
     {
         var preview = PkiJson.Deserialize<PreviewReplaceReply>(await _ctx.InvokeAsync(PkiMethods.PreviewReplace, null, CancellationToken.None).ConfigureAwait(true));
-        return await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(preview.DevicesWithCurrentCa), "Replace").ConfigureAwait(true);
+        return await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(preview.DevicesWithCurrentCa, preview.Servers), "Replace").ConfigureAwait(true);
     }
 
     private async Task<bool> FinishReplaceAsync(PkiDialogViewModel dialog, PkiReply reply, string fallbackField)
