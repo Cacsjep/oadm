@@ -19,35 +19,9 @@
       <Panel>
         <StackPanel Classes="form">
           <TextBlock Classes="warning" Text="{Binding Warning}" TextWrapping="Wrap" IsVisible="{Binding HasWarning}" />
-          <ui:FormField Label="Policy" InputWidth="340">
+          <!-- The policy decides every value (decision 2026-10-25): what it issues in one sentence below it. -->
+          <ui:FormField Label="Policy" InputWidth="340" Hint="{Binding Summary}">
             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" />
-          </ui:FormField>
-          <ui:FormField Label="CA">
-            <TextBlock Text="{Binding CaName}" TextTrimming="CharacterEllipsis" />
-          </ui:FormField>
-          <ui:FormField Label="Valid (days)">
-            <TextBox Text="{Binding ValidDays}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 3650" />
-          </ui:FormField>
-          <ui:FormField Label="Key">
-            <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.KeyChoices}" SelectedItem="{Binding Key}" />
-          </ui:FormField>
-
-          <!-- IEEE 802.1X: the settings of the policy -->
-          <ui:FormField Label="EAPOL version" IsVisible="{Binding IsDot1x}">
-            <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.EapolChoices}" SelectedItem="{Binding Eapol}" />
-          </ui:FormField>
-          <ui:FormField Label="EAP identity" IsVisible="{Binding IsDot1x}">
-            <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.IdentityChoices}" SelectedItem="{Binding Identity}" />
-          </ui:FormField>
-          <ui:FormField Label="Custom identity" InputWidth="340" Hint="{}{serial} and {hostName} are replaced" IsVisible="{Binding IsCustomIdentity}">
-            <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
-          </ui:FormField>
-          <ui:FormField Label="RADIUS server CA" InputWidth="340" IsVisible="{Binding IsDot1x}">
-            <StackPanel Spacing="8">
-              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RadiusChoices}" SelectedItem="{Binding RadiusCa}" />
-              <TextBlock Classes="secondary" Text="{Binding RadiusCaLine}" TextWrapping="Wrap"
-                         IsVisible="{Binding RadiusCaLine, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            </StackPanel>
           </ui:FormField>
         </StackPanel>
         <ui:LoadingOverlay Text="Reading the policies" IsVisible="{Binding IsLoading}" />

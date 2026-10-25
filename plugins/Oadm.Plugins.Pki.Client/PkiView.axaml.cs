@@ -7,7 +7,7 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Pki.Client;
 
 /// <summary>
-/// Page view. View only: activates the view model while shown, opens the dialogs, the policy editor and the file pickers;
+/// Page view. View only: activates the view model while shown, opens the dialogs, the device picker of a policy and the file pickers;
 /// the shared certificate list (<see cref="IssuedCertificateList"/>) hands its grid's selection and double clicks to its
 /// view model.
 /// </summary>
@@ -32,24 +32,23 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
         CertificatesSplitter.IsVisible = shown;
     }
 
-    public async Task<bool> ShowPolicyAsync(PolicyEditorViewModel editor)
+    /// <summary>
+    /// The policy table grouped like the Plugins page: one collapsible header per group that has rows (an empty group shows no
+    /// header); the rows come in the groups' order, so the groups do too. Layout only.
+    /// </summary>
+    private void GroupPolicies(PoliciesViewModel policies)
     {
-        ArgumentNullException.ThrowIfNull(editor);
-        var window = PolicyFormView.CreateWindow(editor);
-        if (TopLevel.GetTopLevel(this) is Window owner)
-        {
-            return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
-        }
-
-        window.Show();
-        return false;
+        var view = new Avalonia.Collections.DataGridCollectionView(policies.Rows);
+        view.GroupDescriptions.Add(new Avalonia.Collections.DataGridPathGroupDescription(nameof(PolicyRowViewModel.Group)));
+        PoliciesGrid.ItemsSource = view;
     }
 
-    /// <summary>Check a device: the shared picker for one device.</summary>
-    public async Task<Guid?> PickDeviceAsync(IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> devices, Guid? selected) =>
-        TopLevel.GetTopLevel(this) is Window owner
-            ? await DevicePickerWindow.ShowOneAsync(owner, devices, selected, heading: "Choose a device").ConfigureAwait(true)
-            : null;
+    /// <summary>A policy's devices: the shared picker in its group mode.</summary>
+    public async Task<bool> PickDevicesAsync(DevicePickerViewModel picker, string heading)
+    {
+        ArgumentNullException.ThrowIfNull(picker);
+        return TopLevel.GetTopLevel(this) is Window owner && await new DevicePickerWindow(picker) { Heading = heading }.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
 
     public Task ShowCertificateAsync(CertificateDetails certificate) =>
         TopLevel.GetTopLevel(this) is Window owner ? CertificateWindow.ShowAsync(certificate, owner) : Task.CompletedTask;
@@ -61,8 +60,13 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
 
     public IPkiFiles? CertificateFiles => Files;
 
-    public Task<bool> ConfirmDeleteAsync(string title, string message) =>
-        TopLevel.GetTopLevel(this) is Window owner ? MessageWindow.ConfirmAsync(owner, title, message, "Delete") : Task.FromResult(false);
+    public Task<bool> ConfirmDeleteAsync(string title, string message) => ConfirmDeleteAsync(title, message, "Delete");
+
+    /// <summary>Delete with a red confirm button (also "Revoke and delete").</summary>
+    public Task<bool> ConfirmDeleteAsync(string title, string message, string confirmText) =>
+        TopLevel.GetTopLevel(this) is Window owner
+            ? new MessageWindow { Heading = title, Message = message, ConfirmText = confirmText, CancelText = "Cancel", IsDanger = true }.ShowDialog<bool>(owner)
+            : Task.FromResult(false);
 
     public Task ShowCreateAsync(CreateCertificateViewModel dialog) => ShowAsync(new CreateCertificateWindow(), dialog);
 
@@ -73,6 +77,7 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     public Task ShowExportKeyAsync(ExportKeyViewModel dialog) => ShowAsync(new ExportKeyWindow(), dialog);
 
     public Task ShowGenerateAsync(GenerateCaViewModel dialog) => ShowAsync(new GenerateCaWindow(), dialog);
+
 
     public Task ShowImportAsync(ImportCaViewModel dialog) => ShowAsync(new ImportCaWindow(), dialog);
 
@@ -90,6 +95,7 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             vm.Authorities.Dialogs = this;
             vm.Policies.Dialogs = this;
             vm.Policies.Files = Files;
+            GroupPolicies(vm.Policies);
             vm.Policies.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(PoliciesViewModel.IsShown))

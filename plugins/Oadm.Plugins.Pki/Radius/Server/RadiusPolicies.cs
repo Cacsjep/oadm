@@ -40,22 +40,16 @@ public static class RadiusPolicies
         ValidDays = PolicyLimits.DefaultValidDays,
         Key = PolicyKeys.Ecc,
         MinimumTls = PolicyRules.DefaultMinimumTls,
-        CipherSuites = DefaultSuites(TlsVersion.Tls12),
         LargestEapPacket = PolicyRules.DefaultEapPacket,
         ReauthMinutes = null,
     };
 
-    /// <summary>The TLS settings of an 802.1X server policy; the defaults without one (deleted) or with one that cannot be used.</summary>
-    public static TlsSettings TlsOf(PkiPolicy? policy)
-    {
-        if (policy is null || VersionOf(policy.MinimumTls) is not { } minimum)
-        {
-            return TlsSettings.Default;
-        }
-
-        var settings = new TlsSettings(minimum, (policy.CipherSuites ?? []).ToHashSet());
-        return settings.Validate(ServerIdentityKeeper.KeyKind) is null ? settings : new TlsSettings(minimum, DefaultSuites(minimum).ToHashSet());
-    }
+    /// <summary>
+    /// The TLS settings of an 802.1X server policy: its minimum version and the cipher suites of that minimum the server's key
+    /// can use (decision 2026-10-25: no selection); the defaults without one (deleted).
+    /// </summary>
+    public static TlsSettings TlsOf(PkiPolicy? policy) =>
+        policy is null || VersionOf(policy.MinimumTls) is not { } minimum ? TlsSettings.Default : new TlsSettings(minimum, DefaultSuites(minimum).ToHashSet());
 
     /// <summary>The default cipher suites for <paramref name="minimum"/>: those the server's certificate can use (<see cref="PolicyRules.DefaultSuites"/>).</summary>
     public static IReadOnlyList<int> DefaultSuites(TlsVersion minimum) => PolicyRules.DefaultSuites(CipherSuites, TextOf(minimum));
@@ -68,17 +62,11 @@ public static class RadiusPolicies
         _ => "1.2",
     };
 
-    /// <summary>The server key's check of an 802.1X server policy (only ECDHE_RSA suites with the ECDSA key); null when it can be used.</summary>
+    /// <summary>The TLS check of an 802.1X server policy: a known minimum version (the suites follow it); null when it can be used.</summary>
     public static PolicyFieldError? ValidateTls(PkiPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        if (VersionOf(policy.MinimumTls) is not { } minimum)
-        {
-            return new(PolicyFields.MinimumTls, PolicyRules.ChooseTls);
-        }
-
-        var error = new TlsSettings(minimum, (policy.CipherSuites ?? []).ToHashSet()).Validate(ServerIdentityKeeper.KeyKind);
-        return error is null ? null : new(PolicyFields.CipherSuites, error);
+        return VersionOf(policy.MinimumTls) is null ? new(PolicyFields.MinimumTls, PolicyRules.ChooseTls) : null;
     }
 
     internal static TlsVersion? VersionOf(string? text) => PolicyRules.MinimumIndex(text) switch
@@ -197,18 +185,10 @@ public static class RadiusPolicies
             return policy;
         }
 
-        var minimum = VersionOf(advanced.MinimumTls) is { } version ? advanced.MinimumTls! : PolicyRules.DefaultMinimumTls;
-        var suites = (advanced.CipherSuites ?? []).Distinct().Order().ToList();
-        var tls = new TlsSettings(VersionOf(minimum)!.Value, suites.ToHashSet());
-        if (suites.Count == 0 || tls.Validate(ServerIdentityKeeper.KeyKind) is not null)
-        {
-            suites = [.. DefaultSuites(VersionOf(minimum)!.Value)];
-        }
-
+        var minimum = VersionOf(advanced.MinimumTls) is not null ? advanced.MinimumTls! : PolicyRules.DefaultMinimumTls;
         return policy with
         {
             MinimumTls = minimum,
-            CipherSuites = suites,
             LargestEapPacket = advanced.LargestFragment is { } fragment ? Math.Clamp(fragment, PolicyRules.MinEapPacket, PolicyRules.MaxEapPacket) : PolicyRules.DefaultEapPacket,
         };
     }

@@ -58,6 +58,34 @@ public static class NetworkInfoApi
             ["certsCA"] = new JsonArray([.. certsCa.Select(c => (JsonNode)JsonValue.Create(c)!)]),
         }, "Set 802.1X configuration", ct);
 
+    /// <summary>
+    /// Sets only the CA certificates the device checks the RADIUS server with; everything else of the EAP-TLS configuration
+    /// (on or off, identity, EAPOL version, client certificate) is written back as <paramref name="current"/> has it.
+    /// </summary>
+    public static Task SetCaCertificatesAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, Wired8021X current, IReadOnlyList<string> certsCa, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        var parameters = new JsonObject
+        {
+            ["deviceName"] = current.DeviceName,
+            ["enabled"] = current.Enabled,
+            ["mode"] = EapTlsMode,
+            ["certClient"] = current.CertClient,
+            ["certsCA"] = new JsonArray([.. certsCa.Select(c => (JsonNode)JsonValue.Create(c)!)]),
+        };
+        if (current.Identity is { } identity)
+        {
+            parameters["identity"] = identity;
+        }
+
+        if (current.EapolVersion is { } eapol)
+        {
+            parameters["eapolVersion"] = eapol;
+        }
+
+        return SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters, "Set the RADIUS server CA", ct);
+    }
+
     /// <summary>Turns 802.1X off; certificates and the rest of the configuration stay.</summary>
     public static Task DisableAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, string deviceName, CancellationToken ct) =>
         SendAsync(vapix, Version(apis), "setWired8021XConfiguration", new JsonObject { ["deviceName"] = deviceName, ["enabled"] = false }, "Set 802.1X off", ct);

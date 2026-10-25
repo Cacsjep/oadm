@@ -110,8 +110,20 @@ public static class PolicyKinds
         _ => PolicyGroups.All,
     };
 
-    /// <summary>A kind that issues certificates: the values a certificate is issued with (CA, valid days, key); the device kinds and the two servers.</summary>
-    public static bool IsIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate or Dot1xServer or EstServer;
+    /// <summary>A kind that issues certificates: the values a certificate is issued with (CA, valid days, key); the device kinds (HTTPS, IEEE 802.1X).</summary>
+    public static bool IsIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate;
+
+    /// <summary>
+    /// A server kind (802.1X server, EST server): the policy picks the certificate the server shows from PKI's Certificates
+    /// list (<see cref="PkiPolicy.CertificateId"/>; decision 2026-10-25), no CA, days or key of its own.
+    /// </summary>
+    public static bool IsServer(string? kind) => kind is Dot1xServer or EstServer;
+
+    /// <summary>
+    /// A kind only the OADM PRO servers read (the two server policies, 802.1X access, EST enrollment): the Policies tab hides
+    /// them without an active OADM PRO license (decision 2026-10-25; stored ones stay and come back with a license).
+    /// </summary>
+    public static bool IsPro(string? kind) => kind is Dot1xServer or EstServer or AllowCa or Vlan or Block or Enrollment or SignInCa;
 
     /// <summary>An issuing kind of device certificates (the task dialogs and the EST profiles pick one).</summary>
     public static bool IsDeviceIssuing(string? kind) => kind is HttpsCertificate or Dot1xCertificate;
@@ -188,20 +200,12 @@ public static class PolicyLimits
     public const int MaxValidDays = 3650;
     public const int DefaultValidDays = 365;
 
-    /// <summary>The EST server's own certificate as before the policies: 90 days.</summary>
-    public const int DefaultEstServerDays = 90;
-
-    /// <summary>A server certificate is made again this long before its end (at most a third of its validity).</summary>
-    public static readonly TimeSpan ServerRenewBefore = TimeSpan.FromDays(30);
 
     /// <summary>The names of the default issuing policies.</summary>
     public const string HttpsName = "HTTPS";
     public const string Dot1xName = "IEEE 802.1X";
     public const string Dot1xServerCertificateName = "802.1X server";
     public const string EstServerCertificateName = "EST server";
-
-    /// <summary>When a server certificate valid for <paramref name="validity"/> is made again: 30 days before its end, at most a third of it.</summary>
-    public static TimeSpan RenewBefore(TimeSpan validity) => validity / 3 < ServerRenewBefore ? validity / 3 : ServerRenewBefore;
 }
 
 /// <summary>The key of an issuing policy.</summary>
@@ -352,10 +356,16 @@ public sealed record PkiPolicy
 
     /// <summary>
     /// 802.1X trusted CA and EST sign-in CA: PKI's id of the CA (<see cref="CertificateAuthorityInfo.Id"/>; the OADM CA covers
-    /// its previous ones for 802.1X). Issuing kinds (also the 802.1X and EST server policies): "Issued by", a CA with its key
-    /// (the OADM CA or an imported CA with its key; decision 2026-10-25).
+    /// its previous ones for 802.1X). Issuing kinds: "Issued by", a CA with its key (the OADM CA or an imported CA with its
+    /// key; decision 2026-10-25).
     /// </summary>
     public string? CaId { get; init; }
+
+    /// <summary>
+    /// 802.1X server and EST server: the certificate the server shows, the id of a row of PKI's Certificates list with a key
+    /// OADM holds (decision 2026-10-25); null until one is chosen (the server then has no certificate).
+    /// </summary>
+    public string? CertificateId { get; init; }
 
     /// <summary>Block: also revoke the IEEE 802.1X certificates of its devices (on save and every new one while it exists); then no tags and no "All devices".</summary>
     public bool? AlsoRevoke { get; init; }
@@ -366,7 +376,7 @@ public sealed record PkiPolicy
     /// <summary>802.1X server: "1.0", "1.1", "1.2" (default) or "1.3".</summary>
     public string? MinimumTls { get; init; }
 
-    /// <summary>802.1X server: the checked cipher suites (IANA ids).</summary>
+    /// <summary>802.1X server before 2026-10-25: the checked cipher suites (IANA ids); no longer read (they follow <see cref="MinimumTls"/>).</summary>
     public IReadOnlyList<int>? CipherSuites { get; init; }
 
     /// <summary>802.1X server: the largest EAP packet in bytes (500..1,400, default 1,020).</summary>
@@ -384,7 +394,7 @@ public sealed record PkiPolicy
     /// <summary>Issuing: the key (<see cref="PolicyKeys"/>) the device or the server makes.</summary>
     public string? Key { get; init; }
 
-    /// <summary>IEEE 802.1X certificate: EAPOL version 1 or 2.</summary>
+    /// <summary>IEEE 802.1X certificate: EAPOL version 1, 2 or 3.</summary>
     public int? EapolVersion { get; init; }
 
     /// <summary>IEEE 802.1X certificate: the EAP identity (<c>Dot1xIdentity</c>: mac, hostName, custom).</summary>
@@ -393,10 +403,16 @@ public sealed record PkiPolicy
     /// <summary>IEEE 802.1X certificate: the custom identity with {serial} and {hostName}.</summary>
     public string? CustomIdentity { get; init; }
 
-    /// <summary>IEEE 802.1X certificate: the CA the devices check the RADIUS server with (<c>RadiusCaSource</c>: oadm, imported).</summary>
+    /// <summary>
+    /// IEEE 802.1X certificate: the CA the devices check the RADIUS server with, PKI's id of a CA of the list
+    /// (<see cref="CertificateAuthorityInfo.Id"/>; decision 2026-10-25: a real CA, imported on the Certificates page).
+    /// </summary>
+    public string? RadiusCaId { get; init; }
+
+    /// <summary>Before 2026-10-25 (<c>RadiusCaSource</c>: oadm, imported); read only by the conversion (<c>PkiService.ConvertRadiusCasAsync</c>).</summary>
     public string? RadiusCa { get; init; }
 
-    /// <summary>IEEE 802.1X certificate: the imported RADIUS server CA (PEM, public only).</summary>
+    /// <summary>Before 2026-10-25: the RADIUS server CA imported into the policy (PEM, public only); read only by the conversion.</summary>
     public string? RadiusCaPem { get; init; }
 
     /// <summary>A Server certificate policy of before 2026-10-25: the server it was for (<see cref="PolicyServers"/>); read only by the conversion.</summary>
@@ -463,8 +479,18 @@ public sealed record PolicyList
     /// <summary>The names of the EST server's profiles (an Enrollment policy chooses among them).</summary>
     public IReadOnlyList<string> EstProfiles { get; init; } = [];
 
-    /// <summary>The cipher suites of the 802.1X server policy, in the page's order.</summary>
-    public IReadOnlyList<PolicyCipherSuite> CipherSuites { get; init; } = [];
+    /// <summary>The certificates of the Certificates list with a key OADM holds (a server policy picks one; unusable ones say why).</summary>
+    public IReadOnlyList<PolicyCertificateChoice> ServerCertificates { get; init; } = [];
+
+    /// <summary>The CAs a server certificate can be created with (Create of a server policy): the CAs with their key, the OADM CA first.</summary>
+    public IReadOnlyList<PolicyCaChoice> ServerCertificateCas { get; init; } = [];
+
+    /// <summary>The names a new 802.1X server certificate gets by default: this server's addresses and host name.</summary>
+    public IReadOnlyList<string> Dot1xServerNames { get; init; } = [];
+
+    /// <summary>The names a new EST server certificate gets by default: this server's addresses and host name, and the site nodes' addresses.</summary>
+    public IReadOnlyList<string> EstServerNames { get; init; } = [];
+
 
     /// <summary>The sites of the server (the device selector, the row texts).</summary>
     public IReadOnlyList<PolicySite> Sites { get; init; } = [];
@@ -475,8 +501,30 @@ public sealed record PolicyList
     /// <summary>The caller may change the policies ("Manage the certificate authority" and all devices).</summary>
     public bool MayManage { get; init; }
 
+    /// <summary>OADM PRO is active: the kinds of the PRO servers (<see cref="PolicyKinds.IsPro"/>) show.</summary>
+    public bool Pro { get; init; }
+
+    /// <summary>The CA that issued the certificate of the 802.1X server policy (the hint below RADIUS server CA); null without one.</summary>
+    public string? Dot1xServerIssuer { get; init; }
+
     /// <summary>Why the list is empty although policies are stored (<see cref="PolicyTexts.Unreadable"/>); null when it was read.</summary>
     public string? Error { get; init; }
+}
+
+/// <summary>
+/// A certificate of PKI's Certificates list a server policy can show (decision 2026-10-25): its id, name, issuer, end, key
+/// and names; <paramref name="Problem"/> says why it cannot be used (ended, no server certificate); null when it can.
+/// </summary>
+/// <param name="Id">The row's id (<see cref="PkiPolicy.CertificateId"/>).</param>
+/// <param name="Ecc">An ECC key (the 802.1X server needs one).</param>
+/// <param name="Names">The addresses and host names it names.</param>
+public sealed record PolicyCertificateChoice(string Id, string Name, string IssuerName, DateTime NotAfterUtc, bool Ecc, IReadOnlyList<string> Names, string? Problem = null)
+{
+    /// <summary>"EST server (OADM CA), until 2035-10-25".</summary>
+    public string Label => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} ({IssuerName}), until {NotAfterUtc:yyyy-MM-dd}");
+
+    /// <summary>A server of <paramref name="kind"/> can show it (no problem; the 802.1X server only with an ECC key).</summary>
+    public bool UsableFor(string kind) => Problem is null && (kind != PolicyKinds.Dot1xServer || Ecc);
 }
 
 /// <summary>An input error of a policy: the field (<see cref="PolicyFields"/>) and the message below it.</summary>
@@ -499,43 +547,9 @@ public sealed record PolicyRef(Guid Id);
 /// <summary>The answer of <see cref="PolicyMethods.CountRevocations"/>.</summary>
 public sealed record PolicyRevocationCount(int Count);
 
-/// <summary>The device of <see cref="PolicyMethods.CheckDevice"/> (its OADM id).</summary>
-public sealed record PolicyCheckRequest(Guid DeviceId);
-
-/// <summary>The areas of a "Check a device" line, in the page's order.</summary>
-public static class PolicyCheckAreas
-{
-    public const string Https = "HTTPS";
-    public const string Dot1x = "IEEE 802.1X";
-    public const string Expiry = "Expiry warning";
-    public const string Network = "802.1X server";
-    public const string Est = "EST server";
-}
-
-/// <summary>
-/// One line of "Check a device": the area (<see cref="PolicyCheckAreas"/>), what applies to the device in one plain sentence,
-/// the policies that decide it (none: what happens without one) and whether it needs attention.
-/// </summary>
-public sealed record PolicyCheckLine(string Area, string Text, IReadOnlyList<string> Policies, bool IsWarning = false);
-
-/// <summary>The answer of <see cref="PolicyMethods.CheckDevice"/>: the lines, or why there are none.</summary>
-public sealed record PolicyCheck
-{
-    public IReadOnlyList<PolicyCheckLine> Lines { get; init; } = [];
-
-    /// <summary>The device is gone, or the policies cannot be read; null otherwise.</summary>
-    public string? Error { get; init; }
-}
-
 /// <summary>The page methods of the policies (PKI's <c>InvokeAsync</c>).</summary>
 public static class PolicyMethods
 {
-    /// <summary>
-    /// <see cref="PolicyCheckRequest"/> -> <see cref="PolicyCheck"/>: which policies apply to one device, decided as the 802.1X
-    /// and EST servers decide (read only). A user limited to a device group: an empty answer (the policies are server-wide).
-    /// </summary>
-    public const string CheckDevice = "checkDevice";
-
     /// <summary>() -> <see cref="PolicyList"/>. A user limited to a device group: an empty list.</summary>
     public const string GetPolicies = "getPolicies";
 
@@ -560,6 +574,7 @@ public static class PolicyFields
     public const string Devices = "devices";
     public const string Vlan = "vlan";
     public const string Ca = "caId";
+    public const string Certificate = "certificateId";
     public const string MinimumTls = "minimumTls";
     public const string CipherSuites = "cipherSuites";
     public const string LargestEapPacket = "largestEapPacket";
@@ -612,19 +627,33 @@ public static class PolicyTexts
     public const string ChooseKey = "Choose a key.";
     public const string CannotIssue = "This CA cannot issue certificates. Choose a CA with its key.";
     public const string Dot1xServerNeedsEcc = "The 802.1X server uses an ECC key.";
+    public const string ChooseCertificate = "Choose a certificate.";
+    public const string CertificateGone = "This certificate is no longer in the Certificates list. Choose another one.";
+    public const string Dot1xServerNeedsEccCertificate = "The 802.1X server needs a certificate with an ECC key.";
+
+    /// <summary>A server certificate is valid for 10 years (Create of a server policy, Turn on).</summary>
+    public const int ServerCertificateDays = 3650;
+
+    /// <summary>The hint of Create server certificate.</summary>
+    public const string ServerCertificateHint = "Valid for 10 years, with an ECC key.";
+
+    /// <summary>The server has no certificate: none chosen yet.</summary>
+    public static string ServerNoCertificate(string server) => $"{server} has no certificate. Choose one in its policy.";
+
+    /// <summary>The chosen certificate cannot be used (ended, gone, no key).</summary>
+    public static string ServerCertificateUnusable(string server, string why) => $"{server} cannot use its certificate: {why}";
+
+    /// <summary>A site whose node address is not in the EST server's certificate.</summary>
+    public static string SiteNotInCertificate(string site) => $"Site {site} is not in the certificate of the EST server. Create a new one in its policy.";
     public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
+
+    /// <summary>The IEEE 802.1X policy names no CA of the list for the RADIUS server.</summary>
+    public const string ChooseRadiusCa = "Choose the CA of the RADIUS server.";
     public const string ChooseProfileScope = "Choose which profiles.";
     public const string ChooseProfiles = "Choose at least one profile.";
     public const string ChooseSignInFor = "Choose new certificates or renewals.";
     public const string NoSignInCa = "Cameras sign in with the Axis device ID or an OADM CA.";
 
-    /// <summary>
-    /// "The 802.1X server has no certificate: Corp CA cannot issue." / "... the CA of its policy is no longer in the PKI."
-    /// (the status of a server whose policy names a CA without its key, or a removed one).
-    /// </summary>
-    public static string ServerWithoutCertificate(string server, string? caName) => caName is null
-        ? $"{server} has no certificate: the CA of its policy is no longer in the PKI."
-        : $"{server} has no certificate: {caName} cannot issue.";
 
     /// <summary>"The EST server has no profile web." (an Enrollment policy names a profile the EST server does not have).</summary>
     public static string UnknownProfile(string profile) => $"The EST server has no profile {profile}.";

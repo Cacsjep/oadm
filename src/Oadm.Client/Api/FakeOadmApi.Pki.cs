@@ -99,17 +99,6 @@ public sealed partial class FakeOadmApi
                 case "saveSettings":
                     _pkiConfig = payload?["config"]?.DeepClone() ?? _pkiConfig;
                     return Json(new JsonObject { ["ok"] = true, ["state"] = FakePkiState() });
-                case "importRadiusCa":
-                {
-                    using X509Certificate2? certificate = ReadFakeCertificate(payload?["fileBase64"]?.GetValue<string>());
-                    if (certificate is null)
-                    {
-                        return Json(new JsonObject { ["errors"] = new JsonObject { ["RadiusCa"] = "The file is not a certificate (.crt or .cer, PEM or DER)." } });
-                    }
-
-                    return Json(new JsonObject { ["pem"] = Pem(certificate), ["summary"] = Summary(certificate) });
-                }
-
                 default:
                     throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown method '{method}'."));
             }

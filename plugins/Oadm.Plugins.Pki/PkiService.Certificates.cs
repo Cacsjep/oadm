@@ -43,6 +43,9 @@ public sealed partial class PkiService
     /// </summary>
     public Func<IDeviceInfo, CancellationToken, Task<IReadOnlyList<(string Alias, string Pem)>>>? DeviceCertificateReader { get; set; }
 
+    /// <summary>OADM PRO is active (the policy list shows the kinds of the PRO servers); true without a host check (tests, in process).</summary>
+    public Func<bool> IsPro { get; set; } = () => true;
+
     /// <summary>The latest end of the active and the previous CAs: no certificate they signed lasts longer (null without a CA).</summary>
     public DateTime? LatestCaEnd()
     {

@@ -115,7 +115,11 @@ public static class ServiceRegistration
                 sp.GetRequiredService<IUrlLauncher>(),
                 sp.GetRequiredService<UserSession>());
             // PRO plugins turn on or off with the license: the plugin list, rail pages and menus follow.
-            license.LicenseChanged += (_, _) => _ = sp.GetRequiredService<PluginPackageStore>().LoadAsync(CancellationToken.None);
+            license.LicenseChanged += (_, _) =>
+            {
+                _ = sp.GetRequiredService<PluginPackageStore>().LoadAsync(CancellationToken.None);
+                sp.GetRequiredService<Plugins.TaskPluginCatalog>().RequestRefresh(); // tasks shown only with PRO (EST's Certificate enrollment)
+            };
             return license;
         });
         services.AddSingleton(sp => new Support.SupportViewModel(

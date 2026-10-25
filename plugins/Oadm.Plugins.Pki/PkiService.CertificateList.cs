@@ -4,6 +4,7 @@ using System.Security.Cryptography.X509Certificates;
 
 using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Certificates;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 
@@ -265,6 +266,8 @@ public sealed partial class PkiService
                 IssuedBy = issuer.Id == OtherIssuerId ? local.IssuerName : issuer.Name,
                 IssuerId = issuer.Id,
                 KeyText = local.KeyText,
+                UsedBy = Policies.ShowingCertificate(local.Stored.Id) is { } showing ? PolicyKinds.Name(showing.Kind) : null,
+                UsedByBadges = Policies.ShowingCertificate(local.Stored.Id) is { } shown ? [PolicyKinds.Name(shown.Kind)] : null,
                 NotBeforeUtc = local.NotBeforeUtc,
                 NotAfterUtc = local.NotAfterUtc,
                 IssuedUtc = local.Stored.AddedUtc,

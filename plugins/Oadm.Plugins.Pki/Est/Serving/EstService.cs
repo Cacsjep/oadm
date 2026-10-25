@@ -118,7 +118,11 @@ public sealed partial class EstService : IAsyncDisposable
         _logger = host.Logger;
         Viewers = new ViewerScopes(host.Scopes);
         _store = new EstStore(host.Settings, host.Records, host.Time) { Logger = host.Logger };
-        _certificates = new ServerCertificates(host.Authority, host.Time) { Policy = () => host.Policies()?.EstServerPolicy };
+        _certificates = new ServerCertificates(host.Authority)
+        {
+            Names = () => NewCertificateNames(),
+            ChosenId = () => host.Policies()?.EstServerPolicy?.CertificateId,
+        };
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
             async (id, ct) => await host.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null, InAnyGroup)
@@ -153,6 +157,9 @@ public sealed partial class EstService : IAsyncDisposable
 
     /// <summary>What <paramref name="profile"/> issues with (<see cref="EstPolicies.IssuingOf"/>); null: its policy cannot be read (nothing is issued).</summary>
     public ProfileIssuing? IssuingOf(EstProfile profile) => EstPolicies.IssuingOf(profile, _host.Policies());
+
+    /// <summary>The issuing policy <paramref name=profile/> names (its RADIUS server CA for the dot1x profile); null when it cannot be read.</summary>
+    public Oadm.Plugins.Pki.Policies.PkiPolicy? PolicyOf(EstProfile profile) => _host.Policies() is { } store ? EstPolicies.PolicyOf(profile, store) : null;
 
     /// <summary>
     /// True when a device group covers the device (also without the host's groups: fail closed). Its certificates then
@@ -189,10 +196,12 @@ public sealed partial class EstService : IAsyncDisposable
             if (_policies is not null)
             {
                 _policies.Changed += OnPoliciesChanged; // the page's issuing policies follow PKI
+                _policies.EstServerNames = NewCertificateNames; // Create of the EST server policy offers them
             }
 
             ReportUsedBy();
             await OpenAsync(_store.Config.Port, ct).ConfigureAwait(false);
+            Track(Task.Run(() => _certificates.GetAsync(_cts.Token))); // Turn on: the EST server policy gets a certificate when it has none
             _renewalTimer = _host.Time.CreateTimer(_ => Track(CheckRenewalsAsync(_cts.Token)), null, RenewalCheckDelay, RenewalCheckInterval);
             _listenRetry = _host.Time.CreateTimer(_ => Track(RetryListenAsync(_cts.Token)), null, ListenRetryInterval, ListenRetryInterval);
             if (_host.Sites is { } sites)
@@ -424,9 +433,9 @@ public sealed partial class EstService : IAsyncDisposable
         {
             text = !InterfaceOptions.IsAll(config.InterfaceId) && ListenInterface() is null ? NotAvailable(config) : "Stopped";
         }
-        else if (listener.State == RelayState.Running && Oadm.Plugins.Pki.Ca.IssuerChains.NoCertificateReason(_host.Authority(), _host.Policies()?.EstServerPolicy?.CaId, EstRefusals.ServerName) is { } reason)
+        else if (listener.State == RelayState.Running && CertificateNow().Problem is { } reason)
         {
-            text = reason; // the CA of the EST server policy cannot issue: no TLS certificate, no camera gets in
+            text = reason; // the certificate of the EST server policy: none chosen, gone, ended or revoked; no camera gets in
         }
         else if (listener.State == RelayState.Running)
         {
@@ -455,6 +464,8 @@ public sealed partial class EstService : IAsyncDisposable
         {
             Config = config, StatusText = text, StatusOk = ok, Listeners = listeners, CertificateCount = _store.CertificateCount, Interfaces = ListInterfaces(),
             IssuingCa = IssuingName(ca),
+            ServerCertificate = CertificateNow().Label,
+            CertificateWarning = CertificateNow().Warning,
             IssuingPolicies = EstPolicies.Choices(_host.Policies(), ca?.Authorities ?? []),
             PoliciesApply = Rules.Count, PolicyProblem = Rules.Problem,
             PolicyLines = _host.Policies()?.LinesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.IsEst),
@@ -787,14 +798,12 @@ public sealed partial class EstService : IAsyncDisposable
     internal async Task ServeAsync(IIncomingConnection connection, CancellationToken ct)
     {
         await using var _ = connection.ConfigureAwait(false);
-        var site = connection.SiteId ?? Guid.Empty;
-        // At a site: the node's addresses the cameras there were given (no SNI: the site picks the certificate).
-        var addresses = connection.SiteId is { } siteId ? _store.SiteAddresses(siteId) : CertificateAddresses();
-        var certificate = await _certificates.GetAsync(site, addresses, connection.SiteId is null ? _host.HostName : null, ct).ConfigureAwait(false);
+        // One certificate everywhere (decision 2026-10-25): it names this server and the site nodes.
+        var certificate = await _certificates.GetAsync(ct).ConfigureAwait(false);
         if (certificate is null)
         {
             LogNoCertificate(connection.Remote);
-            return; // no CA: nothing to offer TLS with
+            return; // no certificate (the status says why): nothing to offer TLS with
         }
 
         X509Certificate2? client = null;
@@ -949,8 +958,8 @@ public sealed partial class EstService : IAsyncDisposable
     private X509Certificate2Collection AuthorityChain()
     {
         var chain = new X509Certificate2Collection();
-        // The chain of the EST server policy's CA (decision 2026-10-25); none: the OADM CA.
-        foreach (var der in Oadm.Plugins.Pki.Ca.IssuerChains.Of(_host.Authority(), _host.Policies()?.EstServerPolicy?.CaId))
+        // The issuer chain of the certificate the EST server policy picks (decision 2026-10-25).
+        foreach (var der in (_host.Authority() as Oadm.Plugins.Pki.Ca.PkiCertificateAuthority)?.ServerIssuerChain(Oadm.Plugins.Pki.Policies.PolicyKinds.EstServer) ?? [])
         {
             chain.Add(X509CertificateLoader.LoadCertificate(der));
         }
@@ -1130,6 +1139,57 @@ public sealed partial class EstService : IAsyncDisposable
     /// The addresses of this server's TLS certificate: the chosen interface's (without temporary IPv6 addresses, like
     /// <see cref="ServerCertificates.LocalAddresses"/>) or every network card's; read at most every 30 s, not per connection.
     /// </summary>
+    /// <summary>
+    /// The names a new EST server certificate gets (Create of its policy, Turn on): this server's addresses and host name
+    /// and the addresses of every site node the cameras were given.
+    /// </summary>
+    private IReadOnlyList<string> NewCertificateNames() =>
+        [.. CertificateAddresses().Append(_host.HostName).Concat(_store.Sites().SelectMany(_store.SiteAddresses)).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+    private (DateTimeOffset At, CertificateView View)? _certificateNow;
+
+    /// <summary>
+    /// The certificate of the EST server policy for the status and the page (read at most every 30 s): its label, why there
+    /// is none, and a site whose node address it does not name.
+    /// </summary>
+    private CertificateView CertificateNow()
+    {
+        var now = _host.Time.GetUtcNow();
+        if (_certificateNow is { } cached && now - cached.At < ListenRetryInterval)
+        {
+            return cached.View;
+        }
+
+        CertificateView view;
+        if (_host.Authority() is not Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki)
+        {
+            view = new CertificateView(null, null, null);
+        }
+        else
+        {
+            var load = pki.ServerCertificate(Oadm.Plugins.Pki.Policies.PolicyKinds.EstServer);
+            if (load.Material is not { } material)
+            {
+                view = new CertificateView(null, load.Problem, null);
+            }
+            else
+            {
+                System.Security.Cryptography.CryptographicOperations.ZeroMemory(material.Pkcs8);
+                var names = new HashSet<string>(material.Names, StringComparer.OrdinalIgnoreCase);
+                var missing = _host.Sites is { } sites
+                    ? sites.List.FirstOrDefault(s => _store.SiteAddresses(s.Id).Any(a => !names.Contains(a)))?.Name
+                    : null;
+                var label = _policies?.ServerCertificates?.Invoke().FirstOrDefault(c => c.Id == material.Id)?.Label;
+                view = new CertificateView(label, null, missing is null ? null : Oadm.Plugins.Pki.Policies.PolicyTexts.SiteNotInCertificate(missing));
+            }
+        }
+
+        _certificateNow = (now, view);
+        return view;
+    }
+
+    private sealed record CertificateView(string? Label, string? Problem, string? Warning);
+
     private IReadOnlyList<string> CertificateAddresses()
     {
         var now = _host.Time.GetUtcNow();
@@ -1216,6 +1276,8 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         ReportUsedBy(); // the CAs of the Sign-in CA policies
+        _certificates.Forget(); // another certificate picked: the next connection shows it
+        _certificateNow = null;
         PublishState(); // the page's issuing policies and "N policies apply"
     }
 

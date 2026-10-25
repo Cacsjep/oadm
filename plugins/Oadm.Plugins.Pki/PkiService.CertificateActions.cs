@@ -434,6 +434,7 @@ public sealed partial class PkiService
         var serials = new List<string>();
         var locals = new List<string>();
         var servers = new List<string>();
+        var revokeFirst = new List<string>();
         Dictionary<Guid, string>? addresses = null;
         foreach (var id in ids)
         {
@@ -459,12 +460,19 @@ public sealed partial class PkiService
 
             if (id.StartsWith(LocalCertificates.RowPrefix, StringComparison.Ordinal))
             {
-                // The OADM CA issued created and signed ones: still valid, they would be accepted without a trace. Revoke first.
+                // A certificate a server policy shows stays (decision 2026-10-25): pick another one in the policy first.
                 var localId = id[LocalCertificates.RowPrefix.Length..];
+                if (Policies.ShowingCertificate(localId) is { } showing)
+                {
+                    return Refused(CertificateRules.UsedByPolicy(showing.Name));
+                }
+
+                // A CA of OADM issued created and signed ones: still valid, they would be accepted without a trace. Revoke and
+                // delete (decision 2026-10-25): they are revoked first, with the delete.
                 if (_local.Find(localId) is { Stored.Kind: ListedCertificateKind.Created or ListedCertificateKind.SignedRequest } local
                     && local.NotAfterUtc > now && !_issued.IsRevoked(local.Serial))
                 {
-                    return Refused(CertificateRules.StillValid(local.Stored.Name));
+                    revokeFirst.Add(local.Serial);
                 }
 
                 locals.Add(localId);
@@ -481,6 +489,12 @@ public sealed partial class PkiService
 
                 serials.Add(entry.SerialNumber);
             }
+        }
+
+        if (revokeFirst.Count > 0)
+        {
+            await _issued.RevokeAsync(revokeFirst, RevocationReason.Other, userName, ct).ConfigureAwait(false);
+            LogRevokedToDelete(revokeFirst.Count, userName);
         }
 
         var deleted = await _issued.DeleteEndedAsync(serials, ct).ConfigureAwait(false)
@@ -844,6 +858,9 @@ public sealed partial class PkiService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} certificates deleted from the list by {User}")]
     private partial void LogCertificatesDeleted(int count, string user);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} certificates revoked by {User} to delete them")]
+    private partial void LogRevokedToDelete(int count, string user);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: certificate {Name} exported with its key by {User}")]
     private partial void LogCertificateKeyExported(string name, string user);

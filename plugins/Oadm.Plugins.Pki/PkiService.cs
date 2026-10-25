@@ -112,7 +112,10 @@ public sealed partial class PkiService : IAsyncDisposable
         _local = new Certificates.LocalCertificates(records ?? new MemoryPluginRecords(), secrets, options.Time, logger);
         _local.Changed += OnIssuedChanged;
         _sites = sites;
-        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger);
+        Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger)
+        {
+            ServerCertificates = ServerCertificateChoices,
+        };
     }
 
     /// <summary>The server offers no secret protection: no CA can be kept.</summary>
@@ -590,47 +593,6 @@ public sealed partial class PkiService : IAsyncDisposable
 
         await PublishAsync().ConfigureAwait(false);
         return new InstallReply(result.Installed, result.Error, await GetStateAsync(ct).ConfigureAwait(false));
-    }
-
-    /// <summary>Checks a RADIUS server CA file (PEM or DER, public only); saving the IEEE 802.1X certificate policy stores it.</summary>
-    public static RadiusCaReply ImportRadiusCa(ImportRadiusCaRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        if (!TryDecode(request.FileBase64, out var bytes) || bytes.Length == 0)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file cannot be read.") };
-        }
-
-        if (bytes.Length > PkiPluginInfo.MaxImportBytes)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file is larger than 1 MB.") };
-        }
-
-        X509Certificate2? certificate;
-        try
-        {
-            certificate = CaCertificates.ReadSingleCertificate(bytes);
-        }
-        catch (Exception ex) when (ex is CryptographicException or FormatException)
-        {
-            certificate = null;
-        }
-
-        if (certificate is null)
-        {
-            return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "The file is not a certificate (.crt or .cer, PEM or DER).") };
-        }
-
-        using (certificate)
-        {
-            var basic = certificate.Extensions.OfType<X509BasicConstraintsExtension>().FirstOrDefault();
-            if (basic is { CertificateAuthority: false })
-            {
-                return new RadiusCaReply { Errors = One(PkiFields.RadiusCa, "This is not a CA certificate. Choose the CA that issued the RADIUS server's certificate.") };
-            }
-
-            return new RadiusCaReply { Pem = CaCertificates.ToPem(certificate), Summary = CaCertificates.Summarize(certificate) };
-        }
     }
 
     /// <summary>

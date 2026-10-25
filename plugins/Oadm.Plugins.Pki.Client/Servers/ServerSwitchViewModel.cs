@@ -20,6 +20,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     private readonly string _pluginId;
     private readonly string _turnOffTitle;
     private readonly string _turnOffMessage;
+    private readonly string _name;
 
     /// <param name="ctx">The page's context.</param>
     /// <param name="pluginId">The core plugin of the server ("oadm.est"): its "manage" permission turns it on and off.</param>
@@ -30,6 +31,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _pluginId = pluginId ?? throw new ArgumentNullException(nameof(pluginId));
         ArgumentNullException.ThrowIfNull(name);
+        _name = name;
         _turnOffTitle = "Turn off the " + name;
         _turnOffMessage = turnOffMessage ?? throw new ArgumentNullException(nameof(turnOffMessage));
         _ctx.PermissionsChanged += (_, _) => NotifyButtons();
@@ -37,7 +39,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
 
     /// <summary>The state was read once: until then the page shows its loading overlay.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowOffState))]
+    [NotifyPropertyChangedFor(nameof(ShowOffState), nameof(OffTitle), nameof(ShowOffTurnOn), nameof(ShowAdminLine), nameof(OffStatus), nameof(HasOffStatus))]
     public partial bool IsLoaded { get; private set; }
 
     /// <summary>The stored choice.</summary>
@@ -50,12 +52,12 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     public partial bool Running { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NeedsPro))]
+    [NotifyPropertyChangedFor(nameof(NeedsPro), nameof(OffTitle), nameof(ShowOffTurnOn), nameof(ShowAdminLine), nameof(OffStatus), nameof(HasOffStatus))]
     public partial bool ProActive { get; private set; }
 
     /// <summary>"Off", "Needs an OADM PRO license or trial.", "Could not start: ..." while it does not run.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Failed))]
+    [NotifyPropertyChangedFor(nameof(Failed), nameof(OffTitle), nameof(OffStatus), nameof(HasOffStatus))]
     public partial string StatusText { get; private set; } = string.Empty;
 
     [ObservableProperty]
@@ -120,8 +122,27 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
 
     /// <summary>The state could not be read: the status says why, the buttons stay hidden.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Failed), nameof(ShowTurnOn), nameof(ShowTurnOff))]
+    [NotifyPropertyChangedFor(nameof(Failed), nameof(ShowTurnOn), nameof(ShowTurnOff), nameof(OffTitle), nameof(ShowOffTurnOn), nameof(ShowAdminLine),
+        nameof(OffStatus), nameof(HasOffStatus))]
     public partial string? ReadError { get; private set; }
+
+    // ------------------------------------------------------------------ the off state (ui:OffState on the server's tab)
+
+    /// <summary>"The EST server is off", "The EST server needs OADM PRO", "The EST server did not start".</summary>
+    public string OffTitle => NeedsPro ? $"The {_name} needs OADM PRO" : Failed ? $"The {_name} did not start" : $"The {_name} is off";
+
+    /// <summary>Turn on in the off state: a user who may change the server, with OADM PRO.</summary>
+    public bool ShowOffTurnOn => ShowTurnOn && ProActive;
+
+    /// <summary>"An administrator can turn it on." for users who may not.</summary>
+    public bool ShowAdminLine => IsLoaded && ReadError is null && ProActive && !MayManage;
+
+    public const string AdminLine = "An administrator can turn it on.";
+
+    /// <summary>Why it does not run, below the text: the license it needs, or why it did not start; null when it is just off.</summary>
+    public string? OffStatus => !IsLoaded ? null : NeedsPro ? ProLicenseTexts.NeedsPro : Failed ? StatusText : null;
+
+    public bool HasOffStatus => OffStatus is not null;
 
     /// <summary>A live event of the page: the switch's own topic changes the state; others are not for it.</summary>
     public bool OnEvent(PluginEvent e)
@@ -196,6 +217,8 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowTurnOn));
         OnPropertyChanged(nameof(ShowTurnOff));
         OnPropertyChanged(nameof(TurnOnTip));
+        OnPropertyChanged(nameof(ShowOffTurnOn));
+        OnPropertyChanged(nameof(ShowAdminLine));
         OnPropertyChanged(nameof(NeedsPro));
         TurnOnCommand.NotifyCanExecuteChanged();
         TurnOffCommand.NotifyCanExecuteChanged();

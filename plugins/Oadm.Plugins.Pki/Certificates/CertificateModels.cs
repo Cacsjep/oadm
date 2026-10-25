@@ -232,6 +232,9 @@ public static class CertificateRules
     /// <summary>"Used by the 802.1X server." (Delete of a server certificate in use).</summary>
     public static string UsedBy(string server) => $"Used by the {server}.";
 
+    /// <summary>A certificate a server policy shows (decision 2026-10-25).</summary>
+    public static string UsedByPolicy(string policy) => $"Used by the policy {policy}. Pick another certificate first.";
+
     public const string RemoveCaThere = "Remove CAs in Certificate authorities.";
 
     public const string NothingDeleted = " Nothing was deleted.";

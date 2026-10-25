@@ -197,15 +197,20 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
         && Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
 
     /// <summary>
-    /// Nothing uses it: a revoked or expired certificate, or one imported here that no server uses (created and signed ones
-    /// are the OADM CA's: revoked first). CAs are removed in their own list. The server checks again.
+    /// Nothing uses it: a revoked or expired device certificate, one imported here that no server uses, or one created or
+    /// signed here that no server policy shows (decision 2026-10-25: a still valid one is revoked and deleted). CAs are
+    /// removed in their own list. The server checks again.
     /// </summary>
     public bool CanDelete => Source.Kind switch
     {
         ListedCertificateKind.Authority => false,
         ListedCertificateKind.Imported => string.IsNullOrEmpty(Source.UsedBy) || IsEnded,
+        ListedCertificateKind.Created or ListedCertificateKind.SignedRequest => string.IsNullOrEmpty(Source.UsedBy),
         _ => IsEnded,
     };
+
+    /// <summary>Created or signed here and still valid: Delete revokes it first (Revoke and delete).</summary>
+    public bool DeleteRevokes => Source.Kind is ListedCertificateKind.Created or ListedCertificateKind.SignedRequest && !IsEnded;
 
     /// <summary>OADM holds the key: PKCS#12 can be exported.</summary>
     public bool HasKey => Source.HasKey;
@@ -240,6 +245,17 @@ public static class IssuedCertificateTexts
 
     /// <summary>The confirmation of Delete of one certificate.</summary>
     public const string DeleteMessageOne = "It leaves the list. A revocation stays in force. This cannot be undone.";
+
+    /// <summary>The confirm button of a Delete that revokes still valid certificates first.</summary>
+    public const string RevokeAndDelete = "Revoke and delete";
+
+    /// <summary>"Lab cert is still valid. It is revoked first, so no device can use it any more." (one chosen).</summary>
+    public static string RevokedFirstOne(string name) => $"{name} is still valid. It is revoked first, so no device can use it any more.";
+
+    /// <summary>"3 of them are still valid. They are revoked first, ..." (several chosen).</summary>
+    public static string RevokedFirst(int count) => count == 1
+        ? "1 of them is still valid. It is revoked first, so no device can use it any more."
+        : string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{count:N0} of them are still valid. They are revoked first, so no device can use them any more.");
 
     /// <summary>The empty list with a filter or a search.</summary>
     public const string NoMatch = "No certificate matches.";
@@ -314,7 +330,7 @@ public static class IssuedCertificateTexts
                 .. row.AuthorityKind == CertificateAuthorityKind.Imported && row.CanIssue ? [CanIssue] : Array.Empty<string>(),
             ],
             ListedCertificateKind.Server => [ListedCertificateUses.Text(ListedCertificateUses.Server)],
-            ListedCertificateKind.Created => [.. Use(use), "Created"],
+            ListedCertificateKind.Created => [.. Use(use)], // no badge of its own (decision 2026-10-25): created is the usual case
             ListedCertificateKind.SignedRequest => [.. Use(use), "Signed"],
             ListedCertificateKind.Imported => [.. Use(use), "Imported"],
             _ => [.. Use(use)],

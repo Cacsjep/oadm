@@ -1,0 +1,19 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Pki.Client.Servers"
+             x:Class="Oadm.Plugins.Pki.Client.Servers.ServerOffStateView"
+             x:DataType="vm:ServerSwitchViewModel">
+  <!-- A server of PKI that does not run (turned off, no OADM PRO, a start that failed), the same on the 802.1X and EST server
+       tabs (decision 2026-10-25, like Sites and Compliance while off): icon, "The EST server is off", what it does, Turn on;
+       without OADM PRO the license it needs; users who may not change it are told who can. -->
+  <ui:OffState Icon="{Binding $parent[vm:ServerOffStateView].Icon}" Title="{Binding OffTitle}" Text="{Binding $parent[vm:ServerOffStateView].Text}">
+    <ui:StatusChip HorizontalAlignment="Center" Text="{Binding OffStatus}" IsWarning="{Binding NeedsPro}" IsError="{Binding Failed}" MaxLines="2"
+                   IsVisible="{Binding HasOffStatus}" />
+    <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding TurnOnCommand}" IsVisible="{Binding ShowOffTurnOn}">
+      <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="Turn on" />
+    </Button>
+    <TextBlock Classes="secondary" HorizontalAlignment="Center" Text="{x:Static vm:ServerSwitchViewModel.AdminLine}" IsVisible="{Binding ShowAdminLine}" />
+    <TextBlock Classes="error" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+  </ui:OffState>
+</UserControl>

@@ -55,17 +55,20 @@ public sealed record IssuingPolicyList
     /// <summary>The name of the CA each policy issues with ("Issued by"), by policy id.</summary>
     public IReadOnlyDictionary<Guid, string> CaNames { get; init; } = new Dictionary<Guid, string>();
 
-    /// <summary>The RADIUS server CA of each policy that imported one: "Contoso RADIUS CA, valid until 2030-01-01" by policy id.</summary>
-    public IReadOnlyDictionary<Guid, string> RadiusCaSummaries { get; init; } = new Dictionary<Guid, string>();
+    /// <summary>The name of the RADIUS server CA of each IEEE 802.1X policy, by policy id.</summary>
+    public IReadOnlyDictionary<Guid, string> RadiusCaNames { get; init; } = new Dictionary<Guid, string>();
+
+    /// <summary>What each policy issues, its summary sentence (below the dialog's Policy field), by policy id.</summary>
+    public IReadOnlyDictionary<Guid, string> Summaries { get; init; } = new Dictionary<Guid, string>();
 
     /// <summary>Why there are none (the policies cannot be read, the PKI does not run); null otherwise.</summary>
     public string? Error { get; init; }
 }
 
 /// <summary>
-/// Payload of Enable HTTPS and Enable IEEE 802.1X: the issuing policy the dialog chose and the values used for this run
-/// (decision 2026-10-24: the dialog fills them from the policy, the user may change them). A value left out comes from the
-/// policy (a run without dialog: the first policy of the kind). Payloads are never stored.
+/// Payload of Enable HTTPS and Enable IEEE 802.1X: the issuing policy the dialog chose; the run uses its values as stored
+/// (decision 2026-10-25: no values of their own in the dialog, the policy decides). No policy: the first of the kind.
+/// Payloads are never stored.
 /// </summary>
 public sealed record IssuePayload
 {
@@ -73,21 +76,6 @@ public sealed record IssuePayload
     public bool ClockConfirmed { get; init; }
 
     public Guid? PolicyId { get; init; }
-
-    public int? ValidDays { get; init; }
-
-    /// <summary><c>PolicyKeys</c>.</summary>
-    public string? Key { get; init; }
-
-    public int? EapolVersion { get; init; }
-
-    /// <summary><see cref="Dot1xIdentity"/>.</summary>
-    public string? Identity { get; init; }
-
-    public string? CustomIdentity { get; init; }
-
-    /// <summary><see cref="RadiusCaSource"/>; an imported one is the policy's certificate.</summary>
-    public string? RadiusCa { get; init; }
 }
 
 /// <summary>Group of an installed certificate in the view and delete dialogs.</summary>

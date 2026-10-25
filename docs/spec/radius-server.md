@@ -47,7 +47,7 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
     "6 policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies; left in the Save row, opens PKI's Policies tab),
     the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "The
-    802.1X server has no certificate: Corp CA cannot issue." (docs/spec/pki.md "Policies in cards"), "Port 1812 is used by
+    802.1X server has no certificate: Corp CA cannot issue." (docs/spec/pki.md "Policies as a list"), "Port 1812 is used by
     another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
     certificate's end.
   - **Switches** (card): name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site
@@ -180,16 +180,20 @@ certificate").
 - **TLS library** (see Libraries): BouncyCastle TLS in its **non-blocking mode**: one `TlsServerProtocol` per
   session without a stream; the bytes of each incoming EAP-TLS message go in with `OfferInput`, the bytes to send come
   out with `ReadOutput` and are cut into fragments; the handshake lives in memory only, no socket. `TlsServer` overrides
-  give the minimum version and the cipher suites of the 802.1X server policy, `NotifyAlertReceived` / `NotifyAlertRaised` the alert
+  give the minimum version of the 802.1X server policy and the cipher suites that follow it (decision 2026-10-25: no
+  selection), `NotifyAlertReceived` / `NotifyAlertRaised` the alert
   numbers in both directions, `TlsContext.ExportKeyingMaterial` the MSK. `SslStream` offers neither the key export nor the
   alert numbers on all three systems. Stage 1 starts with a proof: a full EAP-TLS exchange with a BouncyCastle client in a
   unit test.
-- **Server certificate:** issued by the CA of PKI's 802.1X server policy ("Issued by": the OADM CA by default, or an
-  imported CA with its key; decision 2026-10-25) for the server, names = the listen addresses and the server's host name,
-  valid for the policy's days (365 by default, ECC only: the cipher suites follow the key), renewed automatically 30 days
-  (at most a third of its time) before it expires and at once for another CA; other days apply to the next one; the
-  cameras trust it through the PKI task "Enable IEEE 802.1X" (its RADIUS server CA "OADM 802.1X server" installs the chain
-  of that CA). A CA that cannot issue leaves the server without a certificate (fail closed, the status says so).
+- **Server certificate** (decision 2026-10-25, docs/spec/pki.md "Server certificates"): the certificate PKI's 802.1X
+  server policy picks from the Certificates list (a key OADM holds, ECC only: the cipher suites follow the key and the
+  minimum TLS version). Turn on without one: the certificate the server kept before is imported with its key and picked,
+  else the one OADM makes for both servers (docs/spec/pki.md "Server certificates"). Never renewed by itself (the Expiry
+  warning and the status remind). The cameras trust it through the PKI task "Enable IEEE 802.1X": the RADIUS server CA
+  of the IEEE 802.1X policy is a CA of PKI's list (decision 2026-10-25), and the policy's hint names the CA that issued
+  this certificate. Without a
+  usable certificate the server refuses handshakes and the status says why ("The 802.1X server has no certificate. Choose
+  one in its policy.").
 
 ## Libraries (research 2026-10-23)
 
@@ -396,7 +400,7 @@ and reason, never secrets or key material.
   fragment sizes 500..1400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
 - Switches added, changed and removed while sessions run (the decision); the 802.1X server policy: minimum version 1.3 refuses a 1.2
-  client with the alert text, an unchecked cipher suite is not offered.
+  client with the alert text, an old CBC suite is offered only with minimum 1.0 or 1.1.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
 
@@ -547,14 +551,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   manage (...)"), the switch's site (49 "The device belongs to another site"), the policies, the MAC
   warning and the VLAN (`PolicyPlan`). The verdict's tag `CheckedCertificate` (device, serial, certificate serial, the VLAN
   policy) goes with the session; Sessions and Log carry it as `VlanPolicy`.
-- **Server certificate** (`ServerIdentityKeeper`): ECDSA P-256 from the CA of the 802.1X server policy (`IssuerId`; the
-  OADM CA without one) for the IPv4 listen addresses (with All
-  interfaces those of every card that is up, without self-assigned 169.254 addresses) and the host name, 365 days, kept in
-  the setting `serverCertificate` (key encrypted with `radius:server-key`), made again with a new CA, a new name or 30 days
-  before its end (checked at the start and every minute; a round asked for while one runs, e.g. a CA change, runs right
-  after it); names that only went away (a card or cable down, virtual adapters that come and go) keep the certificate, so
-  it does not change with every link; a new one goes into the processor's options at once. Without a CA none: handshakes are refused, the status
-  says "The PKI has no certificate authority."
+- **Server certificate** (`ServerIdentityKeeper`, decision 2026-10-25): loads the certificate of the 802.1X server policy
+  with its key (`PkiCertificateAuthority.ServerCertificate`) at the start, every minute and when the policies change; a new
+  pick goes into the processor's options at once. The first time without one it calls
+  `EnsureServerCertificateAsync` with the IPv4 listen addresses (with All interfaces those of every card that is up,
+  without self-assigned 169.254 addresses) and the host name, handing over the certificate of the setting
+  `serverCertificate` (key encrypted with `radius:server-key`, no longer written) to be imported. Without a usable one
+  handshakes are refused and the status says why (`ServerIdentityKeeper.Problem`); without a CA "The PKI has no
+  certificate authority."
 - **Sessions tab** (`SessionBoard`): `SessionChanged` only queues; every 500 ms the tick drains it (rows keyed by session,
   the device the certificate named or a MAC guess), ends timed-out sessions (every second), takes rows ended 10 s ago off
   (`removed`), and publishes the changed rows as `sessions` with `PluginEventAudience.DeviceRows` (500 rows per event;

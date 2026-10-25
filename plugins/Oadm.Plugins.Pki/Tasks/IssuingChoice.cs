@@ -13,9 +13,7 @@ namespace Oadm.Plugins.Pki.Tasks;
 /// </summary>
 public static class IssuingChoice
 {
-    /// <summary>
-    /// The policy of the run: <paramref name="payloadJson"/>'s policy with its values over the stored ones.
-    /// </summary>
+    /// <summary>The policy of the run: <paramref name="payloadJson"/>'s policy as stored (else the first of the kind).</summary>
     /// <exception cref="InvalidOperationException">No policy of the kind, or a value that is not allowed ("Nothing was changed").</exception>
     public static PkiPolicy Resolve(PkiService service, string kind, string? payloadJson)
     {
@@ -35,15 +33,7 @@ public static class IssuingChoice
 
         var policy = chosen ?? store.FirstOf(kind)
             ?? throw new InvalidOperationException($"There is no {PolicyKinds.Name(kind)} policy. Add one on the PKI page. Nothing was changed.");
-        var effective = PolicyRules.Normalize(policy with
-        {
-            ValidDays = payload.ValidDays ?? policy.ValidDays,
-            Key = payload.Key ?? policy.Key,
-            EapolVersion = payload.EapolVersion ?? policy.EapolVersion,
-            Identity = payload.Identity ?? policy.Identity,
-            CustomIdentity = payload.CustomIdentity ?? policy.CustomIdentity,
-            RadiusCa = payload.RadiusCa ?? policy.RadiusCa,
-        });
+        var effective = PolicyRules.Normalize(policy);
         if (PolicyRules.ValidateIssuing(effective) is { } error)
         {
             throw new InvalidOperationException($"{effective.Name}: {error.Message} Nothing was changed.");
@@ -86,15 +76,6 @@ public static class IssuingChoice
         }
 
         var policies = service.Policies.PoliciesOf(kind);
-        var summaries = new Dictionary<Guid, string>();
-        foreach (var policy in policies.Where(p => p.RadiusCa == RadiusCaSource.Imported && p.RadiusCaPem is not null))
-        {
-            if (PkiService.RadiusSummary(policy.RadiusCaPem) is { } summary)
-            {
-                summaries[policy.Id] = PolicyTexts.RadiusCaLine(summary.CommonName, summary.NotAfterUtc);
-            }
-        }
-
         // "Issued by" of each policy by name (decision 2026-10-25: any CA with its key issues).
         var names = service.Authorities().GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
         return new IssuingPolicyList
@@ -102,7 +83,8 @@ public static class IssuingChoice
             Policies = policies,
             CaName = service.Ca is { } ca ? Ca.CaCertificates.CommonName(ca.Certificate) : null,
             CaNames = policies.ToDictionary(p => p.Id, p => names.GetValueOrDefault(p.CaId ?? CertificateAuthorityInfo.OadmId) ?? PolicyTexts.RemovedCa),
-            RadiusCaSummaries = summaries,
+            RadiusCaNames = policies.Where(p => p.RadiusCaId is not null).ToDictionary(p => p.Id, p => names.GetValueOrDefault(p.RadiusCaId!) ?? PolicyTexts.RemovedCa),
+            Summaries = policies.ToDictionary(p => p.Id, p => PolicyStore.Summary(p, names)),
         };
     }
 

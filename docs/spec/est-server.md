@@ -11,27 +11,28 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 ## What the user sees
 
 - **Turn on / Turn off** (since OADM 4.5 the EST server is a PRO part of PKI, `docs/spec/pki.md` "One plugin"; OADM 4.1 had
-  it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's General card stores the
+  it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's Server card stores the
   choice and starts the server (TCP 9454 opens), **Turn off** (left of Save, confirmed) stops it. It runs only while it is on
-  and an OADM PRO license or trial is active: without one the page shows only General with
+  and an OADM PRO license or trial is active: without one the page shows only Server with
   `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and a disabled Turn on; when the license ends or is
   removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
   off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
   taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
   ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
 - **Page "EST server"** (the tab EST server of the PKI page; two columns, decision 2026-10-25, docs/spec/pki.md):
-  - **General** above **Profiles** left (Listen on, port, enrollments kept, Issued by; below it, in the warning style, why
-    no camera can enroll), **Enrollments** right. The Save row of General: the link "4 policies applied" left (the server's
+  - **Server** above **Profiles** left (Listen on, port, enrollments kept; below it, in the warning style, why
+    no camera can enroll), **Enrollments** right. The Save row of Server: the link "4 policies applied" left (the server's
     certificate, who may enroll and which CAs sign in are PKI's EST server, Enrollment and EST sign-in CA policies,
     docs/spec/pki.md "Code (stage 6)" and "Several CAs and the policy cleanup"; the
     tooltip lists them, it opens the Policies tab), the status left of Save: "Running on port 9454", "OADM PRO is not
     active.", "The PKI has no certificate authority.", "The EST server has no certificate: Corp CA cannot issue." (the CA
-    of the EST server policy lost its key, docs/spec/pki.md "Policies in cards"), or the listener's state ("... is used by
+    of the EST server policy lost its key, docs/spec/pki.md "Policies as a list"), or the listener's state ("... is used by
     another program").
   - **Profiles** (at most 2 per camera, the camera's limit: a third add is refused, "No more profiles can be added",
     seen on 10.0.0.48; a use belongs to one profile): name, use (HTTPS, IEEE 802.1X,
     MQTT, RTSPS), issuing policy (PKI's HTTPS certificate policies for HTTPS and RTSPS, IEEE 802.1X certificate policies for
-    IEEE 802.1X and MQTT: their valid days and key; docs/spec/pki.md "Code (stage 4)"), on. The profile name stays what
+    IEEE 802.1X and MQTT: their valid days and key; docs/spec/pki.md "Code (stage 4)"; by default the built-in one of its
+    kind, decision 2026-10-25: one issuing policy per kind, no "EST HTTPS" policies), on. The profile name stays what
     the camera uses in its URL. Two ready-made: **HTTPS** (server certificates, policy "HTTPS") and **IEEE 802.1X** (client
     certificates, policy "IEEE 802.1X"). A profile whose policy cannot be read issues nothing (503 "The issuing policy of
     this profile cannot be read.").
@@ -78,7 +79,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   gRPC Kestrel): `ctx.Network.ListenTcpAsync` on the server's own network (every address, or with **Listen on** one interface: the
   overload with its addresses, no IPv6 link-local; the set-up gives local cameras that interface's address of their
   family, else "has no IPv4 address for this camera. Nothing was changed."; a gone interface: status "Interface Ethernet 2 is not
-  available", tried again every 30 s; the server certificate names that interface's addresses) and `ctx.Sites.OpenTcpRelayAsync(site, port)`
+  available", tried again every 30 s; a server certificate made on Turn on names that interface's addresses) and `ctx.Sites.OpenTcpRelayAsync(site, port)`
   per site the cameras of which are set up (the node app asks to allow the port, like NTP's). TLS and a small HTTP/1.1
   parser on the raw stream in the plugin (the SDK has no HTTPS helper on `IStreamListener` yet; built here, moved to the
   SDK when a second plugin needs it).
@@ -133,9 +134,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   (`EstService` after `EstHttp.WriteAsync`, `ICertificateDelivery.DeliveredAsync`) HTTPS, RTSPS and MQTT certificates
   become current and the previous one of the camera and use is revoked; an IEEE 802.1X one only when the camera signs in
   to OADM's 802.1X server with it. An answer that cannot be written revokes the new certificate as unused.
-- **The server's TLS certificate:** issued by the OADM CA, SANs = the server's addresses and host name; **one per site**
-  with the node's addresses toward the cameras (cameras dial an IP, so no SNI: the plugin picks the certificate by the
-  site the connection came through). Re-issued when the addresses change (node network cards, DHCP).
+- **The server's TLS certificate** (decision 2026-10-25, docs/spec/pki.md "Server certificates"): the certificate PKI's
+  EST server policy picks from the Certificates list, **one for this server and every site** (cameras dial an IP, there is
+  no SNI): it names the server's addresses and host name and the site nodes' addresses toward the cameras. Create in the
+  policy (and Turn on without one) makes it from a CA with its key, 10 years, ECC. Never renewed or re-issued by itself;
+  the EST tab shows it and warns when a site's address is not in it.
 - Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
 - Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
@@ -150,9 +153,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   imported CA's key may also be used outside OADM, so a name in its certificate proves nothing. A camera with a certificate
   of an imported CA renews with that certificate when it is its current one in PKI's store ("Renewal with the current
   certificate"), else with its Axis device ID.
-- The server's TLS certificate: made in memory (never stored) from the CA, days and key of PKI's EST server policy (the
-  OADM CA, 90 days, ECC P-256 by default; RSA 2048), made again 30 days (at most a third of its time) before its end,
-  when the addresses, the CA or the policy's key change; other days apply to the next one.
+- The server's TLS certificate (`Serving/ServerCertificates`): the EST server policy's certificate with its key, loaded
+  once and again when the policies change (PKCS#12 in memory, so Windows TLS can use the key); `cacerts` and the TLS chain
+  are its issuer's chain.
 
 ## Certificate renewals and pinning
 
@@ -261,7 +264,14 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    seconds later and restarts (connections drop); the task pins it (`UpdateDeviceTlsAsync`, again for up to 60 s while
    the web server restarts; a warning when it does not happen). Only when OADM talks HTTPS to the camera: the task never
    changes how OADM connects.
-6. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
+6. With the dot1x profile (decision 2026-10-25): **Install the RADIUS server CA** and **Set the RADIUS server CA**, so the
+   camera checks the RADIUS server with the RADIUS server CA of the profile's IEEE 802.1X policy, as Enable IEEE 802.1X
+   sets it (else a new OADM CA leaves the camera trusting the old one: TLS alert 48, seen 2026-10-25). The CA is found in
+   the check step (missing: nothing is changed). Only the CA list of the camera's EAP-TLS settings is written
+   (`setWired8021XConfiguration` with on/off, identity, EAPOL version and client certificate as the camera has them,
+   `NetworkInfoApi.SetCaCertificatesAsync`); skipped without the network settings API, with IEEE 802.1X off or without a
+   client certificate, "Already set" when nothing differs. Also when the profiles were already set up.
+7. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
    public CAs).
 
 Setting up and removing need the task permission "Set up certificate enrollment" (`enroll`, not for operators by
@@ -300,8 +310,8 @@ of OADM, PKI included, stays Apache 2.0. The THIRD-PARTY notices name the part (
    write test on 10.0.0.48 passed. Open: removing unused certificates.
 4. **Sites** (built): `ISites.OpenTcpRelayAsync` per bound site with set-up cameras (`EstService.ServeSiteAsync`, called
    by the set-up task with the node's address towards the camera, `LocalAddressTowardsAsync` on the device's route); the
-   addresses per site are stored (plugin setting `sites`) and form the site's own server certificate (picked by the
-   connection's site: no SNI); a removed site's relay is released and its addresses dropped; a port change releases and
+   addresses per site are stored (plugin setting `sites`; decision 2026-10-25: the one certificate of the EST server
+   policy names them, no certificate per site, the tab warns when a site is missing from it); a removed site's relay is released and its addresses dropped; a port change releases and
    reopens every relay; `plugin.json` `"siteSupport": "full"`, `sitePorts` TCP 9454 "EST server". The page lists the relays
    that do not run below Save ("EST server at <site>: waiting for approval in the OADM Site Node app"); the set-up's wait
    ends with that text when the relay does not run.

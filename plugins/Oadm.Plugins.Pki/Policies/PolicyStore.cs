@@ -251,11 +251,7 @@ public sealed partial class PolicyStore : IDisposable
 
         if (!list.Any(p => p.Kind == PolicyKinds.EstServer))
         {
-            list.Add(new PkiPolicy
-            {
-                Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer, CaId = CertificateAuthorityInfo.OadmId,
-                ValidDays = PolicyLimits.DefaultEstServerDays, Key = PolicyKeys.Ecc,
-            });
+            list.Add(new PkiPolicy { Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer });
         }
 
         // Names are unique per kind: a Revoke and a Block policy of the same name are both Block policies now.
@@ -342,6 +338,19 @@ public sealed partial class PolicyStore : IDisposable
             if (PolicyKinds.IsIssuing(policy.Kind) && !IssuingCaChoices().Any(c => string.Equals(c.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
             {
                 return Refused(PolicyFields.Ca, PolicyTexts.CannotIssue);
+            }
+
+            // The RADIUS server CA of an IEEE 802.1X policy is a CA of the list (decision 2026-10-25).
+            if (policy.Kind == PolicyKinds.Dot1xCertificate
+                && !_authorities().Any(a => a.Kind != CertificateAuthorityKind.PreviousOadm && string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Refused(PolicyFields.RadiusCa, PolicyTexts.ChooseRadiusCa);
+            }
+
+            // A server policy shows a certificate of the Certificates list with its key (decision 2026-10-25).
+            if (PolicyKinds.IsServer(policy.Kind) && CertificateRefusal(policy) is { } certificate)
+            {
+                return Refused(PolicyFields.Certificate, certificate);
             }
 
             if (policy.Kind == PolicyKinds.AllowCa)
@@ -487,8 +496,73 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>The first (oldest) policy of <paramref name="kind"/>: the default of the task dialogs, renewals and new profiles.</summary>
     public PkiPolicy? FirstOf(string kind) => PoliciesOf(kind) is { Count: > 0 } list ? list[0] : null;
 
-    /// <summary>The EST server policy (its certificate's CA, days and key); null without one (the EST server then uses 90 days, ECC, the OADM CA).</summary>
+    /// <summary>The EST server policy (the certificate it shows, decision 2026-10-25); null without one.</summary>
     public PkiPolicy? EstServerPolicy => FirstOf(PolicyKinds.EstServer);
+
+    /// <summary>
+    /// The certificates of PKI's Certificates list with a key OADM holds, set by PKI (a server policy picks one; decision
+    /// 2026-10-25). Null: none known (a server policy cannot be saved).
+    /// </summary>
+    public Func<IReadOnlyList<PolicyCertificateChoice>>? ServerCertificates { get; set; }
+
+    /// <summary>The names a new 802.1X server certificate gets (this server's addresses and host name), set by the 802.1X server.</summary>
+    public Func<IReadOnlyList<string>>? Dot1xServerNames { get; set; }
+
+    /// <summary>The names a new EST server certificate gets (this server's addresses and host name, the site nodes' addresses), set by the EST server.</summary>
+    public Func<IReadOnlyList<string>>? EstServerNames { get; set; }
+
+    /// <summary>Why a server policy cannot show the certificate it picks; null when it can.</summary>
+    private string? CertificateRefusal(PkiPolicy policy)
+    {
+        var choice = (ServerCertificates?.Invoke() ?? []).FirstOrDefault(c => string.Equals(c.Id, policy.CertificateId, StringComparison.Ordinal));
+        return choice is null ? PolicyTexts.CertificateGone
+            : choice.Problem is { } problem ? problem
+            : !choice.UsableFor(policy.Kind) ? PolicyTexts.Dot1xServerNeedsEccCertificate
+            : null;
+    }
+
+    /// <summary>The server policy that shows the certificate <paramref name="certificateId"/>; null when none does (it can then be deleted).</summary>
+    public PkiPolicy? ShowingCertificate(string certificateId) =>
+        All.FirstOrDefault(p => PolicyKinds.IsServer(p.Kind) && string.Equals(p.CertificateId, certificateId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Sets the certificate of the server policy of <paramref name="kind"/> without the checks of a save (Turn on and the
+    /// first start after 2026-10-25 give a server without one a certificate; decision 2026-10-25). Never on a list that
+    /// cannot be read; false when there is no such policy or it already has a certificate.
+    /// </summary>
+    public async Task<bool> SetServerCertificateAsync(string kind, string certificateId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(certificateId);
+        PkiPolicy changed;
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var stored = _snapshot.Stored;
+            var index = stored.Policies.ToList().FindIndex(p => p.Kind == kind);
+            if (_snapshot.Unreadable || index < 0 || !string.IsNullOrEmpty(stored.Policies[index].CertificateId))
+            {
+                return false;
+            }
+
+            changed = stored.Policies[index] with { CertificateId = certificateId };
+            var list = stored.Policies.ToList();
+            list[index] = changed;
+            await StoreAsync(stored with { Policies = list }, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        var kindName = PolicyKinds.Name(changed.Kind);
+        LogSaved(changed.Name, kindName, "OADM");
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>"EST server (OADM CA), until 2035-10-25" per certificate id (the summary of a server policy).</summary>
+    private Dictionary<string, string> CertificateLabels() =>
+        (ServerCertificates?.Invoke() ?? []).GroupBy(c => c.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Label, StringComparer.Ordinal);
 
     /// <summary>
     /// Why <paramref name="policy"/> cannot be deleted: a system policy (<see cref="IsSystem"/>; the server policies among
@@ -538,11 +612,12 @@ public sealed partial class PolicyStore : IDisposable
         ArgumentNullException.ThrowIfNull(devices);
         var snapshot = _snapshot;
         var names = CaNames();
+        var certificates = CertificateLabels();
         var warnings = Warnings(snapshot, devices);
         var list = snapshot.Stored.Policies;
         return
         [
-            .. list.Select(p => new PolicyRow(p, PolicyKinds.Name(p.Kind), PolicyKinds.GroupOf(p.Kind), Summary(p, names), warnings.GetValueOrDefault(p.Id), IsSystem(p, list))),
+            .. list.Select(p => new PolicyRow(p, PolicyKinds.Name(p.Kind), PolicyKinds.GroupOf(p.Kind), Summary(p, names, certificates), warnings.GetValueOrDefault(p.Id), IsSystem(p, list))),
         ];
     }
 
@@ -551,14 +626,9 @@ public sealed partial class PolicyStore : IDisposable
     {
         ArgumentNullException.ThrowIfNull(kinds);
         var names = CaNames();
-        return [.. _snapshot.Stored.Policies.Where(p => kinds(p.Kind)).Select(p => new PolicyLine(p.Name, Summary(p, names)))];
+        var certificates = CertificateLabels();
+        return [.. _snapshot.Stored.Policies.Where(p => kinds(p.Kind)).Select(p => new PolicyLine(p.Name, Summary(p, names, certificates)))];
     }
-
-    /// <summary>The summary sentence of <paramref name="policy"/> with the names of PKI's CAs now ("Check a device").</summary>
-    public string SummaryOf(PkiPolicy policy) => Summary(policy, CaNames());
-
-    /// <summary>The name of a CA in a sentence ("Corp CA", "Axis device ID", "(removed CA)").</summary>
-    public string CaNameOf(string? caId) => CaName(caId, CaNames());
 
     /// <summary>The CAs an Allow CA policy can name (previous OADM CAs follow the OADM CA).</summary>
     public IReadOnlyList<PolicyCaChoice> CaChoices()
@@ -617,11 +687,13 @@ public sealed partial class PolicyStore : IDisposable
 
     /// <summary>
     /// Every policy that names <paramref name="authorityId"/> itself: issuing ones ("Issued by"; no CA: the OADM CA), 802.1X
-    /// trusted CA and EST sign-in CA (decision 2026-10-25: such a CA cannot be removed).
+    /// trusted CA, EST sign-in CA and the RADIUS server CA of IEEE 802.1X policies (decision 2026-10-25: such a CA cannot be
+    /// removed).
     /// </summary>
     public IReadOnlyList<PkiPolicy> NamingCa(string authorityId) =>
-        [.. All.Where(p => (p.Kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(p.Kind))
-            && string.Equals(p.CaId ?? (PolicyKinds.IsIssuing(p.Kind) ? CertificateAuthorityInfo.OadmId : null), authorityId, StringComparison.OrdinalIgnoreCase))];
+        [.. All.Where(p => ((p.Kind is PolicyKinds.AllowCa or PolicyKinds.SignInCa || PolicyKinds.IsIssuing(p.Kind))
+                && string.Equals(p.CaId ?? (PolicyKinds.IsIssuing(p.Kind) ? CertificateAuthorityInfo.OadmId : null), authorityId, StringComparison.OrdinalIgnoreCase))
+            || (p.Kind == PolicyKinds.Dot1xCertificate && string.Equals(p.RadiusCaId, authorityId, StringComparison.OrdinalIgnoreCase)))];
 
     /// <summary>The name of the Axis device ID CAs.</summary>
     public const string AxisDeviceIdName = "Axis device ID";
@@ -656,20 +728,24 @@ public sealed partial class PolicyStore : IDisposable
     /// The row's summary (and the editor's preview line): one plain sentence that says what the policy does, with its values;
     /// the Devices column says which devices ("these devices"). One builder per kind (docs/spec/pki.md "Policies").
     /// </summary>
-    public static string Summary(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames)
+    public static string Summary(PkiPolicy policy, IReadOnlyDictionary<string, string> caNames, IReadOnlyDictionary<string, string>? certificates = null)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(caNames);
         var ca = CaName(policy.CaId, caNames);
+        var shows = policy.CertificateId is not { } certificateId ? "has no certificate yet"
+            : certificates?.GetValueOrDefault(certificateId) is { } label ? $"shows the certificate {label}"
+            : "shows a certificate that is no longer in the list";
         return policy.Kind switch
         {
             PolicyKinds.ExpiryWarning => string.Create(CultureInfo.CurrentCulture,
                 $"Certificates with {PolicyTexts.DaysText(policy.Days ?? 0)} or less left show a warning and raise Certificate expires soon."),
             PolicyKinds.HttpsCertificate => $"Enable HTTPS issues certificates from {ca}, {Issued(policy)}.",
-            PolicyKinds.Dot1xCertificate => $"Enable IEEE 802.1X issues certificates from {ca}, {Issued(policy)}. {SignsInAs(policy)}",
-            PolicyKinds.EstServer => $"The EST server uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends.",
+            PolicyKinds.Dot1xCertificate => $"Enable IEEE 802.1X issues certificates from {ca}, {Issued(policy)}. {SignsInAs(policy)}"
+                + (policy.RadiusCaId is { } radius ? $" Cameras check the RADIUS server with {CaName(radius, caNames)}." : string.Empty),
+            PolicyKinds.EstServer => $"The EST server {shows}.",
             PolicyKinds.Dot1xServer => string.Create(CultureInfo.CurrentCulture,
-                $"The 802.1X server uses a certificate from {ca}, {Issued(policy)}, renewed 30 days before it ends. It accepts TLS {policy.MinimumTls} or later, sends EAP packets of up to {policy.LargestEapPacket ?? 0:N0} bytes and ")
+                $"The 802.1X server {shows}. It accepts TLS {policy.MinimumTls} or later with secure cipher suites, sends EAP packets of up to {policy.LargestEapPacket ?? 0:N0} bytes and ")
                 + (policy.ReauthMinutes is { } minutes
                     ? string.Create(CultureInfo.CurrentCulture, $"asks cameras to sign in again every {minutes:N0} minutes.")
                     : "lets the switch decide when cameras sign in again."),
@@ -692,6 +768,8 @@ public sealed partial class PolicyStore : IDisposable
     private static string SignsInAs(PkiPolicy policy) => policy.Identity switch
     {
         Dot1xIdentity.HostName => "Cameras sign in with their host name.",
+        Dot1xIdentity.IpAddress => "Cameras sign in with their IP address.",
+        Dot1xIdentity.IpLastOctet => "Cameras sign in with the last octet of their IP address.",
         Dot1xIdentity.Custom => $"Cameras sign in as {policy.CustomIdentity}.",
         _ => "Cameras sign in with their MAC address.",
     };

@@ -257,6 +257,12 @@ public sealed record EstState
     /// <summary>The CA that issues the certificates (the OADM CA's name); null without one.</summary>
     public string? IssuingCa { get; init; }
 
+    /// <summary>The certificate the EST server shows ("EST server (OADM CA), until 2035-10-25"); null without one.</summary>
+    public string? ServerCertificate { get; init; }
+
+    /// <summary>A site whose node address the certificate does not name ("Site Parking is not in ..."); null when none.</summary>
+    public string? CertificateWarning { get; init; }
+
     /// <summary>The HTTPS and IEEE 802.1X certificate policies of PKI a profile can name, oldest first.</summary>
     public IReadOnlyList<IssuingPolicyChoice> IssuingPolicies { get; init; } = [];
 }

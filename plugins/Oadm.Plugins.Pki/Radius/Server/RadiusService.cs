@@ -161,10 +161,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _log = new RadiusLog(host.Records, host.Time, host.Logger);
         _board = new SessionBoard(host.Time);
         _index = new DeviceIndex(host.Devices, host.Time);
-        _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Time, host.Logger)
-        {
-            Policy = () => host.Policies()?.ServerPolicy,
-        };
+        _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Logger);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time, QueuePolicyRevoke);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
@@ -741,8 +738,8 @@ public sealed partial class RadiusService : IAsyncDisposable
             switch (listener.State)
             {
                 case RelayState.Running when _identity.Identity is null:
-                    // The CA of the 802.1X server policy cannot issue: say which, else PKI has no CA.
-                    text = Oadm.Plugins.Pki.Ca.IssuerChains.NoCertificateReason(_host.Authority(), _host.Policies()?.ServerPolicy?.CaId, RadiusTexts.ServerName) ?? RadiusTexts.NoCa;
+                    // The certificate of the 802.1X server policy: none chosen, gone, ended or revoked (decision 2026-10-25).
+                    text = _identity.Problem ?? RadiusTexts.NoCa;
                     break;
                 case RelayState.Running:
                     text = RadiusTexts.Running(config.Port);
@@ -920,6 +917,7 @@ public sealed partial class RadiusService : IAsyncDisposable
             if (store is not null)
             {
                 store.Changed += OnPoliciesChanged;
+                store.Dot1xServerNames = CertificateNames; // Create of the 802.1X server policy offers them
             }
         }
     }
@@ -933,6 +931,7 @@ public sealed partial class RadiusService : IAsyncDisposable
 
         RulesNow();
         PublishState();
+        Track(Task.Run(() => RefreshIdentityAsync(CancellationToken.None))); // another certificate picked: the next handshake shows it
     }
 
     /// <summary>A handshake met a certificate a revoke policy holds: revoked in the background (deduplicated, at most 10,000 waiting).</summary>
@@ -1392,21 +1391,7 @@ public sealed partial class RadiusService : IAsyncDisposable
                 _trust = CaTrust.Build(ca, selection, _deviceIds, Volatile.Read(ref _caVersion));
             }
 
-            try
-            {
-                // Also when nothing new was made: after a start the keeper loads the stored certificate, which the
-                // handshakes must get too (they started without one).
-                if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
-                    || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
-                {
-                    _processor.Options = OptionsOf(RulesNow(), _identity.Identity);
-                    PublishState();
-                }
-            }
-            catch (Exception ex) when (ex is CertificateRequestRefusedException or CryptographicException or InvalidOperationException)
-            {
-                LogCertificateFailed(ex.Message);
-            }
+            await RefreshIdentityAsync(ct).ConfigureAwait(false);
 
             if (_lastResolveTicks == 0 || _host.Time.GetElapsedTime(_lastResolveTicks) >= ResolveInterval)
             {
@@ -1431,6 +1416,27 @@ public sealed partial class RadiusService : IAsyncDisposable
     /// without self-assigned 169.254 addresses, which come and go with a cable) and the host name. The keeper makes no new
     /// certificate while the names only shrink (a card went down), so the certificate does not change with every cable.
     /// </summary>
+    /// <summary>
+    /// Loads the certificate of the 802.1X server policy (the first time: gives the policy one); the handshakes get the
+    /// new one, also after a start (they began without one).
+    /// </summary>
+    private async Task RefreshIdentityAsync(CancellationToken ct)
+    {
+        try
+        {
+            if (await _identity.EnsureAsync(CertificateNames(), ct).ConfigureAwait(false)
+                || !ReferenceEquals(_processor.Options.ServerIdentity, _identity.Identity))
+            {
+                _processor.Options = OptionsOf(RulesNow(), _identity.Identity);
+                PublishState();
+            }
+        }
+        catch (Exception ex) when (ex is CertificateRequestRefusedException or CryptographicException or InvalidOperationException)
+        {
+            LogCertificateFailed(ex.Message);
+        }
+    }
+
     private List<string> CertificateNames()
     {
         var nic = ListenInterface();

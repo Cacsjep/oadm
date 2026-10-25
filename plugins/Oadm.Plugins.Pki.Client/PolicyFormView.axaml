@@ -4,14 +4,22 @@
              xmlns:vm="using:Oadm.Plugins.Pki.Client"
              x:Class="Oadm.Plugins.Pki.Client.PolicyFormView"
              x:DataType="vm:PolicyEditorViewModel">
-  <!-- The policy's form: in the editor on top of the shared device picker's card (hidden for kinds without devices), and in
-       place for a system policy on its card (IsInPlace: no name, no devices). What the kind does, the name, the kind's own
-       fields (the kind is preset by the rule list's Add, decision 2026-10-25: no kind choice). Read only for users who may
-       not change the policies. -->
+  <!-- The policy's form on the right of the Policies tab (decision 2026-10-25): what the kind does, the name (not for a system
+       policy), the kind's own fields (the kind is preset by Add: no kind choice) and the devices (All devices, or the shared
+       picker behind Choose devices). Read only for users who may not change the policies. -->
   <StackPanel Classes="form" IsEnabled="{Binding IsEditable}">
     <TextBlock Classes="secondary" Text="{Binding KindHint}" TextWrapping="Wrap" />
     <ui:FormField Label="Name" InputWidth="360" IsVisible="{Binding ShowsName}">
       <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" PlaceholderText="{Binding NamePlaceholder}" />
+    </ui:FormField>
+    <!-- 802.1X server and EST server: the certificate the server shows, from the Certificates list (decision 2026-10-25; OADM
+         makes one for both when OADM PRO becomes active, other ones come from the Certificates tab). -->
+    <ui:FormField Label="Certificate" InputWidth="440" Hint="{Binding CertificateHint}" IsVisible="{Binding IsServerKind}">
+      <Panel>
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding CertificateChoices}" SelectedItem="{Binding Certificate}" IsVisible="{Binding !HasNoCertificates}" />
+        <TextBlock Classes="secondary" Text="{x:Static vm:PolicyEditorViewModel.NoCertificatesText}" VerticalAlignment="Center" TextWrapping="Wrap"
+                   IsVisible="{Binding HasNoCertificates}" />
+      </Panel>
     </ui:FormField>
     <ui:FormField Label="VLAN ID" IsVisible="{Binding IsVlan}">
       <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
@@ -20,7 +28,7 @@
       <TextBox Text="{Binding Days}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 365" />
     </ui:FormField>
 
-    <!-- Issuing (also the 802.1X and EST server policies): the CA that issues (any CA with its key), valid days and the key -->
+    <!-- Issuing (HTTPS, IEEE 802.1X): the CA that issues (any CA with its key), valid days and the key -->
     <ui:FormField Label="Issued by" InputWidth="360" IsVisible="{Binding IsIssuing}">
       <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding IssuingCaChoices}" SelectedItem="{Binding IssuingCa}" />
     </ui:FormField>
@@ -47,16 +55,10 @@
       </ui:FormField.IsVisible>
       <TextBox Text="{Binding CustomIdentity}" PlaceholderText="e.g. axis-{serial}" />
     </ui:FormField>
-    <ui:FormField Label="RADIUS server CA" InputWidth="360" IsVisible="{Binding IsDot1xCertificate}">
-      <StackPanel Spacing="8">
-        <Grid ColumnDefinitions="*,Auto,Auto">
-          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:PolicyEditorViewModel.RadiusChoices}" SelectedItem="{Binding RadiusCa}" />
-          <Button Grid.Column="1" Margin="10,0,0,0" Classes="secondary" Content="Import" Command="{Binding ImportRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}"
-                  ToolTip.Tip="The CA that issued the RADIUS server's certificate (.crt or .cer)" />
-          <Button Grid.Column="2" Margin="10,0,0,0" Classes="secondary" Content="View" Command="{Binding ViewRadiusCaCommand}" IsVisible="{Binding IsRadiusImported}" />
-        </Grid>
-        <TextBlock Classes="secondary" Text="{Binding RadiusCaText}" TextWrapping="Wrap" IsVisible="{Binding IsRadiusImported}" />
-      </StackPanel>
+    <!-- A CA of the list (decision 2026-10-25: imported on the Certificates page, no import here); the hint names the CA of the
+         802.1X server's certificate. -->
+    <ui:FormField Label="RADIUS server CA" InputWidth="360" Hint="{Binding RadiusCaHint}" IsVisible="{Binding IsDot1xCertificate}">
+      <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding RadiusCaChoices}" SelectedItem="{Binding RadiusCa}" />
     </ui:FormField>
 
     <!-- EST sign-in CA: the CA (Axis device ID, OADM CA, previous OADM CAs) and what cameras may sign in with it for -->
@@ -94,9 +96,19 @@
       <CheckBox Content="{x:Static vm:PolicyEditorViewModel.AlsoRevokeText}" IsChecked="{Binding AlsoRevoke}" />
     </ui:FormField>
 
-    <!-- Kinds with devices (not a Block that also revokes): All devices, or the picker below -->
-    <ui:FormField Label="Devices" IsVisible="{Binding ShowsDeviceScope}">
-      <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}" />
+    <!-- Kinds with devices: All devices (not a Block that also revokes), or the chosen ones with Choose devices (the shared
+         picker in its group mode); the devices' error below. A system policy keeps its devices. -->
+    <ui:FormField Label="Devices" InputWidth="440" Error="{Binding DevicesError}" IsVisible="{Binding ShowsDevicesField}">
+      <StackPanel Spacing="8">
+        <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}"
+                  IsVisible="{Binding ShowsDeviceScope}" />
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" IsVisible="{Binding ShowsPicker}">
+          <TextBlock Classes="secondary" Text="{Binding DevicesText}" TextWrapping="Wrap" VerticalAlignment="Center" />
+          <Button Grid.Column="1" Classes="secondary" Command="{Binding ChooseDevicesCommand}" VerticalAlignment="Center">
+            <ui:IconLabel Icon="{DynamicResource Icon.device.camera}" Text="Choose devices" />
+          </Button>
+        </Grid>
+      </StackPanel>
     </ui:FormField>
 
     <!-- 802.1X trusted CA -->
@@ -111,27 +123,6 @@
     <!-- 802.1X server -->
     <ui:FormField Label="Minimum TLS version" Hint="{Binding TlsHint}" IsVisible="{Binding IsServer}">
       <ComboBox Width="120" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.TlsVersions}" SelectedItem="{Binding MinimumTls}" />
-    </ui:FormField>
-    <ui:FormField Label="Cipher suites" Error="{Binding CipherSuitesError}" InputWidth="440" IsVisible="{Binding IsServer}">
-      <StackPanel Spacing="4">
-        <!-- At most 13 suites: no virtualization needed. -->
-        <ItemsControl ItemsSource="{Binding CipherSuites}">
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:CipherSuiteViewModel">
-              <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsListed}">
-                <StackPanel>
-                  <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
-                  <TextBlock Classes="secondary small" Text="{Binding KeyHint}" IsVisible="{Binding HasKeyHint}" />
-                </StackPanel>
-              </CheckBox>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-        <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding ResetCipherSuitesCommand}"
-                ToolTip.Tip="Check the secure set for the chosen version">
-          <ui:IconLabel Icon="{DynamicResource Icon.undo}" Text="Reset to default" />
-        </Button>
-      </StackPanel>
     </ui:FormField>
     <ui:FormField Label="Largest EAP packet" Hint="Bytes. The switch can ask for smaller packets." IsVisible="{Binding IsServer}">
       <TextBox Text="{Binding LargestPacket}" Width="120" HorizontalAlignment="Left" />

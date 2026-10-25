@@ -535,7 +535,10 @@ public static class CertificateDeployment
         }).ConfigureAwait(false);
     }
 
-    /// <summary>The EAP identity of an IEEE 802.1X certificate policy: MAC (= serial), host name, or custom with {serial} / {hostName}.</summary>
+    /// <summary>
+    /// The EAP identity of an IEEE 802.1X certificate policy: MAC (= serial), host name, IP address, the last octet of the IP
+    /// address, or custom with {serial} / {hostName}.
+    /// </summary>
     public static string Identity(Policies.PkiPolicy policy, IDeviceInfo device, DeviceNetworkInfo? network)
     {
         ArgumentNullException.ThrowIfNull(policy);
@@ -544,34 +547,51 @@ public static class CertificateDeployment
         return policy.Identity switch
         {
             Dot1xIdentity.HostName => hostName,
+            Dot1xIdentity.IpAddress => device.Address,
+            Dot1xIdentity.IpLastOctet => LastOctet(device.Address),
             Dot1xIdentity.Custom when !string.IsNullOrWhiteSpace(policy.CustomIdentity) =>
                 policy.CustomIdentity.Replace("{serial}", device.Serial, StringComparison.OrdinalIgnoreCase).Replace("{hostName}", hostName, StringComparison.OrdinalIgnoreCase),
             _ => device.Serial,
         };
     }
 
+    /// <summary>"48" of 10.0.0.48; the last group of an IPv6 address; the address itself when it is no IP address.</summary>
+    internal static string LastOctet(string address)
+    {
+        if (!System.Net.IPAddress.TryParse(address, out var ip))
+        {
+            return address;
+        }
+
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        {
+            return ip.GetAddressBytes()[3].ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        var text = ip.ToString();
+        return text[(text.LastIndexOf(':') + 1)..] is { Length: > 0 } last ? last : text;
+    }
+
     /// <summary>
-    /// The CA certificates the device uses to check the RADIUS server: the imported one of the policy, or (OADM's 802.1X
-    /// server) the chain of the CA of the 802.1X server policy (decision 2026-10-25), the OADM CA without one.
+    /// The CA certificates the device uses to check the RADIUS server: the CA of the list the policy names (decision
+    /// 2026-10-25) and the certificates above it that PKI knows.
     /// </summary>
     public static IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy, PkiService service)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(service);
-        if (string.Equals(policy.RadiusCa, RadiusCaSource.Imported, StringComparison.Ordinal))
+        var chain = service.Authorities().FirstOrDefault(a => a.Kind != Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm
+            && string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase))?.Certificates ?? [];
+        if (chain.Count == 0)
         {
-            if (!Policies.PolicyRules.IsCertificatePem(policy.RadiusCaPem))
-            {
-                throw new InvalidOperationException($"The policy {policy.Name} names an imported RADIUS server CA, but none is imported (see the PKI page). Nothing was changed.");
-            }
-
-            var fingerprint = Fingerprint(policy.RadiusCaPem!);
-            return [(CaAlias(RadiusCaAliasPrefix, fingerprint), policy.RadiusCaPem!, fingerprint)];
+            throw new InvalidOperationException($"The policy {policy.Name} names no CA of the RADIUS server that is in the CA list. Choose one in the policy. Nothing was changed.");
         }
 
-        var server = service.Policies.ServerPolicy;
-        var ca = service.IssuingCa(server?.CaId)
-            ?? throw new InvalidOperationException("The CA of the 802.1X server policy cannot issue certificates, so cameras cannot check the 802.1X server. Choose another CA in that policy. Nothing was changed.");
-        return CaChain(ca);
+        return [.. chain.Select(der =>
+        {
+            using var certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
+            var fingerprint = CaCertificates.Fingerprint(certificate);
+            return (CaAlias(CaAliasPrefix, fingerprint), CaCertificates.ToPem(certificate), fingerprint);
+        })];
     }
 }

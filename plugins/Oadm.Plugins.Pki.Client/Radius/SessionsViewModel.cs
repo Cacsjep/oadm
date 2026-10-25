@@ -76,8 +76,8 @@ public sealed partial class SessionRowViewModel : ObservableObject, IAuthenticat
 
     public string Switch => Source.SwitchName;
 
-    /// <summary>"GigabitEthernet1/0/5", with the port type when the switch sent one.</summary>
-    public string Port => Source.PortType is { Length: > 0 } type && Source.Port.Length > 0 ? $"{Source.Port} ({type})" : Source.Port;
+    /// <summary>"GigabitEthernet1/0/5" or "17", as the switch names it (no port type: decision 2026-10-25).</summary>
+    public string Port => Source.Port;
 
     public string Mac => Source.Mac;
 

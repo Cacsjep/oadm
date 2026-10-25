@@ -119,6 +119,11 @@ public static class EstTaskIds
     public const string RemoveOldStep = "Remove the camera's enrollment profiles";
     public const string PinStep = "Pin the new HTTPS certificate";
 
+    /// <summary>With the dot1x profile (decision 2026-10-25): the camera checks the RADIUS server with the policy's CA.</summary>
+    public const string RadiusCaInstallStep = "Install the RADIUS server CA";
+
+    public const string RadiusCaStep = "Set the RADIUS server CA";
+
     public static string AddStep(string profile) => $"Add the {profile} profile";
 
     public static string WaitStep(string profile) => $"Wait for the {profile} certificate";
@@ -135,7 +140,7 @@ public static class EstTaskIds
 }
 
 /// <summary>Common part of the EST tasks: group Security, AXIS OS 12.10+, not at sites yet (stage 4).</summary>
-public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
+public abstract class EstTaskBase(Func<EstService?> service, Func<bool>? shown = null) : ITaskPlugin
 {
     public abstract string Id { get; }
 
@@ -146,6 +151,9 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
     public string Group => TaskGroups.Security;
 
     public bool ShowInToolbar => false;
+
+    /// <summary>In the device menu only with OADM PRO (decision 2026-10-25); null (tests): always.</summary>
+    public bool ShowInMenus => shown?.Invoke() ?? true;
 
     /// <summary>The dialog: the cameras' enrollment profiles, Set up and Remove.</summary>
     public bool RequiresDialog => true;
@@ -190,7 +198,7 @@ public abstract class EstTaskBase(Func<EstService?> service) : ITaskPlugin
 /// EST server's profiles (at most two, the uses the camera supports), trusts the OADM CA, signs in with its Axis device
 /// ID, enrolls and renews by itself. Safe to run again: the same set writes nothing.
 /// </summary>
-public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(service), ITaskPlugin, ITaskPluginQuery
+public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = null) : EstTaskBase(service, shown), ITaskPlugin, ITaskPluginQuery
 {
     private static readonly TimeSpan EnrollTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
@@ -218,6 +226,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         ArgumentNullException.ThrowIfNull(device);
         var protectNetworkAccess = false;
         var dot1xService = CameraEstApi.ServiceOf(ProfileUse.Dot1x);
+        IReadOnlyList<(string Alias, string Pem, string Fingerprint)>? radiusCas = null;
         var (est, chain, profiles, address) = await ctx.StepAsync(EstTaskIds.CheckStep, async step =>
         {
             var est = Service ?? throw new InvalidOperationException(ctx.Pro?.IsActive == true ? EstTaskIds.NotRunning : EstTaskIds.NoPro);
@@ -334,6 +343,13 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                 throw new DeviceNotCompatibleException(EstTaskIds.NoSiteRelay);
             }
 
+            // The dot1x profile: the RADIUS server CA of its IEEE 802.1X policy, found before the first write (else nothing changes).
+            if (profiles.FirstOrDefault(p => p.Use == ProfileUse.Dot1x) is { } dot1x && est.Authority is Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki
+                && est.PolicyOf(dot1x) is { } dot1xPolicy)
+            {
+                radiusCas = pki.RadiusCas(dot1xPolicy);
+            }
+
             step.Complete(string.Join(", ", profiles.Select(p => p.Name)));
             return (est, chain, profiles, address);
         }).ConfigureAwait(false);
@@ -384,6 +400,7 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
                 await WaitEnrolledAsync(ctx, est, device, profile, json, started, requireNew: false, ct).ConfigureAwait(false);
             }
 
+            await SetRadiusCaAsync(ctx, radiusCas, ct).ConfigureAwait(false);
             return;
         }
 
@@ -457,6 +474,8 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
         {
             throw new InvalidOperationException(noFreeName);
         }
+
+        await SetRadiusCaAsync(ctx, radiusCas, ct).ConfigureAwait(false);
 
         // Pin only when OADM talks HTTPS to the camera: the task never changes how OADM connects.
         if (profiles.Any(p => p.Use == ProfileUse.Https) && string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
@@ -878,6 +897,49 @@ public sealed class EstSetupTask(Func<EstService?> service) : EstTaskBase(servic
     private static bool Stays(CameraEstProfile profile, ISet<string> wanted, bool protectNetworkAccess, string dot1xService) =>
         (protectNetworkAccess && profile.Services.Contains(dot1xService, StringComparer.OrdinalIgnoreCase))
         || (!EstTaskIds.IsOadm(profile.Id) && !profile.Services.Any(wanted.Contains));
+
+    /// <summary>
+    /// With the dot1x profile (decision 2026-10-25): the camera checks the RADIUS server with the RADIUS server CA of the
+    /// profile's IEEE 802.1X policy, like Enable IEEE 802.1X sets it, so a new CA never leaves it trusting the old one (TLS
+    /// alert 48). Only the CA list of the camera's EAP-TLS settings changes, and only while they are on with a client
+    /// certificate; without the network settings API, 802.1X off or nothing to change the step says so and nothing is written.
+    /// </summary>
+    private static async Task SetRadiusCaAsync(ITaskExecutionContext ctx, IReadOnlyList<(string Alias, string Pem, string Fingerprint)>? radiusCas, CancellationToken ct)
+    {
+        if (radiusCas is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
+        if (!Oadm.Plugins.Pki.Tasks.PkiCompatibility.HasNetworkSettings(apis))
+        {
+            ctx.SkipStep(EstTaskIds.RadiusCaStep, "The camera has no network settings API");
+            return;
+        }
+
+        var dot1x = (await Oadm.Plugins.Pki.Device.NetworkInfoApi.GetAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+        if (dot1x is not { Enabled: true } || !string.Equals(dot1x.Mode, Oadm.Plugins.Pki.Device.NetworkInfoApi.EapTlsMode, StringComparison.Ordinal)
+            || string.IsNullOrEmpty(dot1x.CertClient))
+        {
+            ctx.SkipStep(EstTaskIds.RadiusCaStep, "IEEE 802.1X with certificates is off on the camera");
+            return;
+        }
+
+        var aliases = await Oadm.Plugins.Pki.Tasks.CertificateDeployment.InstallCaCertificatesAsync(ctx, EstTaskIds.RadiusCaInstallStep, radiusCas, ct).ConfigureAwait(false);
+        await ctx.StepAsync(EstTaskIds.RadiusCaStep, async step =>
+        {
+            if (aliases.Count == dot1x.CertsCa.Count && aliases.All(a => dot1x.CertsCa.Contains(a, StringComparer.Ordinal)))
+            {
+                step.Complete("Already set: " + string.Join(", ", aliases));
+                return;
+            }
+
+            await Oadm.Plugins.Pki.Device.NetworkInfoApi.SetCaCertificatesAsync(ctx.Vapix, apis, dot1x, aliases, ct).ConfigureAwait(false);
+            step.Complete(string.Join(", ", aliases));
+            ctx.Log(TaskLogLevel.Info, $"The camera now checks the RADIUS server with {string.Join(", ", aliases)} (was {(dot1x.CertsCa.Count > 0 ? string.Join(", ", dot1x.CertsCa) : "none")}).");
+        }).ConfigureAwait(false);
+    }
 
     /// <summary>IEEE 802.1X on the camera, read now (<c>Network.Interface.I0.dot1x.Enabled</c>); unknown counts as on.</summary>
     private static async Task<bool> Dot1xOnAsync(ITaskExecutionContext ctx, CancellationToken ct)

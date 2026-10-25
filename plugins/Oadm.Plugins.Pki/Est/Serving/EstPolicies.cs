@@ -20,9 +20,6 @@ public sealed record ProfileIssuing(int ValidDays, ProfileKey Key, string? Polic
 /// </summary>
 public static class EstPolicies
 {
-    /// <summary>The owner of the conversion of the profiles' validity and key (stage 4; "oadm.est" stays for the EST policies of stage 6).</summary>
-    public const string Owner = EstPluginInfo.PluginId + ":profiles";
-
     /// <summary>The owner of the conversion of "Sign in with" and today's enrollment into Sign-in CA and Enrollment policies (stage 6).</summary>
     public const string RulesOwner = EstPluginInfo.PluginId;
 
@@ -150,11 +147,9 @@ public static class EstPolicies
     }
 
     /// <summary>
-    /// Once (docs/spec/pki.md "Converting existing settings"): every profile without a policy names one with its validity and
-    /// key: the default ("https" -> "HTTPS") when its values are the same, else a new policy named after the profile ("EST
-    /// https"). Idempotent: a profile that names a policy stays; a run after a crash finds the policies made before by their
-    /// values. The old validity and key stay in the profile (no longer read). Settings that cannot be read are never
-    /// overwritten. True when the settings were written.
+    /// Every profile without a policy names the built-in policy of its kind (decision 2026-10-25: one issuing policy per kind
+    /// by default; the profile's old validity and key are no longer read, no "EST HTTPS" policy is made). A profile keeps a
+    /// policy it names. Settings that cannot be read are never overwritten. True when the settings were written.
     /// </summary>
     public static async Task<bool> ConvertAsync(IPluginSettings settings, PolicyStore store, CancellationToken ct)
     {
@@ -172,38 +167,7 @@ public static class EstPolicies
             return false;
         }
 
-        var chosen = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
-        await store.ConvertOnceAsync(Owner, _ =>
-        {
-            var added = new List<PkiPolicy>();
-            foreach (var profile in config.Profiles.Where(p => p.PolicyId is null))
-            {
-                if (Matching([.. store.All, .. added], profile) is { } match)
-                {
-                    chosen[profile.Name] = match.Id;
-                    continue;
-                }
-
-                var made = NewPolicy(profile, store);
-                added.Add(made);
-                chosen[profile.Name] = made.Id;
-            }
-
-            return Task.FromResult<IReadOnlyList<PkiPolicy>>(added);
-        }, ct).ConfigureAwait(false);
-
-        var profiles = config.Profiles.Select(p =>
-        {
-            if (p.PolicyId is not null)
-            {
-                return p;
-            }
-
-            // Converted before (a crash between the two writes): the policy made then has the same values.
-            var id = chosen.TryGetValue(p.Name, out var known) && store.Find(known) is not null ? known
-                : Matching(store.All, p)?.Id ?? store.FirstOf(EstProfile.PolicyKindOf(p.Use))?.Id;
-            return id is null ? p : p with { PolicyId = id };
-        }).ToList();
+        var profiles = config.Profiles.Select(p => p.PolicyId is null && store.FirstOf(EstProfile.PolicyKindOf(p.Use)) is { } builtIn ? p with { PolicyId = builtIn.Id } : p).ToList();
         if (profiles.SequenceEqual(config.Profiles))
         {
             return false;
@@ -213,52 +177,58 @@ public static class EstPolicies
         return true;
     }
 
+    /// <summary>The owner of the clean-up of the issuing policies the EST conversion made before 2026-10-25.</summary>
+    public const string CleanUpOwner = EstPluginInfo.PluginId + ":issuing-2026-10-25";
+
     /// <summary>
-    /// A policy of the profile's kind with its validity and key from the OADM CA: the default name first ("HTTPS", "IEEE
-    /// 802.1X"), then the one named after the profile, then the oldest.
+    /// Once (decision 2026-10-25: EST profiles use the built-in issuing policies): a profile that names a policy the EST
+    /// conversion made ("EST HTTPS", "EST 802.1X", "EST " + the profile's name; also the spellings before the rename) names
+    /// the built-in policy of its kind instead; then those policies are deleted where nothing else names them (another
+    /// profile). Never on settings or a store that cannot be read. True when it ran now.
     /// </summary>
-    internal static PkiPolicy? Matching(IReadOnlyList<PkiPolicy> policies, EstProfile profile)
+    public static async Task<bool> CleanUpAsync(IPluginSettings settings, PolicyStore store, CancellationToken ct)
     {
-        var kind = EstProfile.PolicyKindOf(profile.Use);
-        var key = profile.Key == ProfileKey.Rsa ? PolicyKeys.Rsa : PolicyKeys.Ecc;
-        var same = policies.Where(p => p.Kind == kind && p.ValidDays == profile.ValidityDays && p.Key == key
-            && string.Equals(p.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)).ToList();
-        var defaultName = kind == PolicyKinds.Dot1xCertificate ? PolicyLimits.Dot1xName : PolicyLimits.HttpsName;
-        return same.FirstOrDefault(p => string.Equals(p.Name, defaultName, StringComparison.OrdinalIgnoreCase))
-            ?? same.FirstOrDefault(p => string.Equals(p.Name, NameFor(profile), StringComparison.OrdinalIgnoreCase))
-            ?? same.FirstOrDefault(p => string.Equals(p.Name, "EST " + profile.Name, StringComparison.OrdinalIgnoreCase))
-            ?? same.FirstOrDefault();
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(store);
+        if (store.IsUnreadable || store.Converted.Contains(CleanUpOwner, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        var json = await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false);
+        if ((string.IsNullOrWhiteSpace(json) ? new EstConfig() : Read(json)) is not { } config)
+        {
+            return false;
+        }
+
+        var names = new HashSet<string>(["EST HTTPS", "EST 802.1X", "EST https", "EST dot1x"], StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in config.Profiles)
+        {
+            names.Add(NameFor(profile));
+            names.Add("EST " + profile.Name);
+        }
+
+        var all = store.All;
+        var made = all.Where(p => PolicyKinds.IsDeviceIssuing(p.Kind) && names.Contains(p.Name.Trim()) && !PolicyStore.IsSystem(p, all)).Select(p => p.Id).ToHashSet();
+        var profiles = config.Profiles.Select(p => p.PolicyId is { } id && made.Contains(id) && store.FirstOf(EstProfile.PolicyKindOf(p.Use)) is { } builtIn
+            ? p with { PolicyId = builtIn.Id }
+            : p).ToList();
+        if (!profiles.SequenceEqual(config.Profiles))
+        {
+            await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(config with { Profiles = profiles }), ct).ConfigureAwait(false);
+        }
+
+        var named = profiles.Where(p => p.PolicyId is not null).Select(p => p.PolicyId!.Value).ToHashSet();
+        return await store.RewriteOnceAsync(CleanUpOwner, list => [.. list.Where(p => !made.Contains(p.Id) || named.Contains(p.Id))], ct).ConfigureAwait(false);
     }
 
-    /// <summary>"EST HTTPS", "EST 802.1X" for the two default profiles, "EST " + the name for the others.</summary>
+    /// <summary>"EST HTTPS", "EST 802.1X" for the two default profiles, "EST " + the name for the others (the names the conversion before 2026-10-25 gave).</summary>
     public static string NameFor(EstProfile profile) => "EST " + profile.Name.ToLowerInvariant() switch
     {
         "https" => "HTTPS",
         "dot1x" => "802.1X",
         _ => profile.Name,
     };
-
-    /// <summary>A new policy with the profile's validity and key; an IEEE 802.1X one takes the 802.1X settings of the first of its kind (EST does not use them).</summary>
-    private static PkiPolicy NewPolicy(EstProfile profile, PolicyStore store)
-    {
-        var kind = EstProfile.PolicyKindOf(profile.Use);
-        var days = profile.ValidityDays is >= PolicyLimits.MinValidDays and <= PolicyLimits.MaxValidDays ? profile.ValidityDays : PolicyLimits.DefaultValidDays;
-        var template = store.FirstOf(kind);
-        return new PkiPolicy
-        {
-            Id = Guid.NewGuid(),
-            Name = NameFor(profile),
-            Kind = kind,
-            CaId = CertificateAuthorityInfo.OadmId,
-            ValidDays = days,
-            Key = profile.Key == ProfileKey.Rsa ? PolicyKeys.Rsa : PolicyKeys.Ecc,
-            EapolVersion = kind == PolicyKinds.Dot1xCertificate ? template?.EapolVersion ?? 1 : null,
-            Identity = kind == PolicyKinds.Dot1xCertificate ? template?.Identity ?? Oadm.Plugins.Pki.Dot1xIdentity.Mac : null,
-            CustomIdentity = kind == PolicyKinds.Dot1xCertificate ? template?.CustomIdentity : null,
-            RadiusCa = kind == PolicyKinds.Dot1xCertificate ? template?.RadiusCa ?? Oadm.Plugins.Pki.RadiusCaSource.Oadm : null,
-            RadiusCaPem = kind == PolicyKinds.Dot1xCertificate ? template?.RadiusCaPem : null,
-        };
-    }
 
     private static EstConfig? Read(string? json)
     {

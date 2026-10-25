@@ -11,16 +11,13 @@
        (decision 2026-10-25): Server above Switches left, the Sessions table (in progress on top, then the log) right, as high
        as the page; one column on narrower pages (RadiusView.Arrange). The rules are PKI's policies ("6 policies applied", a link left in the Save row). Users limited to a device group see
        the Sessions table only. Card headers: the title and its buttons in one row. -->
-  <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled">
+  <Panel>
+  <!-- The server does not run (turned off, no OADM PRO, a start that failed): the off state with Turn on
+       (docs/spec/pki.md "One plugin"). -->
+  <srv:ServerOffStateView DataContext="{Binding Server}" IsVisible="{Binding ShowOffState}" Icon="{DynamicResource Icon.network}"
+                          Text="Switch ports let only cameras with a trusted certificate into the network." />
+  <ScrollViewer x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding !Server.ShowOffState}">
     <StackPanel Spacing="{DynamicResource Oadm.Gap}">
-      <!-- The server does not run (turned off, no OADM PRO, a start that failed): only the Server card with Turn on
-           (docs/spec/pki.md "One plugin"). -->
-      <Border Classes="card" HorizontalAlignment="Left" MinWidth="360" IsVisible="{Binding Server.ShowOffState}">
-        <StackPanel Classes="form">
-          <TextBlock Classes="cardTitle" Text="Server" />
-          <srv:ServerSwitchView DataContext="{Binding Server}" />
-        </StackPanel>
-      </Border>
 
       <!-- Columns and rows set by RadiusView.Arrange (two columns or one); its height by RadiusView.FitSessions. -->
       <Grid x:Name="PageRows" IsVisible="{Binding Server.Running}" ColumnDefinitions="680,16,*" RowDefinitions="*,Auto">
@@ -32,7 +29,7 @@
             <StackPanel Classes="form">
               <TextBlock Classes="cardTitle" Text="Server" />
               <StackPanel Classes="form" DataContext="{Binding Settings}" x:DataType="vm:SettingsViewModel">
-                <ui:FormField Label="Listen on" LabelWidth="110" InputWidth="290">
+                <ui:FormField Label="Listen on" InputWidth="320">
                   <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Listen.Items}" SelectedItem="{Binding SelectedInterface}" IsEnabled="{Binding MayManage}"
                             ToolTip.Tip="The interface the switches reach this server on.">
                     <ComboBox.ItemTemplate>
@@ -42,10 +39,10 @@
                     </ComboBox.ItemTemplate>
                   </ComboBox>
                 </ui:FormField>
-                <ui:FormField Label="Port" LabelWidth="110">
+                <ui:FormField Label="Port">
                   <TextBox Text="{Binding Port}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
                 </ui:FormField>
-                <ui:FormField Label="Log entries kept" LabelWidth="110">
+                <ui:FormField Label="Log entries kept">
                   <TextBox Text="{Binding LogKept}" Width="120" HorizontalAlignment="Left" IsReadOnly="{Binding !MayManage}" />
                 </ui:FormField>
               </StackPanel>
@@ -185,4 +182,5 @@
       </Grid>
     </StackPanel>
   </ScrollViewer>
+  </Panel>
 </UserControl>

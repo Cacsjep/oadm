@@ -54,10 +54,10 @@ public static partial class PkiValidation
             ? $"Enter a whole number from {MinWarningDays} to {MaxWarningDays}."
             : null;
 
-    public static string? EapolVersion(int version) => version is 1 or 2 ? null : "Choose EAPOL version 1 or 2.";
+    public static string? EapolVersion(int version) => version is 1 or 2 or 3 ? null : "Choose EAPOL version 1, 2 or 3.";
 
     public static string? Identity(string? identity) =>
-        identity is Dot1xIdentity.Mac or Dot1xIdentity.HostName or Dot1xIdentity.Custom ? null : "Choose an EAP identity.";
+        identity is not null && Dot1xIdentity.All.Contains(identity, StringComparer.Ordinal) ? null : "Choose an EAP identity.";
 
     /// <summary>Required for the custom identity: 1..64 printable characters, only the known placeholders.</summary>
     public static string? CustomIdentity(string? identity, string? custom)

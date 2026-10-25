@@ -393,7 +393,7 @@ public sealed class PageTests : IAsyncLifetime
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Contains("General", checks.off.Item1);
+        Assert.Contains("Server", checks.off.Item1);
         Assert.Contains(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.OffText, checks.off.Item1);
         Assert.DoesNotContain("Profiles", checks.off.Item1);
         Assert.DoesNotContain("Enrollments", checks.off.Item1);
@@ -456,7 +456,7 @@ public sealed class PageTests : IAsyncLifetime
             // The card of each title: Enrollments apart from General and Profiles (docs/spec/pki.md "Pages of the services after this").
             Border? CardOf(string title) => window.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == title)
                 .GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("card"));
-            var result = (General: CardOf("General"), Profiles: CardOf("Profiles"), Enrollments: CardOf("Enrollments"));
+            var result = (General: CardOf("Server"), Profiles: CardOf("Profiles"), Enrollments: CardOf("Enrollments"));
 
             vm.Port = "80";
             vm.Profiles[0].Name = "a b";
@@ -523,7 +523,7 @@ public sealed class PageTests : IAsyncLifetime
         GC.KeepAlive(session);
 
         Assert.Equal([("Certificates", false), ("Policies", false), ("802.1X server", false), ("EST server", true)], checks.tabs);
-        foreach (var title in new[] { "PKI", "General", "Profiles", "Enrollments" })
+        foreach (var title in new[] { "PKI", "Server", "Profiles", "Enrollments" })
         {
             Assert.Contains(title, checks.texts);
         }
