@@ -187,6 +187,12 @@ public sealed class BackupCardTests
             var window = new Window { Width = 820, Height = 900, Content = new ScrollViewer { Content = new BackupCardView { DataContext = vm, Margin = new Avalonia.Thickness(16) } } };
             window.Show();
             Pump();
+            foreach (var card in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Oadm.Client.Controls.CollapsibleCard>())
+            {
+                card.IsExpanded = true; // the card starts closed; the screenshot shows it open, as a user opens it
+            }
+
+            Pump();
             Save(window, outDir, "settings-backup.png");
             window.Close();
 
