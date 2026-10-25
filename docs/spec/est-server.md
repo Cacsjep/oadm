@@ -14,7 +14,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   it as its own plugin with the Plugins page check box): off by default; **Turn on** on the page's Server card stores the
   choice and starts the server (TCP 9454 opens), **Turn off** (left of Save, confirmed) stops it. It runs only while it is on
   and an OADM PRO license or trial is active: without one the page shows only Server with
-  `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and a disabled Turn on; when the license ends or is
+  `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.") and no Turn on, while the trial was never used
+  **Start 30-day trial** for administrators (`docs/spec/licensing.md` "Trial"); when the license ends or is
   removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
   off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
   taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run

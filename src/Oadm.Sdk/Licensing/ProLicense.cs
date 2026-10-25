@@ -29,7 +29,7 @@ public enum ProLicenseStatus
 /// <param name="Plan">The plan, e.g. "Up to 500 devices"; null without a readable license.</param>
 /// <param name="MaxDevices">The devices the plan covers; null = no limit or no readable license.</param>
 /// <param name="Expires">The last day of the license; null = it never expires or no readable license.</param>
-/// <param name="IsTrial">A 30-day trial license.</param>
+/// <param name="IsTrial">The 30-day trial OADM started, or a trial license key.</param>
 public sealed record ProLicenseInfo(
     ProLicenseStatus Status,
     string Reason,
@@ -42,6 +42,12 @@ public sealed record ProLicenseInfo(
     /// <summary>OADM PRO is active: a valid license or trial license for this server.</summary>
     public bool IsActive => Status == ProLicenseStatus.Active;
 
+    /// <summary>
+    /// The 30-day trial can be started now (SDK 0.4.0): OADM PRO is not active and no trial ran on this server yet. An
+    /// administrator starts it on the Settings page or on the page of a PRO part.
+    /// </summary>
+    public bool TrialAvailable { get; init; }
+
     /// <summary>The state without a license.</summary>
     public static ProLicenseInfo None { get; } = new(ProLicenseStatus.None, ProLicenseTexts.NoLicense);
 }
@@ -53,8 +59,8 @@ public interface IProLicense
     ProLicenseInfo Current { get; }
 
     /// <summary>
-    /// Raised after <see cref="Current"/> changed: a license was imported or removed, or it ran out. Runs on a server thread;
-    /// keep the handler short.
+    /// Raised after <see cref="Current"/> changed: a license was imported or removed, the trial started, or one ran out.
+    /// Runs on a server thread; keep the handler short.
     /// </summary>
     event EventHandler? Changed;
 
@@ -76,6 +82,30 @@ public static class ProLicenseTexts
 
     /// <summary>A PRO plugin cannot be turned on without an active license (Plugins page, server refusal).</summary>
     public const string NeedsPro = "Needs an OADM PRO license or trial.";
+
+    /// <summary>The 30-day trial that OADM starts itself, once per server.</summary>
+    public const int TrialDays = 30;
+
+    /// <summary>A second start of the trial on the same server.</summary>
+    public const string TrialUsed = "The trial was already used on this server.";
+
+    /// <summary>A trial started on another computer, restored here with a backup: it does not run here.</summary>
+    public const string TrialElsewhere = "The trial was used on another computer.";
+
+    /// <summary>Starting the trial while a license is active.</summary>
+    public const string AlreadyActive = "OADM PRO is already active.";
+
+    /// <summary>The line next to Start 30-day trial.</summary>
+    public const string TrialOffer = "Try OADM PRO free for 30 days. Once per server.";
+
+    /// <summary>Users who may not start the trial.</summary>
+    public const string TrialAdminLine = "An administrator can start the trial.";
+
+    /// <summary>The button that starts the trial.</summary>
+    public const string StartTrial = "Start 30-day trial";
+
+    /// <summary>"Trial ended on 2026-11-20."</summary>
+    public static string TrialEndedOn(DateOnly day) => $"Trial ended on {LicenseFile.Day(day)}.";
 
     /// <summary>"Expired on 2028-10-22."</summary>
     public static string ExpiredOn(DateOnly day) => $"Expired on {LicenseFile.Day(day)}.";

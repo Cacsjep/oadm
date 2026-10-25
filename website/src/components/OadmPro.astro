@@ -2,7 +2,8 @@
 // Landing page: OADM PRO, after "Extend OADM with plugins". Its own panel with a soft violet glow so it stands apart
 // from the free sections; no buy button. The top bar's PRO link jumps here (#pro). A click on a plan, or "Request a custom
 // plugin", opens the quote form: it posts to the support forum.
-// "Start 30-day trial" and "Activate license" open the activation page (/activate/).
+// "Start 30-day trial" leads to the License card of the Settings docs (the trial starts in OADM itself, once per server);
+// "Activate license" opens the activation page (/activate/).
 import { forumUrl } from '../lib/forum';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
@@ -51,7 +52,7 @@ const custom = [
 		<h2 id="pro-title" class="landing-title">OADM <span class="pro-word">PRO</span></h2>
 		<p class="landing-lead">OADM stays fully open source. PRO adds what companies rely on in production: <b>commercial support with an SLA and enterprise plugins.</b></p>
 		<div class="pro-actions">
-			<a class="dl pro-trial" href={`${base}activate/?trial=1`}>Start 30-day trial</a>
+			<a class="dl pro-trial" href={`${base}admin/settings/#license`}>Start 30-day trial</a>
 			<a class="dl" href={`${base}activate/`}>Activate license</a>
 		</div>
 	</div>

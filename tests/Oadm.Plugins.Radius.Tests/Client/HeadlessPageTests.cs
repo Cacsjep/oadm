@@ -311,6 +311,78 @@ public sealed class HeadlessPageTests
         Assert.True(checks.kept);
     }
 
+    [Fact]
+    public async Task Without_oadm_pro_the_off_state_offers_the_trial_to_administrators_once()
+    {
+        // docs/spec/licensing.md "Trial": Start 30-day trial in the off state, the one main action there; others are told who can.
+        var server = new FakeRadiusBackend
+        {
+            Switch = new ServerSwitchState(false, false, false, Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, TrialAvailable: true),
+        };
+        var ctx = new FakePageContext(server) { Administrator = false };
+        static Button? Button(Window window, string label) => window.GetVisualDescendants().OfType<Button>()
+            .FirstOrDefault(b => b.IsEffectivelyVisible && b.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == label));
+
+        var checks = await HeadlessEntry.Session.Dispatch(async () =>
+        {
+            var view = new RadiusView();
+            using var vm = new RadiusViewModel(ctx);
+            var window = Host(view, 1600, 900);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAllAsync(CancellationToken.None);
+            Pump();
+            Capture(window, "radius-page-trial-operator.png");
+            var other = (Texts(window), Button(window, Oadm.Sdk.Licensing.ProLicenseTexts.StartTrial) is null);
+
+            ctx.Administrator = true;
+            ctx.RaisePermissionsChanged();
+            Pump();
+            Capture(window, "radius-page-trial.png");
+            var start = Button(window, Oadm.Sdk.Licensing.ProLicenseTexts.StartTrial);
+            var admin = (Texts(window), start?.IsEffectivelyEnabled, start?.Classes.Contains("primary"));
+
+            await vm.Server.StartTrialCommand.ExecuteAsync(null);
+            Pump();
+            Capture(window, "radius-page-trial-started.png");
+            var started = (Texts(window), Button(window, "Turn on")?.IsEffectivelyEnabled, Button(window, Oadm.Sdk.Licensing.ProLicenseTexts.StartTrial) is null);
+            window.Close();
+            return (other, admin, started);
+        }, CancellationToken.None);
+
+        Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.TrialAdminLine, checks.other.Item1);
+        Assert.True(checks.other.Item2);
+
+        Assert.Contains("The 802.1X server needs OADM PRO", checks.admin.Item1);
+        Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.TrialOffer, checks.admin.Item1);
+        Assert.DoesNotContain(Oadm.Sdk.Licensing.ProLicenseTexts.TrialAdminLine, checks.admin.Item1);
+        Assert.Equal((true, true), (checks.admin.Item2, checks.admin.Item3));
+
+        Assert.Equal(1, ctx.TrialStarts);
+        Assert.Contains("The 802.1X server is off", checks.started.Item1);
+        Assert.DoesNotContain(Oadm.Sdk.Licensing.ProLicenseTexts.TrialOffer, checks.started.Item1);
+        Assert.True(checks.started.Item2); // Turn on at once
+        Assert.True(checks.started.Item3);
+    }
+
+    [Fact]
+    public async Task A_used_trial_is_not_offered_and_a_refusal_shows_below_the_buttons()
+    {
+        var server = new FakeRadiusBackend { Switch = new ServerSwitchState(false, false, false, Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro) };
+        var ctx = new FakePageContext(server);
+        var vm = new Oadm.Plugins.Pki.Client.Servers.ServerSwitchViewModel(ctx, RadiusPluginInfo.PluginId, "802.1X server", "Switch ports stop letting cameras in.");
+        await vm.LoadAsync(CancellationToken.None);
+        Assert.Equal((true, false, false), (vm.NeedsPro, vm.ShowStartTrial, vm.ShowTrialAdminLine));
+        Assert.False(vm.StartTrialCommand.CanExecute(null));
+
+        // Offered on this client, used meanwhile from another one: the server's reason, no trial offered any more.
+        vm.Apply(server.Switch with { TrialAvailable = true });
+        Assert.True(vm.StartTrialCommand.CanExecute(null));
+        await vm.StartTrialCommand.ExecuteAsync(null);
+        Assert.Equal(Oadm.Sdk.Licensing.ProLicenseTexts.TrialUsed, vm.Error);
+        Assert.False(vm.ShowStartTrial);
+    }
+
     internal static Window Host(Control view, int width, int height)
     {
         // The real host page (title, ui:PageHeader subtitle, own cards), like in the client.

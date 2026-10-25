@@ -100,6 +100,7 @@ The page's context, `ICorePluginClientContext`:
 | `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
 | `OpenDeviceRequested` | The host asks the page to open a device (the argument is its id); Web View opens devices at a site this way |
 | `LicenseOf(packageId)` | The package's license as the server checked it, e.g. to say "No license" on the page; null when the host cannot tell |
+| `IsAdministrator`, `StartProTrialAsync(ct)` | Start the 30-day OADM PRO trial from a page that needs PRO (administrators, once per server); offer it while `ProLicenseInfo.TrialAvailable` |
 | `Tabs`, `TabsChanged`, `OpenTabRequested` | Pages of other core plugins shown as tabs of this page, see [Pages as tabs](#pages-as-tabs) |
 
 ### Pages as tabs

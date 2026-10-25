@@ -344,6 +344,9 @@ public interface IOadmApi
 
     Task<ProLicenseState> RemoveLicenseAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
 
+    /// <summary>Starts the 30-day OADM PRO trial, once per server (FAILED_PRECONDITION with the reason).</summary>
+    Task<ProLicenseState> StartTrialAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
+
     // BackupService (Administrator only, Settings page)
     Task<BackupState> GetBackupStateAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
 

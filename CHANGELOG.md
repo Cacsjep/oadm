@@ -8,6 +8,10 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- **Start 30-day trial** of OADM PRO in OADM itself: under Settings > License, or on the 802.1X and EST server pages
+  while they need OADM PRO. No account, email or internet needed; once per server, for administrators. A license you
+  import later replaces it. A running trial does not move to another computer with a backup.
+
 - 802.1X server: the log also lists requests from a switch that is not added and from a switch with a wrong shared
   secret (at most one row per switch and minute, with the count); **Add switch** in the log adds such a switch. The Server
   tab shows General, Switches and VLANs side by side on wide screens, with Save below them.

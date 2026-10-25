@@ -438,7 +438,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   `Border.card`s. The context also offers the managed devices and the Devices page selection (`Devices`,
   `SelectedDevices`, `DevicesChanged`), `OwnerName`, `ConfirmAsync`, `ShowMessageAsync`, `OpenAsync(HostPages.Devices)`
   (or another plugin's page: `OpenAsync("plugin:" + id)`, while it is on), `IsPluginOn(packageId)` (whether a plugin is
-  turned on; null when the host cannot tell), `LicenseOf(packageId)`, `OpenDeviceRequested` (the host asks the page to
+  turned on; null when the host cannot tell), `LicenseOf(packageId)`, `IsAdministrator` and `StartProTrialAsync` (Start
+  30-day trial of OADM PRO on a page that needs it, once per server), `OpenDeviceRequested` (the host asks the page to
   open a device; Web View opens devices at a site this way) and `Owner`.
 - **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in

@@ -203,7 +203,9 @@ the UI thread.
   `Has(permission)` + `PermissionsChanged` (pages hide or lock what the role lacks, e.g. Save of the NTP / DHCP server),
   `GetLocalSetting` / `SetLocalSetting` (short texts a plugin keeps on this computer, `ClientSettings.PluginSettings`,
   at most 64 KB each; e.g. a page's last device choice), `IsPluginOn(packageId)` (from the client's package list, null
-  when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on.
+  when unknown; Dashboards' empty state), `OpenAsync("plugin:" + id)` opens another plugin's page while it is on,
+  `IsAdministrator` and `StartProTrialAsync(ct)` (SDK 0.4.0: Start 30-day trial of OADM PRO from a page, see
+  `docs/spec/licensing.md` "Trial"; older hosts false / NotSupportedException).
 - **Pages shown as tabs** (SDK 0.4.0, stage 7 of `docs/spec/pki.md`): `ICorePluginPage.TabOf` (DIM null) names the core
   plugin whose page shows this page as a tab. The host then adds no rail entry for it; it creates the view as for a rail
   page (its own `ICorePluginClientContext`, its own plugin id for `InvokeAsync` and events) and hands it to the host page:
@@ -356,8 +358,8 @@ is always on.
   server (`oadm.est`) and the 802.1X server (`oadm.radius`) are core plugins of the always-on PKI package. The core plugins
   always run; each server inside runs, and opens its port, only while its stored choice (plugin setting `serverOn` of its
   core plugin, JSON true / false, none = off) is on **and** `ICorePluginContext.Pro` is active; it follows `Pro.Changed`
-  with the kept choice. Page methods `getServer` (everyone with the page), `turnOn` (refused with `NeedsPro` without the
-  license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their pages
+  with the kept choice. Page methods `getServer` (everyone with the page; `ServerSwitchState` also says whether the trial
+  can still be started), `turnOn` (refused with `NeedsPro` without the license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their pages
   show only the Server / General card with the status and **Turn on** while the server does not run, **Turn off** left of
   Save while it runs (`plugins/Oadm.Plugins.Pki.Client/Servers/ServerSwitchView`). The PKI row of the Plugins page has no
   PRO chip; its description says "802.1X and EST servers need OADM PRO.".

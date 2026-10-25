@@ -34,8 +34,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 
 ## What the user sees
 
-- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, the Server card's Turn on (disabled
-  without an active license, the status says "Needs an OADM PRO license or trial."); while it does not run the page shows
+- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, the Server card's Turn on (hidden
+  without an active license, the status says "Needs an OADM PRO license or trial." and, while the trial was never used,
+  administrators get **Start 30-day trial**, `docs/spec/licensing.md` "Trial"); while it does not run the page shows
   only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
   their own rule); a 4.1 server whose plugin was on keeps it on.
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use

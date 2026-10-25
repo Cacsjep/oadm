@@ -45,6 +45,7 @@ public static class AuditActions
     public const string PluginLicenseRemoved = "Removed plugin license";
     public const string ProLicenseImported = "Imported license";
     public const string ProLicenseRemoved = "Removed license";
+    public const string ProTrialStarted = "Started trial";
     public const string SupportReportCreated = "Created support report";
     public const string ComplianceTurnedOn = "Turned compliance on";
     public const string ComplianceTurnedOff = "Turned compliance off";
