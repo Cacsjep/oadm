@@ -70,6 +70,20 @@ public interface ITaskStore
     async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(CancellationToken ct) =>
         [.. (await ListAsync(ct).ConfigureAwait(false)).Where(t => !t.State.IsTerminal())];
 
+    /// <summary>
+    /// The newest <paramref name="limit"/> tasks of <paramref name="deviceIds"/> (a group's Watch snapshot), filtered in the
+    /// query, without counting them.
+    /// </summary>
+    async Task<IReadOnlyList<TaskRecord>> ListRecentAsync(IReadOnlySet<Guid> deviceIds, int limit, CancellationToken ct) =>
+        (await ListPageAsync(deviceIds, 0, limit, ct).ConfigureAwait(false)).Tasks;
+
+    /// <summary>The tasks of <paramref name="deviceIds"/> that are not finished, newest first, filtered in the query.</summary>
+    async Task<IReadOnlyList<TaskRecord>> ListActiveAsync(IReadOnlySet<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return [.. (await ListActiveAsync(ct).ConfigureAwait(false)).Where(t => deviceIds.Contains(t.DeviceId))];
+    }
+
     /// <summary>Ids of every task, newest first.</summary>
     async Task<IReadOnlyList<Guid>> ListIdsAsync(CancellationToken ct) =>
         [.. (await ListAsync(ct).ConfigureAwait(false)).Select(t => t.Id)];

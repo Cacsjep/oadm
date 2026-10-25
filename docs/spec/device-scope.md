@@ -362,7 +362,8 @@ an independent security review the same day). A user may be limited to part of t
   (`TaskCallContext` over that view; event streams not offered there yet).
 - **History**: `TaskEngine.ListPageAsync/ListAsync/SnapshotAsync/SubscribeWithSnapshotAsync/GetAsync/GetLogAsync/
   CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
-  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
+  (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id; the
+  Watch snapshot reads `ListRecentAsync` and `ListActiveAsync(ids)`, no count and no other group's active tasks);
   `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules),
   the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`); it keeps only the
   task id and device id of each sent task, no records: the sent tasks of a device that left go out as Removed at once (a

@@ -242,6 +242,33 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AQueuedTaskWhoseDeviceWasRemovedSaysTheSameAsOneOutsideTheGroup()
+    {
+        var first = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var removed = await AddDeviceAsync("ACCC8E000002", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Register(new DelegateTaskPlugin("t.gated", async (_, device, ct) =>
+        {
+            started.TrySetResult();
+            await gate.Task.WaitAsync(ct);
+        })
+        { Limit = 1 });
+        await using var engine = Engine();
+
+        var ids = await engine.RunAsync("t.gated", await view.GetAsync([first.Id, removed.Id], Ct), null, TaskCaller.Of(caller), Ct);
+        await started.Task.WaitAsync(Eventually.DefaultTimeout);
+        await Devices.RemoveAsync(removed.Id, Ct);
+        gate.SetResult();
+        await engine.WaitForCompletionAsync(ids[1], Ct);
+
+        var task = await engine.GetAsync(ids[1], Ct);
+        Assert.Equal(TaskState.Failed, task!.State);
+        Assert.Equal(DeviceMessages.NoLongerAvailable(1), task.Devices[0].Message);
+    }
+
+    [Fact]
     public async Task QueuedTasksOfAUserWhoLostTheGroupFail()
     {
         var first = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
