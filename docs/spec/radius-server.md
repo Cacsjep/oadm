@@ -267,7 +267,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
   MQTT, RTSPS), issued by (the issuing CA since stage 5), valid until, state chip (Valid, Expires soon (the
   settings' warning days, 30 by default), Expired, Revoked (tooltip: date, reason, user)); since 2026-10-25 only each
-  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, use, issued by) and search (device address, host name, device serial,
+  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, issued by; the use filter is gone since 2026-10-25) and search (device address, host name, device serial,
   certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
   12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
   **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate

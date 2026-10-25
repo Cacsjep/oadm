@@ -157,10 +157,13 @@ Details: plugin
   certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
   with its own subject and SAN (never the CSR's); every task checks AXIS OS 6.53+ (REST cert v1 from a fresh
   `config/discover`, else the SOAP certificate service; docs/spec/pki.md "Older AXIS OS") and the key type of the chosen issuing policy against the device's keystore before the first write and
-  fails "Nothing was changed" otherwise; the dialogs of Enable HTTPS and Enable IEEE 802.1X pick an issuing policy whose
-  values the user may change for the run; the last HTTPS or IEEE 802.1X certificate policy, one an EST profile names and
-  the servers' policies are never deleted; Enable HTTPS pins the new
-  certificate through `UpdateDeviceTlsAsync`; 802.1X checks the device clock first; only OADM's own certificates that
+  fails "Nothing was changed" otherwise; the dialogs of Enable HTTPS, Enable IEEE 802.1X, Renew certificates and Install certificates
+  (IEEE 802.1X) pick an issuing policy and show its summary, the run uses the policy's stored values; the built-in policies
+  (the first HTTPS certificate, IEEE 802.1X certificate, 802.1X server, EST server, Expiry warning and Enrollment policy)
+  and an issuing policy an EST profile names are never deleted; the 802.1X tasks always install the policy's RADIUS
+  server CA and never compare it with the 802.1X server's certificate; Enable HTTPS pins the new
+  certificate through `UpdateDeviceTlsAsync`; the dialogs ask when a camera's clock is behind the certificate's start, a
+  run without that answer refuses; only OADM's own certificates that
   nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
   trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a
   larger selection gets "Choose at most 5,000 devices."), the other tasks take any number; while it runs it offers the
@@ -524,7 +527,8 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its tab (stored choice); it runs,
 and opens TCP 9454, only while it is on and OADM PRO is active. Spec: `docs/spec/est-server.md`; details: `Est/README.md`.
 
-- Rules that must hold: only cameras that sign in with a certificate of a CA an EST sign-in CA policy of PKI names (the Axis device ID, or a valid certificate an OADM CA itself issued them, naming exactly one camera; never an imported CA), that an Enrollment policy holds for the profile, and that
+- Rules that must hold: only cameras that sign in with a certificate of a CA an EST sign-in CA policy of PKI names (the Axis device ID, or a valid certificate an OADM CA itself issued them, naming exactly one camera; to renew also the
+  camera's current certificate from OADM, whatever CA of PKI issued it, an imported CA with its key too), that an Enrollment policy holds for the profile, and that
   OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the CA of the
   profile's issuing policy signs (no such CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
   requests are logged; a certificate on PKI's revocation list renews nothing (403 "Certificate revoked on ...");
