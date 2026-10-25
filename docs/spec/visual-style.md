@@ -4,7 +4,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 
 Reference: MultiDrive (Avalonia showcase), https://multidrive.io/.
 Dark by default, calm and spacious, no gradients inside the app (one exception: the soft glow of the start splash).
-**Appearance** Dark or Light per computer (Settings > This computer, `ClientSettings.Appearance`, takes effect after the
+**Appearance** Dark or Light per computer (Settings > Client, `ClientSettings.Appearance`, takes effect after the
 client restarts: "Takes effect after the client restarts" below the select while it differs from the running one). The
 colors live in `src/Oadm.Theme/Colors.Dark.axaml` and `Colors.Light.axaml` (same keys, `ThemeColorsTests`);
 `Oadm.Theme.OadmColors` merges the chosen one into `OadmTheme.axaml` (brushes and styles, shared), read in `App.Initialize`

@@ -23,7 +23,9 @@ time, read live by the task engine, plugin `MaxParallelDevices` can only lower i
 tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
 firmware updates."). The former `Devices.UseHostName` is gone: the add page chooses DNS names or IP addresses
 per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (five cards Polling, Discovery, Tasks, Security, Server, saved
-together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Rail page **Credentials** (Admin only, subtitle "Passwords OADM
+together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Every card of the Settings page
+folds and starts closed (`Controls/CollapsibleCard`, `docs/spec/visual-style.md`); a card opens by itself when an input in
+it shows a validation error. Rail page **Credentials** (Admin only, subtitle "Passwords OADM
 tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
 "Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
 button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
