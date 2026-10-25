@@ -64,7 +64,7 @@ public sealed class RolloutEngineTests : IAsyncLifetime
         Assert.Null(reply.Error);
         foreach (var taskId in reply.TaskIds)
         {
-            await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(20));
+            await _engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60)); // longer than the 30 s its fakes may wait
         }
 
         return reply;

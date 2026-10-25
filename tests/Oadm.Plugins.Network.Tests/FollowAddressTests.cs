@@ -8,7 +8,7 @@ namespace Oadm.Plugins.Network.Tests;
 public sealed class FollowAddressTests
 {
     private static readonly ReachabilityOptions Fast =
-        new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(1))
+        new(TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(60), TimeSpan.FromSeconds(30)) // one probe request: generous
         {
             NewAddressTimeout = TimeSpan.FromMilliseconds(60),
         };

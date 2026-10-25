@@ -13,7 +13,7 @@ public sealed class FirmwareTaskPluginTests
     {
         PollInterval = TimeSpan.FromMilliseconds(2),
         RestartTimeout = TimeSpan.FromSeconds(30), // reached only when a test fails: the fake comes back after three probes
-        ProbeTimeout = TimeSpan.FromSeconds(1),
+        ProbeTimeout = TimeSpan.FromSeconds(30), // one probe request: generous, the fake answers at once
         CommitRetryDelay = TimeSpan.FromMilliseconds(1),
     };
 

@@ -177,8 +177,8 @@ public sealed class PageTests(ITestOutputHelper output)
         try
         {
             Assert.Equal("Choose cameras", vm.DeviceChoice.ButtonText);
-            vm.Activate();
-            await Task.Delay(100);
+            vm.Activate(); // without a choice its read ends before Activate returns: nothing to wait for
+            Assert.False(vm.IsReading);
             Assert.Empty(vm.Rows);
             Assert.Equal(0, rig.Cameras.Created);
             Assert.Equal("Choose cameras to read their SD cards.", vm.EmptyText);

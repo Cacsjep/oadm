@@ -150,8 +150,18 @@ public sealed class ScanServiceTests
 
         await rig.ScanAsync();
         await Eventually.TrueAsync(() => rig.Service.CurrentJob is { Done: >= 3 }, "the other devices scanned");
+        // The slow device's timeout runs once its hanging request was sent; an advance before that would be lost.
+        await Eventually.TrueAsync(
+            () =>
+            {
+                lock (camera.Requests)
+                {
+                    return camera.Requests.Any(r => r.Contains("axis-cgi/param.cgi", StringComparison.Ordinal));
+                }
+            },
+            "the slow device's hanging request");
         time.Advance(TimeSpan.FromSeconds(3));
-        await rig.Service.WaitAsync();
+        await rig.Service.WaitAsync().WaitAsync(TimeSpan.FromSeconds(30));
 
         var results = (await rig.StateAsync()).Results.ToDictionary(r => r.DeviceId);
         Assert.Equal(4, results.Count);
