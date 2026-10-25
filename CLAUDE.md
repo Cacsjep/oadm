@@ -37,8 +37,10 @@ Oadm.sln
 src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects, Layout/TileLayout (tile grid rules). No Avalonia, no EF
-  Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, FakeCamera, FakeDevice, FakeSettings,
-                       FakeTaskContext, FakeActionContext, FakeCoreContext
+  Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice, FakeSettings,
+                       FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext,
+                       FakeDeviceScopes, FakeSites, FakeHostRules, FakePluginJobs, FakePluginServices, FakeProtectedTags,
+                       PluginCanary, TaskPluginCanaryHost
   Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK
                        references without copies, plugin.json from properties, the plugin folder; Oadm.Plugin.Repo.* for
                        plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
@@ -46,7 +48,7 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
+                       GroupedChoice, CheckChoice, DeviceTree, PageHeader, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
                        WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)

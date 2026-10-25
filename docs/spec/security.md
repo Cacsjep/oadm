@@ -157,7 +157,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   "Your device group has no site, so you cannot add devices." as tooltip. The shared group texts live in
   `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
 - **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
-  `Settings/UsersPageView` = the users card left and the device groups card right at the height they need, the roles card
+  `Settings/UsersPageView` = the users card and the device groups card side by side from a page width of 1,640 (`TwoColumnWidth`;
+  narrower: the device groups card below the users card), at the height they need, the roles card
   below across the full width filling the rest, with a splitter): **New user** (a flat `ui:ToolbarButton` in the card's title row) above the list, then users
   with role (plain text), state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
@@ -167,7 +168,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   errors and refusals below the fields. **Devices** offers All devices and the groups (`DeviceAccessOption`): for the
   Administrator role it is locked with "Administrators always have all devices."; with a group the hint says "Users with
   a device group view the NTP server, DHCP server and PKI pages but cannot change them." (`DeviceGroupWords`, also in
-  the role dialog); a user without devices must get a choice before Save. **Device groups card** below the users
+  the role dialog); a user without devices must get a choice before Save. **Device groups card** right of or below the users (see the layout above)
   (`DeviceGroupsCardView`, `DeviceGroupsViewModel`, `DeviceGroupService`): Group (description as tooltip), Rules ("Site
   Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, row
   Edit and Delete (red; the confirmation names the users who have no devices afterwards). New and Edit open the group
