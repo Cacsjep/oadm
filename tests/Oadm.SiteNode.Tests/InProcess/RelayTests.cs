@@ -129,7 +129,8 @@ public sealed class RelayTests
             await Eventually.TrueAsync(() => bound.Node.Get<Relays.RelayHost>().Relays.Count == 0, "the released relay ends");
         }
 
-        Assert.DoesNotContain(store.Read(c => c.Allowed.ToList()), p => p.Port == asked);
+        // The relay ends before its port is given back: wait for the port too.
+        await Eventually.TrueAsync(() => store.Read(c => c.Allowed.All(p => p.Port != asked)), "the server's port is given back");
 
         // A port the administrator added stays, released or not.
         using (var relay = bound.Link.Client.Relay())
