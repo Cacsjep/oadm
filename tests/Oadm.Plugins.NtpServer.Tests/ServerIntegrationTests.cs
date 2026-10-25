@@ -32,12 +32,22 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     /// <summary>Generous wait for an answer that must come: a busy machine may answer loopback slowly.</summary>
     private static readonly TimeSpan AnswerTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>Restarts the plugin with other options (rate limit, upstream timeouts).</summary>
-    private async Task RestartWithAsync(NtpServerOptions options)
+    private InMemoryPluginSettingsProvider _restartSettings = new();
+
+    /// <summary>
+    /// Restarts the plugin with other options (rate limit, upstream timeouts); with <paramref name="keepSettings"/> it keeps
+    /// what was saved since the previous restart.
+    /// </summary>
+    private async Task RestartWithAsync(NtpServerOptions options, bool keepSettings = false)
     {
         await _plugin.DisposeAsync();
+        if (!keepSettings)
+        {
+            _restartSettings = new InMemoryPluginSettingsProvider();
+        }
+
         _plugin = new NtpServerPlugin(options);
-        await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
+        await _plugin.StartAsync(new TestCoreContext(_restartSettings.GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
     }
 
     private NtpServerService Service => _plugin.Service!;
@@ -144,10 +154,19 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         monlist[0] = 0x17; // mode 7 (ntpd monlist)
         await socket.SendToAsync(monlist, SocketFlags.None, Endpoint);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-            await socket.ReceiveFromAsync(new byte[1024], SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), cts.Token));
-        Assert.Equal(0, Service.Log.LastSeq);
+        // Then a good request: the server reads in order, so its answer is the first and only one that comes back.
+        var request = new byte[NtpPacket.Length];
+        new NtpPacket { Version = 4, Mode = NtpMode.Client, Poll = 6, TransmitTimestamp = 42 }.Write(request);
+        await socket.SendToAsync(request, SocketFlags.None, Endpoint);
+        using var cts = new CancellationTokenSource(AnswerTimeout);
+        var buffer = new byte[1024];
+        var received = await socket.ReceiveFromAsync(buffer, SocketFlags.None, new IPEndPoint(IPAddress.Any, 0), cts.Token);
+        Assert.True(NtpPacket.TryRead(buffer.AsSpan(0, received.ReceivedBytes), out var answer));
+        Assert.Equal(NtpMode.Server, answer.Mode);
+        Assert.Equal(42ul, answer.OriginateTimestamp);
+        await Wait.UntilAsync(() => Service.Log.LastSeq >= 1);
+        Assert.Equal(1, Service.Log.LastSeq); // only the good request is in the log
+        Assert.Equal(RequestEntry.Answered, Assert.Single(Service.Log.Snapshot()).Result);
     }
 
     [Fact]
@@ -221,9 +240,8 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Upstream_on_save_is_validated_then_served_and_an_unreachable_one_falls_back_with_a_warning()
     {
-        // A 5 s query timeout (the Save query must get its answer on a busy machine); two failures in a row to fall back, so
-        // one poll stalled by the machine before the asserts below does not switch to this computer's time.
-        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5), FailuresBeforeUnreachable = 2 } });
+        // A 30 s query timeout: the Save query and the polls get their answers however busy the machine is.
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { QueryTimeout = AnswerTimeout } });
         await using var upstream = new FakeUpstream();
         var reply = await SaveAsync(upstream: upstream.HostText);
         Assert.True(reply.Saved);
@@ -235,6 +253,9 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.Equal(3, answer!.Value.Stratum);
         Assert.Equal(0x7F000001u, answer.Value.ReferenceId);
 
+        // The saved upstream with the short timeout, so a dead upstream falls back quickly: served again first, then dead.
+        await RestartWithAsync(Options.Test(_resolver) with { Upstream = Options.FastUpstream with { FailuresBeforeUnreachable = 2 } }, keepSettings: true);
+        await Wait.UntilAsync(() => Service.GetState(false).Stratum == 3, TimeSpan.FromSeconds(60));
         upstream.Behavior = UpstreamBehavior.NoAnswer;
         await Wait.UntilAsync(() => Service.GetState(false).Status.Kind == ServiceStatus.Warning, TimeSpan.FromSeconds(60));
         var state = Service.GetState(false);
@@ -245,8 +266,8 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         Assert.Equal(NtpLeap.NoWarning, answer.Value.Leap);
 
         upstream.Behavior = UpstreamBehavior.Answer;
-        await Wait.UntilAsync(() => Service.GetState(false).Stratum == 3, TimeSpan.FromSeconds(60));
-        Assert.Equal(ServiceStatus.Ok, Service.GetState(false).Status.Kind);
+        // A poll stalled twice by the machine may fall back again for a moment: the good state is waited for as a whole.
+        await Wait.UntilAsync(() => Service.GetState(false) is { Stratum: 3, Status.Kind: ServiceStatus.Ok }, TimeSpan.FromSeconds(60));
     }
 
     [Fact]

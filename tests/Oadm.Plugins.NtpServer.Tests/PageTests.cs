@@ -105,7 +105,7 @@ public sealed class PageViewModelTests : IAsyncLifetime
         Assert.True(vm.IsStatusOk);
         Assert.StartsWith("Running on 127.0.0.1:", vm.StatusText, StringComparison.Ordinal);
 
-        await NtpProbe.QueryAsync(_plugin.Service!.Endpoints[0], TimeSpan.FromSeconds(1));
+        await NtpProbe.QueryAsync(_plugin.Service!.Endpoints[0], TimeSpan.FromSeconds(30));
         await Wait.UntilAsync(() => vm.Requests.Count == 1);
         var row = vm.Requests[0];
         Assert.Equal("127.0.0.1", row.Client);
@@ -172,39 +172,44 @@ public sealed class PageViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Upstream_field_errors_stay_under_the_field_and_block_saving()
     {
-        // A 5 s query timeout: the good upstream must answer the Save check also on a busy machine.
-        await _plugin.DisposeAsync();
-        _plugin = new NtpServerPlugin(Options.Test() with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(5) } });
-        await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
-        _ctx = new PluginPageContext(_plugin, _hub);
         var calls = 0;
         _ctx.Intercept = (method, payload) =>
         {
             calls++;
             return _plugin.InvokeAsync(method, payload, CancellationToken.None);
         };
-        using var vm = new NtpServerViewModel(_ctx);
-        await vm.LoadAsync();
-        calls = 0;
+        using (var vm = new NtpServerViewModel(_ctx))
+        {
+            await vm.LoadAsync();
+            calls = 0;
 
-        vm.Upstream = "two hosts";
-        Assert.True(vm.HasErrors);
-        Assert.Equal("Enter one host name or IP address.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
-        await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal(0, calls);
+            vm.Upstream = "two hosts";
+            Assert.True(vm.HasErrors);
+            Assert.Equal("Enter one host name or IP address.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
+            await vm.SaveCommand.ExecuteAsync(null);
+            Assert.Equal(0, calls);
 
-        await using var dead = new FakeUpstream(UpstreamBehavior.NoAnswer);
-        vm.Upstream = dead.HostText;
-        Assert.False(vm.HasErrors);
-        await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("127.0.0.1: No answer within 5 s.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
+            // A dead upstream with the short test timeout.
+            await using var dead = new FakeUpstream(UpstreamBehavior.NoAnswer);
+            vm.Upstream = dead.HostText;
+            Assert.False(vm.HasErrors);
+            await vm.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("127.0.0.1: No answer within 300 ms.", Assert.Single(vm.GetErrors(nameof(vm.Upstream)).Cast<string>()));
+        }
 
+        // A 30 s query timeout: the good upstream answers the Save check however busy the machine is.
+        await _plugin.DisposeAsync();
+        _plugin = new NtpServerPlugin(Options.Test() with { Upstream = Options.FastUpstream with { QueryTimeout = TimeSpan.FromSeconds(30) } });
+        await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), _hub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
+        _ctx = new PluginPageContext(_plugin, _hub);
+        using var page = new NtpServerViewModel(_ctx);
+        await page.LoadAsync();
         await using var good = new FakeUpstream();
-        vm.Upstream = good.HostText;
-        await vm.SaveCommand.ExecuteAsync(null);
-        Assert.False(vm.HasErrors);
-        Assert.Matches(@"^Answered: .+ off, \d+ ms round trip$", vm.UpstreamResult);
-        Assert.True(vm.HasUpstreamResult);
+        page.Upstream = good.HostText;
+        await page.SaveCommand.ExecuteAsync(null);
+        Assert.False(page.HasErrors);
+        Assert.Matches(@"^Answered: .+ off, \d+ ms round trip$", page.UpstreamResult);
+        Assert.True(page.HasUpstreamResult);
     }
 
     [Fact]
