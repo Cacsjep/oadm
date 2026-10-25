@@ -104,7 +104,7 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
             {
                 Name = "VLAN " + i.ToString(CultureInfo.InvariantCulture),
                 Kind = PolicyKinds.Vlan,
-                Vlan = 100 + i,
+                Vlan = 1000 + i, // summaries "VLAN 1014": the search below matches names only
                 Devices = new PolicyDevices { Tags = ["Tag " + i.ToString(CultureInfo.InvariantCulture)] },
             })).Error);
         }
