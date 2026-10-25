@@ -13,6 +13,11 @@
     <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding TurnOnCommand}" IsVisible="{Binding ShowOffTurnOn}">
       <ui:IconLabel Icon="{DynamicResource Icon.start}" Text="Turn on" />
     </Button>
+    <!-- On but not running (license ended, a start that failed): it can still be turned off. -->
+    <Button Classes="secondary" HorizontalAlignment="Center" Command="{Binding TurnOffCommand}" IsVisible="{Binding ShowOffTurnOff}">
+      <ui:IconLabel Icon="{DynamicResource Icon.stop}" Text="Turn off" />
+    </Button>
+    <ui:ProgressRow HorizontalAlignment="Stretch" Text="{Binding BusyText}" IsActive="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
     <TextBlock Classes="secondary" HorizontalAlignment="Center" Text="{x:Static vm:ServerSwitchViewModel.AdminLine}" IsVisible="{Binding ShowAdminLine}" />
     <TextBlock Classes="error" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
   </ui:OffState>

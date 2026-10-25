@@ -64,6 +64,10 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(TurnOnCommand), nameof(TurnOffCommand))]
     public partial bool IsBusy { get; private set; }
 
+    /// <summary>"Starting the EST server" / "Stopping the EST server" while a Turn on or Turn off runs (its progress row).</summary>
+    [ObservableProperty]
+    public partial string? BusyText { get; private set; }
+
     /// <summary>A Turn on or Turn off that failed: below the buttons.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -134,6 +138,9 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
     /// <summary>Turn on in the off state: a user who may change the server, with OADM PRO.</summary>
     public bool ShowOffTurnOn => ShowTurnOn && ProActive;
 
+    /// <summary>Turn off in the off state: the server is on but does not run (license ended, a start that failed).</summary>
+    public bool ShowOffTurnOff => ShowTurnOff;
+
     /// <summary>"An administrator can turn it on." for users who may not.</summary>
     public bool ShowAdminLine => IsLoaded && ReadError is null && ProActive && !MayManage;
 
@@ -193,6 +200,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
 
     private async Task ChangeAsync(string method)
     {
+        BusyText = (method == ServerSwitchMethods.TurnOn ? "Starting the " : "Stopping the ") + _name;
         IsBusy = true;
         Error = null;
         try
@@ -218,6 +226,7 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowTurnOff));
         OnPropertyChanged(nameof(TurnOnTip));
         OnPropertyChanged(nameof(ShowOffTurnOn));
+        OnPropertyChanged(nameof(ShowOffTurnOff));
         OnPropertyChanged(nameof(ShowAdminLine));
         OnPropertyChanged(nameof(NeedsPro));
         TurnOnCommand.NotifyCanExecuteChanged();

@@ -18,6 +18,7 @@
         <ui:IconLabel Icon="{DynamicResource Icon.stop}" Text="Turn off" />
       </Button>
     </StackPanel>
+    <ui:ProgressRow Text="{Binding BusyText}" IsActive="{Binding IsBusy}" IsVisible="{Binding IsBusy}" />
     <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
   </StackPanel>
 </UserControl>

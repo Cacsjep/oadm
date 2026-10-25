@@ -74,7 +74,9 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   (Turn on / Turn off, the OADM PRO texts, their cards, permissions, events, tasks and audit names). They have no rail
   entry: their client pages say `ICorePluginPage.TabOf` = `oadm.pki` and the host hands their views to the PKI page
   (`docs/spec/plugins.md` "Pages shown as tabs"). The server parts keep their pages (`HasPage`), so the "show" and
-  "manage" permissions stay as they are.
+  "manage" permissions stay as they are. While a server does not run its tab shows the off state; a server that is on
+  but does not run (the license ended, a start that failed) offers Turn off there too, and Turn on and Turn off show a
+  progress row ("Starting the EST server") while they run (fix of 2026-10-25).
 - A server's tab shows only for users whose role has that core plugin's "show" permission (the server lists only the
   pages the role may show, the host follows role changes). With no server tab the tab row is left out.
 - The link **"N policies applied"** on a server tab (decision 2026-10-25: left in its Save row) opens the Policies tab;
