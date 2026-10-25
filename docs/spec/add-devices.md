@@ -207,7 +207,10 @@ devices); the groups it entered are audited "Entered device group" (target the g
 group" ("moved"). The waiting list is scoped by site (`WaitingScope`: the group's sites and the user's own entries for
 everywhere, never another user's entries for everywhere, also with "This server"; ids outside: NOT_FOUND "Some of these devices are no longer
 waiting.", a line of another site: NOT_FOUND; a line without a site of a group with one site and without "This server"
-waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (routes,
+waits for that site). Each entry stores who kept it (`QueuedByUserId`); a round tries it as that user is now (the
+reach read once per round per user and again when `AccessEpochs` shows a change of the user's access or group since that
+read; a change during a try ends it before the probe, the credential list and the first login, nothing written, the next
+round tries again; routes,
 no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any
 more is not tried and nothing is sent ("Not added: the user who kept it cannot add devices here.", held until Try now);
 an entry kept before device groups (no user id) is tried as before. Tests `AddDevicesScopeTests`, `CanaryTests`,
