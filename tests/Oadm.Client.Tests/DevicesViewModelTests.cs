@@ -227,8 +227,10 @@ public sealed class DevicesViewModelTests
         Assert.Equal(4, ctx.Devices.Count);
         Assert.False(ctx.CanRunTask("oadm.restart"));
         Assert.False(f.Devices.RunPluginCommand.CanExecute(restart));
+        Assert.Equal(0, ctx.SelectedCount);
 
         f.Select("1");
+        Assert.Equal(1, ctx.SelectedCount);
         Assert.True(ctx.CanRunTask("oadm.restart"));
         Assert.Equal("10.0.0.48", Assert.Single(ctx.SelectedDevices).Address);
         Assert.True(selectionEvents > 0);
@@ -237,8 +239,9 @@ public sealed class DevicesViewModelTests
         Assert.True(f.Devices.RunPluginCommand.CanExecute(restart));
 
         f.Select("1", "4");
+        Assert.Equal(2, ctx.SelectedCount);
         Assert.False(f.Devices.RunPluginCommand.CanExecute(restart));
-        Assert.False(ctx.CanRunTask("oadm.restart"));
+        Assert.False(ctx.CanRunTask("oadm.restart")); // the cached ids follow the new selection
         Assert.False(ctx.CanRunTask("unknown"));
     }
 

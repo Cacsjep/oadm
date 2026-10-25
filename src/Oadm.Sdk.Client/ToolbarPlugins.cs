@@ -124,8 +124,11 @@ public sealed record ToolbarTaskPlugin(string Id, string DisplayName, string? Ic
 /// </summary>
 public interface IToolbarContext
 {
-    /// <summary>Selected devices of the grid, in selection order.</summary>
+    /// <summary>Selected devices of the grid, in selection order (a new list per call: read it once per change).</summary>
     IReadOnlyList<IDeviceInfo> SelectedDevices { get; }
+
+    /// <summary>How many devices are selected, without a copy of the selection (enable a button with it).</summary>
+    int SelectedCount => SelectedDevices.Count;
 
     /// <summary>All managed devices.</summary>
     IReadOnlyList<IDeviceInfo> Devices { get; }

@@ -53,7 +53,7 @@ public sealed class SystemReportToolbarPlugin : IToolbarPlugin
         {
             // System reports are for users with all devices only (the server refuses everyone else).
             button.IsVisible = ctx.HasAllDevices;
-            var count = ctx.SelectedDevices.Count;
+            var count = ctx.SelectedCount;
             button.IsEnabled = count is > 0 and <= SystemReportPluginInfo.MaxDevices;
             ToolTip.SetTip(button, count > SystemReportPluginInfo.MaxDevices ? TooManyText : Tooltip);
         }

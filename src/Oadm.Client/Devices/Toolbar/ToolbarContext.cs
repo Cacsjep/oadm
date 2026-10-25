@@ -33,6 +33,9 @@ public sealed class ToolbarContext : IToolbarContext
     private readonly Action _showTasks;
     private Shell.UserSession? _session;
 
+    /// <summary>The ids of the selection, built once per selection change for every button's <see cref="CanRunTask"/>.</summary>
+    private List<string>? _selectedIds;
+
     public ToolbarContext(
         DeviceStore store,
         ObservableCollection<DeviceRowViewModel> selection,
@@ -54,7 +57,11 @@ public sealed class ToolbarContext : IToolbarContext
         _dialogs = dialogs;
         _openPage = openPage;
         _showTasks = showTasks;
-        selection.CollectionChanged += (_, _) => SelectionChanged?.Invoke(this, EventArgs.Empty);
+        selection.CollectionChanged += (_, _) =>
+        {
+            _selectedIds = null;
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        };
         store.Changed += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
         catalog.Changed += (_, _) => TaskPluginsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -93,6 +100,10 @@ public sealed class ToolbarContext : IToolbarContext
 
     public IReadOnlyList<IDeviceInfo> SelectedDevices => [.. _selection];
 
+    public int SelectedCount => _selection.Count;
+
+    private List<string> SelectedIds => _selectedIds ??= _selection.Select(d => d.Id).ToList();
+
     public IReadOnlyList<IDeviceInfo> Devices => [.. _store.Devices];
 
     public event EventHandler? SelectionChanged;
@@ -109,13 +120,13 @@ public sealed class ToolbarContext : IToolbarContext
     public bool CanRunTask(string pluginId)
     {
         TaskPluginInfo? plugin = Find(pluginId);
-        return plugin is not null && TaskPluginCatalog.RunnableFor([plugin], _selection.Select(d => d.Id).ToList()).Any();
+        return plugin is not null && TaskPluginCatalog.RunnableFor([plugin], SelectedIds).Any();
     }
 
     public string? CannotRunTaskReason(string pluginId)
     {
         TaskPluginInfo? plugin = Find(pluginId);
-        return plugin is null ? null : TaskPluginCatalog.NotRunnableReason(plugin, _selection.Select(d => d.Id).ToList());
+        return plugin is null ? null : TaskPluginCatalog.NotRunnableReason(plugin, SelectedIds);
     }
 
     public async Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, CancellationToken ct)

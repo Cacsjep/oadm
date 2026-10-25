@@ -93,10 +93,10 @@ public sealed class RefreshToolbarPlugin : IToolbarPlugin
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "Refresh", IconKey = "refresh", IsEnabled = ctx.SelectedDevices.Count > 0 };
+        var button = new ToolbarButton { Text = "Refresh", IconKey = "refresh", IsEnabled = ctx.SelectedCount > 0 };
         ToolTip.SetTip(button, Tooltip);
         ToolTip.SetShowOnDisabled(button, true);
-        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedDevices.Count > 0;
+        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedCount > 0;
         button.Click += async (_, _) => await RefreshSelectionAsync(ctx).ConfigureAwait(true);
         return button;
     }
@@ -134,8 +134,8 @@ public sealed class RemoveToolbarPlugin : IToolbarPlugin
     public Control CreateControl(IToolbarContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        var button = new ToolbarButton { Text = "Remove", IconKey = "remove", IsEnabled = ctx.SelectedDevices.Count > 0 };
-        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedDevices.Count > 0;
+        var button = new ToolbarButton { Text = "Remove", IconKey = "remove", IsEnabled = ctx.SelectedCount > 0 };
+        ctx.SelectionChanged += (_, _) => button.IsEnabled = ctx.SelectedCount > 0;
         button.Click += async (_, _) => await ConfirmAndRemoveAsync(ctx).ConfigureAwait(true);
         return button;
     }
@@ -190,8 +190,8 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var button = new ToolbarButton { Text = Text, IconKey = "export", Name = "ExportButton" };
-        ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
-        ctx.SelectionChanged += (_, _) => ToolTip.SetTip(button, Tooltip(ctx.SelectedDevices.Count));
+        ToolTip.SetTip(button, Tooltip(ctx.SelectedCount));
+        ctx.SelectionChanged += (_, _) => ToolTip.SetTip(button, Tooltip(ctx.SelectedCount));
         button.Click += async (_, _) => await ctx.OpenAsync(HostPages.ExportDevices).ConfigureAwait(true);
         return button;
     }
@@ -240,7 +240,7 @@ public sealed class TaskActionsToolbarPlugin : IToolbarPlugin
 
         void UpdateEnabled()
         {
-            bool selected = ctx.SelectedDevices.Count > 0;
+            bool selected = ctx.SelectedCount > 0;
             foreach ((string id, ToolbarButton button) in buttons)
             {
                 bool canRun = ctx.CanRunTask(id);

@@ -217,7 +217,8 @@ the UI thread.
   comes closes the host's windows. Older hosts ignore `TabOf` (every page in the rail). First user: PKI with the 802.1X
   and EST servers (`MainWindowViewModel` `TabPages`, tests `Oadm.Client.Tests` `PluginTabTests`).
 - `IToolbarPlugin` (`Id`, `Order`, `Group`: Add, Manage, Tasks, Plugins; `CreateControl` once; `RequiredPermission`:
-  the entry hides while the role lacks it) with `IToolbarContext` (selection, devices, task plugins, `CanRunTask` /
+  the entry hides while the role lacks it) with `IToolbarContext` (selection: `SelectedDevices`, a copy per call, and `SelectedCount` without one for
+  enabling buttons; devices, task plugins, `CanRunTask` /
   `CannotRunTaskReason`, `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`,
   `UploadAsync`, `InvokePluginAsync`, `Has` + `PermissionsChanged`, messages).
 
