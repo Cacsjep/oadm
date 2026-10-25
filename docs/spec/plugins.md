@@ -359,9 +359,11 @@ is always on.
   always run; each server inside runs, and opens its port, only while its stored choice (plugin setting `serverOn` of its
   core plugin, JSON true / false, none = off) is on **and** `ICorePluginContext.Pro` is active; it follows `Pro.Changed`
   with the kept choice. Page methods `getServer` (everyone with the page; `ServerSwitchState` also says whether the trial
-  can still be started), `turnOn` (refused with `NeedsPro` without the license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their pages
-  show only the Server / General card with the status and **Turn on** while the server does not run, **Turn off** left of
-  Save while it runs (`plugins/Oadm.Plugins.Pki.Client/Servers/ServerSwitchView`). The PKI row of the Plugins page has no
+  can still be started), `turnOn` (refused with `NeedsPro` without the license) and `turnOff` (Admin, the server's "manage", users with all devices, audited); event topic `server`. Their tabs
+  show only the off state while the server does not run (`ui:OffState` with the status, **Turn on**, **Start 30-day trial**
+  while the trial is available, **Turn off** for a server that is on but does not run;
+  `plugins/Oadm.Plugins.Pki.Client/Servers/ServerOffStateView`), **Turn off** left of Save while it runs
+  (`Servers/ServerSwitchView`). The PKI row of the Plugins page has no
   PRO chip; its description says "802.1X and EST servers need OADM PRO.".
 - **Plugin services** (`ICorePluginContext.Services`, `IPluginServices`: `Offer<T>`, `Withdraw<T>`, `Find<T>`; server
   `PluginServiceRegistry`): core plugins offer each other services. The contract is an SDK interface (plugins load in
