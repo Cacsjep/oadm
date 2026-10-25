@@ -162,8 +162,11 @@ public sealed class CertificateListTests
         Assert.Equal("The request has an RSA key. The policy HTTPS uses ECC.", FileError(await SignAsync(Csr(rsa, "CN=x", null, "x.example.com"))));
         using var weak = RSA.Create(1024);
         Assert.StartsWith("The request has a weak key (RSA 1024)", FileError(await SignAsync(Csr(weak, "CN=x", null, "x.example.com"))), StringComparison.Ordinal);
-        using var p224 = ECDsa.Create(ECCurve.CreateFromValue("1.3.132.0.33"));
-        Assert.Equal("The request has an ECC key on a curve OADM does not support. Use P-256 or larger.", FileError(await SignAsync(Csr(p224, "CN=x", null, "x.example.com"))));
+        if (!OperatingSystem.IsMacOS()) // macOS has no P-224 at all: it cannot make the key, nor read such a request
+        {
+            using var p224 = ECDsa.Create(ECCurve.CreateFromValue("1.3.132.0.33"));
+            Assert.Equal("The request has an ECC key on a curve OADM does not support. Use P-256 or larger.", FileError(await SignAsync(Csr(p224, "CN=x", null, "x.example.com"))));
+        }
 
         // Names: an HTTPS certificate needs one; a name that is no host name is refused; no file, garbage.
         Assert.Equal("The request names no host name or IP address. An HTTPS certificate needs one.", FileError(await SignAsync(Csr(ec, "CN=nvr"))));

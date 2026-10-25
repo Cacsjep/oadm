@@ -245,8 +245,9 @@ public sealed class ViewModelTests
             Assert.False(vm.AutoRefresh); // off by default
 
             vm.Activate();
-            await Wait.UntilAsync(() => vm.Rows.Count == 1 && vm.Rows[0].IsRunning && !vm.IsChecking);
-            Assert.StartsWith("checked ", vm.SummaryText, StringComparison.Ordinal);
+            // The summary follows the rows in a later update: wait for it too.
+            await Wait.UntilAsync(() => vm.Rows.Count == 1 && vm.Rows[0].IsRunning && !vm.IsChecking
+                && vm.SummaryText.StartsWith("checked ", StringComparison.Ordinal));
             Assert.Equal(1, vm.Counts.Pending);
             Assert.True(vm.Rows[0].Blur.IsWarning);
             Assert.True(vm.Rows[0].UnderExposure.IsOk);
