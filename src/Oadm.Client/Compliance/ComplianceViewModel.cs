@@ -33,8 +33,13 @@ public enum ComplianceTab
 /// </summary>
 public sealed partial class ComplianceCardViewModel(ComplianceCheckSummary check, bool showOwner = false) : ObservableObject
 {
-    /// <summary>The viewer has all devices: the card names a device group that owns the check.</summary>
-    public bool ShowOwner { get; } = showOwner;
+    /// <summary>
+    /// The viewer has all devices: the card names a device group that owns the check. Follows the session (the page sets
+    /// it on every card when the user's devices change).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Detail))]
+    public partial bool ShowOwner { get; set; } = showOwner;
 
     /// <summary>"Building B" for a check of a device group, "No devices" for one whose group was deleted; null for all devices.</summary>
     public string? OwnerText => Check.Owner is not { } owner || owner.AllDevices ? null
@@ -515,6 +520,11 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(MayManage));
         OnPropertyChanged(nameof(MayTurnOnOff));
+        bool showOwners = ShowOwners; // the user's devices changed (all devices or a group): the cards follow
+        foreach (var card in Cards)
+        {
+            card.ShowOwner = showOwners;
+        }
     }
 
     private void OnChecksChanged(object? sender, EventArgs e)
