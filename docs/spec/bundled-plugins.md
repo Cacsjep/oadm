@@ -155,8 +155,8 @@ Details: plugin
   that cannot be decrypted is the state "CA key cannot be read", nothing is overwritten); replacing the CA asks how many
   devices have certificates from the current one; the CA and its previous CAs are trust anchors, so OADM-issued device
   certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
-  with its own subject and SAN (never the CSR's); every task checks AXIS OS 11.11+ (cert v1 from a fresh
-  `config/discover`) and the key type of the chosen issuing policy against the device's keystore before the first write and
+  with its own subject and SAN (never the CSR's); every task checks AXIS OS 6.53+ (REST cert v1 from a fresh
+  `config/discover`, else the SOAP certificate service; docs/spec/pki.md "Older AXIS OS") and the key type of the chosen issuing policy against the device's keystore before the first write and
   fails "Nothing was changed" otherwise; the dialogs of Enable HTTPS and Enable IEEE 802.1X pick an issuing policy whose
   values the user may change for the run; the last HTTPS or IEEE 802.1X certificate policy, one an EST profile names and
   the servers' policies are never deleted; Enable HTTPS pins the new

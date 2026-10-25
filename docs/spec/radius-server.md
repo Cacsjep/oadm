@@ -301,7 +301,7 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   `IssuedRegistry.PurposeOfFound`; issued by EST for the `oadm_` / `oadm2_` EST profile names, else Task; issued = its
   valid-from); (2) once per server, 5 minutes after the
   start, one background pass reads the certificate list (REST `cert` v1, read only) of every device that answers and has
-  AXIS OS 11.11 or later, 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
+  AXIS OS 6.53 or later (REST or SOAP), 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
   read, or nothing to read; a round that read no device runs again an hour later, a stop at the next start). Devices that
   did not answer come in by (1) or when renewed.
 - **EST:** `simpleenroll` and `simplereenroll` with a revoked client certificate are refused (403, "Certificate revoked

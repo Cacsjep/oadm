@@ -47,8 +47,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   parameters"); an API list without "param-cgi", "application" or "user-management" gets them the same way from one read
   of `Properties` (VAPIX identifies these by parameters, not by the API list; an AXIS OS 11.9 camera did not list
   "application"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
-  and time run; PKI (11.11) and Device configuration (12.5) stay greyed with their reason. Writes on such firmware are not
-  tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
+  and time run; Device configuration (12.5) stays greyed with its reason. PKI runs from 6.53 through the SOAP certificate
+  service (docs/spec/pki.md "Older AXIS OS"). Other writes on such firmware are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).
 - Endpoints of the core:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
