@@ -75,6 +75,23 @@ public sealed class ProTrialTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AServerWhoseOnlineTrialKeyOfOadm41EndedCanStillStartTheInAppTrialOnce()
+    {
+        // Decision 2026-10-25: the trial key the license service issued for OADM 4.1 is not the in-app trial.
+        using var license = NewLicense();
+        await license.InitializeAsync(CancellationToken.None);
+        await license.ImportAsync(ProLicenseFile.Sign(Key.PrivateKeyPem, Server, "ACME GmbH", "Trial", null, Today, Today.AddDays(1), trial: true), CancellationToken.None);
+        _time.Advance(TimeSpan.FromDays(2));
+        var ended = license.Refresh();
+        Assert.Equal((ProLicenseStatus.Expired, true, true), (ended.Status, ended.IsTrial, ended.TrialAvailable));
+
+        var info = await license.StartTrialAsync(CancellationToken.None);
+
+        Assert.Equal((ProLicenseStatus.Active, true), (info.Status, info.IsTrial));
+        Assert.Equal(ProLicenseTexts.TrialUsed, (await Assert.ThrowsAsync<InvalidOperationException>(() => license.StartTrialAsync(CancellationToken.None))).Message);
+    }
+
+    [Fact]
     public async Task AnUnreadableInstallFileKeepsTheRunningTrialAndIsKeptWhenWrittenAgain()
     {
         var folder = Folder("a");
