@@ -70,15 +70,18 @@ The **License** card shows this server's OADM PRO license. OADM itself works the
 commercial support, the EST and 802.1X servers and PRO plugins.
 
 - **Server ID**: the ID a license is made for. The copy button puts it on the clipboard.
-- **OADM PRO**: the plan and the last day, **Trial** for a 30-day trial, or what is wrong (expired, made for another
-  server, not valid).
-- **Start 30-day trial** and **Activate license** open [Activate OADM PRO](../../activate/) with the server ID filled in.
-  A bought license code gives you the license file (`.oadmlicense`) at once; a trial comes by email. One trial per
-  server.
-- **Import license** (administrators): choose the license file. It applies at once.
-- **Remove license** (administrators): the EST and 802.1X servers and PRO plugins stop on this server.
+- **OADM PRO**: the plan and the last day, **Trial** and its last day during the 30-day trial, or what is wrong
+  (expired, trial ended, made for another server, not valid).
+- **Start 30-day trial** (administrators): OADM PRO runs at once for 30 days, no account and no internet needed. Once per
+  server. Other users see that an administrator can start it.
+- **Activate license** opens [Activate OADM PRO](../../activate/) with the server ID filled in. A bought license code
+  gives you the license file (`.oadmlicense`) at once.
+- **Import license** (administrators): choose the license file. It applies at once and replaces the trial.
+- **Remove license** (administrators): the EST and 802.1X servers and PRO plugins stop on this server, unless the trial
+  still runs.
 
-A license moves with a backup: after a restore on a new computer the server keeps its ID and its license.
+A license moves with a backup: after a restore on a new computer the server keeps its ID and its license. A running trial
+does not move to another computer.
 
 ## Support
 

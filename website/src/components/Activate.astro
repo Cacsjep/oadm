@@ -1,7 +1,7 @@
 ---
-// The activation page (/activate/): a bought license code or a 30-day trial for one OADM server. Both post to the support
-// forum, which signs the license key (docs/spec/licensing.md). `?server=<id>` fills the server ID (OADM's Settings > License
-// links here), `&trial=1` opens the trial.
+// The activation page (/activate/): a bought license code for one OADM server. It posts to the support forum, which signs
+// the license key (docs/spec/licensing.md). `?server=<id>` fills the server ID (OADM's Settings > License links here). The
+// 30-day trial starts in OADM itself, so the page only points there.
 import { forumUrl } from '../lib/forum';
 ---
 
@@ -10,12 +10,7 @@ import { forumUrl } from '../lib/forum';
 	<p class="activate-lead">Find the server ID in OADM under Settings &gt; License.</p>
 
 	<div class="activate-card" data-portal={forumUrl}>
-		<div class="dl-tabs" role="tablist">
-			<button type="button" role="tab" id="activate-tab-license" aria-controls="activate-license" aria-selected="true" data-tab="license">Activate license</button>
-			<button type="button" role="tab" id="activate-tab-trial" aria-controls="activate-trial" aria-selected="false" tabindex="-1" data-tab="trial">Start 30-day trial</button>
-		</div>
-
-		<form id="activate-license" class="activate-form" role="tabpanel" aria-labelledby="activate-tab-license" data-kind="license" novalidate>
+		<form id="activate-license" class="activate-form" aria-label="Activate license" novalidate>
 			<div class="activate-fields">
 				<label>Server ID<input name="server" autocomplete="off" spellcheck="false" placeholder="7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37" /><span class="activate-error" hidden></span></label>
 				<label>License code<input name="code" autocomplete="off" spellcheck="false" placeholder="OADM-XXXX-XXXX-XXXX" /><span class="activate-error" hidden></span></label>
@@ -32,23 +27,8 @@ import { forumUrl } from '../lib/forum';
 			</div>
 		</form>
 
-		<form id="activate-trial" class="activate-form" role="tabpanel" aria-labelledby="activate-tab-trial" data-kind="trial" novalidate hidden>
-			<div class="activate-fields">
-				<label>Server ID<input name="server" autocomplete="off" spellcheck="false" placeholder="7f3c2a1e-5b8d-4c6f-9a2e-1d0b4e8f6c37" /><span class="activate-error" hidden></span></label>
-				<label>Email<input name="email" type="email" autocomplete="email" maxlength="254" /><span class="activate-error" hidden></span></label>
-				<label class="activate-trap" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off" /></label>
-			</div>
-			<p class="activate-hint">One trial per server and email address. The license key comes by email.</p>
-			<p class="activate-message" role="status" hidden></p>
-			<div class="activate-done" hidden>
-				<p>Save the .oadmlicense file from the email. In OADM, open Settings &gt; License and click Import license.</p>
-			</div>
-			<div class="activate-footer">
-				<a href={`${forumUrl}privacy/`}>Privacy notice</a>
-				<button type="submit" class="dl activate-send">Start trial</button>
-			</div>
-		</form>
 	</div>
+	<p class="activate-hint">No license yet? In OADM, open Settings &gt; License and click Start 30-day trial. Once per server.</p>
 </section>
 
 <script>
@@ -57,24 +37,12 @@ import { forumUrl } from '../lib/forum';
 		const portal = card.dataset.portal ?? '';
 		const contact = 'contact@acs-dev.org';
 		const guid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-		const tabs = Array.from(card.querySelectorAll<HTMLButtonElement>('[role=tab]'));
 		const forms = Array.from(card.querySelectorAll<HTMLFormElement>('.activate-form'));
 
-		const select = (kind: string) => {
-			for (const tab of tabs) {
-				const on = tab.dataset.tab === kind;
-				tab.setAttribute('aria-selected', String(on));
-				tab.tabIndex = on ? 0 : -1;
-			}
-			for (const form of forms) form.hidden = form.dataset.kind !== kind;
-		};
-		tabs.forEach((tab) => tab.addEventListener('click', () => select(tab.dataset.tab!)));
-
-		// The link from OADM fills the server ID in both forms.
+		// The link from OADM fills the server ID.
 		const params = new URLSearchParams(location.search);
 		const server = params.get('server')?.trim() ?? '';
 		if (server) forms.forEach((form) => (form.querySelector<HTMLInputElement>('input[name=server]')!.value = server));
-		if (params.get('trial') === '1') select('trial');
 
 		// "oadm abcd efgh jkmn", "ABCDEFGHJKMN" -> "OADM-ABCD-EFGH-JKMN".
 		const normalizeCode = (text: string) => {
@@ -108,11 +76,6 @@ import { forumUrl } from '../lib/forum';
 				code.value = normalizeCode(code.value);
 				if (!/^OADM-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code.value)) fail(code, 'Enter the license code, OADM-XXXX-XXXX-XXXX.');
 			}
-			const email = form.querySelector<HTMLInputElement>('input[name=email]');
-			if (email) {
-				email.value = email.value.trim();
-				if (!email.value || !email.checkValidity()) fail(email, 'Enter a valid email address.');
-			}
 			(first as HTMLInputElement | null)?.focus();
 			return first === null;
 		};
@@ -129,7 +92,6 @@ import { forumUrl } from '../lib/forum';
 		};
 
 		forms.forEach((form) => {
-			const kind = form.dataset.kind!;
 			const message = form.querySelector<HTMLElement>('.activate-message')!;
 			const send = form.querySelector<HTMLButtonElement>('.activate-send')!;
 			const done = form.querySelector<HTMLElement>('.activate-done')!;
@@ -140,8 +102,8 @@ import { forumUrl } from '../lib/forum';
 			};
 			// The forum does not answer: the request goes by email instead, with the form's content in the mail.
 			const showOffline = (data: Record<string, string>) => {
-				const lines = [`Server ID: ${data.server}`, kind === 'license' ? `License code: ${data.code}` : `Email: ${data.email}`];
-				const subject = kind === 'license' ? 'Activate OADM PRO' : 'OADM PRO trial';
+				const lines = [`Server ID: ${data.server}`, `License code: ${data.code}`];
+				const subject = 'Activate OADM PRO';
 				const link = document.createElement('a');
 				link.href = `mailto:${contact}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 				link.textContent = contact;
@@ -162,23 +124,16 @@ import { forumUrl } from '../lib/forum';
 				const data = Object.fromEntries(new FormData(form)) as Record<string, string>;
 				send.disabled = true;
 				try {
-					const response = await fetch(`${portal}api/portal/license/${kind === 'license' ? 'activate' : 'trial'}`, {
+					const response = await fetch(`${portal}api/portal/license/activate`, {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify(data),
 					});
 					const answer = await response.json().catch(() => null);
-					if (response.ok && kind === 'license' && answer?.license) {
+					if (response.ok && answer?.license) {
 						license = { text: answer.license, fileName: answer.fileName || 'oadm-pro.oadmlicense' };
 						download(license.text, license.fileName);
 						show('Your license key is downloading.', true);
-						done.hidden = false;
-						send.hidden = true;
-						return;
-					}
-					if (response.ok && kind === 'trial') {
-						form.querySelector<HTMLElement>('.activate-hint')!.hidden = true;
-						show(answer?.message || `We sent the trial license to ${data.email}.`, true);
 						done.hidden = false;
 						send.hidden = true;
 						return;
@@ -228,9 +183,6 @@ import { forumUrl } from '../lib/forum';
 		box-shadow: 0 0 80px -20px color-mix(in srgb, var(--sl-color-accent) 45%, transparent);
 		text-align: left;
 	}
-	.activate-card .dl-tabs {
-		padding-inline: 1.5rem;
-	}
 	.activate-form {
 		display: flex;
 		flex-direction: column;
@@ -269,9 +221,6 @@ import { forumUrl } from '../lib/forum';
 		font-size: var(--sl-text-sm);
 		font-weight: 400;
 	}
-	.activate-fields input[name='email'] {
-		font-family: inherit;
-	}
 	.activate-fields input:focus {
 		border-color: var(--sl-color-accent);
 		outline: none;
@@ -293,9 +242,6 @@ import { forumUrl } from '../lib/forum';
 		width: 1px;
 		height: 1px;
 		overflow: hidden;
-	}
-	.activate-hint[hidden] {
-		display: none;
 	}
 	.activate-hint {
 		color: var(--sl-color-gray-3);
