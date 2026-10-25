@@ -40,6 +40,12 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     policies (their days and key), not the 4.1 profile values (maintainer decision 2026-10-25: the profiles keep the
     built-in policies, no copies). A save of the tab keeps each profile's stored on/off (`ProfileRowViewModel.ToProfile`):
     a profile that was off in 4.1 stays off (fix of 2026-10-25, found on a real 4.1 database); a new profile is on.
+    The update removes the profiles that were off in 4.1 (decision 2026-10-25, `EstPolicies.RemoveOffProfilesAsync`): a
+    one-time step with its own owner key in PKI's `Converted` list (`oadm.est:off-profiles-2026-10-25`), so it also runs
+    once on a server already updated to 4.5.0-rc.1 where the off profile is still there; never on EST settings or a PKI
+    store that cannot be read (the next start tries again); profiles that are on are untouched; one Information line per
+    removed profile (its name only). The enrollments and certificates of a removed profile stay in the lists (history). A
+    profile turned off after the step stays.
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
     certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
     in OADM's own window (the shared `ui:CertificateWindow` of the client SDK, also used by PKI and the 802.1X server): validity with a status chip, issued to and issued by, key and

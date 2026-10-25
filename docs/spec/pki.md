@@ -403,6 +403,9 @@ On the first start after the update, once, without asking:
   "EST 802.1X", "EST " + the profile's name, also "EST https" / "EST dot1x") names the built-in policy of its kind; those
   policies are then deleted where no other profile names them (task dialogs and created certificates only record them as
   history). The rename of 2026-10-24 ("EST https" → "EST HTTPS") is gone.
+- **EST profiles that were off** (`EstPolicies.RemoveOffProfilesAsync`, owner `oadm.est:off-profiles-2026-10-25`, once,
+  also on servers already on 4.5.0-rc.1, never on settings or a store that cannot be read): removed, see
+  docs/spec/est-server.md "Profiles".
 - **Server certificates** (decision 2026-10-25, see "Server certificates"): the 802.1X server's own certificate (kept with
   its key by the 802.1X server) is imported into the Certificates list once and picked by the 802.1X server policy, so
   cameras keep working; the EST server policy gets a new certificate from the OADM CA (10 years, ECC) on its first start.

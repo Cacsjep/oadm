@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using Microsoft.Extensions.Logging;
+
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Plugins;
@@ -18,7 +20,7 @@ public sealed record ProfileIssuing(int ValidDays, ProfileKey Key, string? Polic
 /// "Profiles"): a profile names its issuing policy (HTTPS certificate for HTTPS and RTSPS, IEEE 802.1X certificate for IEEE
 /// 802.1X and MQTT), whose valid days and key its certificates get. The profile name stays what the cameras use in their URL.
 /// </summary>
-public static class EstPolicies
+public static partial class EstPolicies
 {
     /// <summary>The owner of the conversion of "Sign in with" and today's enrollment into Sign-in CA and Enrollment policies (stage 6).</summary>
     public const string RulesOwner = EstPluginInfo.PluginId;
@@ -221,6 +223,51 @@ public static class EstPolicies
         var named = profiles.Where(p => p.PolicyId is not null).Select(p => p.PolicyId!.Value).ToHashSet();
         return await store.RewriteOnceAsync(CleanUpOwner, list => [.. list.Where(p => !made.Contains(p.Id) || named.Contains(p.Id))], ct).ConfigureAwait(false);
     }
+
+    /// <summary>The owner of the removal of the profiles that were off in OADM 4.1 (decision 2026-10-25).</summary>
+    public const string OffProfilesOwner = EstPluginInfo.PluginId + ":off-profiles-2026-10-25";
+
+    /// <summary>
+    /// Once (decision 2026-10-25): the profiles that are off are removed (in OADM 4.1 an off profile was the way to keep one
+    /// unused; 4.5 has no use for it). Its own owner key, so it also runs once on a server already updated to 4.5.0-rc.1
+    /// where the off profile is still there. Profiles that are on are untouched; the enrollments and certificates of a
+    /// removed profile stay in the lists. One Information line per removed profile (its name). Never on settings or a store
+    /// that cannot be read (the next start tries again). True when it ran now.
+    /// </summary>
+    public static async Task<bool> RemoveOffProfilesAsync(IPluginSettings settings, PolicyStore store, ILogger logger, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(logger);
+        if (store.IsUnreadable || store.Converted.Contains(OffProfilesOwner, StringComparer.Ordinal))
+        {
+            return false;
+        }
+
+        var json = await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            if (Read(json) is not { } config)
+            {
+                return false;
+            }
+
+            var off = config.Profiles.Where(p => !p.Enabled).ToList();
+            if (off.Count > 0)
+            {
+                await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(config with { Profiles = [.. config.Profiles.Where(p => p.Enabled)] }), ct).ConfigureAwait(false);
+                foreach (var profile in off)
+                {
+                    LogOffProfileRemoved(logger, profile.Name);
+                }
+            }
+        }
+
+        return await store.RewriteOnceAsync(OffProfilesOwner, list => list, ct).ConfigureAwait(false);
+    }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "EST profile {Profile} removed: it was off")]
+    private static partial void LogOffProfileRemoved(ILogger logger, string profile);
 
     /// <summary>"EST HTTPS", "EST 802.1X" for the two default profiles, "EST " + the name for the others (the names the conversion before 2026-10-25 gave).</summary>
     public static string NameFor(EstProfile profile) => "EST " + profile.Name.ToLowerInvariant() switch

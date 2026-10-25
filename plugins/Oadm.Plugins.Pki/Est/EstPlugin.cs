@@ -104,7 +104,8 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
 
     /// <summary>
     /// The profiles name PKI's issuing policies: the profiles of OADM 4.1 name the built-in ones (<see cref="EstPolicies.ConvertAsync"/>; the
-    /// policies the conversion made before 2026-10-25 are cleaned up once, <see cref="EstPolicies.CleanUpAsync"/>)
+    /// policies the conversion made before 2026-10-25 are cleaned up once, <see cref="EstPolicies.CleanUpAsync"/>; the profiles
+    /// that were off are removed once, <see cref="EstPolicies.RemoveOffProfilesAsync"/>)
     /// and tells PKI's store which policies they name (never deleted while named) and the profiles' names (Enrollment
     /// policies choose among them), also while the server is off; converts "Sign in with" and today's enrollment into Sign-in
     /// CA and Enrollment policies once (<see cref="EstPolicies.ConvertRulesAsync"/>). PKI starts first (a package's main plugin starts before the others of
@@ -127,6 +128,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         IReadOnlyList<string> siteAddresses = [.. sites.Values.SelectMany(a => a).Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase)];
         store.EstServerNames = () => siteAddresses;
         await EstPolicies.CleanUpAsync(settings, store, ct).ConfigureAwait(false);
+        await EstPolicies.RemoveOffProfilesAsync(settings, store, ctx.Logger, ct).ConfigureAwait(false);
         await EstPolicies.ConvertAsync(settings, store, ct).ConfigureAwait(false);
         await EstPolicies.ConvertRulesAsync(settings, store, ct).ConfigureAwait(false);
     }
