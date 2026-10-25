@@ -6,6 +6,18 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Changed
+
+- **EST server**: after the update from 4.1, EST certificates follow the built-in HTTPS and IEEE 802.1X policies (their
+  days and key), not the values of the 4.1 profiles.
+
+### Fixed
+
+- **PKI**: Delete certificates deletes nothing while OADM cannot read what a camera uses its certificates for. An HTTPS
+  certificate the camera may already use is no longer revoked after a failed check. A previous certificate that cannot be
+  removed is a warning. A damaged stored OADM CA is never replaced by a new one.
+- **EST server**: saving the tab no longer turns on a profile that was off in 4.1.
+
 ## [4.5.0-rc.1] - 2026-10-25
 
 ### Added

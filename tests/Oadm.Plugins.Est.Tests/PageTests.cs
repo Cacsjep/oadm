@@ -90,6 +90,25 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_save_keeps_a_profile_that_was_off_in_41_off()
+    {
+        // OADM 4.1 had an On column; the page of 4.5 has none, so a save must keep the stored value.
+        var service = _plugin.Service!;
+        var profiles = service.Store.Config.Profiles.Select(p => p.Name == "dot1x" ? p with { Enabled = false } : p).ToList();
+        await service.SaveAsync(new SaveRequest(service.Store.Config with { Profiles = profiles }), CancellationToken.None);
+        Assert.False(service.Store.Config.Profiles.Single(p => p.Name == "dot1x").Enabled);
+        using var vm = new EstViewModel(_ctx);
+        await vm.LoadAsync(CancellationToken.None);
+
+        vm.Profiles.Single(p => p.Name == "https").Policy = vm.Profiles.Single(p => p.Name == "https").PolicyChoices[0];
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(vm.ActionError);
+        Assert.False(service.Store.Config.Profiles.Single(p => p.Name == "dot1x").Enabled);
+        Assert.True(service.Store.Config.Profiles.Single(p => p.Name == "https").Enabled);
+    }
+
+    [Fact]
     public async Task The_page_shows_how_many_pki_policies_apply_and_edit_in_pki_opens_the_pki_page()
     {
         _ca.ListDefaults();

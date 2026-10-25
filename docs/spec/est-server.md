@@ -36,7 +36,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     kind, decision 2026-10-25: one issuing policy per kind, no "EST HTTPS" policies), on. The profile name stays what
     the camera uses in its URL. Two ready-made: **HTTPS** (server certificates, policy "HTTPS") and **IEEE 802.1X** (client
     certificates, policy "IEEE 802.1X"). A profile whose policy cannot be read issues nothing (503 "The issuing policy of
-    this profile cannot be read.").
+    this profile cannot be read."). After the update from 4.1, EST certificates follow the built-in HTTPS / IEEE 802.1X
+    policies (their days and key), not the 4.1 profile values (maintainer decision 2026-10-25: the profiles keep the
+    built-in policies, no copies). A save of the tab keeps each profile's stored on/off (`ProfileRowViewModel.ToProfile`):
+    a profile that was off in 4.1 stays off (fix of 2026-10-25, found on a real 4.1 database); a new profile is on.
   - **Enrollments**: time, device, profile, new or renewal, result, reason (500 newest, setting 100..5,000). **View
     certificate** (toolbar, or a double click on a row; decision 2026-10-23) shows the certificate an enrollment issued
     in OADM's own window (the shared `ui:CertificateWindow` of the client SDK, also used by PKI and the 802.1X server): validity with a status chip, issued to and issued by, key and
