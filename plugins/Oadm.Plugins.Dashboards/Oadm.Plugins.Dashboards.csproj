@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
+    <Compile Include="..\Shared\ViewerScopes.cs" Link="Common\ViewerScopes.cs" />
   </ItemGroup>
 
   <ItemGroup>

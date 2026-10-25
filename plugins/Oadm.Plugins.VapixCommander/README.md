@@ -110,7 +110,7 @@ tooltip); the shared tasks pane sits below the page (`ShowTasksPane`), so a star
   type (else from the text: param.cgi key=value); JSON and XML are shown pretty-printed (2 spaces, also when the device
   sends them minified) with a **Pretty / Raw** switch (Raw = the exact device text, `TryOutcome.RawBody`, sent only when
   it differs), the content type and "Cut at 256 KB." next to it.
-- **Target devices**: the Devices page selection preselected; the purple device button of the event rules ("Choose
+- **Target devices**: the Devices page selection preselected; the device button of the event rules (`Button.secondary` with the devices icon) ("Choose
   devices", "Selected devices: Tag Building A and 3 devices") opens the shared device picker (All devices, chosen devices
   and tags; a tag means the devices that have it when the rollout starts); summary
   "1,500 devices · 1,169 compatible · 214 not compatible · 117 not checked"; below it only the chosen devices with a problem
@@ -175,8 +175,8 @@ SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md). Page methods get t
 
 - `tryRequest`, `checkCompatibility` and `rollout` reach devices, clients and tasks only through the call. For a user with
   a device group an id outside the view refuses the whole request like an unknown id (NOT_FOUND "1 device is no longer
-  available."), nothing is sent and no task starts. Users with all devices: unchanged ("Device not found", the removed
-  device text).
+  available."), nothing is sent and no task starts. Users with all devices: unchanged (`checkCompatibility` "Device not found", `tryRequest` the error
+  "1 device is no longer available.", `DeviceMessages.NoLongerAvailable(1)`).
 - `save`, `delete` and `import` change the saved commands everyone shares: `RequiresAllDevices`, refused for group
   users before the plugin runs. The page hides New command, Import, Edit, Delete and Save with values for them
   (`MaySaved` / `MaySave` also need `HasAllDevices`).

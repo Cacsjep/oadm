@@ -121,8 +121,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request, Send TCP message; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
-  problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one purple
-  button that says what is chosen ("Choose devices" while nothing is, else "Selected devices: All" / "Selected devices: Tag
+  problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one button
+  (`Button.secondary` with the devices icon) that says what is chosen ("Choose devices" while nothing is, else "Selected devices: All" / "Selected devices: Tag
   Building A and 3 devices", `DeviceSelectorTexts.Brief`; the addresses as tooltip; the same button in the trigger editor)
   opens the shared `DevicePickerWindow` with every option (`DevicePickerOptions.Full`): "The same device" / "The
   device of the event", All devices, or chosen devices and tags together; the event's and the action's description sit in an info icon right of their

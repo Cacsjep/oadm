@@ -11,8 +11,18 @@ namespace Oadm.Plugins.Shared;
 /// <summary>Timing and limits of <see cref="DeviceSweep{TRow}"/>; tests shorten them.</summary>
 internal sealed class DeviceSweepOptions
 {
-    /// <summary>Devices read at the same time (24; 200 cameras = about 9 rounds).</summary>
+    private readonly Lazy<SemaphoreSlim> _gate;
+
+    public DeviceSweepOptions() => _gate = new(() => new SemaphoreSlim(Math.Max(1, Parallelism)));
+
+    /// <summary>
+    /// Devices read at the same time (24; 200 cameras = about 9 rounds), by every sweep made with these options together:
+    /// a plugin keeps one options instance, so the sweeps of all device scopes share the limit (<see cref="Gate"/>).
+    /// </summary>
     public int Parallelism { get; init; } = 24;
+
+    /// <summary>The reads in flight of every sweep made with these options (<see cref="Parallelism"/> at most).</summary>
+    public SemaphoreSlim Gate => _gate.Value;
 
     /// <summary>Time for the reads of one device.</summary>
     public TimeSpan DeviceTimeout { get; init; } = TimeSpan.FromSeconds(3);
@@ -475,9 +485,21 @@ internal sealed partial class DeviceSweep<TRow> : IAsyncDisposable
             read = ++_reads;
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(_options.DeviceTimeout);
-        var row = await _read(device, previous, timeout.Token).ConfigureAwait(false);
+        // One limit for the plugin: the sweeps of every device scope share the options' gate.
+        var gate = _options.Gate;
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        TRow? row;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(_options.DeviceTimeout);
+            row = await _read(device, previous, timeout.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
         lock (_sync)
         {
             if (_rowRead.TryGetValue(device.Id, out var newer) && newer > read)

@@ -109,8 +109,14 @@ shows the form read-only without Save for the others, `MayManage`). Users with a
 requests of their devices (by address on their route: the server's network or their site, `Serving/NtpGroupView`) and the
 sites of their devices only (site relays, the "Serve at sites" choices). Their pages get live state and requests through
 `PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page (`plugins/Shared/ViewerScopes.cs`,
-filtered from the group's devices in the background loop); users with all devices get the full state as before. Tests:
-`CanaryTests` (the canary, filtered state and live requests), `PageViewModelTests` (read-only form for a group).
+filtered from the group's devices in the background loop); users with all devices get the full state as before. A publish
+round never reads the device table: each group's `NtpGroupView` is kept (`ViewerScopes.ViewAsync`) and built again on
+`IDeviceScopes.Changed` for the group or after 5 minutes (an address change moves no device between groups). A group's
+`getState` answers `Renew`: its page reads the state again every 5 minutes while shown (`NtpServerViewModel.RenewInterval`),
+and a group not read for 15 minutes is forgotten. Chosen sites ("Serve at sites") none of which is a site of the group show
+as not served at sites (never as "every site"). Tests: `CanaryTests` (the canary, filtered state and live requests),
+`PageViewModelTests` (read-only form for a group), `GroupScaleTests` (5 groups at 30,000 devices: no read per round, + Perf;
+the view cache, forgotten groups, `Renew`, the page's renewal, the sites of the group).
 
 ## Permissions
 

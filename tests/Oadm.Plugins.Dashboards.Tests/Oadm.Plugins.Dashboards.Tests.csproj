@@ -22,6 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\Shared\CountingDeviceScopes.cs" Link="Shared\CountingDeviceScopes.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Oadm.Client supplies the host theme, the fake API and the shared runtime assemblies
          (Avalonia, CommunityToolkit, SDK) the plugin projects compile against only. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />

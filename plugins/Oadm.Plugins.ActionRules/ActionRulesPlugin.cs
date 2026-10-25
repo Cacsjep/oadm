@@ -205,8 +205,14 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         if (_runTasks.TryGetValue(runId, out var ids) && ids.Count > 0
             && await caller.Tasks.AnyActiveAsync(ids, ct).ConfigureAwait(false) == false)
         {
-            _running.TryRemove(runId, out _);
-            _runTasks.TryRemove(runId, out _);
+            // Only a caller with all devices sees every task of the run: a group user's answer covers the group's devices
+            // (none of their tasks writes any more), never the tasks of the run's other devices, so the run stays known.
+            if (caller.HasAllDevices)
+            {
+                _running.TryRemove(runId, out _);
+                _runTasks.TryRemove(runId, out _);
+            }
+
             return false;
         }
 

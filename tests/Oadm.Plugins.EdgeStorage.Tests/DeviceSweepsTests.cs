@@ -194,6 +194,54 @@ public sealed class DeviceSweepsTests
         Assert.Equal(0, group.Lists + all.Lists);
     }
 
+    [Fact]
+    public async Task TheSweepsOfAllScopesShareOneLimit()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var keys = new List<string>();
+        for (var g = 0; g < 3; g++)
+        {
+            var devices = Enumerable.Range(0, 3).Select(i => ctx.Add(new Testing.FakeDevice { Address = $"10.0.{g}.{i + 1}" }).Id).ToList();
+            keys.Add(ctx.FakeScopes.Add("G" + g, devices));
+        }
+
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var inFlight = 0;
+        var most = 0;
+        await using var sweeps = Sweeps(ctx, 2, async (_, token) =>
+        {
+            var now = Interlocked.Increment(ref inFlight);
+            InterlockedMax(ref most, now);
+            try
+            {
+                await gate.Task.WaitAsync(token);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref inFlight);
+            }
+        }, []);
+        var all = keys.Select(k => sweeps.For(k)!).ToList();
+        all.ForEach(s => s.Start());
+
+        // Three groups, two reads at a time for the plugin (not two per group).
+        await Testing.Eventually.TrueAsync(() => Volatile.Read(ref inFlight) == 2, "two reads started");
+        await Testing.Eventually.StaysTrueAsync(() => Volatile.Read(ref inFlight) <= 2, "no third read", TimeSpan.FromMilliseconds(200));
+        gate.SetResult();
+        await Task.WhenAll(all.Select(s => s.Current));
+
+        Assert.Equal(2, Volatile.Read(ref most));
+        Assert.All(all, s => Assert.Equal(3, s.Rows.Count));
+
+        static void InterlockedMax(ref int target, int value)
+        {
+            int seen;
+            while ((seen = Volatile.Read(ref target)) < value && Interlocked.CompareExchange(ref target, value, seen) != seen)
+            {
+            }
+        }
+    }
+
     private static DeviceSweeps<Row> Sweeps(
         Testing.FakeCoreContext ctx,
         int parallelism,

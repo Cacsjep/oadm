@@ -22,7 +22,7 @@ Port 1); the tooltip says open / closed and the normal state. Read-only for devi
   like an unknown one, NOT_FOUND "1 device is no longer available."); the ports go only to the page's session
   (`PluginEventAudience.Of`). A reading is shared only by pages of the same device scope and reads through their call, so
   when the device leaves their view the pages get "1 device is no longer available." and the reading ends.
-- Page: the device button (primary; it names the chosen device "10.0.0.70 · A9210", else "Choose a device") opens the
+- Page: the device button (a command button with the I/O device icon; it names the chosen device "10.0.0.70 · A9210", else "Choose a device") opens the
   shared `DevicePickerWindow.ShowOneAsync` (search, virtualized, 30,000 devices) with the devices above (others are not
   offered; the view hands it to the view model as `PickDevice`), status chip (Connecting, Live, Error + text) and the device as a faceplate: INPUTS and OUTPUTS rows
   of terminals (contact drawn open / closed and green while active, name, port number); another device or leaving the page

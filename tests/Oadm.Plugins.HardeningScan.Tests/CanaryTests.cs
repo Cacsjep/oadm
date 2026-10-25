@@ -232,6 +232,81 @@ public sealed class CanaryTests
         }
     }
 
+    [Fact]
+    public async Task The_scans_of_all_groups_share_one_limit()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var requests = new GatedRequests();
+        var users = new List<ICallContext>();
+        for (var g = 0; g < 3; g++)
+        {
+            var ids = Enumerable.Range(0, 3).Select(i => ctx.Add(new Testing.FakeDevice { Address = $"10.0.{g}.{i + 1}" }, new GatedCamera(requests)).Id).ToList();
+            users.Add(Testing.FakeCallContext.WithGroup(ctx, ids, "tech" + g, ctx.FakeScopes.Add("G" + g, ids)));
+        }
+
+        await using var plugin = new HardeningScanPlugin(new HardeningScanOptions { Time = new FakeTimeProvider(), Parallelism = 2 });
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        foreach (var user in users)
+        {
+            await ctx.InvokeAsync(plugin, user, HardeningMethods.StartScan, """{"level":"Basic"}""");
+        }
+
+        // Three groups scan, two devices at a time for the plugin (not two per group).
+        await Testing.Eventually.TrueAsync(() => requests.InFlight == 2, "two devices in scan");
+        await Testing.Eventually.StaysTrueAsync(() => requests.InFlight <= 2, "no third device", TimeSpan.FromMilliseconds(200));
+        requests.Open.SetResult();
+        await Testing.Eventually.TrueAsync(() => users.All(u => plugin.Service!.JobOf(u.DeviceScopeKey) is { State: ScanJobStates.Done }), "every scan done");
+        Assert.Equal(2, requests.Most);
+    }
+
+    /// <summary>The requests of every <see cref="GatedCamera"/>: held until <see cref="Open"/>, counted while in flight.</summary>
+    private sealed class GatedRequests
+    {
+        private int _inFlight;
+        private int _most;
+
+        public TaskCompletionSource Open { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int InFlight => Volatile.Read(ref _inFlight);
+
+        public int Most => Volatile.Read(ref _most);
+
+        public async Task<T> RunAsync<T>(Func<Task<T>> request, CancellationToken ct)
+        {
+            var now = Interlocked.Increment(ref _inFlight);
+            int seen;
+            while ((seen = Volatile.Read(ref _most)) < now && Interlocked.CompareExchange(ref _most, now, seen) != seen)
+            {
+            }
+
+            try
+            {
+                await Open.Task.WaitAsync(ct);
+                return await request();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inFlight);
+            }
+        }
+    }
+
+    /// <summary>A camera whose requests wait for the shared gate (a device scan asks one request at a time).</summary>
+    private sealed class GatedCamera(GatedRequests requests) : Testing.FakeCamera
+    {
+        public override Task<Oadm.Sdk.Vapix.BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) =>
+            requests.RunAsync(() => base.GetBasicDeviceInfoAsync(ct), ct);
+
+        public override Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct) =>
+            requests.RunAsync(() => base.ListParametersAsync(groups, ct), ct);
+
+        public override Task<IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi>> GetApiListAsync(CancellationToken ct) =>
+            requests.RunAsync(() => base.GetApiListAsync(ct), ct);
+
+        public override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            requests.RunAsync(() => base.SendAsync(request, ct), ct);
+    }
+
     /// <summary>A camera whose device leaves on the first request.</summary>
     private sealed class LeavingCamera(Action leave) : Testing.FakeCamera
     {

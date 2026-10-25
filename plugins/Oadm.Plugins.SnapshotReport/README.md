@@ -27,8 +27,12 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   date, items[{deviceId, camera}]}) starts a background job (fresh report-size snapshots, then the
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
-  than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use.
-- Device choice (`PageDeviceChoice` of the client SDK, noun "cameras", only devices with video): the purple button
+  than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use (a timer drops them every minute; a user's report is
+  dropped with its host job, which lasts as long as the report, so a logout or other devices drop it at once). One user
+  builds at most 2 reports at once (`ReportJobs.MaxRunningPerUser`); a further one waits its turn with the status "Wait
+  for your earlier reports to finish". A report is cancelled before its token source is disposed (no warning of the
+  host on a delete), and a start that fails after its job started ends the job (`ReportJobLifetimeTests`).
+- Device choice (`PageDeviceChoice` of the client SDK, noun "cameras", only devices with video): the command button
   first in the toolbar ("Choose cameras", "Selected cameras: Tag Building A") opens the shared device picker with All
   devices, tags and chosen cameras. The page starts with the Devices page selection, else the last choice on this
   computer (`GetLocalSetting`), else nothing: then Create snapshots is disabled and the page says "Choose cameras, then

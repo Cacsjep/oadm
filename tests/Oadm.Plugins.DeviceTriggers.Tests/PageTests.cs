@@ -304,8 +304,10 @@ public sealed class PageTests(ITestOutputHelper output)
         var id = Guid.NewGuid();
         var copyId = Guid.NewGuid();
         var dropped = 2;
+        var fail = false;
         var ctx = new ScriptedContext((method, _) => method switch
         {
+            DeviceTriggersMethods.Duplicate when fail => throw new InvalidOperationException("The trigger could not be copied."),
             DeviceTriggersMethods.List => TriggerJson.Serialize(new ListReply(
             [
                 new TriggerSummary(id, "Door", false, "Virtual input", string.Empty, true, 1, 0, 0, 0, null),
@@ -327,6 +329,14 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal("Saved without 2 devices that are no longer in the device group.", vm.NoticeText);
         Assert.True(vm.HasNotice);
         Assert.Equal(copyId, vm.SelectedTrigger?.Id);
+
+        // An error in the same place below the table hides the notice (never both on top of each other).
+        fail = true;
+        vm.SelectedTrigger = vm.Triggers.Single(t => t.Id == id);
+        await vm.DuplicateCommand.ExecuteAsync(null);
+        Assert.True(vm.HasError);
+        Assert.False(vm.HasNotice);
+        fail = false;
 
         // A duplicate that kept every device clears it.
         dropped = 0;

@@ -84,7 +84,7 @@ public sealed class NtpServerPlugin : ICorePlugin, IAsyncDisposable
             case NtpServerMethods.GetState:
                 service.Viewers.Seen(caller);
                 var view = Serving.NtpGroupView.From(await caller.Devices.ListAsync(ct).ConfigureAwait(false));
-                return NtpJson.Serialize(service.GetState(view));
+                return NtpJson.Serialize(service.GetState(view) with { Renew = service.Viewers.Renews });
             case NtpServerMethods.Save:
                 throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices)
             default:

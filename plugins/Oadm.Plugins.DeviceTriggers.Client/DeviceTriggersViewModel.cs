@@ -172,6 +172,7 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
     public partial string? ErrorText { get; private set; }
 
     [ObservableProperty]
@@ -185,7 +186,8 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
     [NotifyPropertyChangedFor(nameof(HasNotice))]
     public partial string? NoticeText { get; private set; }
 
-    public bool HasNotice => !string.IsNullOrEmpty(NoticeText);
+    /// <summary>The notice shows only without an error (both sit in the same place below the table).</summary>
+    public bool HasNotice => !string.IsNullOrEmpty(NoticeText) && !HasError;
 
     public bool HasSelection => SelectedTrigger is not null;
 

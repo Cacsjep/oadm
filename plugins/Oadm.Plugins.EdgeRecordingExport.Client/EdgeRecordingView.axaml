@@ -11,10 +11,7 @@
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
       <!-- Wraps on a narrow window: Search moves to a second line instead of out of the card. -->
       <WrapPanel Grid.Row="0" Classes="inputRow">
-        <Button Classes="toolbar" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}"
-                ToolTip.Tip="Video devices, by address or tag">
-          <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding CamerasText}" />
-        </Button>
+        <ui:ToolbarButton IconKey="devices" Text="{Binding CamerasText}" Command="{Binding ChooseCamerasCommand}" IsEnabled="{Binding IsIdle}" ToolTip.Tip="Video devices, by address or tag" />
         <RadioButton GroupName="range" Content="All recordings" IsChecked="{Binding AllRecordings}" IsEnabled="{Binding IsIdle}" />
         <RadioButton GroupName="range" Content="Time range" IsChecked="{Binding IsRange}" IsEnabled="{Binding IsIdle}" />
         <!-- Date and time pickers per row; the row's error below both (FormField.Error: a group of inputs). -->

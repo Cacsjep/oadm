@@ -558,9 +558,17 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             EventTypesChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // The resolve reads every device and opens connections: background work, never in the user's call.
-        await RunDetached(() => ResolveAsync(ct)).ConfigureAwait(false);
-        PublishChanged([], owner);
+        // The resolve reads every device and opens connections: background work, never in the user's call. The change is
+        // stored: it runs with the plugin's own token (a cancelled caller no longer stops it) and the pages are told in any case.
+        var token = _running?.Token ?? CancellationToken.None;
+        try
+        {
+            await RunDetached(() => ResolveAsync(token)).ConfigureAwait(false);
+        }
+        finally
+        {
+            PublishChanged([], owner);
+        }
     }
 
     /// <summary>

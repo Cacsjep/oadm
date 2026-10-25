@@ -207,6 +207,32 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task A_stream_the_server_no_longer_has_shows_as_stopped_and_keeps_its_messages()
+    {
+        var interval = MetadataMonitorViewModel.KeepAliveInterval;
+        MetadataMonitorViewModel.KeepAliveInterval = TimeSpan.FromMilliseconds(30);
+        try
+        {
+            using var vm = NewViewModel();
+            await Choose(vm, _rig.Camera.Id);
+            await vm.StartStopCommand.ExecuteAsync(null);
+            Assert.True(vm.IsRunning);
+            vm.ApplyMessages(Messages(1, 3, "Device/IO/VirtualInput"));
+
+            // The server restarted: the keep-alive answers that the stream has ended.
+            _ctx.Refusal = method => method == MetadataMethods.KeepAlive ? new KeyNotFoundException(MetadataMethods.StreamEnded) : null;
+            await Wait.UntilAsync(() => !vm.IsRunning);
+            Assert.Equal("Stopped", vm.StatusText);
+            Assert.Equal(3, vm.Messages.Count);
+            _ctx.Refusal = null;
+        }
+        finally
+        {
+            MetadataMonitorViewModel.KeepAliveInterval = interval;
+        }
+    }
+
+    [Fact]
     public void Filter_is_live_and_case_insensitive_over_topic_info_and_xml()
     {
         using var vm = NewViewModel();

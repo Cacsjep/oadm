@@ -48,12 +48,13 @@ Reporting, icon `snapshot`), on by default, switchable. The yearly maintenance c
 source of the managed video devices, checked fast and exported as a PDF report (PDFsharp + MigraDoc, MIT). Details:
 plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
   tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory (30 minutes
-  after last use), the PDF is read in 2 MB chunks.
+  after last use, dropped by a timer, and with the user's job when the host ends it), the PDF is read in 2 MB chunks; a
+  user builds at most 2 reports at once, a further one waits its turn ("Wait for your earlier reports to finish").
 - Device groups (SDK 0.4.0): only cameras of the user's view ("All" = the view); reports are jobs of their user, another
   user's report id answers like an unknown one.
 - Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (PDF parsed back with PDFsharp); hardware test through the in-process
@@ -104,7 +105,10 @@ or saved ones, fill their fields and roll them out to many devices, or send one 
   in plain words (`NtpStatusTexts`: port in use, permission, interface missing, upstream not answering).
 - Roles: `save` is Admin and audited. The Windows service opens UDP 123 in the firewall while enabled.
 - Device groups (SDK 0.4.0): `save` only for users with all devices (the form is read-only for the others); users with a
-  group see the requests and sites of their own devices, live through their group's scope.
+  group see the requests and sites of their own devices, live through their group's scope. NTP and DHCP: a publish round
+  never reads the device table (each group's view is kept, built again when the group's devices change or after 5
+  minutes); a group page reads the state again every 5 minutes while shown (`Renew`), a group not read for 15 minutes is
+  forgotten.
 - Tests: `tests/Oadm.Plugins.NtpServer.Tests` (loopback with random ports, never port 123 on a real interface).
 
 ## DHCP server (core plugin)
@@ -123,7 +127,8 @@ setup and the manual test plan: plugin `README.md`.
 - Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
   UDP 67 in the firewall while enabled.
 - Device groups (SDK 0.4.0): every change only for users with all devices; users with a group see the leases of their
-  own devices (by MAC address = serial, or address), live through their group's scope.
+  own devices (by MAC address = serial only, never by address), live through their group's scope. A change and a removal
+  of one batch go in one event (parts of one version only beyond 2,000 leases; the page applies every part of a version).
 - Tests: `tests/Oadm.Plugins.DhcpServer.Tests` (in-memory network and loopback with random ports).
 
 ## PKI (core plugin)
@@ -191,7 +196,10 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
   messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the
   device list (**OADM > RTSP port**); Start never changes it (an older client's port is ignored).
 - Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), opened
-  through the user's call, sent to the page's session only, ended with Error when the camera leaves the user's view.
+  through the user's call, sent to the page's session only; a stream ends Stopped when the user's group or its rules
+  change (the host ends the job), with Error when the camera alone leaves the user's view. At most 16 streams (the
+  place is taken before the stream opens); a stream the server no longer has (a lease that expired, a server restart)
+  shows as Stopped on the page at the next keep-alive, never as Live.
 - Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
   `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 
@@ -201,7 +209,7 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every chosen camera that
 has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
   credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
@@ -263,7 +271,7 @@ schedule and the recipient (each device's own one of a name); **New rule** build
 catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Decisions, research
 and device API: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one.
+- Devices: the "Selected devices" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one.
 - Rules that must hold: read only on request, over SOAP (passwords in plain text stay on the server, never reach the
   client or a log, a login inside an address shows as `user:********@` and keeps each device's own password); an edit
   changes only the checked parts, everything else stays as each device has it; a rule is written
@@ -309,13 +317,15 @@ Security, icon `clipboardCheck`), **off by default**. One read-only scan of the 
 Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
 decisions: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice.
+- Devices: the "Selected devices" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice.
 - Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
-  information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
+  information only; every method is Operator and not audited; results kept per device and level (at most 30,000, the device limit `DeviceLimits.MaxDevices`).
 - Device groups (SDK 0.4.0): one scan at a time per device scope, a job of its user that every user of the scope may
-  stop, results and devices of the user's view only.
+  stop, results and devices of the user's view only; the scans of all scopes share one limit (16 devices at once for the
+  plugin, the setting `parallelism`). The same for the shared `DeviceSweep` of Image Health Dashboard, Edge storage and
+  Action Rule Editor: one limit per plugin, never per device scope.
 - Tests: `tests/Oadm.Plugins.HardeningScan.Tests` (+ read-only hardware test).
 
 ## Web View (core plugin)
@@ -381,7 +391,9 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   (`DashboardRules`). Device groups: each dashboard belongs to the group of the user who made it (none = all devices);
   group users see and change only their group's dashboards with the group's devices, get only the events of their devices
   and sites and only the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps
-  the owner.
+  the owner. Pushes never read the device table: each group's devices are read once and again only when the group's
+  devices change (or after 5 minutes), a device's membership is the host's check per device. At most 1,000 watches, 8 per
+  login session (a new one replaces the session's oldest).
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
   video needs "Live view".
 - Page: left card Dashboards and Events (the events with values, device triggers first); right card the tabs, while
@@ -391,7 +403,8 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   value, type, widget and its settings, every change shown at once); **Copy for other devices** (the copy icon of a widget's
   edit frame or the group panel: one copy per chosen device; the picker asks the server for the event's devices, `devices`). Empty states for Device triggers off
   (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device triggers**) and no dashboard.
-- Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices; headless
+- Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices, Perf pushes
+  to 50 group pages of 5 groups at 30,000 devices; headless
   screenshots with fake-mode video). Fake mode: `FakeOadmApi.Dashboards.cs`.
 
 ## Edge Recording Export (core plugin)
@@ -423,7 +436,7 @@ encryption, retention, five count cards) and the tools of the camera's web inter
 retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
 cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: the table is read only on request and for the chosen cameras (page opens, Refresh), read-only, refused statuses not
   contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
   `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run

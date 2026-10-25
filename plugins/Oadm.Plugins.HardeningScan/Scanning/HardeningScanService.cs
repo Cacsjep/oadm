@@ -65,6 +65,9 @@ public sealed partial class HardeningScanService : IAsyncDisposable
     private Task _flushLoop = Task.CompletedTask;
     private int _parallelism;
 
+    /// <summary>The devices in scan of every scope's scan together (sized by <see cref="Parallelism"/> at the first scan).</summary>
+    private readonly Lazy<SemaphoreSlim> _slots;
+
     public HardeningScanService(IDeviceRepository devices, IVapixClientFactory vapix, IPluginSettings? settings, IPluginEvents? events, ILogger? logger = null, HardeningScanOptions? options = null)
     {
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
@@ -76,6 +79,7 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         _reader = new DeviceFactsReader(_options.RequestTimeout, _options.Time);
         _store = new ResultStore(_options.MaxStoredDevices);
         _parallelism = Math.Clamp(_options.Parallelism, HardeningScanPluginInfo.MinParallelism, HardeningScanPluginInfo.MaxParallelism);
+        _slots = new(() => new SemaphoreSlim(_parallelism));
     }
 
     /// <summary>Devices scanned at the same time.</summary>
@@ -492,9 +496,29 @@ public sealed partial class HardeningScanService : IAsyncDisposable
         async Task WorkerAsync()
         {
             int i;
+            var slots = _slots.Value;
             while (!token.IsCancellationRequested && (i = Interlocked.Increment(ref next)) < devices.Count)
             {
-                var detail = await ScanDeviceAsync(vapix, devices[i], job.Level, token).ConfigureAwait(false);
+                // The scans of every device scope share one limit: never more than Parallelism devices at once.
+                try
+                {
+                    await slots.WaitAsync(token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                DeviceDetail? detail;
+                try
+                {
+                    detail = await ScanDeviceAsync(vapix, devices[i], job.Level, token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    slots.Release();
+                }
+
                 if (detail is null)
                 {
                     return;
