@@ -351,7 +351,7 @@ public sealed class Dot1xTaskTests
         Assert.True(h.Camera.Dot1x["enabled"]!.GetValue<bool>());
         Assert.Equal(NetworkInfoApi.EapTlsMode, h.Camera.Dot1x["mode"]!.GetValue<string>());
         Assert.Equal("10.0.0.48", p["identity"]!.GetValue<string>()); // a new installation: the IP address (decision 2026-10-25)
-        Assert.Equal("EAPoLv3", p["eapolVersion"]!.GetValue<string>());
+        Assert.Equal("EAPoLv2", p["eapolVersion"]!.GetValue<string>());
         var caAlias = CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, h.Pki.Service.Ca!.Id);
         Assert.Equal([caAlias], p["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()));
         using var certificate = h.Served(alias);

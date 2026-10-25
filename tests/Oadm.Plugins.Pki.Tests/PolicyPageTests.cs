@@ -415,14 +415,14 @@ public sealed class PolicyPageTests
     }
 
     [Fact]
-    public async Task The_ieee_8021x_policy_of_a_new_server_signs_in_with_the_ip_address_and_eapol_3()
+    public async Task The_ieee_8021x_policy_of_a_new_server_signs_in_with_the_ip_address_and_eapol_2()
     {
         await using var pki = await StartAsync();
         var page = new PoliciesViewModel(Page(pki));
         await page.LoadAsync(CancellationToken.None);
         var editor = Open(page, "IEEE 802.1X");
 
-        Assert.Equal((3, Dot1xIdentity.IpAddress), (editor.Eapol.Value, editor.Identity.Value));
+        Assert.Equal((2, Dot1xIdentity.IpAddress), (editor.Eapol.Value, editor.Identity.Value));
         Assert.Equal(["1", "2", "3"], PolicyEditorViewModel.EapolChoices.Select(c => c.Label));
         Assert.Contains(PolicyEditorViewModel.IdentityChoices, c => c.Value == Dot1xIdentity.IpLastOctet);
         Assert.Equal("OADM Root CA SERVER01", editor.RadiusCa!.Label); // a CA of the list
