@@ -220,10 +220,14 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pk
     }
 
     /// <summary>A camera certificate of this CA naming <paramref name="serial"/> (client authentication unless <paramref name="usage"/> says otherwise).</summary>
-    public TestCertificate Camera(string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames)
+    public TestCertificate Camera(string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames) =>
+        Camera(new X500DistinguishedName("CN=10.0.0.48"), serial, notBefore, notAfter, usage, moreNames);
+
+    /// <summary>A camera certificate of this CA with the subject <paramref name="subject"/>.</summary>
+    public TestCertificate Camera(X500DistinguishedName subject, string serial, DateTimeOffset? notBefore = null, DateTimeOffset? notAfter = null, string usage = "1.3.6.1.5.5.7.3.2", params string[] moreNames)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var request = new CertificateRequest("CN=10.0.0.48", key, HashAlgorithmName.SHA256);
+        var request = new CertificateRequest(subject, key, HashAlgorithmName.SHA256);
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyAgreement, true));
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid(usage)], false));

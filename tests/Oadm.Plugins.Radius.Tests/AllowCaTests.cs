@@ -133,6 +133,24 @@ public sealed class AllowCaTests
     }
 
     [Fact]
+    public async Task TheSubjectOfAnUnmanagedDevicesCertificateIsShownWithoutControlCharacters()
+    {
+        using var company = new TestAuthority("Contoso Root");
+        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM CA"), harness.DeviceIds.Info,
+            company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Root")];
+        harness.Ca.RaiseChanged();
+        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Contoso", Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = false });
+        var name = new System.Security.Cryptography.X509Certificates.X500DistinguishedNameBuilder();
+        name.AddCommonName("pc\u001b[31m-7‮");
+
+        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, company.Camera(name.Build(), "ACCC8E999999")))).Final);
+
+        Assert.Equal("CN=pc[31m-7", (await LastLogRowAsync(harness)).DeviceName); // the device chose its subject: no control or format characters
+    }
+
+    [Fact]
     public async Task AnImportedCaThatIssuesKeepsPkisRevocationListLikeTheOadmCa()
     {
         // Decision 2026-10-25: an imported CA with its key issues certificates in OADM; a certificate OADM revoked never

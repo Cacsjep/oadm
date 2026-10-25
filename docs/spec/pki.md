@@ -350,8 +350,8 @@ On the first start after the update, once, without asking:
   default issuing policies "HTTPS" and "IEEE 802.1X" with these values.
 - 802.1X Advanced (minimum TLS version, cipher suites, largest EAP packet): the 802.1X server policy.
 - 802.1X Trusted CAs: one 802.1X trusted CA policy per ticked CA, with its "Only devices OADM manages".
-- 802.1X policies: VLAN and Block policies (Revoke: Block with Also revoke) with the same names, devices and order. A Default VLAN of OADM 4.1
-  or of a development build becomes a last VLAN policy "All devices" (every device, also of sites added later and devices
+- 802.1X policies: VLAN and Block policies (Revoke: Block with Also revoke) with the same names, devices and order. A Default VLAN of a development
+  build before 4.5 (the 802.1X server never shipped before 4.5) becomes a last VLAN policy "All devices" (every device, also of sites added later and devices
   OADM does not manage), so no device changes its VLAN.
 - EST: the Enrollment policy "All devices" (as today: every managed device, every profile). Sign in with: one EST sign-in CA
   policy per ticked CA. EST profiles keep their names and name the built-in issuing policy of their kind (decision
