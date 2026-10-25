@@ -13,7 +13,8 @@ namespace Oadm.Plugins.SnapshotReport.Report;
 /// PDF reports built in the background: fresh snapshots at report size for the selected tiles (bounded by the
 /// <see cref="SnapshotService"/>), then the PDF. The page polls the status and reads the finished file in
 /// chunks (a report with many cameras is larger than one gRPC message). Reports are kept in memory and
-/// dropped 30 minutes after their last use. Device groups (SDK 0.4.0): a report of a user is a job of that user
+/// dropped 30 minutes after their last use (a timer, also when nobody asks again); one user builds at most
+/// <see cref="MaxRunningPerUser"/> at once. Device groups (SDK 0.4.0): a report of a user is a job of that user
 /// (<see cref="IPluginJobs"/>): it takes snapshots through the user's view, and its id answers only that user (another
 /// user's id like an unknown one).
 /// </summary>
@@ -34,13 +35,24 @@ public sealed partial class ReportJobs : IDisposable
     /// <summary>960x540: about 140 dpi on paper, a quarter of the full-HD bytes.</summary>
     public const int HugeReportMaxWidth = 960;
 
-    private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
+    /// <summary>A report is dropped this long after its last use (status, chunk), also when nobody asks again.</summary>
+    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
+
+    /// <summary>How often reports past their lifetime are dropped.</summary>
+    public static readonly TimeSpan ExpiryInterval = TimeSpan.FromMinutes(1);
+
+    /// <summary>Reports one user builds at the same time (each holds its snapshots in memory until the PDF is built).</summary>
+    public const int MaxRunningPerUser = 2;
 
     private readonly SnapshotService _snapshots;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Job> _jobs = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly ITimer _expiry;
+
+    /// <summary>Per user: the reports that may build at once (<see cref="MaxRunningPerUser"/>); a further one waits its turn.</summary>
+    private readonly ConcurrentDictionary<string, Lazy<SemaphoreSlim>> _turns = new(StringComparer.OrdinalIgnoreCase);
 
     public ReportJobs(SnapshotService snapshots, TimeProvider? time = null, ILogger? logger = null)
     {
@@ -48,10 +60,17 @@ public sealed partial class ReportJobs : IDisposable
         _snapshots = snapshots;
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
+        _expiry = _time.CreateTimer(_ => DropExpired(), null, ExpiryInterval, ExpiryInterval);
     }
 
     /// <summary>The text for a report id the user does not have (also another user's).</summary>
     public const string NotFound = "The report no longer exists; create it again.";
+
+    /// <summary>The status of a third report of one user while two are built: it starts when one of them ended.</summary>
+    public const string WaitingForEarlier = "Wait for your earlier reports to finish";
+
+    /// <summary>Reports in memory.</summary>
+    public int Count => _jobs.Count;
 
     /// <summary>Validates the request and starts the report with the plugin's devices (in-process callers); returns its first status.</summary>
     public ReportJobStatus Start(ReportRequest request, string defaultVersion)
@@ -62,7 +81,19 @@ public sealed partial class ReportJobs : IDisposable
         _jobs[job.Id] = job;
         job.Message = "Read video sources";
         var access = new SnapshotService.DeviceAccess(_snapshots.DefaultDevices, _snapshots.DefaultVapix, Strict: false);
-        job.Worker = Task.Run(() => RunAsync(job, access, request, VersionOf(request, defaultVersion)));
+        var version = VersionOf(request, defaultVersion);
+        job.Worker = Task.Run(async () =>
+        {
+            try
+            {
+                await RunAsync(job, access, request, version).ConfigureAwait(false);
+                await job.Released.Task.ConfigureAwait(false); // until Delete or the expiry
+            }
+            finally
+            {
+                Forget(job);
+            }
+        });
         return job.ToStatus();
     }
 
@@ -80,21 +111,43 @@ public sealed partial class ReportJobs : IDisposable
         DropExpired();
         var version = VersionOf(request, defaultVersion);
         var ready = new TaskCompletionSource<Job>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var turns = _turns.GetOrAdd(caller.UserName, _ => new Lazy<SemaphoreSlim>(() => new SemaphoreSlim(MaxRunningPerUser))).Value;
         var owned = jobs.Start(caller, "report", async (owned, token) =>
         {
-            var job = await ready.Task.ConfigureAwait(false);
-            using (token.Register(job.Cancel.Cancel))
+            var job = await ready.Task.WaitAsync(token).ConfigureAwait(false);
+            try
             {
-                await RunAsync(job, SnapshotService.DeviceAccess.Of(owned.Owner), request, version).ConfigureAwait(false);
+                using (token.Register(job.Cancel.Cancel))
+                {
+                    await RunAsync(job, SnapshotService.DeviceAccess.Of(owned.Owner), request, version, turns).ConfigureAwait(false);
+
+                    // The job lasts as long as the report: the host's end of it (a logout, other devices for the user)
+                    // drops the finished report too, and Delete or the expiry ends the job.
+                    await job.Released.Task.WaitAsync(token).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Forget(job);
             }
         });
-        var job = new Job(owned.Id, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
+        try
         {
-            Message = "Read video sources",
-        };
-        _jobs[job.Id] = job;
-        ready.SetResult(job);
-        return job.ToStatus();
+            var job = new Job(owned.Id, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
+            {
+                Message = "Read video sources",
+            };
+            _jobs[job.Id] = job;
+            ready.SetResult(job);
+            return job.ToStatus();
+        }
+        catch (Exception ex)
+        {
+            // Never a job that waits forever and holds the user's place.
+            ready.TrySetException(ex);
+            owned.Cancel();
+            throw;
+        }
     }
 
     public ReportJobStatus Status(string jobId) => Get(jobId).ToStatus();
@@ -133,10 +186,34 @@ public sealed partial class ReportJobs : IDisposable
     {
         if (_jobs.TryRemove(jobId ?? string.Empty, out var job))
         {
-            job.Cancel.Cancel();
-            job.Cancel.Dispose();
-            job.Owned?.Cancel();
+            End(job);
         }
+    }
+
+    /// <summary>
+    /// Ends a report's work: released (a finished one) and cancelled (a running one), the user's job too. Cancelled before
+    /// anything is disposed; the work disposes its token source when it ended (<see cref="Forget"/>).
+    /// </summary>
+    private static void End(Job job)
+    {
+        job.Released.TrySetResult();
+        job.Owned?.Cancel();
+        try
+        {
+            job.Cancel.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The work ended meanwhile.
+        }
+    }
+
+    /// <summary>The work of a report ended: it is forgotten (unless already) and its token source disposed.</summary>
+    private void Forget(Job job)
+    {
+        _jobs.TryRemove(new KeyValuePair<string, Job>(job.Id, job));
+        job.Released.TrySetResult();
+        job.Cancel.Dispose();
     }
 
     /// <summary>Builds the PDF from tiles and snapshots that are already there (tests, fake data).</summary>
@@ -149,15 +226,18 @@ public sealed partial class ReportJobs : IDisposable
 
     public void Dispose()
     {
-        _shutdown.Cancel();
+        _expiry.Dispose();
+        _shutdown.Cancel(); // every report's token first; their work disposes its own source when it ended
         foreach (var job in _jobs.Values)
         {
-            job.Owned?.Cancel();
-            job.Cancel.Dispose();
+            End(job);
         }
 
         _jobs.Clear();
         _shutdown.Dispose();
+
+        // Never disposed: a report that still ends releases its turn (a few semaphores, one per user who made a report).
+        _turns.Clear();
     }
 
     /// <summary>
@@ -235,11 +315,24 @@ public sealed partial class ReportJobs : IDisposable
         return Get(jobId);
     }
 
-    private async Task RunAsync(Job job, SnapshotService.DeviceAccess access, ReportRequest request, string version)
+    /// <param name="turns">The user's reports that may build at once: this one waits its turn (null: in-process, no limit).</param>
+    private async Task RunAsync(Job job, SnapshotService.DeviceAccess access, ReportRequest request, string version, SemaphoreSlim? turns = null)
     {
         var ct = job.Cancel.Token;
+        var turn = false;
         try
         {
+            if (turns is not null)
+            {
+                if (!turns.Wait(0))
+                {
+                    job.Message = WaitingForEarlier;
+                    await turns.WaitAsync(ct).ConfigureAwait(false);
+                }
+
+                turn = true;
+            }
+
             var total = request.Items.Count;
             job.Message = string.Create(CultureInfo.InvariantCulture, $"Take snapshot 1 of {total}");
             var entries = await CollectAsync(access, request, (finished, ok) =>
@@ -277,6 +370,13 @@ public sealed partial class ReportJobs : IDisposable
             job.State = ReportJobStates.Failed;
             job.Error = FailureText(ex);
             LogReportFailed(ex, job.Id);
+        }
+        finally
+        {
+            if (turn)
+            {
+                turns!.Release(); // the PDF is built: the snapshots are no longer held, the next report may start
+            }
         }
     }
 
@@ -388,6 +488,9 @@ public sealed partial class ReportJobs : IDisposable
         public IPluginJob? Owned { get; } = owned;
         public int Total { get; } = total;
         public CancellationTokenSource Cancel { get; } = cancel;
+
+        /// <summary>Set when the report is dropped (Delete, the expiry): its work ends.</summary>
+        public TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public DateTimeOffset LastUsed { get; set; } = created;
         public Task? Worker { get; set; }
 
