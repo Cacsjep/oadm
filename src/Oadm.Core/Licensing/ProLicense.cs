@@ -31,6 +31,9 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     /// </summary>
     public const string InstallFileName = "install.json";
 
+    /// <summary>An install file that could not be read is kept with this suffix when OADM writes a new one.</summary>
+    public const string UnreadableSuffix = ".unreadable";
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly ServerSettingsStore _settings;
@@ -44,6 +47,10 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     private string? _text;
     private TrialRecord? _trial;
     private InstallFile _install = new();
+
+    // The install file exists but could not be read: its trials are not known, so the database's trial record counts as this
+    // computer's (a running trial keeps running), and the next write keeps the unreadable file as install.json.unreadable.
+    private bool _installUnreadable;
     private ProLicenseInfo _current = ProLicenseInfo.None;
 
     /// <param name="serverId">This server's ID (the one plugin licenses name, <c>PluginLicenses.ServerId</c>).</param>
@@ -88,11 +95,12 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     {
         var text = await _settings.GetAsync<string>(SettingKey, ct).ConfigureAwait(false);
         var trial = ReadTrial(await _settings.GetJsonAsync(TrialSettingKey, ct).ConfigureAwait(false));
-        var install = await ReadInstallAsync(ct).ConfigureAwait(false);
+        var (install, unreadable) = await ReadInstallAsync(ct).ConfigureAwait(false);
         lock (_state)
         {
             _trial = trial;
             _install = install;
+            _installUnreadable = unreadable;
         }
 
         Update(text, setText: true);
@@ -189,6 +197,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
             lock (_state)
             {
                 _install = nextInstall;
+                _installUnreadable = false;
                 _trial = record;
             }
 
@@ -270,7 +279,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     {
         DateOnly? started = _install.ProTrials.TryGetValue(server, out var local) ? local : null;
         var record = _trial is { } t && string.Equals(t.Server, server, StringComparison.OrdinalIgnoreCase) ? t : null;
-        if (record is not null && (record.Install.Length == 0 || string.Equals(record.Install, _install.Id, StringComparison.OrdinalIgnoreCase)))
+        if (record is not null && (record.Install.Length == 0 || _installUnreadable || string.Equals(record.Install, _install.Id, StringComparison.OrdinalIgnoreCase)))
         {
             started = started is { } day && day < record.Started ? day : record.Started; // the earlier day wins
         }
@@ -304,23 +313,24 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         }
     }
 
-    private async Task<InstallFile> ReadInstallAsync(CancellationToken ct)
+    /// <summary>The install file; <c>Unreadable</c> when it exists but cannot be read (never the same as a missing file).</summary>
+    private async Task<(InstallFile File, bool Unreadable)> ReadInstallAsync(CancellationToken ct)
     {
         if (_installFile is null || !File.Exists(_installFile))
         {
-            return new InstallFile();
+            return (new InstallFile(), false);
         }
 
         try
         {
             await using var stream = File.OpenRead(_installFile);
             var file = await JsonSerializer.DeserializeAsync<InstallFile>(stream, Json, ct).ConfigureAwait(false) ?? new InstallFile();
-            return new InstallFile { Id = file.Id ?? "", ProTrials = new Dictionary<string, DateOnly>(file.ProTrials ?? [], StringComparer.OrdinalIgnoreCase) };
+            return (new InstallFile { Id = file.Id ?? "", ProTrials = new Dictionary<string, DateOnly>(file.ProTrials ?? [], StringComparer.OrdinalIgnoreCase) }, false);
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {
             LogInstallFileUnreadable(_logger, ex);
-            return new InstallFile();
+            return (new InstallFile(), true);
         }
     }
 
@@ -329,6 +339,17 @@ public sealed partial class ProLicense : IProLicense, IDisposable
         if (_installFile is null)
         {
             return;
+        }
+
+        bool unreadable;
+        lock (_state)
+        {
+            unreadable = _installUnreadable;
+        }
+
+        if (unreadable && File.Exists(_installFile))
+        {
+            File.Copy(_installFile, _installFile + UnreadableSuffix, overwrite: true); // kept: it may hold trials of other server IDs
         }
 
         var temp = _installFile + ".tmp";
@@ -377,7 +398,7 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "OADM PRO trial started, last day {Ends}")]
     private static partial void LogTrialStarted(ILogger logger, string ends);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The install file could not be read; a trial recorded only there is not known")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The install file could not be read; the trial recorded in the database counts, the file is kept as install.json.unreadable when it is written again")]
     private static partial void LogInstallFileUnreadable(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "A handler of the OADM PRO license change failed")]
