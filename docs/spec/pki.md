@@ -933,8 +933,17 @@ made fresh in Check compatibility before the first write; the menus use the cach
 - Tests: `LegacyDeviceApiTests` (every parser and request body against the recorded answers and requests of each version),
   `CompatibilityMatrixTests` (the decision), `LegacyTaskTests` (every task per family against `FakeCamera.Legacy(version)`:
   SOAP certificate service, certificate set, parameters, the roles of 6.53, the refusals with no write).
-- Not verified on hardware yet (the maintainer tries them on the lab devices): a whole Enable / Renew / Disable run per
-  version through OADM; the network settings between 8.50 and 9.80 (assumed: getNetworkInfo when listed).
+- Hardware (2026-10-25, `LegacyHardwareWriteTests`, category HardwareWrite, one test per device, the device's state saved
+  first and restored and compared at the end): Enable HTTPS, Renew and Disable HTTPS through OADM's tasks on 6.53, 8.40,
+  9.80, 10.12 and 11.9 (the web server presents the new certificate in a TLS handshake, the previous one is deleted, 6.53
+  takes all three roles); Enable, Renew and Disable IEEE 802.1X with EAPOL 2 and 3 on 10.12 and 11.9 (bound with
+  `SetCertSet`, read back from `GetCertSet`); on 6.53, 8.40 and 9.80 everything up to switching 802.1X on (the binding and
+  Set the RADIUS server CA; 802.1X stayed off on these remote devices). ECC and EAPOL 3 below 10.1 were refused with no
+  write. 6.53 has neither `basicdeviceinfo.cgi` nor the API list (version from the parameter), 8.40 has
+  `basicdeviceinfo.cgi` only. AXIS OS 9.80 refuses connections for a few seconds after a connection policy change (the
+  web server restarts). Not verified yet: the REST path of 11.11.135 to 12.10 with the certificate set (the 11.11.232
+  device refused the login); the network settings between 8.50 and 9.70 (assumed: getNetworkInfo when listed; 9.80 lists
+  1.6 and it works).
 
 ## Not planned
 
