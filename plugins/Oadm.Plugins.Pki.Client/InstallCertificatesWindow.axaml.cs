@@ -22,6 +22,7 @@ public partial class InstallCertificatesWindow : Window, ICertificateFilePicker
         viewModel.Picker = this;
         viewModel.Confirm = (title, message, confirm) => MessageWindow.ConfirmAsync(this, title, message, confirm);
         viewModel.CloseRequested += (_, payload) => Close(payload);
+        Closed += (_, _) => viewModel.Dispose();
     }
 
     public async Task<IReadOnlyList<string>> PickAsync()
