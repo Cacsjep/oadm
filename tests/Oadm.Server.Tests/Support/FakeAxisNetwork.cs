@@ -310,6 +310,9 @@ internal sealed class FakeAxisNetwork
     /// <summary>Delay before every device answer (parallelism tests). Default none.</summary>
     public TimeSpan Latency { get; set; }
 
+    /// <summary>Awaited before every answer to a request with a login (gates: hold a login while the test acts).</summary>
+    public Func<NetworkCredential, CancellationToken, Task>? BeforeLoginAnswer { get; set; }
+
     /// <summary>Every connection opened through <see cref="CreateConnector"/>, in order.</summary>
     public ConcurrentQueue<VapixConnectionOptions> Connections { get; } = new();
 
@@ -349,6 +352,11 @@ internal sealed class FakeAxisNetwork
             if (network.Latency > TimeSpan.Zero)
             {
                 await Task.Delay(network.Latency, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (credentials is not null && network.BeforeLoginAnswer is { } gate)
+            {
+                await gate(credentials, cancellationToken).ConfigureAwait(false);
             }
 
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);

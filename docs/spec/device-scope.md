@@ -300,7 +300,8 @@ an independent security review the same day). A user may be limited to part of t
 - `DiscoveryAuthenticator`: the credential list only after `AllowCredentialList(session)` (fail closed); the login
   session of a discovery session that still exists does not expire by itself, so it keeps that permission, the expected
   device and the typed passwords until `DiscoverySessionOwners` stops the session (a session made again after it expired
-  tries only typed passwords).
+  tries only typed passwords). `Forget` cancels the session's running logins (one token per session): a login of the
+  credential list that runs while the session is stopped for an access change sends no further credential.
 - `DeviceAdder.AddAsync(..., DeviceScope addedBy, ...)` refuses `None`; every add path passes it (Commit: the caller,
   waiting list: the user who kept it, `DeviceAutoAddService`: all devices).
 - Membership audit: `Oadm.Core.DeviceGroups.DeviceGroupMembership` (changes per group for adds, moves and removals;
