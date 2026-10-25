@@ -284,6 +284,7 @@ public sealed partial class PkiService : IAsyncDisposable
             Status = _caUnreadable && ca is null ? CaUnreadableStatus : StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
             Ca = ca?.Describe(stored?.Source ?? CaSource.Generated),
             KeyUnreadable = ca is { HasKey: false },
+            CaUnreadable = _caUnreadable,
             IsGenerating = _generating,
             Unavailable = Unavailable,
             PreviousCas = [.. previous.Select(p => DescribePrevious(p, counts))],
@@ -299,11 +300,20 @@ public sealed partial class PkiService : IAsyncDisposable
         };
     }
 
-    /// <summary>The refusal while the stored OADM CA cannot be read (nothing is written over it).</summary>
+    /// <summary>The refusal while the stored OADM CA cannot be read and the user did not confirm replacing it (nothing is written over it).</summary>
     public const string CaUnreadableText = "The OADM CA cannot be read. Restore a backup.";
 
     /// <summary>The header status while the stored OADM CA cannot be read.</summary>
-    public static readonly ServiceStatus CaUnreadableStatus = new(ServiceStatus.Error, "OADM CA cannot be read", "Restore a backup.");
+    public static readonly ServiceStatus CaUnreadableStatus = new(ServiceStatus.Error, "OADM CA cannot be read", "Restore a backup or use New OADM CA.");
+
+    /// <summary>The refusal when the unreadable stored OADM CA cannot be kept in a file before it is replaced (nothing changed).</summary>
+    public const string CaUnreadableNotSavedText = "The stored OADM CA cannot be kept for support. Nothing was changed.";
+
+    /// <summary>
+    /// The PKI plugin's data folder (<see cref="ICorePluginContext.DataDirectory"/>): a stored OADM CA that cannot be read is
+    /// written there before New OADM CA replaces it. Null: no folder, such a replace is refused.
+    /// </summary>
+    public string? DataDirectory { get; init; }
 
     /// <summary>The header status: valid until / expires in N days / expired / key unreadable.</summary>
     public static ServiceStatus StatusOf(bool unavailable, bool generating, string? generationError, CaMaterial? ca, DateTime nowUtc, int warningDays)
@@ -373,14 +383,20 @@ public sealed partial class PkiService : IAsyncDisposable
             return await ErrorAsync("A certificate authority is being created. Try again in a moment.", ct).ConfigureAwait(false);
         }
 
-        if (_caUnreadable)
+        if (_caUnreadable && !request.ReplaceUnreadable)
         {
-            return await ErrorAsync(CaUnreadableText, ct).ConfigureAwait(false);
+            return await ErrorAsync(CaUnreadableText, ct).ConfigureAwait(false); // fail closed: only after the user's confirmation
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            var replacingUnreadable = _caUnreadable;
+            if (replacingUnreadable && !await KeepUnreadableCaAsync(ct).ConfigureAwait(false))
+            {
+                return new PkiReply { Error = CaUnreadableNotSavedText };
+            }
+
             var affected = await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false);
             if (_stored is not null && !request.Confirmed)
             {
@@ -398,6 +414,11 @@ public sealed partial class PkiService : IAsyncDisposable
             finally
             {
                 _generating = false;
+            }
+
+            if (replacingUnreadable)
+            {
+                _caUnreadable = false; // kept in a file above: the new CA may be written over it
             }
 
             await ReplaceAsync(material, CaSource.Generated, ct).ConfigureAwait(false);
@@ -708,6 +729,35 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         await PublishAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The user confirmed replacing the stored OADM CA that cannot be read: its stored value is first written as it is to
+    /// <c>ca-unreadable-&lt;UTC time&gt;.json</c> in <see cref="DataDirectory"/> for support (never logged), then the CA may be
+    /// replaced. False (nothing changed): no folder, or the file could not be written. Call inside the gate.
+    /// </summary>
+    private async Task<bool> KeepUnreadableCaAsync(CancellationToken ct)
+    {
+        if (DataDirectory is not { Length: > 0 } folder)
+        {
+            return false;
+        }
+
+        try
+        {
+            var raw = await _store.LoadCaRawAsync(ct).ConfigureAwait(false) ?? string.Empty;
+            Directory.CreateDirectory(folder);
+            var name = string.Create(CultureInfo.InvariantCulture, $"ca-unreadable-{Now.UtcDateTime:yyyyMMdd-HHmmss-fff}.json");
+            var path = Path.Combine(folder, name);
+            await File.WriteAllTextAsync(path, raw, ct).ConfigureAwait(false);
+            LogUnreadableCaKept(name);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogUnreadableCaNotKept(ex.GetType().Name);
+            return false;
+        }
     }
 
     /// <summary>The new CA becomes active; the current one moves to the previous CAs (public part). Call inside the gate.</summary>
@@ -1047,6 +1097,12 @@ public sealed partial class PkiService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored OADM CA cannot be read; it is kept and no new CA is made over it. Restore a backup.")]
     private partial void LogCaSettingUnreadable();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the stored OADM CA that cannot be read was kept in {File} and is replaced by a new CA")]
+    private partial void LogUnreadableCaKept(string file);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored OADM CA that cannot be read could not be kept in a file ({Error}); it is not replaced")]
+    private partial void LogUnreadableCaNotKept(string error);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored CA {Id} cannot be read")]
     private partial void LogStoredCaUnreadable(string id);

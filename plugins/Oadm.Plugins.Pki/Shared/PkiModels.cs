@@ -465,6 +465,9 @@ public sealed record PkiState
     /// <summary>The stored CA key cannot be decrypted (other master key): only Generate / Import.</summary>
     public bool KeyUnreadable { get; init; }
 
+    /// <summary>The stored OADM CA cannot be read (damaged): New OADM CA replaces it only after the user confirmed.</summary>
+    public bool CaUnreadable { get; init; }
+
     /// <summary>A CA is being created (RSA 4096 takes a few seconds).</summary>
     public bool IsGenerating { get; init; }
 
@@ -501,7 +504,9 @@ public sealed record PkiState
     public bool Simulated { get; init; }
 }
 
-public sealed record GenerateRequest(string? CommonName, string? Organization, int ValidityYears, bool Confirmed);
+/// <param name="Confirmed">The user confirmed replacing the current OADM CA.</param>
+/// <param name="ReplaceUnreadable">The user confirmed replacing a stored OADM CA that cannot be read (without it the server refuses).</param>
+public sealed record GenerateRequest(string? CommonName, string? Organization, int ValidityYears, bool Confirmed, bool ReplaceUnreadable = false);
 
 /// <param name="FileBase64">PKCS#12, or PEM certificate(s) (may contain the key), or a DER certificate.</param>
 /// <param name="FileName">For the format guess and messages.</param>

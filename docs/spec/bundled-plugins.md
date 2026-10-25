@@ -52,10 +52,12 @@ plugin `README.md`.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
-  tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory (30 minutes
-  after last use, dropped by a timer, and with the user's job when the host ends it), the PDF is read in 2 MB chunks; a
-  user builds at most 2 reports at once, a further one waits its turn ("Wait for your earlier reports to finish"), and keeps
-  at most 4 finished ones; all finished PDFs together stay within 1 GB (the oldest finished ones are dropped first).
+  tile without a request; error texts from the shared `DeviceMessages`; report jobs live in server memory only from
+  finished until the client downloaded the PDF (2 MB chunks; the last chunk drops the report at once, the client never
+  downloads twice: a second read answers "The report no longer exists; create it again."); a report never downloaded is
+  dropped 30 minutes after it ended (by a timer), and with the user's job when the host ends it (decision 2026-10-25, no
+  re-download); a user builds at most 2 reports at once, a further one waits its turn ("Wait for your earlier reports to
+  finish"); all finished PDFs together stay within 1 GB (a guard: the oldest finished ones are dropped first).
 - Device groups (SDK 0.4.0): only cameras of the user's view ("All" = the view); reports are jobs of their user, another
   user's report id answers like an unknown one.
 - Tests: `tests/Oadm.Plugins.SnapshotReport.Tests` (PDF parsed back with PDFsharp); hardware test through the in-process

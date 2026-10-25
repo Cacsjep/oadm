@@ -121,9 +121,17 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   "RADIUS server CA: IEEE 802.1X" (the IEEE 802.1X certificate policies whose cameras check the RADIUS server with it; fix of
   2026-10-25), then the services.
 - **A stored OADM CA that cannot be read** (the setting `ca` exists but is damaged; fix of 2026-10-25,
-  `PkiStore.LoadCaStateAsync`): one error in the log, the value is never overwritten (no default CA over it, New OADM CA
-  refused with "The OADM CA cannot be read. Restore a backup."), the page status says "OADM CA cannot be read" (detail
-  "Restore a backup."). A backup restores it.
+  `PkiStore.LoadCaStateAsync`): one error in the log, the value is never overwritten by itself (no default CA over it),
+  the page status says "OADM CA cannot be read" (detail "Restore a backup or use New OADM CA."; `PkiState.CaUnreadable`).
+  A backup restores it. **New OADM CA** replaces it only after a confirmation (decision 2026-10-25, `ui:MessageWindow`,
+  title "Replace the certificate authority", confirm button "Replace"): "The stored OADM CA cannot be read. A new CA
+  replaces it; cameras with certificates of the old CA need new ones." The client then sends
+  `GenerateRequest.ReplaceUnreadable`; without it the server still refuses with "The OADM CA cannot be read. Restore a
+  backup." (fail closed). Confirmed, the stored value is first written as it is to `ca-unreadable-<UTC
+  yyyyMMdd-HHmmss-fff>.json` in the PKI plugin's data folder (`ICorePluginContext.DataDirectory`, part of the backup) for
+  support, never logged (the log names only the file); then the new CA is made (nothing moves to the previous CAs). No
+  data folder or the file cannot be written: nothing changes ("The stored OADM CA cannot be kept for support. Nothing was
+  changed.").
 
 ## Policies
 
@@ -403,6 +411,9 @@ On the first start after the update, once, without asking:
   "EST 802.1X", "EST " + the profile's name, also "EST https" / "EST dot1x") names the built-in policy of its kind; those
   policies are then deleted where no other profile names them (task dialogs and created certificates only record them as
   history). The rename of 2026-10-24 ("EST https" → "EST HTTPS") is gone.
+- **EST profiles that were off** (`EstPolicies.RemoveOffProfilesAsync`, owner `oadm.est:off-profiles-2026-10-25`, once,
+  also on servers already on 4.5.0-rc.1, never on settings or a store that cannot be read): removed, see
+  docs/spec/est-server.md "Profiles".
 - **Server certificates** (decision 2026-10-25, see "Server certificates"): the 802.1X server's own certificate (kept with
   its key by the 802.1X server) is imported into the Certificates list once and picked by the 802.1X server policy, so
   cameras keep working; the EST server policy gets a new certificate from the OADM CA (10 years, ECC) on its first start.

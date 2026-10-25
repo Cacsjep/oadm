@@ -13,12 +13,17 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Install certificates**: when some devices are reached over HTTP, the dialog says how many and asks you to confirm
   before their private keys are sent unencrypted.
 
+- **Snapshot report**: the server keeps a finished report only until it was downloaded, and at most 30 minutes when it
+  never is.
+
 ### Fixed
 
 - **PKI**: Delete certificates deletes nothing while OADM cannot read what a camera uses its certificates for. An HTTPS
   certificate the camera may already use is no longer revoked after a failed check. A previous certificate that cannot be
-  removed is a warning. A damaged stored OADM CA is never replaced by a new one.
+  removed is a warning. A damaged stored OADM CA is never replaced by a new one by itself; New OADM CA replaces it after
+  you confirm.
 - **EST server**: saving the tab no longer turns on a profile that was off in 4.1.
+- **EST server**: the update removes the profiles that were off in 4.1. Their enrollments stay in the list.
 
 ## [4.5.0-rc.1] - 2026-10-25
 

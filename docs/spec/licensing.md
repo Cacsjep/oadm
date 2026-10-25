@@ -50,7 +50,8 @@ parts of PKI read it (PKI's own parts, CAs, issuing, Revoke and Certificates, ne
 ## Trial
 
 OADM PRO can be tried for 30 days without going online: **Start 30-day trial** in the app, once per server
-(`ProLicense.StartTrialAsync`, decision 2026-10-25; the license service no longer issues trials).
+(`ProLicense.StartTrialAsync`, decision 2026-10-25; the license service no longer issues trials). A server whose trial key
+from the former online trial (OADM 4.1) ended can still start the in-app 30-day trial once (decision 2026-10-25).
 
 - Administrator only, audited "Started trial". The first day (server local date) is recorded; the trial is Active
   (`IsTrial`, "Trial, until <day>") through `ProLicenseTexts.TrialDays` (30) days including the first, then Expired "Trial

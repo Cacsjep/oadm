@@ -12,11 +12,11 @@ namespace Oadm.Plugins.SnapshotReport.Report;
 /// <summary>
 /// PDF reports built in the background: fresh snapshots at report size for the selected tiles (bounded by the
 /// <see cref="SnapshotService"/>), then the PDF. The page polls the status and reads the finished file in
-/// chunks (a report with many cameras is larger than one gRPC message). Reports are kept in memory and
-/// dropped 30 minutes after their last use (a timer, also when nobody asks again); one user builds at most
-/// <see cref="MaxRunningPerUser"/> at once and keeps at most <see cref="MaxFinishedPerUser"/> finished ones; all finished
-/// reports together stay within <see cref="DefaultMaxFinishedBytes"/> (the oldest finished ones are dropped first, never the
-/// one that just finished). Device groups (SDK 0.4.0): a report of a user is a job of that user
+/// chunks (a report with many cameras is larger than one gRPC message). A finished report stays in memory only until it
+/// was downloaded: the read of its last chunk drops it at once. One never downloaded (page closed, client gone) is dropped
+/// <see cref="Lifetime"/> after it ended (a timer). One user builds at most <see cref="MaxRunningPerUser"/> at once; all
+/// finished reports together stay within <see cref="DefaultMaxFinishedBytes"/> (a guard: the oldest finished ones are
+/// dropped first, never the one that just finished). Device groups (SDK 0.4.0): a report of a user is a job of that user
 /// (<see cref="IPluginJobs"/>): it takes snapshots through the user's view, and its id answers only that user (another
 /// user's id like an unknown one).
 /// </summary>
@@ -37,17 +37,14 @@ public sealed partial class ReportJobs : IDisposable
     /// <summary>960x540: about 140 dpi on paper, a quarter of the full-HD bytes.</summary>
     public const int HugeReportMaxWidth = 960;
 
-    /// <summary>A report is dropped this long after its last use (status, chunk), also when nobody asks again.</summary>
+    /// <summary>A report nobody downloaded is dropped this long after it ended (finished or failed).</summary>
     public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
 
-    /// <summary>How often reports past their lifetime are dropped.</summary>
+    /// <summary>How often reports past their <see cref="Lifetime"/> are dropped.</summary>
     public static readonly TimeSpan ExpiryInterval = TimeSpan.FromMinutes(1);
 
     /// <summary>Reports one user builds at the same time (each holds its snapshots in memory until the PDF is built).</summary>
     public const int MaxRunningPerUser = 2;
-
-    /// <summary>Finished reports kept per user: a further one drops the user's oldest finished report.</summary>
-    public const int MaxFinishedPerUser = 4;
 
     /// <summary>The PDFs of all finished reports together (memory bound): beyond it the oldest finished ones are dropped.</summary>
     public const long DefaultMaxFinishedBytes = 1L << 30;
@@ -89,7 +86,7 @@ public sealed partial class ReportJobs : IDisposable
     {
         Validate(request);
         DropExpired();
-        var job = new Job(Guid.NewGuid().ToString("N"), string.Empty, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), null);
+        var job = new Job(Guid.NewGuid().ToString("N"), string.Empty, request.Items.Count, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), null);
         _jobs[job.Id] = job;
         job.Message = "Read video sources";
         var access = new SnapshotService.DeviceAccess(_snapshots.DefaultDevices, _snapshots.DefaultVapix, Strict: false);
@@ -145,7 +142,7 @@ public sealed partial class ReportJobs : IDisposable
         });
         try
         {
-            var job = new Job(owned.Id, caller.UserName, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
+            var job = new Job(owned.Id, caller.UserName, request.Items.Count, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
             {
                 Message = "Read video sources",
             };
@@ -167,13 +164,13 @@ public sealed partial class ReportJobs : IDisposable
     /// <summary>The status of the user's report; another user's id answers like an unknown one.</summary>
     public ReportJobStatus Status(ICallContext caller, IPluginJobs jobs, string jobId) => Owned(caller, jobs, jobId).ToStatus();
 
-    /// <summary>The next chunk of the user's finished report.</summary>
+    /// <summary>The next chunk of the user's finished report; the last chunk drops the report.</summary>
     public ReportChunk Read(ICallContext caller, IPluginJobs jobs, string jobId, long offset) => Read(Owned(caller, jobs, jobId).Id, offset);
 
     /// <summary>Cancels the user's report and forgets it; another user's id answers like an unknown one.</summary>
     public void Delete(ICallContext caller, IPluginJobs jobs, string jobId) => Delete(Owned(caller, jobs, jobId).Id);
 
-    /// <summary>The next chunk of a finished report.</summary>
+    /// <summary>The next chunk of a finished report. The last chunk drops the report: a second download answers <see cref="NotFound"/>.</summary>
     public ReportChunk Read(string jobId, long offset)
     {
         var job = Get(jobId);
@@ -184,13 +181,19 @@ public sealed partial class ReportJobs : IDisposable
         }
 
         var length = (int)Math.Min(SnapshotReportPluginInfo.ReportChunkBytes, pdf.Length - offset);
-        return new ReportChunk
+        var chunk = new ReportChunk
         {
             DataBase64 = Convert.ToBase64String(pdf, (int)offset, length),
             Offset = offset,
             Total = pdf.Length,
             Eof = offset + length >= pdf.Length,
         };
+        if (chunk.Eof)
+        {
+            Delete(job.Id); // downloaded: the job ends and its memory is freed
+        }
+
+        return chunk;
     }
 
     /// <summary>Cancels a running report and forgets it.</summary>
@@ -378,6 +381,7 @@ public sealed partial class ReportJobs : IDisposable
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            job.FinishedAt = _time.GetUtcNow();
             job.State = ReportJobStates.Failed;
             job.Error = "Cancelled.";
         }
@@ -385,6 +389,7 @@ public sealed partial class ReportJobs : IDisposable
         catch (Exception ex)
 #pragma warning restore CA1031
         {
+            job.FinishedAt = _time.GetUtcNow();
             job.State = ReportJobStates.Failed;
             job.Error = FailureText(ex);
             LogReportFailed(ex, job.Id);
@@ -399,8 +404,8 @@ public sealed partial class ReportJobs : IDisposable
     }
 
     /// <summary>
-    /// A report finished: the owner's finished reports beyond <see cref="MaxFinishedPerUser"/> and, while all finished PDFs
-    /// together exceed the byte budget, the oldest finished ones of any user are dropped (never <paramref name="finished"/>).
+    /// A report finished: while all finished PDFs together exceed the byte budget, the oldest finished ones of any user are
+    /// dropped (never <paramref name="finished"/>). A guard only: a report is dropped once downloaded.
     /// </summary>
     private void KeepWithinLimits(Job finished)
     {
@@ -408,11 +413,8 @@ public sealed partial class ReportJobs : IDisposable
         lock (_finishing)
         {
             var done = _jobs.Values.Where(j => j.Pdf is not null && j.FinishedAt is not null).OrderBy(j => j.FinishedAt).ToList();
-            var mine = done.Where(j => string.Equals(j.Owner, finished.Owner, StringComparison.OrdinalIgnoreCase)).ToList();
-            drop.AddRange(mine.Take(Math.Max(0, mine.Count - MaxFinishedPerUser)).Where(j => !ReferenceEquals(j, finished)));
-            var kept = done.Except(drop).ToList();
-            var bytes = kept.Sum(j => (long)j.Pdf!.Length);
-            foreach (var old in kept)
+            var bytes = done.Sum(j => (long)j.Pdf!.Length);
+            foreach (var old in done)
             {
                 if (bytes <= _maxFinishedBytes)
                 {
@@ -512,16 +514,16 @@ public sealed partial class ReportJobs : IDisposable
             throw new KeyNotFoundException(NotFound);
         }
 
-        job.LastUsed = _time.GetUtcNow();
         return job;
     }
 
+    /// <summary>Drops the reports that ended more than <see cref="Lifetime"/> ago (never downloaded); running ones stay.</summary>
     private void DropExpired()
     {
         var now = _time.GetUtcNow();
         foreach (var (id, job) in _jobs)
         {
-            if (now - job.LastUsed > Lifetime)
+            if (job.FinishedAt is { } ended && now - ended > Lifetime)
             {
                 Delete(id);
             }
@@ -537,14 +539,14 @@ public sealed partial class ReportJobs : IDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Snapshot report {JobId} failed")]
     private partial void LogReportFailed(Exception ex, string jobId);
 
-    private sealed class Job(string id, string owner, int total, DateTimeOffset created, CancellationTokenSource cancel, IPluginJob? owned)
+    private sealed class Job(string id, string owner, int total, CancellationTokenSource cancel, IPluginJob? owned)
     {
         public string Id { get; } = id;
 
-        /// <summary>The user of the report ("" for in-process reports): the per-user limit of finished reports.</summary>
+        /// <summary>The user of the report ("" for in-process reports).</summary>
         public string Owner { get; } = owner;
 
-        /// <summary>When the PDF was ready (null while it is built or after a failure).</summary>
+        /// <summary>When the report ended: the PDF was ready or it failed (null while it is built).</summary>
         public DateTimeOffset? FinishedAt { get; set; }
 
         /// <summary>The user's job of a report started through the call (null for in-process reports).</summary>
@@ -552,9 +554,8 @@ public sealed partial class ReportJobs : IDisposable
         public int Total { get; } = total;
         public CancellationTokenSource Cancel { get; } = cancel;
 
-        /// <summary>Set when the report is dropped (Delete, the expiry): its work ends.</summary>
+        /// <summary>Set when the report is dropped (downloaded, Delete, the expiry): its work ends.</summary>
         public TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public DateTimeOffset LastUsed { get; set; } = created;
         public Task? Worker { get; set; }
 
         public volatile string State = ReportJobStates.Running;

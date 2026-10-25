@@ -77,7 +77,10 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         await StopAsync(ct).ConfigureAwait(false);
         var system = ctx.System;
         var service = new PkiService(_options, ctx.Settings, ctx.Secrets, ctx.Events, ctx.TrustAnchors, ctx.Logger, ctx.DeviceScopes, ctx.Records,
-            token => system.Devices.ListAsync(token), ctx.Sites, ctx.ProtectedTags);
+            token => system.Devices.ListAsync(token), ctx.Sites, ctx.ProtectedTags)
+        {
+            DataDirectory = ctx.DataDirectory,
+        };
         await service.StartAsync(ct).ConfigureAwait(false);
         service.IsPro = () => ctx.Pro?.IsActive == true; // the PRO servers' policies show only with OADM PRO
         service.DeviceCertificateReader = async (device, token) =>

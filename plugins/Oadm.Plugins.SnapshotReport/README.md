@@ -27,12 +27,16 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   date, items[{deviceId, camera}]}) starts a background job (fresh report-size snapshots, then the
   PDF) and returns its status; `reportStatus` ({jobId}) -> state running/done/failed, done/total,
   message, size, pages, failed; `readReport` ({jobId, offset}) -> 2 MB base64 chunks (a report is larger
-  than one gRPC message); `deleteReport`. Jobs live in server memory, 30 minutes after last use (a timer drops them every minute; a user's report is
-  dropped with its host job, which lasts as long as the report, so a logout or other devices drop it at once). One user
-  builds at most 2 reports at once (`ReportJobs.MaxRunningPerUser`); a further one waits its turn with the status "Wait
-  for your earlier reports to finish". A user keeps at most 4 finished reports (`MaxFinishedPerUser`, the oldest goes), and
-  all finished PDFs together stay within 1 GB (`DefaultMaxFinishedBytes`: the oldest finished ones of any user go, never the
-  one that just finished); a dropped report answers "The report no longer exists; create it again.". A report is cancelled before its token source is disposed (no warning of the
+  than one gRPC message); `deleteReport`. Jobs live in server memory only from "finished" until the client downloaded
+  the PDF: the read of the last chunk drops the report at once (job ended, memory freed; the client never reads it again
+  and sends no delete). A report never downloaded (page closed, client gone) is dropped 30 minutes after it ended
+  (`ReportJobs.Lifetime`, counted from the end, not from the last status or chunk; a timer every minute). A user's report
+  is also dropped with its host job, which lasts as long as the report, so a logout or other devices drop it at once. One
+  user builds at most 2 reports at once (`ReportJobs.MaxRunningPerUser`); a further one waits its turn with the status
+  "Wait for your earlier reports to finish". All finished PDFs together stay within 1 GB (`DefaultMaxFinishedBytes`, a
+  guard against reports nobody downloads: the oldest finished ones of any user go, never the one that just finished); no
+  per-user count of finished reports. A dropped or downloaded report answers "The report no longer exists; create it
+  again.". A report is cancelled before its token source is disposed (no warning of the
   host on a delete), and a start that fails after its job started ends the job (`ReportJobLifetimeTests`).
 - Device choice (`PageDeviceChoice` of the client SDK, noun "cameras", only devices with video): the command button
   first in the toolbar ("Choose cameras", "Selected cameras: Tag Building A") opens the shared device picker with All

@@ -185,7 +185,7 @@ public sealed class ReportTests
         Assert.Equal(3, inspector.Images().Count);
         Assert.All(factory.Cameras.Values.SelectMany(c => c.Requests), r => Assert.StartsWith("GET axis-cgi/jpg/image.cgi?", r, StringComparison.Ordinal));
 
-        await plugin.InvokeAsync(SnapshotReportMethods.DeleteReport, SnapshotReportJson.Serialize(new ReportJobRequest { JobId = status.JobId }), CancellationToken.None);
+        // Downloaded: the report is gone without a delete.
         await Assert.ThrowsAsync<KeyNotFoundException>(() => plugin.InvokeAsync(SnapshotReportMethods.ReportStatus, SnapshotReportJson.Serialize(new ReportJobRequest { JobId = status.JobId }), CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync(SnapshotReportMethods.GenerateReport, "{}", CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentException>(() => plugin.InvokeAsync("nope", null, CancellationToken.None));

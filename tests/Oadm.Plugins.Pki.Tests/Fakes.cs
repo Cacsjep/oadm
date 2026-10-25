@@ -115,6 +115,11 @@ internal sealed class TestCoreContext(IPluginSettings settings, ISecretProtector
     /// <summary>The sites of the host (the policies' device choice).</summary>
     public FakeSites FakeSites { get; init; } = new();
 
+    /// <summary>The plugin's data folder; null: a host without one.</summary>
+    public string? DataFolder { get; init; }
+
+    public string? DataDirectory => DataFolder;
+
     public Sdk.Sites.ISites? Sites => FakeSites;
 
     /// <summary>The protection of the policies' tags.</summary>
@@ -223,7 +228,8 @@ internal sealed class PkiHarness : IAsyncDisposable
         IEventPublisher? publisher = null,
         FakeSites? sites = null,
         bool pro = true,
-        TimeSpan? webServerSettle = null)
+        TimeSpan? webServerSettle = null,
+        string? dataDirectory = null)
     {
         settings ??= new InMemoryPluginSettingsProvider();
         var protector = noSecrets ? null : secrets ?? TestSecrets.Create();
@@ -238,6 +244,7 @@ internal sealed class PkiHarness : IAsyncDisposable
             DeviceList = managed,
             EventPublisher = publisher,
             FakeSites = sites ?? new FakeSites(),
+            DataFolder = dataDirectory,
         };
         await plugin.StartAsync(core, CancellationToken.None);
         plugin.Service!.IsPro = () => pro; // the PRO servers' policies show (the license itself, and what it starts, is tested apart)

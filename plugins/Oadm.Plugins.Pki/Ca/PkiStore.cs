@@ -17,7 +17,8 @@ public sealed class PkiStore(IPluginSettings settings)
 
     /// <summary>
     /// The stored OADM CA. <c>Unreadable</c>: a value is stored but cannot be read (damaged); the caller never overwrites it
-    /// (no new default CA over it), a backup restores it.
+    /// by itself (no new default CA over it): a backup restores it, or New OADM CA replaces it after the user confirmed (the
+    /// value is first kept in a file, <see cref="LoadCaRawAsync"/>).
     /// </summary>
     public async Task<(StoredCa? Ca, bool Unreadable)> LoadCaStateAsync(CancellationToken ct)
     {
@@ -29,6 +30,9 @@ public sealed class PkiStore(IPluginSettings settings)
 
         return PkiJson.TryDeserialize<StoredCa>(raw) is { Id.Length: > 0 } ca ? (ca, false) : (null, true);
     }
+
+    /// <summary>The stored value of the OADM CA as it is (a damaged one is kept in a file before it is replaced).</summary>
+    public Task<string?> LoadCaRawAsync(CancellationToken ct) => _settings.GetAsync(CaKey, ct);
 
     public Task SaveCaAsync(StoredCa ca, CancellationToken ct) => _settings.SetAsync(CaKey, PkiJson.Serialize(ca), ct);
 

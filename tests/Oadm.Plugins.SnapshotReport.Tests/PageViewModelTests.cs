@@ -273,8 +273,10 @@ public sealed class PageViewModelTests
 
         Assert.Null(export.ErrorMessage);
         Assert.Equal(1, PdfInspector.Open(picker.Written.ToArray()).PageCount);
-        Assert.Equal([SnapshotReportMethods.GenerateReport, SnapshotReportMethods.ReportStatus, SnapshotReportMethods.ReadReport, SnapshotReportMethods.DeleteReport],
-            ctx.Calls.SkipWhile(c => c != SnapshotReportMethods.GenerateReport).Distinct().ToArray());
+        // Downloaded once: the server dropped the report with its last chunk, so nothing is read again or deleted.
+        var calls = ctx.Calls.SkipWhile(c => c != SnapshotReportMethods.GenerateReport).ToArray();
+        Assert.Equal([SnapshotReportMethods.GenerateReport, SnapshotReportMethods.ReportStatus, SnapshotReportMethods.ReadReport], calls.Distinct().ToArray());
+        Assert.Single(calls, c => c == SnapshotReportMethods.ReadReport);
     }
 
     private static async Task<SnapshotReportPlugin> StartPluginAsync(FakeRepository devices, FakeVapixFactory vapix)

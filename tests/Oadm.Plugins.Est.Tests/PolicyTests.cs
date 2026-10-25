@@ -110,6 +110,53 @@ public sealed class PolicyTests
     }
 
     [Fact]
+    public async Task The_profiles_that_were_off_in_oadm_41_are_removed_once_and_logged_by_name()
+    {
+        var store = await TestPolicies.StoreAsync();
+        var settings = new FakeSettings();
+        await settings.SetAsync(EstStore.ConfigKey, Config41, CancellationToken.None);
+        var logger = new ListLogger();
+
+        Assert.True(await EstPolicies.RemoveOffProfilesAsync(settings, store, logger, CancellationToken.None));
+
+        var config = EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None));
+        Assert.Equal(["https", "dot1x"], config.Profiles.Select(p => p.Name)); // the ones that are on are untouched
+        Assert.Equal(730, config.Profiles.Single(p => p.Name == "dot1x").ValidityDays);
+        var line = Assert.Single(logger.Lines);
+        Assert.Equal((Microsoft.Extensions.Logging.LogLevel.Information, "EST profile rtsps removed: it was off"), line);
+        Assert.Contains(EstPolicies.OffProfilesOwner, store.Converted);
+
+        // Once: a profile turned off later stays.
+        var later = config with { Profiles = [.. config.Profiles.Select(p => p.Name == "dot1x" ? p with { Enabled = false } : p)] };
+        await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(later), CancellationToken.None);
+        Assert.False(await EstPolicies.RemoveOffProfilesAsync(settings, store, logger, CancellationToken.None));
+        Assert.Equal(2, EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None)).Profiles.Count);
+    }
+
+    [Fact]
+    public async Task The_removal_of_off_profiles_runs_on_a_server_already_converted_and_never_on_unreadable_settings()
+    {
+        // A server updated to 4.5.0-rc.1: the other conversions ran, the off profile is still there.
+        var store = await TestPolicies.StoreAsync();
+        var settings = new FakeSettings();
+        await settings.SetAsync(EstStore.ConfigKey, Config41, CancellationToken.None);
+        await EstPolicies.CleanUpAsync(settings, store, CancellationToken.None);
+        await EstPolicies.ConvertAsync(settings, store, CancellationToken.None);
+        await EstPolicies.ConvertRulesAsync(settings, store, CancellationToken.None);
+        Assert.Contains(EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None)).Profiles, p => !p.Enabled);
+
+        Assert.True(await EstPolicies.RemoveOffProfilesAsync(settings, store, new ListLogger(), CancellationToken.None));
+        Assert.All(EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None)).Profiles, p => Assert.True(p.Enabled));
+
+        var damagedStore = await TestPolicies.StoreAsync();
+        var damaged = new FakeSettings();
+        await damaged.SetAsync(EstStore.ConfigKey, "{\"profiles\":7}", CancellationToken.None);
+        Assert.False(await EstPolicies.RemoveOffProfilesAsync(damaged, damagedStore, new ListLogger(), CancellationToken.None));
+        Assert.Equal("{\"profiles\":7}", await damaged.GetAsync(EstStore.ConfigKey, CancellationToken.None)); // never overwritten
+        Assert.DoesNotContain(EstPolicies.OffProfilesOwner, damagedStore.Converted); // the next start tries again
+    }
+
+    [Fact]
     public async Task A_new_server_and_settings_that_cannot_be_read()
     {
         var store = await TestPolicies.StoreAsync();
@@ -142,5 +189,23 @@ public sealed class PolicyTests
         var choices = EstPolicies.Choices(store, [new CertificateAuthorityInfo("oadm", "OADM Root CA TEST", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(1), true)]);
         Assert.Equal(["HTTPS", "IEEE 802.1X", "HTTPS 2 years"], choices.Select(c => c.Name)); // no server certificates
         Assert.Equal("OADM Root CA TEST, 730 days, RSA", choices[2].Summary);
+    }
+}
+
+/// <summary>The log lines of a test (level and text).</summary>
+internal sealed class ListLogger : Microsoft.Extensions.Logging.ILogger
+{
+    public List<(Microsoft.Extensions.Logging.LogLevel Level, string Text)> Lines { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+    public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        lock (Lines)
+        {
+            Lines.Add((logLevel, formatter(state, exception)));
+        }
     }
 }
