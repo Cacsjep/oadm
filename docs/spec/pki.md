@@ -939,7 +939,8 @@ made fresh in Check compatibility before the first write; the menus use the cach
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit
-  on the switch.
+  on the switch. (The 802.1X server only caps its open sign-in sessions at 8 per switch port, fix of 2026-10-25,
+  `docs/spec/radius-server.md`.)
 - Exporting the CA key on its own.
 
 ## Stages
