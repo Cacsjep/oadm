@@ -67,7 +67,7 @@ public sealed partial class PkiService
                 CaId = CertificateAuthorityInfo.OadmId,
                 ValidDays = days,
                 Key = key,
-                // A new installation: EAPOL version 3 and the IP address as identity (decision 2026-10-25); one used before
+                // A new installation: EAPOL version 2 and the IP address as identity (decision 2026-10-25); one used before
                 // keeps what its cameras were set up with.
                 EapolVersion = !usedBefore ? 2 : dot1x.EapolVersion is 1 or 2 or 3 ? dot1x.EapolVersion : 1,
                 Identity = !usedBefore ? Dot1xIdentity.IpAddress : PkiValidation.Identity(dot1x.Identity) is null ? dot1x.Identity : Dot1xIdentity.Mac,
