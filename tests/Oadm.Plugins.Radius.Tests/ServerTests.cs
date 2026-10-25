@@ -289,7 +289,7 @@ public sealed class ServerTests
         Assert.True(state.Running);
         Assert.Equal("Running on port 1812", state.StatusText);
         Assert.Contains("10.0.0.17", state.ServerCertificate!.Names);
-        Assert.Contains("oadm-test", state.ServerCertificate.Names);
+        Assert.Equal(1, harness.Ca.SignCount); // the certificate its policy picks (decision 2026-10-25)
         Assert.Equal(["all", "eth0"], state.Interfaces.Select(i => i.Id));
         Assert.Equal(RadiusLimits.DefaultLogKept, state.Settings.LogKept);
         Assert.Equal(3, state.PoliciesApply); // the defaults: 802.1X server, Allow CA OADM CA and Axis device ID
@@ -310,86 +310,6 @@ public sealed class ServerTests
 
         Assert.Equal(RadiusTexts.NoCa, (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
-    }
-
-    [Fact]
-    public async Task WhenTheCaOfItsPolicyCannotIssueTheStateNamesIt()
-    {
-        // Decision 2026-10-25: the 802.1X server policy may name an imported CA with its key; without the key the server has
-        // no certificate (fail closed) and its status says why.
-        using var company = new TestAuthority("Contoso Issuing CA");
-        await using var harness = await PluginHarness.CreateAsync();
-        var imported = company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Issuing CA") with { Issues = true };
-        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM CA"), harness.DeviceIds.Info, imported];
-        harness.Ca.RaiseChanged();
-        await harness.SetServerPolicyAsync(p => p with { CaId = imported.Id });
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal("Running on port 1812", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
-
-        harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Select(a => a.Id == imported.Id ? a with { Issues = false } : a)];
-        harness.Ca.RaiseChanged();
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        var state = await harness.CallAsync<RadiusState>(RadiusMethods.GetState);
-        Assert.Equal(("The 802.1X server has no certificate: Contoso Issuing CA cannot issue.", false), (state.StatusText, state.Running));
-
-        // The CA left PKI.
-        harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Where(a => a.Id != imported.Id)];
-        harness.Ca.RaiseChanged();
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal("The 802.1X server has no certificate: the CA of its policy is no longer in the PKI.", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
-    }
-
-    [Fact]
-    public async Task TheServerCertificateIsKeptAcrossRestartsAndRenewed30DaysBeforeItEnds()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        var first = (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).ServerCertificate!;
-        Assert.Equal(1, harness.Ca.SignCount);
-        var stored = harness.Ctx.PluginSettings.Values[RadiusStore.ServerCertificateKey];
-        Assert.Contains("enc:radius:server-key:", stored, StringComparison.Ordinal);
-
-        await harness.Plugin.StopAsync(CancellationToken.None);
-        await harness.StartAsync();
-        var again = (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).ServerCertificate!;
-        Assert.Equal(first.NotAfterUtc, again.NotAfterUtc);
-        Assert.Equal(first.Names, again.Names);
-        Assert.Equal(1, harness.Ca.SignCount);
-
-        // The stored certificate also reaches the handshakes after the restart (it once showed on the page while every
-        // camera got "The 802.1X server has no certificate").
-        Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
-
-        // 29 days before its end (stopped meanwhile: the clock jumps without running a year of ticks).
-        await harness.Plugin.StopAsync(CancellationToken.None);
-        harness.Time.Advance(ServerIdentityKeeper.Validity - TimeSpan.FromDays(29));
-        await harness.StartAsync();
-        Assert.Equal(2, harness.Ca.SignCount);
-    }
-
-    [Fact]
-    public async Task TheServerCertificateTakesTheDaysOfItsPolicyWithTheNextCertificate()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
-        await harness.AddSwitchAsync("Core switch", "10.0.0.2");
-        Assert.Equal(1, harness.Ca.SignCount);
-        await harness.Policies.ConvertOnceAsync(Oadm.Plugins.Pki.PkiService.IssuingOwner, _ => Task.FromResult(Oadm.Plugins.Pki.PkiService.ConvertIssuing(new Oadm.Plugins.Pki.PkiConfig(), usedBefore: false)), CancellationToken.None);
-        var policy = harness.Policies.ServerPolicy!; // the 802.1X server policy holds its certificate (decision 2026-10-25)
-        await harness.SavePolicyAsync(policy with { ValidDays = 100 });
-
-        // Other days alone make no new certificate.
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal(1, harness.Ca.SignCount);
-
-        // A new CA does: with the policy's days.
-        var newCa = new TestAuthority("OADM new CA");
-        harness.Ctx.FakeServices.Withdraw<Oadm.Sdk.Certificates.IDeviceCertificateAuthority>();
-        harness.Ctx.FakeServices.Offer<Oadm.Sdk.Certificates.IDeviceCertificateAuthority>(newCa);
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal(1, newCa.SignCount);
-        var made = (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).ServerCertificate!;
-        Assert.InRange((made.NotAfterUtc - DateTime.UtcNow).TotalDays, 99, 101);
-        newCa.Dispose();
     }
 
     [Fact]
@@ -483,12 +403,8 @@ public sealed class ServerTests
         var saved = await harness.CallAsync<RadiusState>(RadiusMethods.SaveSettings, state.Settings with { LogKept = 2000 });
         Assert.Equal(2000, saved.Settings.LogKept);
 
-        // TLS 1.3 only, but just TLS 1.2 suites checked: nothing usable (PKI refuses the 802.1X server policy).
-        var server = harness.Policies.ServerPolicy!;
-        var tls12Only = server with { MinimumTls = "1.3", CipherSuites = [.. RadiusPolicies.CipherSuites.Where(s => !s.Tls13 && !s.Legacy).Select(s => s.Id)] };
-        Assert.Equal(Pki.Policies.PolicyFields.CipherSuites, (await harness.Policies.SaveAsync(tls12Only, "admin", RadiusPolicies.CipherSuites, CancellationToken.None)).Error?.Field);
-
-        await harness.SetServerPolicyAsync(p => p with { MinimumTls = "1.3" });
+        // The suites follow the minimum version (decision 2026-10-25): TLS 1.3 only, the stored suites are not read.
+        await harness.SetServerPolicyAsync(p => p with { MinimumTls = "1.3", CipherSuites = [.. RadiusPolicies.CipherSuites.Where(s => !s.Tls13 && !s.Legacy).Select(s => s.Id)] });
         Assert.Equal(Protocol.Tls.TlsVersion.Tls13, harness.Service.Processor.Options.Tls.MinimumVersion); // at once, without a restart
         var oldCamera = Camera(harness, harness.Ca.Camera(Serial), [ProtocolVersion.TLSv12]);
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(oldCamera)).Final);

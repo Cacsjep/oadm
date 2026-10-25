@@ -37,7 +37,7 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     /// <summary>The certificate (with its key) of the EST server policy; null without a usable one (<see cref="Problem"/> says why).</summary>
     public async Task<X509Certificate2?> GetAsync(CancellationToken ct)
     {
-        if (authority() is not Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki)
+        if (authority() is not Oadm.Plugins.Pki.Ca.IServerCertificateSource pki)
         {
             Problem = null;
             return null;

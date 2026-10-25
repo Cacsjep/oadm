@@ -53,7 +53,7 @@ public sealed class EnrollmentPolicyTests
         Assert.Equal([("Axis device ID", CertificateAuthorityInfo.AxisDeviceIdId, PolicySignIn.New), ("OADM CA", CertificateAuthorityInfo.OadmId, PolicySignIn.Renewal)],
             store.PoliciesOf(PolicyKinds.SignInCa).Select(p => (p.Name, p.CaId!, p.SignInFor!)));
         Assert.Contains(EstPolicies.RulesOwner, store.Converted);
-        Assert.All(store.All, p => Assert.Null(PolicyRules.Validate(p, PkiService.CipherSuites))); // policies like any other
+        Assert.All(store.All.Where(p => !PolicyKinds.IsServer(p.Kind)), p => Assert.Null(PolicyRules.Validate(p, PkiService.CipherSuites))); // policies like any other (a server policy waits for its certificate)
 
         // Once: a second run adds nothing, also after the user changed them.
         var count = store.All.Count;

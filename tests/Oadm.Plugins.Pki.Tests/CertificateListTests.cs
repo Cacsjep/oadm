@@ -310,16 +310,15 @@ public sealed class CertificateListTests
         Assert.Equal(PkiCertificateTexts.ChooseOne, (await DeleteAsync()).Error);
         Assert.NotNull(pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..]));
 
-        // A created certificate that is still valid neither (the OADM CA issued it); an imported one goes at once.
-        Assert.Equal("The certificate of nvr.example.com is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(created)).Error);
+        // An imported one goes at once.
         using var root = TestCa.Root("Contoso Root");
         using var leaf = TestCa.Leaf(root, "10.0.0.30");
         var imported = await pki.InvokeAsync<CertificateActionReply>(CertificateMethods.Import, new ImportCertificateRequest(Convert.ToBase64String(TestCa.Pem(leaf)), "leaf.crt", null));
         Assert.Equal(1, (await DeleteAsync(imported.Id!)).Deleted);
-        var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
-        await authority.RevokeAsync([createdSerial], RevocationReason.Other, "admin", CancellationToken.None);
 
-        // The revoked created one goes; the revocations stay in force.
+        // A created one that is still valid (the OADM CA issued it): revoked first, then deleted (decision 2026-10-25); the
+        // revocations stay in force.
+        var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
         var deleted = await DeleteAsync(created);
         Assert.Equal((1, (string?)null), (deleted.Deleted, deleted.Error));
         Assert.True(authority.IsRevoked(createdSerial));
@@ -533,7 +532,7 @@ public sealed class CertificateListTests
 
             await Eventually.TrueAsync(() => tab.Rows.Any(r => r.Name == "nvr.example.com"), "the new row");
             var row = tab.Rows.Single(r => r.Name == "nvr.example.com");
-            Assert.True(row.HasKey && !row.CanDelete && row.CanRevoke); // the OADM CA's and still valid: revoked first
+            Assert.True(row.HasKey && row.CanDelete && row.CanRevoke); // the OADM CA's and still valid: Delete revokes it first (decision 2026-10-25)
 
             // Export with key: the password dialog, then the file; PEM at once.
             dialogs.Drive = async d =>

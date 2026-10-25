@@ -219,51 +219,6 @@ public sealed class HardeningTests
     }
 
     [Fact]
-    public async Task ACaChangeDuringAMaintenanceRoundIsNeverSkipped()
-    {
-        await using var harness = await PluginHarness.CreateAsync();
-        using var second = new TestAuthority("Second OADM CA");
-        using var third = new TestAuthority("Third OADM CA");
-        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        second.BeforeSign = () => hold.Task;
-
-        harness.Ctx.FakeServices.Offer<IDeviceCertificateAuthority>(second);
-        var round = harness.Service.MaintainAsync(CancellationToken.None); // signs with the second CA and waits there
-        Assert.False(round.IsCompleted);
-        harness.Ctx.FakeServices.Offer<IDeviceCertificateAuthority>(third); // the CA changes again during the round
-        await harness.Service.MaintainAsync(CancellationToken.None); // the round is busy: it runs once more after it
-        hold.SetResult();
-        await round;
-
-        Assert.Equal(1, second.SignCount);
-        Assert.Equal(1, third.SignCount); // the round after the change made the certificate of the third CA
-    }
-
-    [Fact]
-    public async Task TheServerCertificateKeepsItsNamesWhileCardsOnlyGoAway()
-    {
-        await using var harness = await PluginHarness.CreateAsync(h =>
-        {
-            h.Interfaces.Cards.Add(FixedInterfaces.Card("eth1", "10.0.5.1"));
-            h.Interfaces.Cards.Add(FixedInterfaces.Card("eth2", "169.254.10.20")); // self-assigned: never a name
-        });
-        var names = harness.Service.GetState(true).ServerCertificate!.Names;
-        Assert.Equal(["10.0.0.17", "10.0.5.1", "oadm-test"], names);
-        Assert.Equal(1, harness.Ca.SignCount);
-
-        harness.Interfaces.Cards.RemoveAll(c => c.Id == "eth1"); // a cable pulled
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        harness.Interfaces.Cards.Add(FixedInterfaces.Card("eth1", "10.0.5.1")); // and back
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal(1, harness.Ca.SignCount);
-
-        harness.Interfaces.Cards.Add(FixedInterfaces.Card("eth3", "10.0.6.1")); // a new name: a new certificate
-        await harness.Service.MaintainAsync(CancellationToken.None);
-        Assert.Equal(2, harness.Ca.SignCount);
-        Assert.Contains("10.0.6.1", harness.Service.GetState(true).ServerCertificate!.Names);
-    }
-
-    [Fact]
     public async Task AllInterfacesListensOnEveryAddressOnItsOwnAndFollowsNewAddresses()
     {
         // One socket per address: the answer leaves from the address the switch sent its request to (RFC 2865 3; a switch
@@ -444,7 +399,7 @@ public sealed class HardeningTests
     // ------------------------------------------------------------------ Advanced
 
     [Fact]
-    public void OnlyRsaSuitesCannotBeSavedWithTheEcdsaServerCertificate()
+    public void TheSuitesFollowTheMinimumTlsVersionAndTheServerKeyWithoutAChoice()
     {
         var listed = RadiusPolicies.CipherSuites;
         var rsa = listed.Single(s => s.Id == CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256);
@@ -454,10 +409,8 @@ public sealed class HardeningTests
         Assert.True(ecdsa.Usable);
         Assert.All(listed.Where(s => s.Tls13), s => Assert.True(s.Usable));
         var server = RadiusPolicies.DefaultServerPolicy();
-        Assert.Equal(new Pki.Policies.PolicyFieldError(Pki.Policies.PolicyFields.CipherSuites, Pki.Policies.PolicyRules.CheckCipherSuite),
-            Pki.Policies.PolicyRules.Validate(server with { CipherSuites = [rsa.Id] }, listed));
-        Assert.Null(Pki.Policies.PolicyRules.Validate(server with { CipherSuites = [rsa.Id, ecdsa.Id] }, listed));
-        Assert.NotNull(RadiusPolicies.ValidateTls(server with { MinimumTls = "1.2", CipherSuites = [rsa.Id] })); // the server key's own check
+        // No selection any more (decision 2026-10-25): the suites follow the minimum TLS version; stored ones are not read.
+        Assert.Null(Pki.Policies.PolicyRules.Validate(server with { CipherSuites = [rsa.Id], CertificateId = PluginHarness.ServerCertificateId }, listed));
         Assert.Null(RadiusPolicies.ValidateTls(server));
     }
 

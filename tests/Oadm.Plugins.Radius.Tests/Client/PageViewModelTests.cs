@@ -227,7 +227,7 @@ public sealed class PageViewModelTests
         var guess = sessions.Rows.First(r => r.Mac == "AC:CC:8E:12:34:02");
         Assert.True(guess.IsGuess);
         Assert.Equal("Sending server certificate: fragment 2 of 4", guess.State);
-        Assert.Equal("GigabitEthernet1/0/2 (Ethernet)", guess.Port);
+        Assert.Equal("GigabitEthernet1/0/2", guess.Port); // the port only (decision 2026-10-25)
         Assert.True(guess.IsRunning);
 
         // The same session moves on (updated in place), a new one comes on top.

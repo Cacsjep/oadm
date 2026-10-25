@@ -125,8 +125,10 @@ public sealed class PermissionCatalog
             }
         }
 
-        // Tasks: in the Tasks group after the host rows, by name; a task with declared permissions lists them in order.
-        foreach (var task in registry.AllTaskPlugins.Where(t => t.Plugin.ShowInMenus).OrderBy(t => t.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+        // Tasks: in the Tasks group after the host rows, by name; a task with declared permissions lists them in order. A task
+        // hidden from the menus is left out (its page's methods carry the rights), unless it declares permissions of its own:
+        // those stay grantable while it is hidden for a while (Certificate enrollment without OADM PRO, decision 2026-10-25).
+        foreach (var task in registry.AllTaskPlugins.Where(t => t.Plugin.ShowInMenus || HasOwnPermissions(t.Plugin)).OrderBy(t => t.DisplayName, StringComparer.CurrentCultureIgnoreCase))
         {
             foreach (var entry in TaskEntries(task))
             {
@@ -318,6 +320,9 @@ public sealed class PermissionCatalog
         var keys = new HashSet<string>(StringComparer.Ordinal);
         return [.. (declared ?? []).Where(p => p is not null && PermissionKeys.IsValidKey(p.Key) && keys.Add(p.Key) && !string.IsNullOrWhiteSpace(p.Name))];
     }
+
+    /// <summary>The task declares permissions of its own (<see cref="DeclaredOf"/>; a broken plugin counts as none).</summary>
+    private static bool HasOwnPermissions(ITaskPlugin plugin) => DeclaredOf(plugin).Count > 0;
 
     private static string SafeName(ICorePlugin plugin)
     {

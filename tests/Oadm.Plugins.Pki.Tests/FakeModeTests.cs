@@ -47,9 +47,6 @@ public sealed class FakeModeTests : IDisposable
             Assert.True(pfx.HasPrivateKey);
         }
 
-        using var radius = TestCa.Root("Corp RADIUS CA");
-        var imported = PkiJson.Deserialize<RadiusCaReply>(await Invoke(PkiMethods.ImportRadiusCa, new ImportRadiusCaRequest(Convert.ToBase64String(radius.RawData))));
-        Assert.Equal("Corp RADIUS CA", imported.Summary!.CommonName);
         Assert.True(PkiJson.Deserialize<InstallReply>(await Invoke(PkiMethods.InstallServerTrust, null)).Installed);
     }
 

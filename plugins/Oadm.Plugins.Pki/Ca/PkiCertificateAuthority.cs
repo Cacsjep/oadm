@@ -8,11 +8,27 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
+/// The certificate an OADM server (802.1X, EST) shows (decision 2026-10-25: picked by its server policy from the Certificates
+/// list): PKI's <see cref="PkiCertificateAuthority"/>; a test CA in the servers' tests.
+/// </summary>
+public interface IServerCertificateSource
+{
+    /// <summary>The certificate the server of <paramref name="kind"/> shows now, or why it has none.</summary>
+    ServerCertificateLoad ServerCertificate(string kind);
+
+    /// <summary>The issuer chain of that certificate (what cameras must trust); empty without one.</summary>
+    IReadOnlyList<byte[]> ServerIssuerChain(string kind);
+
+    /// <summary>A server policy of <paramref name="kind"/> without a certificate gets one (Turn on, the first start).</summary>
+    Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<ServerCertificateImport?>>? existing, CancellationToken ct);
+}
+
+/// <summary>
 /// The OADM CA for other plugins (<see cref="IDeviceCertificateAuthority"/>, offered through the plugin services while PKI
 /// runs): signs with <see cref="DeviceCertificateIssuer"/> like PKI's own tasks and lists device certificates in the issued
 /// registry. Refuses requests signed with SHA-1 or MD5.
 /// </summary>
-public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates
+public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates, IServerCertificateSource
 {
     /// <summary>
     /// The CA certificates a camera checks the RADIUS server with, as the IEEE 802.1X issuing policy <paramref name="policy"/>

@@ -69,8 +69,65 @@ internal static class TestPki
 }
 
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
-internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, Oadm.Plugins.Pki.Ca.ICurrentCertificates, IDisposable
+internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, Oadm.Plugins.Pki.Ca.ICurrentCertificates,
+    Oadm.Plugins.Pki.Ca.IServerCertificateSource, IDisposable
 {
+    private readonly Lock _serverGate = new();
+    private Oadm.Plugins.Pki.ServerCertificateMaterial? _server;
+
+    /// <summary>How often the servers' certificate was made (in PKI the server policy picks it from the list, decision 2026-10-25).</summary>
+    public int ServerCertificatesMade { get; private set; }
+
+    /// <summary>The names of the servers' certificate (the addresses the tests connect to, and a site's node address).</summary>
+    public List<string> ServerNames { get; } = ["127.0.0.1", "10.0.0.17", "localhost", "oadm-server"];
+
+    /// <summary>The certificate the EST server shows: one of this CA, made on the first read; none while the CA is not ready.</summary>
+    public Oadm.Plugins.Pki.ServerCertificateLoad ServerCertificate(string kind)
+    {
+        if (!IsReady)
+        {
+            return new(null, null);
+        }
+
+        lock (_serverGate)
+        {
+            _server ??= MakeServerCertificate(); // the server's start and the first connection may read it at once
+            return new(_server with { Pkcs8 = (byte[])_server.Pkcs8.Clone() }, null); // the reader clears its copy of the key
+        }
+    }
+
+    public IReadOnlyList<byte[]> ServerIssuerChain(string kind) => IsReady ? Chain : [];
+
+    public Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<Oadm.Plugins.Pki.ServerCertificateImport?>>? existing, CancellationToken ct) =>
+        Task.CompletedTask;
+
+    private Oadm.Plugins.Pki.ServerCertificateMaterial MakeServerCertificate()
+    {
+        ServerCertificatesMade++;
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=802.1X and EST server", key, HashAlgorithmName.SHA256);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new System.Security.Cryptography.Oid("1.3.6.1.5.5.7.3.1")], false));
+        var san = new SubjectAlternativeNameBuilder();
+        foreach (var name in ServerNames)
+        {
+            if (System.Net.IPAddress.TryParse(name, out var ip))
+            {
+                san.AddIpAddress(ip);
+            }
+            else
+            {
+                san.AddDnsName(name);
+            }
+        }
+
+        request.CertificateExtensions.Add(san.Build());
+        using var caKey = _ca.GetECDsaPrivateKey()!;
+        using var signed = request.Create(_ca.SubjectName, X509SignatureGenerator.CreateForECDsa(caKey), DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddYears(10),
+            [.. Guid.NewGuid().ToByteArray().Take(16)]);
+        return new Oadm.Plugins.Pki.ServerCertificateMaterial("test-server", signed.RawData, Chain, key.ExportPkcs8PrivateKey(), signed.NotAfter.ToUniversalTime(), [.. ServerNames]);
+    }
+
     /// <summary>The cameras' current certificates as PKI's store holds them: DER (hex) -> camera serial.</summary>
     public Dictionary<string, string> Current { get; } = new(StringComparer.Ordinal);
 

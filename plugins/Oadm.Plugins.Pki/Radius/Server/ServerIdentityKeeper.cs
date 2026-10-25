@@ -44,7 +44,7 @@ public sealed partial class ServerIdentityKeeper(RadiusStore store, Func<IDevice
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (authority() is not Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki)
+            if (authority() is not Oadm.Plugins.Pki.Ca.IServerCertificateSource pki)
             {
                 Problem = null;
                 return Replace(null);

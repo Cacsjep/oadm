@@ -959,7 +959,7 @@ public sealed partial class EstService : IAsyncDisposable
     {
         var chain = new X509Certificate2Collection();
         // The issuer chain of the certificate the EST server policy picks (decision 2026-10-25).
-        foreach (var der in (_host.Authority() as Oadm.Plugins.Pki.Ca.PkiCertificateAuthority)?.ServerIssuerChain(Oadm.Plugins.Pki.Policies.PolicyKinds.EstServer) ?? [])
+        foreach (var der in (_host.Authority() as Oadm.Plugins.Pki.Ca.IServerCertificateSource)?.ServerIssuerChain(Oadm.Plugins.Pki.Policies.PolicyKinds.EstServer) ?? [])
         {
             chain.Add(X509CertificateLoader.LoadCertificate(der));
         }
@@ -1161,7 +1161,7 @@ public sealed partial class EstService : IAsyncDisposable
         }
 
         CertificateView view;
-        if (_host.Authority() is not Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki)
+        if (_host.Authority() is not Oadm.Plugins.Pki.Ca.IServerCertificateSource pki)
         {
             view = new CertificateView(null, null, null);
         }

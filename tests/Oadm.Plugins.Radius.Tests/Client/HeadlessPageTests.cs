@@ -91,16 +91,18 @@ public sealed class HeadlessPageTests
             return (off, noPro, on);
         }, CancellationToken.None);
 
+        // The off state (decision 2026-10-25, ui:OffState): the title, what it does, Turn on.
         Assert.Equal(1, checks.off.Item1);
-        Assert.Contains("Server", checks.off.Item2);
-        Assert.Contains(ServerSwitchMethods.OffText, checks.off.Item2);
+        Assert.Contains("The 802.1X server is off", checks.off.Item2);
+        Assert.Contains("Switch ports let only cameras with a trusted certificate into the network.", checks.off.Item2);
         Assert.DoesNotContain("Switches", checks.off.Item2);
         Assert.DoesNotContain("Sessions", checks.off.Item2);
         Assert.True(checks.off.Item3);
         Assert.Equal(0, checks.off.Item4); // nothing of the server is read while it is off
 
+        Assert.Contains("The 802.1X server needs OADM PRO", checks.noPro.Item1);
         Assert.Contains(Oadm.Sdk.Licensing.ProLicenseTexts.NeedsPro, checks.noPro.Item1);
-        Assert.False(checks.noPro.Item2);
+        Assert.Null(checks.noPro.Item2); // no Turn on without OADM PRO
 
         Assert.Equal(3, checks.on.Item1); // Server, Switches, Sessions (in progress, then the log)
         Assert.True(checks.on.Item2);

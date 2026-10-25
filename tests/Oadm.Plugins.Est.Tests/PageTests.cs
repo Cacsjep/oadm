@@ -100,7 +100,6 @@ public sealed class PageTests : IAsyncLifetime
         Assert.Equal("4 policies applied", vm.PoliciesText);
         Assert.True(vm.ShowsPolicies);
         Assert.Null(vm.PolicyProblem);
-        Assert.Equal("OADM Test CA", vm.IssuingCa);
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
         Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PkiTabRequest.Take()); // the page opens on Policies; taken here, the request is process-wide
@@ -351,7 +350,7 @@ public sealed class PageTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Turned_off_the_page_shows_only_general_with_turn_on_which_waits_for_oadm_pro()
+    public async Task Turned_off_the_page_shows_the_off_state_with_turn_on_which_waits_for_oadm_pro()
     {
         // docs/spec/pki.md "One plugin": the server is off by default and turned on on its own page.
         await _plugin.InvokeAsync(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.TurnOff, null, CancellationToken.None);
@@ -379,8 +378,7 @@ public sealed class PageTests : IAsyncLifetime
             await vm.Server.LoadAsync(CancellationToken.None);
             Pump();
             Capture(window, outDir, "est-page-needs-pro.png");
-            var turnOn = Button(window, "Turn on");
-            var noPro = (Texts(window), turnOn?.IsEffectivelyEnabled, ToolTip.GetTip(turnOn!) as string);
+            var noPro = (Texts(window), Button(window, "Turn on") is null);
 
             pro.Current = FakeProLicense.ActivePro().Current;
             await vm.Server.LoadAsync(CancellationToken.None);
@@ -393,17 +391,18 @@ public sealed class PageTests : IAsyncLifetime
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
-        Assert.Contains("Server", checks.off.Item1);
-        Assert.Contains(Oadm.Plugins.Pki.Servers.ServerSwitchMethods.OffText, checks.off.Item1);
+        // The off state (decision 2026-10-25, ui:OffState): the title, what it does, Turn on.
+        Assert.Contains("The EST server is off", checks.off.Item1);
+        Assert.Contains("Cameras get and renew their certificates from OADM by themselves.", checks.off.Item1);
         Assert.DoesNotContain("Profiles", checks.off.Item1);
         Assert.DoesNotContain("Enrollments", checks.off.Item1);
         Assert.True(checks.off.Item2);
         Assert.True(checks.off.Item3);
         Assert.False(checks.off.Item4);
 
+        Assert.Contains("The EST server needs OADM PRO", checks.noPro.Item1);
         Assert.Contains(ProLicenseTexts.NeedsPro, checks.noPro.Item1);
-        Assert.False(checks.noPro.Item2); // disabled without OADM PRO, the tooltip says why
-        Assert.Equal(ProLicenseTexts.NeedsPro, checks.noPro.Item3);
+        Assert.True(checks.noPro.Item2); // no Turn on without OADM PRO
 
         Assert.Contains("Profiles", checks.on.Item1);
         Assert.Contains("Enrollments", checks.on.Item1);

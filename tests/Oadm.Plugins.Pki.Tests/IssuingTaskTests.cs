@@ -27,7 +27,7 @@ public sealed class IssuingTaskTests
         new() { Name = name, Kind = PolicyKinds.HttpsCertificate, CaId = CertificateAuthorityInfo.OadmId, ValidDays = days, Key = key };
 
     [Fact]
-    public async Task Enable_https_issues_with_the_chosen_policy_and_the_values_of_this_run()
+    public async Task Enable_https_issues_with_the_chosen_policy_as_stored()
     {
         await using var h = await TaskHarness.StartAsync();
         var twoYears = await AddAsync(h, Https("HTTPS 2 years", 730, PolicyKeys.Rsa));
@@ -42,17 +42,7 @@ public sealed class IssuingTaskTests
 
         Assert.Contains("HTTPS 2 years: ", h.Detail(PkiSteps.CheckCompatibility), StringComparison.Ordinal);
         Assert.Contains(h.Context.LogEntries, e => e.Message.Contains("with the policy HTTPS 2 years", StringComparison.Ordinal));
-
-        // The dialog changed the values for this run: the policy stays as it is.
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { PolicyId = twoYears.Id, ValidDays = 100, Key = PolicyKeys.Ecc })));
-        using (var served = h.Served(h.Camera.WebServerAlias))
-        {
-            Assert.NotNull(served.GetECDsaPublicKey());
-            Assert.InRange((served.NotAfter.ToUniversalTime() - h.Time.GetUtcNow().UtcDateTime).TotalDays, 99, 101);
-        }
-
-        Assert.Equal(["RSA-2048", "EC-P256"], h.Camera.KeyTypesCreated);
-        Assert.Equal(730, h.Pki.Service.Policies.Find(twoYears.Id)!.ValidDays);
+        Assert.Equal(["RSA-2048"], h.Camera.KeyTypesCreated);
     }
 
     [Fact]
@@ -69,19 +59,17 @@ public sealed class IssuingTaskTests
         Assert.Contains("HTTPS: ", h.Detail(PkiSteps.CheckCompatibility), StringComparison.Ordinal);
     }
 
-    [Theory]
-    [InlineData(0, null, "Use 1 to 3,650 days.")]
-    [InlineData(3651, null, "Use 1 to 3,650 days.")]
-    [InlineData(null, "dsa", "Choose a key.")]
-    public async Task Values_that_a_policy_would_not_allow_change_nothing(int? days, string? key, string message)
+    [Fact]
+    public async Task Values_of_a_payload_of_before_are_ignored_the_policy_decides()
     {
+        // Decision 2026-10-25: the dialog picks the policy only; values a payload of before carried are not read.
         await using var h = await TaskHarness.StartAsync();
 
-        var ex = await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { ValidDays = days, Key = key }));
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, """{"validDays":0,"key":"dsa"}"""));
 
-        Assert.Contains(message, ex!.Message, StringComparison.Ordinal);
-        Assert.EndsWith("Nothing was changed.", ex.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(h.Camera.Requests, r => r.IsWrite);
+        Assert.Equal(["EC-P256"], h.Camera.KeyTypesCreated); // the first HTTPS policy: ECC
+        using var served = h.Served(h.Camera.WebServerAlias);
+        Assert.InRange((served.NotAfter.ToUniversalTime() - h.Time.GetUtcNow().UtcDateTime).TotalDays, 364, 366);
     }
 
     [Fact]
@@ -109,8 +97,9 @@ public sealed class IssuingTaskTests
         Assert.Equal("The device cannot create an ECC key. Choose a policy with RSA. Nothing was changed.", ex.Message);
         Assert.DoesNotContain(h.Camera.Requests, r => r.IsWrite);
 
-        // RSA works on it.
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { Key = PolicyKeys.Rsa })));
+        // A policy with RSA works on it.
+        var rsa = await AddAsync(h, Https("HTTPS RSA", 365, PolicyKeys.Rsa));
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { PolicyId = rsa.Id })));
         Assert.Equal(["RSA-2048"], h.Camera.KeyTypesCreated);
     }
 
@@ -122,36 +111,39 @@ public sealed class IssuingTaskTests
 
         Assert.IsType<DeviceNotCompatibleException>(await h.RunAsync(PkiTaskIds.HttpsEnable, "{}"));
         Assert.DoesNotContain(h.Camera.Requests, r => r.IsWrite);
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { Key = PolicyKeys.Rsa })));
+        var rsa = await AddAsync(h, Https("HTTPS RSA", 365, PolicyKeys.Rsa));
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { PolicyId = rsa.Id })));
     }
 
     [Fact]
-    public async Task Enable_8021x_takes_the_8021x_settings_of_the_policy_and_of_the_run()
+    public async Task Enable_8021x_takes_the_8021x_settings_of_the_policy()
     {
         await using var h = await TaskHarness.StartAsync();
         var policy = h.Pki.Service.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
         Assert.Equal(PolicyLimits.Dot1xName, policy.Name);
+        Assert.Null((await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy,
+            policy with { EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "x-{serial}", Key = PolicyKeys.Rsa })).Error);
 
-        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable, PkiJson.Serialize(new IssuePayload
-        {
-            PolicyId = policy.Id, EapolVersion = 2, Identity = Dot1xIdentity.Custom, CustomIdentity = "x-{serial}", Key = PolicyKeys.Rsa,
-        })));
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable, PkiJson.Serialize(new IssuePayload { PolicyId = policy.Id })));
 
         Assert.Equal("x-B8A44F631339", h.Camera.EapTlsParams["identity"]!.GetValue<string>());
         Assert.Equal("EAPoLv2", h.Camera.EapTlsParams["eapolVersion"]!.GetValue<string>());
         Assert.Equal(["RSA-2048"], h.Camera.KeyTypesCreated);
-        Assert.Equal(1, h.Pki.Service.Policies.Find(policy.Id)!.EapolVersion); // the policy keeps its values
     }
 
-    [Fact]
-    public async Task An_imported_radius_ca_chosen_without_one_in_the_policy_changes_nothing()
+    [Theory]
+    [InlineData(Dot1xIdentity.IpAddress, 3, "10.0.0.48", "EAPoLv3")]
+    [InlineData(Dot1xIdentity.IpLastOctet, 1, "48", "EAPoLv1")]
+    public async Task Enable_8021x_signs_in_with_the_ip_address_or_its_last_octet(string identity, int eapol, string expected, string eapolName)
     {
         await using var h = await TaskHarness.StartAsync();
+        var policy = h.Pki.Service.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+        Assert.Null((await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy with { Identity = identity, EapolVersion = eapol })).Error);
 
-        var ex = await h.RunAsync(PkiTaskIds.Dot1xEnable, PkiJson.Serialize(new IssuePayload { RadiusCa = RadiusCaSource.Imported }));
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable, "{}"));
 
-        Assert.Contains("Import the CA certificate of the RADIUS server.", ex!.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(h.Camera.Requests, r => r.IsWrite);
+        Assert.Equal(expected, h.Camera.EapTlsParams["identity"]!.GetValue<string>());
+        Assert.Equal(eapolName, h.Camera.EapTlsParams["eapolVersion"]!.GetValue<string>());
     }
 
     [Fact]
@@ -169,6 +161,8 @@ public sealed class IssuingTaskTests
         Assert.Equal(["HTTPS", "HTTPS 2 years"], https.Policies.Select(p => p.Name));
         Assert.Equal(["IEEE 802.1X"], dot1x.Policies.Select(p => p.Name));
         Assert.Equal(Ca.CaCertificates.CommonName(h.Pki.Service.Ca!.Certificate), https.CaName);
+        Assert.Equal(https.Policies.Count, https.Summaries.Count); // the sentence below the dialog's Policy field
+        Assert.StartsWith("Enable HTTPS issues certificates from ", https.Summaries[https.Policies[0].Id], StringComparison.Ordinal);
         Assert.Empty(h.Camera.Requests); // read only, and nothing of the device
     }
 
@@ -176,7 +170,7 @@ public sealed class IssuingTaskTests
     public async Task Renew_issues_with_the_first_policy_of_each_kind()
     {
         await using var h = await TaskHarness.StartAsync();
-        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, PkiJson.Serialize(new IssuePayload { Key = PolicyKeys.Rsa })));
+        Assert.Null(await h.RunAsync(PkiTaskIds.HttpsEnable, "{}"));
         var first = h.Pki.Service.Policies.FirstOf(PolicyKinds.HttpsCertificate)!;
         Assert.Null((await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, first with { ValidDays = 30 })).Error);
 

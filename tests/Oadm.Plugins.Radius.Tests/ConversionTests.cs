@@ -90,7 +90,7 @@ public sealed class ConversionTests
 
         var server = Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Dot1xServer));
         Assert.Equal(("1.3", 1200, (int?)null), (server.MinimumTls, server.LargestEapPacket!.Value, server.ReauthMinutes));
-        Assert.Equal([4865, 4866], server.CipherSuites);
+        Assert.True(server.CipherSuites is null or { Count: 0 }); // the suites follow the minimum version (decision 2026-10-25)
         Assert.Equal([("OADM CA", CertificateAuthorityInfo.OadmId, true), ("Contoso Root", "imported:contoso", false)],
             harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Select(p => (p.Name, p.CaId!, p.OnlyManaged!.Value))); // one per checked CA
         Assert.Equal(["Building B", "PTZ", PolicyLimits.AllDevicesName], harness.Policies.PoliciesOf(PolicyKinds.Vlan).Select(p => p.Name));
@@ -105,7 +105,7 @@ public sealed class ConversionTests
         Assert.Equal(("Stolen", "admin", true), (blocks[1].Name, blocks[1].SavedBy, blocks[1].AlsoRevoke!.Value));
         Assert.Equal([PolicyKinds.Dot1xServer, PolicyKinds.AllowCa, PolicyKinds.AllowCa, PolicyKinds.Vlan, PolicyKinds.Vlan, PolicyKinds.Block, PolicyKinds.Block, PolicyKinds.Vlan],
             harness.Policies.All.Where(p => PolicyKinds.IsDot1x(p.Kind)).Select(p => p.Kind)); // the age order: the stored order, the Default VLAN last
-        Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key)); // its certificate as before
+        Assert.Equal((null, null, null), (server.CaId, server.ValidDays, server.Key)); // the server policy picks a certificate of the list (decision 2026-10-25)
 
         // The server applies them at once (TLS 1.3 only, 1,200 bytes).
         Assert.Equal(Protocol.Tls.TlsVersion.Tls13, harness.Service.Processor.Options.Tls.MinimumVersion);
@@ -173,7 +173,6 @@ public sealed class ConversionTests
 
         var server = Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Dot1xServer));
         Assert.Equal(("1.2", 1400), (server.MinimumTls, server.LargestEapPacket!.Value));
-        Assert.Equal(RadiusPolicies.DefaultServerPolicy().CipherSuites, server.CipherSuites);
         Assert.Equal(2, harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Count);
     }
 }

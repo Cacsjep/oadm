@@ -146,29 +146,10 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr))).Status);
         Assert.Equal(Id, _ca.Requests[^1].IssuerId);
 
-        // The EST server's own certificate follows the EST server policy, not the profile: the OADM CA by default.
-        Assert.Contains(_ca.Requests, r => r.DeviceId is null && r.IssuerId == Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId);
-
-        // A CA that can no longer issue (its key gone): nothing is answered for the profile.
+        // A CA that can no longer issue (its key gone): nothing is answered for the profile. (The EST server's own
+        // certificate is the one its policy picks from the Certificates list: decision 2026-10-25, tested in PKI.)
         _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = false };
         Assert.Equal(503, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
-        Assert.Equal("Running on port 9454", _service.GetState().StatusText); // the EST server's own certificate comes from the OADM CA
-
-        // The EST server policy names the imported CA (with its key again): its next server certificate comes from that CA.
-        _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = true };
-        var estServer = await TestPolicies.AddAsync(_policies, _policies.EstServerPolicy! with { CaId = Id });
-        using (var certificates = new ServerCertificates(() => _ca) { Policy = () => estServer })
-        {
-            Assert.NotNull(await certificates.GetAsync(Guid.Empty, ["10.0.0.17"], "oadm-server", CancellationToken.None));
-        }
-
-        Assert.Equal(Id, _ca.Requests[^1].IssuerId);
-        Assert.Null(_ca.Requests[^1].DeviceId);
-
-        // Its key gone: the EST server has no certificate, and its status says why (fail closed).
-        _ca.AuthorityList[^1] = _ca.AuthorityList[^1] with { Issues = false };
-        Assert.Equal(("The EST server has no certificate: Contoso Issuing CA cannot issue.", false), (_service.GetState().StatusText, _service.GetState().StatusOk));
-
     }
 
     [Fact]
@@ -201,24 +182,16 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_server_certificate_follows_the_policy_est_server()
+    public async Task The_server_shows_the_certificate_of_its_policy_and_never_makes_one_itself()
     {
-        _policies = await TestPolicies.EstStoreAsync();
-        var policy = _policies.EstServerPolicy!;
+        // Decision 2026-10-25: the EST server policy picks a certificate of the Certificates list; nothing is signed for it.
         X509Certificate2? server = null;
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
-        Assert.NotNull(server!.GetECDsaPublicKey());
-        Assert.Equal(TimeSpan.FromDays(90), _ca.Requests[^1].Validity);
-        var made = _ca.Requests.Count;
-
-        // Other days alone: the certificate stays until its renewal; another key: a new one at once.
-        await TestPolicies.AddAsync(_policies, policy with { ValidDays = 30 });
+        Assert.Equal("CN=802.1X and EST server", server!.Subject);
+        Assert.NotNull(server.GetECDsaPublicKey());
         Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null)).Status);
-        Assert.Equal(made, _ca.Requests.Count);
-        await TestPolicies.AddAsync(_policies, _policies.EstServerPolicy! with { Key = Oadm.Plugins.Pki.Policies.PolicyKeys.Rsa });
-        Assert.Equal(200, (await SendAsync("GET", "/.well-known/est/https/cacerts", clientCertificate: null, onServer: s => server = s)).Status);
-        Assert.Equal(2048, server!.GetRSAPublicKey()!.KeySize);
-        Assert.Equal(TimeSpan.FromDays(30), _ca.Requests[^1].Validity);
+        Assert.Equal(1, _ca.ServerCertificatesMade); // read once, kept
+        Assert.DoesNotContain(_ca.Requests, r => r.DeviceId is null); // never signed by the EST server
     }
 
     [Fact]
@@ -386,7 +359,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_camera_at_a_site_enrolls_through_the_site_relay_with_the_sites_own_certificate()
+    public async Task A_camera_at_a_site_enrolls_through_the_site_relay_with_the_one_certificate()
     {
         var site = _sites.Add("Building B");
         site.AllowedPorts.Add((SiteProtocol.Tcp, EstPluginInfo.DefaultPort));
@@ -401,8 +374,7 @@ public sealed class ServerTests : IAsyncLifetime
         X509Certificate2? server = null;
         var response = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr), s => server = s, relay);
         Assert.Equal(200, response.Status);
-        var names = server!.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
-        Assert.Equal([IPAddress.Parse("192.168.5.2")], names.EnumerateIPAddresses()); // the node's address, not the server's
+        Assert.Equal("CN=802.1X and EST server", server!.Subject); // one certificate everywhere (decision 2026-10-25)
         Assert.Equal("Building B", Assert.Single(_service.GetState().Listeners, l => l.SiteId == site.Id).Name);
 
         // Through the server's own listener the same camera is refused: it belongs to the site.
