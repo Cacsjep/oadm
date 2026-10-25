@@ -34,6 +34,7 @@ public sealed class PerfTests(ITestOutputHelper output)
             {
                 CallingStationId = $"AC-CC-8E-{i >> 16 & 0xFF:X2}-{i >> 8 & 0xFF:X2}-{i & 0xFF:X2}",
                 Source = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1024 + i),
+                NasPortId = "Gi1/0/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), // one camera per port
             };
             var conversation = radiusSwitch.Run(camera);
             if (conversation.Final == RadiusCode.AccessAccept && camera.Msk!.AsSpan().SequenceEqual(conversation.MskFromAccept))

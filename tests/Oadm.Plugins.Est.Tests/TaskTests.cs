@@ -214,12 +214,12 @@ public sealed class TaskTests : IAsyncLifetime
 
         // No enrollment: nothing allowed, nothing written.
         var writes = _camera.Writes;
-        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.None });
+        await TestPolicies.AddAsync(_policies, _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single() with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.None }); // as stored now
         var none = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
         Assert.Equal(EstTaskIds.NoAllowedProfile, none.Message);
 
         // A camera no Enrollment policy holds is not set up.
-        await TestPolicies.AddAsync(_policies, all with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.All, Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = ["ACCC8E000001"] } });
+        await TestPolicies.AddAsync(_policies, _policies.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single() with { ProfileScope = Oadm.Plugins.Pki.Policies.PolicyProfiles.All, Devices = new Oadm.Plugins.Pki.Policies.PolicyDevices { Serials = ["ACCC8E000001"] } });
         var held = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() => new EstSetupTask(() => _est).ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
         Assert.Equal(EstTaskIds.NoEnrollmentPolicy, held.Message);
         Assert.Equal(writes, _camera.Writes);

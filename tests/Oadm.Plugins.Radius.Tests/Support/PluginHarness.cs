@@ -631,6 +631,9 @@ public sealed class PluginSwitch
 
     public string? CallingStationId { get; init; } = "AC-CC-8E-12-34-56";
 
+    /// <summary>The switch port (a port holds at most 8 sessions: many cameras need ports of their own).</summary>
+    public string? NasPortId { get; init; } = "GigabitEthernet1/0/5";
+
     /// <summary>Sends one EAP packet; the checked answer, or null when none came within <paramref name="wait"/>.</summary>
     public async Task<(RadiusPacket? Answer, byte[] Authenticator)> SendAsync(byte[] eap, byte[]? state, TimeSpan? wait = null)
     {
@@ -657,6 +660,7 @@ public sealed class PluginSwitch
             Client = _builder.Client,
             Source = Source,
             CallingStationId = CallingStationId,
+            NasPortId = NasPortId,
             State = _builder.State,
         };
         return builder.Build(eap, authenticator);

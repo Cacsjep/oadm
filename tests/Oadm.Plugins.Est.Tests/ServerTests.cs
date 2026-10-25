@@ -684,7 +684,7 @@ public sealed class ServerTests : IAsyncLifetime
 
         // A profile the EST server does not have is refused on save; the list says how many apply.
         store.ProfileNames = token => EstPolicies.ProfileNamesAsync(_settings, token);
-        var bad = await store.SaveAsync(entrance with { Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
+        var bad = await store.SaveAsync(store.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single(p => p.Name == "Entrance") with { ProfileScope = entrance.ProfileScope, Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
         Assert.Equal(("profiles", "The EST server has no profile web."), (bad.Error?.Field, bad.Error?.Message));
         Assert.Equal(5, _service.GetState().PoliciesApply);
     }
