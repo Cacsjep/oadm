@@ -5,7 +5,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Built-in feature (not a plugin): which devices need attention at first glance. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
 `Compliance/`, SDK `Oadm.Sdk.Compliance`.
 
-- **Off by default** (server setting `Compliance.Enabled`): the page shows an empty state with **Enable Compliance Checks**
+- **Off by default** (server setting `Compliance.Enabled`): the page shows an empty state with **Turn on** (like the off states of PKI)
   (then a short message about the Devices column), **Turn off compliance** in its toolbar (confirmed); off = nothing is
   checked, no events, results removed, checks kept; the Devices column chooser greys Compliance out while it is off.
 - **Check** = a check type + its settings + its devices (always chosen with the shared picker: All devices, tags, chosen

@@ -11,11 +11,11 @@
   <Grid RowDefinitions="Auto,Auto,*">
     <c:PageTitleBar Grid.Row="0" Title="Compliance" Subtitle="Which devices need attention." Margin="0,0,0,16" />
 
-    <!-- Compliance is off (the server's default): what it does and Enable. -->
+    <!-- Compliance is off (the server's default): what it does and Turn on. -->
     <ui:OffState Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowOffState}" Icon="{StaticResource Icon.squareActivity}" Title="Compliance checks are off"
                  Text="See at first glance which devices need attention: devices OADM cannot reach or log in to, expiring certificates, and your own checks.">
         <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding EnableCommand}" IsVisible="{Binding MayTurnOnOff}">
-          <ui:IconLabel Icon="{StaticResource Icon.squareActivity}" Text="Enable Compliance Checks" />
+          <ui:IconLabel Icon="{StaticResource Icon.squareActivity}" Text="Turn on" />
         </Button>
         <TextBlock Classes="secondary" HorizontalAlignment="Center" IsVisible="{Binding !MayTurnOnOff}"
                    Text="An administrator can turn them on." />

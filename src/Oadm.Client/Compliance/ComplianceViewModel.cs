@@ -215,7 +215,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowOffState))]
     public partial bool IsEnabled { get; private set; }
 
-    /// <summary>The server has compliance, it is off: "Enable Compliance Checks".</summary>
+    /// <summary>The server has compliance, it is off: "Turn on".</summary>
     public bool ShowOffState => _store.IsAvailable && !IsEnabled;
 
     /// <summary>The text of the dialog after Enable.</summary>
@@ -224,7 +224,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
         + "Add your own checks with **New check**.\n\n"
         + "**In the device list too:** turn on the **Compliance** column with **Choose columns** on the Devices page.";
 
-    /// <summary>"Enable Compliance Checks" of the empty state, then a short note on the device list's column.</summary>
+    /// <summary>"Turn on" of the empty state, then a short note on the device list's column.</summary>
     [RelayCommand]
     private async Task EnableAsync()
     {
