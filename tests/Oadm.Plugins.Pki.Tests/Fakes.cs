@@ -200,13 +200,15 @@ internal sealed class PkiHarness : IAsyncDisposable
 
     public ISecretProtector? Secrets { get; }
 
-    public static PkiOptions Options(FakeTrustStore trust, TimeProvider? time = null) => new()
+    /// <summary>The test options; the wait for the web server restart after Disable HTTPS is off unless a test sets it.</summary>
+    public static PkiOptions Options(FakeTrustStore trust, TimeProvider? time = null, TimeSpan? webServerSettle = null) => new()
     {
         CaKeySize = 2048,
         ServerName = "SERVER01",
         TrustStore = trust,
         Time = time ?? TimeProvider.System,
         CertificatesEventDelay = TimeSpan.Zero,
+        WebServerSettle = webServerSettle ?? TimeSpan.Zero,
     };
 
     /// <summary>Starts the plugin; waits for the default CA unless <paramref name="waitForDefault"/> is false.</summary>
@@ -220,14 +222,15 @@ internal sealed class PkiHarness : IAsyncDisposable
         IReadOnlyList<IDeviceInfo>? devices = null,
         IEventPublisher? publisher = null,
         FakeSites? sites = null,
-        bool pro = true)
+        bool pro = true,
+        TimeSpan? webServerSettle = null)
     {
         settings ??= new InMemoryPluginSettingsProvider();
         var protector = noSecrets ? null : secrets ?? TestSecrets.Create();
         var hub = new PluginEventHub();
         var anchors = new TrustAnchorRegistry();
         var trust = new FakeTrustStore();
-        var plugin = new PkiPlugin(Options(trust, time));
+        var plugin = new PkiPlugin(Options(trust, time, webServerSettle));
         var managed = new List<IDeviceInfo>(devices ?? []);
         var core = new TestCoreContext(settings.GetSettings(PkiPluginInfo.PluginId), protector, hub.For(PkiPluginInfo.PluginId), anchors.For(PkiPluginInfo.PluginId))
         {

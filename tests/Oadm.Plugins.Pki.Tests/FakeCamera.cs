@@ -119,6 +119,58 @@ internal sealed class FakeCamera : IVapixClient
 
     public Uri BaseAddress { get; init; } = new("https://10.0.0.48/");
 
+    /// <summary>The server setting "Allow Basic login over HTTP" (default off).</summary>
+    public bool AllowsBasicOverHttp { get; set; }
+
+    /// <summary>
+    /// Like AXIS OS 9.80 after a connection policy change: the web server restarts. After each SetWebServerTlsConfiguration
+    /// the camera answers <see cref="AnswersBeforeRestart"/> more requests, then refuses the next <see cref="RestartRefusals"/>
+    /// (every request, the HTTPS handshake of the task context too), then answers again. 0 (default): no restart.
+    /// </summary>
+    public int RestartRefusals { get; set; }
+
+    public int AnswersBeforeRestart { get; set; } = 1;
+
+    /// <summary>Requests refused while the web server restarted.</summary>
+    public int Refused { get; private set; }
+
+    private int _untilRestart = -1;
+    private int _refusalsLeft;
+
+    /// <summary>Counts one request against a restart in progress; throws like a refused connection while it restarts.</summary>
+    public void Connect()
+    {
+        lock (Requests)
+        {
+            if (_untilRestart > 0)
+            {
+                _untilRestart--;
+                return;
+            }
+
+            if (_untilRestart == 0 && _refusalsLeft > 0)
+            {
+                _refusalsLeft--;
+                Refused++;
+                if (_refusalsLeft == 0)
+                {
+                    _untilRestart = -1;
+                }
+
+                throw new HttpRequestException("No connection could be made because the target machine actively refused it.", new System.Net.Sockets.SocketException(10061));
+            }
+        }
+    }
+
+    private void WebServerChanged()
+    {
+        if (RestartRefusals > 0)
+        {
+            _untilRestart = AnswersBeforeRestart;
+            _refusalsLeft = RestartRefusals;
+        }
+    }
+
     public string Serial { get; init; } = "B8A44F631339";
 
     public IReadOnlyList<DeviceApi> ApiList { get; set; } = PkiFixture.Apis;
@@ -335,6 +387,7 @@ internal sealed class FakeCamera : IVapixClient
 
     public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct)
     {
+        Connect();
         var prefixes = groups.ToList();
         IReadOnlyDictionary<string, string> result = Parameters
             .Where(p => prefixes.Any(g => p.Key == g || p.Key.StartsWith(g + ".", StringComparison.OrdinalIgnoreCase)))
@@ -346,6 +399,7 @@ internal sealed class FakeCamera : IVapixClient
 
     public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        Connect();
         var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(ct);
         var path = request.RequestUri!.OriginalString.TrimStart('/');
         lock (Requests)
@@ -586,6 +640,7 @@ internal sealed class FakeCamera : IVapixClient
                 ViewerPolicy = xml.Descendants(web + "Viewer").Single().Value;
             }
 
+            WebServerChanged();
             return (HttpStatusCode.OK, Envelope("<aweb:SetWebServerTlsConfigurationResponse/>"), "application/soap+xml");
         }
 
@@ -863,6 +918,15 @@ internal sealed class PkiTaskContext : ITaskExecutionContext, ITaskQueryContext
     public Task UpdateDeviceTlsAsync(string scheme, string? expectedFingerprintSha256, CancellationToken ct)
     {
         TlsUpdates++;
+        try
+        {
+            Camera.Connect(); // the server connects with the new scheme and reads the serial number
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new DeviceIdentityException($"The device does not answer over {scheme.ToUpperInvariant()}: {ex.Message}");
+        }
+
         if (scheme == "https")
         {
             var served = Camera.ServedFingerprint ?? throw new DeviceIdentityException("The device does not answer over HTTPS.");

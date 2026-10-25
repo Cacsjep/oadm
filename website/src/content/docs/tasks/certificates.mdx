@@ -44,7 +44,10 @@ the key. To change these values, change the policy or choose another one. Then:
 4. Older OADM certificates that nothing uses any more are removed.
 
 **Disable HTTPS** sets the device to HTTP only. It asks first: video systems that use HTTPS lose the connection. The
-certificates stay on the device.
+certificates stay on the device. A device that accepts only Basic login over HTTP is changed only while **Allow Basic
+login over HTTP** is on in Settings > Security.
+
+Both tasks wait up to 1 minute for the device's web server to restart before they check the new connection.
 
 ## Enable or disable IEEE 802.1X
 

@@ -111,10 +111,11 @@ public sealed class DeviceApiTests
 /// <summary>A started PKI plugin, a fake 10.0.0.48 and a task context with the engine's step semantics.</summary>
 internal sealed class TaskHarness : IAsyncDisposable
 {
-    private TaskHarness(PkiHarness pki, FakeTimeProvider time, FakeCamera? camera)
+    private TaskHarness(PkiHarness pki, FakeTimeProvider time, TimerWatch clock, FakeCamera? camera)
     {
         Pki = pki;
         Time = time;
+        Clock = clock;
         Camera = camera ?? new FakeCamera();
         Device = new PkiFakeDevice(Guid.NewGuid(), Firmware: Camera.Firmware) { Apis = Camera.ApiList };
     }
@@ -123,19 +124,52 @@ internal sealed class TaskHarness : IAsyncDisposable
 
     public FakeTimeProvider Time { get; }
 
+    /// <summary>The PKI clock: <see cref="Time"/> with the timers the tasks create counted.</summary>
+    public TimerWatch Clock { get; }
+
     public FakeCamera Camera { get; }
 
     public PkiFakeDevice Device { get; set; }
 
     public PkiTaskContext Context { get; set; } = null!;
 
-    /// <summary>A harness with the fake 10.0.0.48 (AXIS OS 12.11), or with <paramref name="camera"/> (e.g. <see cref="FakeCamera.Legacy"/>).</summary>
-    public static async Task<TaskHarness> StartAsync(FakeCamera? camera = null)
+    /// <summary>
+    /// A harness with the fake 10.0.0.48 (AXIS OS 12.11), or with <paramref name="camera"/> (e.g. <see cref="FakeCamera.Legacy"/>).
+    /// <paramref name="webServerSettle"/>: how long Disable HTTPS waits for HTTP to keep answering (default none).
+    /// </summary>
+    public static async Task<TaskHarness> StartAsync(FakeCamera? camera = null, TimeSpan? webServerSettle = null)
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var pki = await PkiHarness.StartAsync(time: time);
+        var clock = new TimerWatch(time);
+        var pki = await PkiHarness.StartAsync(time: clock, webServerSettle: webServerSettle);
         PkiCompatibility.ClearCache();
-        return new TaskHarness(pki, time, camera);
+        return new TaskHarness(pki, time, clock, camera);
+    }
+
+    /// <summary>
+    /// Runs the task like <see cref="RunAsync"/> and moves the clock on by <see cref="CertificateDeployment.SwitchRetryDelay"/>
+    /// each time the task waits that long (and only then), until it ends.
+    /// </summary>
+    /// <summary>"Step: detail" of the running step at each wait of <see cref="RunWaitingAsync"/>.</summary>
+    public List<string> WaitDetails { get; } = [];
+
+    public async Task<Exception?> RunWaitingAsync(string id, string? payload = null)
+    {
+        var handled = Clock.Created(CertificateDeployment.SwitchRetryDelay);
+        WaitDetails.Clear();
+        var run = RunAsync(id, payload);
+        while (!run.IsCompleted)
+        {
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => run.IsCompleted || Clock.Created(CertificateDeployment.SwitchRetryDelay) > handled, "the task waits or ends");
+            if (!run.IsCompleted)
+            {
+                WaitDetails.Add(Context.Steps.Snapshot().Where(s => s.State == TaskStepState.Running).Select(s => $"{s.Name}: {s.Detail}").FirstOrDefault() ?? "none");
+                handled++;
+                Time.Advance(CertificateDeployment.SwitchRetryDelay);
+            }
+        }
+
+        return await run;
     }
 
     public T Task<T>(string id)
@@ -801,5 +835,38 @@ public sealed class TaskPluginInfoTests
         Assert.Equal(ca.Certificate.NotAfter, signed.NotAfter);
         Assert.Throws<CertificateRequestRejectedException>(() => DeviceCertificateIssuer.Sign(ca, "garbage", names, CertificatePurpose.Https, DateTimeOffset.UtcNow, TimeSpan.FromDays(1)));
         Assert.Equal(["IP:10.0.0.48", "DNS:cam", "DNS:axis-b8a44f631339.local"], names.DeviceSubjectAltNames);
+    }
+}
+
+/// <summary>A <see cref="FakeTimeProvider"/> that counts the timers created per due time (a task's waits), so a test moves the clock only while the task waits.</summary>
+internal sealed class TimerWatch(FakeTimeProvider inner) : TimeProvider
+{
+    private readonly Dictionary<TimeSpan, int> _created = [];
+
+    public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+    public override long GetTimestamp() => inner.GetTimestamp();
+
+    public override long TimestampFrequency => inner.TimestampFrequency;
+
+    public override TimeZoneInfo LocalTimeZone => inner.LocalTimeZone;
+
+    public int Created(TimeSpan due)
+    {
+        lock (_created)
+        {
+            return _created.TryGetValue(due, out var count) ? count : 0;
+        }
+    }
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = inner.CreateTimer(callback, state, dueTime, period);
+        lock (_created)
+        {
+            _created[dueTime] = Created(dueTime) + 1;
+        }
+
+        return timer;
     }
 }

@@ -68,6 +68,9 @@ public static class CertificateDeployment
     /// <summary>Wait between tries while the web server restarts.</summary>
     public static readonly TimeSpan SwitchRetryDelay = TimeSpan.FromSeconds(3);
 
+    /// <summary>How long a device must keep answering over HTTP after a change to HTTP only (<see cref="FollowWebServerAsync"/>).</summary>
+    public static readonly TimeSpan DefaultWebServerSettle = TimeSpan.FromSeconds(10);
+
     /// <summary>The running service; throws with the user text otherwise.</summary>
     public static PkiService RequireService(PkiService? service) =>
         service ?? throw new InvalidOperationException("The PKI plugin is not running. Nothing was changed.");
@@ -382,11 +385,22 @@ public static class CertificateDeployment
         ctx.Log(TaskLogLevel.Info, $"The web server presents \"{alias}\" (previously \"{current.CertificateAlias ?? "none"}\").");
     }
 
+    /// <summary>The step text while the web server restarts after a change.</summary>
+    public const string WaitingForRestart = "Waiting for the web server to restart";
+
+    /// <summary>What Enable HTTPS, Renew and Install changed when Verify HTTPS fails: "The web server was switched to ...".</summary>
+    public static string SwitchedTo(string alias) => $"The web server was switched to the certificate \"{alias}\".";
+
     /// <summary>
     /// OADM connects with <paramref name="scheme"/> and, for https, trusts exactly <paramref name="fingerprint"/>
-    /// (<c>ITaskExecutionContext.UpdateDeviceTlsAsync</c>), retrying while the web server restarts.
+    /// (<c>ITaskExecutionContext.UpdateDeviceTlsAsync</c>), retrying while the web server restarts (at most
+    /// <see cref="SwitchTimeout"/>, step text <see cref="WaitingForRestart"/>). HTTPS: the new certificate in the handshake
+    /// shows that the restart happened. HTTP: the device answers right after the change and restarts its web server a few
+    /// seconds later (AXIS OS 9.80 refuses connections meanwhile), so it must keep answering for <paramref name="settle"/>
+    /// (ignored for https; a read every <see cref="SwitchRetryDelay"/>; a refused one starts the wait again). A device that does not come back
+    /// fails the step with <paramref name="changed"/> (what the task changed on it) and how OADM connects now.
     /// </summary>
-    public static async Task FollowWebServerAsync(ITaskExecutionContext ctx, string scheme, string? fingerprint, TimeProvider time, string stepName, CancellationToken ct)
+    public static async Task FollowWebServerAsync(ITaskExecutionContext ctx, string scheme, string? fingerprint, TimeProvider time, string stepName, string changed, TimeSpan settle, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(time);
@@ -401,20 +415,66 @@ public static class CertificateDeployment
                     await ctx.UpdateDeviceTlsAsync(scheme, fingerprint, ct).ConfigureAwait(false);
                     break;
                 }
-                catch (DeviceIdentityException ex) when (time.GetUtcNow() + SwitchRetryDelay < end)
+                catch (DeviceIdentityException) when (time.GetUtcNow() + SwitchRetryDelay < end)
                 {
-                    step.ReportProgress(0, "Waiting for the web server: " + ex.Message);
+                    step.ReportProgress(0, WaitingForRestart);
                     await Task.Delay(SwitchRetryDelay, time, ct).ConfigureAwait(false);
                 }
                 catch (DeviceIdentityException ex)
                 {
                     throw new InvalidOperationException(
-                        (https ? "The device does not present the new certificate: " : "The device does not answer over HTTP: ") + ex.Message, ex);
+                        (https ? "The device did not come back with the new certificate within 1 minute. " : "The device did not answer over HTTP within 1 minute. ")
+                        + changed + " OADM still connects as before.", ex);
+                }
+            }
+
+            if (!https && settle > TimeSpan.Zero)
+            {
+                DateTimeOffset? answering = time.GetUtcNow();
+                while (answering is null || time.GetUtcNow() - answering < settle)
+                {
+                    if (time.GetUtcNow() + SwitchRetryDelay > end)
+                    {
+                        if (answering is not null)
+                        {
+                            break; // it answers again, only not for the whole settle time yet
+                        }
+
+                        throw new InvalidOperationException(
+                            "The device stopped answering when its web server restarted and did not come back within 1 minute. " + changed + " OADM connects over HTTP.");
+                    }
+
+                    await Task.Delay(SwitchRetryDelay, time, ct).ConfigureAwait(false);
+                    if (await AnswersAsync(ctx.Vapix, ct).ConfigureAwait(false))
+                    {
+                        answering ??= time.GetUtcNow();
+                    }
+                    else
+                    {
+                        answering = null;
+                        step.ReportProgress(0, WaitingForRestart);
+                    }
                 }
             }
 
             step.Complete(https ? "The device presents the new certificate; OADM trusts it and connects over HTTPS" : "HTTP answers; OADM connects over HTTP");
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>One cheap read (every AXIS OS has the parameter); false when the device does not answer.</summary>
+    private static async Task<bool> AnswersAsync(IVapixClient vapix, CancellationToken ct)
+    {
+        try
+        {
+            _ = await vapix.ListParametersAsync([PkiCompatibility.FirmwareParameter], ct).ConfigureAwait(false);
+            return true;
+        }
+#pragma warning disable CA1031 // Any failure while the web server restarts counts as "not answering"; cancellation passes.
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            return false;
+        }
     }
 
     /// <summary>

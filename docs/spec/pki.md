@@ -945,6 +945,27 @@ made fresh in Check compatibility before the first write; the menus use the cach
   device refused the login); the network settings between 8.50 and 9.70 (assumed: getNetworkInfo when listed; 9.80 lists
   1.6 and it works).
 
+## Web server restart and Basic login (decisions 2026-10-25)
+
+- **Verify waits for the web server restart.** After the web server changes, Verify HTTPS (Enable HTTPS, Renew's HTTPS
+  part, Install certificates for HTTPS) and Verify (Disable HTTPS) wait at most 60 s (`CertificateDeployment.SwitchTimeout`,
+  a try every 3 s on the PKI clock, no fixed sleeps) with the step text "Waiting for the web server to restart". HTTPS: the
+  new certificate in the handshake shows the restart happened. HTTP: AXIS OS 9.80 answers right after the change and
+  refuses connections a few seconds later while its web server restarts (hardware, 2026-10-25), so the device must keep
+  answering for 10 s (`PkiOptions.WebServerSettle`, a parameter read every 3 s; a refused read starts the wait again).
+- A device that does not come back fails the step with what was changed and how OADM connects: "The device did not come
+  back with the new certificate within 1 minute. The web server was switched to the certificate "OADM HTTPS ...". OADM
+  still connects as before.", "The device did not answer over HTTP within 1 minute. The device was set to HTTP only; its
+  certificates stay. OADM still connects as before.", or, when it answered once and then stopped, "The device stopped
+  answering when its web server restarted and did not come back within 1 minute. ... OADM connects over HTTP."
+- **Disable HTTPS on a device with Basic login only** (`Network.HTTP.AuthenticationPolicy=basic`): runs when the server
+  setting **Allow Basic login over HTTP** is on (`IVapixClient.AllowsBasicOverHttp`: the user chose Basic over HTTP; Check
+  compatibility says "Basic login over HTTP allowed"); with it off it refuses before any write: "The device accepts only
+  Basic login over HTTP. To disable HTTPS on it, turn on Allow Basic login over HTTP in Settings > Security. Nothing was
+  changed." (`HttpsDisableTask.BasicOnlyRefusal`).
+- Tests: `WebServerRestartTests` (the fake camera refuses requests after a web server change, `FakeCamera.RestartRefusals`;
+  the clock moves only while the task waits, `TaskHarness.RunWaitingAsync`), `HttpsTaskTests` (Basic both ways).
+
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit

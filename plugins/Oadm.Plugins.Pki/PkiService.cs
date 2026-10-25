@@ -42,6 +42,12 @@ public sealed class PkiOptions
 
     /// <summary>Revoke all of this device reads the device's certificate list for at most this long first.</summary>
     public TimeSpan DeviceReadTimeout { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// How long a device must keep answering over HTTP after Disable HTTPS before Verify passes (its web server restarts a
+    /// few seconds after the change; <see cref="Tasks.CertificateDeployment.FollowWebServerAsync"/>).
+    /// </summary>
+    public TimeSpan WebServerSettle { get; init; } = Tasks.CertificateDeployment.DefaultWebServerSettle;
 }
 
 /// <summary>
@@ -148,6 +154,9 @@ public sealed partial class PkiService : IAsyncDisposable
 
     /// <summary>The server clock of the plugin.</summary>
     public TimeProvider Time => _options.Time;
+
+    /// <summary><see cref="PkiOptions.WebServerSettle"/>.</summary>
+    public TimeSpan WebServerSettle => _options.WebServerSettle;
 
     /// <summary>Completes when the default CA of the first start is created (tests).</summary>
     public Task Background => _background;

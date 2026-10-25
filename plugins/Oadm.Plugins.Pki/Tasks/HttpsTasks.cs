@@ -59,7 +59,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         try
         {
             await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, support.WebServerAllRoles, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
-            await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);
+            await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), CertificateDeployment.SwitchedTo(issued.Alias), TimeSpan.Zero, ct).ConfigureAwait(false);
         }
         catch (Exception)
         {
@@ -137,6 +137,7 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
         }).ConfigureAwait(false);
 
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
+        var changed = "Nothing was changed on the device.";
         if (ConnectionPolicy.IsHttpOnly(webServer.Policy))
         {
             ctx.SkipStep(PkiSteps.SetHttpOnly, "Already HTTP only");
@@ -150,8 +151,9 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
                 step.Complete("Connection policy HTTP only; certificates stay");
             }).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Connection policy changed from {ConnectionPolicy.Describe(webServer.Policy)} to HTTP only.");
+            changed = "The device was set to HTTP only; its certificates stay.";
         }
 
-        await CertificateDeployment.FollowWebServerAsync(ctx, "http", null, Time, PkiSteps.Verify, ct).ConfigureAwait(false);
+        await CertificateDeployment.FollowWebServerAsync(ctx, "http", null, Time, PkiSteps.Verify, changed, Service?.WebServerSettle ?? CertificateDeployment.DefaultWebServerSettle, ct).ConfigureAwait(false);
     }
 }

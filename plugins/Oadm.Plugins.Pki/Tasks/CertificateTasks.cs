@@ -450,7 +450,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
                 var alias = await InstallAsync(ctx, support.Certificates, bytes, payload.Password, file, ct).ConfigureAwait(false);
                 await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, alias, support.WebServerAllRoles, PkiSteps.SwitchWebServer, ct).ConfigureAwait(false);
-                await CertificateDeployment.FollowWebServerAsync(ctx, "https", contents.LeafFingerprint, Time, PkiSteps.VerifyHttps, ct).ConfigureAwait(false);
+                await CertificateDeployment.FollowWebServerAsync(ctx, "https", contents.LeafFingerprint, Time, PkiSteps.VerifyHttps, CertificateDeployment.SwitchedTo(alias), TimeSpan.Zero, ct).ConfigureAwait(false);
                 await ReplacedAsync(ctx, service, device, CertificatePurpose.Https).ConfigureAwait(false);
                 break;
             }
