@@ -57,6 +57,14 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !window.IsAccepting, "the save ended");
             Assert.True(cancel.IsEnabled);
             Assert.True(window.IsVisible);
+            // A save that throws (not a refusal) never ends the client: the error shows below the list, the window stays.
+            window.Accept = () => throw new InvalidOperationException("The connection broke.");
+            window.AcceptButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !window.IsAccepting && vm.ErrorText is not null, "the save ended");
+            Assert.Equal("The connection broke.", vm.ErrorText);
+            Assert.True(window.IsVisible);
+            Assert.True(cancel.IsEnabled);
+
             cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
             Assert.False(window.IsVisible);
         }, CancellationToken.None);

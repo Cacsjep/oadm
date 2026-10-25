@@ -250,6 +250,24 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public async Task Errors_that_are_not_server_refusals_show_in_the_card_and_below_the_device_list()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.ListSitesAsync(Arg.Any<CancellationToken>()).Returns<SiteList>(_ => throw new HttpRequestException("The connection broke."));
+        api.SaveDeviceGroupAsync(Arg.Any<SaveDeviceGroupRequest>(), Arg.Any<CancellationToken>()).Returns<DeviceGroupInfo>(_ => throw new HttpRequestException("The connection broke."));
+        var groups = new DeviceGroupsViewModel(api, Substitute.For<IDialogService>(), Admin());
+
+        await groups.NewCommand.ExecuteAsync(null);
+        Assert.Equal("The connection broke.", groups.ErrorText);
+        Assert.False(groups.IsOpening);
+
+        var editor = new DeviceGroupEditorViewModel(api, [], [], [], null, []) { Name = "Lobby" };
+        Assert.False(await editor.SaveAsync());
+        Assert.Equal("The connection broke.", editor.Picker.ErrorText);
+        Assert.False(editor.IsSaving);
+    }
+
+    [Fact]
     public async Task The_user_form_offers_all_devices_or_a_group_and_administrators_always_have_all()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);

@@ -139,6 +139,11 @@ public sealed partial class DeviceGroupEditorViewModel : ValidatingViewModel
 
             return false;
         }
+        catch (Exception ex)
+        {
+            Picker.ErrorText = ex.Message; // e.g. the connection broke: below the device list, the window stays open
+            return false;
+        }
         finally
         {
             IsSaving = false;
