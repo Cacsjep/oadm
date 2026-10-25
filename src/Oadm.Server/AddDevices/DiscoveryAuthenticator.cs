@@ -89,6 +89,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger<DiscoveryAuthenticator> _logger;
     private readonly ConcurrentDictionary<string, AuthSession> _sessions = new(StringComparer.Ordinal);
+    private long _lastPruneTicks = long.MinValue / 2; // the first look prunes
     private readonly SemaphoreSlim _parallel = new(Parallelism);
     private readonly CancellationTokenSource _stopping = new();
     private readonly BasicOverHttpSetting? _basicOverHttp;
@@ -443,10 +444,19 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         _parallel.Dispose();
     }
 
-    private AuthSession Session(string sessionId)
+    /// <summary>
+    /// Drops sessions unused for <see cref="SessionLifetime"/>, now and then (at most once a minute, or once per lifetime when
+    /// shorter), not on every call: a Commit of 30,000 devices looks its session up once per device.
+    /// </summary>
+    private void PruneSessions(DateTimeOffset now)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
-        var now = _time.GetUtcNow();
+        var every = SessionLifetime < TimeSpan.FromMinutes(1) ? SessionLifetime : TimeSpan.FromMinutes(1);
+        var last = Interlocked.Read(ref _lastPruneTicks);
+        if (now.UtcTicks - last < every.Ticks || Interlocked.CompareExchange(ref _lastPruneTicks, now.UtcTicks, last) != last)
+        {
+            return;
+        }
+
         foreach (var (id, old) in _sessions)
         {
             // A session that still exists keeps its logins and its settings (credential list, expected device): recreated it
@@ -456,7 +466,13 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                 _sessions.TryRemove(id, out _);
             }
         }
+    }
 
+    private AuthSession Session(string sessionId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionId);
+        var now = _time.GetUtcNow();
+        PruneSessions(now);
         var session = _sessions.GetOrAdd(sessionId, _ => new AuthSession());
         session.LastUsed = now;
         return session;

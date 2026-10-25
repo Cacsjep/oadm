@@ -152,6 +152,23 @@ public sealed class CoreDiscoveryBackend(CoreDiscoveryService discovery, ServerS
         return _recent.TryGetValue((sessionId, discoveredId.ToUpperInvariant()), out var found) ? found.Device : null;
     }
 
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, DiscoveredDevice> FindDiscovered(string sessionId, IReadOnlyCollection<string> discoveredIds)
+    {
+        ArgumentNullException.ThrowIfNull(discoveredIds);
+        var result = new Dictionary<string, DiscoveredDevice>(StringComparer.OrdinalIgnoreCase);
+        Remember(sessionId); // once for the whole request: a copy of the session's devices per id would be quadratic
+        foreach (var id in discoveredIds)
+        {
+            if (!string.IsNullOrWhiteSpace(id) && _recent.TryGetValue((sessionId, id.ToUpperInvariant()), out var found))
+            {
+                result[id] = found.Device;
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>Maps the add probe's result to a discovery result at the resolved address.</summary>
     internal static DeviceProbeResult ToDiscovery(VapixProbeResult result, IPAddress address) => new(
         address,

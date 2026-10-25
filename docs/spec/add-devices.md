@@ -219,7 +219,9 @@ groups), `DiscoverySitesTests`.
 
 **Device limit**: one server manages at most 30,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
 `TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
-every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored; the add page
+every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored (Prepare
+and Commit read the managed serials once for "managed already" and the limit, and look the session's devices up in one
+step, `IDiscoveryBackend.FindDiscovered(session, ids)`: linear at 30,000, Perf test `AddCommitScaleTests`); the add page
 shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
 warning at most once an hour. Plugin runs are sized by the same limit (System report 50, Device triggers 10,000 watched
 devices). Tests `DeviceLimitTests`.
