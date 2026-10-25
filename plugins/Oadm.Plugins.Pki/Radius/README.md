@@ -13,8 +13,8 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
   with switches, 64 workers, the tick of the Sessions tab and the log), `SwitchTable` (immutable, swapped on every change),
   `DeviceCertificateValidator` and `CaTrust` (who passes), `DroppedRequests` (log rows of requests from a switch that is
   not added or with a wrong shared secret, at most one per sender and reason per minute), `DeviceIndex` (the managed devices in memory),
-  `ServerIdentityKeeper` (the server certificate from the CA of PKI's 802.1X server policy, "Issued by", valid for its
-  days), `SessionBoard`, `RadiusLog`, `RadiusPolicies` and
+  `ServerIdentityKeeper` (the server certificate PKI's 802.1X server policy picks from the Certificates list, ECC, loaded
+  with its key and again when the policies change; never renewed by itself), `SessionBoard`, `RadiusLog`, `RadiusPolicies` and
   `RadiusRuleSet` (the rules from PKI's policies: trusted CAs, `PolicyPlan`, the server policy's TLS, packet size and
   reauthentication; the conversion of the settings from before the policies), `RadiusStore`.
 - Settings: `config` (Listen on, Port, Log entries kept), `switches` (secrets encrypted with the master key, at least 8
@@ -28,7 +28,7 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
     Message-Authenticator (always the first attribute of an answer), the duplicate cache, MS-MPPE keys (RFC 2548) and VLAN
     attributes (RFC 3580).
   - `Eap/`: EAP packets (RFC 3748) and the EAP-TLS header with the L, M and S flags (RFC 5216).
-  - `Tls/`: the BouncyCastle TLS server in non-blocking mode (versions and cipher suites from the settings, client
+  - `Tls/`: the BouncyCastle TLS server in non-blocking mode (the minimum version of the 802.1X server policy and the cipher suites that follow it, client
     certificate required and handed to `IClientCertificateValidator`, alerts in both directions), `TlsAlertTexts`, the
     cipher suite catalogue and `TlsServerIdentity`.
   - `Sessions/`: `RadiusProcessor` (one datagram in, at most one answer out; the session table, timeouts) and the
@@ -46,8 +46,8 @@ License: `LICENSE` in this folder (source-available, not Apache 2.0), also for `
   replay the RFC examples. A new switch quirk becomes a fixture first.
 - Client part (in `Oadm.Plugins.Pki.Client.dll`, `plugins/Oadm.Plugins.Pki.Client/Radius`): the page "802.1X server", the tab
   of the PKI page (`RadiusPage.TabOf`; the link "N policies applied" opens the Policies tab); while
-  the server does not run only the Server card with its status and Turn on (`Servers/ServerSwitchView`), else Server
-  (Turn off left of Save, the link "6 policies applied" with the policies as tooltip) above Switches (row menu, the
+  the server does not run only the off state (`Servers/ServerOffStateView`: Turn on, Start 30-day trial), else Server
+  (Turn off left of Save, the link "N policies applied", 3 on a new server, with the policies as tooltip) above Switches (row menu, the
   switch dialog) left and one Sessions table right (in progress on top, then the log: `AuthenticationsViewModel`; search,
   View certificate, Delete all), one column on narrow pages (`Servers/ServerPageLayout`); code
   map in the spec, "Code (page)". The page uses the server part's contract `Api/RadiusApi.cs` (the client part references the server assembly).
