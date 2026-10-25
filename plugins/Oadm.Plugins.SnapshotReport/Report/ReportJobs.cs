@@ -14,7 +14,9 @@ namespace Oadm.Plugins.SnapshotReport.Report;
 /// <see cref="SnapshotService"/>), then the PDF. The page polls the status and reads the finished file in
 /// chunks (a report with many cameras is larger than one gRPC message). Reports are kept in memory and
 /// dropped 30 minutes after their last use (a timer, also when nobody asks again); one user builds at most
-/// <see cref="MaxRunningPerUser"/> at once. Device groups (SDK 0.4.0): a report of a user is a job of that user
+/// <see cref="MaxRunningPerUser"/> at once and keeps at most <see cref="MaxFinishedPerUser"/> finished ones; all finished
+/// reports together stay within <see cref="DefaultMaxFinishedBytes"/> (the oldest finished ones are dropped first, never the
+/// one that just finished). Device groups (SDK 0.4.0): a report of a user is a job of that user
 /// (<see cref="IPluginJobs"/>): it takes snapshots through the user's view, and its id answers only that user (another
 /// user's id like an unknown one).
 /// </summary>
@@ -44,20 +46,30 @@ public sealed partial class ReportJobs : IDisposable
     /// <summary>Reports one user builds at the same time (each holds its snapshots in memory until the PDF is built).</summary>
     public const int MaxRunningPerUser = 2;
 
+    /// <summary>Finished reports kept per user: a further one drops the user's oldest finished report.</summary>
+    public const int MaxFinishedPerUser = 4;
+
+    /// <summary>The PDFs of all finished reports together (memory bound): beyond it the oldest finished ones are dropped.</summary>
+    public const long DefaultMaxFinishedBytes = 1L << 30;
+
     private readonly SnapshotService _snapshots;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, Job> _jobs = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ITimer _expiry;
+    private readonly long _maxFinishedBytes;
+    private readonly Lock _finishing = new();
 
     /// <summary>Per user: the reports that may build at once (<see cref="MaxRunningPerUser"/>); a further one waits its turn.</summary>
     private readonly ConcurrentDictionary<string, Lazy<SemaphoreSlim>> _turns = new(StringComparer.OrdinalIgnoreCase);
 
-    public ReportJobs(SnapshotService snapshots, TimeProvider? time = null, ILogger? logger = null)
+    /// <param name="maxFinishedBytes">The byte budget of all finished reports (tests pass a small one); default <see cref="DefaultMaxFinishedBytes"/>.</param>
+    public ReportJobs(SnapshotService snapshots, TimeProvider? time = null, ILogger? logger = null, long? maxFinishedBytes = null)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
         _snapshots = snapshots;
+        _maxFinishedBytes = maxFinishedBytes ?? DefaultMaxFinishedBytes;
         _time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
         _expiry = _time.CreateTimer(_ => DropExpired(), null, ExpiryInterval, ExpiryInterval);
@@ -77,7 +89,7 @@ public sealed partial class ReportJobs : IDisposable
     {
         Validate(request);
         DropExpired();
-        var job = new Job(Guid.NewGuid().ToString("N"), request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), null);
+        var job = new Job(Guid.NewGuid().ToString("N"), string.Empty, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), null);
         _jobs[job.Id] = job;
         job.Message = "Read video sources";
         var access = new SnapshotService.DeviceAccess(_snapshots.DefaultDevices, _snapshots.DefaultVapix, Strict: false);
@@ -133,7 +145,7 @@ public sealed partial class ReportJobs : IDisposable
         });
         try
         {
-            var job = new Job(owned.Id, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
+            var job = new Job(owned.Id, caller.UserName, request.Items.Count, _time.GetUtcNow(), CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token), owned)
             {
                 Message = "Read video sources",
             };
@@ -353,10 +365,16 @@ public sealed partial class ReportJobs : IDisposable
             var report = await Task.Run(() => Build(request, entries, version, _time.GetUtcNow().UtcDateTime), ct).ConfigureAwait(false);
             var pdf = report.Pdf;
             job.Pages = report.Pages;
-            job.Pdf = pdf;
             job.Message = "Report ready";
-            job.State = ReportJobStates.Done;
+            lock (_finishing)
+            {
+                job.FinishedAt = _time.GetUtcNow();
+                job.Pdf = pdf;
+                job.State = ReportJobStates.Done;
+            }
+
             LogReportReady(job.Id, entries.Length, pdf.Length);
+            KeepWithinLimits(job);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -377,6 +395,42 @@ public sealed partial class ReportJobs : IDisposable
             {
                 turns!.Release(); // the PDF is built: the snapshots are no longer held, the next report may start
             }
+        }
+    }
+
+    /// <summary>
+    /// A report finished: the owner's finished reports beyond <see cref="MaxFinishedPerUser"/> and, while all finished PDFs
+    /// together exceed the byte budget, the oldest finished ones of any user are dropped (never <paramref name="finished"/>).
+    /// </summary>
+    private void KeepWithinLimits(Job finished)
+    {
+        List<Job> drop = [];
+        lock (_finishing)
+        {
+            var done = _jobs.Values.Where(j => j.Pdf is not null && j.FinishedAt is not null).OrderBy(j => j.FinishedAt).ToList();
+            var mine = done.Where(j => string.Equals(j.Owner, finished.Owner, StringComparison.OrdinalIgnoreCase)).ToList();
+            drop.AddRange(mine.Take(Math.Max(0, mine.Count - MaxFinishedPerUser)).Where(j => !ReferenceEquals(j, finished)));
+            var kept = done.Except(drop).ToList();
+            var bytes = kept.Sum(j => (long)j.Pdf!.Length);
+            foreach (var old in kept)
+            {
+                if (bytes <= _maxFinishedBytes)
+                {
+                    break;
+                }
+
+                if (!ReferenceEquals(old, finished))
+                {
+                    drop.Add(old);
+                    bytes -= old.Pdf!.Length;
+                }
+            }
+        }
+
+        foreach (var old in drop)
+        {
+            LogReportDropped(old.Id, old.Pdf?.Length ?? 0);
+            Delete(old.Id);
         }
     }
 
@@ -477,12 +531,21 @@ public sealed partial class ReportJobs : IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Snapshot report {JobId} ready: {Snapshots} snapshots, {Bytes} bytes")]
     private partial void LogReportReady(string jobId, int snapshots, int bytes);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Snapshot report {JobId} dropped ({Bytes} bytes) to make room for newer reports")]
+    private partial void LogReportDropped(string jobId, int bytes);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Snapshot report {JobId} failed")]
     private partial void LogReportFailed(Exception ex, string jobId);
 
-    private sealed class Job(string id, int total, DateTimeOffset created, CancellationTokenSource cancel, IPluginJob? owned)
+    private sealed class Job(string id, string owner, int total, DateTimeOffset created, CancellationTokenSource cancel, IPluginJob? owned)
     {
         public string Id { get; } = id;
+
+        /// <summary>The user of the report ("" for in-process reports): the per-user limit of finished reports.</summary>
+        public string Owner { get; } = owner;
+
+        /// <summary>When the PDF was ready (null while it is built or after a failure).</summary>
+        public DateTimeOffset? FinishedAt { get; set; }
 
         /// <summary>The user's job of a report started through the call (null for in-process reports).</summary>
         public IPluginJob? Owned { get; } = owned;
