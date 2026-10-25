@@ -171,7 +171,7 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `https://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release] [--no-plugin-build]` | Build the client and all plugins, then run the client; `--fake` uses sample data without a server |
 | `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: confirm the fingerprint, then create the first administrator (no setup code on the same computer) |
-| `manage test [unit\|perf\|timing\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
+| `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |
 | `manage package site-node [--rid RID] [--version V]` | The OADM Site Node installer (MSI, .deb) in `artifacts/packages/` |
