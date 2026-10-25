@@ -246,7 +246,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             case PkiMethods.GetCertificate:
             {
                 var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
-                return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct).ConfigureAwait(false));
+                var devices = view is null ? null : await caller.Devices.ListAsync(ct).ConfigureAwait(false); // the group's: a camera by its serial
+                return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct, devices).ConfigureAwait(false));
             }
 
             case PolicyMethods.GetPolicies:

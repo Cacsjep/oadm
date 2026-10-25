@@ -358,7 +358,7 @@ public sealed partial class PkiService
             {
                 if (certificate!.Extensions.OfType<X509BasicConstraintsExtension>().FirstOrDefault() is { CertificateAuthority: true })
                 {
-                    return FileError("This is a CA certificate. Use Import CA in Certificate authorities.");
+                    return FileError("This is a CA certificate. Use Import > CA certificate in Certificate authorities.");
                 }
 
                 if (certificate.NotAfter.ToUniversalTime() <= Now.UtcDateTime)

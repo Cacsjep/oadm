@@ -90,7 +90,7 @@ public static class CertificateDeployment
         if (service.Time.GetUtcNow().UtcDateTime > ca.Certificate.NotAfter.ToUniversalTime())
         {
             throw new InvalidOperationException(oadm
-                ? "The certificate authority has expired. Generate or import a new CA on the PKI page. Nothing was changed."
+                ? "The certificate authority has expired. Use New OADM CA on the PKI page. Nothing was changed."
                 : $"The CA of the policy {policy!.Name} has expired. Choose another CA in the policy on the PKI page. Nothing was changed.");
         }
 

@@ -88,7 +88,9 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   PKI page to hold the tab).
 - Managing needs "Manage the certificate authority" and all devices (like Revoke today). Users without it see the page
   read only (no toolbar buttons, no row buttons but View); users limited to a device group see only the device
-  certificates of their devices (no Policies tab, no actions).
+  certificates of their devices (no Policies tab, no actions). Their camera's certificate is found by the camera's serial
+  like the list finds it (also one issued while the camera had another device id), and Used by of the CAs reaches them
+  without policy names (fix of 2026-10-25: the policies are server-wide).
 
 ## Certificate authorities
 
@@ -592,7 +594,7 @@ fits the spec; to be confirmed by the maintainer).
   not a valid Axis device ID or an EST certificate.") and the 802.1X server refuses it (alert 42, "Certificate is not a
   device certificate"). Fail closed: also when such a certificate was found on a device and listed in the registry.
 - **Import** (`importCertificate`): one PEM or DER certificate, or a PKCS#12 file with exactly one certificate with its key
-  (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import CA"), expired ones,
+  (RSA or ECC; the chain in it is not kept). Refused (decision of stage 5): CA certificates ("Use Import > CA certificate"), expired ones,
   a PEM with a private key, several certificates in one PEM, one already listed. A wrong password shows below Password only
   for a PKCS#12 file (its outer structure read without the password, `LooksLikePkcs12`); any other file "The file cannot be
   read." below File. Use from the extended key usage: server ->
@@ -718,7 +720,8 @@ It supersedes "only the OADM CA issues" of stage 4 and the Server certificate an
   once. The server backup carries the setting (and the master key), so a restore keeps the imported keys; Back up of the
   OADM CA stays the OADM CA only.
 - **Import**: `import` (`CaImporter`, the former replace path; the checks as before, also "valid a year beyond the
-  certificates it would issue") adds; the same CA imported before without its key gets the key (decision of this stage);
+  certificates it would issue") adds; the same CA imported before without its key, or with a key the master key cannot
+  read (fix of 2026-10-25), gets the key (decision of this stage);
   the OADM CA, a previous one or a CA with its key already listed: "This CA is already in the list."; at most 50 imported
   CAs. `importAuthority` adds a certificate only, as before. A CA backup of another OADM server imported here is such a CA
   (it no longer becomes this server's OADM CA). `ImportRequest.Confirmed` is gone.
@@ -817,7 +820,9 @@ policies and are checked against the trusted / sign-in CA policies, the two are 
   only one with an ECC key (its cipher suites follow it). The choices (`PolicyList.ServerCertificates`,
   `PolicyCertificateChoice`, "EST server (OADM CA), until 2035-10-25") come from `PkiService.ServerCertificateChoices`; the
   store checks the pick on save (`PolicyStore.CertificateRefusal`). The field shows the names the certificate holds below it.
-  A certificate a server policy shows cannot be deleted and shows the server under Used by.
+  A certificate a server policy shows cannot be deleted or revoked ("Used by the policy 802.1X server. Pick another
+  certificate first.", fix of 2026-10-25) and shows the server under Used by. The choices are cached per list, day and
+  change of the revocation list.
 - **No Create in the policy** (decision 2026-10-25): other certificates come from the Certificates tab (Create, Sign
   request, Import); the field lists them.
 - **One certificate for both servers** (decision 2026-10-25): when OADM PRO becomes active, on every start with OADM PRO

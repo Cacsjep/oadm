@@ -32,20 +32,22 @@ public sealed record ServerCertificateImport(byte[] Leaf, byte[] CaCertificate, 
 public sealed partial class PkiService
 {
     private readonly SemaphoreSlim _serverCertificateGate = new(1, 1);
-    private (IReadOnlyList<LocalCertificate> List, DateTime Day, IReadOnlyList<PolicyCertificateChoice> Choices)? _serverChoices;
+    private ServerChoiceCache? _serverChoices; // one reference: never a torn read of its fields across threads
+    private int _revocations; // counts the changes of the revocation list (the cache of the choices follows it)
 
     /// <summary>"The 802.1X server" or "The EST server".</summary>
     private static string ServerText(string kind) => kind == PolicyKinds.Dot1xServer ? "The 802.1X server" : "The EST server";
 
     /// <summary>
     /// The certificates of the list with a key OADM holds, each with what it names; ended ones and ones that are no server
-    /// certificate say why. Cached per list and day (the store reads it for every summary).
+    /// certificate say why. Cached per list, day and revocation list (the store reads it for every summary).
     /// </summary>
     internal IReadOnlyList<PolicyCertificateChoice> ServerCertificateChoices()
     {
+        var revocations = Volatile.Read(ref _revocations); // read first: a revocation while this runs makes the next call build again
         var list = _local.List;
         var now = Now.UtcDateTime;
-        if (_serverChoices is { } cached && ReferenceEquals(cached.List, list) && cached.Day == now.Date)
+        if (Volatile.Read(ref _serverChoices) is { } cached && ReferenceEquals(cached.List, list) && cached.Day == now.Date && cached.Revocations == revocations)
         {
             return cached.Choices;
         }
@@ -69,7 +71,7 @@ public sealed partial class PkiService
             }
         }
 
-        _serverChoices = (list, now.Date, choices);
+        Volatile.Write(ref _serverChoices, new ServerChoiceCache(list, now.Date, revocations, choices));
         return choices;
 
         static bool Dispose(IDisposable key)
@@ -365,4 +367,9 @@ public sealed partial class PkiService
 
     /// <summary>The certificate for both servers could not be made (OADM PRO became active): the servers try again on Turn on.</summary>
     internal void LogServerCertificatesFailed(Exception ex) => LogServerCertificateFailed(SharedServerCertificateName, ex.Message);
+
+    private void OnRevocationChanged(object? sender, EventArgs e) => Interlocked.Increment(ref _revocations);
+
+    /// <summary><see cref="ServerCertificateChoices"/> of one list, day and revocation list.</summary>
+    private sealed record ServerChoiceCache(IReadOnlyList<LocalCertificate> List, DateTime Day, int Revocations, IReadOnlyList<PolicyCertificateChoice> Choices);
 }

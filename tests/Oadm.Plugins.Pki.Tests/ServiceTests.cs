@@ -313,7 +313,7 @@ public sealed class ServiceTests
         Assert.Equal(ServiceStatus.Warning, PkiService.StatusOf(false, false, null, ca, end.AddDays(-20.5), 30).Kind);
         Assert.Equal("CA expires in 1 day", PkiService.StatusOf(false, false, null, ca, end.AddDays(-1.5), 30).Text);
         Assert.Equal("CA expires today", PkiService.StatusOf(false, false, null, ca, end.AddHours(-2), 30).Text);
-        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}. Generate a new CA or import one."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30));
+        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}. Use New OADM CA."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30));
         Assert.Equal("Creating the certificate authority", PkiService.StatusOf(false, true, null, null, end, 30).Text);
         using var noKey = new CaMaterial(X509CertificateLoader.LoadCertificate(ca.Certificate.RawData), [], null);
         Assert.Equal("CA key cannot be read", PkiService.StatusOf(false, false, null, noKey, end.AddDays(-100), 30).Text);

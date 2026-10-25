@@ -109,6 +109,7 @@ public sealed partial class PkiService : IAsyncDisposable
         _issued = new IssuedRegistry(_store, options.Time, records, logger) { FlushDelay = options.IssuedFlushDelay };
         _issued.UnknownNotAfter = LatestCaEnd;
         _issued.Changed += OnIssuedChanged;
+        _issued.RevocationChanged += OnRevocationChanged;
         _local = new Certificates.LocalCertificates(records ?? new MemoryPluginRecords(), secrets, options.Time, logger);
         _local.Changed += OnIssuedChanged;
         _sites = sites;
@@ -214,6 +215,7 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         _issued.Changed -= OnIssuedChanged;
+        _issued.RevocationChanged -= OnRevocationChanged;
         _local.Changed -= OnIssuedChanged;
         _local.Dispose();
         await StopPoliciesAsync().ConfigureAwait(false);
@@ -277,7 +279,7 @@ public sealed partial class PkiService : IAsyncDisposable
             DevicesWithPreviousCa = counts.WithPreviousCa,
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
-            Authorities = AuthorityRows(),
+            Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
         };
     }
 
@@ -303,13 +305,13 @@ public sealed partial class PkiService : IAsyncDisposable
 
         if (!ca.HasKey)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key. Use New OADM CA.");
         }
 
         var notAfter = ca.Certificate.NotAfter.ToUniversalTime();
         if (nowUtc > notAfter)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}. Use New OADM CA.");
         }
 
         var days = (int)Math.Floor((notAfter - nowUtc).TotalDays);
@@ -321,7 +323,7 @@ public sealed partial class PkiService : IAsyncDisposable
                 1 => "CA expires in 1 day",
                 _ => string.Create(CultureInfo.InvariantCulture, $"CA expires in {days} days"),
             };
-            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}. Generate a new CA or import one.");
+            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}. Use New OADM CA.");
         }
 
         return new ServiceStatus(ServiceStatus.Ok, string.Create(CultureInfo.InvariantCulture, $"CA valid until {notAfter:yyyy-MM-dd}"));

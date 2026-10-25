@@ -601,7 +601,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     /// <summary>The line without a CA: what to do first.</summary>
-    public const string NoCaYet = "There is no OADM CA yet. Choose New OADM CA under Create, or import one under Import.";
+    public const string NoCaYet = "There is no OADM CA yet. Use New OADM CA.";
 
     /// <summary>The OADM CA row's statuses: whether it is in the trusted root store of the server and of this computer.</summary>
     private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
