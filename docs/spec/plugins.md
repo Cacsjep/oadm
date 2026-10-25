@@ -263,6 +263,24 @@ the caller reads the body as a stream (e.g. into a file in `ICorePluginContext.D
 limit and bounds the body read with its own token (the timeout covers the headers only); the 16 MB limit of buffered
 answers is unchanged. Used by the System report for server reports.
 
+## Behaviour changes since OADM 4.1 (SDK 0.4.0)
+
+What a plugin built for 4.1 (SDK 0.3.0) or rebuilt for 4.5 notices:
+
+- `ui:FileRow.IsSingleButton` defaults to true: the button alone, without the "No file chosen" line; set it false for
+  the older row.
+- `ui:ToolbarButton.IsPrimary` no longer fills the button: it adds the class `main` (toolbars have no filled buttons,
+  decision 2026-10-25).
+- `IPluginEvents.Publish(topic, payload)` (without an audience) reaches only watchers with all devices; events for users
+  with a device group need `Publish(topic, json, PluginEventAudience)`.
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.4.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.4.0
+  into `plugin.json`, so a 4.1 host refuses it. A plugin that uses no 0.4.0 member may set `OadmMinSdkVersion` 0.3.0 in
+  its project to stay loadable on 4.1 (it is then refused for users with a device group).
+- `Oadm.Sdk.Client` references `Avalonia.Controls.DataGrid` 12.1.2 (for `IssuedCertificateList`); the host ships it,
+  plugins never copy it.
+- `SdkInfo.Version` and `SdkInfo.CallContextVersion` are constants: a plugin that reads them gets the value of the SDK
+  it was built against, not the host's.
+
 ## Loading and packaging
 
 - Server scans `<app>/plugins/*/`, `<datafolder>/plugins/*/` and, in a repository checkout,

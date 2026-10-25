@@ -199,7 +199,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:CardHeader Title Description` | heading of every card; child controls go right of the title (e.g. a device picker). Class `flush` when the content below is optional and adds `Margin="{DynamicResource Oadm.GapTop}"` itself |
   | `ui:DialogFooter CancelCommand` | last row: Cancel left; children are the right-hand buttons (`Button.secondary` for Back, one `Button.primary`) |
   | `ui:IconLabel Icon Text` | every icon + text row, e.g. button content |
-  | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary IsIconOnly` | every toolbar button: `Button.toolbar` (or `Button.primary`) with an `IconLabel`; `IsIconOnly` shows only the icon with `Text` as tooltip |
+  | `ui:ToolbarButton Text IconKey (or Icon) IsPrimary IsIconOnly` | every toolbar button: a flat `Button.toolbar` with an `IconLabel` (`IsPrimary` marks the main one with the class `main`, never filled); `IsIconOnly` shows only the icon with `Text` as tooltip |
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:ToolbarOverflowPanel Spacing` | every row of toolbar buttons on a page: entries that do not fit (small or scaled screens) go behind its own More button; keep the device choice button and the search box outside it |
   | `ui:SearchBox Text` | every search field |

@@ -77,7 +77,10 @@ public class ToolbarButton : Button
     /// <summary>The icon + text content (for tests).</summary>
     public IconLabel Label => _label;
 
-    /// <summary>Styled as a <see cref="Button"/>, so the theme's <c>Button.toolbar</c> and <c>Button.primary</c> apply unchanged.</summary>
+    /// <summary>
+    /// Styled as a <see cref="Button"/>, so the theme's <c>Button.toolbar</c> styles apply unchanged (<see cref="IsPrimary"/>
+    /// adds the class <c>main</c>, never <c>primary</c>: a toolbar button is never filled).
+    /// </summary>
     protected override Type StyleKeyOverride => typeof(Button);
 
     /// <summary>The theme geometry <c>Icon.&lt;key&gt;</c>, else <c>Icon.plugin</c>, else null.</summary>
