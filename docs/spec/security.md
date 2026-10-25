@@ -170,8 +170,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   a device group view the NTP server, DHCP server and PKI pages but cannot change them." (`DeviceGroupWords`, also in
   the role dialog); a user without devices must get a choice before Save. **Device groups card** right of or below the users (see the layout above)
   (`DeviceGroupsCardView`, `DeviceGroupsViewModel`, `DeviceGroupService`): Group (description as tooltip), Rules ("Site
-  Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, row
-  Edit and Delete (red; the confirmation names the users who have no devices afterwards). New and Edit open the group
+  Building B, tag PTZ, 3 devices, except 1", from the server), Devices (right-aligned), Users; **New device group**, the
+  row menu `ui:RowActions` Edit and Delete (red, last; the confirmation names the users who have no devices afterwards). New and Edit open the group
   editor (`DeviceGroupEditorViewModel`, `DeviceGroupFormView.CreateWindow`): the shared device picker in its group mode
   with Name and Description (Optional) on top; the device list is built off the UI thread; Save sends the rules with the
   revision the editor started from; name errors below the name, refusals of the rules (too many, changed meanwhile)

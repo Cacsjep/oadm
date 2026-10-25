@@ -549,6 +549,14 @@ public sealed class DeviceGroupsTests
             // The Devices column: right-aligned like every numeric column (docs/spec/security.md).
             Assert.Contains(page.GetVisualDescendants().OfType<TextBlock>(), t => t.Classes.Contains("numberHeader") && t.Text == "Devices");
             Assert.Contains(groups.Groups.Single(g => g.Name == "Building B").DeviceCountText, texts);
+            // Row actions: one ⋯ menu (Fluent rule), Edit then Delete in red; no red icon-only button.
+            Assert.Contains(page.GetVisualDescendants().OfType<Button>(), b => Equals(ToolTip.GetTip(b), RowActions.Tip) && b.IsEffectivelyVisible);
+            Assert.DoesNotContain(view.GetVisualDescendants().OfType<DeviceGroupsCardView>().Single().GetVisualDescendants().OfType<Button>(),
+                b => b.Classes.Contains("iconOnly") && b.Classes.Contains("danger"));
+            IReadOnlyList<IssuedCertificateAction> actions = groups.RowActionsOf(groups.Groups.Single(g => g.Name == "Building B"));
+            Assert.Equal(["Edit", "-", "Delete"], actions.Select(a => a.Text));
+            Assert.True(actions[2].IsDanger);
+            Assert.Same(groups.DeleteCommand, actions[2].Command);
             Capture(page, outDir, "client-device-groups-card.png");
             page.Close();
 
