@@ -118,7 +118,7 @@ public sealed class PageViewModelTests
             shown = dialog;
             Assert.Equal("Add switch", dialog.Title);
             Assert.False(dialog.SaveCommand.CanExecute(null));
-            Assert.Null(dialog.ErrorOf(nameof(SwitchDialogViewModel.Name))); // untouched
+            Assert.Null(dialog.ErrorOf(nameof(SwitchDialogViewModel.Name))); // its words name other fields: only the parameter counts // untouched
             dialog.Name = "Floor 2";
             Assert.Equal("Another switch has this name.", dialog.ErrorOf(nameof(SwitchDialogViewModel.Name)));
             dialog.Name = "Floor 3";
@@ -187,9 +187,16 @@ public sealed class PageViewModelTests
         dialog.Name = "New";
         dialog.Address = "switch-new.example.com";
         dialog.Secret = new string('s', 20);
-        _server.Failures[RadiusMethods.SaveSwitch] = new InvalidOperationException("The host name switch-new.example.com cannot be resolved.");
+        // The field the server names (its ArgumentException's parameter), never a guess from the words.
+        _server.Failures[RadiusMethods.SaveSwitch] = new ArgumentException(Oadm.Plugins.Radius.Server.RadiusTexts.HostNameUnknown, "address");
         await dialog.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("The host name switch-new.example.com cannot be resolved.", dialog.ErrorOf(nameof(SwitchDialogViewModel.Address)));
+        Assert.Equal(Oadm.Plugins.Radius.Server.RadiusTexts.HostNameUnknown, dialog.ErrorOf(nameof(SwitchDialogViewModel.Address)));
+        dialog.Address = "10.0.9.3"; // an edit clears the server's error of the field
+        _server.Failures[RadiusMethods.SaveSwitch] = new ArgumentException("The secret of this switch name and address is too short.", "secret");
+        await dialog.SaveCommand.ExecuteAsync(null);
+        Assert.NotNull(dialog.ErrorOf(nameof(SwitchDialogViewModel.Secret)));
+        Assert.Null(dialog.ErrorOf(nameof(SwitchDialogViewModel.Name))); // its words name other fields: only the parameter counts
+        dialog.Secret = new string('t', 20);
         _server.Failures[RadiusMethods.SaveSwitch] = new InvalidOperationException("At most 500 switches.");
         dialog.Address = "10.0.9.2";
         await dialog.SaveCommand.ExecuteAsync(null);

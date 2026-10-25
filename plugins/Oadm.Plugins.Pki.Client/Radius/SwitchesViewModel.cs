@@ -363,17 +363,14 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            var message = ServerErrors.Message(ex);
-            var field = message switch
+            // The server names the field of a refusal (RadiusErrors.Field: "... (Parameter 'address')"); never guessed from words.
+            var (message, parameter) = SplitField(ServerErrors.Message(ex));
+            var field = parameter switch
             {
-                RadiusRules.EnterName or RadiusRules.NameTooLong or RadiusRules.NameTaken => nameof(Name),
-                RadiusRules.EnterAddress or RadiusRules.AddressTaken => nameof(Address),
-                RadiusRules.EnterSecret or RadiusRules.SecretTooShort or RadiusRules.SecretTooLong or RadiusRules.SecretCharacters => nameof(Secret),
-                RadiusRules.TooManySwitches => null,
-                _ => message.Contains("secret", StringComparison.OrdinalIgnoreCase) ? nameof(Secret)
-                : message.Contains("address", StringComparison.OrdinalIgnoreCase) || message.Contains("host", StringComparison.OrdinalIgnoreCase) ? nameof(Address)
-                : message.Contains("name", StringComparison.OrdinalIgnoreCase) ? nameof(Name)
-                : null,
+                "name" => nameof(Name),
+                "address" => nameof(Address),
+                "secret" => nameof(Secret),
+                _ => null,
             };
             if (field is not null)
             {
@@ -388,6 +385,17 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>"Another switch has this address. (Parameter 'address')" -> the text and "address"; no field: the text and null.</summary>
+    internal static (string Message, string? Field) SplitField(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        const string Marker = " (Parameter '";
+        var at = text.LastIndexOf(Marker, StringComparison.Ordinal);
+        return at >= 0 && text.EndsWith("')", StringComparison.Ordinal)
+            ? (text[..at], text[(at + Marker.Length)..^2])
+            : (text, null);
     }
 
     [RelayCommand]
