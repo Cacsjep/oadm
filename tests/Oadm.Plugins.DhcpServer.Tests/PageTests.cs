@@ -134,9 +134,9 @@ public sealed class PageViewModelTests : IAsyncLifetime
     [Fact]
     public async Task Save_asks_before_enabling_next_to_another_DHCP_server()
     {
-        // The product's 3 s to collect the other server's offers (the tests' 300 ms is too short on a busy machine).
+        // 30 s to collect the other server's offer, ended by the offer itself: a busy machine never misses it.
         await _plugin.DisposeAsync();
-        _plugin = new DhcpServerPlugin(Options.Test(_network) with { OtherServerWait = TimeSpan.FromSeconds(3) });
+        _plugin = new DhcpServerPlugin(Options.Test(_network) with { OtherServerWait = TimeSpan.FromSeconds(30), OtherServerStopAfter = 1 });
         await _plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(DhcpServerPluginInfo.PluginId), _hub.For(DhcpServerPluginInfo.PluginId)), default);
         _ctx = new PluginPageContext(_plugin, _hub);
         await using var router = new FakeOtherServer(_network);

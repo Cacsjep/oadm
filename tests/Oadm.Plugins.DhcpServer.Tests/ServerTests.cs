@@ -182,9 +182,9 @@ public sealed class ServerTests : IAsyncLifetime
     [Fact]
     public async Task Another_DHCP_server_needs_a_confirmation_then_the_status_says_running()
     {
-        // The product's 3 s to collect the other server's offers (the tests' 300 ms is too short on a busy machine).
+        // 30 s to collect the other server's offer, ended by the offer itself: a busy machine never misses it.
         await _plugin.DisposeAsync();
-        _plugin = await StartAsync(otherServerWait: TimeSpan.FromSeconds(3));
+        _plugin = await StartAsync(otherServerWait: TimeSpan.FromSeconds(30), otherServerStopAfter: 1);
         await using var router = new FakeOtherServer(_network);
         var reply = await Save(Options.Enable());
         Assert.False(reply.Saved);
@@ -323,12 +323,13 @@ public sealed class ServerTests : IAsyncLifetime
     private async Task<DhcpSaveReply> Save(DhcpSaveRequest request) =>
         DhcpJson.Deserialize<DhcpSaveReply>(await _plugin.InvokeAsync(DhcpServerMethods.Save, DhcpJson.Serialize(request), default));
 
-    private async Task<DhcpServerPlugin> StartAsync(FakeInterfaces? interfaces = null, TimeSpan? otherServerWait = null, double? refillSeconds = null)
+    private async Task<DhcpServerPlugin> StartAsync(FakeInterfaces? interfaces = null, TimeSpan? otherServerWait = null, double? refillSeconds = null, int? otherServerStopAfter = null)
     {
         var options = Options.Test(_network, _probe, interfaces);
         options = options with
         {
             OtherServerWait = otherServerWait ?? options.OtherServerWait,
+            OtherServerStopAfter = otherServerStopAfter,
             RateLimits = refillSeconds is { } refill ? options.RateLimits with { PerMac = options.RateLimits.PerMac with { RefillSeconds = refill } } : options.RateLimits,
         };
         var plugin = new DhcpServerPlugin(options);

@@ -40,8 +40,8 @@ the server's own network (`IDeviceAutoAdd.FollowAsync`).
   `IDhcpSocketFactory`; tests use `FakeDhcpNetwork` (in memory) and loopback with random ports, never port 67 on a real
   interface.
 - Other DHCP servers (`OtherServerCheck`): a discover with the broadcast flag and a random locally administered MAC from
-  UDP 68 (address reuse), offers collected for 3 s, the own address and the own server (it ignores the probe MAC) not
-  counted. Runs on Save when enabling (not when already serving on that interface), every 10 min while running and at
+  UDP 68 (address reuse), offers collected for 3 s (tests end it at the first offer: `OtherServerStopAfter`), the own
+  address and the own server (it ignores the probe MAC) not counted. Runs on Save when enabling (not when already serving on that interface), every 10 min while running and at
   server start. Found on Save: nothing saved, the page asks with the shared confirmation popup "Another DHCP server
   (10.0.0.1) answers on this network. Running two DHCP servers causes address conflicts. Enable anyway?" and saves again
   with the servers confirmed; confirmed servers are stored per interface (`config.acceptedOtherServers`) and never warn
