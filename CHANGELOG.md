@@ -40,7 +40,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - PKI: Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the EST **Set up** check the camera's clock first. When
   the camera is behind, they say by how much and ask before they start.
 - PKI: certificates, HTTPS and IEEE 802.1X work on cameras with **AXIS OS 6.53 and later** (before: 11.11). Older
-  cameras get RSA keys; EAPOL version 3 needs AXIS OS 10.1. The EST server still needs AXIS OS 12.10.
+  cameras need a policy with RSA keys; EAPOL version 3 needs AXIS OS 10.1. The EST server still needs AXIS OS 12.10.
+- PKI: **Disable HTTPS** also runs on a camera that accepts only Basic login over HTTP when **Allow Basic login over
+  HTTP** is on in Settings > Security; with it off, the task refuses and names the setting.
 - PKI: certificates from before this version are added when OADM reads them from the devices: 5 minutes after the first
   start OADM reads the certificate list of every device that answers, once (read only), and again later when no device
   answered. **Revoke all of this device** also reads the device first and revokes the OADM certificates it finds there.
@@ -131,6 +133,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - PKI: a camera's new certificate replaces the old one in the list only once the camera uses it; the old one is then
   revoked as "Replaced by a newer certificate". A certificate deleted from a camera leaves the list.
 - PKI: **Delete** of a certificate made here that is still valid revokes it first (**Revoke and delete**).
+- PKI: Enable HTTPS, Disable HTTPS, Renew certificates (HTTPS) and Install certificates (HTTPS) wait up to 1 minute
+  for the camera's web server to restart before they check the new connection. A camera that does not come back fails
+  with what was changed.
 - PKI: the device counts of the page and of the New OADM CA question count only certificates still in use, not ended,
   revoked or deleted ones.
 - The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the
