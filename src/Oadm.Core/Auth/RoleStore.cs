@@ -70,6 +70,12 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
     /// <summary>Raised after roles changed, with the ids of the changed roles.</summary>
     public event EventHandler<IReadOnlyCollection<Guid>>? Changed;
 
+    /// <summary>
+    /// Raised after an administrator's save gave or took permissions of existing roles, with their ids (after
+    /// <see cref="Changed"/>; never for a rename, a new role or the catalog sync that adds a new plugin's permissions).
+    /// </summary>
+    public event EventHandler<IReadOnlyCollection<Guid>>? PermissionsChanged;
+
     /// <summary>The catalog the roles were last synchronized with.</summary>
     public PermissionCatalog Catalog => _catalog;
 
@@ -224,6 +230,7 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
             var byId = roles.ToDictionary(r => r.Id);
             var diffs = new List<RoleDiff>();
             var changedIds = new List<Guid>();
+            var permissionIds = new List<Guid>(); // existing roles that got or lost permissions
             var now = time.GetUtcNow().UtcDateTime;
             var catalogKeys = _catalog.Entries.Select(e => e.Key).ToHashSet(StringComparer.Ordinal);
 
@@ -340,6 +347,10 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
                 role.ChangedUtc = now;
                 diffs.Add(new RoleDiff(name, created, added, removed, renamed, created && role.StartPage.Length == 0 ? null : newStart));
                 changedIds.Add(role.Id);
+                if (!created && (added.Count > 0 || removed.Count > 0))
+                {
+                    permissionIds.Add(role.Id);
+                }
             }
 
             if (changedIds.Count == 0)
@@ -350,6 +361,11 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             _snapshot = Snapshot.From(roles);
             Oadm.Core.Auth.CallerContext.Raise(Changed, this, changedIds);
+            if (permissionIds.Count > 0)
+            {
+                Oadm.Core.Auth.CallerContext.Raise(PermissionsChanged, this, permissionIds);
+            }
+
             return diffs;
         }
         finally

@@ -147,6 +147,29 @@ public sealed class RoleTests
     }
 
     [Fact]
+    public async Task OnlyAGivenOrTakenPermissionTellsTheJobsOfTheRolesUsersToEnd()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var store = host.Get<RoleStore>();
+        var events = new List<IReadOnlyCollection<Guid>>();
+        store.PermissionsChanged += (_, ids) => events.Add(ids);
+        await Roles(host).SaveRolesAsync(new Proto.SaveRolesRequest { Roles = { new Proto.RoleChange { Name = "Guard", Permissions = { HostPermissions.DevicesLiveView } } } });
+        var guard = (await Roles(host).GetMatrixAsync(new Proto.Empty())).Roles.Single(r => r.Name == "Guard");
+        await Roles(host).SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = guard.Id, Name = "Gate guard", Permissions = { HostPermissions.DevicesLiveView }, Version = guard.Version } },
+        });
+        Assert.Empty(events); // a new role and a rename change no one's rights
+
+        guard = (await Roles(host).GetMatrixAsync(new Proto.Empty())).Roles.Single(r => r.Name == "Gate guard");
+        await Roles(host).SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Id = guard.Id, Name = "Gate guard", Permissions = { HostPermissions.DevicesLiveView, HostPermissions.DevicesRefresh }, Version = guard.Version } },
+        });
+        Assert.Equal([Guid.Parse(guard.Id)], Assert.Single(events));
+    }
+
+    [Fact]
     public async Task ACustomRoleDecidesWhatItsUsersMayDoAndEveryChangeIsAudited()
     {
         await using var host = await TestServerHost.StartAsync();
