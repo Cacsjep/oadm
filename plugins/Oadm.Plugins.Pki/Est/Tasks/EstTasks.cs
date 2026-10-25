@@ -973,7 +973,9 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
             return;
         }
 
-        var dot1x = (await Oadm.Plugins.Pki.Device.NetworkInfoApi.GetAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+        // How the camera keeps its 802.1X certificates (network settings before 1.38 do not bind them: the certificate set).
+        var state = await Oadm.Plugins.Pki.Device.Dot1xSettings.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false);
+        var dot1x = state.Dot1x;
         if (dot1x is not { Enabled: true } || !string.Equals(dot1x.Mode, Oadm.Plugins.Pki.Device.NetworkInfoApi.EapTlsMode, StringComparison.Ordinal)
             || string.IsNullOrEmpty(dot1x.CertClient))
         {
@@ -981,7 +983,7 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
             return;
         }
 
-        var aliases = await Oadm.Plugins.Pki.Tasks.CertificateDeployment.InstallCaCertificatesAsync(ctx, EstTaskIds.RadiusCaInstallStep, radiusCas, ct).ConfigureAwait(false);
+        var aliases = await Oadm.Plugins.Pki.Tasks.CertificateDeployment.InstallCaCertificatesAsync(ctx, EstTaskIds.RadiusCaInstallStep, radiusCas, Oadm.Plugins.Pki.Device.CertificateApiKind.Rest, ct).ConfigureAwait(false);
         await ctx.StepAsync(EstTaskIds.RadiusCaStep, async step =>
         {
             if (aliases.Count == dot1x.CertsCa.Count && aliases.All(a => dot1x.CertsCa.Contains(a, StringComparer.Ordinal)))
@@ -990,7 +992,7 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
                 return;
             }
 
-            await Oadm.Plugins.Pki.Device.NetworkInfoApi.SetCaCertificatesAsync(ctx.Vapix, apis, dot1x, aliases, ct).ConfigureAwait(false);
+            await Oadm.Plugins.Pki.Device.Dot1xSettings.SetCaCertificatesAsync(ctx.Vapix, state, apis, aliases, ct).ConfigureAwait(false);
             step.Complete(string.Join(", ", aliases));
             ctx.Log(TaskLogLevel.Info, $"The camera now checks the RADIUS server with {string.Join(", ", aliases)} (was {(dot1x.CertsCa.Count > 0 ? string.Join(", ", dot1x.CertsCa) : "none")}).");
         }).ConfigureAwait(false);

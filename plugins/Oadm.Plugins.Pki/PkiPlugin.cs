@@ -83,7 +83,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         service.DeviceCertificateReader = async (device, token) =>
         {
             var vapix = await system.Vapix.CreateAsync(device.Id, token).ConfigureAwait(false);
-            var list = await CertApi.ListCertificatesAsync(vapix, token).ConfigureAwait(false);
+            var support = await PkiCompatibility.CachedAsync(vapix, device, _options.Time, token).ConfigureAwait(false);
+            var list = await DeviceCertificates.ListAsync(vapix, support.Certificates, token).ConfigureAwait(false);
             return [.. list.Select(c => (c.Alias, c.Pem))];
         };
         _service = service;

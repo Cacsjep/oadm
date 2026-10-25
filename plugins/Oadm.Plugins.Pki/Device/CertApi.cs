@@ -21,7 +21,7 @@ public sealed record CertApiSupport(string? Version, string? State)
 }
 
 /// <summary>
-/// REST certificate management <c>/config/rest/cert/v1</c> (AXIS OS 11.11+; research: tests/Oadm.Plugins.Pki.Tests/Fixtures). JSON envelope
+/// REST certificate management <c>/config/rest/cert/v1</c> (released from AXIS OS 11.11.135; older AXIS OS: <see cref="CertSoapApi"/>; research: tests/Oadm.Plugins.Pki.Tests/Fixtures). JSON envelope
 /// <c>{"data": ...}</c>, replies <c>{"status":"success"|"error","data"?,"error":{code,message}}</c>. Aliases are percent-encoded
 /// in the path. Keys are created on the device; no operation ever returns a private key.
 /// </summary>
@@ -98,14 +98,14 @@ public static class CertApi
         }
     }
 
-    /// <summary>Message of devices without the REST certificate API.</summary>
-    public const string NeedsNewerFirmware = "Needs AXIS OS 11.11 or later. Nothing was changed.";
-
-    /// <summary><c>GET /config/discover</c>: the cert v1 entry (null version when the API is not listed or discover is missing).</summary>
+    /// <summary>
+    /// <c>GET /config/discover</c>: the cert v1 entry (null version when the API is not listed or discover is missing: AXIS OS
+    /// before 10.x answers 404 or 400; the SOAP certificate service then takes over, see <see cref="Tasks.PkiCompatibility"/>).
+    /// </summary>
     public static async Task<CertApiSupport> DiscoverAsync(IVapixClient vapix, CancellationToken ct)
     {
         var answer = await DeviceHttp.SendAsync(vapix, HttpMethod.Get, DiscoverPath, null, null, ct).ConfigureAwait(false);
-        if (answer.Status == HttpStatusCode.NotFound)
+        if (answer.Status is HttpStatusCode.NotFound or HttpStatusCode.BadRequest or HttpStatusCode.MethodNotAllowed or HttpStatusCode.NotImplemented)
         {
             return new CertApiSupport(null, null);
         }

@@ -111,12 +111,12 @@ public sealed class DeviceApiTests
 /// <summary>A started PKI plugin, a fake 10.0.0.48 and a task context with the engine's step semantics.</summary>
 internal sealed class TaskHarness : IAsyncDisposable
 {
-    private TaskHarness(PkiHarness pki, FakeTimeProvider time)
+    private TaskHarness(PkiHarness pki, FakeTimeProvider time, FakeCamera? camera)
     {
         Pki = pki;
         Time = time;
-        Camera = new FakeCamera();
-        Device = new PkiFakeDevice(Guid.NewGuid());
+        Camera = camera ?? new FakeCamera();
+        Device = new PkiFakeDevice(Guid.NewGuid(), Firmware: Camera.Firmware) { Apis = Camera.ApiList };
     }
 
     public PkiHarness Pki { get; }
@@ -129,12 +129,13 @@ internal sealed class TaskHarness : IAsyncDisposable
 
     public PkiTaskContext Context { get; set; } = null!;
 
-    public static async Task<TaskHarness> StartAsync()
+    /// <summary>A harness with the fake 10.0.0.48 (AXIS OS 12.11), or with <paramref name="camera"/> (e.g. <see cref="FakeCamera.Legacy"/>).</summary>
+    public static async Task<TaskHarness> StartAsync(FakeCamera? camera = null)
     {
         var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var pki = await PkiHarness.StartAsync(time: time);
         PkiCompatibility.ClearCache();
-        return new TaskHarness(pki, time);
+        return new TaskHarness(pki, time, camera);
     }
 
     public T Task<T>(string id)
@@ -246,12 +247,20 @@ public sealed class HttpsTaskTests
     {
         await using var h = await TaskHarness.StartAsync();
         h.Camera.HasCertApi = false;
+        h.Camera.Firmware = "6.50.5";
         var ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
-        Assert.Equal(CertApi.NeedsNewerFirmware, ex!.Message);
+        Assert.Equal(PkiCompatibility.NeedsNewerFirmware, ex!.Message);
         Assert.Equal("Check compatibility: Failed", h.Lines[0]);
         Assert.Empty(h.Camera.Writes);
 
+        // A version the device does not tell is never taken as new enough.
+        h.Camera.HasBasicDeviceInfo = false;
+        ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
+        Assert.Equal(PkiCompatibility.UnknownFirmware, ex!.Message);
+        Assert.Empty(h.Camera.Writes);
+
         PkiCompatibility.ClearCache();
+        h.Camera.HasBasicDeviceInfo = true;
         h.Camera.HasCertApi = true;
         h.Camera.HasWebServerService = false;
         ex = await h.RunAsync(PkiTaskIds.HttpsEnable);
@@ -607,8 +616,8 @@ public sealed class RenewDeleteInstallTests
 
         PkiCompatibility.ClearCache();
         h.Camera.HasCertApi = false;
-        reply = PkiJson.Deserialize<CertificateListReply>(await h.Task<DeleteCertificatesTask>(PkiTaskIds.Delete).QueryAsync(ctx, h.Device with { Id = Guid.NewGuid() }, PkiQueries.ListCertificates, null, CancellationToken.None));
-        Assert.Equal("Needs AXIS OS 11.11 or later.", reply.Error);
+        reply = PkiJson.Deserialize<CertificateListReply>(await h.Task<DeleteCertificatesTask>(PkiTaskIds.Delete).QueryAsync(ctx, h.Device with { Id = Guid.NewGuid(), Firmware = "6.50.5" }, PkiQueries.ListCertificates, null, CancellationToken.None));
+        Assert.Equal("Needs AXIS OS 6.53 or later.", reply.Error);
     }
 
     [Fact]
@@ -703,7 +712,7 @@ public sealed class RenewDeleteInstallTests
         return signed.CopyWithPrivateKey(key);
     }
 
-    private static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
+    internal static async Task<Exception?> RunWithFileAsync(TaskHarness h, string payload, byte[] pfx)
     {
         h.Time.Advance(TimeSpan.FromSeconds(2));
         var ctx = new PkiTaskContext(h.Camera);
@@ -745,19 +754,23 @@ public sealed class TaskPluginInfoTests
 
         var device = new PkiFakeDevice(Guid.NewGuid());
         Assert.All(tasks, t => Assert.True(t.CanRun(device)));
-        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "11.10.61" })));
-        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "10.12.236" })));
-        Assert.True(tasks[0].CanRun(device with { Firmware = "11.11.135" }));
-        var noNetworkSettings = device with { Apis = [new("param-cgi", "1.0")] };
-        Assert.False(tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).CanRun(noNetworkSettings));
-        Assert.True(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).CanRun(noNetworkSettings));
+        // AXIS OS 6.53 and later (the SOAP certificate service before 11.11); 802.1X also without the network settings API.
+        foreach (var firmware in new[] { "6.53.4", "8.40.104", "9.80.3", "10.12.236", "11.9.65", "11.10.61", "11.11.135" })
+        {
+            Assert.All(tasks, t => Assert.True(t.CanRun(device with { Firmware = firmware }), firmware));
+        }
+
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "6.50.5" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "5.51.7" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "" })));
+        Assert.All(tasks, t => Assert.False(t.CanRun(device with { Firmware = "unknown" })));
+        var noNetworkSettings = device with { Apis = [new("param-cgi", "1.0")], Firmware = "8.40.104" };
+        Assert.All(tasks, t => Assert.True(t.CanRun(noNetworkSettings)));
 
         // Reasons of the greyed menu entries.
-        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later (this device has 11.9.65)", t.NotSupportedReason(device with { Firmware = "11.9.65" })));
-        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 11.11 or later", t.NotSupportedReason(device with { Firmware = "" })));
-        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xEnable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
-        Assert.Equal("Needs the network settings API (this device has 12.11.77)", tasks.Single(t => t.Id == PkiTaskIds.Dot1xDisable).NotSupportedReason(noNetworkSettings with { Firmware = "12.11.77" }));
-        Assert.Null(tasks.Single(t => t.Id == PkiTaskIds.HttpsEnable).NotSupportedReason(noNetworkSettings));
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 6.53 or later (this device has 6.50.5)", t.NotSupportedReason(device with { Firmware = "6.50.5" })));
+        Assert.All(tasks, t => Assert.Equal("Needs AXIS OS 6.53 or later", t.NotSupportedReason(device with { Firmware = "" })));
+        Assert.All(tasks, t => Assert.Null(t.NotSupportedReason(noNetworkSettings)));
     }
 
     [Fact]

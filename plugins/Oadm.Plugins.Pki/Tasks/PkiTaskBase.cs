@@ -7,7 +7,7 @@ namespace Oadm.Plugins.Pki.Tasks;
 
 /// <summary>
 /// Common part of the Security tasks the PKI core plugin contributes: group Security, no toolbar, CanRun on cached data
-/// (AXIS OS 11.11+), the PKI service through the owning plugin.
+/// (AXIS OS 6.53+), the PKI service through the owning plugin.
 /// </summary>
 public abstract class PkiTaskBase : ITaskPlugin
 {
@@ -41,18 +41,19 @@ public abstract class PkiTaskBase : ITaskPlugin
 
     public virtual bool CanRun(IDeviceInfo device) => PkiCompatibility.CanRunCertificateTask(device);
 
-    /// <summary>"Needs AXIS OS 11.11 or later (this device has 10.12.338)" when <see cref="CanRun"/> is false.</summary>
-    public virtual string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: false);
+    /// <summary>"Needs AXIS OS 6.53 or later (this device has 6.50.5)" when <see cref="CanRun"/> is false.</summary>
+    public virtual string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device);
 
     public virtual string GetTaskName(string? payloadJson) => DisplayName;
 
     public abstract Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct);
 
     /// <summary>
-    /// "Check compatibility" of the certificate tasks: PKI runs, a fresh config/discover (cert v1) and the API list (the CA of
-    /// each policy is checked where it issues: decision 2026-10-25, several CAs issue).
+    /// "Check compatibility" of the certificate tasks: PKI runs, the certificate API from a fresh config/discover (else the
+    /// AXIS OS version for the SOAP path, <see cref="PkiCompatibility.RequireAsync"/>) and the API list (the CA of each policy
+    /// is checked where it issues: decision 2026-10-25, several CAs issue).
     /// </summary>
-    protected async Task<(PkiService Service, IReadOnlyList<DeviceApi> Apis)> CheckCertificateTaskAsync(
+    protected async Task<(PkiService Service, IReadOnlyList<DeviceApi> Apis, PkiDeviceSupport Support)> CheckCertificateTaskAsync(
         ITaskExecutionContext ctx, IDeviceInfo device, CancellationToken ct, Action<IReadOnlyList<DeviceApi>>? more = null)
     {
         ArgumentNullException.ThrowIfNull(ctx);
@@ -60,20 +61,21 @@ public abstract class PkiTaskBase : ITaskPlugin
         return await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
             var service = CertificateDeployment.RequireService(Service);
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
             more?.Invoke(apis);
-            step.Complete("cert " + support.Version);
-            return (service, apis);
+            step.Complete(support.Describe());
+            return (service, apis, support);
         }).ConfigureAwait(false);
     }
 
     /// <summary>
     /// "Check compatibility" of a task that issues with a policy of <paramref name="kind"/>: the policy of the run with the
-    /// dialog's values and the CA it names ("Issued by") (<see cref="IssuingChoice.Resolve"/>), a fresh config/discover (cert v1), the API list and
-    /// the key type the device's keystore offers. Everything before the first write.
+    /// dialog's values and the CA it names ("Issued by") (<see cref="IssuingChoice.Resolve"/>), the certificate API
+    /// (<see cref="PkiCompatibility.RequireAsync"/>), the API list and the key type the device can make. Everything before
+    /// the first write.
     /// </summary>
-    protected async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, Policies.PkiPolicy Policy)> CheckIssuingTaskAsync(
+    protected async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, Policies.PkiPolicy Policy, PkiDeviceSupport Support)> CheckIssuingTaskAsync(
         ITaskExecutionContext ctx, IDeviceInfo device, string kind, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
@@ -83,11 +85,11 @@ public abstract class PkiTaskBase : ITaskPlugin
             var service = CertificateDeployment.RequireService(Service);
             var policy = IssuingChoice.Resolve(service, kind, payloadJson);
             var ca = CertificateDeployment.RequireCa(service, policy);
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-            await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);
-            step.Complete($"cert {support.Version} · {IssuingChoice.Describe(policy, Ca.CaCertificates.CommonName(ca.Certificate))}");
-            return (service, ca, apis, policy);
+            await CertificateDeployment.RequireKeyAsync(ctx.Vapix, policy, support, ct).ConfigureAwait(false);
+            step.Complete($"{support.Describe()} · {IssuingChoice.Describe(policy, Ca.CaCertificates.CommonName(ca.Certificate))}");
+            return (service, ca, apis, policy, support);
         }).ConfigureAwait(false);
     }
 

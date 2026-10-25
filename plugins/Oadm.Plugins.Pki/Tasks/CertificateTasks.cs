@@ -17,27 +17,27 @@ public static class CertificateInventory
     public const string Dot1xUse = "802.1X";
 
     /// <summary>
-    /// Reads certificates, CA certificates, the web server certificate (SOAP) and the 802.1X configuration (network-settings,
-    /// when <paramref name="apis"/> lists it). Read-only.
+    /// Reads certificates, CA certificates (REST or SOAP, <paramref name="api"/>), the web server certificate (SOAP) and the
+    /// 802.1X configuration (<see cref="Dot1xSettings"/>). Read-only.
     /// </summary>
-    public static Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, CancellationToken ct) =>
-        ReadAsync(vapix, apis, registry, service, null, ct);
+    public static Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, CertificateApiKind api, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, CancellationToken ct) =>
+        ReadAsync(vapix, api, apis, registry, service, null, ct);
 
     /// <summary>
-    /// Like <see cref="ReadAsync(IVapixClient, IReadOnlyList{DeviceApi}, IReadOnlyList{IssuedCertificate}, PkiService?, CancellationToken)"/>;
+    /// Like <see cref="ReadAsync(IVapixClient, CertificateApiKind, IReadOnlyList{DeviceApi}, IReadOnlyList{IssuedCertificate}, PkiService?, CancellationToken)"/>;
     /// with <paramref name="device"/> the OADM certificates found that the list of issued certificates does not hold yet are
     /// added to it (certificates from before the list).
     /// </summary>
-    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct)
+    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, CertificateApiKind api, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(vapix);
-        var certificates = await CertApi.ListCertificatesAsync(vapix, ct).ConfigureAwait(false);
+        var certificates = await DeviceCertificates.ListAsync(vapix, api, ct).ConfigureAwait(false);
         if (service is not null && device is not null)
         {
             await service.ImportFoundAsync(device, certificates.Select(c => (c.Alias, c.Pem)), ct).ConfigureAwait(false);
         }
 
-        var cas = await CertApi.ListCaCertificatesAsync(vapix, ct).ConfigureAwait(false);
+        var cas = await DeviceCertificates.ListCaAsync(vapix, api, ct).ConfigureAwait(false);
         WebServerTlsConfiguration? webServer = null;
         try
         {
@@ -49,16 +49,13 @@ public static class CertificateInventory
         }
 
         Wired8021X? dot1x = null;
-        if (PkiCompatibility.HasNetworkSettings(apis))
+        try
         {
-            try
-            {
-                dot1x = (await NetworkInfoApi.GetAsync(vapix, apis, ct).ConfigureAwait(false)).Dot1x;
-            }
-            catch (PkiDeviceException)
-            {
-                // unknown: nothing is "in use by 802.1X"
-            }
+            dot1x = (await Dot1xSettings.ReadAsync(vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+        }
+        catch (Exception ex) when (ex is PkiDeviceException or HttpRequestException)
+        {
+            // unknown: nothing is "in use by 802.1X"
         }
 
         return Describe(certificates, cas, webServer, dot1x, registry, service);
@@ -175,16 +172,20 @@ public static class CertificateQuery
             throw new ArgumentException($"Unknown query '{method}'.", nameof(method));
         }
 
-        var support = await PkiCompatibility.CachedCertApiAsync(ctx.Vapix, device.Id, time, ct).ConfigureAwait(false);
-        if (!support.IsSupported)
+        PkiDeviceSupport support;
+        try
         {
-            return PkiJson.Serialize(new CertificateListReply { Error = "Needs AXIS OS 11.11 or later." });
+            support = await PkiCompatibility.CachedAsync(ctx.Vapix, device, time, ct).ConfigureAwait(false);
+        }
+        catch (DeviceNotCompatibleException ex)
+        {
+            return PkiJson.Serialize(new CertificateListReply { Error = ex.Message.Replace(" Nothing was changed.", string.Empty, StringComparison.Ordinal) });
         }
 
         var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         try
         {
-            var list = await CertificateInventory.ReadAsync(ctx.Vapix, device.Apis, registry, service, device, ct).ConfigureAwait(false);
+            var list = await CertificateInventory.ReadAsync(ctx.Vapix, support.Certificates, device.Apis, registry, service, device, ct).ConfigureAwait(false);
             return PkiJson.Serialize(new CertificateListReply { Certificates = list });
         }
         catch (PkiDeviceException ex)
@@ -238,19 +239,19 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
             return;
         }
 
-        var apis = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        var (apis, api) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
             var read = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-            step.Complete("cert " + support.Version);
-            return read;
+            step.Complete(support.Describe());
+            return (read, support.Certificates);
         }).ConfigureAwait(false);
 
         var service = Service;
         var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var installed = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
-            var read = await CertificateInventory.ReadAsync(ctx.Vapix, apis, registry, service, device, ct).ConfigureAwait(false);
+            var read = await CertificateInventory.ReadAsync(ctx.Vapix, api, apis, registry, service, device, ct).ConfigureAwait(false);
 
             // Validate every choice before the first delete.
             foreach (var choice in chosen)
@@ -279,11 +280,11 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
             {
                 if (choice.Ca)
                 {
-                    await CertApi.DeleteCaCertificateAsync(ctx.Vapix, choice.Alias, ct).ConfigureAwait(false);
+                    await DeviceCertificates.DeleteCaAsync(ctx.Vapix, api, choice.Alias, ct).ConfigureAwait(false);
                 }
                 else
                 {
-                    await CertApi.DeleteCertificateAsync(ctx.Vapix, choice.Alias, ct).ConfigureAwait(false);
+                    await DeviceCertificates.DeleteAsync(ctx.Vapix, api, choice.Alias, ct).ConfigureAwait(false);
                     if (installed.FirstOrDefault(c => c.Kind != CertificateKind.Ca && string.Equals(c.Alias, choice.Alias, StringComparison.Ordinal)) is { SerialNumber.Length: > 0 } gone)
                     {
                         service?.Issued.MarkRemovedFromDevice(gone.SerialNumber); // stays in the store, no longer listed
@@ -297,8 +298,8 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
 
         await ctx.StepAsync(PkiSteps.Verify, async step =>
         {
-            var certificates = await CertApi.ListCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            var cas = await CertApi.ListCaCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            var certificates = await DeviceCertificates.ListAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
+            var cas = await DeviceCertificates.ListCaAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
             var left = chosen.Where(c => (c.Ca ? cas : certificates).Any(x => string.Equals(x.Alias, c.Alias, StringComparison.Ordinal))).Select(c => c.Alias).ToList();
             if (left.Count == 0)
             {
@@ -368,7 +369,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         }
 
         var dot1x = purpose == InstallPurpose.Dot1x;
-        var (apis, network, dot1xPolicy, radiusCas) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        var (apis, state, dot1xPolicy, radiusCas, support) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
             // 802.1X: the settings of the first IEEE 802.1X certificate policy (the file brings its own certificate) and its
             // RADIUS server CA, resolved before anything is read from or written to the device.
@@ -381,21 +382,17 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 radius = CertificateDeployment.RadiusCas(policy, running);
             }
 
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
             var list = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-            DeviceNetworkInfo? info = null;
+            Dot1xState? read = null;
             if (dot1x)
             {
-                list.Require(PkiCompatibility.NetworkSettings, "1.0");
-                info = await NetworkInfoApi.GetAsync(ctx.Vapix, list, ct).ConfigureAwait(false);
-                if (info.Dot1x is null)
-                {
-                    throw new DeviceNotCompatibleException("The device does not offer IEEE 802.1X on a wired interface. Nothing was changed.");
-                }
+                PkiCompatibility.RequireEapol(policy!, support);
+                read = await Dot1xEnableTask.RequireDot1xAsync(ctx.Vapix, list, ct).ConfigureAwait(false);
             }
 
-            step.Complete("cert " + support.Version);
-            return (list, info, policy, radius);
+            step.Complete(support.Describe());
+            return (list, read, policy, radius, support);
         }).ConfigureAwait(false);
 
         var read = await ctx.StepAsync(PkiSteps.ReadFile, async step =>
@@ -441,14 +438,14 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 {
                     var fingerprint = CertificateDeployment.Fingerprint(pem);
                     return (CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, fingerprint), pem, fingerprint);
-                }).DistinctBy(c => c.fingerprint, StringComparer.OrdinalIgnoreCase)], ct).ConfigureAwait(false);
+                }).DistinctBy(c => c.fingerprint, StringComparer.OrdinalIgnoreCase)], support.Certificates, ct).ConfigureAwait(false);
                 break;
 
             case InstallPurpose.Https:
             {
                 var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
-                var alias = await InstallAsync(ctx, bytes, payload.Password, file, ct).ConfigureAwait(false);
-                await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, alias, PkiSteps.SwitchWebServer, ct).ConfigureAwait(false);
+                var alias = await InstallAsync(ctx, support.Certificates, bytes, payload.Password, file, ct).ConfigureAwait(false);
+                await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, alias, support.WebServerAllRoles, PkiSteps.SwitchWebServer, ct).ConfigureAwait(false);
                 await CertificateDeployment.FollowWebServerAsync(ctx, "https", contents.LeafFingerprint, Time, PkiSteps.VerifyHttps, ct).ConfigureAwait(false);
                 await ReplacedAsync(ctx, service, device, CertificatePurpose.Https).ConfigureAwait(false);
                 break;
@@ -457,9 +454,9 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             case InstallPurpose.Dot1x:
             {
                 await CertificateDeployment.CheckClockAsync(ctx, apis, Time, confirmed: false, ct).ConfigureAwait(false);
-                var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radiusCas, ct).ConfigureAwait(false);
-                var alias = await InstallAsync(ctx, bytes, payload.Password, file, ct).ConfigureAwait(false);
-                if (await Dot1xEnableTask.ConfigureAsync(ctx, dot1xPolicy!, device, apis, network!, alias, aliases, null, ct).ConfigureAwait(false) == Dot1xCheck.Confirmed)
+                var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radiusCas, support.Certificates, ct).ConfigureAwait(false);
+                var alias = await InstallAsync(ctx, support.Certificates, bytes, payload.Password, file, ct).ConfigureAwait(false);
+                if (await Dot1xEnableTask.ConfigureAsync(ctx, dot1xPolicy!, device, apis, state!, alias, aliases, null, ct).ConfigureAwait(false) == Dot1xCheck.Confirmed)
                 {
                     await ReplacedAsync(ctx, service, device, CertificatePurpose.Dot1x).ConfigureAwait(false);
                 }
@@ -478,11 +475,11 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         }
     }
 
-    private Task<string> InstallAsync(ITaskExecutionContext ctx, byte[] pkcs12, string? password, InstallFile file, CancellationToken ct) =>
+    private Task<string> InstallAsync(ITaskExecutionContext ctx, CertificateApiKind api, byte[] pkcs12, string? password, InstallFile file, CancellationToken ct) =>
         ctx.StepAsync(PkiSteps.InstallCertificate, async step =>
         {
-            var alias = CertificateDeployment.NewAlias(CertificateDeployment.ImportAliasPrefix, Time);
-            await CertApi.InstallFromPkcs12Async(ctx.Vapix, alias, Convert.ToBase64String(pkcs12), password ?? string.Empty, ct).ConfigureAwait(false);
+            var alias = await DeviceCertificates.InstallPkcs12Async(
+                ctx.Vapix, api, CertificateDeployment.NewAlias(CertificateDeployment.ImportAliasPrefix, Time), Convert.ToBase64String(pkcs12), password ?? string.Empty, ct).ConfigureAwait(false);
             step.Complete($"{alias} from {file.FileName}");
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" installed from {file.FileName}.");
             return alias;

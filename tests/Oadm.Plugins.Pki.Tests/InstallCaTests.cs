@@ -139,8 +139,9 @@ public sealed class InstallCaTaskTests
         await using var h = await TaskHarness.StartAsync();
         using var root = TestCa.Root("Acme Root CA");
         h.Camera.HasCertApi = false;
+        h.Camera.Firmware = "6.50.5";
         var ex = await h.RunAsync(PkiTaskIds.InstallCa, Payload(root));
-        Assert.Equal(CertApi.NeedsNewerFirmware, ex!.Message);
+        Assert.Equal(PkiCompatibility.NeedsNewerFirmware, ex!.Message);
         Assert.Equal("Check compatibility: Failed", h.Lines[0]);
         Assert.Empty(h.Camera.Writes);
 

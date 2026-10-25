@@ -151,11 +151,11 @@ public static class CertificateDeployment
     /// one step; Skipped "Already installed" when nothing was missing. Returns the device aliases of all of them.
     /// </summary>
     public static async Task<IReadOnlyList<string>> InstallCaCertificatesAsync(
-        ITaskExecutionContext ctx, string stepName, IReadOnlyList<(string Alias, string Pem, string Fingerprint)> wanted, CancellationToken ct)
+        ITaskExecutionContext ctx, string stepName, IReadOnlyList<(string Alias, string Pem, string Fingerprint)> wanted, CertificateApiKind api, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         using var step = ctx.BeginStep(stepName);
-        var installed = await CertApi.ListCaCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+        var installed = await DeviceCertificates.ListCaAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
         var byFingerprint = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var certificate in installed)
         {
@@ -179,7 +179,7 @@ public static class CertificateDeployment
                 continue;
             }
 
-            await CertApi.AddCaCertificateAsync(ctx.Vapix, alias, pem, ct).ConfigureAwait(false);
+            await DeviceCertificates.AddCaAsync(ctx.Vapix, api, alias, pem, ct).ConfigureAwait(false);
             byFingerprint[fingerprint] = alias;
             aliases.Add(alias);
             added.Add(alias);
@@ -199,9 +199,28 @@ public static class CertificateDeployment
     }
 
     /// <summary>
+    /// The device can make the policy's key: on REST its default keystore lists the key type
+    /// (<see cref="IssuingChoice.RequireKeyAsync"/>); the SOAP certificate service makes RSA 2048 only. Else "Nothing was changed".
+    /// </summary>
+    public static async Task RequireKeyAsync(Oadm.Sdk.Vapix.IVapixClient vapix, Policies.PkiPolicy policy, PkiDeviceSupport support, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(support);
+        if (support.Certificates == CertificateApiKind.Rest)
+        {
+            await IssuingChoice.RequireKeyAsync(vapix, policy, ct).ConfigureAwait(false);
+        }
+        else if (CertApi.KeyTypeOf(policy.Key) != CertApi.KeyType)
+        {
+            throw new DeviceNotCompatibleException("The device cannot create an ECC key. Choose a policy with RSA. Nothing was changed.");
+        }
+    }
+
+    /// <summary>
     /// Create key on the device, Get certificate request, Sign certificate, Install certificate. The key never leaves the
     /// device. The signed certificate is added to the issued registry. When a step after the key creation fails, the
-    /// unfinished key is removed again (best effort).
+    /// unfinished key is removed again (best effort). REST: the key and the certificate share the alias; SOAP: the key's
+    /// placeholder is "&lt;alias&gt; key" until the signed certificate is loaded under the alias (<see cref="DeviceCertificates"/>).
     /// </summary>
     public static async Task<IssuedOnDevice> IssueAsync(
         ITaskExecutionContext ctx,
@@ -212,6 +231,7 @@ public static class CertificateDeployment
         string purpose,
         string alias,
         Policies.PkiPolicy policy,
+        PkiDeviceSupport support,
         string? stepPrefix,
         CancellationToken ct)
     {
@@ -220,12 +240,13 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(names);
         ArgumentNullException.ThrowIfNull(policy);
-        var sans = names.DeviceSubjectAltNames;
+        ArgumentNullException.ThrowIfNull(support);
+        var api = support.Certificates;
         var keyType = CertApi.KeyTypeOf(policy.Key);
         await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.CreateKey), async step =>
         {
-            await CertApi.CreateCertificateAsync(ctx.Vapix, alias, names.Subject, sans, keyType, ct).ConfigureAwait(false);
-            step.Complete($"{keyType} key \"{alias}\"");
+            await DeviceCertificates.CreateKeyAsync(ctx.Vapix, api, alias, names, keyType, service.Time.GetUtcNow(), ct).ConfigureAwait(false);
+            step.Complete($"{keyType} key \"{DeviceCertificates.KeyAlias(api, alias)}\"");
         }).ConfigureAwait(false);
 
         var installed = false;
@@ -234,7 +255,7 @@ public static class CertificateDeployment
         {
             var csr = await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.GetCsr), async step =>
             {
-                var pem = await CertApi.GetCsrAsync(ctx.Vapix, alias, names.Subject, sans, ct).ConfigureAwait(false);
+                var pem = await DeviceCertificates.GetCsrAsync(ctx.Vapix, api, alias, names, ct).ConfigureAwait(false);
                 step.Complete("Received");
                 return pem;
             }).ConfigureAwait(false);
@@ -264,8 +285,13 @@ public static class CertificateDeployment
             pendingSerial = serial;
             await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCertificate), async step =>
             {
-                await CertApi.PatchCertificateAsync(ctx.Vapix, alias, CaCertificates.ToPem(signed), ct).ConfigureAwait(false);
+                var tidy = await DeviceCertificates.InstallSignedAsync(ctx.Vapix, api, alias, CaCertificates.ToPem(signed), ct).ConfigureAwait(false);
                 installed = true;
+                if (!tidy)
+                {
+                    ctx.Log(TaskLogLevel.Warning, $"The key placeholder \"{DeviceCertificates.KeyAlias(api, alias)}\" could not be removed; delete it with \"Delete certificates\".");
+                }
+
                 step.Complete(alias);
             }).ConfigureAwait(false);
 
@@ -281,14 +307,14 @@ public static class CertificateDeployment
 
             try
             {
-                await CertApi.DeleteCertificateAsync(ctx.Vapix, alias, CancellationToken.None).ConfigureAwait(false);
-                ctx.Log(TaskLogLevel.Info, $"The unfinished key \"{alias}\" was removed again.");
+                await DeviceCertificates.DeleteUnfinishedKeyAsync(ctx.Vapix, api, alias, CancellationToken.None).ConfigureAwait(false);
+                ctx.Log(TaskLogLevel.Info, $"The unfinished key \"{DeviceCertificates.KeyAlias(api, alias)}\" was removed again.");
             }
 #pragma warning disable CA1031 // Best effort cleanup; the original error is what the user sees.
             catch (Exception)
 #pragma warning restore CA1031
             {
-                ctx.Log(TaskLogLevel.Warning, $"The unfinished key \"{alias}\" could not be removed; delete it with \"Delete certificates\".");
+                ctx.Log(TaskLogLevel.Warning, $"The unfinished key \"{DeviceCertificates.KeyAlias(api, alias)}\" could not be removed; delete it with \"Delete certificates\".");
             }
 
             throw;
@@ -340,17 +366,18 @@ public static class CertificateDeployment
 
     /// <summary>
     /// Switches the web server to <paramref name="alias"/> (SetWebServerTlsConfiguration, everything else as read; an HTTP-only
-    /// policy becomes HTTP and HTTPS, because Enable must enable).
+    /// policy becomes HTTP and HTTPS, because Enable must enable). <paramref name="allRoles"/> (AXIS OS before 7.10): the
+    /// Operator and Viewer policies are sent too, each switched the same way.
     /// </summary>
-    public static async Task SwitchWebServerAsync(ITaskExecutionContext ctx, WebServerTlsConfiguration current, string alias, string stepName, CancellationToken ct)
+    public static async Task SwitchWebServerAsync(ITaskExecutionContext ctx, WebServerTlsConfiguration current, string alias, bool allRoles, string stepName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(current);
         await ctx.StepAsync(stepName, async step =>
         {
-            var policy = ConnectionPolicy.IsHttpOnly(current.Policy) || string.IsNullOrEmpty(current.Policy) ? ConnectionPolicy.HttpAndHttps : current.Policy!;
-            await WebServerTls.SetAsync(ctx.Vapix, current with { Tls = true, Policy = policy, Certificates = [alias] }, ct).ConfigureAwait(false);
-            step.Complete($"{alias} · {ConnectionPolicy.Describe(policy)}");
+            var wanted = (allRoles ? current.WithRoles() : current).WithPolicies(ConnectionPolicy.Enabled) with { Tls = true, Certificates = [alias] };
+            await WebServerTls.SetAsync(ctx.Vapix, wanted, ct).ConfigureAwait(false);
+            step.Complete($"{alias} · {ConnectionPolicy.Describe(wanted.Policy)}");
         }).ConfigureAwait(false);
         ctx.Log(TaskLogLevel.Info, $"The web server presents \"{alias}\" (previously \"{current.CertificateAlias ?? "none"}\").");
     }
@@ -400,6 +427,7 @@ public static class CertificateDeployment
         IDeviceInfo device,
         string purpose,
         IReadOnlyCollection<string> inUse,
+        CertificateApiKind api,
         string stepName,
         CancellationToken ct)
     {
@@ -407,7 +435,7 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(service);
         ArgumentNullException.ThrowIfNull(device);
         using var step = ctx.BeginStep(stepName);
-        var certificates = await CertApi.ListCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+        var certificates = await DeviceCertificates.ListAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
         var registry = await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var prefix = string.Equals(purpose, CertificatePurpose.Dot1x, StringComparison.Ordinal) ? Dot1xAliasPrefix : HttpsAliasPrefix;
         var removed = new List<string>();
@@ -426,7 +454,7 @@ public static class CertificateDeployment
 
             // Deleted from the device: a replaced one is revoked already; any other stays in the store (not listed) until it
             // ends, so it can still be revoked.
-            await CertApi.DeleteCertificateAsync(ctx.Vapix, certificate.Alias, ct).ConfigureAwait(false);
+            await DeviceCertificates.DeleteAsync(ctx.Vapix, api, certificate.Alias, ct).ConfigureAwait(false);
             removed.Add(certificate.Alias);
         }
 
