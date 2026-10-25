@@ -11,5 +11,8 @@ npm run build     # static site in dist/
 ```
 
 - Pages: `src/content/docs/` (Markdown or MDX), sidebar in `astro.config.mjs`.
-- Screenshots: `src/assets/screens/`, rendered by the headless UI tests (`OADM_SCREENSHOT_DIR`).
+- Screenshots: `src/assets/screens/`, rendered by the headless UI tests. Run the client and plugin tests with
+  `OADM_SCREENSHOT_DIR=<folder>` (for example `./manage.sh test unit`), then `npm run screens -- <folder>` copies
+  every image by its name in `scripts/screens.json` (website name: test output name) and names the ones it did not
+  find. A new image gets its line there. Look at each image before you commit it.
 - Texts follow the "Wording" rule in the repository's `CLAUDE.md`.
