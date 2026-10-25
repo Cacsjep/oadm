@@ -269,7 +269,10 @@ an independent security review the same day). A user may be limited to part of t
   do this." (`DeviceGroupTexts.AllDevicesOnly`, `AuthInterceptor.RequireAllDevices` for checks inside a call).
 - **Background boundary**: `CallerContext.Suppress`, `RunDetached`, `Detached`, `Raise`: task runs, discovery and login
   work, the retry timer of the local network, and the events of the device and task feeds, tags, users, roles, sessions,
-  waiting list, sites, plugins, settings, compliance and event rules raise without the caller.
+  waiting list, sites, plugins, settings, compliance and event rules raise without the caller. Core plugins start and
+  stop without it (`CorePluginHost.StartAllAsync`, `StopAllAsync`, `SyncEnabledAsync`; `PluginActivation` turning a package
+  on or off), and the OADM PRO license raises `Changed` without it (`ProLicense`, `PluginProLicense`): a plugin started in
+  an administrator's call never keeps that user in its timers and loops.
 - **Streams**: `CallerStreams` ends the non-session streams of a user whose access changed and of the users of a group
   whose rules changed; a stream whose devices changed between check and registration ends with UNAVAILABLE "Your
   devices changed. Connect again.".

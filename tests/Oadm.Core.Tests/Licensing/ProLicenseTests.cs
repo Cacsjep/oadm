@@ -166,6 +166,29 @@ public sealed class ProLicenseTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheHandlersNeverSeeTheAdministratorWhoImportedOrRemoved()
+    {
+        using var license = NewLicense();
+        await license.InitializeAsync(CancellationToken.None);
+        using var view = new Oadm.Core.Plugins.PluginProLicense(license);
+        var seen = new List<Oadm.Core.Auth.AuthenticatedCaller?>();
+        license.Changed += (_, _) => seen.Add(Oadm.Core.Auth.CallerContext.Current);
+        view.Changed += (_, _) => seen.Add(Oadm.Core.Auth.CallerContext.Current);
+        var admin = new Oadm.Core.Auth.AuthenticatedCaller(Guid.NewGuid(), "alice", Oadm.Core.Auth.BuiltInRoles.AdministratorId,
+            Oadm.Core.Auth.PermissionSet.All, "local", "pc", "hash");
+
+        using (Oadm.Core.Auth.CallerContext.Use(admin))
+        {
+            await license.ImportAsync(Sign(), CancellationToken.None);
+            await license.RemoveAsync(CancellationToken.None);
+            Assert.Same(admin, Oadm.Core.Auth.CallerContext.Current);
+        }
+
+        Assert.Equal(4, seen.Count);
+        Assert.All(seen, Assert.Null);
+    }
+
+    [Fact]
     public async Task AStoppedPluginsHandlersAreDropped()
     {
         using var license = NewLicense();

@@ -144,6 +144,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
 
     public async Task StartAllAsync(CancellationToken ct)
     {
+        // The background boundary: a plugin started by an administrator's call (turned on, a PRO license imported) keeps
+        // no caller in its timers and loops.
+        using var detached = CallerContext.Suppress();
         if (_deviceScopes is not null)
         {
             await _deviceScopes.LoadAsync(ct).ConfigureAwait(false);
@@ -245,6 +248,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// <summary>Stops running core plugins in reverse start order. Errors are logged, never thrown.</summary>
     public async Task StopAllAsync(CancellationToken ct)
     {
+        using var detached = CallerContext.Suppress(); // the plugins' stop code never sees the user of a call
         await _lifecycle.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
@@ -267,6 +271,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// </summary>
     public async Task SyncEnabledAsync(CancellationToken ct)
     {
+        using var detached = CallerContext.Suppress(); // turned on or off in an administrator's call: the plugins never see it
         var enabled = _registry.CorePlugins.Select(c => c.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
         await _lifecycle.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try

@@ -146,6 +146,9 @@ public sealed partial class ProLicense : IProLicense, IDisposable
     /// <summary>Every handler on its own: a plugin's failing handler never stops the others, the hourly check or an import.</summary>
     private void Raise()
     {
+        // The background boundary: an import or removal by an administrator starts and stops PRO plugins; neither they nor
+        // the work the handlers start see that user.
+        using var detached = Auth.CallerContext.Suppress();
         foreach (var handler in Changed?.GetInvocationList().Cast<EventHandler>() ?? [])
         {
             try
