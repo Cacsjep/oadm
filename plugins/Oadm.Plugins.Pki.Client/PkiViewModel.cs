@@ -683,16 +683,27 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     // ---------------------------------------------------------------- dialog backends
 
-    /// <summary>Generate: the replace confirmation first (field rules are the server's), then the new CA.</summary>
+    /// <summary>
+    /// Generate: the replace confirmation first (field rules are the server's), then the new CA. A stored OADM CA that cannot
+    /// be read is replaced only after its own confirmation (<see cref="UnreadableReplaceMessage"/>); the server refuses without it.
+    /// </summary>
     internal async Task<bool> SubmitGenerateAsync(GenerateCaViewModel dialog, GenerateRequest request)
     {
-        if (HasCa && !await ConfirmReplaceAsync(dialog).ConfigureAwait(true))
+        var unreadable = State?.CaUnreadable == true;
+        if (unreadable)
+        {
+            if (!await dialog.ConfirmAsync(ReplaceTitle, UnreadableReplaceMessage, "Replace").ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+        else if (HasCa && !await ConfirmReplaceAsync(dialog).ConfigureAwait(true))
         {
             return false;
         }
 
         dialog.IsBusy = true;
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Generate, PkiJson.Serialize(request with { Confirmed = true }), CancellationToken.None).ConfigureAwait(true));
+        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Generate, PkiJson.Serialize(request with { Confirmed = true, ReplaceUnreadable = unreadable }), CancellationToken.None).ConfigureAwait(true));
         return await FinishReplaceAsync(dialog, reply, PkiFields.CommonName).ConfigureAwait(true);
     }
 
@@ -741,6 +752,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     }
 
     public const string ReplaceTitle = "Replace the certificate authority";
+
+    /// <summary>The confirmation of New OADM CA while the stored OADM CA cannot be read.</summary>
+    public const string UnreadableReplaceMessage = "The stored OADM CA cannot be read. A new CA replaces it; cameras with certificates of the old CA need new ones.";
 
     /// <summary>
     /// The replace confirmation; the count line only when devices are affected, the server line only when a server's
