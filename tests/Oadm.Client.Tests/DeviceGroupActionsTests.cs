@@ -129,6 +129,26 @@ public sealed class DeviceGroupActionsTests
         Assert.Null(session.AddDevicesRefusal);
     }
 
+    [Fact]
+    public async Task An_older_read_of_Your_role_that_answers_late_is_dropped()
+    {
+        UserSession session = GroupUser();
+        using var f = new DevicesFixture(session: session);
+        var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel shell = Shell(f, connection, session);
+        var older = new TaskCompletionSource<MyRole>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var newer = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SiteNames = { "Building B" } } };
+        f.Api.GetMyRoleAsync(Arg.Any<CancellationToken>()).Returns(older.Task, Task.FromResult(newer));
+
+        Task first = shell.RefreshMyDevicesAsync(); // e.g. after a connect, still waiting
+        await shell.RefreshMyDevicesAsync(); // the user's devices changed meanwhile: the newer read answers first
+        Assert.Null(session.AddDevicesRefusal);
+
+        older.SetResult(new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby" } }); // no site
+        await first;
+        Assert.Null(session.AddDevicesRefusal); // the late answer of the older read is dropped
+    }
+
     /// <summary>
     /// A change of the group's rules keeps the group's name, so the session says nothing; the server ends the user's device
     /// stream instead (docs/spec/device-scope.md, Sessions). Its reconnect (a new snapshot, <see cref="ServerConnection.Connected"/>)
