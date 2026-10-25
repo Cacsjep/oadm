@@ -4,6 +4,7 @@ using Grpc.Core;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Core.Backup;
 using Oadm.Core.Devices;
@@ -28,13 +29,20 @@ public sealed class BackupServiceTests
         public void Request() => Requests++;
     }
 
-    private static Task<TestServerHost> StartAsync(RecordingRestart restart, string? dataDirectory = null) =>
+    /// <param name="backupTime">The clock of the backup names; null = the server's.</param>
+    private static Task<TestServerHost> StartAsync(RecordingRestart restart, string? dataDirectory = null, TimeProvider? backupTime = null) =>
         TestServerHost.StartAsync(dataDirectory: dataDirectory, configureServices: services =>
         {
             services.RemoveAll<BackupArchive>();
             services.AddSingleton(sp => new BackupArchive(sp.GetRequiredService<OadmPaths>()) { Iterations = 1000 });
             services.RemoveAll<IServerRestart>();
             services.AddSingleton<IServerRestart>(restart);
+            if (backupTime is not null)
+            {
+                services.RemoveAll<BackupManager>();
+                services.AddSingleton(sp => ActivatorUtilities.CreateInstance<BackupManager>(
+                    sp, new PluginSecretProtector(sp.GetRequiredService<CredentialProtector>()), backupTime));
+            }
         });
 
     private static Proto.BackupService.BackupServiceClient Client(TestServerHost host) => new(host.Invoker);
@@ -225,7 +233,8 @@ public sealed class BackupServiceTests
     [Fact]
     public async Task AutomaticBackupsNeedAPasswordAreKeptListedDownloadedAndDeleted()
     {
-        await using var host = await StartAsync(new RecordingRestart());
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 3, 1, 2, 0, 0, TimeSpan.Zero));
+        await using var host = await StartAsync(new RecordingRestart(), backupTime: time);
         var backup = Client(host);
 
         var noPassword = await Assert.ThrowsAsync<RpcException>(() => backup.SetScheduleAsync(new Proto.BackupSchedule { Enabled = true, TimeOfDay = "02:00", Keep = 2 }).ResponseAsync);
@@ -240,7 +249,7 @@ public sealed class BackupServiceTests
         for (var i = 0; i < 3; i++)
         {
             await manager.RunAutomaticAsync(CancellationToken.None);
-            await Task.Delay(1100); // one name per second
+            time.Advance(TimeSpan.FromSeconds(1)); // one name per second
         }
 
         state = await backup.GetStateAsync(new Proto.Empty());
