@@ -50,7 +50,8 @@ one WebSocket event stream per device and publishes every trigger as two event t
   the last state; after 30 s "connection lost" turns on with `{reason}`; the next report turns it off.
 - **Methods** (`DeviceTriggersMethods`): `list`, `get`, `startRead`, `readStatus` (Operator); `save`, `delete`,
   `setEnabled`, `duplicate` (Admin, audited). Event `changed` (page reload, at most every 300 ms on the page). Triggers are
-  stored in the plugin setting `triggers`; at most 200 triggers. Devices removed from OADM leave their triggers (checked
+  stored in the plugin setting `triggers`; at most 200 triggers. An unreadable stored list is kept as `triggersUnreadable`
+  and the list starts empty (the next save never loses it). Devices removed from OADM leave their triggers (checked
   every 30 s).
 - **Not answering**: devices the status poll found not answering (Unreachable) are not contacted, like the refused
   statuses. No connection is tried during an outage; a device connects again once a poll sees it Ok.

@@ -25,6 +25,9 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
 {
     public const string SettingsKey = "triggers";
 
+    /// <summary>Stored triggers that could not be read are kept here (never overwritten by the next save).</summary>
+    public const string UnreadableKey = SettingsKey + "Unreadable";
+
     private readonly DeviceTriggersOptions _options;
     private readonly TimeProvider _time;
     private readonly SemaphoreSlim _write = new(1, 1);
@@ -785,6 +788,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         catch (System.Text.Json.JsonException ex)
         {
             LogLoadFailed(ctx.Logger ?? NullLogger.Instance, ex);
+            await ctx.Settings.SetAsync(UnreadableKey, json, ct).ConfigureAwait(false); // kept: the next save starts from no triggers
             return [];
         }
     }
@@ -792,7 +796,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
     [LoggerMessage(Level = LogLevel.Information, Message = "Device triggers: {Count} triggers, {Enabled} turned on")]
     private static partial void LogStarted(ILogger logger, int count, int enabled);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Device triggers: the stored triggers could not be read")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Device triggers: the stored triggers could not be read; they are kept under triggersUnreadable")]
     private static partial void LogLoadFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Device triggers: the devices of the triggers could not be read")]
