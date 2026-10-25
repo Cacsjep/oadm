@@ -67,7 +67,7 @@ public sealed class PerfTests(ITestOutputHelper output)
         var opened = watch.ElapsedMilliseconds;
         Assert.Equal(10_000, processor.SessionCount);
         var refused = RadiusPacketWriter.Request(RadiusCode.AccessRequest, 1, new byte[16], client.Secret.Span, [.. RadiusAttribute.EapMessages(identity)])!;
-        Assert.Equal("Too many open sessions", processor.Process(refused, client, new IPEndPoint(IPAddress.Loopback, 9)).Reason);
+        Assert.Equal(RadiusDropReason.TooManySessions, processor.Process(refused, client, new IPEndPoint(IPAddress.Loopback, 9)).Drop);
 
         watch.Restart();
         Assert.Empty(processor.ExpireSessions());

@@ -352,7 +352,11 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - 30,000 devices may authenticate after a power cut: TLS handshakes run with bounded parallelism (64 at a time, the rest
   wait in a queue; the switch retransmits and gets the cached or next answer), the session table and the log are O(1) per
   change, pushes to the page go through one batched event per 500 ms.
-- Per switch at most 1,000 open sessions; a session costs at most 64 KB.
+- Per switch at most 1,000 open sessions, per switch port at most 8 (fix of 2026-10-25: a new one on a full port ends the
+  oldest there, "Too many sessions on the port", so spoofed MAC addresses on one port never use up the switch). A new
+  session at the switch's or the server's limit is silently dropped (`RadiusDropReason.TooManySessions`; the switch tries
+  again), never an Access-Reject. A session costs at most 64 KB; the buffer of a fragmented message grows with the
+  fragments that arrived (never the announced length up front).
 
 ## Sites
 
@@ -429,7 +433,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   Reset to default), `LargestFragment` (500..1400), `Reauthentication` (null: none; else Session-Timeout and
   Termination-Action RADIUS-Request in every Access-Accept, `ReauthenticationAttributes`), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
   `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
-  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
+  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000, `MaxSessionsPerPort` 8.
 - **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
   (`TlsSettings.VersionsFor(key)`; TLS 1.3 without a checked TLS 1.3 suite is not offered), `Validate(key)` refuses a set
   the key cannot use (only ECDHE_RSA suites with the ECDSA server certificate). The signature schemes OADM accepts and

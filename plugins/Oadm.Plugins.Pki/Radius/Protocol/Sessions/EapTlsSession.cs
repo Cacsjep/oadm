@@ -73,6 +73,7 @@ internal sealed class EapTlsSession
         Client = client;
         State = state;
         PortKey = PortKeyOf(client, first);
+        SwitchPort = SwitchPortOf(client, first);
         _options = options;
         _identity = identity;
         _validator = validator;
@@ -127,6 +128,16 @@ internal sealed class EapTlsSession
     public EapSessionSnapshot Snapshot => _snapshot;
 
     /// <summary>The key of a port: switch, port and MAC (several devices may share one port).</summary>
+    /// <summary>The bytes held for the device's message being reassembled (tests: it grows with the fragments). Call inside the session's lock.</summary>
+    internal int IncomingCapacity => _incoming?.Length ?? 0;
+
+    /// <summary>The switch and its port (no MAC address): at most a few sessions each; null without a port.</summary>
+    public string? SwitchPort { get; }
+
+    /// <summary>The key of <see cref="SwitchPort"/>: the switch and its port; null when the request names no port.</summary>
+    public static string? SwitchPortOf(string client, AccessRequest request) =>
+        string.IsNullOrEmpty(request.Port) ? null : string.Join('\u001f', client, request.Port);
+
     public static string? PortKeyOf(string client, AccessRequest request) =>
         string.IsNullOrEmpty(request.Port) && string.IsNullOrEmpty(request.CallingStationId)
             ? null
@@ -352,7 +363,9 @@ internal sealed class EapTlsSession
                 return data.ToArray();
             }
 
-            _incoming = new byte[message.TotalLength!.Value];
+            // Grows as fragments arrive (never the whole announced length up front: a first fragment alone cannot make the
+            // server hold 64 KB per session).
+            _incoming = new byte[(int)Math.Min(message.TotalLength!.Value, (uint)Math.Max(data.Length * 2, 1024))];
             _incomingLength = 0;
             _incomingTotal = message.TotalLength.Value;
             _incomingFragments = 0;
@@ -368,6 +381,11 @@ internal sealed class EapTlsSession
         {
             error = EapSessionTexts.MessageUnreadable;
             return null;
+        }
+
+        if (_incomingLength + data.Length > _incoming.Length)
+        {
+            Array.Resize(ref _incoming, (int)Math.Min(_incomingTotal, Math.Max(_incoming.Length * 2L, _incomingLength + data.Length)));
         }
 
         data.CopyTo(_incoming.AsSpan(_incomingLength));
@@ -386,7 +404,7 @@ internal sealed class EapTlsSession
             return null;
         }
 
-        return joined;
+        return joined.Length == _incomingLength ? joined : joined.AsSpan(0, _incomingLength).ToArray();
     }
 
     private EapStep OfferToTls(byte responseIdentifier, byte[] data)

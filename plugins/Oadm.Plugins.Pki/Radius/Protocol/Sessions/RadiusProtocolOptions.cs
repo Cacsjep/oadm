@@ -65,4 +65,7 @@ public sealed record RadiusProtocolOptions
 
     /// <summary>Open sessions per switch at most (1,000).</summary>
     public int MaxSessionsPerClient { get; init; } = 1_000;
+
+    /// <summary>Open sessions per switch port at most (8): a new one on a full port ends the oldest there.</summary>
+    public int MaxSessionsPerPort { get; init; } = 8;
 }
