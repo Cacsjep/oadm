@@ -151,7 +151,11 @@ an independent security review the same day). A user may be limited to part of t
   note. Batch writers, tags and credentials, hold every gate from before their transaction until they published
   (`StoredDevicePublisher.HoldAsync`, gates first, then the database write lock): the rows read inside the transaction
   are what the table holds, published without a second read): a status write that read the tags before a tag change never puts the old tags back into the
-  feed, the scope rows or the grids of the old group. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
+  feed, the scope rows or the grids of the old group. The feed's `Changed` event runs outside its lock, so a handler can
+  get two changes of a device in the other order: each change carries its stamp (`DeviceChange.Stamp`), and the handlers
+  that keep membership per device (`HostDeviceScopes`, `TaskViewSubscription`) check `IDeviceChangeFeed.IsLatest` and apply
+  under one lock of their own, so an older copy raised late (a site or expiry pass) never puts a device back into a group
+  it left. `HostDeviceScopes.LoadAsync` reads the rows once for every caller. One read is shared by concurrent callers and never runs on one caller's token. The view never follows the "no
   caller = allow" pattern of today's helpers. Web interface cookies stay on the server.
 - **One phrase for a device the user cannot reach:** plugin answers to a user's call about an unknown id, or one outside
   the user's devices, say "1 device is no longer available." (`DeviceMessages.NoLongerAvailable`), also as a row or
@@ -356,8 +360,9 @@ an independent security review the same day). A user may be limited to part of t
   CancelAsync/DeleteAsync(view, ...)`; a user with all devices takes the unfiltered paths. Groups: the view's ids
   (`view.IdsAsync`) filter the store query (`EfTaskStore`: `json_each` over one JSON parameter, then the rows by id);
   `TaskViewSubscription` follows the device feed per watcher (a changed device is checked against the compiled rules),
-  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`): the sent tasks of a
-  device that left go out as Removed at once, the tasks of a device that entered as Added (its active tasks and the newest
+  the tag and site catalog and the group's rules (the view's ids compared again, like `DeviceViewFeed`); it keeps only the
+  task id and device id of each sent task, no records: the sent tasks of a device that left go out as Removed at once (a
+  slim record: id and device), the tasks of a device that entered as Added (its active tasks and the newest
   up to the snapshot limit, one query per batch of devices).
   A task is in the view while its device is: tasks of removed devices only for users with all devices.
 - **Menus**: `TaskPluginRunnableCache.GetAsync(view)` intersects runnable sets and reasons per group (cached while the

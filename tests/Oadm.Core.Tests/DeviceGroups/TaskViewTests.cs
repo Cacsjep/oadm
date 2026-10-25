@@ -555,6 +555,36 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task AnOlderDeviceChangeRaisedAfterANewerOneNeverPutsTheDeviceBackIntoTheWatch()
+    {
+        var device = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var (_, _, view) = await GroupUserAsync();
+        var ofDevice = Finished(device.Id, DateTimeOffset.UtcNow.AddHours(-1));
+        await Db.Get<EfTaskStore>().AddRangeAsync([ofDevice], Ct);
+        using var outOfOrder = new OutOfOrderFeed(Views.Feed);
+        await using var engine = Engine();
+
+        var (snapshot, subscription) = await engine.SubscribeWithSnapshotAsync(view, 100, Ct);
+        using (subscription)
+        {
+            Assert.Equal([ofDevice.Id], snapshot.Select(t => t.Id));
+
+            // A copy with the tag is raised late, after the untagging reached the watch: the device stays out.
+            var untagged = device.Clone();
+            untagged.Tags = [];
+            await outOfOrder.PublishAsync(
+                new DeviceChange(DeviceChangeKind.Updated, device.Id, device.Clone()),
+                new DeviceChange(DeviceChangeKind.Updated, device.Id, untagged));
+
+            Assert.False(subscription.InView(device.Id));
+            var received = await ReadUntilAsync(subscription, r => Has(r, TaskChangeKind.Removed, ofDevice.Id));
+            var removed = Assert.Single(received);
+            Assert.Equal(device.Id, removed.Task.DeviceId);
+            Assert.Equal(0, subscription.SentCount);
+        }
+    }
+
+    [Fact]
     public async Task TheWatchOfAGroupFollowsARemovedSiteAndANewRuleOfTheGroup()
     {
         var siteA = Sites.Add("Site A");
