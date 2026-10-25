@@ -116,7 +116,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   cannot name another camera (`EstEndpoint.NamesOtherCamera`, `CertificateNames.NamesOtherCamera`).
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
   only; a 401 or 403 closes the connection, and so does every answer to a connection without a client certificate (one
-  `cacerts`, never a slot held); at most 64 connections, 4 per address, 2 minutes each; the client's chain is collected
+  `cacerts`, never a slot held); at most 64 connections, 4 per address (IPv6 per /64), 2 minutes each, and at most 16 that
+  have not shown a client certificate yet, with 10 s for the handshake and their one request; the client's chain is collected
   without downloads (`DisableCertificateDownloads`).
 - **Names:** host names reported by the camera go into a certificate only when they are plain (letters, digits, `-`, dots;
   no `*`), only when a user with all devices added the device (`IDeviceInfo.AddedByAllDevices`) and only when no device
@@ -149,8 +150,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   the copy read before (`ServerCertificates` checks the revocation and the end by the server clock).
 - Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
-- Limits: 64 connections at once, 4 per address (per site: the same address at two sites is two cameras), 20 requests and
-  30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
+- Limits (`EstConnectionSlots`): 64 connections at once, 4 per address (per site: the same address at two sites is two
+  cameras; IPv6 per /64, IPv4 mapped into IPv6 as IPv4), at most 16 of them before the handshake showed a client certificate
+  (10 s for the handshake, and for the one request without a certificate); 20 requests and 30 s idle per connection,
+  2 minutes per connection, headers 16 KB, body 64 KB. Answers: 401 no
   or no valid identity (also a CA no EST sign-in CA policy names for the operation), 403 not managed / other site / no
   enrollment policy / certificate of another camera, 400 request unreadable or refused, 404 unknown (also a profile the
   device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600; "The CA of this profile cannot
