@@ -171,6 +171,9 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
     /// 30,000 devices. Tasks cancelled while queued never report; Undo asks the task engine about those
     /// (<see cref="IsRunningAsync"/>) and <see cref="RunningLimit"/> forgets the run in the end.
     /// </summary>
+    /// <summary>The tasks of the run that have not ended (tests).</summary>
+    internal int OpenTasksOf(Guid runId) => _running.TryGetValue(runId, out var r) ? r.Left : 0;
+
     internal void TaskEnded(Guid runId)
     {
         while (_running.TryGetValue(runId, out var r))
