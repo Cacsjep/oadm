@@ -127,7 +127,7 @@ of the level is Warn or Fail.
   `{"parallelism": 1..64}`), progress and changed rows as events every 500 ms (`results` split at
   1,000 rows and below the 1 M character event limit), `cancelScan` keeps what was scanned.
 - `Scanning/ResultStore.cs`: the last result per device and level, written to the plugin setting `results` at most every
-  2 s and at the end of a scan; at most 10,000 devices per level (oldest dropped), values cut at 160 and details at 600
+  2 s and at the end of a scan; at most 30,000 devices per level (the device limit `DeviceLimits.MaxDevices`, oldest dropped), values cut at 160 and details at 600
   characters; results of removed devices are dropped on `getState`.
 - Methods (`HardeningMethods`, camelCase JSON, `Shared/HardeningModels.cs`): `getState` -> catalog, column ids, compact results
   (one state character per column `p w f n e i -` plus the short values) and the job; `startScan {level, deviceIds}` -> job;
@@ -150,7 +150,7 @@ of the level is Warn or Fail.
 
 - `ui:PageHeader.Subtitle` "Checks every device against the AXIS OS hardening guide. Read-only." One card.
 - Toolbar: segmented **Basic** / **Extended** (changes only the columns and the summary; each column shows its newest result,
-  so an Extended scan covers Basic), the purple device choice button ("Choose devices", "Selected devices: Tag Building A",
+  so an Extended scan covers Basic), the device choice command button ("Choose devices", "Selected devices: Tag Building A",
   opens the shared device picker), **Scan** (the devices of the choice: `startScan` with their ids, or no ids for All
   devices), **Stop**, **Export CSV**, status filter (All devices, Failed, Warnings, Not scanned) and `ui:SearchBox`.
 - Rows: one per device of the choice; a tag means its devices now (the rows follow device and tag changes). Results of

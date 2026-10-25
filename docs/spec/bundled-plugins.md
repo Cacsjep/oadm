@@ -48,7 +48,7 @@ Reporting, icon `snapshot`), on by default, switchable. The yearly maintenance c
 source of the managed video devices, checked fast and exported as a PDF report (PDFsharp + MigraDoc, MIT). Details:
 plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
@@ -209,7 +209,7 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
 Monitoring, icon `eye`), **off by default**. One table with the AXIS Image Health Analytics status of every chosen camera that
 has the app, with five count cards (Good, Detected, Pending, Detection off, Errors). Details: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: read-only for devices (`GET /local/AXISImageHealthAnalytics/v1/status` with the stored
   credentials); only on request and for the chosen cameras (the page opens, Refresh, Auto refresh every 10 s while the page is shown, off by
   default), nothing in the background and no events (event rules use the app's own events through Device triggers); 24
@@ -271,7 +271,7 @@ schedule and the recipient (each device's own one of a name); **New rule** build
 catalog (`Catalog/action-catalog.json`: labels, kinds, defaults from the camera's web interface). Decisions, research
 and device API: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one.
+- Devices: the "Selected devices" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page reads only the devices of the choice and nothing before one.
 - Rules that must hold: read only on request, over SOAP (passwords in plain text stay on the server, never reach the
   client or a log, a login inside an address shows as `user:********@` and keeps each device's own password); an edit
   changes only the checked parts, everything else stays as each device has it; a rule is written
@@ -317,11 +317,11 @@ Security, icon `clipboardCheck`), **off by default**. One read-only scan of the 
 Hardening Guide in its two levels (Basic, Extended), one icon column per check, CSV export. Check table, evidence and
 decisions: plugin `README.md`.
 
-- Devices: the purple "Selected devices" button (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice.
+- Devices: the "Selected devices" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen devices; the Devices page selection to start with, else the last choice on this computer); the page scans the devices of the choice (one **Scan** button) and shows only their results; nothing before a choice.
 - Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
-  information only; every method is Operator and not audited; results kept per device and level (at most 10,000).
+  information only; every method is Operator and not audited; results kept per device and level (at most 30,000, the device limit `DeviceLimits.MaxDevices`).
 - Device groups (SDK 0.4.0): one scan at a time per device scope, a job of its user that every user of the scope may
   stop, results and devices of the user's view only; the scans of all scopes share one limit (16 devices at once for the
   plugin, the setting `parallelism`). The same for the shared `DeviceSweep` of Image Health Dashboard, Edge storage and
@@ -436,7 +436,7 @@ encryption, retention, five count cards) and the tools of the camera's web inter
 retention, Repair, Format, Encrypt, Turn off encryption, each a task per camera in the tasks pane below the page. SD
 cards only. Decisions, device API (verified on an AXIS Q1615 Mk III) and tests: plugin `README.md`.
 
-- Devices: the purple "Selected cameras" button (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`: All devices, tags, chosen cameras; the Devices page selection to start with, else the last choice on this computer); the page reads only the cameras of the choice and nothing before one.
 - Rules that must hold: the table is read only on request and for the chosen cameras (page opens, Refresh), read-only, refused statuses not
   contacted; the tools are hidden tasks (`ShowInMenus` false) started by the page methods `change` (check, retention) and
   `format` (format, repair, encryption), whose rights decide (an action through the other method is refused); every run

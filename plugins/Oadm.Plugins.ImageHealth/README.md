@@ -22,7 +22,7 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
 
 ## Decisions
 
-- Only the chosen cameras (the purple **Selected cameras** button, shared `PageDeviceChoice`: All devices, tags and
+- Only the chosen cameras (the **Selected cameras** command button, shared `PageDeviceChoice`: All devices, tags and
   chosen devices, video devices only). The page starts with the Devices page selection, else its last choice on this
   computer (`GetLocalSetting`), else nothing: "Choose cameras to check their image health.", no request and Refresh
   disabled. A tag means its cameras at the moment of each check.
@@ -66,7 +66,7 @@ Recorded answers: `tests/Oadm.Plugins.ImageHealth.Tests/Fixtures/q3548-status-*.
   checked"); every camera with the app counts in exactly one of Good, Detected, Pending and Errors, the worst state wins
   (Errors > Detected > Pending > Good; a detection turned off in the app is no problem, such a
   camera is Good, and **Detection off** counts the checked cameras with a detection off on top, `ImageHealthCounts`, O(n)), colored only while the count is above 0, all cameras regardless of the search. Below
-  them the table card: the purple device choice ("Choose cameras", "Selected cameras: Tag Building A"), Refresh, Auto
+  them the table card: the device choice command button ("Choose cameras", "Selected cameras: Tag Building A"), Refresh, Auto
   refresh, SearchBox; progress row "Checking cameras 120 of 200"; summary "2 cameras
   without the app · 5 shown · checked 19:34:14"; virtualized DataGrid (`wrapRows`)
   Address, Model, Blur, Block, Redirect, Under-exposure, Unsuitability (status chips, sortable by severity), Last change,

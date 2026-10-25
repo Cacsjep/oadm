@@ -220,7 +220,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:ProgressRing` | a spinning ring in place while a list or card loads |
   | `ui:DeviceIcon Category Status ShowStatusToolTip` | every device icon in a list: the category icon, amber or red by status, the status as tooltip |
   | `DevicePickerWindow.ShowOneAsync(...)` | the picker for one device (checking one unchecks the other); returns its id or null |
-  | `PageDeviceChoice` | the device choice of a page that reads many devices (the purple "Selected devices" button), see "Choose devices first" |
+  | `PageDeviceChoice` | the device choice of a page that reads many devices (the "Selected devices" command button), see "Choose devices first" |
   | `ui:TileGrid Source` | a grid of tiles that fills the page (Live View, Dashboards), see "Shared lists and tabs" |
   | `ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}"` | a select field with check boxes (`ICheckChoice` items, `CheckChoice`; `CheckChoiceList` offers "All" or chosen items); the list stays open while the user ticks |
   | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | every tab of a page with tabs; without `CloseCommand` a fixed tab without an X; `Count` above 0 shows a badge |
@@ -862,7 +862,7 @@ reads the user text of a failed server call without a gRPC reference.
 ### Choose devices first
 
 A page that reads or changes devices never reaches out to every device by itself: a server can manage 30,000, and the
-user may want one building. The page starts with the purple choice button (`PageDeviceChoice`: All devices, tags, chosen
+user may want one building. The page starts with the choice command button (`PageDeviceChoice`: All devices, tags, chosen
 devices; the Devices page selection to start with, else the last choice on this computer, kept through
 `GetLocalSetting`) as the first control of its toolbar, reads nothing while `IsEmpty`, and sends only the ids of
 `Resolve()` to the server (or "all" for All devices, so the request does not grow with the device count). A page for
