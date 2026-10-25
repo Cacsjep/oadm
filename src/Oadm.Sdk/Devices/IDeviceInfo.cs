@@ -49,6 +49,12 @@ public interface IDeviceInfo
     /// <summary>HTTPS is enabled on the device (param <c>HTTPS.Enabled</c>); null when not known. Filled by the server.</summary>
     bool? HttpsEnabled => null;
 
+    /// <summary>
+    /// How OADM connects to the device: true over HTTPS, false over HTTP (what it sends crosses the network unencrypted);
+    /// null when not known. Filled on server and client.
+    /// </summary>
+    bool? ConnectsOverHttps => null;
+
     /// <summary>IEEE 802.1X is enabled on the wired interface (param <c>Network.Interface.I0.dot1x.Enabled</c>); null when not known. Filled by the server.</summary>
     bool? Dot1xEnabled => null;
 

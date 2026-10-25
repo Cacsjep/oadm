@@ -46,6 +46,9 @@ public sealed record FakeDevice : IDeviceInfo
     public bool? HttpsEnabled { get; init; }
 
     /// <inheritdoc />
+    public bool? ConnectsOverHttps { get; init; }
+
+    /// <inheritdoc />
     public bool? Dot1xEnabled { get; init; }
 
     /// <inheritdoc />

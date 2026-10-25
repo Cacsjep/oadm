@@ -28,7 +28,15 @@ public static class CertificateInventory
     /// with <paramref name="device"/> the OADM certificates found that the list of issued certificates does not hold yet are
     /// added to it (certificates from before the list).
     /// </summary>
-    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, CertificateApiKind api, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct)
+    public static async Task<IReadOnlyList<InstalledCertificate>> ReadAsync(IVapixClient vapix, CertificateApiKind api, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct) =>
+        (await ReadWithUsesAsync(vapix, api, apis, registry, service, device, ct).ConfigureAwait(false)).Certificates;
+
+    /// <summary>
+    /// Like <see cref="ReadAsync(IVapixClient, CertificateApiKind, IReadOnlyList{DeviceApi}, IReadOnlyList{IssuedCertificate}, PkiService?, IDeviceInfo?, CancellationToken)"/>
+    /// with why the uses are unknown: a web server or 802.1X read that failed (null when both were read). Then every
+    /// certificate is <see cref="InstalledCertificate.UseUnknown"/> and none counts as unused.
+    /// </summary>
+    public static async Task<(IReadOnlyList<InstalledCertificate> Certificates, string? UseUnknownReason)> ReadWithUsesAsync(IVapixClient vapix, CertificateApiKind api, IReadOnlyList<DeviceApi> apis, IReadOnlyList<IssuedCertificate> registry, PkiService? service, IDeviceInfo? device, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(vapix);
         var certificates = await DeviceCertificates.ListAsync(vapix, api, ct).ConfigureAwait(false);
@@ -38,27 +46,29 @@ public static class CertificateInventory
         }
 
         var cas = await DeviceCertificates.ListCaAsync(vapix, api, ct).ConfigureAwait(false);
+        // Every AXIS OS from 6.53 has the web server service; a failed read means "unknown", never "unused" (device safety).
         WebServerTlsConfiguration? webServer = null;
+        string? unknown = null;
         try
         {
             webServer = await WebServerTls.GetAsync(vapix, ct).ConfigureAwait(false);
         }
-        catch (PkiDeviceException)
+        catch (Exception ex) when (ex is PkiDeviceException or HttpRequestException)
         {
-            // no web server TLS service: nothing is "in use by HTTPS"
+            unknown = ex.Message;
         }
 
         Wired8021X? dot1x = null;
         try
         {
-            dot1x = (await Dot1xSettings.ReadAsync(vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+            dot1x = (await Dot1xSettings.ReadAsync(vapix, apis, ct).ConfigureAwait(false)).Dot1x; // null: the device offers no 802.1X
         }
         catch (Exception ex) when (ex is PkiDeviceException or HttpRequestException)
         {
-            // unknown: nothing is "in use by 802.1X"
+            unknown ??= ex.Message;
         }
 
-        return Describe(certificates, cas, webServer, dot1x, registry, service);
+        return (Describe(certificates, cas, webServer, dot1x, registry, service, useUnknown: unknown is not null), unknown);
     }
 
     public static IReadOnlyList<InstalledCertificate> Describe(
@@ -67,7 +77,8 @@ public static class CertificateInventory
         WebServerTlsConfiguration? webServer,
         Wired8021X? dot1x,
         IReadOnlyList<IssuedCertificate> registry,
-        PkiService? service)
+        PkiService? service,
+        bool useUnknown = false)
     {
         ArgumentNullException.ThrowIfNull(certificates);
         ArgumentNullException.ThrowIfNull(cas);
@@ -86,7 +97,7 @@ public static class CertificateInventory
                 uses.Add(Dot1xUse);
             }
 
-            result.Add(Describe(certificate, false, uses, registry, service));
+            result.Add(Describe(certificate, false, uses, registry, service) with { UseUnknown = useUnknown });
         }
 
         foreach (var certificate in cas)
@@ -102,7 +113,7 @@ public static class CertificateInventory
                 uses.Add(Dot1xUse);
             }
 
-            result.Add(Describe(certificate, true, uses, registry, service));
+            result.Add(Describe(certificate, true, uses, registry, service) with { UseUnknown = useUnknown });
         }
 
         return result;
@@ -251,7 +262,14 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
         var registry = service is null ? [] : await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var installed = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
-            var read = await CertificateInventory.ReadAsync(ctx.Vapix, api, apis, registry, service, device, ct).ConfigureAwait(false);
+            var (read, unknown) = await CertificateInventory.ReadWithUsesAsync(ctx.Vapix, api, apis, registry, service, device, ct).ConfigureAwait(false);
+
+            // What uses the certificates must be known: an unread web server or 802.1X setting could hide the certificate
+            // that keeps the camera on the network (device safety).
+            if (unknown is not null)
+            {
+                throw new InvalidOperationException($"What uses the certificates cannot be read ({unknown.TrimEnd('.')}). Nothing was changed.");
+            }
 
             // Validate every choice before the first delete.
             foreach (var choice in chosen)
@@ -423,6 +441,11 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                     throw new InvalidOperationException($"{file.FileName}: {reason} Nothing was changed.");
                 }
 
+                if (!needsLeaf && CertificateFiles.NotCaProblem(contents) is { } notCa)
+                {
+                    throw new InvalidOperationException($"{file.FileName}: {notCa} Nothing was changed.");
+                }
+
                 result.Add((file, data, contents));
             }
 
@@ -486,6 +509,11 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                 ctx.Vapix, api, CertificateDeployment.NewAlias(CertificateDeployment.ImportAliasPrefix, Time), Convert.ToBase64String(pkcs12), password ?? string.Empty, ct).ConfigureAwait(false);
             step.Complete($"{alias} from {file.FileName}");
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" installed from {file.FileName}.");
+            if (string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+            {
+                // The user confirmed it in the dialog ("Send the keys anyway"); never the password or the key in the log.
+                ctx.Log(TaskLogLevel.Warning, $"{file.FileName} was sent with its private key over HTTP: unencrypted on the network.");
+            }
             return alias;
         });
 }

@@ -74,8 +74,11 @@ public sealed partial class ProfileRowViewModel : ValidatingViewModel
 
     public bool MayManage => _owner.MayManage;
 
-    /// <summary>The profile to save: every listed profile is on (decision 2026-10-25: no On column; remove a profile instead).</summary>
-    internal EstProfile ToProfile() => _source with { Name = Name.Trim(), Use = Use.Value, Enabled = true, PolicyId = Policy?.Value ?? _source.PolicyId };
+    /// <summary>
+    /// The profile to save (decision 2026-10-25: no On column; a new profile is on, remove a profile instead). Its stored
+    /// on/off stays as it was: a profile that was off in OADM 4.1 is never turned on by a save of the page.
+    /// </summary>
+    internal EstProfile ToProfile() => _source with { Name = Name.Trim(), Use = Use.Value, PolicyId = Policy?.Value ?? _source.PolicyId };
 
     /// <summary>PKI's policies changed: the choices of the use's kind again, the chosen one kept while it is listed.</summary>
     internal void PoliciesChanged()

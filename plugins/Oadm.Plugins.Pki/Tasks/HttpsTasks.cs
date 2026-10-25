@@ -56,15 +56,22 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.HttpsAliasPrefix, service.Time);
         var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
         var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, policy, support, stepPrefix, ct).ConfigureAwait(false);
+        var switching = false;
         try
         {
-            await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, support.WebServerAllRoles, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
+            await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, support.WebServerAllRoles, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct, () =>
+            {
+                // From here on the web server may present it (a slow restart, an answer lost after the device applied it):
+                // never revoked as unused unless a read shows the web server does not use it.
+                switching = true;
+                service.Issued.MarkDelivered(issued.SerialNumber);
+            }).ConfigureAwait(false);
             await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), CertificateDeployment.SwitchedTo(issued.Alias), TimeSpan.Zero, ct).ConfigureAwait(false);
         }
         catch (Exception)
         {
-            // Not verified: the previous certificate stays current, the new one is revoked as unused.
-            await CertificateDeployment.NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: false).ConfigureAwait(false);
+            // Not verified: the previous certificate stays current; the new one is revoked only when it is surely not in use.
+            await CertificateDeployment.HttpsNotVerifiedAsync(ctx, service, issued, switching).ConfigureAwait(false);
             throw;
         }
 

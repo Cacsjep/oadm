@@ -789,6 +789,13 @@ public static class PolicyTexts
         return policyNames.Count == 0 ? null : "Issuing: " + string.Join(", ", policyNames);
     }
 
+    /// <summary>"RADIUS server CA: IEEE 802.1X": the IEEE 802.1X certificate policies whose cameras check the RADIUS server with the CA; null for none.</summary>
+    public static string? RadiusServerCa(IReadOnlyCollection<string> policyNames)
+    {
+        ArgumentNullException.ThrowIfNull(policyNames);
+        return policyNames.Count == 0 ? null : "RADIUS server CA: " + string.Join(", ", policyNames);
+    }
+
     /// <summary>"VLAN 30 by Building B" (Sessions and Log of the 802.1X server).</summary>
     public static string VlanBy(int vlan, string? policy) =>
         string.IsNullOrEmpty(policy) ? string.Create(CultureInfo.InvariantCulture, $"VLAN {vlan}") : string.Create(CultureInfo.InvariantCulture, $"VLAN {vlan} by {policy}");

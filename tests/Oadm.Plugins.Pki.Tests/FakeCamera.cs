@@ -64,6 +64,8 @@ internal sealed record PkiFakeDevice(Guid Id, string Address = "10.0.0.48", stri
 
     /// <summary>False: a user limited to a device group added it (no host names in its certificates).</summary>
     public bool AddedByAllDevices { get; init; } = true;
+
+    public bool? ConnectsOverHttps { get; init; } = true;
 }
 
 /// <summary>One request the fake received.</summary>
@@ -331,6 +333,12 @@ internal sealed class FakeCamera : IVapixClient
     /// <summary>SetWebServerTlsConfiguration answers with a SOAP fault and changes nothing.</summary>
     public bool FailWebServerSwitch { get; set; }
 
+    /// <summary>SetWebServerTlsConfiguration applies the settings, then answers with a SOAP fault (the answer got lost).</summary>
+    public bool FailWebServerSwitchAnswer { get; set; }
+
+    /// <summary>Every SOAP request gets this answer (status and body) instead of the service's.</summary>
+    public (HttpStatusCode Status, string Body)? SoapAnswer { get; set; }
+
     /// <summary>setWired8021XConfiguration answers with an error after it applied the settings (the answer got lost).</summary>
     public bool FailDot1xAnswer { get; set; }
 
@@ -580,6 +588,11 @@ internal sealed class FakeCamera : IVapixClient
 
     private (HttpStatusCode, string, string) Soap(string body)
     {
+        if (SoapAnswer is { } answer)
+        {
+            return (answer.Status, answer.Body, "application/soap+xml");
+        }
+
         var operation = XDocument.Parse(body).Descendants(XName.Get("Body", WebServerTls.SoapNs)).Single().Elements().First();
         if (FailSoap is not null && operation.Name.LocalName == FailSoap)
         {
@@ -641,7 +654,9 @@ internal sealed class FakeCamera : IVapixClient
             }
 
             WebServerChanged();
-            return (HttpStatusCode.OK, Envelope("<aweb:SetWebServerTlsConfigurationResponse/>"), "application/soap+xml");
+            return FailWebServerSwitchAnswer
+                ? (HttpStatusCode.InternalServerError, PkiFixture.Read(PkiFixture.Fault), "application/soap+xml")
+                : (HttpStatusCode.OK, Envelope("<aweb:SetWebServerTlsConfigurationResponse/>"), "application/soap+xml");
         }
 
         return (HttpStatusCode.InternalServerError, PkiFixture.Read(PkiFixture.Fault), "application/soap+xml");

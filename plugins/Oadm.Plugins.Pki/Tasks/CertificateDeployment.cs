@@ -159,6 +159,7 @@ public static class CertificateDeployment
         ArgumentNullException.ThrowIfNull(ctx);
         using var step = ctx.BeginStep(stepName);
         var installed = await DeviceCertificates.ListCaAsync(ctx.Vapix, api, ct).ConfigureAwait(false);
+        var used = installed.Select(c => c.Alias).ToHashSet(StringComparer.Ordinal);
         var byFingerprint = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var certificate in installed)
         {
@@ -174,7 +175,7 @@ public static class CertificateDeployment
 
         var aliases = new List<string>();
         var added = new List<string>();
-        foreach (var (alias, pem, fingerprint) in wanted)
+        foreach (var (wantedAlias, pem, fingerprint) in wanted)
         {
             if (byFingerprint.TryGetValue(fingerprint, out var existing))
             {
@@ -182,7 +183,10 @@ public static class CertificateDeployment
                 continue;
             }
 
+            // Another CA certificate may hold the alias already (the same first 8 hex characters of the fingerprint).
+            var alias = FreeAlias(wantedAlias, used);
             await DeviceCertificates.AddCaAsync(ctx.Vapix, api, alias, pem, ct).ConfigureAwait(false);
+            used.Add(alias);
             byFingerprint[fingerprint] = alias;
             aliases.Add(alias);
             added.Add(alias);
@@ -199,6 +203,19 @@ public static class CertificateDeployment
         }
 
         return aliases;
+    }
+
+    /// <summary>The alias, or "&lt;alias&gt;-2", "-3" ... when another certificate already uses it.</summary>
+    public static string FreeAlias(string alias, IReadOnlySet<string> used)
+    {
+        ArgumentNullException.ThrowIfNull(used);
+        var candidate = alias;
+        for (var n = 2; used.Contains(candidate); n++)
+        {
+            candidate = string.Create(CultureInfo.InvariantCulture, $"{alias}-{n}");
+        }
+
+        return candidate;
     }
 
     /// <summary>
@@ -368,17 +385,56 @@ public static class CertificateDeployment
     }
 
     /// <summary>
+    /// Enable HTTPS or Renew did not verify the new certificate. Before the switch request was sent
+    /// (<paramref name="switching"/> false) it is revoked as unused. After it, the web server may present it after a slow
+    /// restart or an answer lost after the device applied it: it is revoked only when a read of the web server settings shows
+    /// another certificate; otherwise it stays pending (delivered) and the previous one stays valid. Never throws.
+    /// </summary>
+    public static async Task HttpsNotVerifiedAsync(ITaskExecutionContext ctx, PkiService service, IssuedOnDevice issued, bool switching)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(service);
+        ArgumentNullException.ThrowIfNull(issued);
+        if (!switching)
+        {
+            await NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: false).ConfigureAwait(false);
+            return;
+        }
+
+        WebServerTlsConfiguration? read = null;
+        try
+        {
+            read = await WebServerTls.GetAsync(ctx.Vapix, CancellationToken.None).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Unreadable: the certificate may be in use, so it stays; the task's own error is what the user sees.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            // kept below
+        }
+
+        if (read is not null && !read.Certificates.Contains(issued.Alias, StringComparer.Ordinal))
+        {
+            await NotUsedAsync(ctx, service, issued.SerialNumber, evenDelivered: true).ConfigureAwait(false);
+            return;
+        }
+
+        ctx.Log(TaskLogLevel.Info, $"The new certificate \"{issued.Alias}\" stays pending: the web server may present it. The previous certificate stays valid.");
+    }
+
+    /// <summary>
     /// Switches the web server to <paramref name="alias"/> (SetWebServerTlsConfiguration, everything else as read; an HTTP-only
     /// policy becomes HTTP and HTTPS, because Enable must enable). <paramref name="allRoles"/> (AXIS OS before 7.10): the
     /// Operator and Viewer policies are sent too, each switched the same way.
     /// </summary>
-    public static async Task SwitchWebServerAsync(ITaskExecutionContext ctx, WebServerTlsConfiguration current, string alias, bool allRoles, string stepName, CancellationToken ct)
+    public static async Task SwitchWebServerAsync(ITaskExecutionContext ctx, WebServerTlsConfiguration current, string alias, bool allRoles, string stepName, CancellationToken ct, Action? switching = null)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(current);
         await ctx.StepAsync(stepName, async step =>
         {
             var wanted = (allRoles ? current.WithRoles() : current).WithPolicies(ConnectionPolicy.Enabled) with { Tls = true, Certificates = [alias] };
+            switching?.Invoke(); // right before the request: the device may apply it even when its answer is lost
             await WebServerTls.SetAsync(ctx.Vapix, wanted, ct).ConfigureAwait(false);
             step.Complete($"{alias} · {ConnectionPolicy.Describe(wanted.Policy)}");
         }).ConfigureAwait(false);
@@ -499,6 +555,7 @@ public static class CertificateDeployment
         var registry = await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         var prefix = string.Equals(purpose, CertificatePurpose.Dot1x, StringComparison.Ordinal) ? Dot1xAliasPrefix : HttpsAliasPrefix;
         var removed = new List<string>();
+        var kept = new List<string>();
         foreach (var certificate in certificates)
         {
             if (inUse.Contains(certificate.Alias, StringComparer.Ordinal) || !certificate.Alias.StartsWith(prefix, StringComparison.Ordinal))
@@ -513,19 +570,37 @@ public static class CertificateDeployment
             }
 
             // Deleted from the device: a replaced one is revoked already; any other stays in the store (not listed) until it
-            // ends, so it can still be revoked.
-            await DeviceCertificates.DeleteAsync(ctx.Vapix, api, certificate.Alias, ct).ConfigureAwait(false);
-            removed.Add(certificate.Alias);
+            // ends, so it can still be revoked. The new certificate is switched and confirmed already: a refused delete is a
+            // warning (Done with warnings), never a failed task.
+            try
+            {
+                await DeviceCertificates.DeleteAsync(ctx.Vapix, api, certificate.Alias, ct).ConfigureAwait(false);
+                removed.Add(certificate.Alias);
+            }
+            catch (Exception ex) when (ex is PkiDeviceException or HttpRequestException)
+            {
+                kept.Add(certificate.Alias);
+                ctx.Log(TaskLogLevel.Warning, $"The previous OADM certificate \"{certificate.Alias}\" could not be removed: {ex.Message} Delete it with \"Delete certificates\".");
+            }
         }
 
-        if (removed.Count == 0)
+        if (removed.Count > 0)
+        {
+            ctx.Log(TaskLogLevel.Info, "Previous OADM certificates removed: " + string.Join(", ", removed) + ".");
+        }
+
+        if (kept.Count > 0)
+        {
+            step.Warn((removed.Count > 0 ? "Removed " + string.Join(", ", removed) + ". " : string.Empty)
+                + "Could not remove " + string.Join(", ", kept) + "; delete it with \"Delete certificates\".");
+        }
+        else if (removed.Count == 0)
         {
             step.Skip("No previous OADM certificate");
         }
         else
         {
             step.Complete(string.Join(", ", removed));
-            ctx.Log(TaskLogLevel.Info, "Previous OADM certificates removed: " + string.Join(", ", removed) + ".");
         }
     }
 

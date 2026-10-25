@@ -196,8 +196,10 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   under the alias, then the placeholder is deleted); the entry goes into `issued`. A failure after the key was created deletes the
   unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
-  existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
-  nothing uses (alias prefix + registry serial or the CA as issuer), never others.
+  existing alias is reused; an alias another CA holds becomes `<alias>-2`). "Remove previous OADM certificate" deletes older
+  OADM certificates of the purpose that nothing uses (alias prefix + registry serial or the CA as issuer), never others; a
+  refused delete is a warning. A failure after the HTTPS switch request was sent revokes the new certificate only when the
+  web server settings name another one (`HttpsNotVerifiedAsync`).
 - **Enable HTTPS** (`oadm.pki.https-enable`, dialog `IssueCertificateWindow`: the HTTPS certificate policy (the first preselected, read
   with the query `listIssuingPolicies`) with its summary, then the clock check; the run uses the policy's stored values; payload `IssuePayload`; name
   "Enable HTTPS"): Check compatibility (with the policy and the device's key types), Check device clock, Read web server
@@ -241,7 +243,8 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   hours): a larger selection gets "Choose at most 5,000 devices." before anything is read. Delete mode: check boxes; in use and Axis
   factory (802.1AR) certificates greyed with a tooltip; Select all / none (O(n)); confirmation popup; payload = aliases per
   device. Task steps: Check compatibility, Read certificates (validates every choice before the first delete: exists, not
-  in use, not factory), Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
+  in use, not factory; a web server or 802.1X read that fails refuses everything, the dialog shows In use "Unknown"),
+  Delete certificate <alias> (one each), Verify. Names "Delete certificate <alias>" / "Delete N
   certificates" (distinct aliases).
 - **Install certificates** (`oadm.pki.install`): `InstallCertificatesWindow`: Use for (HTTPS / IEEE 802.1X / CA
   certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table

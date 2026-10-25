@@ -146,6 +146,13 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     bool? IDeviceInfo.HttpsEnabled => _httpsEnabled;
 
+    bool? IDeviceInfo.ConnectsOverHttps => Scheme switch
+    {
+        "https" => true,
+        "http" => false,
+        _ => null,
+    };
+
     bool? IDeviceInfo.Dot1xEnabled => _dot1xEnabled;
 
     private bool? _dhcpEnabled;

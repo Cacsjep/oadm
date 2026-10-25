@@ -26,7 +26,8 @@ returns null or throws `NotSupportedException`.
 - `IPlugin`: `Id` ("oadm.restart"), `DisplayName`, `IconKey`.
 - `IDeviceInfo`: the read-only device view for plugins (server and client): id, serial, address, host name, model,
   firmware, status, category, `HasVideo`, `Apis` (API list of the last full refresh), `CredentialUserName` (never a
-  password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known), `Tags`.
+  password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
+  `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted; OADM 4.5), `Tags`.
 - `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),

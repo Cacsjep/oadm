@@ -90,7 +90,8 @@ name, issued by, issued to, valid to, in use and source (OADM or other). It read
 nothing. Choose at most 5,000 devices.
 
 **Delete certificates** shows the same list with check boxes. Certificates in use and the Axis factory certificates
-are greyed and cannot be deleted. Choose the certificates, click **Delete certificates** and confirm.
+are greyed and cannot be deleted. When OADM cannot read what a device uses its certificates for, In use says
+**Unknown** and nothing on that device can be deleted. Choose the certificates, click **Delete certificates** and confirm.
 
 ## Install certificates
 
@@ -100,13 +101,17 @@ are greyed and cannot be deleted. Choose the certificates, click **Delete certif
 
 1. Choose **Use for**: **HTTPS (server certificate)**, **IEEE 802.1X (client certificate)** or **CA certificates
    only**. For IEEE 802.1X also choose the **Policy**: its EAP identity, EAPOL version and RADIUS server CA go to the
-   devices with the file.
+   devices with the file. For **CA certificates only** the file must hold CA certificates only.
 2. Click **Choose files** and enter their password.
 3. Each file goes to the selected device whose MAC address, IP address or host name it names. The table shows the
    match and any problem.
 4. Click **Install** and confirm.
 
 </Steps>
+
+HTTPS and IEEE 802.1X files hold a private key. When OADM reaches some of the devices over HTTP, the dialog says how
+many, because their keys cross the network unencrypted. Tick **Send the keys anyway** to install them, or run
+**Enable HTTPS** on these devices first.
 
 A device without a matching file ends with a warning and nothing is sent.
 
