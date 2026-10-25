@@ -137,12 +137,15 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         Assert.True(row.DhcpEnabled);
         Assert.Equal(_time.GetUtcNow(), _polling.LastFullRefresh(device.Id));
 
-        // Ok -> Ok and Ok -> Unreachable do not trigger another full refresh.
+        // Ok -> Ok and Ok -> Unreachable do not trigger another full refresh: none is queued and none started (a queued one
+        // is pending until the queue takes it, and the queue stamps it before it runs).
+        var lastFull = _polling.LastFullRefresh(device.Id);
         await _polling.PollAllAsync(CancellationToken.None);
         _camera.Online = false;
         await _polling.PollAllAsync(CancellationToken.None);
         Assert.Equal(DeviceStatus.Unreachable, (await Devices.GetAsync(device.Id, CancellationToken.None))!.Status);
-        await Task.Delay(100);
+        Assert.False(_polling.IsRefreshQueued(device.Id));
+        Assert.Equal(lastFull, _polling.LastFullRefresh(device.Id));
         Assert.Single(_camera.FullRefreshTimes);
 
         // ... but coming back again does.
