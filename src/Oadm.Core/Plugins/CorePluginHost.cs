@@ -208,6 +208,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                 };
                 try
                 {
+                    Jobs.Resume(registered.Id); // stopped before: it may start jobs again
                     await registered.Plugin.StartAsync(context, ct).ConfigureAwait(false);
                     entry.State = CorePluginState.Running;
                     _startOrder.Remove(registered.Id);

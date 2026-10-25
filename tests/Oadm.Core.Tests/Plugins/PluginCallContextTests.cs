@@ -208,6 +208,25 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task ACallStillRunningWhenItsPluginStopsStartsNoJobUntilThePluginRunsAgain()
+    {
+        await using var rig = await RigAsync();
+        rig.Plugin.HoldJobs = true;
+
+        // The plugin is being turned off while a call of it still runs: the call's job would outlive the plugin.
+        rig.Host.Jobs.CancelPlugin(PluginId);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InvokeAsync(rig.Admin, "job.start", null));
+        Assert.Equal(PluginJobRegistry.PluginStopped, refused.Message);
+        Assert.Equal(0, rig.Host.Jobs.RunningCount(PluginId));
+
+        // Started again: jobs again.
+        await rig.Host.StopAllAsync(Ct);
+        await rig.Host.StartAllAsync(Ct);
+        Assert.NotNull(await rig.InvokeAsync(rig.Admin, "job.start", null));
+        Assert.Equal(1, rig.Host.Jobs.RunningCount(PluginId));
+    }
+
+    [Fact]
     public async Task AJobStartedInACallWhoseAccessChangedMeanwhileIsRefused()
     {
         await using var rig = await RigAsync();

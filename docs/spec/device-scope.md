@@ -42,7 +42,8 @@ an independent security review the same day). A user may be limited to part of t
   cache the allowed id set lazily per cache key (see Sessions).
 - **Streams:** each stream keeps the ids it has sent; on a change a device that left the view becomes Removed, one that
   entered becomes Added. Sessions bound to one device (live video, web interface, event streams, I/O and metadata
-  monitors) end when that device leaves the user's view.
+  monitors) end when that device leaves the user's view, always with "1 device is no longer available." (also an event
+  source that ends quietly on the cancel).
 - **Tasks:** the engine checks the caller's view when a task is started (`TaskEngine.RunAsync` with the view passed in,
   also through the plugin task runner); task history is filtered in the query (a temp table or `json_each` for large
   views, never after the 10,000 snapshot limit). History of removed devices: only users with all devices.
@@ -70,7 +71,9 @@ an independent security review the same day). A user may be limited to part of t
   NOT_FOUND, and an ended session forgets its jobs, finished ones too. A shared job (`IPluginJobs.StartShared`, one scan
   per scope) is found and stopped by every user with its device scope; it belongs to the scope, not to the user who
   started it (lead decision 2026-10-23): the starter's logout, new role or other devices leave it running, it ends only
-  when the rules of its group change, on a cancel or when its plugin stops. A job started in a call whose user's devices, role
+  when the rules of its group change, on a cancel or when its plugin stops. A plugin that stops or is turned off starts no
+  job until it runs again (`PluginJobRegistry.CancelPlugin` / `Resume`; a call still running then is refused). A row event
+  is parsed once for every group watcher. A job started in a call whose user's devices, role
   or session changed after the call began is refused ("Your devices changed. Connect again.").
   When the owner's devices change (another group, new rules of the group, another role) the owner's own jobs end and are
   forgotten, finished ones too, and `Find` answers only a caller with the job's device scope. When devices move into or out
