@@ -511,7 +511,8 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   After three tries for the same missing addresses (the 5 s check and two 30 s retries) the retries stop until the
   addresses of the cards or the missing ones change (logged once). One relay per bound site with switches (`ctx.Sites.OpenUdpRelayAsync`,
   released with the site's last switch or a new port; `sitesNotAllowed` = relays waiting for approval).
-- **Datagram path**: the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
+- **Datagram path**: a datagram longer than 4,096 bytes (`RadiusPacket.MaxLength`) is dropped first and counted
+  (`TooLongDrops`), never queued; the receive loop finds the switch in the immutable `SwitchTable` by site + source address (IPv4-mapped
   addresses as IPv4; unknown senders dropped, counted in `UnknownRequests`, debug log for the first 20 and every 1,000th,
   and counted in `DroppedRequests`),
   a bounded queue (8,192; full = dropped, the switch retransmits), 64 workers (`RadiusHost.Workers`, the bound on parallel
