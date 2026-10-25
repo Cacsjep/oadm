@@ -153,7 +153,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 - Limits (`EstConnectionSlots`): 64 connections at once, 4 per address (per site: the same address at two sites is two
   cameras; IPv6 per /64, IPv4 mapped into IPv6 as IPv4), at most 16 of them before the handshake showed a client certificate
   (10 s for the handshake, and for the one request without a certificate); 20 requests and 30 s idle per connection,
-  2 minutes per connection, headers 16 KB, body 64 KB. Answers: 401 no
+  2 minutes per connection, headers 16 KB, body 64 KB, at most 32 trailer lines after a chunked body. Answers: 401 no
   or no valid identity (also a CA no EST sign-in CA policy names for the operation), 403 not managed / other site / no
   enrollment policy / certificate of another camera, 400 request unreadable or refused, 404 unknown (also a profile the
   device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600; "The CA of this profile cannot

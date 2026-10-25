@@ -74,6 +74,18 @@ public sealed class ProtocolTests
     }
 
     [Fact]
+    public async Task Http_reads_a_few_trailers_after_a_chunked_body_and_refuses_endless_ones()
+    {
+        static string Chunked(int trailers) => "POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nab\r\n0\r\n"
+            + string.Concat(Enumerable.Repeat("X-Trailer: 1\r\n", trailers)) + "\r\n";
+
+        using var stream = new DuplexStream(Encoding.ASCII.GetBytes(Chunked(EstHttp.MaxTrailerLines)));
+        Assert.Equal("ab", Encoding.ASCII.GetString((await EstHttp.Reader(stream).ReadAsync(CancellationToken.None))!.Body));
+        await Assert.ThrowsAsync<HttpFormatException>(() => Read(Chunked(EstHttp.MaxTrailerLines + 1)));
+        await Assert.ThrowsAsync<HttpFormatException>(() => Read(Chunked(10_000)));
+    }
+
+    [Fact]
     public async Task Http_writes_status_length_and_close()
     {
         using var stream = new DuplexStream([]);
