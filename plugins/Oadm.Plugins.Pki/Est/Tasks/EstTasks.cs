@@ -112,6 +112,16 @@ public static class EstTaskIds
 
     public const string NoSiteRelay = "The EST server cannot listen at the camera's site. Nothing was changed.";
 
+    /// <summary>The CA that issued the EST server's certificate is not in PKI's CA list: the camera could not check the server.</summary>
+    public const string ServerIssuerUnknown = "The CA that issued the EST server's certificate is not in the CA list. Choose another certificate in the EST server policy. Nothing was changed.";
+
+    /// <summary>The EST server cannot use its certificate (none, ended, revoked, key unreadable): its reason.</summary>
+    public static string ServerCertificateProblem(string problem) => problem.TrimEnd() + " Nothing was changed.";
+
+    /// <summary>The address the camera would get is not a name of the EST server's certificate: the camera would refuse the server.</summary>
+    public static string NotInCertificate(string address) =>
+        $"{address} is not in the EST server's certificate. Create a certificate with it on the Certificates tab and choose it in the EST server policy. Nothing was changed.";
+
     // Steps: imperative, with the article.
     public const string CheckStep = "Check compatibility";
     public const string ReadStep = "Read the camera's certificates";
@@ -235,7 +245,14 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
                 throw new InvalidOperationException(EstTaskIds.NoPro);
             }
 
-            var chain = est.Authority is { IsReady: true } ca ? ca.Chain : throw new InvalidOperationException(EstTaskIds.NoCa);
+            if (est.Authority is not { IsReady: true } ca)
+            {
+                throw new InvalidOperationException(EstTaskIds.NoCa);
+            }
+
+            // The camera checks the EST server with the issuer chain of the certificate the EST server policy picks (that
+            // may be a previous or an imported CA), never simply the OADM CA; the address it gets must be in that certificate.
+            var (chain, serverNames) = ServerTrust(ca);
             await RequireApisAsync(ctx, ct).ConfigureAwait(false);
             await CheckClockAsync(ctx, device, est.Time, payload.ClockConfirmed, ct).ConfigureAwait(false);
             // supportedServices lists the free services only: those of the camera's profiles count too.
@@ -343,8 +360,14 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
                 throw new DeviceNotCompatibleException(EstTaskIds.NoSiteRelay);
             }
 
-            // The dot1x profile: the RADIUS server CA of its IEEE 802.1X policy, found before the first write (else nothing changes).
-            if (profiles.FirstOrDefault(p => p.Use == ProfileUse.Dot1x) is { } dot1x && est.Authority is Oadm.Plugins.Pki.Ca.PkiCertificateAuthority pki
+            if (serverNames is not null && !serverNames.Any(n => IPAddress.TryParse(n, out var named) && named.Equals(address)))
+            {
+                throw new DeviceNotCompatibleException(EstTaskIds.NotInCertificate(address.ToString()));
+            }
+
+            // The dot1x profile with IEEE 802.1X on: the RADIUS server CA of its IEEE 802.1X policy, found before the first write
+            // (else nothing changes). With IEEE 802.1X off nothing of it is written, so it is not needed.
+            if (dot1xOn && profiles.FirstOrDefault(p => p.Use == ProfileUse.Dot1x) is { } dot1x && est.Authority is Oadm.Plugins.Pki.Ca.IRadiusCaSource pki
                 && est.PolicyOf(dot1x) is { } dot1xPolicy)
             {
                 radiusCas = pki.RadiusCas(dot1xPolicy);
@@ -433,12 +456,20 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
         }
 
         // One at a time: writing a profile restarts the camera's EST client. A written profile is done once the camera
-        // holds the new certificate (never the previous one it still has under the same name).
+        // holds the new certificate (never the previous one it still has under the same name). The RADIUS server CA is set
+        // before the HTTPS profile: its new certificate restarts the camera's web server.
         string? noFreeName = null;
+        var radiusSet = false;
         foreach (var (profile, json) in wanted)
         {
             var id = json["id"]!.GetValue<string>();
             var written = !unchangedIds.Contains(id);
+            if (written && profile.Use == ProfileUse.Https && !radiusSet)
+            {
+                await SetRadiusCaAsync(ctx, radiusCas, ct).ConfigureAwait(false);
+                radiusSet = true;
+            }
+
             if (written)
             {
                 var free = await ctx.StepAsync(EstTaskIds.AddStep(profile.Name), async step =>
@@ -475,13 +506,37 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
             throw new InvalidOperationException(noFreeName);
         }
 
-        await SetRadiusCaAsync(ctx, radiusCas, ct).ConfigureAwait(false);
+        if (!radiusSet)
+        {
+            await SetRadiusCaAsync(ctx, radiusCas, ct).ConfigureAwait(false);
+        }
 
         // Pin only when OADM talks HTTPS to the camera: the task never changes how OADM connects.
         if (profiles.Any(p => p.Use == ProfileUse.Https) && string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
             await PinAsync(ctx, est, device, profiles.First(p => p.Use == ProfileUse.Https), started, ct).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// What the camera checks the EST server with: the issuer chain of the EST server policy's certificate and the names in
+    /// it; without PKI's server certificates (a CA of another plugin) the CA's chain and no names to check.
+    /// </summary>
+    private static (IReadOnlyList<byte[]> Chain, IReadOnlyList<string>? Names) ServerTrust(Sdk.Certificates.IDeviceCertificateAuthority ca)
+    {
+        if (ca is not Oadm.Plugins.Pki.Ca.IServerCertificateSource source)
+        {
+            return (ca.Chain, null);
+        }
+
+        var load = source.ServerCertificate(Oadm.Plugins.Pki.Policies.PolicyKinds.EstServer);
+        if (load.Material is not { } material)
+        {
+            throw new InvalidOperationException(EstTaskIds.ServerCertificateProblem(load.Problem ?? EstTaskIds.ServerIssuerUnknown));
+        }
+
+        CryptographicOperations.ZeroMemory(material.Pkcs8);
+        return material.IssuerChain.Count > 0 ? (material.IssuerChain, material.Names) : throw new InvalidOperationException(EstTaskIds.ServerIssuerUnknown);
     }
 
     /// <summary>The camera's device ID certificates (valid Axis device ID of this serial): alias and key kind.</summary>
@@ -1024,6 +1079,25 @@ public sealed class EstSetupTask(Func<EstService?> service, Func<bool>? shown = 
         }
 
         var profiles = await CameraEstApi.ReadProfilesAsync(ctx.Vapix, ct).ConfigureAwait(false);
-        return EstJson.Serialize(new CameraProfileList(true, [.. profiles.Select(p => new CameraProfileInfo(p.Id, p.Services, p.Server, p.Status))]));
+        var (radius, issuing) = Dot1xCas(Service);
+        return EstJson.Serialize(new CameraProfileList(true, [.. profiles.Select(p => new CameraProfileInfo(p.Id, p.Services, p.Server, p.Status))])
+        {
+            RadiusServerCa = radius,
+            NetworkAccessCa = issuing,
+        });
+    }
+
+    /// <summary>The names of the RADIUS server CA and the issuing CA of the dot1x profile's IEEE 802.1X policy (the dialog's hint).</summary>
+    internal static (string? Radius, string? Issuing) Dot1xCas(EstService? est)
+    {
+        if (est?.Store.Config.Profiles.FirstOrDefault(p => p.Enabled && p.Use == ProfileUse.Dot1x) is not { } profile || est.PolicyOf(profile) is not { } policy)
+        {
+            return (null, null);
+        }
+
+        var authorities = est.Authority?.Authorities ?? [];
+        string? Name(string? id) => authorities.FirstOrDefault(a => a.Kind != Sdk.Certificates.CertificateAuthorityKind.PreviousOadm
+            && string.Equals(a.Id, id ?? Sdk.Certificates.CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase))?.Name;
+        return (Name(policy.RadiusCaId), Name(policy.CaId));
     }
 }

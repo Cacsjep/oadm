@@ -836,10 +836,11 @@ policies and are checked against the trusted / sign-in CA policies, the two are 
 - **The servers** load the picked certificate with its key (`PkiCertificateAuthority.ServerCertificate`;
   `ServerIdentityKeeper` for 802.1X, `Est/Serving/ServerCertificates` for EST) and again when the policies change. EST
   shows the one certificate everywhere, also at sites (no certificates per site); its tab shows no certificate row (its policy does) but warns
-  when a site's node address is not in it ("Site Parking is not in the certificate of the EST server. Create a new one in
-  its policy.": a new one from the Certificates tab). EST's `cacerts` chain is the issuer chain of the picked
-  certificate (`PkiService.ServerIssuerChain`); the IEEE 802.1X policy names its RADIUS server CA itself (see "RADIUS
-  server CA").
+  when a site's node address or one of this server's addresses is not in it ("Site Parking is not in the certificate of
+  the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server
+  policy."). EST's TLS chain, and the CA certificates Set up gives the cameras, are the issuer chain of the picked
+  certificate (`PkiService.ServerIssuerChain`; `cacerts` is the profile's issuing CA's chain); the IEEE 802.1X policy
+  names its RADIUS server CA itself (see "RADIUS server CA").
 - **Status** of a server without a usable certificate: "The 802.1X server has no certificate. Choose one in its policy.",
   or "The EST server cannot use its certificate: it has ended." (also gone, revoked, its key cannot be read).
 

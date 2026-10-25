@@ -378,7 +378,14 @@ public enum SetupAction
 
 /// <summary>The answer of the dialog's query <c>listProfiles</c>: the camera's enrollment profiles.</summary>
 /// <param name="Supported">The camera has certificate enrollment (cert and cert-est v1).</param>
-public sealed record CameraProfileList(bool Supported, IReadOnlyList<CameraProfileInfo> Profiles);
+public sealed record CameraProfileList(bool Supported, IReadOnlyList<CameraProfileInfo> Profiles)
+{
+    /// <summary>The RADIUS server CA of the dot1x profile's IEEE 802.1X policy (Set up gives it to cameras with IEEE 802.1X on); null when unknown.</summary>
+    public string? RadiusServerCa { get; init; }
+
+    /// <summary>The CA that issues the dot1x profile's network access certificates; null when unknown.</summary>
+    public string? NetworkAccessCa { get; init; }
+}
 
 /// <summary>One enrollment profile on a camera, as the dialog lists it.</summary>
 /// <param name="Status">The camera's status: ENROLLED, CONNECTED (reached the server, no certificate) or UNCONNECTED.</param>

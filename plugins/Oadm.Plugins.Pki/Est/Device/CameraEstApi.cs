@@ -115,8 +115,8 @@ public static class CameraEstApi
         SendDataAsync(vapix, HttpMethod.Post, EstPath + "/profiles", profile, "Add EST profile", ct);
 
     /// <summary>
-    /// Changes a profile in place (PATCH): the camera enrolls again under the same name. Deleting and adding it again does
-    /// not work while its previous certificate is still on the camera (seen on 10.0.0.48: the new one is never stored).
+    /// Removes a profile (DELETE). The certificate it enrolled stays on the camera; a profile added again under the same name
+    /// never stores a new certificate over it (seen on 10.0.0.48), so Set up adds it under its other name.
     /// </summary>
     public static Task RemoveProfileAsync(IVapixClient vapix, string id, CancellationToken ct) =>
         SendDataAsync(vapix, HttpMethod.Delete, $"{EstPath}/profiles/{Uri.EscapeDataString(id)}", null, "Remove EST profile", ct);

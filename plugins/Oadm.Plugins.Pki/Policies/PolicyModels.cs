@@ -485,13 +485,6 @@ public sealed record PolicyList
     /// <summary>The CAs a server certificate can be created with (Create of a server policy): the CAs with their key, the OADM CA first.</summary>
     public IReadOnlyList<PolicyCaChoice> ServerCertificateCas { get; init; } = [];
 
-    /// <summary>The names a new 802.1X server certificate gets by default: this server's addresses and host name.</summary>
-    public IReadOnlyList<string> Dot1xServerNames { get; init; } = [];
-
-    /// <summary>The names a new EST server certificate gets by default: this server's addresses and host name, and the site nodes' addresses.</summary>
-    public IReadOnlyList<string> EstServerNames { get; init; } = [];
-
-
     /// <summary>The sites of the server (the device selector, the row texts).</summary>
     public IReadOnlyList<PolicySite> Sites { get; init; } = [];
 
@@ -644,7 +637,12 @@ public static class PolicyTexts
     public static string ServerCertificateUnusable(string server, string why) => $"{server} cannot use its certificate: {why}";
 
     /// <summary>A site whose node address is not in the EST server's certificate.</summary>
-    public static string SiteNotInCertificate(string site) => $"Site {site} is not in the certificate of the EST server. Create a new one in its policy.";
+    public static string SiteNotInCertificate(string site) =>
+        $"Site {site} is not in the certificate of the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server policy.";
+
+    /// <summary>An address of this server the cameras get is not in the EST server's certificate.</summary>
+    public static string AddressNotInCertificate(string address) =>
+        $"{address} is not in the certificate of the EST server. Create a certificate with it on the Certificates tab and choose it in the EST server policy.";
     public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
 
     /// <summary>The IEEE 802.1X policy names no CA of the list for the RADIUS server.</summary>

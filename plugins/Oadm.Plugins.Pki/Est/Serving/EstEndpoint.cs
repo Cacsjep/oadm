@@ -29,6 +29,9 @@ public static class EstRefusals
     public const string NotPro = "OADM PRO is not active.";
     public const string NoCa = "The PKI has no certificate authority.";
 
+    /// <summary>The CA of the profile's issuing policy cannot issue (no key, gone from the list).</summary>
+    public const string CaCannotIssue = "The CA of this profile cannot issue certificates.";
+
     /// <summary>The server in a sentence of its status ("The EST server has no certificate: ...").</summary>
     public const string ServerName = "The EST server";
     public const string NoIdentity = "The camera did not sign in with its Axis device ID.";
@@ -103,9 +106,14 @@ public sealed partial class EstEndpoint(
         }
 
         // The CA of the profile's issuing policy (decision 2026-10-25: any CA with its key); its chain is what cacerts answers.
-        if (authority() is not { } ca || Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, IssuingOf(profile)?.CaId) is not { Count: > 0 } issuerChain)
+        if (authority() is not { } ca)
         {
             return new EstResult(Unavailable(EstRefusals.NoCa), operation, profile.Name);
+        }
+
+        if (Oadm.Plugins.Pki.Ca.IssuerChains.Of(ca, IssuingOf(profile)?.CaId) is not { Count: > 0 } issuerChain)
+        {
+            return new EstResult(Unavailable(EstRefusals.CaCannotIssue), operation, profile.Name);
         }
 
         if (operation == "cacerts")
@@ -234,7 +242,8 @@ public sealed partial class EstEndpoint(
             NotAfterUtc = issued.NotAfterUtc,
             Fingerprint = Convert.ToHexString(SHA256.HashData(issued.Certificate)),
         };
-        store.AddCertificate(certificate);
+
+        // Into the store only once the answer is written (EstService): an undelivered one would push out the camera's older one.
         var reason = "Valid until " + issued.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var response = Certificates(EstMessages.CertsOnlyContentType, [issued.Certificate, .. issued.Chain]);
         return new EstResult(response, operation, profile.Name, Record(device, device.Address, profile, kind, ok: true, reason) with { SerialNumber = issued.SerialNumber },

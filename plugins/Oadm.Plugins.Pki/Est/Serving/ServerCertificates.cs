@@ -28,6 +28,9 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     /// <summary>The id of the certificate the EST server policy picks now (a cheap check per connection); null without one.</summary>
     public Func<string?> ChosenId { get; init; } = () => null;
 
+    /// <summary>The server clock (the end of the certificate read before).</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
     /// <summary>Why there is no certificate (the server's status); null with one, or without a CA (the status says that).</summary>
     public string? Problem { get; private set; }
 
@@ -43,12 +46,14 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
             return null;
         }
 
-        // The certificate read before, while the policy still picks it and it has not ended: no key read per connection.
+        // The certificate read before, while the policy still picks it, it has not ended and is not revoked: no key read per
+        // connection. A revoked one is never shown again (the next read says why).
         if (ChosenId() is { } chosen)
         {
             lock (_gate)
             {
-                if (_entry is { } known && known.Id == chosen && known.Certificate.NotAfter.ToUniversalTime() > DateTime.UtcNow)
+                if (_entry is { } known && known.Id == chosen && known.Certificate.NotAfter.ToUniversalTime() > Time.GetUtcNow().UtcDateTime
+                    && !(authority()?.IsRevoked(known.Certificate.SerialNumber) ?? false))
                 {
                     return known.Certificate;
                 }

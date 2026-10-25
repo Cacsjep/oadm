@@ -263,8 +263,6 @@ public sealed partial class PkiService
             EstProfiles = await Policies.EstProfilesAsync(ct).ConfigureAwait(false),
             ServerCertificates = ServerCertificateChoices(),
             ServerCertificateCas = Policies.IssuingCaChoices(),
-            Dot1xServerNames = Policies.Dot1xServerNames?.Invoke() ?? [],
-            EstServerNames = Policies.EstServerNames?.Invoke() ?? [],
             Sites = [.. (_sites?.List ?? []).OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).Select(s => new PolicySite(s.Id, s.Name))],
             Tags = Policies.TagChoices(devices),
             MayManage = mayManage && !unreadable, // nothing can be saved over a list that cannot be read
