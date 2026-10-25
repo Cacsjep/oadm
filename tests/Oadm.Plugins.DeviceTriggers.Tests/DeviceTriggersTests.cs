@@ -110,6 +110,52 @@ public sealed class DeviceTriggersTests
     }
 
     [Fact]
+    public async Task ASaveWhoseCallerCancelsAfterTheWriteStillConnectsAndTellsThePages()
+    {
+        await using var rig = new Rig();
+        var a = rig.AddDevice("10.0.0.48");
+        rig.Cameras[a.Id].SetState(Fixture.VirtualInput, Port3, On);
+        await rig.StartAsync();
+        using var watching = new CancellationTokenSource();
+        var changed = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        var subscribed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watch = Task.Run(async () =>
+        {
+            var events = rig.Hub.WatchAsync(DeviceTriggersPluginInfo.PluginId, watching.Token).GetAsyncEnumerator(watching.Token);
+            var next = events.MoveNextAsync();
+            subscribed.SetResult();
+            try
+            {
+                while (await next)
+                {
+                    if (events.Current.Topic == DeviceTriggersMethods.ChangedTopic)
+                    {
+                        changed.Enqueue(events.Current.Topic);
+                    }
+
+                    next = events.MoveNextAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        });
+        await subscribed.Task;
+
+        // The page closes right after the change was stored.
+        using var caller = new CancellationTokenSource();
+        rig.Settings.AfterSet = caller.Cancel;
+        var reply = TriggerJson.Deserialize<SaveReply>(await rig.Plugin.InvokeAsync(DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(Fixture.VirtualInputTrigger("Gate open", [a.Id]))), caller.Token));
+        rig.Settings.AfterSet = null;
+
+        Assert.NotNull(reply.Trigger);
+        await Wait.UntilAsync(() => rig.Publisher.Lines.Any(l => l.StartsWith("replace trigger", StringComparison.Ordinal)), "the trigger connected");
+        await Wait.UntilAsync(() => !changed.IsEmpty, "the pages were told");
+        await watching.CancelAsync();
+        await watch;
+    }
+
+    [Fact]
     public async Task TheDeviceReportIsTheFirstFullStateWithTheEventValues()
     {
         await using var rig = new Rig();

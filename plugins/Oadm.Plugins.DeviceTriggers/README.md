@@ -68,7 +68,9 @@ one WebSocket event stream per device and publishes every trigger as two event t
   Server: `AllDevices` / `Tags` are resolved after every change and every 30 s (`DeviceTriggersOptions.ResolveInterval`,
   `TriggerDefinition.Implicit`), one resolve at a time so an older list never replaces a newer one (stop waits for a
   resolve in flight; a stopped runtime takes no new connections); `TriggerRuntime.NotOffered` leaves such a device out
-  without "connection lost".
+  without "connection lost". The resolve after a stored change runs with the plugin's own token and the `changed` event
+  goes out in any case, so a caller that cancels after the write (the page closed) never leaves a change unconnected or
+  unannounced. The page shows a notice below the table only without an error there.
 - Verified on an AXIS P3265-V (AXIS OS 12.11): 42 events, token login over HTTPS, the report after the filter,
   and virtual input 64 on and off (`DeviceTriggersHardwareTests`, `OADM_TRIGGER_URL` / `_USER` / `_PASSWORD`; the write
   test is `Category=HardwareWrite`).

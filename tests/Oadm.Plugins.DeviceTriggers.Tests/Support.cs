@@ -554,9 +554,13 @@ internal sealed class MemorySettings : IPluginSettings
 
     public Task<string?> GetAsync(string key, CancellationToken ct) => Task.FromResult(Values.GetValueOrDefault(key));
 
+    /// <summary>Runs after a value was stored (a test cancels its caller there).</summary>
+    public Action? AfterSet { get; set; }
+
     public Task SetAsync(string key, string? valueJson, CancellationToken ct)
     {
         Values[key] = valueJson;
+        AfterSet?.Invoke();
         return Task.CompletedTask;
     }
 }
