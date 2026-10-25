@@ -232,7 +232,7 @@ public sealed partial class AddDevicesGrpcService(
             }
 
             var caller = AuthInterceptor.CallerOf(context);
-            await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct).ConfigureAwait(false);
+            await MembershipAudit.AddedAsync(views, audit, caller.UserName, caller.ClientAddress, ids, string.Empty, ct, logger).ConfigureAwait(false);
         }
 
         if (!string.IsNullOrWhiteSpace(request.SessionId))

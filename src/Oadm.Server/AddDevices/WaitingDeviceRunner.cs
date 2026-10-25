@@ -642,7 +642,7 @@ public sealed partial class WaitingDeviceRunner(
         LogAdded(found.Serial, found.ConnectAddress, entry.Source);
         await audit.WriteAsync("system", string.Empty, AuditActions.DeviceAddedAutomatically, $"{found.ConnectAddress} ({found.Serial})",
             $"{entry.Source} (waiting list, kept by {entry.AddedBy}): {message}", ct).ConfigureAwait(false);
-        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], "waiting list, kept by " + entry.AddedBy, ct, logger).ConfigureAwait(false);
         return new WaitingOutcome(WaitingOutcomeKind.Added, message);
     }
 

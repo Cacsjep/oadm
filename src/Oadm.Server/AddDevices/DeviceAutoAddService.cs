@@ -149,7 +149,7 @@ public sealed partial class DeviceAutoAddService(
         };
         LogAdded(serial, text, source, result);
         await audit.WriteAsync(AuditActions.DeviceAddedAutomatically, $"{text} ({serial})", $"{source}: {message}", ct).ConfigureAwait(false);
-        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], source, ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], source, ct, logger).ConfigureAwait(false);
         return new DeviceAutoAddOutcome(result, device.Id, message);
     }
 
@@ -175,7 +175,7 @@ public sealed partial class DeviceAutoAddService(
             case DeviceAddressChangeResult.Updated:
                 await audit.WriteAsync(AuditActions.DeviceMoved, $"{normalized}",
                     $"{source}: {Devices.DeviceMoveText.Of(oldRoute, old, Core.Sites.DeviceRoute.Local, ip.ToString(), sites)}", ct).ConfigureAwait(false);
-                await MembershipAudit.MovedAsync(views, audit, device, ct).ConfigureAwait(false);
+                await MembershipAudit.MovedAsync(views, audit, device, ct, logger).ConfigureAwait(false);
                 return DeviceFollowResult.Moved;
             case DeviceAddressChangeResult.KeptHostName:
                 return DeviceFollowResult.KeptHostName;
