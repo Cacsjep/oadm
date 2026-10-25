@@ -13,8 +13,22 @@ public sealed class PkiStore(IPluginSettings settings)
 
     private readonly IPluginSettings _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-    public async Task<StoredCa?> LoadCaAsync(CancellationToken ct) =>
-        PkiJson.TryDeserialize<StoredCa>(await _settings.GetAsync(CaKey, ct).ConfigureAwait(false)) is { Id.Length: > 0 } ca ? ca : null;
+    public async Task<StoredCa?> LoadCaAsync(CancellationToken ct) => (await LoadCaStateAsync(ct).ConfigureAwait(false)).Ca;
+
+    /// <summary>
+    /// The stored OADM CA. <c>Unreadable</c>: a value is stored but cannot be read (damaged); the caller never overwrites it
+    /// (no new default CA over it), a backup restores it.
+    /// </summary>
+    public async Task<(StoredCa? Ca, bool Unreadable)> LoadCaStateAsync(CancellationToken ct)
+    {
+        var raw = await _settings.GetAsync(CaKey, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return (null, false);
+        }
+
+        return PkiJson.TryDeserialize<StoredCa>(raw) is { Id.Length: > 0 } ca ? (ca, false) : (null, true);
+    }
 
     public Task SaveCaAsync(StoredCa ca, CancellationToken ct) => _settings.SetAsync(CaKey, PkiJson.Serialize(ca), ct);
 

@@ -78,6 +78,7 @@ public sealed partial class PkiService : IAsyncDisposable
     private PreviousChainCache? _previousChains; // PreviousChains() of the list in _previous
     private volatile PkiConfig _config = new();
     private volatile bool _generating;
+    private volatile bool _caUnreadable; // the stored OADM CA is damaged: kept, never overwritten
     private volatile string? _generationError;
     private volatile string? _serverTrustError;
     private Task _background = Task.CompletedTask;
@@ -188,8 +189,14 @@ public sealed partial class PkiService : IAsyncDisposable
             return;
         }
 
-        var stored = await _store.LoadCaAsync(ct).ConfigureAwait(false);
-        if (stored is null)
+        var (stored, unreadable) = await _store.LoadCaStateAsync(ct).ConfigureAwait(false);
+        if (unreadable)
+        {
+            // Damaged: never overwritten by a new default CA (a backup restores it); the page says so.
+            _caUnreadable = true;
+            LogCaSettingUnreadable();
+        }
+        else if (stored is null)
         {
             _generating = true;
             _background = Task.Run(() => GenerateDefaultAsync(_stopping.Token), CancellationToken.None);
@@ -274,7 +281,7 @@ public sealed partial class PkiService : IAsyncDisposable
 
         return new PkiState
         {
-            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
+            Status = _caUnreadable && ca is null ? CaUnreadableStatus : StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
             Ca = ca?.Describe(stored?.Source ?? CaSource.Generated),
             KeyUnreadable = ca is { HasKey: false },
             IsGenerating = _generating,
@@ -291,6 +298,12 @@ public sealed partial class PkiService : IAsyncDisposable
             Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
         };
     }
+
+    /// <summary>The refusal while the stored OADM CA cannot be read (nothing is written over it).</summary>
+    public const string CaUnreadableText = "The OADM CA cannot be read. Restore a backup.";
+
+    /// <summary>The header status while the stored OADM CA cannot be read.</summary>
+    public static readonly ServiceStatus CaUnreadableStatus = new(ServiceStatus.Error, "OADM CA cannot be read", "Restore a backup.");
 
     /// <summary>The header status: valid until / expires in N days / expired / key unreadable.</summary>
     public static ServiceStatus StatusOf(bool unavailable, bool generating, string? generationError, CaMaterial? ca, DateTime nowUtc, int warningDays)
@@ -358,6 +371,11 @@ public sealed partial class PkiService : IAsyncDisposable
         if (_generating)
         {
             return await ErrorAsync("A certificate authority is being created. Try again in a moment.", ct).ConfigureAwait(false);
+        }
+
+        if (_caUnreadable)
+        {
+            return await ErrorAsync(CaUnreadableText, ct).ConfigureAwait(false);
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -695,6 +713,11 @@ public sealed partial class PkiService : IAsyncDisposable
     /// <summary>The new CA becomes active; the current one moves to the previous CAs (public part). Call inside the gate.</summary>
     private async Task ReplaceAsync(CaMaterial material, string source, CancellationToken ct)
     {
+        if (_caUnreadable)
+        {
+            throw new InvalidOperationException(CaUnreadableText); // never written over a damaged stored CA
+        }
+
         var now = Now.UtcDateTime;
         var previous = _previous.ToList();
         if (_stored is { } current && !string.Equals(current.Id, material.Id, StringComparison.OrdinalIgnoreCase))
@@ -1021,6 +1044,9 @@ public sealed partial class PkiService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the stored CA {Id} cannot be decrypted (other master key); generate or import a CA")]
     private partial void LogKeyUnreadable(string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored OADM CA cannot be read; it is kept and no new CA is made over it. Restore a backup.")]
+    private partial void LogCaSettingUnreadable();
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored CA {Id} cannot be read")]
     private partial void LogStoredCaUnreadable(string id);
