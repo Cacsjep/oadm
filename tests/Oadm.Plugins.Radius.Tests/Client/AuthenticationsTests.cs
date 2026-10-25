@@ -59,6 +59,29 @@ public sealed class AuthenticationsTests
     }
 
     [Fact]
+    public async Task A_batch_of_the_live_events_applies_in_place_and_keeps_the_choice()
+    {
+        using var vm = await LoadedAsync();
+        var table = vm.Authentications;
+        var open = vm.Sessions.Rows.First(r => !r.IsEnded);
+        table.Selected = vm.Log.Rows[0];
+        var events = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        table.Rows.CollectionChanged += (_, e) => events.Add(e.Action);
+
+        // An update of a session in progress (every 500 ms): the row changes itself, the table is not touched.
+        vm.Sessions.Apply([open.Source with { StateText = "Receiving client certificate: fragment 2 of 3", DurationMs = open.Source.DurationMs + 500 }]);
+        Assert.Empty(events);
+        Assert.Equal("Receiving client certificate: fragment 2 of 3", open.Status);
+
+        // A new session: inserted on top in one Add, never a reset of the grid.
+        var started = open.Source with { Id = Guid.NewGuid(), StartedUtc = open.Source.StartedUtc.AddSeconds(5), Mac = "AC:CC:8E:00:00:99" };
+        vm.Sessions.Apply([started]);
+        Assert.Equal([System.Collections.Specialized.NotifyCollectionChangedAction.Add], events);
+        Assert.Equal(started.Id, Assert.IsType<SessionRowViewModel>(table.Rows[0]).Id);
+        Assert.Same(vm.Log.Rows[0], table.Selected); // the choice stays
+    }
+
+    [Fact]
     public async Task The_log_search_filters_the_sessions_in_progress_too()
     {
         using var vm = await LoadedAsync();

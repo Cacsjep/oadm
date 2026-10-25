@@ -51,7 +51,9 @@ public interface IAuthenticationRow
 /// The one Sessions table of the 802.1X page (docs/spec/radius-server.md "What the user sees", decision 2026-10-25): the
 /// authentications in progress on top (<see cref="SessionsViewModel"/>; ended ones leave, the log holds them), then the
 /// log's page (<see cref="LogViewModel"/>, newest first). The log's search applies to both; the choice of a log row is the
-/// log's (View certificate). Every change of either list is one reset of <see cref="Rows"/>.
+/// log's (View certificate). A read of either list or a new search builds <see cref="Rows"/> again (one reset); a batch of
+/// the live events applies in place (updated rows change themselves, new ones are inserted, ended ones leave), so the
+/// table keeps its scroll and choice every 500 ms.
 /// </summary>
 public sealed partial class AuthenticationsViewModel : ObservableObject
 {
@@ -67,8 +69,9 @@ public sealed partial class AuthenticationsViewModel : ObservableObject
     {
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _log = log ?? throw new ArgumentNullException(nameof(log));
-        // The sessions' changes end with CountText (a batch, a read, ended rows leaving): one rebuild each, not one per step.
-        log.Rows.CollectionChanged += (_, _) => Rebuild();
+        log.Rows.CollectionChanged += (_, _) => Rebuild(); // a page of the log was read
+        sessions.Reloaded += (_, _) => Rebuild();
+        sessions.BatchApplied += OnSessionBatch;
         sessions.PropertyChanged += OnPartChanged;
         log.PropertyChanged += OnPartChanged;
     }
@@ -111,15 +114,48 @@ public sealed partial class AuthenticationsViewModel : ObservableObject
                 Selected = _log.Selected;
             }
         }
-        else if (e.PropertyName is nameof(SessionsViewModel.CountText) or nameof(LogViewModel.Search))
+        else if (e.PropertyName is nameof(LogViewModel.Search))
         {
-            Rebuild(); // a session ended (the log holds it), or the search changed for the rows in progress
+            Rebuild(); // the search applies to the rows in progress too
         }
 
         if (e.PropertyName is { } name && Forwarded.Contains(name))
         {
             OnPropertyChanged(name);
         }
+    }
+
+    /// <summary>
+    /// One batch of the sessions, in place: ended and removed sessions leave the rows in progress (the log holds them), new
+    /// ones that match the search come on top; rows updated in place need nothing. One step each (a single row: one event).
+    /// </summary>
+    private void OnSessionBatch(object? sender, IReadOnlyList<SessionRowViewModel>? added)
+    {
+        var search = _log.Search?.Trim() ?? string.Empty;
+        var selected = Selected;
+        _rebuilding = true;
+        try
+        {
+            Rows.RemoveAll(r => r is SessionRowViewModel s && (s.IsEnded || !_sessions.Holds(s))); // no event when none left
+
+            if (added?.Where(r => !r.IsEnded && r.Matches(search)).ToList() is { Count: > 0 } shown)
+            {
+                Rows.InsertRange(0, shown);
+            }
+
+            _open = _sessions.OpenCount;
+            if (selected is SessionRowViewModel row && (row.IsEnded || !_sessions.Holds(row)))
+            {
+                Selected = null; // its row left
+            }
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+
+        OnPropertyChanged(nameof(EmptyText));
+        OnPropertyChanged(nameof(CountText));
     }
 
     /// <summary>The rows again: one reset, the choice kept while its row is still there.</summary>

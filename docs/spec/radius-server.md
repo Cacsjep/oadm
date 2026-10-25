@@ -630,7 +630,9 @@ data, also for the screenshots; the four, two and one column layout and the rows
   over the whole width. The Sessions card holds one table
   (`AuthenticationsViewModel`, rows `IAuthenticationRow`) with the authentications in progress on top (ended ones leave
   it, the log holds them) and the log's page below them, newest first; the log's search applies to both, View
-  certificate and Delete all are the log's, the pages (Previous, Next) page the log; one reset per change of either list. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
+  certificate and Delete all are the log's, the pages (Previous, Next) page the log; a read of either list or a new search builds the table again (one reset), a
+  batch of the live events applies in place (updated rows change themselves, a new one is inserted on top, an ended one
+  leaves), so scroll and choice stay every 500 ms (fix of 2026-10-25). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
 - **Server**: Listen on, Port, Log entries kept; the Save row: the link "6 policies applied" left (`RadiusState.PoliciesApply`,
