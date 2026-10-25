@@ -1,13 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Client.Controls"
              xmlns:vm="using:Oadm.Client.Support"
              x:Class="Oadm.Client.Support.SupportCardView"
              x:DataType="vm:SupportViewModel">
   <!-- Settings page, administrators: the support report for a support request. -->
-  <Border Classes="card">
+  <c:CollapsibleCard Title="Support">
     <StackPanel Classes="form">
-      <TextBlock Classes="sectionTitle" Text="Support" />
       <TextBlock Classes="secondary" Text="Logs and server details for a support request. No passwords are included." TextWrapping="Wrap" />
       <ui:FormField Classes="wide">
         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -21,5 +21,5 @@
       </ui:FormField>
       <ui:ProgressRow Value="{Binding Progress}" Text="{Binding Status}" IsVisible="{Binding IsBusy}" />
     </StackPanel>
-  </Border>
+  </c:CollapsibleCard>
 </UserControl>

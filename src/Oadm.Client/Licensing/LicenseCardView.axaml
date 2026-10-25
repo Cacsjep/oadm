@@ -1,13 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:c="using:Oadm.Client.Controls"
              xmlns:vm="using:Oadm.Client.Licensing"
              x:Class="Oadm.Client.Licensing.LicenseCardView"
              x:DataType="vm:LicenseViewModel">
   <!-- Settings page, every user: the OADM PRO license of the server. Administrators import and remove it. -->
-  <Border Classes="card">
+  <c:CollapsibleCard Title="License">
     <StackPanel Classes="form">
-      <TextBlock Classes="sectionTitle" Text="License" />
       <ui:FormField Label="Server ID" IsVisible="{Binding HasServerId}">
         <StackPanel Orientation="Horizontal" Spacing="4">
           <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
@@ -41,5 +41,5 @@
         </StackPanel>
       </ui:FormField>
     </StackPanel>
-  </Border>
+  </c:CollapsibleCard>
 </UserControl>

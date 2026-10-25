@@ -34,9 +34,9 @@ subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Sett
 terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
 sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
 `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). The Settings page
-starts with the card **This computer** (every user, saved at once in the client settings file): "Decode video on the
+starts with the card **Client** (every user, saved at once in the client settings file): "Decode video on the
 graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
-(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): This computer and the server settings left,
+(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): Client and the server settings left,
 the card **Backup and restore** right (administrators, see "Backup and restore") with the card **License** below it (every
 user, `docs/spec/licensing.md`) and the card **Support** below that (administrators, see "Support report"); narrower than 1100 px the right column
 moves below the server settings. The server

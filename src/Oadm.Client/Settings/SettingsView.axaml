@@ -25,9 +25,8 @@
         </Grid.ColumnDefinitions>
       <StackPanel Spacing="16">
         <!-- This computer: saved at once, for every user (client-settings.json) -->
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Client">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="This computer" />
             <ui:FormField Classes="wide" Label="Live view" Hint="{Binding GpuDecodingHint}">
               <CheckBox IsChecked="{Binding GpuDecoding}" Content="Decode video on the graphics card" />
             </ui:FormField>
@@ -41,13 +40,12 @@
               <ComboBox ItemsSource="{Binding Appearances}" SelectedItem="{Binding Appearance}" />
             </ui:FormField>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
         <!-- Server settings in five cards; administrators edit them (saved together, Save below the last card), operators read
              them as plain text. -->
         <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Only administrators can change server settings." IsVisible="{Binding IsOperator}" />
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Polling">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="Polling" />
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
               <ui:FormField Label="Status polling interval (s)">
                 <NumericUpDown Minimum="5" Maximum="86400" Increment="5" FormatString="0" Value="{Binding PollingIntervalSeconds}" />
@@ -66,11 +64,10 @@
               </ui:FormField>
             </StackPanel>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
 
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Discovery">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="Discovery" />
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
               <ui:FormField Label="Addresses scanned at once">
                 <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
@@ -101,11 +98,10 @@
               </ui:FormField>
             </StackPanel>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
 
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Tasks">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="Tasks" />
             <ui:FormField Label="Parallel tasks per plugin" IsVisible="{Binding IsAdmin}"
                           Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
               <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
@@ -114,11 +110,10 @@
               <TextBlock Text="{Binding MaxParallelTasksPerPlugin}" />
             </ui:FormField>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
 
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Security">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="Security" />
             <ui:FormField Classes="wide" Label="Device login" IsVisible="{Binding IsAdmin}"
                           Hint="Sends passwords unencrypted. Only for devices without HTTPS.">
               <CheckBox IsChecked="{Binding AllowBasicOverHttp}" Content="Allow Basic login over HTTP" />
@@ -127,11 +122,10 @@
               <TextBlock Text="{Binding AllowBasicOverHttpText}" />
             </ui:FormField>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
 
-        <Border Classes="card">
+        <c:CollapsibleCard Title="Server">
           <StackPanel Classes="form">
-            <TextBlock Classes="sectionTitle" Text="Server" />
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
               <ui:FormField Label="Server name">
                 <TextBox Text="{Binding ServerName}" />
@@ -149,7 +143,7 @@
               </ui:FormField>
             </StackPanel>
           </StackPanel>
-        </Border>
+        </c:CollapsibleCard>
 
         <!-- Saves the five server cards together, so it sits below them, outside every card -->
         <StackPanel Spacing="8">

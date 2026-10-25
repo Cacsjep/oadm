@@ -11,12 +11,8 @@
     <c:PageTitleBar Grid.Row="0" Title="Sites" Subtitle="Networks OADM reaches through an OADM Site Node." Margin="0,0,0,16" />
 
     <!-- Accept site nodes is off and nothing to list: what sites are and Accept site nodes (like Compliance while off). -->
-    <Border Grid.Row="1" Classes="card" IsVisible="{Binding ShowOffState}">
-      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="460">
-        <ui:OadmIcon Data="{StaticResource Icon.server}" Width="32" Height="32" HorizontalAlignment="Center" />
-        <TextBlock Classes="cardTitle" HorizontalAlignment="Center" Text="Site nodes are off" />
-        <TextBlock Classes="secondary" TextWrapping="Wrap" TextAlignment="Center"
-                   Text="Manage devices in networks this server cannot reach. An OADM Site Node in that network connects to this server." />
+    <ui:OffState Grid.Row="1" IsVisible="{Binding ShowOffState}" Icon="{StaticResource Icon.server}" Title="Site nodes are off"
+                 Text="Manage devices in networks this server cannot reach. An OADM Site Node in that network connects to this server.">
         <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding AcceptCommand}" IsVisible="{Binding MayChange}"
                 IsEnabled="{Binding !IsChangingAccept}">
           <ui:IconLabel Icon="{StaticResource Icon.server}" Text="Accept site nodes" />
@@ -24,8 +20,7 @@
         <TextBlock Classes="secondary" HorizontalAlignment="Center" IsVisible="{Binding !MayChange}"
                    Text="An administrator can turn them on." />
         <TextBlock Classes="error" HorizontalAlignment="Center" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
-      </StackPanel>
-    </Border>
+    </ui:OffState>
 
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding ShowList}">
       <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">

@@ -46,7 +46,7 @@ src/
                        IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon,
+                       GroupedChoice, DeviceTree, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
                        WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
@@ -346,7 +346,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file"). Actions inside a card are filled buttons (`Button.secondary` with `ui:IconLabel`, primary for the main
   one); the flat `ui:ToolbarButton` is only for toolbars, also the header row of a card that holds a table (PKI's
-  Policies and certificate cards, like the device toolbar: the main one `IsPrimary`; decision 2026-10-25).
+  Policies and certificate cards, like the device toolbar: the main one `IsPrimary`; decision 2026-10-25; the Certificates
+  card's buttons all flat, Create included, decision 2026-10-25).
 - One accent button per view (exception, the purple device choice button: "Selected devices" of the event rule and
   trigger dialogs and of VAPIX Commander's target devices, "Selected cameras" of Edge Recording Export): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.

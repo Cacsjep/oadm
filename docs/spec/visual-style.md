@@ -59,6 +59,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   header (core plugin pages, Users, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
   (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
+- The Settings page's cards fold (decision 2026-10-25): `Controls/CollapsibleCard` (the card title with the chevron of a
+  group as its header, the whole row toggles it; closed by default). Every card of the page: Client, Polling,
+  Discovery, Tasks, Security, Server, Backup and restore, License, Support.
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page) (menus compact: entries padded 10,6, at least 160 px wide, separators 3 px apart; decision 2026-10-25), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
@@ -114,7 +117,7 @@ toolbar buttons: what does not fit goes behind its own More button; the search b
 dialogs `DialogTitleBar`, `CardHeader`, `DialogFooter`, `StatusChip` (status chip),
 `FileRow` (every file chooser, decision 2026-10-25: one wide button that shows "Choose file" until a file is chosen,
 then its name, the details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the older
-row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable),
+row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable), `OffState` (a page or tab whose feature is off: a card with a large icon, "Site nodes are off", what it does and the Turn on button, all centered; Sites, Compliance, PKI's 802.1X and EST servers),
 `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
 inline "I understand" risk sections; line breaks start a new line, text between `**` is bold; `ConfirmWithChoiceAsync`: one
 select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
