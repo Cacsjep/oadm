@@ -175,7 +175,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   directly below the device list. **Roles
   card** (`RolesCardView`, `RolesViewModel`): the permission matrix, rows = permissions in groups (Devices, Tasks, Event
   rules, then one group per plugin in rail order; collapsible, a three-state check box per role for the whole group),
-  columns = roles (built in code-behind; header with only the name (description as tooltip) and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),
+  columns = roles (built in code-behind; header with only the name (description as tooltip) and the shared row menu `ui:RowActions` Edit, Copy, Reset to default, Delete (red, last); the Administrator role Edit and Copy),
   the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
   the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
   plugin that is off. Toolbar New role (a flat `ui:ToolbarButton`), Save, Discard, search; changes are collected and saved together after one

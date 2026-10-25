@@ -564,6 +564,38 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         UpdateDirty();
     }
 
+    /// <summary>
+    /// The entries of a role's ⋯ menu (shown by <see cref="Oadm.Sdk.Client.Controls.RowActions"/>): Edit, Copy, Reset to
+    /// default for a built-in role, then Delete in red after a separator for a custom one; the Administrator role only Edit
+    /// and Copy.
+    /// </summary>
+    public IReadOnlyList<Oadm.Sdk.Client.Controls.IssuedCertificateAction> MenuOf(RoleColumnViewModel role)
+    {
+        ArgumentNullException.ThrowIfNull(role);
+        List<Oadm.Sdk.Client.Controls.IssuedCertificateAction> actions =
+        [
+            new("Edit", EditRoleCommand, role),
+            new("Copy", CopyRoleCommand, role),
+        ];
+        if (role.IsAdministrator)
+        {
+            return actions;
+        }
+
+        if (role.CanReset)
+        {
+            actions.Add(new("Reset to default", ResetRoleCommand, role));
+        }
+
+        if (role.CanDelete)
+        {
+            actions.Add(Oadm.Sdk.Client.Controls.IssuedCertificateAction.Separator);
+            actions.Add(new("Delete", DeleteRoleCommand, role, IsDanger: true));
+        }
+
+        return actions;
+    }
+
     /// <summary>A custom role: an unsaved one leaves at once, a saved one is deleted on the server after a confirmation.</summary>
     [RelayCommand]
     private async Task DeleteRoleAsync(RoleColumnViewModel? role)
