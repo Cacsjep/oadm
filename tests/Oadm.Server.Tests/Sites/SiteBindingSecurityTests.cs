@@ -115,7 +115,7 @@ public sealed class SiteBindingSecurityTests
         await using var server = await SiteServer.StartAsync(configure: s =>
         {
             s.RemoveAll<SiteOptions>();
-            s.AddSingleton(new SiteOptions { ListenUrl = "127.0.0.1:0", ConnectionsPerMinute = 2 });
+            s.AddSingleton(new SiteOptions { ListenUrl = "127.0.0.1:0", ConnectionsPerMinute = 2, CallTimeout = TimeSpan.FromSeconds(30) });
         });
         var port = server.Manager.ListenPort;
         using var first = new System.Net.Sockets.TcpClient();

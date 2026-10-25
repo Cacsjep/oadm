@@ -620,7 +620,7 @@ public sealed class SiteServerTests
         other.Start();
         var port = ((IPEndPoint)other.LocalEndpoint).Port;
         await using var server = await SiteServer.StartAsync(accept: false,
-            options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30) });
+            options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
 
         var refused = await Assert.ThrowsAsync<RpcException>(async () => await server.Client.SetAcceptAsync(new Proto.SetAcceptRequest { Accept = true }));
 
@@ -643,7 +643,7 @@ public sealed class SiteServerTests
                 port = ((IPEndPoint)probe.LocalEndpoint).Port;
             }
 
-            var options = new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30) };
+            var options = new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) };
             await using (var first = await SiteServer.StartAsync(dataDirectory: folder, options: options))
             {
                 first.Host.KeepDataDirectory = true; // Accept site nodes is stored on
@@ -653,7 +653,7 @@ public sealed class SiteServerTests
             other.Start();
             var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
             await using var restarted = await SiteServer.StartAsync(accept: false, dataDirectory: folder, time: time,
-                options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, Time = time, WorkerWait = TimeSpan.FromSeconds(30) });
+                options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, Time = time, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
 
             // The server runs; site nodes cannot connect until the port is free.
             Assert.Equal(0, restarted.Manager.ListenPort);

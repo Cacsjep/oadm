@@ -70,6 +70,7 @@ public sealed class SiteListenerLimitTests
         {
             ListenUrl = "127.0.0.1:0",
             WorkerWait = TimeSpan.FromSeconds(30),
+            CallTimeout = TimeSpan.FromSeconds(30),
             MaxPendingLinks = 1,
             HelloTimeout = TimeSpan.FromMinutes(5), // the stranger holds its place for the whole test
         });
@@ -115,6 +116,7 @@ public sealed class SiteListenerLimitTests
         {
             ListenUrl = "127.0.0.1:0",
             WorkerWait = TimeSpan.FromSeconds(30),
+            CallTimeout = TimeSpan.FromSeconds(30),
             MaxWaiting = 2,
         });
         await using var first = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address, hostName: "site-pc-1");
@@ -158,7 +160,7 @@ public sealed class SiteListenerLimitTests
         var firewall = new RecordingFirewall();
         // A fixed port: nothing listens there while site nodes are off, the rule is still known by its name.
         await using var server = await SiteServer.StartAsync(accept: false, configure: s => s.AddSingleton<IFirewallRules>(firewall),
-            options: new SiteOptions { ListenUrl = "127.0.0.1:5081", WorkerWait = TimeSpan.FromSeconds(30) });
+            options: new SiteOptions { ListenUrl = "127.0.0.1:5081", WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
 
         Assert.Equal(["close OADM Server (Site nodes, TCP 5081)"], firewall.CallList);
         Assert.False(server.Manager.Accept);

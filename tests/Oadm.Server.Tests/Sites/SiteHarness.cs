@@ -48,7 +48,7 @@ internal sealed class SiteServer : IAsyncDisposable
         var host = await TestServerHost.StartAsync(dataDirectory: dataDirectory, configureServices: s =>
         {
             s.RemoveAll<SiteOptions>();
-            s.AddSingleton(options ?? new SiteOptions { ListenUrl = "127.0.0.1:0", Time = clock ?? time, WorkerWait = TimeSpan.FromSeconds(30) });
+            s.AddSingleton(options ?? new SiteOptions { ListenUrl = "127.0.0.1:0", Time = clock ?? time, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
             configure?.Invoke(s);
         });
         if (accept)
