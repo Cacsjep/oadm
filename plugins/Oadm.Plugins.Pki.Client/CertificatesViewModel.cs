@@ -23,9 +23,10 @@ public sealed partial class CertificateRow : ObservableObject
         _checkedChanged = checkedChanged;
         Group = GroupName(certificate.Kind);
         ValidTo = certificate.NotAfterUtc == default ? string.Empty : certificate.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        InUse = string.Join(", ", certificate.InUse);
+        InUse = certificate.UseUnknown ? InstalledCertificate.UnknownUseText : string.Join(", ", certificate.InUse);
         Source = certificate.FromOadm ? "OADM" : "Other";
         BlockedReason = certificate.Factory ? "Axis factory certificate (device ID): it cannot be deleted."
+            : certificate.UseUnknown ? "What uses it cannot be read: it cannot be deleted."
             : certificate.InUse.Count > 0 ? $"In use by {string.Join(" and ", certificate.InUse)}: it cannot be deleted."
             : null;
         SearchText = string.Join('\n', device.Serial, device.Address, certificate.Alias, certificate.IssuedBy, certificate.IssuedTo, InUse, Source).ToUpperInvariant();

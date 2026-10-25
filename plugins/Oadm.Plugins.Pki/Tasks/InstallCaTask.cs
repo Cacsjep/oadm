@@ -114,7 +114,7 @@ public sealed class InstallCaTask(Func<PkiService?> service) : PkiTaskBase(servi
 
             await ctx.StepAsync(installSteps[i], async step =>
             {
-                var alias = FreeAlias(CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, certificate.Fingerprint), aliases);
+                var alias = CertificateDeployment.FreeAlias(CertificateDeployment.CaAlias(CertificateDeployment.CaAliasPrefix, certificate.Fingerprint), aliases);
                 await DeviceCertificates.AddCaAsync(ctx.Vapix, api, alias, certificate.Pem, ct).ConfigureAwait(false);
                 aliases.Add(alias);
                 byFingerprint[certificate.Fingerprint] = alias;
@@ -194,17 +194,5 @@ public sealed class InstallCaTask(Func<PkiService?> service) : PkiTaskBase(servi
         }
 
         return (wanted, null);
-    }
-
-    /// <summary>The alias, or "&lt;alias&gt;-2", "-3" ... when another certificate already uses it.</summary>
-    private static string FreeAlias(string alias, HashSet<string> used)
-    {
-        var candidate = alias;
-        for (var n = 2; used.Contains(candidate); n++)
-        {
-            candidate = string.Create(CultureInfo.InvariantCulture, $"{alias}-{n}");
-        }
-
-        return candidate;
     }
 }

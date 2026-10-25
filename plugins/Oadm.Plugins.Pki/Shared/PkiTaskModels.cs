@@ -116,8 +116,17 @@ public sealed record InstalledCertificate
 
     public DateTime NotAfterUtc { get; init; }
 
-    /// <summary>"HTTPS", "802.1X" (the services using it), empty when unused.</summary>
+    /// <summary>"HTTPS", "802.1X" (the services using it), empty when unused or when <see cref="UseUnknown"/>.</summary>
     public IReadOnlyList<string> InUse { get; init; } = [];
+
+    /// <summary>
+    /// The web server or 802.1X settings could not be read: what uses it is unknown, so it cannot be deleted (device safety:
+    /// it could be the certificate that keeps the camera on the network).
+    /// </summary>
+    public bool UseUnknown { get; init; }
+
+    /// <summary>The In use text of a certificate whose use cannot be read.</summary>
+    public const string UnknownUseText = "Unknown";
 
     /// <summary>OADM issued it (registry or alias).</summary>
     public bool FromOadm { get; init; }

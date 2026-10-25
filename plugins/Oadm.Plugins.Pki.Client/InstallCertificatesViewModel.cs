@@ -271,6 +271,12 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
                 continue;
             }
 
+            if (caOnly && CertificateFiles.NotCaProblem(contents) is { } notCa)
+            {
+                SetRow(row, "Cannot be used", error: true, notCa);
+                continue;
+            }
+
             if (caOnly)
             {
                 row.DeviceText = "All selected devices";

@@ -81,6 +81,32 @@ public static class CertificateFiles
         }
     }
 
+    /// <summary>
+    /// "CA certificates only": every certificate of the file goes into the device's CA store, so each must be a CA
+    /// certificate. The refusal for the first one that is not ("cam48 is not a CA certificate. ..."), or null.
+    /// </summary>
+    public static string? NotCaProblem(Pkcs12Contents contents)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+        foreach (var pem in contents.CertificatePems)
+        {
+            try
+            {
+                using var certificate = X509Certificate2.CreateFromPem(pem);
+                if (!CaCertificates.IsCa(certificate, out _))
+                {
+                    return $"{CaCertificates.CommonName(certificate)} is not a CA certificate. Choose a file with CA certificates only.";
+                }
+            }
+            catch (CryptographicException)
+            {
+                return "The file contains a certificate that cannot be read.";
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Common name and subject alternative names (DNS and IP) of a certificate.</summary>
     public static IReadOnlyList<string> NamesOf(X509Certificate2 certificate)
     {

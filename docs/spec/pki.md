@@ -117,6 +117,13 @@ Decisions 2026-10-24 (stage 7): one rail entry **PKI** (group Security) with fix
   like the OADM CA's (master key, never logged, never exported on its own, in the server backup). A CA a policy names
   (issuing, 802.1X trusted CA, EST sign-in CA) cannot be removed. Details: "Several CAs and the policy cleanup".
 - A CA that leaves the list (expired previous CA) drops out of every policy at once (fail closed).
+- **Used by** of a CA has one group per use: "802.1X: ..." (802.1X trusted CA), "Issuing: ..." (issuing policies),
+  "RADIUS server CA: IEEE 802.1X" (the IEEE 802.1X certificate policies whose cameras check the RADIUS server with it; fix of
+  2026-10-25), then the services.
+- **A stored OADM CA that cannot be read** (the setting `ca` exists but is damaged; fix of 2026-10-25,
+  `PkiStore.LoadCaStateAsync`): one error in the log, the value is never overwritten (no default CA over it, New OADM CA
+  refused with "The OADM CA cannot be read. Restore a backup."), the page status says "OADM CA cannot be read" (detail
+  "Restore a backup."). A backup restores it.
 
 ## Policies
 
@@ -331,13 +338,21 @@ The Certificates list shows what is in use now, not the history. Code: `Ca/Issue
     802.1X server off or another RADIUS server it stays pending; the previous one stays valid.
   - Any other caller of the CA service (`SignAsync` with a device, a source other than EST): current at once.
 - **Unused** (revoked with the reason Other, user "OADM", and removed from the store): an install that failed before the
-  certificate was in use (HTTPS: any failure up to Verify HTTPS), an EST answer that could not be written, an EST
+  certificate was in use (HTTPS: any failure before the switch request was sent, or after it when a read of the web server
+  settings shows another certificate), an EST answer that could not be written, an EST
   certificate still pending after `IssuedRegistry.PendingTimeout` (1 hour) without its answer (the server stopped in
   between). A newer pending one of the same camera and use replaces an older one (Superseded).
 - **Device safety (IEEE 802.1X tasks):** once "Set 802.1X configuration" ran, the new certificate is `Delivered` and never
   revoked as unused, unless the read-back names another client certificate. A newer pending one does not revoke it either
   (it stays in the store, not current). While the read-back does not confirm the new certificate the task deletes no
   previous OADM certificate from the camera (Remove previous OADM certificate: Skipped).
+- **Device safety (HTTPS tasks, fix of 2026-10-25):** once the switch request of "Switch web server to the new certificate"
+  was sent, the new certificate is `Delivered` (the web server may present it after a slow restart, or the device applied
+  it and the answer got lost). A failure from there on (the switch answer, Verify HTTPS) reads the web server settings
+  (`CertificateDeployment.HttpsNotVerifiedAsync`): another certificate named there revokes it as unused; the new one named
+  there or a read that fails keeps it pending, the previous one stays current and valid ("stays pending" in the log).
+- **Remove previous OADM certificate** after a confirmed switch: a delete the device refuses is a Warning log line and a
+  step warning (Done with warnings, "delete it with Delete certificates"), never a failed task; the others are still removed.
 - **Revoke** (the page, Revoke all of this device, the Revoke policies, the 802.1X server's policy revokes): the
   certificate goes on the revocation list and leaves the store; its camera has no row until it gets a new certificate. The
   revoke dialog and its reasons are unchanged; Delete stays for what ended or was revoked before 4.5, and for created,
@@ -966,6 +981,24 @@ made fresh in Check compatibility before the first write; the menus use the cach
   changed." (`HttpsDisableTask.BasicOnlyRefusal`).
 - Tests: `WebServerRestartTests` (the fake camera refuses requests after a web server change, `FakeCamera.RestartRefusals`;
   the clock moves only while the task waits, `TaskHarness.RunWaitingAsync`), `HttpsTaskTests` (Basic both ways).
+
+## Delete and install safety (fixes of 2026-10-25)
+
+- **Delete certificates** deletes nothing while what uses the certificates is unknown: a failed read of the web server
+  settings or of the 802.1X settings (REST and SOAP) fails "Read certificates" with "What uses the certificates cannot be
+  read (...). Nothing was changed." (a hidden 802.1X client certificate or RADIUS server CA would take the camera off the
+  network). The dialog's query then marks every certificate `UseUnknown`: In use "Unknown", not selectable ("What uses it
+  cannot be read: it cannot be deleted."). A device without 802.1X (a read that says so) is not unknown.
+- **SOAP answers**: an HTTP error is never a success; a body with a SOAP fault throws with the device's reason, any other
+  non-2xx answer with the HTTP status (`DeviceSoap.SendAsync`).
+- **CA certificate aliases**: every install of CA certificates (Install CA certificates, the CA steps of Enable, Renew and
+  Install certificates) takes a free alias when another CA certificate holds "OADM CA &lt;8 hex&gt;" already
+  ("&lt;alias&gt;-2", `CertificateDeployment.FreeAlias`).
+- **Install certificates, CA certificates only**: a file with a certificate that is not a CA certificate is refused, in
+  the dialog's row ("Cannot be used") and again in "Read certificate file" ("&lt;file&gt;: &lt;name&gt; is not a CA
+  certificate. Choose a file with CA certificates only. Nothing was changed.", `CertificateFiles.NotCaProblem`).
+- Tests: `TaskSafetyFixesTests` (REST and `FakeCamera.Legacy`), `DeviceSoapErrorTests`, `StoredCaUnreadableTests`,
+  `AuthorityTests` (Used by).
 
 ## Not planned
 
