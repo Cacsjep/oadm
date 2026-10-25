@@ -4,8 +4,9 @@ Thanks for helping. Bug reports, fixes, plugins, docs and tests of any size are 
 
 ## Before you start
 
-- **The spec is [`CLAUDE.md`](CLAUDE.md).** It describes every feature and the rules for the code (UI, wording, scale,
-  device safety, security). Read the parts you touch. A change of behavior updates `CLAUDE.md` in the same pull request.
+- **The spec is [`CLAUDE.md`](CLAUDE.md) and [`docs/spec/`](docs/spec/).** `CLAUDE.md` has the rules for the code (UI,
+  wording, scale, device safety, security) and one paragraph per feature; `docs/spec/` has one file per feature. Read the
+  parts you touch. A change of behavior updates the spec in the same pull request.
 - For a bigger change, open an issue first and describe it as a user story, so we agree on the behavior before you
   write code.
 - Plugins (tasks, pages, toolbar buttons) are the easiest way to add features: see [`plugins/README.md`](plugins/README.md).

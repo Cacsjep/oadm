@@ -40,6 +40,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:OffState` | A page or tab whose feature is off: icon, title, one or two sentences, and the button that turns it on, centered |
 | `ui:RowActions` | The ⋯ menu of a table row: everyday entries, a separator, the red ones last |
 | `ui:IssuedCertificateList` | A paged list of certificates with groups, filters, search and row menus (the PKI page) |
+| `CertificateWindow` | The details of one certificate: validity, issued to and by, fingerprint, uses (`ShowAsync`) |
 | `ui:PageHeader` | `Subtitle` and `IsHidden` of the host page header, set on your page view |
 | `MessageWindow` | Every message and confirmation: `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` |
 | `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 30,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |

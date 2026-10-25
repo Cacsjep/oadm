@@ -91,4 +91,5 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
 Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
 rules and edge cases are in
 [plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md) and the spec,
-[CLAUDE.md](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md).
+[CLAUDE.md](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md) and
+[docs/spec/](https://github.com/Cacsjep/oadm/tree/main/docs/spec).

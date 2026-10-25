@@ -120,7 +120,7 @@ Never cache the selection: read it when you need it. To let the user pick device
 |---|---|
 | `GetBasicDeviceInfoAsync` | `basicdeviceinfo.cgi`: serial, product number, AXIS OS, product type, SoC |
 | `ListParametersAsync(groups)` | `param.cgi?action=list`; keys without the `root.` prefix |
-| `GetApiListAsync` | A fresh API list (`apidiscovery.cgi`); on AXIS OS 8.40 built from parameters |
+| `GetApiListAsync` | A fresh API list (`apidiscovery.cgi`); before AXIS OS 8.50 built from parameters |
 | `GetVideoSourcesAsync` | The video channels with their resolutions, as the live view offers them |
 | `RestartAsync` | `restart.cgi` |
 | `SendAsync(request)` | Any request, relative to the device |

@@ -3,15 +3,17 @@
 How to build a task plugin (server part, optional client dialog), a toolbar plugin, a core plugin with its own
 rail page and an event rule action. Contracts: `src/Oadm.Sdk` (server) and `src/Oadm.Sdk.Client` (client); every type
 and member is in the SDK reference of the website (https://oadm.app/api/, `manage build docs` locally). The spec and
-the device safety HARD RULE are in `docs/spec/plugins.md` ("Plugin system").
+the device safety HARD RULE are in `docs/spec/plugins.md` ("Plugin system") and `CLAUDE.md` ("HARD RULE: device safety for
+task plugins").
 
 ## Start a plugin
 
 Outside this repository (guide on the website: Developers > Develop with the .NET SDK):
 `dotnet new install Oadm.Plugin.Templates`, `dotnet new oadm-task|oadm-page|oadm-action -n <Name>`, then
 `dotnet tool restore`, `dotnet build`, `dotnet oadm dev start` (a portable server with the plugin, restarted after every build), `dotnet oadm deploy --installed`,
-`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release, with a README and an AGENTS.md (the
-rules for AI assistants outside this repository) written by `tools/Oadm.NewPlugin/Templates.cs`.
+`dotnet oadm pack`. The templates are the samples (`samples/`) on the NuGet packages of one release, with a README, an AGENTS.md (the
+rules for AI assistants outside this repository) and a CLAUDE.md that imports it (`@AGENTS.md`), written by
+`tools/Oadm.NewPlugin/Templates.cs`.
 
 In this repository: `./manage.sh new task|page|action --name "My plugin"` (PowerShell `.\manage.ps1 new ...`) copies the
 plugin of the matching developer tutorial under your name into `plugins/` and `tests/` and adds it to `Oadm.sln`. It
@@ -46,7 +48,8 @@ next to the published exe.
 
 The server loads `*.Server.dll`, the client `*.Client.dll`, each in its own load context. Shared assemblies come from
 the host and are never copied into the plugin folder. Outside this repository the plugin project SDK `Oadm.Plugin.Sdk`
-does this by itself (the SDK packages without copies, Avalonia and the MVVM toolkit without a version). The bundled
+does this by itself (the SDK packages without copies, Avalonia and the MVVM toolkit referenced for you,
+`Avalonia.Controls.DataGrid` without a version). The bundled
 plugins of this repository that do not use it reference the SDK by hand:
 
 ```xml
@@ -174,8 +177,8 @@ and actions before any plugin call.
   (core plugins: `ctx.DataDirectory`), stop at your own size limit and bound the read with your own token (the timeout
   covers the headers only). Dispose the response. Sample: `ServerReportDownloader` of the System report.
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).
-  `ITaskQueryContext.Devices` (may be null on other hosts) lists all managed devices, e.g. to flag an address another
-  managed device has.
+  `ITaskQueryContext.Devices` (may be null on other hosts) lists the devices of the user who asks; an address-in-use
+  check asks `ITaskQueryContext.ManagedAddressesAsync(addresses, ct)` (every device on the route, none named).
 
 ## Client side
 
@@ -429,7 +432,7 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
     adds an Axis device the plugin saw on the network, through the add page's pipeline (anonymous Axis check, factory
     default check, login with the credential list; passwords never reach the plugin). It returns a
     `DeviceAutoAddOutcome` (`Added`, `AddedCredentialsRequired`, `AddedPasswordNotSet`, `AlreadyManaged`, `NotAxis`,
-    `SerialMismatch`, `Unreachable` + a plain message). `FollowAsync(serial, ipAddress, source, ct)` moves a managed
+    `SerialMismatch`, `Unreachable`, `LimitReached` + a plain message). `FollowAsync(serial, ipAddress, source, ct)` moves a managed
     device's record to an address the plugin saw it at, once the server verified it there (`Moved`, `Unchanged`,
     `NotManaged`, `KeptHostName`, `NotVerified`). Call both off your hot path (a queue with a few workers, like the
     DHCP server's `DhcpDeviceAutoAdd`); the server writes the audit entries.
@@ -484,7 +487,7 @@ website `dev/licenses.md`.
 
 ### Permissions
 
-Administrators give users roles; a role is a set of permissions in the matrix of the Users page. A plugin declares what
+Administrators give users roles; a role is a set of permissions in the matrix of the Permissions page. A plugin declares what
 an administrator should be able to give or withhold. The server checks every call; the client only hides what the role
 lacks.
 

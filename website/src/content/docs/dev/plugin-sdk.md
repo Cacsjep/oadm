@@ -90,8 +90,9 @@ for a project ending in `.Client`), references the SDK without copying it (OADM 
 A `plugin.json` of your own in the server project is copied as it is instead.
 
 The client part references the server part to share its payload types. Avalonia, the MVVM toolkit and
-`Avalonia.Controls.DataGrid` come from the OADM client: reference them without a version and the SDK fills in the host's.
-Other NuGet packages are copied into the plugin folder with your plugin.
+`Avalonia.Controls.DataGrid` come from the OADM client and are never copied: the SDK references Avalonia and the MVVM
+toolkit itself, and `Avalonia.Controls.DataGrid` without a version gets the host's. Other NuGet packages are copied into
+the plugin folder with your plugin.
 
 ## The development server
 

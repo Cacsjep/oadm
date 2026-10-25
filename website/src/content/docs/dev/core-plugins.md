@@ -52,7 +52,8 @@ plugin that throws on start is marked as failed; the others keep running.
 | `Jobs` | `IPluginJobs`: work a method starts for its user (reports, scans, monitors), owned by that user |
 | `DeviceScopes` | `IDeviceScopes`: the devices of a device group, for objects kept per group (dashboards, views) |
 
-Every member after `Logger` may be null on an older host or where it does not apply. Check before you use it.
+Every member after `Logger` except `System` may be null on an older host or where it does not apply. Check before you
+use it.
 
 ### `InvokeAsync` errors
 
