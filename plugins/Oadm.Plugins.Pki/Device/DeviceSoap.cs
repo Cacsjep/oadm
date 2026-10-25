@@ -39,12 +39,17 @@ public static class DeviceSoap
     public static async Task<XElement> SendAsync(IVapixClient vapix, string bodyContent, string action, CancellationToken ct)
     {
         var answer = await DeviceHttp.SendAsync(vapix, HttpMethod.Post, ServicesPath, DeviceHttp.SoapType, Envelope(bodyContent), ct).ConfigureAwait(false);
-        if ((int)answer.Status is < 200 or >= 300 && !answer.Body.Contains("Fault", StringComparison.Ordinal))
+        var failed = (int)answer.Status is < 200 or >= 300;
+        if (failed && !answer.Body.Contains("Fault", StringComparison.Ordinal))
         {
             throw new PkiDeviceException($"{action}: {DeviceHttp.DescribeHttp(answer.Status)}") { HttpStatus = (int)answer.Status };
         }
 
-        return Body(answer.Body, action);
+        // A SOAP fault throws with the device's reason; an HTTP error without a fault element is never a success.
+        var body = Body(answer.Body, action);
+        return failed
+            ? throw new PkiDeviceException($"{action}: {DeviceHttp.DescribeHttp(answer.Status)}") { HttpStatus = (int)answer.Status }
+            : body;
     }
 
     /// <summary>The SOAP body element; a fault becomes a <see cref="PkiDeviceException"/> with its reason text.</summary>
