@@ -10,13 +10,13 @@ Block (with "Also revoke their IEEE 802.1X certificates", the former Revoke); `d
 policy cleanup".
 
 A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
-source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the page's Server card
+source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the tab's off state
 stores the choice and starts it (UDP 1812 opens), **Turn off** (left of Save, confirmed) stops it; it runs only while it is
-on and OADM PRO is active (without it the page shows only the Server card with "Needs an OADM PRO license or trial." and a
-disabled Turn on; a license that ends stops it, a new one starts it with the kept choice). OADM answers the switches
+on and OADM PRO is active (without it the off state reads "The 802.1X server needs OADM PRO" with "Needs an OADM PRO
+license or trial." and no Turn on; a license that ends stops it, a new one starts it with the kept choice). OADM answers the switches
 of the network as their **RADIUS server** and authenticates the cameras on the switch ports with **EAP-TLS** (IEEE
-802.1X). It completes the certificate suite: PKI issues the camera's client certificate and trusts the OADM CA (task
-"IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
+802.1X). It completes the certificate suite: PKI issues the camera's client certificate and installs the RADIUS server CA of
+its IEEE 802.1X certificate policy (task "Enable IEEE 802.1X"), EST renews it, the 802.1X server checks it when the camera plugs in. A clean-room implementation from
 the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one covers).
 
 ## Decisions (2026-10-23)
@@ -34,35 +34,39 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 
 ## What the user sees
 
-- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, the Server card's Turn on (hidden
-  without an active license, the status says "Needs an OADM PRO license or trial." and, while the trial was never used,
-  administrators get **Start 30-day trial**, `docs/spec/licensing.md` "Trial"); while it does not run the page shows
-  only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
+- **Turn on / Turn off** (since OADM 4.5, before on the Plugins page): off by default, Turn on in the tab's off state
+  (`ui:OffState`; no Turn on without an active license, the off state says "Needs an OADM PRO license or trial." and,
+  while the trial was never used, administrators get **Start 30-day trial**, `docs/spec/licensing.md` "Trial"); while it
+  does not run the tab shows only the off state (Turn off too when it is on but does not run) and reads nothing else. When the license ends, the server stops answering (switches fall back to
   their own rule); a development build before 4.5 whose plugin was on keeps it on (the 802.1X server never shipped before 4.5).
-- **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
-  their ports." **One page, no tabs**: **Server** | **Switches** side by side from 1,000 px of page width (stacked below),
-  then **Sessions** and **Log** full width with a splitter between them (like the tasks pane of the main window). The rules
+- **Tab "802.1X server" of the PKI page** (since stage 7 of `docs/spec/pki.md`; no rail entry of its own): **Server**
+  above **Switches** in a left column (680 px), **Sessions** right, as high as the page (one column on a narrow page;
+  `RadiusView.Arrange`). The off state's text: "Switch ports let only cameras with a trusted certificate into the
+  network." The rules
   are PKI's policies (`docs/spec/pki.md` "Policies"); the page has no Trusted CAs, Policies or Advanced (decision
   2026-10-24, stage 3). Revocation is PKI's (its Certificates list).
   - **Card headers like the Permissions page:** the title and its buttons in one row ("Switches [Add switch]").
   - **Server** (card): **Listen on**, **Port** (UDP 1812), **Log entries kept** (1,000..50,000, default 5,000), the link
-    "6 policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies; left in the Save row, opens PKI's Policies tab),
-    the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate authority.", "The
-    802.1X server has no certificate: Corp CA cannot issue." (docs/spec/pki.md "Policies as a list"), "Port 1812 is used by
-    another program", "Interface Ethernet 2 is not available") and Turn off directly left of **Save**, the server
-    certificate's end.
+    "N policies applied" (802.1X server, 802.1X trusted CA, VLAN and Block policies, 3 on a new server; left in the Save row,
+    opens PKI's Policies tab), the status chip ("Running on port 1812", "The PKI has no certificate authority.", "The
+    802.1X server has no certificate. Choose one in its policy.", "The 802.1X server cannot use its certificate: it has
+    ended." (docs/spec/pki.md "Server certificates"), "Port 1812 is used by another program", "Interface Ethernet 2 is not
+    available") and Turn off directly left of **Save**.
   - **Switches** (card): name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site
     offline", amber for "No requests yet", the state as its tooltip), address, site, last request (no state column,
     decision 2026-10-25), each
     column as wide as its longest text; Edit and Delete as row icon buttons; the dialog with the shared secret and Generate.
-  - **Sessions** (full width, live) and **Log** (full width, without **Add switch**, decision 2026-10-24): every column as
+  - **Sessions** (one table, live: the sign-ins in progress on top, then the finished ones of the log; View certificate and
+    Delete all in its header, pages of 500 with Previous / Next): every column as
     wide as its content (the full "2026-10-24 07:21:58", the port, MAC address, EAP identity, device, IP address, the VLAN
     with its policy "VLAN 30 by Building B"), the state or result flexes, Duration right-aligned; on a narrow page the grids
     scroll sideways instead of cutting columns.
 - **Event rules:** "Device authenticated" (device, switch, port, VLAN), "Authentication failed" (device or unknown,
   switch, port, reason).
-- **PKI task "IEEE 802.1X"** (exists): its dialog names this server ("Uses the OADM 802.1X server" when it is on) and the
-  EAP identity it sets on the camera (`axis-<serial>`, the default).
+- **PKI task "Enable IEEE 802.1X"**: its dialog picks the IEEE 802.1X certificate policy and shows its summary (the EAP
+  identity, on a new installation the IP address, and the RADIUS server CA the camera checks this server with). The task
+  never compares that CA with this server's certificate (decision 2026-10-25): the user turns 802.1X off on the switch
+  first when they do not match.
 
 ## MAC address, device and IP address
 
@@ -258,12 +262,12 @@ Decision 2026-10-23: **PKI owns the list of issued certificates and the revocati
 it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1, built 2026-10-24 (code:
 `plugins/Oadm.Plugins.Pki/README.md` "Issued certificates and revocation").
 
-- **PKI page, tab "Certificates"** (fixed `ui:PageTab`s "Certificate authority" and "Certificates"; nothing is read
-  before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
+- **PKI page, tab "Certificates"** (stage 1; today the tab of `docs/spec/pki.md` "Certificates" with its two cards
+  Certificate authorities and Certificates; nothing is read before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
   EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
-  MQTT, RTSPS), issued by (Task, EST), valid from, valid until, serial number, state chip (Valid, Expires soon (the
+  MQTT, RTSPS), issued by (the issuing CA since stage 5), valid until, state chip (Valid, Expires soon (the
   settings' warning days, 30 by default), Expired, Revoked (tooltip: date, reason, user)); since 2026-10-25 only each
-  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, use, issued by) and search (device address, host name, device serial,
+  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, issued by; the use filter is gone since 2026-10-25) and search (device address, host name, device serial,
   certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
   12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
   **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate

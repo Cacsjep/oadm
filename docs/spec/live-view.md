@@ -15,7 +15,7 @@ web UI.
 - **Live video component** (`LiveView/LiveVideoViewModel` + `LiveVideoView`, the one live picture of the client: side
   panel, fullscreen, later the camera grid of 16, which must stay smooth). Parts on or off per place through
   `LiveVideoOptions` (channel switch, fullscreen, quality switch, controls button, each PTZ part, zoom, focus; `MaxFps`
-  25; the start quality; delays); client-wide `LiveVideoSettings` (Settings > This computer: "Show video details over the
+  25; the start quality; delays); client-wide `LiveVideoSettings` (Settings > Client: "Show video details over the
   picture", off; "Frame rate (adaptive quality)", 20, 1..30; `ClientSettings.ShowVideoDetails` / `AdaptiveFps`; plus
   "Optics Control" of the role). The picture area shows only the picture (`Stretch=Uniform`), the `ui:ProgressRing`
   (connecting without a picture, reconnecting with the reason below it, or a new stream slow to deliver) or the error
@@ -126,7 +126,7 @@ web UI.
   changed) stop with the server's message. If FFmpeg cannot be loaded the picture area shows
   "Video decoder not available on this platform" (no fallback).
 - **GPU decoding** (`LiveView/GpuDecoding.cs`, `FfmpegVideoDecoder`): client setting "Decode video on the graphics card"
-  (`ClientSettings.GpuDecoding`, default on, Settings > **This computer**, saved at once, every user). At every start (and
+  (`ClientSettings.GpuDecoding`, default on, Settings > **Client**, saved at once, every user). At every start (and
   when the setting is turned on) `GpuDecodingService` runs the client itself with `--check-gpu-decoding` in a **separate
   process** (20 s timeout; a driver crash or hang only ends that process): it opens the first device type that works
   (Windows d3d11va, dxva2; macOS videotoolbox; Linux vaapi, cuda; `OADM_GPU_DEVICES` overrides the list) and decodes the
