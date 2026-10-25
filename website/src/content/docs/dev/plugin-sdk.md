@@ -45,6 +45,8 @@ DoorBell/
   DoorBell.slnx
   Directory.Build.props          every project: .NET 10, the plugin folder .oadm/plugins/
   .config/dotnet-tools.json      the oadm command of this SDK version
+  README.md                      the commands
+  AGENTS.md                      the rules for AI assistants, see Build a plugin with AI
   DoorBell/                      the server part: DoorBell.Server.dll
     DoorBell.csproj
   DoorBell.Client/               the client part: DoorBell.Client.dll (dialog or page)

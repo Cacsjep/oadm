@@ -17,15 +17,12 @@ that ships with OADM).
 <TabItem label="NuGet packages">
 
 - A plugin folder that builds: `dotnet new oadm-task`, see [Develop with the .NET SDK](../plugin-sdk/).
-- The guides of this website. The folder holds no rules for the assistant, so point it to them:
-  [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/), [Plugin basics](https://oadm.app/dev/plugins/), the
-  tutorial of your kind of plugin ([Task plugin](https://oadm.app/dev/tutorial-task/),
-  [Plugin page](https://oadm.app/dev/tutorial-page/), [Event rule action](https://oadm.app/dev/tutorial-action/)),
-  [UI kit](https://oadm.app/dev/ui/), [Testing](https://oadm.app/dev/testing/) and the
+- `AGENTS.md` in that folder: the rules of OADM that apply to your plugin (device safety, UI texts, the shared
+  controls, scale, tests), the commands and links to the guides. Assistants that read `AGENTS.md` find it by themselves;
+  tell the others, Claude Code among them, to read it first.
+- The guides it links to: [Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/), the tutorial of your kind of
+  plugin, [UI kit](https://oadm.app/dev/ui/), [Testing](https://oadm.app/dev/testing/) and the
   [SDK reference](https://oadm.app/api/).
-- The rules of OADM itself on GitHub: [`CLAUDE.md`](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md) (code, UI,
-  wording, device safety and tests) and [`plugins/README.md`](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md)
-  (the plugin SDK with examples).
 
 </TabItem>
 <TabItem label="Checkout of OADM">
@@ -58,10 +55,9 @@ that ships with OADM).
 2. Describe the plugin like a user story, name the guides and ask the assistant to ask first:
 
    ```text
-   Read https://oadm.app/dev/plugin-sdk/, https://oadm.app/dev/tutorial-task/ and
-   https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md. This folder is a task plugin
-   from the OADM templates. I want "Set host name" in the Network group, with a dialog
-   for one or many devices. Ask me what is unclear, then build it with tests.
+   Read AGENTS.md and the guides it links to. I want "Set host name" in the Network
+   group, with a dialog for one or many devices. Ask me what is unclear, then build it
+   with tests.
    ```
 
 3. Answer its questions. Ask it to keep the decisions in a file of the folder, so the next session knows them too.

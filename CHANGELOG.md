@@ -111,6 +111,8 @@ version and date, and the release workflow copies it into the GitHub release.
   (a page shown as a tab of another plugin's page); `ProLicenseInfo.TrialAvailable`,
   `ICorePluginClientContext.IsAdministrator` and `StartProTrialAsync`; client SDK `IssuedCertificateList`,
   `CertificateWindow` and `OffState`.
+- Plugin templates: every new plugin folder has an `AGENTS.md` with the rules for AI coding assistants (device safety,
+  UI texts, shared controls, tests) and links to the guides.
 - Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
   user's group; `FakeCallContext.Over` and `OverGroup` make a user's call over a test's own device and VAPIX fakes;
   `FakeProtectedTags`; tasks a plugin starts through `FakeCoreContext` stay active until cancelled or `EndTask`.

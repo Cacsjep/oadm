@@ -71,6 +71,18 @@ public sealed partial class PluginSdkTests : IDisposable
             using var tools = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, ".config", "dotnet-tools.json")));
             Assert.Equal("9.8.7", tools.RootElement.GetProperty("tools").GetProperty("oadm.tools").GetProperty("version").GetString());
             Assert.Contains(".oadm/", File.ReadAllText(Path.Combine(root, ".gitignore")), StringComparison.Ordinal);
+
+            // The rules for AI assistants: filled in by the template, with nothing that exists only in the OADM repository.
+            var agents = File.ReadAllText(Path.Combine(root, "AGENTS.md"));
+            Assert.Contains(sample.Id, agents, StringComparison.Ordinal);
+            Assert.Contains(sample.DisplayName, agents, StringComparison.Ordinal);
+            Assert.Contains($"https://oadm.app/dev/tutorial-{sample.Kind}/", agents, StringComparison.Ordinal);
+            Assert.Contains("dotnet oadm dev start", agents, StringComparison.Ordinal);
+            Assert.Contains("Device safety", agents, StringComparison.Ordinal);
+            foreach (var repoOnly in new[] { "manage ", "CLAUDE.md", "docs/spec", "artifacts/", "src/Oadm", "dev-cameras" })
+            {
+                Assert.DoesNotContain(repoOnly, agents, StringComparison.Ordinal);
+            }
         }
     }
 
