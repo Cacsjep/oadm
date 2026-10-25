@@ -227,6 +227,57 @@ public sealed class RobustnessTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_group_users_check_never_ends_a_run_whose_other_tasks_still_run()
+    {
+        var camera = new RuleCamera();
+        AddTcp(camera, "Door");
+        var rules = await SoapActionEngine.ReadRulesAsync(camera, CancellationToken.None);
+        var request = new RunRequest([new DeviceTargets(_device.Id, [new RuleRef(rules[0].Id, RuleView.VersionOf(rules[0]))])], new RulePatch { Name = "Renamed" });
+        var started = ActionRulesJson.Deserialize<RunStarted>(await _plugin.InvokeAsync(ActionRulesMethods.Edit, ActionRulesJson.Serialize(request), CancellationToken.None));
+        var all = new Oadm.Plugins.Shared.ContextCall(_ctx!);
+
+        // The group's devices have no active task of the run (its view of the task engine): not running for that user...
+        var group = new GroupCall(all, new IdleTasks());
+        Assert.False(await _plugin.IsRunningAsync(group, started.RunId, CancellationToken.None));
+
+        // ...but the run's tasks on other devices still write: a user with all devices still sees it running.
+        Assert.True(await _plugin.IsRunningAsync(all, started.RunId, CancellationToken.None));
+    }
+
+    /// <summary>A user limited to a device group over the test's context, with its own view of the task engine.</summary>
+    private sealed class GroupCall(Oadm.Sdk.Plugins.ICallContext inner, Oadm.Sdk.Tasks.ITaskRunner tasks) : Oadm.Sdk.Plugins.ICallContext
+    {
+        public string UserName => "anna";
+
+        public string SessionId => "anna-session";
+
+        public string DeviceScopeKey => "group";
+
+        public bool HasAllDevices => false;
+
+        public Oadm.Sdk.Devices.IDeviceRepository Devices => inner.Devices;
+
+        public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => inner.Vapix;
+
+        public Oadm.Sdk.Tasks.ITaskRunner Tasks => tasks;
+
+        public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => inner.EventStreams;
+
+        public bool Has(string permission) => true;
+
+        public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => true;
+    }
+
+    /// <summary>A task engine view in which no task of the run is active (the run's tasks are on other devices).</summary>
+    private sealed class IdleTasks : Oadm.Sdk.Tasks.ITaskRunner
+    {
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<bool?> AnyActiveAsync(IReadOnlyCollection<Guid> taskIds, CancellationToken ct) => Task.FromResult<bool?>(false);
+    }
+
+    [Fact]
     public async Task The_undo_store_keeps_new_runs_and_refuses_unknown_ones()
     {
         var store = _plugin.Undo;
