@@ -7,8 +7,9 @@ using Testing = Oadm.Sdk.Testing;
 namespace Oadm.Plugins.SnapshotReport.Tests;
 
 /// <summary>
-/// The life of a report in memory (<see cref="ReportJobs"/>): dropped after its lifetime also when nobody asks again, with
-/// the user's job when the host ends it, at most two built at once per user, and a start that fails leaves no job waiting.
+/// The life of a report in memory (<see cref="ReportJobs"/>): dropped once downloaded, else after its lifetime counted from
+/// its end (asking for its status does not keep it), with the user's job when the host ends it, at most two built at once per
+/// user, and a start that fails leaves no job waiting.
 /// </summary>
 public sealed class ReportJobLifetimeTests
 {
@@ -75,7 +76,49 @@ public sealed class ReportJobLifetimeTests
     }
 
     [Fact]
-    public async Task One_user_keeps_at_most_four_finished_reports_and_the_oldest_goes_first()
+    public async Task A_downloaded_report_is_dropped_at_once_and_a_second_download_says_it_is_gone()
+    {
+        var (ctx, camera, _) = Setup();
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix, timeout: TimeSpan.FromHours(1));
+        using var reports = new ReportJobs(service, new FakeTimeProvider());
+        var admin = ctx.CallAsAllDevices();
+        var started = await reports.StartAsync(admin, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
+        await Testing.Eventually.TrueAsync(() => reports.Status(admin, ctx.FakeJobs, started.JobId).State == ReportJobStates.Done, "the report is ready");
+        var job = Assert.Single(ctx.FakeJobs.All);
+
+        long offset = 0;
+        ReportChunk chunk;
+        do
+        {
+            chunk = reports.Read(admin, ctx.FakeJobs, started.JobId, offset);
+            offset += Convert.FromBase64String(chunk.DataBase64).Length;
+        }
+        while (!chunk.Eof);
+
+        Assert.Equal(0, reports.Count); // dropped with its last chunk, no delete needed
+        await Testing.Eventually.TrueAsync(() => job.Completion.IsCompleted, "the job ended");
+        Assert.Equal(ReportJobs.NotFound, Assert.Throws<KeyNotFoundException>(() => reports.Read(admin, ctx.FakeJobs, started.JobId, 0)).Message);
+    }
+
+    [Fact]
+    public async Task Asking_for_the_status_does_not_keep_a_finished_report_beyond_its_lifetime()
+    {
+        var (ctx, camera, _) = Setup();
+        var time = new FakeTimeProvider();
+        using var service = new SnapshotService(ctx.Devices, ctx.Vapix, timeout: TimeSpan.FromHours(1));
+        using var reports = new ReportJobs(service, time);
+        var started = reports.Start(Request(camera.Id), "1.0");
+        await Testing.Eventually.TrueAsync(() => reports.Status(started.JobId).State == ReportJobStates.Done, "the report is ready");
+
+        time.Advance(ReportJobs.Lifetime - TimeSpan.FromMinutes(1));
+        Assert.Equal(ReportJobStates.Done, reports.Status(started.JobId).State); // still there, asked for again
+        time.Advance(TimeSpan.FromMinutes(1) + ReportJobs.ExpiryInterval);
+
+        await Testing.Eventually.TrueAsync(() => reports.Count == 0, "the report was dropped 30 minutes after it finished");
+    }
+
+    [Fact]
+    public async Task One_user_keeps_every_finished_report_until_it_is_downloaded()
     {
         var (ctx, camera, _) = Setup();
         var time = new FakeTimeProvider();
@@ -83,17 +126,16 @@ public sealed class ReportJobLifetimeTests
         using var reports = new ReportJobs(service, time);
         var admin = ctx.CallAsAllDevices();
         var ids = new List<string>();
-        for (var i = 0; i < ReportJobs.MaxFinishedPerUser + 1; i++)
+        for (var i = 0; i < 5; i++)
         {
             var started = await reports.StartAsync(admin, ctx.FakeJobs, Request(camera.Id), "1.0", CancellationToken.None);
             await Testing.Eventually.TrueAsync(() => reports.Status(admin, ctx.FakeJobs, started.JobId).State == ReportJobStates.Done, "the report is ready");
             ids.Add(started.JobId);
-            time.Advance(TimeSpan.FromSeconds(1)); // finished one after the other
+            time.Advance(TimeSpan.FromSeconds(1));
         }
 
-        await Testing.Eventually.TrueAsync(() => reports.Count == ReportJobs.MaxFinishedPerUser, "the oldest report was dropped");
-        Assert.Throws<KeyNotFoundException>(() => reports.Status(admin, ctx.FakeJobs, ids[0]));
-        Assert.All(ids.Skip(1), id => Assert.Equal(ReportJobStates.Done, reports.Status(admin, ctx.FakeJobs, id).State));
+        Assert.All(ids, id => Assert.Equal(ReportJobStates.Done, reports.Status(admin, ctx.FakeJobs, id).State));
+        Assert.Equal(5, reports.Count);
     }
 
     [Fact]

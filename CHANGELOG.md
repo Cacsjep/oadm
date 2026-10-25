@@ -13,6 +13,9 @@ version and date, and the release workflow copies it into the GitHub release.
 - **Install certificates**: when some devices are reached over HTTP, the dialog says how many and asks you to confirm
   before their private keys are sent unencrypted.
 
+- **Snapshot report**: the server keeps a finished report only until it was downloaded, and at most 30 minutes when it
+  never is.
+
 ### Fixed
 
 - **PKI**: Delete certificates deletes nothing while OADM cannot read what a camera uses its certificates for. An HTTPS

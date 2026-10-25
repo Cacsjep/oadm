@@ -65,7 +65,13 @@ public sealed partial class FakeOadmApi
                 return FakeReportStatus(payload?["jobId"]?.GetValue<string>() ?? string.Empty);
             case "readReport":
             {
-                byte[] pdf = FindFakeReport(payload?["jobId"]?.GetValue<string>() ?? string.Empty).Pdf;
+                string jobId = payload?["jobId"]?.GetValue<string>() ?? string.Empty;
+                byte[] pdf = FindFakeReport(jobId).Pdf;
+                lock (_gate)
+                {
+                    _fakeReports.Remove(jobId); // like the plugin: the last chunk drops the report
+                }
+
                 return JsonSerializer.Serialize(new { dataBase64 = Convert.ToBase64String(pdf), offset = 0, total = pdf.Length, eof = true }, FakeJson);
             }
 

@@ -272,6 +272,8 @@ public sealed partial class ExportReportViewModel : ValidatingViewModel
             offset += data.Length;
             if (chunk.Eof || data.Length == 0)
             {
+                // The server dropped the report with its last chunk: never asked for again, nothing left to delete.
+                _jobId = null;
                 break;
             }
         }
