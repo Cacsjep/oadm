@@ -11,18 +11,24 @@ const target = join(here, '..', 'src', 'content', 'docs', 'project', 'changelog.
 const lines = readFileSync(source, 'utf-8').split(/\r?\n/);
 const out = [];
 let started = false;
+let unreleased = false;
 for (const line of lines) {
 	// "## [3.0.3] - 2026-10-14": the version as heading (short anchor #303), the date below it.
 	const release = /^## \[(?<version>[^\]]+)\](?:\s*-\s*(?<date>\S+))?/.exec(line);
 	if (release) {
-		started = true;
 		const { version, date } = release.groups;
+		// "## [Unreleased]" is never published: the site deploys on every push to main, before the release.
+		unreleased = version.toLowerCase() === 'unreleased';
+		if (unreleased) {
+			continue;
+		}
+		started = true;
 		out.push(`## ${version}`, '', ...(date ? [`<p class="changelog-date">${date}</p>`] : []));
 		continue;
 	}
 
-	// Everything before the first release (title, intro, Unreleased) and the link list at the end stay out.
-	if (!started || /^\[[^\]]+\]:\s/.test(line)) {
+	// Everything before the first release (title, intro), the Unreleased section and the link list at the end stay out.
+	if (!started || unreleased || /^\[[^\]]+\]:\s/.test(line)) {
 		continue;
 	}
 
