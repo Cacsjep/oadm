@@ -4,7 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              x:Class="Oadm.Client.Settings.DeviceGroupsCardView"
              x:DataType="settings:DeviceGroupsViewModel">
-  <!-- Card "Device groups" of the Permissions page (Admin only): the groups with rules and users. New and Edit
+  <!-- Card "Device groups" of the Permissions page (Admin only): the groups with rules, device count and users. New and Edit
        open the group editor (the shared device picker with sites and tags); Delete asks first. -->
   <Border Classes="card">
     <StackPanel Spacing="12">
@@ -33,6 +33,11 @@
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
+          <DataGridTextColumn Width="100" Binding="{Binding DeviceCountText}" SortMemberPath="DeviceCount" x:DataType="settings:DeviceGroupRowViewModel" CellStyleClasses="number">
+            <DataGridTextColumn.Header>
+              <TextBlock Classes="numberHeader" Text="Devices" />
+            </DataGridTextColumn.Header>
+          </DataGridTextColumn>
           <DataGridTextColumn Header="Users" Width="*" Binding="{Binding UsersText}" x:DataType="settings:DeviceGroupRowViewModel" />
           <!-- Row actions: icon buttons in fixed places, Delete in red -->
           <DataGridTemplateColumn Width="80" CanUserSort="False" x:DataType="settings:DeviceGroupRowViewModel">

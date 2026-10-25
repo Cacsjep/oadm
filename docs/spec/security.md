@@ -156,7 +156,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
 - **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
   `Settings/UsersPageView` = the users card left and the device groups card right at the height they need, the roles card
-  below across the full width filling the rest, with a splitter): **New user** (secondary button) above the list, then users
+  below across the full width filling the rest, with a splitter): **New user** (a flat `ui:ToolbarButton` in the card's title row) above the list, then users
   with role (plain text), state; row icon buttons Edit user, Change password, Disable / Enable, Delete (red; Disable
   and Delete confirmed; the own row offers only Change password); never the last enabled administrator, never yourself.
   The list has a **Devices** column: All devices, the user's device group, or No devices (the group was deleted).
@@ -178,7 +178,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   columns = roles (built in code-behind; header with only the name (description as tooltip) and a menu Edit, Copy, Reset to default, Delete; the Administrator role Edit and Copy),
   the name column frozen; the permission's explanation as the tooltip of its name, an amber warning icon right after
   the name for full device control (tooltip `RolesCardView.FullDeviceControlTip`), "Plugin is off" for rights of a
-  plugin that is off. Toolbar New role (secondary button), Save, Discard, search; changes are collected and saved together after one
+  plugin that is off. Toolbar New role (a flat `ui:ToolbarButton`), Save, Discard, search; changes are collected and saved together after one
   confirmation that lists them per role; a new role, a copy and a rename open the dialog `Settings/RoleFormWindow`
   (Name, Description, Start from, **Start page**) and stay "Not saved" until Save; Edit opens the same dialog (the
   Administrator role: name and description locked, only the start page).

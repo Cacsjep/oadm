@@ -482,6 +482,9 @@ public sealed class DeviceGroupsTests
             List<string> texts = page.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
             Assert.Contains("Device groups", texts);
             Assert.Contains("Site Building B, tag PTZ, 3 devices, except 1", texts);
+            // The Devices column: right-aligned like every numeric column (docs/spec/security.md).
+            Assert.Contains(page.GetVisualDescendants().OfType<TextBlock>(), t => t.Classes.Contains("numberHeader") && t.Text == "Devices");
+            Assert.Contains(groups.Groups.Single(g => g.Name == "Building B").DeviceCountText, texts);
             Capture(page, outDir, "client-device-groups-card.png");
             page.Close();
 
