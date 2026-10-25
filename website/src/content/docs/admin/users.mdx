@@ -33,7 +33,7 @@ action, without logging in again.
 
 Five wrong passwords in five minutes lock a user for five minutes.
 
-The **Devices** field of a user is **All devices** or a device group. The **Device groups** card below the users
+The **Devices** field of a user is **All devices** or a device group. The **Device groups** card next to the users
 creates and changes the groups: see [Device groups](../device-groups/).
 
 ## Roles
@@ -41,7 +41,7 @@ creates and changes the groups: see [Device groups](../device-groups/).
 <Image src={matrix} alt="The permission matrix: permissions as rows, roles as columns" class="screen" />
 
 Below the users, every permission is a row and every role a column. The permissions are grouped like the client:
-**Devices**, **Tasks**, **Event rules**, then one group per plugin. A check box in a group row gives or takes the whole
+**Devices**, **Tasks**, **Compliance**, **Event rules**, **Logs**, then one group per plugin. A check box in a group row gives or takes the whole
 group. Point at a permission to see what it allows. A warning icon marks permissions that act on the devices with
 their stored login, such as removing users on devices or opening the web interface in **Web View**: whoever has them
 can change anything on the device.
@@ -50,8 +50,9 @@ Live preview and Live View need **Live view**. **Optics Control** adds zoom, foc
 (Live View plugin) creates, changes and deletes the saved views; Viewers open views but do not have it. **Export
 recordings** (Edge Recording Export) downloads the recordings of cameras; Viewers only search them.
 
-- **New role** asks for a name and whether to start empty or from another role.
-- The menu of a role column renames, copies, resets (Operator, Viewer) or deletes it. A role users have cannot be
+- **New role** asks for a name, whether to start empty or from another role, and the **Start page**: the page its
+  users see first after logging in.
+- The menu of a role column edits (name, description, start page), copies, resets (Operator, Viewer) or deletes it. A role users have cannot be
   deleted.
 - **Save** saves every change at once, after a confirmation that lists what changes per role. **Discard** goes back.
 

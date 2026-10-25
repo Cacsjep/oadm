@@ -26,9 +26,9 @@ Every certificate task needs AXIS OS 6.53 or later. Other devices show the entri
 | 6.53 to 10.0 | Yes | Yes, EAPOL version 1 or 2 | RSA |
 
 On AXIS OS before 12, choose policies with an RSA key. Before 10.1, choose an IEEE 802.1X policy with EAPOL version 1
-or 2. A new server's built-in policies use ECC and EAPOL version 3: add a policy for older devices on the PKI page. A
-device that cannot use the chosen policy is not changed. Enrollment on the [EST server](../../tools/est-server/) needs
-AXIS OS 12.10 or later.
+or 2. A new server's built-in policies use ECC and EAPOL version 2: add a policy with RSA for older devices on the PKI
+page. A device that cannot use the chosen policy is not changed. Enrollment on the [EST server](../../tools/est-server/)
+needs AXIS OS 12.10 or later.
 
 ## Enable or disable HTTPS
 
@@ -47,7 +47,8 @@ the key. To change these values, change the policy or choose another one. Then:
 certificates stay on the device. A device that accepts only Basic login over HTTP is changed only while **Allow Basic
 login over HTTP** is on in Settings > Security.
 
-Both tasks wait up to 1 minute for the device's web server to restart before they check the new connection.
+Both tasks wait up to 1 minute for the device's web server to restart before they check the new connection. Renew
+certificates and Install certificates for HTTPS wait the same way.
 
 ## Enable or disable IEEE 802.1X
 

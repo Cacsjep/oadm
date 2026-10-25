@@ -152,7 +152,7 @@ runs. The info icon next to an event in the rule lists the values it has.
 - The compatibility check uses the device information OADM already has. Before a command changes a device, the server
   checks again with fresh data.
 - Commands that send and rollouts are written to the audit log.
-- **Writes** and **dangerous** are two different marks. A command that changes the device asks for a confirmation
+- **Changes the device** and **Dangerous** are two different marks. A command that changes the device asks for a confirmation
   before a rollout. Dangerous commands (restart, factory default, firmware roll back, network settings) need a second
   confirmation and, in event rules, **Allow dangerous commands**.
 

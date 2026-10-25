@@ -8,7 +8,8 @@ import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/sites-page.png';
 
 The **Sites** page (navigation rail, below Compliance) lists every site with its state, node address, devices, response
-time, connections, version and when it was last seen. Everyone with **See sites** sees it; changes are for
+time, connections, ports waiting for approval in the node app, running uploads and downloads, version and when it
+was last seen. Everyone with **See sites** sees it; changes are for
 administrators.
 
 <Image src={shot} alt="The Sites page with an online site, an offline site and a node waiting to be bound" class="screen" />
@@ -33,6 +34,8 @@ until you click **Accept site nodes** again. Sites and devices stay.
 | **Offline** | The node does not answer. Its devices show **Site offline**; nothing is sent to them. |
 | **Waiting to be bound** | A node connected that is not bound yet: click **Bind**. |
 | **Not bound** | The node was reset. Replace or remove the site. |
+| **Removed** | Removed with **Keep devices**: move the devices with **Replace with** or remove them with **Remove devices**. |
+| **Bound to another server**, **Binding closed** | A node that cannot be bound here, shown dimmed with the reason. |
 
 A node that answers again counts as online after a minute without dropouts, so a flaky link does not flip its devices
 back and forth.
