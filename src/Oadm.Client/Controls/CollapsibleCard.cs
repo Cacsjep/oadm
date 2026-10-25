@@ -3,16 +3,37 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Data;
 using Avalonia.Layout;
+using Avalonia.LogicalTree;
 using Avalonia.Metadata;
 
 namespace Oadm.Client.Controls;
 
 /// <summary>
 /// A card that folds (the Settings page, decision 2026-10-25): its title with the chevron of a group as the header (the
-/// whole row toggles it), its content below while open. Closed by default (<see cref="IsExpanded"/>).
+/// whole row toggles it), its content below while open. Closed by default (<see cref="IsExpanded"/>). It opens by itself
+/// when an input inside it shows a validation error, so an error never hides in a closed card (a Save outside the card
+/// stays disabled while it exists).
 /// </summary>
 public sealed class CollapsibleCard : Border
 {
+    static CollapsibleCard()
+    {
+        DataValidationErrors.HasErrorsProperty.Changed.AddClassHandler<Control>(OnInputErrorsChanged);
+    }
+
+    private static void OnInputErrorsChanged(Control input, AvaloniaPropertyChangedEventArgs change)
+    {
+        if (change.NewValue is not true)
+        {
+            return;
+        }
+
+        foreach (CollapsibleCard card in input.GetLogicalAncestors().OfType<CollapsibleCard>())
+        {
+            card.SetCurrentValue(IsExpandedProperty, true);
+        }
+    }
+
     public static readonly StyledProperty<string?> TitleProperty =
         AvaloniaProperty.Register<CollapsibleCard, string?>(nameof(Title));
 

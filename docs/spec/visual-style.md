@@ -61,7 +61,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
 - The Settings page's cards fold (decision 2026-10-25): `Controls/CollapsibleCard` (the card title with the chevron of a
   group as its header, the whole row toggles it; closed by default). Every card of the page: Client, Polling,
-  Discovery, Tasks, Security, Server, Backup and restore, License, Support.
+  Discovery, Tasks, Security, Server, Backup and restore, License, Support. A card opens by itself when an input inside
+  it shows a validation error; a stored server value the form refuses shows its error when the page loads, so Save
+  (outside the cards) is never disabled by an error in a closed card.
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page) (menus compact: entries padded 10,6, at least 160 px wide, separators 3 px apart; decision 2026-10-25), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
