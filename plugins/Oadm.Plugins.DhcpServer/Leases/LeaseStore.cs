@@ -387,25 +387,38 @@ public sealed class LeaseStore
         }
     }
 
-    /// <summary>The client found the address in use (DECLINE): conflict, lease dropped (a static lease stays).</summary>
-    public void Decline(ulong mac, uint address, DateTime conflictUntil)
+    /// <summary>
+    /// The client found the address in use (DECLINE): conflict, lease dropped (a static lease stays). Only a client that
+    /// holds the address (bound, or a pending offer; a dynamic one inside <paramref name="pool"/>) can decline it, so a
+    /// forged DECLINE never moves another device's lease or fills the conflict list; false when it was ignored.
+    /// </summary>
+    public bool Decline(ulong mac, uint address, AddressPool pool, DateTime now, DateTime conflictUntil)
     {
+        ArgumentNullException.ThrowIfNull(pool);
         lock (_sync)
         {
-            if (_byMac.TryGetValue(mac, out var lease) && lease.Address == address)
+            if (!_byMac.TryGetValue(mac, out var lease) || lease.Address != address
+                || (lease.State != LeaseState.Bound && !(lease.OfferExpiresUtc > now)))
             {
-                if (lease.IsStatic)
-                {
-                    lease.State = LeaseState.Reserved;
-                    lease.ExpiresUtc = null;
-                    Changed(lease);
-                    return; // the user decided: never take the reservation away
-                }
-
-                Delete(lease);
+                return false;
             }
 
+            if (lease.IsStatic)
+            {
+                lease.State = LeaseState.Reserved;
+                lease.ExpiresUtc = null;
+                Changed(lease);
+                return true; // the user decided: never take the reservation away
+            }
+
+            if (!pool.Contains(address))
+            {
+                return false;
+            }
+
+            Delete(lease);
             _conflicts[address] = conflictUntil;
+            return true;
         }
     }
 

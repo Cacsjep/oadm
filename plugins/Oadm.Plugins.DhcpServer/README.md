@@ -23,7 +23,8 @@ the server's own network (`IDeviceAutoAdd.FollowAsync`).
 - Protocol (`DhcpEngine`): DISCOVER -> OFFER (static lease first, then the client's previous lease, the requested
   address, the next free address from a rotating cursor, then the oldest expired/released lease); REQUEST selecting
   (another server id: our offer is withdrawn), init-reboot (NAK for a wrong address or network, silent without a
-  record), renewing/rebinding (NAK without a lease); DECLINE and in-use probe hits mark the address as a conflict for 1 h;
+  record), renewing/rebinding (NAK without a lease); DECLINE and in-use probe hits mark the address as a conflict for 1 h
+  (a DECLINE only from the MAC that holds the address, bound or offered, a dynamic one inside the pool; others ignored);
   RELEASE keeps the record (the device gets the same address again); INFORM -> ACK without lease time. Replies go to
   ciaddr when set, else broadcast (also NAKs and clients without the broadcast flag: no portable ARP injection).
   Parameter request list honored for 1, 3, 6, 15 (51/53/54/58/59 always); host name (12) echoed and stored.
