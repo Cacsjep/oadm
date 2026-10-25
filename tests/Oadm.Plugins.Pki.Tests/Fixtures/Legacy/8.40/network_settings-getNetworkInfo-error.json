@@ -1,0 +1,9 @@
+{
+  "apiVersion": "1.0",
+  "context": "oadm",
+  "method": "getNetworkInfo",
+  "error": {
+    "code": 400,
+    "message": "Method does not exist"
+  }
+}

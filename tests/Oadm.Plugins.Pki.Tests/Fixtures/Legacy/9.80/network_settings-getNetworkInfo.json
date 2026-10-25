@@ -1,0 +1,99 @@
+{
+  "apiVersion": "1.6",
+  "method": "getNetworkInfo",
+  "data": {
+    "system": {
+      "tcpEcnMode": "acceptAndInitiate",
+      "deviceSwitching": {
+        "mode": "auto",
+        "devices": [
+          "eth0"
+        ],
+        "manualActiveDevices": [
+          "eth0"
+        ],
+        "activeDevices": [
+          "eth0"
+        ]
+      },
+      "hostname": {
+        "useDhcpHostname": true,
+        "hostname": "axis-accc8e000001",
+        "staticHostname": "axis-accc8e000001"
+      },
+      "resolver": {
+        "useDhcpResolverInfo": true,
+        "nameServers": [
+          "192.0.2.254"
+        ],
+        "staticNameServers": [],
+        "maxSupportedStaticNameServers": 3,
+        "searchDomains": [],
+        "staticSearchDomains": [],
+        "maxSupportedStaticSearchDomains": 6,
+        "domainName": "",
+        "staticDomainName": ""
+      }
+    },
+    "devices": [
+      {
+        "name": "eth0",
+        "type": "wired",
+        "macAddress": "ac:cc:8e:00:00:01",
+        "wired": {
+          "linkMode": "auto",
+          "8021X": {
+            "enabled": true,
+            "status": "Stopped",
+            "mode": "WPA-Enterprise-EAPTLS",
+            "configurations": [
+              {
+                "mode": "WPA-Enterprise-EAPTLS",
+                "params": {
+                  "identity": "oadm-test",
+                  "eapolVersion": "EAPoLv2"
+                }
+              }
+            ],
+            "supportedModes": [
+              "WPA-Enterprise-EAPTLS"
+            ]
+          }
+        },
+        "IPv4": {
+          "enabled": true,
+          "configurationMode": "dhcp",
+          "addresses": [
+            {
+              "address": "192.0.2.10",
+              "prefixLength": 24,
+              "origin": "dhcp",
+              "scope": "global",
+              "broadcast": "192.0.2.255"
+            },
+            {
+              "address": "169.254.201.117",
+              "prefixLength": 16,
+              "origin": "linkLocal",
+              "scope": "link"
+            }
+          ],
+          "maxSupportedStaticAddressConfigurations": 1,
+          "staticAddressConfigurations": [
+            {
+              "address": "192.0.2.90",
+              "prefixLength": 24,
+              "broadcast": "192.0.2.255"
+            }
+          ],
+          "defaultRouter": "192.0.2.254",
+          "staticDefaultRouter": "192.0.2.1"
+        },
+        "IPv6": {
+          "enabled": false,
+          "addresses": []
+        }
+      }
+    ]
+  }
+}
