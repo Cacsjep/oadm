@@ -35,7 +35,7 @@ version and date, and the release workflow copies it into the GitHub release.
   now has a dialog that asks for the IEEE 802.1X policy, and **Install certificates** asks for it when the file is for
   IEEE 802.1X.
 - PKI: the IEEE 802.1X certificate policy picks the **RADIUS server CA** from the CA list, and the EAP identity can be the
-  camera's IP address or the last part of it. A new installation uses EAPOL version 3 and the IP address.
+  camera's IP address or the last part of it. A new installation uses EAPOL version 2 and the IP address.
 - PKI: **Block** policies with **Also revoke** revoke the IEEE 802.1X certificates of their devices, also new ones.
 - PKI: Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the EST **Set up** check the camera's clock first. When
   the camera is behind, they say by how much and ask before they start.

@@ -32,8 +32,9 @@ public sealed class IssuingPolicyTests
         var https = Assert.Single(store.PoliciesOf(PolicyKinds.HttpsCertificate));
         Assert.Equal(("HTTPS", CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (https.Name, https.CaId, https.ValidDays!.Value, https.Key));
         var dot1x = Assert.Single(store.PoliciesOf(PolicyKinds.Dot1xCertificate));
-        // A new installation: EAPOL version 3 and the IP address as identity, the OADM CA as RADIUS server CA (decision 2026-10-25).
-        Assert.Equal(("IEEE 802.1X", 365, PolicyKeys.Ecc, 3, Dot1xIdentity.IpAddress, CertificateAuthorityInfo.OadmId),
+        // A new installation: EAPOL version 2 (every AXIS OS from 6.53) and the IP address as identity, the OADM CA as RADIUS
+        // server CA (decisions 2026-10-25).
+        Assert.Equal(("IEEE 802.1X", 365, PolicyKeys.Ecc, 2, Dot1xIdentity.IpAddress, CertificateAuthorityInfo.OadmId),
             (dot1x.Name, dot1x.ValidDays!.Value, dot1x.Key, dot1x.EapolVersion!.Value, dot1x.Identity, dot1x.RadiusCaId));
         // The EST server's policy picks a certificate of the list (decision 2026-10-25); none before OADM PRO makes one.
         var est = Assert.Single(store.PoliciesOf(PolicyKinds.EstServer));
