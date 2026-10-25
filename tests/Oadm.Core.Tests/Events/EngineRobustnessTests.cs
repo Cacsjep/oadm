@@ -66,7 +66,7 @@ public sealed class EngineRobustnessTests
         rig.Publisher.ReplaceStates(EventRulesRig.Blur, [camera.Id]);
         await rig.Rules.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()), CancellationToken.None);
         await rig.Engine.DrainAsync(CancellationToken.None);
-        await Task.Delay(100);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => rig.Runner.PendingChains == 1, "the edge waits for the plugins");
 
         Assert.Equal(1, Assert.Single(await rig.Rules.ListAsync(CancellationToken.None)).ActiveCount); // evaluated
         Assert.Empty(rig.OnDevice.Edges); // but nothing ran yet
@@ -153,8 +153,9 @@ public sealed class EngineRobustnessTests
         }
 
         var turnOff = rig.Rules.SetEnabledAsync(rule.Id, false, CancellationToken.None);
-        await Task.Delay(100);
-        Assert.False(turnOff.IsFaulted);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await rig.Store.GetAsync(rule.Id, CancellationToken.None))?.Definition.Enabled == false, "the change stored");
+        // Then it waits for the held engine: a full queue never makes it fail.
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => !turnOff.IsFaulted, "the change waits", TimeSpan.FromMilliseconds(300));
 
         hold.Set();
         var summary = await turnOff.WaitAsync(TimeSpan.FromSeconds(30));

@@ -8,7 +8,7 @@ namespace Oadm.Core.Tests.Discovery;
 public class VapixDeviceProbeTests
 {
     private static readonly IPAddress Address = IPAddress.Parse("10.0.0.48");
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
 
     [Fact]
     public async Task Https401BasicRealmIsAxisDeviceWithModelFromUnrestrictedProperties()

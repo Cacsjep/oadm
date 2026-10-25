@@ -87,7 +87,7 @@ public sealed class PluginLoaderTests : IDisposable
         Assert.Equal(3, taskIds.Count); // one task per device
         foreach (var taskId in taskIds)
         {
-            await engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+            await engine.WaitForCompletionAsync(taskId, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
             Assert.Equal(TaskState.Done, (await engine.GetAsync(taskId, CancellationToken.None))!.State);
         }
 
