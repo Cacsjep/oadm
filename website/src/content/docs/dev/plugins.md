@@ -81,7 +81,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It names the assemblies after 
 build:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.2.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.5.0">
   <PropertyGroup>
     <OadmPluginId>acme.hello</OadmPluginId>
     <Version>1.0.0</Version>

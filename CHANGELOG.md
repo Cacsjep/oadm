@@ -8,106 +8,137 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
-- **Start 30-day trial** of OADM PRO in OADM itself: under Settings > License, or on the 802.1X and EST server pages
-  while they need OADM PRO. No account, email or internet needed; once per server, for administrators. A license you
-  import later replaces it. A running trial does not move to another computer with a backup.
-
-- 802.1X server: the log also lists requests from a switch that is not added and from a switch with a wrong shared
-  secret (at most one row per switch and minute, with the count); **Add switch** in the log adds such a switch. The Server
-  tab shows General, Switches and VLANs side by side on wide screens, with Save below them.
-- **802.1X server** (OADM PRO, off by default): OADM answers your switches and lets only cameras it manages, with a
-  certificate from the OADM CA or their Axis device ID, onto the network. Switches at sites go through the site node.
-  VLANs per site or tag, a live Sessions tab, a log, and the event rules "Device authenticated" and "Authentication failed".
-  Its page lists the switches, the VLAN rules, the cameras signing in right now, the log of sign-ins and the revoked
-  certificates; **Revoke** there picks from the PKI list of IEEE 802.1X certificates and
-  needs the PKI permission "Manage the certificate authority" too. Only users with all devices can add or remove a tag
-  that sets a VLAN, also while the 802.1X server is stopped or off; while the 802.1X server runs, a tag a VLAN rule uses
-  cannot be renamed or deleted before changing the VLAN rule. With Listen on "All interfaces" a new address of the server is answered on within 5 seconds.
-- PKI: a **Certificates** tab lists every certificate the OADM CA issued (by a PKI task or EST, with its use: HTTPS,
-  IEEE 802.1X, MQTT or RTSPS), with filters, search and View certificate. **Revoke** takes certificates out of use for
-  good; EST no longer renews a revoked certificate. A certificate stays in the list until a year after it ended; one that
-  **Delete certificates** removes from a device stays listed as Replaced, since a copy could still be in use.
+- **PKI** is the one place for certificates. Its page has the tabs **Certificates**, **Policies**, **802.1X server** and
+  **EST server**.
+- PKI **Certificates** tab: the **Certificate authorities** list (the OADM CA, previous OADM CAs, the Axis device ID
+  and imported CAs) with **Used in** (the policies that use the CA), **Export**, **Back up**, **Install in trusted root
+  store** and **Remove**; below it every other certificate OADM uses: each camera's current certificate per use (HTTPS,
+  IEEE 802.1X, MQTT, RTSPS), the server certificates and the ones made here. Search, filters, **Group by** and a menu
+  per row (**View**, **Export**, **Revoke**, **Revoke all of this device**, **Delete**).
+- PKI: **Create** makes a certificate with its key (downloaded as a PKCS#12 file with a password), **Sign request** signs
+  a certificate request of another system, **Import** adds a certificate or a PKCS#12 file. **Export** gives PEM or DER,
+  and PKCS#12 where OADM holds the key.
+- PKI: **Import** > **CA certificate** or **CA with its key** adds a CA to the list. A CA with its key can issue
+  certificates like the OADM CA; each policy names the CA that issues (**Issued by**). A CA a policy uses cannot be
+  removed.
+- PKI **Policies** tab: every rule about certificates is a policy, in one table grouped by area, created and edited in
+  a side panel. Issuing policies (HTTPS certificate, IEEE 802.1X certificate), server policies (802.1X server, EST
+  server), 802.1X access policies (802.1X trusted CA, VLAN, Block), EST enrollment policies (Enrollment, EST sign-in CA)
+  and Expiry warnings. Each policy shows its summary as a plain sentence. A device can be in only one policy of each type;
+  OADM refuses a save that would put it in two and marks policies that overlap later through a tag or site.
+- PKI: the settings of OADM 4.1 (device certificates, IEEE 802.1X, the EST server's sign-in CAs) become policies on the
+  first start, so devices keep getting the same certificates.
+- PKI: **Expiry warning** policies set how many days before the end a certificate shows a warning, per device. The
+  events **Certificate expires soon** and **Certificate expired** now use these days and are listed under Certificates;
+  existing event rules keep working.
+- PKI: **Enable HTTPS** and **Enable IEEE 802.1X** pick an issuing policy and show what it does. **Renew certificates**
+  now has a dialog that asks for the IEEE 802.1X policy, and **Install certificates** asks for it when the file is for
+  IEEE 802.1X.
+- PKI: the IEEE 802.1X certificate policy picks the **RADIUS server CA** from the CA list, and the EAP identity can be the
+  camera's IP address or the last part of it. A new installation uses EAPOL version 3 and the IP address.
+- PKI: **Block** policies with **Also revoke** revoke the IEEE 802.1X certificates of their devices, also new ones.
+- PKI: Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the EST **Set up** check the camera's clock first. When
+  the camera is behind, they say by how much and ask before they start.
+- PKI: certificates, HTTPS and IEEE 802.1X work on cameras with **AXIS OS 6.53 and later** (before: 11.11). Older
+  cameras get RSA keys; EAPOL version 3 needs AXIS OS 10.1. The EST server still needs AXIS OS 12.10.
 - PKI: certificates from before this version are added when OADM reads them from the devices: 5 minutes after the first
   start OADM reads the certificate list of every device that answers, once (read only), and again later when no device
   answered. **Revoke all of this device** also reads the device first and revokes the OADM certificates it finds there.
+- **802.1X server** (OADM PRO, off by default; on the PKI page): OADM answers your switches and lets only cameras it
+  manages, with a certificate from a CA of an 802.1X trusted CA policy, onto the network. Switches at sites go through the
+  site node. VLAN and Block policies decide per site, tag or device. The tab shows the server, the switches (a dot before
+  a switch that needs attention), the cameras signing in right now and the log, with **View certificate** and
+  **Delete all**. Event rules "Device authenticated" and "Authentication failed".
+- 802.1X server: the log also lists requests from a switch that is not added and from a switch with a wrong shared
+  secret (at most one row per switch and minute, with the count). With Listen on "All interfaces" a new address of the
+  server is answered on within 5 seconds. Only users with all devices can add or remove a tag a PKI policy uses; while
+  the policy exists, the tag cannot be renamed or deleted.
+- **Start 30-day trial** of OADM PRO in OADM itself: under Settings > License, or on the 802.1X and EST server tabs while
+  they need OADM PRO. No account, email or internet needed; once per server, for administrators. A license you import
+  later replaces it. A running trial does not move to another computer with a backup.
+- EST server: a camera renews with its current certificate from OADM, whatever CA of PKI issued it. Each profile names
+  the issuing policy it uses. Enrollments have their own card.
+- Certificate enrollment: Set up with the IEEE 802.1X profile also sets the camera's RADIUS server CA. The task shows
+  only with OADM PRO.
 - Device list: an **Architecture** column ("aarch64", "armv7hf"), off by default; turn it on in the column chooser.
   Also in the search and the export.
-- Device groups: a user can be limited to the devices of a group (sites, tags, single devices). After the
-  upgrade every user keeps all devices. Such a user sees and runs tasks only on the devices of the group; a queued task
-  whose device left the group fails before it starts.
-- Device groups: renaming a group keeps its users' pages open; the DHCP server page shows a group's users the leases of
-  their devices by MAC address only.
+- Web View: **Apps**, **Recordings** and **Security** in the page select.
+- **Device groups**: a user can be limited to the devices of a group (sites, tags, single devices). After the upgrade
+  every user keeps all devices. The **Permissions** page (before: Users) has a **Device groups** card with New device
+  group, Edit and Delete; the group editor picks sites, tags and single devices and shows the count. Add user and Edit
+  user have a **Devices** field; **Your role** shows your devices.
+- Device groups: such a user sees only the devices and sites of the group in the device list, live video, the web
+  interface and the Sites page, and runs tasks only on them. A queued task fails when its device left the group, or when
+  its user was disabled, deleted or no longer has the device. Live video stops when its device leaves the group.
 - Device groups: a user with a group finds and adds devices only at the sites of the group, and only with the passwords
   they enter (never the credential list). The waiting list shows each user the devices of their sites; devices waiting
-  without a site only to the user who kept them.
-- Device groups: device triggers, Live View views and dashboards belong to the group of the user who made them; a user
-  with a group sees and changes only these, with the devices of the group. Image Health Dashboard, Edge storage and the
-  Action Rule Editor show each group its own table.
+  without a site only to the user who kept them. A device on the waiting list whose user was deleted waits for Try now.
+  Add is off when the group has no site.
+- Device groups: device triggers, Live View views, dashboards and compliance checks belong to the group of the user who
+  made them; a user with a group sees and changes only these, with the devices of the group. Image Health Dashboard,
+  Edge storage and the Action Rule Editor show each group its own table. Administrators choose the group of a
+  compliance check, and its card names it.
 - Device groups: a device that leaves a group disappears at once from the group's tables, dashboard values and scan
-  results, and an export of its recordings ends. An administrator can save a group's view or dashboard after one of its
-  devices left the group: the save leaves that device out and says so. The same for a group's device trigger.
-- Device groups: a copy of a device trigger made by a user with a group keeps only the group's devices, and the trigger
-  page says how many it left out. A system report can be read only by the user who started it.
-- Hardening scan: every user with the same devices may stop a running scan, not only the user who started it. The scan
-  keeps running when the user who started it logs out.
-- Device groups: the dashboards of a user with a group offer only the group's own device triggers, and their live values
-  stop at once when the user's devices change.
-- Device groups: a file you upload for a task (firmware, an application, a backup) can be used only by you, in the same
-  login. Reports and other results of plugins are gone once your devices change.
-- Users page: a **Device groups** card with New device group, Edit and Delete; the group editor picks sites, tags and
-  single devices and shows the count. Add user and Edit user have a **Devices** field; **Your role** shows your devices.
-- Device groups: the device list, live video, the web interface and the Sites page show only the devices and sites of
-  the user's group; live video stops when its device leaves the group.
-- Device groups: users of a group tag only their devices and never add or remove a tag a group uses; compliance checks
-  belong to a group and run only on its devices.
-- Device groups: event rules and the event log are only for users with all devices. Rules run on all devices as before.
-- Device groups: administrators choose the device group of a compliance check, and its card names it. Deleting a tag or
-  removing a site a group uses names the group first. Users with a group do not see Event rules, and Add is off when
-  their group has no site.
-- Device groups: certificates from the PKI and EST of a device in a group name only its stored address and its Axis
-  name, never a host name or address set on the camera.
-- Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
-  built with SDK 0.3.0 keep working for users with all devices.
-- Plugin SDK 0.4.0 (802.1X server): `ICorePluginContext.ProtectedTags` / `IProtectedTags` (tags only users with all
-  devices add or remove, never renamed or deleted); `IDeviceCertificateAuthority` lists issued certificates
-  (`ListIssuedAsync`, `GetIssuedCertificateAsync`), revokes them (`RevokeAsync`, `IsRevoked`, `FindRevocation`,
-  `Revocations`), `PurposeOf` and `PreviousChains`; `IPluginNetwork.ListenUdpAsync` on chosen addresses; client SDK
-  `IssuedCertificateList` and `CertificateWindow`; `Oadm.Sdk.Testing.FakeProtectedTags`.
-- Device groups: users with a group see only plugin pages built for device groups, and plugin pages show them only
-  their own devices, reports and live updates.
-- Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
-  user's group.
-- Plugin SDK 0.4.0: `Oadm.Sdk.Testing.FakeCallContext.Over` and `OverGroup` make a user's call over a test's own device
-  and VAPIX fakes; tasks a plugin starts through `FakeCoreContext` stay active until cancelled or `EndTask`.
-- Device groups: the task plugins and VAPIX Commander work for users with a group, on the devices of the
-  group. Assign IP address and Network settings say only "In use" for an address of a device outside the group, and
-  never set an address another device managed by OADM uses.
+  results, and an export of its recordings ends. An administrator can save a group's view, dashboard or device trigger
+  after one of its devices left the group: the save leaves that device out and says so. A copy of a device trigger made
+  by a user with a group keeps only the group's devices.
+- Device groups: users of a group tag only their devices and never add or remove a tag a group uses. Deleting a tag or
+  removing a site a group uses names the group first.
+- Device groups: event rules and the event log are only for users with all devices; rules run on all devices as before.
+  System report is for users with all devices too.
+- Device groups: users with a group see the PKI page with the certificates of their own devices only, and the NTP
+  server and DHCP server pages read only with the requests and leases of their devices (DHCP by MAC address only).
+  Snapshot report, Hardening scan, Edge Recording Export, I/O Monitor, Metadata Monitor, Web View, VAPIX Commander and
+  the task plugins work only on their devices. Assign IP address and Network settings say only "In use" for an address
+  of a device outside the group, and never set an address another device managed by OADM uses.
+- Device groups: certificates from PKI and EST for a device in a group name only its stored address and its Axis name,
+  never a host name or address set on the camera.
 - Device groups: VAPIX Commander saved commands are changed only by users with all devices; others run a saved command
   only with the passwords they enter.
-- Device groups: users with a group see the PKI and EST server pages read only, with the certificates and enrollments of
-  their own devices. Certificates of a device such a user added name only its IP addresses, never its host name.
-- Device groups: users with a group see the NTP server and DHCP server pages read only, with the requests and leases of
-  their own devices. Snapshot report, Hardening scan, Edge Recording Export, I/O Monitor, Metadata Monitor and Web View
-  work only on their devices; a monitor stops when its device leaves the group. System report is for users with all
-  devices.
-- Device groups: a task waiting in the queue fails when the user who started it was disabled or deleted, or no longer
-  has the device. A device on the waiting list whose user was deleted waits for Try now.
-- Device groups: plugins made for an older OADM work only for users with all devices; for other users their tasks are
-  not in the menu.
-- Device groups: the users of the same devices share one hardening scan, and any of them can stop it. Reports, exports
-  and other results of plugins belong to the login that started them. A user runs at most 50 of them per plugin at a
-  time.
+- Device groups: plugins made for an older OADM work only for users with all devices; for other users their pages and
+  tasks are not shown.
+- Device groups: the users of the same devices share one hardening scan, and any of them can stop it; the scan keeps
+  running when the user who started it logs out. A file you upload for a task, reports, exports and other results of
+  plugins belong to the login that started them and are gone once your devices change. A user runs at most 50 of them
+  per plugin at a time.
+- Plugin SDK 0.4.0: plugin methods get the user's call (`ICallContext`) with the devices that user may reach; plugins
+  built with SDK 0.3.0 keep working for users with all devices. `IPluginEvents.Publish` without an audience reaches only
+  users with all devices.
+- Plugin SDK 0.4.0: `ICorePluginContext.ProtectedTags` / `IProtectedTags`; `IDeviceCertificateAuthority` lists and
+  revokes issued certificates (`ListIssuedAsync`, `GetIssuedCertificateAsync`, `RevokeAsync`, `IsRevoked`,
+  `FindRevocation`, `Revocations`, `PurposeOf`, `PreviousChains`; revocation reason `Superseded`) and signs with a chosen
+  CA (`DeviceCertificateRequest.IssuerId`); `IPluginNetwork.ListenUdpAsync` on chosen addresses; `ICorePluginPage.TabOf`
+  (a page shown as a tab of another plugin's page); `ProLicenseInfo.TrialAvailable`,
+  `ICorePluginClientContext.IsAdministrator` and `StartProTrialAsync`; client SDK `IssuedCertificateList`,
+  `CertificateWindow` and `OffState`.
+- Plugin SDK 0.4.0: `Oadm.Sdk.Testing.PluginCanary` checks that every method of a plugin refuses devices outside the
+  user's group; `FakeCallContext.Over` and `OverGroup` make a user's call over a test's own device and VAPIX fakes;
+  `FakeProtectedTags`; tasks a plugin starts through `FakeCoreContext` stay active until cancelled or `EndTask`.
 
 ### Changed
 
-- The **EST server** and the **802.1X server** are part of **PKI** now, with their own pages as before. Turn each on with
-  **Turn on** on its page (it needs OADM PRO; without it the button is off); **Turn off** next to Save stops it. A server
+- The **EST server** and the **802.1X server** are part of **PKI** now, as tabs of the PKI page. Turn each on with
+  **Turn on** on its tab (it needs OADM PRO; without it the button is off); **Turn off** next to Save stops it. A server
   whose plugin was on before the update stays on, with its settings, switches, enrollments and log. The Plugins page no
   longer lists them; the installers remove their old plugin folders.
-- PKI: the device counts of the page and of the Replace CA question count only certificates still in use, not ended,
+- EST server: the cameras that may sign in and the profiles they may use come from PKI's EST sign-in CA and Enrollment
+  policies; the **Sign in with** choice is gone from the EST server tab.
+- The 802.1X and EST servers use a certificate from the Certificates list, chosen in their server policy. With OADM PRO,
+  OADM makes one "802.1X and EST server" certificate for both. It is not renewed by itself: the Expiry warning and the
+  server's status remind you to choose a new one. The cipher suites follow the minimum TLS version (no choice).
+- PKI: a camera's new certificate replaces the old one in the list only once the camera uses it; the old one is then
+  revoked as "Replaced by a newer certificate". A certificate deleted from a camera leaves the list.
+- PKI: **Delete** of a certificate made here that is still valid revokes it first (**Revoke and delete**).
+- PKI: the device counts of the page and of the New OADM CA question count only certificates still in use, not ended,
   revoked or deleted ones.
 - The **Users** page is now **Permissions**: users and device groups side by side (on small screens one below the
-  other), the roles below. The user list no longer shows the last login.
+  other), the roles below. The permission groups start closed, and each role's name sits above its column. The user
+  list no longer shows the last login.
+- Settings: the cards fold and start closed. **This computer** is now **Client**.
+- Buttons look the same everywhere: toolbar buttons are flat with a coloured icon, buttons with only an icon use the
+  text colour, and only the main action of a dialog or form is filled. DHCP server: **Static lease** sits left, the
+  search right. Metadata Monitor: the camera, Start and Stop buttons are toolbar buttons in one row.
+- Sites, Compliance and the 802.1X and EST server tabs show the same page with **Turn on** while they are off.
 - Remove, Refresh, Check now, tagging, the RTSP port, the first password, the queries of task dialogs and the other
   device actions do nothing when a chosen device was removed meanwhile and say "1 device is no longer available."
   (before, Remove and Refresh skipped it).
@@ -117,6 +148,13 @@ version and date, and the release workflow copies it into the GitHub release.
   available.".
 - A client that stays connected keeps its login, also without clicks (a Live View wall). A closed client is logged out
   8 hours after its last use, as before.
+- The text of every select is centered.
+
+### Fixed
+
+- Settings: a card with a wrong value opens, so the error is visible. Polling intervals up to 86,400 s are accepted, as
+  on the server.
+- Metadata Monitor: a stream the server no longer has (after a server restart) shows Stopped instead of Live.
 
 ## [4.1.0] - 2026-10-23
 
