@@ -196,7 +196,10 @@ watch its event stream live (I/O ports, virtual inputs, storage, temperature, ta
   messages; XML through `DeviceXml` (1 MB, no DTD). The RTSP port of a camera behind a port forward is set in the
   device list (**OADM > RTSP port**); Start never changes it (an older client's port is ignored).
 - Device groups (SDK 0.4.0): streams are jobs of their user (another user's id answers like an unknown one), opened
-  through the user's call, sent to the page's session only, ended with Error when the camera leaves the user's view.
+  through the user's call, sent to the page's session only; a stream ends Stopped when the user's group or its rules
+  change (the host ends the job), with Error when the camera alone leaves the user's view. At most 16 streams (the
+  place is taken before the stream opens); a stream the server no longer has (a lease that expired, a server restart)
+  shows as Stopped on the page at the next keep-alive, never as Live.
 - Tests: `tests/Oadm.Plugins.MetadataMonitor.Tests` (+ Perf `ScaleTests`, hardware `MetadataHardwareTests`); Core
   `MetadataDepacketizerTests`, `RtspMetadataSourceTests`, `DeviceEventStreamsTests`.
 

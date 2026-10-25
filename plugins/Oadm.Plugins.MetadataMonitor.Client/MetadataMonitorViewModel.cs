@@ -598,9 +598,23 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
                     return;
                 }
 #pragma warning disable CA1031 // A missed keep-alive is retried; the stream state comes from the events.
-                catch (Exception)
+                catch (Exception ex)
 #pragma warning restore CA1031
                 {
+                    if (Message(ex) == MetadataMethods.StreamEnded && !ct.IsCancellationRequested && _streamId == streamId)
+                    {
+                        // The server no longer has the stream (it expired or the server restarted): stopped, never "Live"
+                        // without events. The messages stay; Start opens a new stream.
+                        StopKeepAlive();
+                        _streamId = null;
+                        IsRunning = false;
+                        if (StatusKind != "error")
+                        {
+                            SetStatus("neutral", "Stopped", null);
+                        }
+
+                        return;
+                    }
                 }
             }
         }

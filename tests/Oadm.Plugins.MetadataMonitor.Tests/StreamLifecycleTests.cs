@@ -35,6 +35,36 @@ public sealed class StreamLifecycleTests
     }
 
     [Fact]
+    public async Task Starts_at_the_same_time_never_open_more_streams_than_the_limit()
+    {
+        var options = new MetadataMonitorOptions
+        {
+            BatchInterval = TimeSpan.FromMilliseconds(20),
+            LeaseTimeout = TimeSpan.FromMinutes(1),
+            LeaseCheckInterval = TimeSpan.FromMilliseconds(50),
+            MaxStreams = 2,
+        };
+        await using var rig = await new Rig(options).StartAsync();
+
+        var replies = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => Task.Run(() => rig.StartStreamAsync())));
+
+        Assert.Equal(2, replies.Count(r => r.StreamId is not null));
+        Assert.All(replies.Where(r => r.StreamId is null), r => Assert.Equal("Too many event streams are open (2); stop one first", r.Error));
+        Assert.Equal(2, rig.Plugin.StreamCount);
+
+        // A stopped stream gives its place back.
+        await rig.StopStreamAsync(replies.First(r => r.StreamId is not null).StreamId!);
+        await Wait.UntilAsync(() => rig.Plugin.StreamCount == 1);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await rig.StartStreamAsync()) is { StreamId: not null } reply && await Stop(reply), "a new stream opened");
+
+        async Task<bool> Stop(StartReply reply)
+        {
+            await rig.StopStreamAsync(reply.StreamId!);
+            return true;
+        }
+    }
+
+    [Fact]
     public async Task Start_never_changes_the_rtsp_port_the_device_list_set()
     {
         await using var rig = await new Rig().StartAsync();
@@ -182,6 +212,10 @@ public sealed class StreamLifecycleTests
         Assert.True(time.GetUtcNow() - start > TimeSpan.FromSeconds(2.5)); // 1.5 s of keep-alives, then more than the 1 s lease
         await Wait.UntilAsync(() => rig.Streams.Last!.Disposed); // closed right after it is removed (asynchronously)
         await Wait.UntilAsync(() => log.States[^1].State == MonitorStates.Stopped);
+
+        // A late keep-alive learns that the stream has ended (the page then shows it as stopped).
+        var late = await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Plugin.InvokeAsync(rig.Call, MetadataMethods.KeepAlive, MetadataJson.Serialize(new StreamRequest(reply.StreamId!)), CancellationToken.None));
+        Assert.Equal(MetadataMethods.StreamEnded, late.Message);
     }
 
     [Fact]
