@@ -144,7 +144,8 @@ public sealed class DeviceGroupActionsTests
         f.Api.WatchDevicesAsync(Arg.Any<CancellationToken>()).Returns(_ => Interlocked.Increment(ref watches) == 1 ? EndsAfterSnapshot() : StaysAfterSnapshot(hang.Token));
         var mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SingleDeviceCount = 2, DeviceCount = 2 } };
         f.Api.GetMyRoleAsync(Arg.Any<CancellationToken>()).Returns(_ => mine);
-        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance, time: time);
         MainWindowViewModel shell = Shell(f, connection, session);
         var connects = 0;
         connection.Connected += (_, _) => Interlocked.Increment(ref connects);
@@ -154,7 +155,12 @@ public sealed class DeviceGroupActionsTests
 
         // An administrator gives the group a site: same name, new rules. The server ends the stream; the client reconnects.
         mine = new MyRole { RoleName = "Operator", Devices = new MyDevices { GroupId = "g1", GroupName = "Lobby", SiteNames = { "Building B" } } };
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => Volatile.Read(ref watches) >= 2 && Volatile.Read(ref connects) >= 2, "the device stream reconnected");
+        // The reconnect waits its back-off on the fake clock: moved on until the second watch starts.
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() =>
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            return Volatile.Read(ref watches) >= 2 && Volatile.Read(ref connects) >= 2;
+        }, "the device stream reconnected");
         await Oadm.Sdk.Testing.Eventually.TrueAsync(() => session.AddDevicesRefusal is null, "Add follows the new rules");
         Assert.Equal("Lobby", session.DeviceGroupName);
         connection.Stop();
