@@ -98,21 +98,30 @@ public sealed partial class ExpiryEvents : IAsyncDisposable
     public async Task RunAsync(CancellationToken ct)
     {
         Volatile.Write(ref _again, 1);
-        if (!await _gate.WaitAsync(0, ct).ConfigureAwait(false))
+        while (true)
         {
-            return; // the running round sees the flag
-        }
-
-        try
-        {
-            while (Interlocked.Exchange(ref _again, 0) == 1)
+            if (!await _gate.WaitAsync(0, ct).ConfigureAwait(false))
             {
-                await RunOnceAsync(ct).ConfigureAwait(false);
+                return; // the running round sees the flag
             }
-        }
-        finally
-        {
-            _gate.Release();
+
+            try
+            {
+                while (Interlocked.Exchange(ref _again, 0) == 1)
+                {
+                    await RunOnceAsync(ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _gate.Release();
+            }
+
+            // A round asked for after the last check and before the release found the gate taken: run it now, not a minute later.
+            if (Volatile.Read(ref _again) == 0)
+            {
+                return;
+            }
         }
     }
 

@@ -134,19 +134,26 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   until the camera has it (decision 2026-10-25, `docs/spec/pki.md` "Current and pending"): once the 200 answer is written
   (`EstService` after `EstHttp.WriteAsync`, `ICertificateDelivery.DeliveredAsync`) HTTPS, RTSPS and MQTT certificates
   become current and the previous one of the camera and use is revoked; an IEEE 802.1X one only when the camera signs in
-  to OADM's 802.1X server with it. An answer that cannot be written revokes the new certificate as unused.
+  to OADM's 802.1X server with it. An answer that cannot be written revokes the new certificate as unused. EST's own
+  store takes the certificate only once the answer is written (an unsent one never pushes out the camera's older one), and
+  a failure of PKI's delivered call is logged without losing the enrollment record (fix of 2026-10-25).
 - **The server's TLS certificate** (decision 2026-10-25, docs/spec/pki.md "Server certificates"): the certificate PKI's
   EST server policy picks from the Certificates list, **one for this server and every site** (cameras dial an IP, there is
-  no SNI): it names the server's addresses and host name and the site nodes' addresses toward the cameras. Create in the
-  policy (and Turn on without one) makes it from a CA with its key, 10 years, ECC. Never renewed or re-issued by itself;
-  the EST tab shows it and warns when a site's address is not in it.
+  no SNI): it names the server's addresses and host name and the site nodes' addresses toward the cameras. There is no
+  Create in the policy: Turn on without one makes the shared one (10 years, ECC); another one comes from the Certificates
+  tab (Create) and is chosen in the EST server policy. Never renewed or re-issued by itself; the EST tab shows it and warns
+  when a site's node address or one of this server's addresses is not in it ("Site Parking is not in the certificate of
+  the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server
+  policy.", `PolicyTexts.AddressNotInCertificate` for an own address). A revoked one is never shown again, also not from
+  the copy read before (`ServerCertificates` checks the revocation and the end by the server clock).
 - Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
-- Limits: 64 connections at once, 20 requests and 30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
+- Limits: 64 connections at once, 4 per address (per site: the same address at two sites is two cameras), 20 requests and
+  30 s idle per connection, headers 16 KB, body 64 KB. Answers: 401 no
   or no valid identity (also a CA no EST sign-in CA policy names for the operation), 403 not managed / other site / no
   enrollment policy / certificate of another camera, 400 request unreadable or refused, 404 unknown (also a profile the
-  device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600; also when the CA of the
-  profile's issuing policy cannot issue).
+  device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600; "The CA of this profile cannot
+  issue certificates." when the CA of the profile's issuing policy cannot issue).
 - Issuing (decision 2026-10-25): a profile's certificates come from the CA its issuing policy names ("Issued by": the
   OADM CA or an imported CA with its key; `DeviceCertificateRequest.IssuerId`); `cacerts` and the answer carry that CA's
   chain. The EST sign-in CAs stay as they are: only the Axis device ID and OADM CAs (the current and previous ones) can be
@@ -155,8 +162,8 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   of an imported CA renews with that certificate when it is its current one in PKI's store ("Renewal with the current
   certificate"), else with its Axis device ID.
 - The server's TLS certificate (`Serving/ServerCertificates`): the EST server policy's certificate with its key, loaded
-  once and again when the policies change (PKCS#12 in memory, so Windows TLS can use the key); `cacerts` and the TLS chain
-  are its issuer's chain.
+  once and again when the policies change (PKCS#12 in memory, so Windows TLS can use the key); the TLS chain is its
+  issuer's chain (`cacerts` answers the chain of the profile's issuing CA, above).
 
 ## Certificate renewals and pinning
 
@@ -237,16 +244,23 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 1. Check compatibility; the profiles: the enabled ones of the EST server whose service the camera has, at most 2.
    `supportedServices` lists only the services no profile uses yet, so the services of the camera's profiles count too.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
-3. Install the CA certificates: the OADM CA chain with `cert` v1, matched by fingerprint (an existing alias is reused),
-   new ones as "OADM CA <8 hex>" like PKI's; never deleting.
+3. Install the CA certificates: the issuer chain of the certificate the EST server policy picks (fix of 2026-10-25: it
+   may be a previous OADM CA or an imported CA, never simply the current OADM CA) with `cert` v1, matched by fingerprint
+   (an existing alias is reused), new ones as "OADM CA <8 hex>" like PKI's; never deleting. The check step refuses when
+   the EST server has no usable certificate (its status text), when PKI does not know its issuer ("The CA that issued
+   the EST server's certificate is not in the CA list. Choose another certificate in the EST server policy.") and when
+   the address the camera gets is not in it ("10.0.0.17 is not in the EST server's certificate. Create a certificate with
+   it on the Certificates tab and choose it in the EST server policy."); Nothing was changed.
    With IEEE 802.1X on (read fresh in the check step, `Network.Interface.I0.dot1x.Enabled`; unknown counts as on; the
    dialog counts cameras not read yet too) the IEEE 802.1X profile is skipped with a warning (no lock-out): every
    profile on the camera that serves IEEE 802.1X, also one serving other uses too, stays untouched, and a wanted use such
    a profile serves is skipped with a warning,
    unless the payload says `replaceDot1x` (`SetupPayload`): the dialog (`EstSetupWindow`) shows, only when selected
    cameras have IEEE 802.1X on, the check box "Also replace the network access certificate of N cameras with IEEE 802.1X
-   on" with the hint that the RADIUS server must trust the OADM CA (off by default); the task then logs that it was
-   chosen. HTTPS
+   on" with the hint naming the CAs of the dot1x profile's IEEE 802.1X policy ("These cameras will check the RADIUS server
+   with OADM Root CA. Only when your RADIUS server trusts OADM Root CA. Otherwise these cameras drop off the network.",
+   `CameraProfileList.RadiusServerCa` / `NetworkAccessCa` of the read-only query; without them the general hint) (off by
+   default); the task then logs that it was chosen. HTTPS
    comes last (its certificate restarts the web server); the reads while waiting are retried during that restart.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
    written. Otherwise remove those of OADM's profiles (`oadm_...`) and of the camera's profiles serving the same services
@@ -268,7 +282,9 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 6. With the dot1x profile (decision 2026-10-25): **Install the RADIUS server CA** and **Set the RADIUS server CA**, so the
    camera checks the RADIUS server with the RADIUS server CA of the profile's IEEE 802.1X policy, as Enable IEEE 802.1X
    sets it (else a new OADM CA leaves the camera trusting the old one: TLS alert 48, seen 2026-10-25). The CA is found in
-   the check step (missing: nothing is changed). Only the CA list of the camera's EAP-TLS settings is written
+   the check step, only with IEEE 802.1X on (missing or not the issuer of the 802.1X server's certificate: nothing is
+   changed; with IEEE 802.1X off it is not needed). Run before the HTTPS profile is written (its certificate restarts the
+   web server), else after the profiles. Only the CA list of the camera's EAP-TLS settings is written
    (`setWired8021XConfiguration` with on/off, identity, EAPOL version and client certificate as the camera has them,
    `NetworkInfoApi.SetCaCertificatesAsync`); skipped without the network settings API, with IEEE 802.1X off or without a
    client certificate, "Already set" when nothing differs. Also when the profiles were already set up.

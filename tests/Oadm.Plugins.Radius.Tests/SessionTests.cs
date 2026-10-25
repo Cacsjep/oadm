@@ -369,15 +369,48 @@ public sealed class SessionTests
         Started(processor, mac: "AC-CC-8E-00-00-01");
         Started(processor, mac: "AC-CC-8E-00-00-02");
 
-        var (refused, _, _) = new TestSwitch(processor) { CallingStationId = "AC-CC-8E-00-00-03" }.Send(Identity());
-        Assert.Equal("Too many open sessions", refused.Reason);
+        // Silently dropped (the switch tries again), never an Access-Reject a flood could make the switch apply to a device.
+        var (refused, _, _) = new TestSwitch(processor) { CallingStationId = "AC-CC-8E-00-00-03", NasPortId = "Gi1/0/6" }.Send(Identity());
+        Assert.Equal((RadiusOutcome.Dropped, RadiusDropReason.TooManySessions, null), (refused.Outcome, refused.Drop, refused.Response));
 
         var otherSwitch = new TestSwitch(processor) { Client = new RadiusClient("switch-2", TestSwitch.DefaultSecret) };
         Assert.Equal(RadiusCode.AccessChallenge, RadiusPacket.Parse(otherSwitch.Send(Identity()).Result.Response!).Packet!.Code);
         var (full, _, _) = new TestSwitch(processor) { Client = new RadiusClient("switch-3", TestSwitch.DefaultSecret) }.Send(Identity());
-        Assert.Equal("Too many open sessions", full.Reason);
+        Assert.Equal((RadiusOutcome.Dropped, RadiusDropReason.TooManySessions), (full.Outcome, full.Drop));
         Assert.Equal(10_000, new RadiusProtocolOptions().MaxSessions);
         Assert.Equal(1_000, new RadiusProtocolOptions().MaxSessionsPerClient);
+        Assert.Equal(8, new RadiusProtocolOptions().MaxSessionsPerPort);
+    }
+
+    [Fact]
+    public void One_port_with_spoofed_mac_addresses_keeps_at_most_8_sessions_and_never_uses_up_its_switch()
+    {
+        var processor = NewProcessor(new RadiusProtocolOptions { ServerIdentity = TestPki.ServerIdentity, MaxSessionsPerClient = 10 });
+        for (var i = 0; i < 20; i++)
+        {
+            Started(processor, mac: $"AC-CC-8E-00-01-{i:X2}");
+        }
+
+        Assert.Equal(8, processor.SessionCount); // the oldest on the port gave way
+        Assert.Equal(12, _changes.Count(c => c is { State: EapSessionState.Abandoned, Reason: EapSessionTexts.TooManyOnPort }));
+        Assert.Equal(8, processor.Sessions().Select(x => x.Mac).Distinct().Count()); // the newest eight
+
+        // Another port of the same switch still gets its session.
+        Started(processor, mac: "AC-CC-8E-00-02-01", port: "Gi1/0/7");
+        Assert.Equal(9, processor.SessionCount);
+    }
+
+    [Fact]
+    public void A_first_fragment_announcing_64_kb_holds_only_what_arrived()
+    {
+        var processor = NewProcessor();
+        var (radiusSwitch, startId) = Started(processor);
+
+        var (result, answer, _) = radiusSwitch.Send(TlsResponse(startId, new EapTlsMessage(EapTlsBits.Length | EapTlsBits.More, 64 * 1024, new byte[100])));
+
+        Assert.Equal(RadiusCode.AccessChallenge, answer!.Code); // the acknowledgement of the fragment
+        Assert.Equal(EapSessionState.ReceivingClientHello, result.Session!.State);
+        Assert.InRange(processor.IncomingBytes(), 100, 4 * 1024);
     }
 
     [Fact]

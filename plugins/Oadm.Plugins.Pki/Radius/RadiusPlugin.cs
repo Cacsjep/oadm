@@ -15,7 +15,7 @@ namespace Oadm.Plugins.Radius;
 /// sockets, no host), the server part in <c>Server/</c> (<see cref="RadiusService"/>), the page contract in <c>Api/</c>.
 /// A PRO part of PKI (docs/spec/pki.md "One plugin"): the core plugin always runs, the server only while it is turned on and
 /// OADM PRO is active (<see cref="ServerSwitch{TService}"/>); the server checks the license again on every request. Its
-/// rules are PKI's policies (<see cref="PolicyStore"/>, in process): the settings of OADM 4.1 and of development builds become
+/// rules are PKI's policies (<see cref="PolicyStore"/>, in process): the settings of the development builds before 4.5 become
 /// policies once, at the first start (<see cref="RadiusPolicies.ConvertAsync"/>). Events: "Device authenticated",
 /// "Authentication failed".
 /// </summary>
@@ -114,6 +114,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }, ctx.Events, ctx.Logger);
         _server = server;
         await server.StartAsync(ct).ConfigureAwait(false);
+        ctx.Services?.Find<PolicyStore>()?.ServerPluginStarted(PolicyKinds.Dot1xServer, () => server.On);
     }
 
     public async Task StopAsync(CancellationToken ct)

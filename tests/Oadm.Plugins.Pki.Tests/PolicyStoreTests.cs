@@ -88,7 +88,8 @@ public sealed class PolicyStoreTests
         Assert.Equal(new PolicyFieldError(PolicyFields.ReauthMinutes, PolicyTexts.ReauthRange), await RefusedAsync(store, saved with { ReauthMinutes = 5 }));
         Assert.Equal(new PolicyFieldError(PolicyFields.MinimumTls, PolicyRules.ChooseTls), await RefusedAsync(store, saved with { MinimumTls = "2.0" }));
         Assert.True((await SaveAsync(store, saved with { CipherSuites = [] })).CipherSuites is null or { Count: 0 }); // the suites follow the minimum TLS version (decision 2026-10-25)
-        Assert.Equal(60, (await SaveAsync(store, saved with { ReauthMinutes = 60 })).ReauthMinutes);
+        Assert.Equal(60, (await SaveAsync(store, store.ServerPolicy! with { ReauthMinutes = 60 })).ReauthMinutes); // the policy as it is now
+        Assert.Equal(new PolicyFieldError(PolicyFields.Policy, PolicyTexts.ChangedElsewhere), await RefusedAsync(store, saved with { ReauthMinutes = 90 })); // read before the last save
     }
 
     [Fact]

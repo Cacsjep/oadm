@@ -89,13 +89,13 @@ public static class RadiusPolicies
     /// <summary>The 802.1X policies that apply (the page's "6 policies apply"): 802.1X server, 802.1X trusted CA, VLAN and Block.</summary>
     public static int CountApplying(PolicyStore? store) => store?.All.Count(p => PolicyKinds.IsDot1x(p.Kind)) ?? 0;
 
-    // ------------------------------------------------------------------ the settings of OADM 4.1 and of development builds
+    // ------------------------------------------------------------------ the settings of the development builds before 4.5
 
     /// <summary>
     /// The 802.1X server's settings from before the policies, made into policies once (docs/spec/pki.md "Converting existing
     /// settings"): Advanced (setting <c>config</c>) -> the 802.1X server policy; Trusted CAs (<c>trustedCas</c>; none stored =
     /// the OADM CA and the Axis device ID, only managed) -> one Allow CA per checked CA; the policies (<c>policies</c>) or OADM
-    /// 4.1's VLAN rules (<c>vlans</c>, only when Assign VLANs was on) -> VLAN, Block and Revoke policies with the same names,
+    /// the older VLAN rules (<c>vlans</c>, only when Assign VLANs was on) -> VLAN, Block and Revoke policies with the same names,
     /// devices and order; a Default VLAN that applied -> a last VLAN policy "All devices" (every device, also of sites added
     /// later and devices OADM does not manage), so no device changes its VLAN. Nothing stored: the defaults of the kinds. Nothing is dropped; the old settings stay as they are.
     /// </summary>
@@ -283,7 +283,7 @@ public sealed class RadiusRuleSet
     public bool IsCurrent(PolicyStore? store) => ReferenceEquals(store, Store) && (store is null || store.Version == Version);
 }
 
-// ------------------------------------------------------------------ stored forms of OADM 4.1 and of development builds
+// ------------------------------------------------------------------ stored forms of the development builds before 4.5
 
 /// <summary>The kinds of the policies of development builds (setting <c>policies</c>).</summary>
 public static class LegacyPolicyKinds
@@ -317,17 +317,17 @@ public sealed record LegacyPolicySettings
     public int? DefaultVlan { get; init; }
 }
 
-/// <summary>Kinds of a VLAN rule of OADM 4.1.</summary>
+/// <summary>Kinds of a VLAN rule of the development builds before 4.5.</summary>
 public static class VlanRuleKinds
 {
     public const string Site = "site";
     public const string Tag = "tag";
 }
 
-/// <summary>A VLAN rule of OADM 4.1: a site (<see cref="Guid.Empty"/> = This server) or a tag gets a VLAN; the first match won.</summary>
+/// <summary>A VLAN rule of the development builds before 4.5: a site (<see cref="Guid.Empty"/> = This server) or a tag gets a VLAN; the first match won.</summary>
 public sealed record VlanRule(string Kind, string RefId, string? RefName, int Vlan);
 
-/// <summary>The VLAN rules of OADM 4.1 (setting <c>vlans</c>).</summary>
+/// <summary>The VLAN rules of the development builds before 4.5 (setting <c>vlans</c>).</summary>
 public sealed record VlanSettings
 {
     public bool Enabled { get; init; }
@@ -337,7 +337,7 @@ public sealed record VlanSettings
     public int? DefaultVlan { get; init; }
 }
 
-/// <summary>The Advanced settings stored in <c>config</c> by OADM 4.1 and development builds (read once for the conversion).</summary>
+/// <summary>The Advanced settings stored in <c>config</c> by the development builds before 4.5 (read once for the conversion).</summary>
 public sealed record LegacyAdvanced
 {
     public string? MinimumTls { get; init; }

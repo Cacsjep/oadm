@@ -389,6 +389,12 @@ public sealed class ServerTests
         await harness.AddSwitchAsync("Named switch", "switch.example");
 
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch("10.0.0.44").RunAsync(Camera(harness, harness.Ca.Camera(Serial)))).Final);
+
+        // The same switch by its IP address is refused: its requests could not tell which secret applies.
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => harness.CallAsync<SwitchRow>(RadiusMethods.SaveSwitch,
+            new SaveSwitchRequest { Name = "Same switch", Address = "10.0.0.44", Secret = PluginHarness.Secret }));
+        Assert.Equal(("address", RadiusRules.AddressTaken), (refused.ParamName, refused.Message.Split(" (Parameter")[0]));
+        Assert.Single(harness.Service.ListSwitches().Switches);
     }
 
     [Fact]

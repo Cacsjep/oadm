@@ -279,7 +279,7 @@ public sealed class CertificateListTests
         }
 
         // What does not belong here.
-        Assert.Equal("This is a CA certificate. Use Import CA in Certificate authorities.", (await ImportAsync(TestCa.Pem(root))).Errors![CertificateFields.File]);
+        Assert.Equal("This is a CA certificate. Use Import > CA certificate in Certificate authorities.", (await ImportAsync(TestCa.Pem(root))).Errors![CertificateFields.File]);
         Assert.Equal("The file contains a private key. Import a .pfx or .p12 file to keep a key.",
             (await ImportAsync(TestCa.Ascii(PemEncoding.WriteString("CERTIFICATE", leaf.RawData) + "\n" + rsa.ExportPkcs8PrivateKeyPem()))).Errors![CertificateFields.File]);
         Assert.Equal("The file holds 2 certificates. Import one at a time.", (await ImportAsync(TestCa.Pem(leaf, other))).Errors![CertificateFields.File]);
@@ -370,7 +370,8 @@ public sealed class CertificateListTests
     public async Task The_search_looks_in_every_column_and_the_filters_combine()
     {
         var devices = new[] { new PkiFakeDevice(Guid.NewGuid(), "10.0.0.48", "B8A44F631339") };
-        await using var pki = await PkiHarness.StartAsync(devices: devices);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 10, 15, 12, 0, 0, TimeSpan.Zero)); // never across a month end
+        await using var pki = await PkiHarness.StartAsync(devices: devices, time: time);
         IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
         await RevocationTests.SignAsync(authority, devices[0].Id);
         await CreateAsync(pki, name: "nvr.example.com");
@@ -384,7 +385,7 @@ public sealed class CertificateListTests
         Assert.True(await CountAsync("Axis device ID") >= 2); // every Axis CA certificate is issued by the Axis device ID
         Assert.True(await CountAsync("OADM Root CA SERVER01") >= 3);
         Assert.Equal(await CountAsync("Valid"), await CountAsync("valid")); // case-insensitive
-        Assert.Equal(2, await CountAsync(DateTime.UtcNow.AddDays(365).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)[..7], DeviceCertificatePurposes.Https));
+        Assert.Equal(2, await CountAsync("2027-10", DeviceCertificatePurposes.Https));
 
         var mine = (await PageAsync(pki, new CertificatesRequest { State = IssuedCertificateState.Valid, Purpose = DeviceCertificatePurposes.Https, IssuedBy = CertificateAuthorityInfo.OadmId })).Rows;
         Assert.Equal(2, mine.Count);

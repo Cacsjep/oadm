@@ -102,20 +102,27 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         var import = new ExistingCertificateImport(service, system, ctx.Settings, _options.Time, _options.ExistingImportDelay, ctx.Logger) { RetryInterval = _options.ExistingImportRetry };
         _import = Task.Run(() => import.RunAsync(stopping.Token), CancellationToken.None);
 
-        // OADM PRO active (now, or later): one certificate for the 802.1X and EST server policies that have none (decision 2026-10-25).
+        // OADM PRO active (now, or later): one certificate for the 802.1X and EST server policies that have none (decision
+        // 2026-10-25), once both server plugins started (they tell their names) and none of them is turned on (the one that is
+        // makes it at its start with its names; the 802.1X server first takes over the certificate it kept).
         if (ctx.Pro is { } pro)
         {
             _pro = pro;
             _onPro = (_, _) => EnsureServerCertificates(service, pro);
             pro.Changed += _onPro;
+            service.Policies.ServerPluginsChanged += _onPro;
             EnsureServerCertificates(service, pro);
         }
     }
 
+    /// <summary>OADM PRO is active, both server plugins started and neither server is turned on (its own start makes the certificate).</summary>
+    internal static bool MakesServerCertificates(PkiService service, Oadm.Sdk.Licensing.IProLicense pro) =>
+        pro.IsActive && service.Policies.ServerPluginsKnown && !service.Policies.AnyServerTurnedOn;
+
     /// <summary>In the background: never holds up the start or the license change; errors are logged by the service.</summary>
     private static void EnsureServerCertificates(PkiService service, Oadm.Sdk.Licensing.IProLicense pro)
     {
-        if (pro.IsActive)
+        if (MakesServerCertificates(service, pro))
         {
             _ = Task.Run(async () =>
             {
@@ -138,6 +145,11 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         if (_pro is { } pro && _onPro is { } onPro)
         {
             pro.Changed -= onPro;
+            if (_service is { } running)
+            {
+                running.Policies.ServerPluginsChanged -= onPro;
+            }
+
             _pro = null;
             _onPro = null;
         }
@@ -234,7 +246,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             case PkiMethods.GetCertificate:
             {
                 var view = await ViewedSet.OfAsync(caller, ct).ConfigureAwait(false);
-                return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct).ConfigureAwait(false));
+                var devices = view is null ? null : await caller.Devices.ListAsync(ct).ConfigureAwait(false); // the group's: a camera by its serial
+                return PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), view, ct, devices).ConfigureAwait(false));
             }
 
             case PolicyMethods.GetPolicies:

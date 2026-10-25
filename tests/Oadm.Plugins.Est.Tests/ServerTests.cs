@@ -89,6 +89,22 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_failure_of_pkis_delivered_call_keeps_the_enrollment_record_and_the_certificate()
+    {
+        _policies = await TestPolicies.EstStoreAsync();
+        _ca.FailDelivered = true;
+        var (csr, key) = TestPki.Request("CN=whatever");
+        using var _ = key;
+
+        var enrolled = await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr));
+
+        Assert.Equal(200, enrolled.Status);
+        using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
+        await Eventually.TrueAsync(() => _service.Store.Enrollments().Any(e => string.Equals(e.SerialNumber, issued.SerialNumber, StringComparison.OrdinalIgnoreCase)), "the enrollment record");
+        Assert.NotNull(_service.Store.FindCertificate(issued.SerialNumber)); // written: in EST's store
+    }
+
+    [Fact]
     public async Task Enrollment_and_renewal_issue_with_the_valid_days_of_the_profiles_policy()
     {
         _policies = await TestPolicies.EstStoreAsync();
@@ -668,7 +684,7 @@ public sealed class ServerTests : IAsyncLifetime
 
         // A profile the EST server does not have is refused on save; the list says how many apply.
         store.ProfileNames = token => EstPolicies.ProfileNamesAsync(_settings, token);
-        var bad = await store.SaveAsync(entrance with { Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
+        var bad = await store.SaveAsync(store.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.Enrollment).Single(p => p.Name == "Entrance") with { ProfileScope = entrance.ProfileScope, Profiles = ["web"] }, "admin", Oadm.Plugins.Pki.PkiService.CipherSuites, CancellationToken.None);
         Assert.Equal(("profiles", "The EST server has no profile web."), (bad.Error?.Field, bad.Error?.Message));
         Assert.Equal(5, _service.GetState().PoliciesApply);
     }

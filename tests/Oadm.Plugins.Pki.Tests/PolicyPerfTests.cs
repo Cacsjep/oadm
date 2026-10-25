@@ -130,4 +130,46 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
         Assert.True(apply < TimeSpan.FromMilliseconds(500), $"the table took {apply.TotalMilliseconds:F0} ms");
         Assert.True(search < TimeSpan.FromMilliseconds(200), $"the search took {search.TotalMilliseconds:F0} ms");
     }
+
+    [Fact]
+    public async Task Opening_policies_and_typing_in_their_form_at_30000_devices_build_no_device_picker()
+    {
+        var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
+        {
+            Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture),
+            Address = "10.2." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+        }).ToList();
+        await using var pki = await PkiHarness.StartAsync(devices: devices);
+        var page = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
+        await page.LoadAsync(CancellationToken.None);
+
+        // Every row clicked, three rounds: a form each time, no picker over the 30,000 devices (Choose devices makes one).
+        var watch = Stopwatch.StartNew();
+        for (var round = 0; round < 3; round++)
+        {
+            foreach (var row in page.Rows.ToList())
+            {
+                page.SelectedRow = row;
+                Assert.False(page.Editor!.HasPicker);
+            }
+        }
+
+        var opens = watch.Elapsed / (3 * page.Rows.Count);
+
+        // 500 keystrokes in the name of a new VLAN policy: one comparison with the stored form per change.
+        var editor = page.NewEditor(PolicyKinds.Vlan);
+        watch.Restart();
+        for (var i = 0; i < 500; i++)
+        {
+            editor.Name = "Building " + i.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var keystroke = watch.Elapsed / 500;
+        Assert.False(editor.HasPicker);
+        Assert.NotNull(editor.NewPicker()); // the dialog's picker, only now
+
+        output.WriteLine($"30,000 devices: open a policy {opens.TotalMilliseconds:F2} ms; a keystroke {keystroke.TotalMilliseconds:F3} ms");
+        Assert.True(opens < TimeSpan.FromMilliseconds(25), $"opening a policy took {opens.TotalMilliseconds:F1} ms");
+        Assert.True(keystroke < TimeSpan.FromMilliseconds(2), $"a keystroke took {keystroke.TotalMilliseconds:F2} ms");
+    }
 }

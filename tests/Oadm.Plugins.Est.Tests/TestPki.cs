@@ -70,10 +70,29 @@ internal static class TestPki
 
 /// <summary>The OADM CA as the PKI plugin offers it, for tests: signs with OADM's names, records every request.</summary>
 internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pki.Ca.ICertificateDelivery, Oadm.Plugins.Pki.Ca.ICurrentCertificates,
-    Oadm.Plugins.Pki.Ca.IServerCertificateSource, IDisposable
+    Oadm.Plugins.Pki.Ca.IServerCertificateSource, Oadm.Plugins.Pki.Ca.IRadiusCaSource, IDisposable
 {
     private readonly Lock _serverGate = new();
     private Oadm.Plugins.Pki.ServerCertificateMaterial? _server;
+
+    /// <summary>The issuer chain of the servers' certificate when it is not this CA (a previous or an imported CA); null: this CA.</summary>
+    public IReadOnlyList<byte[]>? ServerIssuer { get; set; }
+
+    /// <summary>The servers' certificate names <paramref name="name"/> too (made again at the next read).</summary>
+    public void NameAlso(string name)
+    {
+        lock (_serverGate)
+        {
+            ServerNames.Add(name);
+            _server = null;
+        }
+    }
+
+    /// <summary>The RADIUS server CA of an IEEE 802.1X policy; null: this CA. Throw to refuse like PKI.</summary>
+    public Func<Oadm.Plugins.Pki.Policies.PkiPolicy, IReadOnlyList<(string Alias, string Pem, string Fingerprint)>>? RadiusCaAnswer { get; set; }
+
+    public IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Oadm.Plugins.Pki.Policies.PkiPolicy policy) =>
+        RadiusCaAnswer?.Invoke(policy) ?? [("OADM CA test", new string(PemEncoding.Write("CERTIFICATE", _ca.RawData)) + "\n", Convert.ToHexString(SHA256.HashData(_ca.RawData)))];
 
     /// <summary>How often the servers' certificate was made (in PKI the server policy picks it from the list, decision 2026-10-25).</summary>
     public int ServerCertificatesMade { get; private set; }
@@ -92,11 +111,28 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.
         lock (_serverGate)
         {
             _server ??= MakeServerCertificate(); // the server's start and the first connection may read it at once
-            return new(_server with { Pkcs8 = (byte[])_server.Pkcs8.Clone() }, null); // the reader clears its copy of the key
+            using var leaf = X509CertificateLoader.LoadCertificate(_server.Leaf);
+            if (IsRevoked(leaf.SerialNumber))
+            {
+                return new(null, "The EST server cannot use its certificate: it is revoked."); // as PKI says it
+            }
+
+            return new(_server with { Pkcs8 = (byte[])_server.Pkcs8.Clone(), IssuerChain = ServerIssuerChain(kind) }, null); // the reader clears its copy of the key
         }
     }
 
-    public IReadOnlyList<byte[]> ServerIssuerChain(string kind) => IsReady ? Chain : [];
+    /// <summary>The serial of the servers' certificate now (made on the first read).</summary>
+    public string ServerSerial()
+    {
+        lock (_serverGate)
+        {
+            _server ??= MakeServerCertificate();
+            using var leaf = X509CertificateLoader.LoadCertificate(_server.Leaf);
+            return leaf.SerialNumber;
+        }
+    }
+
+    public IReadOnlyList<byte[]> ServerIssuerChain(string kind) => IsReady ? ServerIssuer ?? Chain : [];
 
     public Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<Oadm.Plugins.Pki.ServerCertificateImport?>>? existing, CancellationToken ct) =>
         Task.CompletedTask;
@@ -139,7 +175,11 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.
     /// <summary>What EST told the store: ("delivered" | "not delivered" | "signed in", serial), in order.</summary>
     public List<(string What, string Serial)> Deliveries { get; } = [];
 
-    public Task DeliveredAsync(string serialNumber, CancellationToken ct) => Note("delivered", serialNumber);
+    /// <summary>PKI's store fails when EST tells it a certificate was delivered.</summary>
+    public bool FailDelivered { get; set; }
+
+    public Task DeliveredAsync(string serialNumber, CancellationToken ct) =>
+        FailDelivered ? throw new InvalidOperationException("PKI's store cannot be written.") : Note("delivered", serialNumber);
 
     public Task NotDeliveredAsync(string serialNumber, CancellationToken ct) => Note("not delivered", serialNumber);
 

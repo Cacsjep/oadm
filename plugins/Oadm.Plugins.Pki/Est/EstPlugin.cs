@@ -99,6 +99,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }, ctx.Events, ctx.Logger);
         _server = server;
         await server.StartAsync(ct).ConfigureAwait(false);
+        ctx.Services?.Find<PolicyStore>()?.ServerPluginStarted(PolicyKinds.EstServer, () => server.On);
     }
 
     /// <summary>
@@ -119,6 +120,12 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         var settings = ctx.Settings;
         store.ProfileUses = token => EstPolicies.UsesAsync(settings, token);
         store.ProfileNames = token => EstPolicies.ProfileNamesAsync(settings, token);
+
+        // The site nodes' addresses the cameras were given, also while the server is off: a server certificate made now names
+        // them (the running server hands its own names instead).
+        var sites = EstStore.Read<Dictionary<Guid, List<string>>>(await settings.GetAsync(EstStore.SitesKey, ct).ConfigureAwait(false)) ?? [];
+        IReadOnlyList<string> siteAddresses = [.. sites.Values.SelectMany(a => a).Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase)];
+        store.EstServerNames = () => siteAddresses;
         await EstPolicies.CleanUpAsync(settings, store, ct).ConfigureAwait(false);
         await EstPolicies.ConvertAsync(settings, store, ct).ConfigureAwait(false);
         await EstPolicies.ConvertRulesAsync(settings, store, ct).ConfigureAwait(false);

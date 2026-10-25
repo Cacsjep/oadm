@@ -23,12 +23,22 @@ public interface IServerCertificateSource
     Task EnsureServerCertificateAsync(string kind, IReadOnlyList<string> names, Func<CancellationToken, Task<ServerCertificateImport?>>? existing, CancellationToken ct);
 }
 
+/// <summary>The CA certificates a camera checks the RADIUS server with (EST's set-up of the dot1x profile); a test CA in EST's tests.</summary>
+public interface IRadiusCaSource
+{
+    /// <summary>
+    /// The CA certificates of the IEEE 802.1X issuing policy <paramref name="policy"/> (its RADIUS server CA and the CAs above
+    /// it); throws <see cref="InvalidOperationException"/> with the reason when they cannot be used.
+    /// </summary>
+    IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas(Policies.PkiPolicy policy);
+}
+
 /// <summary>
 /// The OADM CA for other plugins (<see cref="IDeviceCertificateAuthority"/>, offered through the plugin services while PKI
 /// runs): signs with <see cref="DeviceCertificateIssuer"/> like PKI's own tasks and lists device certificates in the issued
 /// registry. Refuses requests signed with SHA-1 or MD5.
 /// </summary>
-public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates, IServerCertificateSource
+public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertificateAuthority, ICertificateDelivery, ICurrentCertificates, IServerCertificateSource, IRadiusCaSource
 {
     /// <summary>
     /// The CA certificates a camera checks the RADIUS server with, as the IEEE 802.1X issuing policy <paramref name="policy"/>
@@ -174,7 +184,7 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
         if (service.IssuingCa(request.IssuerId) is not { } ca)
         {
             throw new CertificateRequestRefusedException(request.IssuerId is null || string.Equals(request.IssuerId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)
-                ? "The PKI has no certificate authority. Generate or import one first."
+                ? "The PKI has no certificate authority. Use New OADM CA first."
                 : "The CA of this policy cannot issue certificates. Choose another CA in the policy.");
         }
 

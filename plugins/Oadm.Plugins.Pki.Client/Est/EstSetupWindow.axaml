@@ -74,7 +74,7 @@
       <CheckBox IsChecked="{Binding ReplaceDot1x}">
         <TextBlock TextWrapping="Wrap" Text="{Binding Dot1xText}" />
       </CheckBox>
-      <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="28,0,0,0" Text="{x:Static vm:EstSetupViewModel.Dot1xHint}" />
+      <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="28,0,0,0" Text="{Binding Dot1xHintText}" />
     </StackPanel>
 
     <!-- A Set up or Remove started here: the step while it runs, then its result (the dialog stays open). -->

@@ -429,6 +429,12 @@ public sealed record PkiPolicy
 
     /// <summary>Set by PKI: who saved it last (the user of a Block policy that also revokes's later revocations).</summary>
     public string? SavedBy { get; init; }
+
+    /// <summary>
+    /// Set by PKI: counts the changes of the stored policy. A save sends the revision it read; PKI refuses it when the policy
+    /// changed since ("Changed by someone else. Reload."), so a later save never overwrites another user's change unseen.
+    /// </summary>
+    public int Revision { get; init; }
 }
 
 /// <summary>One row of the Policies card: the policy with its kind's name, its group, the summary and a warning.</summary>
@@ -484,13 +490,6 @@ public sealed record PolicyList
 
     /// <summary>The CAs a server certificate can be created with (Create of a server policy): the CAs with their key, the OADM CA first.</summary>
     public IReadOnlyList<PolicyCaChoice> ServerCertificateCas { get; init; } = [];
-
-    /// <summary>The names a new 802.1X server certificate gets by default: this server's addresses and host name.</summary>
-    public IReadOnlyList<string> Dot1xServerNames { get; init; } = [];
-
-    /// <summary>The names a new EST server certificate gets by default: this server's addresses and host name, and the site nodes' addresses.</summary>
-    public IReadOnlyList<string> EstServerNames { get; init; } = [];
-
 
     /// <summary>The sites of the server (the device selector, the row texts).</summary>
     public IReadOnlyList<PolicySite> Sites { get; init; } = [];
@@ -591,6 +590,9 @@ public static class PolicyFields
     public const string Profiles = "profiles";
     public const string SignInFor = "signInFor";
     public const string AlsoRevoke = "alsoRevoke";
+
+    /// <summary>A refusal of the whole policy, of no field (the page shows it in a message).</summary>
+    public const string Policy = "policy";
 }
 
 /// <summary>The texts of the policies (one phrase per concept), the same on the page and in the server's refusals.</summary>
@@ -607,6 +609,9 @@ public static class PolicyTexts
     public const string AlsoRevoke = "Also revoke their IEEE 802.1X certificates";
     public const string SiteGone = "This site no longer exists.";
     public const string PolicyGone = "This policy no longer exists.";
+
+    /// <summary>The stored policy changed after the form read it (another user, or OADM itself).</summary>
+    public const string ChangedElsewhere = "Changed by someone else. Reload.";
     public const string KindKept = "A policy keeps its kind. Add a new policy instead.";
     public const string ChooseCa = "Choose a CA.";
     public const string UnknownCa = "This certificate authority is not in the PKI.";
@@ -644,7 +649,12 @@ public static class PolicyTexts
     public static string ServerCertificateUnusable(string server, string why) => $"{server} cannot use its certificate: {why}";
 
     /// <summary>A site whose node address is not in the EST server's certificate.</summary>
-    public static string SiteNotInCertificate(string site) => $"Site {site} is not in the certificate of the EST server. Create a new one in its policy.";
+    public static string SiteNotInCertificate(string site) =>
+        $"Site {site} is not in the certificate of the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server policy.";
+
+    /// <summary>An address of this server the cameras get is not in the EST server's certificate.</summary>
+    public static string AddressNotInCertificate(string address) =>
+        $"{address} is not in the certificate of the EST server. Create a certificate with it on the Certificates tab and choose it in the EST server policy.";
     public const string RadiusCaUnreadable = "The CA certificate of the RADIUS server cannot be read. Import it again.";
 
     /// <summary>The IEEE 802.1X policy names no CA of the list for the RADIUS server.</summary>

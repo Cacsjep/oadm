@@ -125,8 +125,9 @@ public sealed partial class PkiService
         {
             var id = material.Id;
             var known = _imported.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
+            // A CA listed with a key the master key cannot read (another server's backup) takes the key again.
             if (string.Equals(_ca?.Id, id, StringComparison.OrdinalIgnoreCase) || _previous.Any(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))
-                || known is { KeyProtected: not null })
+                || (known is { KeyProtected: not null } && _importedMaterial.GetValueOrDefault(id) is { HasKey: true }))
             {
                 material.Dispose();
                 return new PkiReply { Errors = One(PkiFields.File, "This CA is already in the list.") };
@@ -258,8 +259,10 @@ public sealed partial class PkiService
                     return Field("This certificate has expired.");
                 }
 
+                // A single Axis device ID CA may be listed on its own (a camera then trusts exactly that one, not the whole
+                // Axis device ID entry with every Axis root and intermediate).
                 var id = CaCertificates.Fingerprint(certificate);
-                if (Authorities().Any(a => a.Certificates.Any(der => Convert.ToHexString(SHA256.HashData(der)) == id)))
+                if (Authorities().Any(a => a.Kind != CertificateAuthorityKind.AxisDeviceId && a.Certificates.Any(der => Convert.ToHexString(SHA256.HashData(der)) == id)))
                 {
                     return Field("This CA is already in the list.");
                 }
@@ -423,8 +426,8 @@ public sealed partial class PkiService
         return new CaMaterial(certificates[0], chain, key);
     }
 
-    /// <summary>The rows of the page's Certificate authorities card.</summary>
-    private List<AuthorityRow> AuthorityRows() =>
+    /// <summary>The rows of the page's Certificate authorities card; <paramref name="withPolicies"/> false: Used by without policy names.</summary>
+    private List<AuthorityRow> AuthorityRows(bool withPolicies) =>
     [
         .. Authorities().Select(a => new AuthorityRow
         {
@@ -433,7 +436,7 @@ public sealed partial class PkiService
             Kind = a.Kind,
             NotAfterUtc = a.NotAfterUtc,
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
-            UsedBy = AuthorityUsedBy(a),
+            UsedBy = withPolicies ? AuthorityUsedBy(a) : [.. UsedBy(a.Id)],
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
         }),
     ];

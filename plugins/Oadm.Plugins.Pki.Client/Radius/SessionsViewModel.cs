@@ -197,6 +197,21 @@ public sealed partial class SessionsViewModel : ObservableObject
     /// <summary>"3 sessions in progress".</summary>
     public string CountText => RadiusTexts.Count(_open, "session in progress", "sessions in progress");
 
+    /// <summary>The sessions in progress (not ended).</summary>
+    public int OpenCount => _open;
+
+    /// <summary>The row is still one of the tab's (not taken off by the server or after it ended).</summary>
+    public bool Holds(SessionRowViewModel row) => row is not null && _byId.TryGetValue(row.Id, out var held) && ReferenceEquals(held, row);
+
+    /// <summary>
+    /// After a batch of the live events: the rows it added (null: none). Rows it updated changed in place; the Sessions table
+    /// applies it in place too (never one reset per batch).
+    /// </summary>
+    public event EventHandler<IReadOnlyList<SessionRowViewModel>?>? BatchApplied;
+
+    /// <summary>After the list was read again (the Sessions table builds its rows again).</summary>
+    public event EventHandler? Reloaded;
+
     /// <summary>One line without rows.</summary>
     public string? EmptyText => Rows.Count > 0 || !_loadedOnce ? null : "No authentications in progress.";
 
@@ -236,6 +251,7 @@ public sealed partial class SessionsViewModel : ObservableObject
             }
 
             Notify();
+            Reloaded?.Invoke(this, EventArgs.Empty);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -280,17 +296,17 @@ public sealed partial class SessionsViewModel : ObservableObject
             return; // read with the rest when the tab opens
         }
 
-        ApplyBatch(batch, buffered: false);
+        var added = ApplyBatch(batch, buffered: false);
         Notify();
+        BatchApplied?.Invoke(this, added);
     }
 
     /// <summary>
     /// Applies one batch. A <paramref name="buffered"/> one came in during the read: an update older than the read row
     /// (a shorter duration) is left out.
     /// </summary>
-    private void ApplyBatch(IReadOnlyList<SessionRow> batch, bool buffered)
+    private List<SessionRowViewModel>? ApplyBatch(IReadOnlyList<SessionRow> batch, bool buffered)
     {
-
         List<SessionRowViewModel>? added = null;
         HashSet<Guid>? removed = null;
         foreach (var row in batch)
@@ -334,8 +350,11 @@ public sealed partial class SessionsViewModel : ObservableObject
 
         if (added is not null)
         {
-            Rows.InsertRange(0, added.OrderByDescending(m => m.StartedSortKey));
+            added = [.. added.OrderByDescending(m => m.StartedSortKey)];
+            Rows.InsertRange(0, added);
         }
+
+        return added;
     }
 
     /// <summary>Every second: ended rows older than 10 s leave (one step), open rows show their new duration.</summary>

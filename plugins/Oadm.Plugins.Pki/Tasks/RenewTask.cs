@@ -109,6 +109,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         }
         else
         {
+            await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, confirmed: false, ct).ConfigureAwait(false);
             await HttpsEnableTask.DeployAsync(ctx, service, httpsCa!, device, webServer!, network, httpsPolicy!, HttpsPrefix, ct).ConfigureAwait(false);
         }
 
@@ -118,7 +119,11 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service)
         }
         else
         {
-            await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, confirmed: false, ct).ConfigureAwait(false);
+            if (httpsReason is not null)
+            {
+                await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, confirmed: false, ct).ConfigureAwait(false); // checked once
+            }
+
             await Dot1xEnableTask.DeployAsync(ctx, service, dot1xCa!, device, apis, network!, radius!, dot1xPolicy!, Dot1xPrefix, ct).ConfigureAwait(false);
         }
     }

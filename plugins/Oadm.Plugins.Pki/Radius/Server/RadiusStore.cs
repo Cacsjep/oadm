@@ -37,7 +37,7 @@ public sealed record StoredServerCertificate
 /// The plugin settings of the 802.1X server (<see cref="IPluginSettings"/>): <c>config</c> (the Server card),
 /// <c>switches</c> (at most 500, secrets encrypted) and <c>serverCertificate</c>. Each a small JSON value written on Save; the
 /// log lives in the plugin records (<see cref="RadiusLog"/>). The rules are PKI's policies since OADM 4.5: the Advanced
-/// fields of <c>config</c>, <c>trustedCas</c>, <c>policies</c> and OADM 4.1's <c>vlans</c> are only read once, when PKI makes
+/// fields of <c>config</c>, <c>trustedCas</c>, <c>policies</c> and the older <c>vlans</c> are only read once, when PKI makes
 /// policies of them (<see cref="RadiusPolicies.ConvertAsync"/>), and are kept as they are.
 /// </summary>
 public sealed class RadiusStore(IPluginSettings settings)
@@ -67,7 +67,7 @@ public sealed class RadiusStore(IPluginSettings settings)
 
     public Task SaveSwitchesAsync(IReadOnlyList<StoredSwitch> switches, CancellationToken ct) => settings.SetAsync(SwitchesKey, RadiusJson.Serialize(switches), ct);
 
-    /// <summary>The VLAN rules of OADM 4.1 (read once for the conversion).</summary>
+    /// <summary>The VLAN rules of the development builds before 4.5 (read once for the conversion).</summary>
     public async Task<VlanSettings?> VlansAsync(CancellationToken ct) => Read<VlanSettings>(await settings.GetAsync(VlansKey, ct).ConfigureAwait(false));
 
 

@@ -38,7 +38,7 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   without an active license, the status says "Needs an OADM PRO license or trial." and, while the trial was never used,
   administrators get **Start 30-day trial**, `docs/spec/licensing.md` "Trial"); while it does not run the page shows
   only the Server card and reads nothing else. When the license ends, the server stops answering (switches fall back to
-  their own rule); a 4.1 server whose plugin was on keeps it on.
+  their own rule); a development build before 4.5 whose plugin was on keeps it on (the 802.1X server never shipped before 4.5).
 - **Page "802.1X server"** (rail, group Security, after EST server); subtitle: "Switches ask OADM which cameras may use
   their ports." **One page, no tabs**: **Server** | **Switches** side by side from 1,000 px of page width (stacked below),
   then **Sessions** and **Log** full width with a splitter between them (like the tasks pane of the main window). The rules
@@ -70,7 +70,8 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
   vendor's format (`AC-CC-8E-…`, `accc.8e12.3456`, …); empty when the switch sends none.
 - **Device** before the certificate is checked: the managed device whose serial equals the MAC (an Axis serial is its
   MAC address), shown in italics as a guess; after the check: the device the certificate names. Only the certificate
-  decides, never the MAC (it can be faked).
+  decides, never the MAC (it can be faked): a row's device id (who may see it, the log) comes only from the checked
+  certificate, a guess is only shown (fix of 2026-10-25).
 - **MAC does not match:** when the certificate names device A but the MAC is another device's or no managed device's,
   the session still passes, the log row gets the warning "MAC address AC:CC:8E:65:43:21 does not match the certificate
   of ACCC8E123456" (a copied certificate shows this way) and the event rule "Authentication failed" is not raised; a
@@ -156,7 +157,9 @@ certificate").
   secret".
 - **Clients:** a request is answered only from a configured switch address (host names resolved when saved and every
   10 min); anything else is dropped (debug log, counted). The switch table is read for every request from an in-memory
-  snapshot that a change replaces atomically (decision: switches change while the server runs).
+  snapshot that a change replaces atomically (decision: switches change while the server runs). Two switches of one site
+  never share a resolved address (a host name and its IP address): Save refuses it below Address ("Another switch has this
+  address.", fix of 2026-10-25).
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second
   step (RFC 5080 2.2.2). At most 20,000 cached answers (twice the open sessions allowed) and 32 MB, 30 s each, the oldest
   answered ones go first and a request still in work is never evicted. The final answer of every ended session
@@ -353,7 +356,11 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
 - 30,000 devices may authenticate after a power cut: TLS handshakes run with bounded parallelism (64 at a time, the rest
   wait in a queue; the switch retransmits and gets the cached or next answer), the session table and the log are O(1) per
   change, pushes to the page go through one batched event per 500 ms.
-- Per switch at most 1,000 open sessions; a session costs at most 64 KB.
+- Per switch at most 1,000 open sessions, per switch port at most 8 (fix of 2026-10-25: a new one on a full port ends the
+  oldest there, "Too many sessions on the port", so spoofed MAC addresses on one port never use up the switch). A new
+  session at the switch's or the server's limit is silently dropped (`RadiusDropReason.TooManySessions`; the switch tries
+  again), never an Access-Reject. A session costs at most 64 KB; the buffer of a fragmented message grows with the
+  fragments that arrived (never the announced length up front).
 
 ## Sites
 
@@ -430,7 +437,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   Reset to default), `LargestFragment` (500..1400), `Reauthentication` (null: none; else Session-Timeout and
   Termination-Action RADIUS-Request in every Access-Accept, `ReauthenticationAttributes`), `ServerIdentity` (`TlsServerIdentity.Create(chain, pkcs8)` or
   `FromCertificate(x509, issuers)`, read when a handshake starts, so a renewal applies at once), the timeouts (30 s / 60 s),
-  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000.
+  `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000, `MaxSessionsPerPort` 8.
 - **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
   (`TlsSettings.VersionsFor(key)`; TLS 1.3 without a checked TLS 1.3 suite is not offered), `Validate(key)` refuses a set
   the key cannot use (only ECDHE_RSA suites with the ECDSA server certificate). The signature schemes OADM accepts and
@@ -523,12 +530,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   by reference): previous OADM CAs follow the OADM CA ("oadm-previous:<sha256>"), each issuing certificate's hash maps to its
   CA (`TrustedIssuer`: kind, only managed; the Axis device ID through `AxisDeviceId.Verify` with PKI's roots and
   intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block policy
-  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of OADM 4.1 and of
-  development builds (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
+  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of the
+  development builds before 4.5 (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
   `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are; their Revoke policies
   become Block policies with Also revoke, the 802.1X server policy gets its certificate's defaults (OADM CA, 365 days, ECC).
 - **Block policies with Also revoke**: PKI revokes on save and every minute; a handshake that meets a certificate such a policy holds queues
-  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy.
+  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy; a serial
+  queued while that round ends starts another, and a failed round keeps its serials for the minute round (fix of
+  2026-10-25). The subject of a certificate of a device OADM does not manage is shown without control or format characters.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
@@ -622,7 +631,9 @@ data, also for the screenshots; the four, two and one column layout and the rows
   over the whole width. The Sessions card holds one table
   (`AuthenticationsViewModel`, rows `IAuthenticationRow`) with the authentications in progress on top (ended ones leave
   it, the log holds them) and the log's page below them, newest first; the log's search applies to both, View
-  certificate and Delete all are the log's, the pages (Previous, Next) page the log; one reset per change of either list. `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
+  certificate and Delete all are the log's, the pages (Previous, Next) page the log; a read of either list or a new search builds the table again (one reset), a
+  batch of the live events applies in place (updated rows change themselves, a new one is inserted on top, an ended one
+  leaves), so scroll and choice stay every 500 ms (fix of 2026-10-25). `Activate` reads everything once (`LoadAllAsync`: `getState`, `listSwitches`, `listSites` with the overlay
   over the cards, then `listSessions` and `listLog`); the events keep it.
 - **Card headers**: `TextBlock.cardTitle` and the card's buttons in one `WrapPanel` row (like the Permissions page).
 - **Server**: Listen on, Port, Log entries kept; the Save row: the link "6 policies applied" left (`RadiusState.PoliciesApply`,

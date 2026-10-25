@@ -89,7 +89,7 @@ public sealed partial class EstService : IAsyncDisposable
     private readonly EstEndpoint _endpoint;
     private readonly AxisDeviceId _deviceIds;
     private readonly ServerCertificates _certificates;
-    private readonly Dictionary<System.Net.IPAddress, int> _perAddress = [];
+    private readonly Dictionary<(Guid? Site, System.Net.IPAddress Address), int> _perAddress = []; // per site: the same address may be a camera at each
     private readonly HashSet<Task> _serving = [];
     private int _open;
     private readonly SemaphoreSlim _apply = new(1, 1);
@@ -122,6 +122,7 @@ public sealed partial class EstService : IAsyncDisposable
         {
             Names = () => NewCertificateNames(),
             ChosenId = () => host.Policies()?.EstServerPolicy?.CertificateId,
+            Time = host.Time,
         };
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
         _endpoint = new EstEndpoint(_store, _deviceIds, FindBySerialAsync, host.Authority, host.ProActive, host.Time,
@@ -727,7 +728,7 @@ public sealed partial class EstService : IAsyncDisposable
                 continue;
             }
 
-            var address = connection.Remote.Address;
+            var address = (connection.SiteId, connection.Remote.Address);
             if (!TryEnter(address))
             {
                 await connection.DisposeAsync().ConfigureAwait(false); // too many at once (in all, or from this address): the camera tries again later
@@ -757,8 +758,8 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    /// <summary>A connection slot: at most 64 in all and 4 per address, so one host cannot lock the cameras out.</summary>
-    private bool TryEnter(System.Net.IPAddress address)
+    /// <summary>A connection slot: at most 64 in all and 4 per address (of a site, or of this server's network), so one host cannot lock the cameras out.</summary>
+    private bool TryEnter((Guid? Site, System.Net.IPAddress Address) address)
     {
         lock (_perAddress)
         {
@@ -773,7 +774,7 @@ public sealed partial class EstService : IAsyncDisposable
         }
     }
 
-    private void Leave(System.Net.IPAddress address)
+    private void Leave((Guid? Site, System.Net.IPAddress Address) address)
     {
         lock (_perAddress)
         {
@@ -891,10 +892,24 @@ public sealed partial class EstService : IAsyncDisposable
                     throw;
                 }
 
-                if (result.Issued is { } delivered && _host.Authority() is Oadm.Plugins.Pki.Ca.ICertificateDelivery pki)
+                if (result.Issued is { } delivered)
                 {
-                    // The answer is written (handed to TLS): docs/spec/pki.md "Current and pending".
-                    await pki.DeliveredAsync(delivered.SerialNumber, CancellationToken.None).ConfigureAwait(false);
+                    _store.AddCertificate(delivered); // written: the camera has it (an unsent one never pushes out its older one)
+                    if (_host.Authority() is Oadm.Plugins.Pki.Ca.ICertificateDelivery pki)
+                    {
+                        // The answer is written (handed to TLS): docs/spec/pki.md "Current and pending". A failure there never
+                        // loses the enrollment record.
+                        try
+                        {
+                            await pki.DeliveredAsync(delivered.SerialNumber, CancellationToken.None).ConfigureAwait(false);
+                        }
+#pragma warning disable CA1031 // PKI's own store failed: logged, the camera has its certificate and the Enrollments list shows it.
+                        catch (Exception ex)
+#pragma warning restore CA1031
+                        {
+                            LogDeliveredFailed(ex, delivered.SerialNumber);
+                        }
+                    }
                 }
 
                 Record(result, connection);
@@ -1179,8 +1194,14 @@ public sealed partial class EstService : IAsyncDisposable
                 var missing = _host.Sites is { } sites
                     ? sites.List.FirstOrDefault(s => _store.SiteAddresses(s.Id).Any(a => !names.Contains(a)))?.Name
                     : null;
+
+                // This server's own addresses the cameras get too (fix of 2026-10-25), not only the site nodes'.
+                var own = missing is null ? CertificateAddresses().FirstOrDefault(a => !names.Contains(a)) : null;
                 var label = _policies?.ServerCertificates?.Invoke().FirstOrDefault(c => c.Id == material.Id)?.Label;
-                view = new CertificateView(label, null, missing is null ? null : Oadm.Plugins.Pki.Policies.PolicyTexts.SiteNotInCertificate(missing));
+                view = new CertificateView(label, null,
+                    missing is not null ? Oadm.Plugins.Pki.Policies.PolicyTexts.SiteNotInCertificate(missing)
+                    : own is not null ? Oadm.Plugins.Pki.Policies.PolicyTexts.AddressNotInCertificate(own)
+                    : null);
             }
         }
 
@@ -1367,8 +1388,11 @@ public sealed partial class EstService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "EST {Operation} {Profile} from {Remote} ({Where}): {Status} {Reason}")]
     private partial void LogRequest(string operation, string profile, System.Net.IPEndPoint remote, string where, int status, string reason);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "EST connection from {Remote} closed: the PKI has no certificate authority")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST connection from {Remote} closed: the EST server has no usable certificate")]
     private partial void LogNoCertificate(System.Net.IPEndPoint remote);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EST: telling PKI that certificate {Serial} was delivered failed")]
+    private partial void LogDeliveredFailed(Exception ex, string serial);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "EST connection from {Remote} ended: {Message}")]
     private partial void LogConnectionEnded(System.Net.IPEndPoint remote, string message);

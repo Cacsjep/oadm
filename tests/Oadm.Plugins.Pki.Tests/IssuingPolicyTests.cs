@@ -147,13 +147,59 @@ public sealed class IssuingPolicyTests
 
         var dot1x = Assert.Single(pki.Policies.PoliciesOf(PolicyKinds.Dot1xCertificate));
         Assert.Equal((397, Dot1xIdentity.Custom, "cam-{serial}"), (dot1x.ValidDays!.Value, dot1x.Identity, dot1x.CustomIdentity));
-        // The imported RADIUS server CA of this fixture is an Axis device ID intermediate CA: it cannot become a CA of the
-        // list, so the policy keeps no RADIUS server CA and the task refuses until one is chosen (decision 2026-10-25: never a
-        // silent switch to another CA).
-        Assert.Null(dot1x.RadiusCaId);
-        Assert.Equal(PolicyFields.RadiusCa, PolicyRules.Validate(dot1x, Suites)?.Field);
+        // The imported RADIUS server CA of this fixture is an Axis device ID intermediate CA ("Axis device ID Intermediate CA
+        // ECC 1"): it becomes an imported CA of its own, never the whole Axis device ID entry (the camera would then trust
+        // every Axis root and intermediate as RADIUS server CA).
+        using var intermediate = System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(
+            System.Text.Json.JsonDocument.Parse(Fixture("pki-config-4.1-imported-radius.json")).RootElement.GetProperty("dot1x").GetProperty("radiusCaPem").GetString());
+        Assert.Equal(PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(intermediate)), dot1x.RadiusCaId);
+        var listed = Assert.Single(pki.Service.Authorities(), a => a.Id == dot1x.RadiusCaId);
+        Assert.Equal((CertificateAuthorityKind.Imported, false), (listed.Kind, listed.Issues));
+        Assert.Equal([intermediate.RawData], listed.Certificates);
+        Assert.Null(PolicyRules.Validate(dot1x, Suites));
+        var radius = Tasks.CertificateDeployment.RadiusCas(dot1x, pki.Service);
+        Assert.Equal(CaCertificates.Fingerprint(intermediate), Assert.Single(radius).Fingerprint); // exactly the chosen CA
         Assert.Contains(PkiService.RadiusCaOwner, pki.Policies.Converted);
         Assert.Equal(397, pki.Policies.FirstOf(PolicyKinds.HttpsCertificate)!.ValidDays);
+    }
+
+    [Fact]
+    public async Task The_radius_ca_conversion_runs_after_every_ca_is_loaded_and_keeps_the_imported_cas()
+    {
+        // A server with an OADM CA, a previous OADM CA and an imported CA with its key.
+        var settings = new InMemoryPluginSettingsProvider();
+        var secrets = TestSecrets.Create();
+        string oadmPem;
+        string importedId;
+        await using (var first = await PkiHarness.StartAsync(settings, secrets))
+        {
+            Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
+            using var root = TestCa.Root("Contoso Root");
+            using var rootPublic = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(root.RawData);
+            Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(TestCa.Pfx("secret", root)), "contoso.pfx", "secret", null, null))).Ok);
+            oadmPem = first.Service.Ca!.CertificatePem;
+            importedId = PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(rootPublic));
+            Assert.Single(first.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        }
+
+        // An update from OADM 4.1 whose IEEE 802.1X settings imported the OADM CA as RADIUS server CA: the policies are made
+        // again from these settings at the next start.
+        var own = settings.GetSettings(PkiPluginInfo.PluginId);
+        var importedBefore = await own.GetAsync(PkiStore.ImportedCasKey, CancellationToken.None);
+        await own.SetAsync(PolicyStore.SettingsKey, null, CancellationToken.None);
+        await own.SetAsync(PkiStore.ConfigKey, PkiJson.Serialize(new PkiConfig
+        {
+            Dot1x = new Dot1xConfig { RadiusCa = RadiusCaSource.Imported, RadiusCaPem = oadmPem },
+        }), CancellationToken.None);
+
+        await using var pki = await PkiHarness.StartAsync(settings, secrets);
+
+        // The PEM is the OADM CA's: the policy names the OADM CA, no duplicate imported CA, the imported CA keeps its key.
+        Assert.Equal(CertificateAuthorityInfo.OadmId, pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!.RadiusCaId);
+        Assert.Equal(importedId, Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.Imported).Id);
+        Assert.NotNull(pki.Service.IssuingCa(importedId));
+        Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
+        Assert.Equal(importedBefore, await own.GetAsync(PkiStore.ImportedCasKey, CancellationToken.None));
     }
 
     [Fact]

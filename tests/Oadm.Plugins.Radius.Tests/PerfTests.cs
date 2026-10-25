@@ -34,6 +34,7 @@ public sealed class PerfTests(ITestOutputHelper output)
             {
                 CallingStationId = $"AC-CC-8E-{i >> 16 & 0xFF:X2}-{i >> 8 & 0xFF:X2}-{i & 0xFF:X2}",
                 Source = new IPEndPoint(IPAddress.Parse("10.0.0.2"), 1024 + i),
+                NasPortId = "Gi1/0/" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), // one camera per port
             };
             var conversation = radiusSwitch.Run(camera);
             if (conversation.Final == RadiusCode.AccessAccept && camera.Msk!.AsSpan().SequenceEqual(conversation.MskFromAccept))
@@ -67,7 +68,7 @@ public sealed class PerfTests(ITestOutputHelper output)
         var opened = watch.ElapsedMilliseconds;
         Assert.Equal(10_000, processor.SessionCount);
         var refused = RadiusPacketWriter.Request(RadiusCode.AccessRequest, 1, new byte[16], client.Secret.Span, [.. RadiusAttribute.EapMessages(identity)])!;
-        Assert.Equal("Too many open sessions", processor.Process(refused, client, new IPEndPoint(IPAddress.Loopback, 9)).Reason);
+        Assert.Equal(RadiusDropReason.TooManySessions, processor.Process(refused, client, new IPEndPoint(IPAddress.Loopback, 9)).Drop);
 
         watch.Restart();
         Assert.Empty(processor.ExpireSessions());

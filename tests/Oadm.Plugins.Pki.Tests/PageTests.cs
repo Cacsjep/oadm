@@ -154,6 +154,19 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task A_failed_export_says_why_in_a_message_of_its_own()
+    {
+        using var vm = CreateViewModel();
+        await vm.LoadAsync();
+        _ctx.Intercept = (method, _) => method == PkiMethods.ExportPublic ? throw new InvalidOperationException("The server is not reachable.") : Task.FromResult<string?>(null);
+
+        await vm.ExportCommand.ExecuteAsync("pem"); // never the generic crash message
+
+        Assert.Equal(("Export public certificate", "The server is not reachable."), Assert.Single(_ctx.Messages));
+        Assert.Empty(_dialogs.FakeFiles.Saved);
+    }
+
+    [Fact]
     public async Task Install_in_trusted_root_store_installs_on_the_server_and_on_this_computer()
     {
         using var vm = CreateViewModel();

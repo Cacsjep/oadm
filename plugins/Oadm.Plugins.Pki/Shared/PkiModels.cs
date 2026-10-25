@@ -538,7 +538,11 @@ public sealed record PkiReply
     public PkiState? State { get; init; }
 }
 
-public sealed record PreviewReplaceReply(int DevicesWithCurrentCa);
+public sealed record PreviewReplaceReply(int DevicesWithCurrentCa)
+{
+    /// <summary>The servers ("802.1X server", "EST server") whose certificate the current CA issued: they keep it after a replace.</summary>
+    public IReadOnlyList<string> Servers { get; init; } = [];
+}
 
 /// <summary>A file for the save dialog.</summary>
 public sealed record FileReply
