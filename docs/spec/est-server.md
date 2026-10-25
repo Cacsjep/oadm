@@ -282,11 +282,13 @@ bundles), valid to 9999; the camera starts with no EST profiles.
 6. With the dot1x profile (decision 2026-10-25): **Install the RADIUS server CA** and **Set the RADIUS server CA**, so the
    camera checks the RADIUS server with the RADIUS server CA of the profile's IEEE 802.1X policy, as Enable IEEE 802.1X
    sets it (else a new OADM CA leaves the camera trusting the old one: TLS alert 48, seen 2026-10-25). The CA is found in
-   the check step, only with IEEE 802.1X on (missing or not the issuer of the 802.1X server's certificate: nothing is
+   the check step, only with IEEE 802.1X on (missing from the CA list: nothing is
    changed; with IEEE 802.1X off it is not needed). Run before the HTTPS profile is written (its certificate restarts the
    web server), else after the profiles. Only the CA list of the camera's EAP-TLS settings is written
    (`setWired8021XConfiguration` with on/off, identity, EAPOL version and client certificate as the camera has them,
-   `NetworkInfoApi.SetCaCertificatesAsync`); skipped without the network settings API, with IEEE 802.1X off or without a
+   `NetworkInfoApi.SetCaCertificatesAsync`; network settings before 1.38, also on 12.10, do not bind certificates: there
+   the CA certificates of the SOAP certificate set `EAPTLS_WIRED` change and the client certificate stays,
+   `Dot1xSettings.SetCaCertificatesAsync`, docs/spec/pki.md "Older AXIS OS"); skipped without the network settings API, with IEEE 802.1X off or without a
    client certificate, "Already set" when nothing differs. Also when the profiles were already set up.
 7. Not built yet: removing unused certificates OADM put there (never device ID certificates, their CAs, factory or
    public CAs).

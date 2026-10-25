@@ -176,17 +176,28 @@ puts `{"clockConfirmed":true}` in the payload. Step "Check device clock" (802.1X
 behind beyond the start fails "The device's time is 9 min 12 s behind. The certificate becomes valid on the device only in
 4 min 12 s. Set the device to use NTP. Nothing was changed." unless confirmed (then a Warning log line). Tests: `ClockTests`.
 
-Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 11.11 from the firmware
-version (+ network-settings 1.x in `Apis` for 802.1X). Device APIs (`Device/`): REST `cert` v1 (`CertApi`: `config/discover`
-must list `cert.v1` released, read fresh before the first write, cached 10 min for queries; else "Needs AXIS OS 11.11 or
-later. Nothing was changed."), SOAP web server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration` at
-`/vapix/services`, ciphers sent back as read), network_settings.cgi (`NetworkInfoApi`: getNetworkInfo, setWired8021X
-Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback).
+Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS >= 6.53 from the firmware
+version (all tasks, 802.1X too). Compatibility (docs/spec/pki.md "Older AXIS OS"), decided in `Tasks/PkiCompatibility`
+fresh in every Check compatibility (`RequireAsync` -> `PkiDeviceSupport`: certificate API, AXIS OS version, the web server
+roles before 7.10, the highest EAPOL version) and cached 10 min for queries (`CachedAsync`). Device APIs (`Device/`):
+`DeviceCertificates` (one facade, `CertificateApiKind` Rest / Soap) over REST `cert` v1 (`CertApi`, when `config/discover`
+lists `cert.v1` released) or SOAP (`CertSoapApi`: `tds` Get/Load/Delete certificates and CA certificates,
+`acertificates:CreateCertificate2` / `GetPkcs10Request2` / `LoadPkcs12` / `Get/SetCertSet`; AXIS OS 6.53+ by the version
+read fresh, unknown refuses "The device's AXIS OS version cannot be read. Nothing was changed.", older "Needs AXIS OS 6.53
+or later. Nothing was changed."), `DeviceSoap` (the envelope, `DeviceXml` limits, faults as the device's text), SOAP web
+server TLS (`WebServerTls`: `aweb:Get/SetWebServerTlsConfiguration`, ciphers sent back as read, Operator and Viewer
+policies too before 7.10), 802.1X (`Dot1xSettings` with `Dot1xApiKind`: network_settings.cgi alone where `getNetworkInfo`
+reports the certificates (1.38, 12.11), else `SetCertSet EAPTLS_WIRED` binds them first, with param.cgi
+`Network.Interface.I0.dot1x` where there is no network settings API; `NetworkInfoApi`: getNetworkInfo,
+setWired8021XConfiguration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fallback). EAPOL version 3 needs
+10.1 ("EAPOL version 3 needs AXIS OS 10.1 or later. Choose a policy with EAPOL version 1 or 2. Nothing was changed."); SOAP
+keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a policy with RSA. Nothing was changed.").
 - Issuing (`CertificateDeployment.IssueAsync`, `DeviceCertificateIssuer`): key on the device (`create_certificate` with the issuing policy's key, EC-P256 or RSA-2048, in
   the default keystore, after the keystore's `key_types` were checked) -> `get_csr` -> OADM signs (its own subject `CN=<OADM address>`, SAN IP addresses, host name, FQDN,
   `axis-<serial>.local`, the reported ones only for a device no group covers; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
   keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity of the issuing policy from now - 5 min, capped at the
-  CA) -> `PATCH certificates/<alias>`; the entry goes into `issued`. A failure after the key was created deletes the
+  CA) -> `PATCH certificates/<alias>` (SOAP: `CreateCertificate2` under "<alias> key", `GetPkcs10Request2`, `LoadCertificates`
+  under the alias, then the placeholder is deleted); the entry goes into `issued`. A failure after the key was created deletes the
   unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused). "Remove previous OADM certificate" deletes older OADM certificates of the purpose that
@@ -206,10 +217,11 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
 - **Enable IEEE 802.1X** (`oadm.pki.dot1x-enable`, dialog `IssueCertificateWindow` with the warning "Devices on ports
   that enforce 802.1X become unreachable if authentication fails.", the IEEE 802.1X certificate policy and its values,
   name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the policy and its RADIUS server CA, the
-  device's key types, cert v1, network-settings with `wired.8021X`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
+  device's key types, the certificate API, the policy's EAPOL version, wired 802.1X by `Dot1xSettings`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
   server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
   EAP-TLS, identity MAC = serial / host name / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
-  CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
+  CA aliases; below network settings 1.38 the certificates by `SetCertSet` first), Verify 802.1X settings (read back, from
+  `GetCertSet` there; mismatch = Warning), Remove previous OADM certificate.
 - **Disable IEEE 802.1X** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
   (Skipped "Already off"), Verify; certificates stay.
 - **Renew certificates** (`oadm.pki.renew`, name "Renew certificates", dialog `IssueCertificateWindow` via
@@ -274,6 +286,8 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   certificates with 30,000 devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`,
   `pki-install-manual.png`, `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates).
+  Older AXIS OS: `LegacyFirmwareTests.cs` (parsers and request bodies against `Fixtures/Legacy/<version>` of 6.53, 8.40,
+  9.80, 10.12, 11.9, 11.11; the compatibility matrix; every task per family on `FakeCamera.Legacy`).
   `HardwareWriteTests` is an opt-in skeleton (`OADM_PKI_HARDWARE_WRITE=1`, `Category=HardwareWrite`), not written yet.
 
 ## Issued certificates and revocation
@@ -313,7 +327,7 @@ the CA service.
   certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
   naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
   and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS
-  11.11+, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
+  6.53+, REST or SOAP, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
   or none with the certificate API; else again after `PkiOptions.ExistingImportRetry`, 1 hour).
 - Methods: `getCertificates` (`CertificatesRequest`: state, purpose, source, search, offset, limit 500 ->
   `CertificatesReply`; the caller's devices from `call.Devices`; a user with a group: only those, else every row and

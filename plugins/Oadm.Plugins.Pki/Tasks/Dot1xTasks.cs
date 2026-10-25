@@ -8,24 +8,24 @@ namespace Oadm.Plugins.Pki.Tasks;
 
 /// <summary>
 /// "Enable IEEE 802.1X" (EAP-TLS with a client certificate from the OADM CA). Safety: fails before any write when the
-/// device clock is more than 5 minutes off, the CA chain is incomplete or 802.1X is not offered; the client asks for
-/// confirmation first. Steps: Check compatibility, Check device clock, Install CA certificates, Create key on the device, Get
-/// certificate request, Sign certificate, Install certificate, Set 802.1X configuration, Verify 802.1X settings, Remove
-/// previous OADM certificate.
+/// device clock is more than 5 minutes off, the CA chain is incomplete, the policy's EAPOL version or key does not work on
+/// the device or 802.1X is not offered; the client asks for confirmation first. Steps: Check compatibility, Check device
+/// clock, Install CA certificates, Create key on the device, Get certificate request, Sign certificate, Install certificate,
+/// Set 802.1X configuration, Verify 802.1X settings, Remove previous OADM certificate. How 802.1X is set follows the device
+/// (<see cref="Dot1xSettings"/>, <see cref="PkiCompatibility.Dot1xApiOf"/>).
 /// </summary>
 public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(service), ITaskPluginQuery
 {
     public const int MaxIdentityLength = 128;
+
+    /// <summary>The refusal of a device without wired 802.1X.</summary>
+    public const string NotOffered = "The device does not offer IEEE 802.1X on a wired interface. Nothing was changed.";
 
     public override string Id => PkiTaskIds.Dot1xEnable;
 
     public override string DisplayName => PkiTaskIds.Dot1xEnableName;
 
     public override bool RequiresDialog => true;
-
-    public override bool CanRun(IDeviceInfo device) => base.CanRun(device) && PkiCompatibility.HasNetworkSettings(device.Apis);
-
-    public override string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: true);
 
     public override string GetTaskName(string? payloadJson) => "Enable IEEE 802.1X";
 
@@ -37,17 +37,27 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             PkiSteps.CheckCompatibility, PkiSteps.CheckClock, PkiSteps.InstallCas, PkiSteps.CreateKey, PkiSteps.GetCsr, PkiSteps.Sign,
             PkiSteps.InstallCertificate, PkiSteps.SetDot1x, PkiSteps.VerifyDot1x, PkiSteps.RemovePrevious);
 
-        var (service, ca, apis, network, radius, policy) = await CheckAsync(ctx, device, payloadJson, ct).ConfigureAwait(false);
+        var (service, ca, apis, state, radius, policy, support) = await CheckAsync(ctx, device, payloadJson, ct).ConfigureAwait(false);
         await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
-        await DeployAsync(ctx, service, ca, device, apis, network, radius, policy, stepPrefix: null, ct).ConfigureAwait(false);
+        await DeployAsync(ctx, service, ca, device, apis, state, radius, policy, support, stepPrefix: null, ct).ConfigureAwait(false);
     }
 
     /// <summary>The dialog's IEEE 802.1X certificate policies and its clock check (<see cref="CameraClock.QueryMethod"/>), read only.</summary>
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         IssuingChoice.QueryAsync(ctx, device, method, Service, Policies.PolicyKinds.Dot1xCertificate, Time, ct);
 
-    /// <summary>Check compatibility: CA (+ complete chain), cert v1, network-settings 1.x with wired 802.1X, RADIUS CA, identity.</summary>
-    internal async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, DeviceNetworkInfo Network, IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas, Policies.PkiPolicy Policy)> CheckAsync(
+    /// <summary>
+    /// Fresh 802.1X state for Check compatibility: how it is set and its settings; throws "Nothing was changed" when the
+    /// device has no wired 802.1X.
+    /// </summary>
+    internal static async Task<Dot1xState> RequireDot1xAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, CancellationToken ct)
+    {
+        var state = await Dot1xSettings.ReadAsync(vapix, apis, ct).ConfigureAwait(false);
+        return state.Dot1x is null ? throw new DeviceNotCompatibleException(NotOffered) : state;
+    }
+
+    /// <summary>Check compatibility: CA (+ complete chain), certificate API, wired 802.1X, RADIUS CA, identity, EAPOL version, key.</summary>
+    internal async Task<(PkiService Service, Ca.CaMaterial Ca, IReadOnlyList<DeviceApi> Apis, Dot1xState State, IReadOnlyList<(string Alias, string Pem, string Fingerprint)> RadiusCas, Policies.PkiPolicy Policy, PkiDeviceSupport Support)> CheckAsync(
         ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
@@ -61,24 +71,19 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             }
 
             var radius = CertificateDeployment.RadiusCas(policy, service);
-            var support = await PkiCompatibility.RequireCertApiAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, service.Time, ct).ConfigureAwait(false);
+            PkiCompatibility.RequireEapol(policy, support);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-            apis.Require(PkiCompatibility.NetworkSettings, "1.0");
-            var network = await NetworkInfoApi.GetAsync(ctx.Vapix, apis, ct).ConfigureAwait(false);
-            if (network.Dot1x is null)
-            {
-                throw new DeviceNotCompatibleException("The device does not offer IEEE 802.1X on a wired interface. Nothing was changed.");
-            }
-
-            var identity = CertificateDeployment.Identity(policy, device, network);
+            var state = await RequireDot1xAsync(ctx.Vapix, apis, ct).ConfigureAwait(false);
+            var identity = CertificateDeployment.Identity(policy, device, state.Network);
             if (identity.Length is 0 or > MaxIdentityLength)
             {
                 throw new InvalidOperationException($"The EAP identity must be 1 to {MaxIdentityLength} characters. Nothing was changed.");
             }
 
-            await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);
-            step.Complete($"cert {support.Version} · network-settings {apis.FindApi(PkiCompatibility.NetworkSettings, 1)?.Version} · {network.Dot1x.DeviceName} · {IssuingChoice.Describe(policy, Ca.CaCertificates.CommonName(ca.Certificate))}");
-            return (service, ca, apis, network, radius, policy);
+            await CertificateDeployment.RequireKeyAsync(ctx.Vapix, policy, support, ct).ConfigureAwait(false);
+            step.Complete($"{support.Describe()} · {state.Describe()} · {state.Dot1x!.DeviceName} · {IssuingChoice.Describe(policy, Ca.CaCertificates.CommonName(ca.Certificate))}");
+            return (service, ca, apis, state, radius, policy, support);
         }).ConfigureAwait(false);
 
     /// <summary>Install CA certificates ... Remove previous OADM certificate (also used by renew).</summary>
@@ -88,25 +93,26 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         Ca.CaMaterial ca,
         IDeviceInfo device,
         IReadOnlyList<DeviceApi> apis,
-        DeviceNetworkInfo network,
+        Dot1xState state,
         IReadOnlyList<(string Alias, string Pem, string Fingerprint)> radiusCas,
         Policies.PkiPolicy policy,
+        PkiDeviceSupport support,
         string? stepPrefix,
         CancellationToken ct)
     {
         // The RADIUS server CA (certsCA) plus the OADM CA chain (the client certificate's issuers).
         var wanted = radiusCas.Concat(CertificateDeployment.CaChain(ca)).DistinctBy(c => c.Fingerprint, StringComparer.OrdinalIgnoreCase).ToList();
-        var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCas), wanted, ct).ConfigureAwait(false);
+        var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCas), wanted, support.Certificates, ct).ConfigureAwait(false);
         var certsCa = aliases.Take(radiusCas.Count).ToList();
 
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.Dot1xAliasPrefix, service.Time);
-        var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
-        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Dot1x, alias, policy, stepPrefix, ct).ConfigureAwait(false);
+        var names = CertificateDeployment.NamesFor(device, state.Network, service.InAnyGroup(device));
+        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Dot1x, alias, policy, support, stepPrefix, ct).ConfigureAwait(false);
         var configured = false;
         Dot1xCheck check;
         try
         {
-            check = await ConfigureAsync(ctx, policy, device, apis, network, issued.Alias, certsCa, stepPrefix, ct, () =>
+            check = await ConfigureAsync(ctx, policy, device, apis, state, issued.Alias, certsCa, stepPrefix, ct, () =>
             {
                 // From here on the camera may use it: never revoked as unused (device safety, no lock-out).
                 configured = true;
@@ -139,33 +145,33 @@ public sealed class Dot1xEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             return;
         }
 
-        await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Dot1x, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
+        await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Dot1x, [issued.Alias], support.Certificates, PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Set 802.1X configuration + Verify 802.1X settings (read back; a mismatch is a warning). <paramref name="configuring"/>
-    /// runs right before the configuration is written. The answer: the read-back confirms the certificate, names another
-    /// client certificate, or says something else is off.
+    /// Set 802.1X configuration + Verify 802.1X settings (read back the way it was set; a mismatch is a warning).
+    /// <paramref name="configuring"/> runs right before the configuration is written. The answer: the read-back confirms the
+    /// certificate, names another client certificate, or says something else is off.
     /// </summary>
     internal static async Task<Dot1xCheck> ConfigureAsync(
-        ITaskExecutionContext ctx, Policies.PkiPolicy policy, IDeviceInfo device, IReadOnlyList<DeviceApi> apis, DeviceNetworkInfo network, string certClient, IReadOnlyList<string> certsCa, string? stepPrefix, CancellationToken ct,
+        ITaskExecutionContext ctx, Policies.PkiPolicy policy, IDeviceInfo device, IReadOnlyList<DeviceApi> apis, Dot1xState state, string certClient, IReadOnlyList<string> certsCa, string? stepPrefix, CancellationToken ct,
         Action? configuring = null)
     {
-        var identity = CertificateDeployment.Identity(policy, device, network);
+        var identity = CertificateDeployment.Identity(policy, device, state.Network);
         var eapol = policy.EapolVersion ?? 1;
-        var deviceName = network.Dot1x?.DeviceName ?? "eth0";
+        var deviceName = state.Dot1x?.DeviceName ?? "eth0";
         var check = Dot1xCheck.Unclear;
         await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.SetDot1x), async step =>
         {
             configuring?.Invoke();
-            await NetworkInfoApi.EnableEapTlsAsync(ctx.Vapix, apis, deviceName, identity, eapol, certClient, certsCa, ct).ConfigureAwait(false);
+            await Dot1xSettings.EnableAsync(ctx.Vapix, state, apis, identity, eapol, certClient, certsCa, ct).ConfigureAwait(false);
             step.Complete($"EAP-TLS · identity {identity} · {NetworkInfoApi.EapolName(eapol)}");
         }).ConfigureAwait(false);
         ctx.Log(TaskLogLevel.Info, $"IEEE 802.1X enabled on {deviceName}: EAP-TLS, identity {identity}, client certificate \"{certClient}\", CA certificates {string.Join(", ", certsCa)}.");
 
         await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyDot1x), async step =>
         {
-            var after = (await NetworkInfoApi.GetAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+            var after = (await Dot1xSettings.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
             var problems = new List<string>();
             if (after is null || !after.Enabled)
             {
@@ -224,10 +230,6 @@ public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(se
 
     public override string? IconKey => "cancel";
 
-    public override bool CanRun(IDeviceInfo device) => base.CanRun(device) && PkiCompatibility.HasNetworkSettings(device.Apis);
-
-    public override string? NotSupportedReason(IDeviceInfo device) => PkiCompatibility.NotSupportedReason(device, needsNetworkSettings: true);
-
     public override string GetTaskName(string? payloadJson) => "Disable IEEE 802.1X";
 
     public override async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
@@ -235,15 +237,15 @@ public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(se
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
         ctx.PlanSteps(PkiSteps.CheckCompatibility, PkiSteps.SetDot1xOff, PkiSteps.Verify);
-        var (apis, dot1x) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        var (apis, state) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
             var list = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
-            list.Require(PkiCompatibility.NetworkSettings, "1.0");
-            var network = await NetworkInfoApi.GetAsync(ctx.Vapix, list, ct).ConfigureAwait(false);
-            var wired = network.Dot1x ?? throw new DeviceNotCompatibleException("The device does not offer IEEE 802.1X on a wired interface. Nothing was changed.");
-            step.Complete($"network-settings {list.FindApi(PkiCompatibility.NetworkSettings, 1)?.Version} · 802.1X {(wired.Enabled ? "on" : "off")}");
-            return (list, wired);
+            var read = await Dot1xEnableTask.RequireDot1xAsync(ctx.Vapix, list, ct).ConfigureAwait(false);
+            step.Complete($"{support.Describe()} · {read.Describe()} · 802.1X {(read.Dot1x!.Enabled ? "on" : "off")}");
+            return (list, read);
         }).ConfigureAwait(false);
+        var dot1x = state.Dot1x!;
 
         if (!dot1x.Enabled)
         {
@@ -253,7 +255,7 @@ public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(se
         {
             await ctx.StepAsync(PkiSteps.SetDot1xOff, async step =>
             {
-                await NetworkInfoApi.DisableAsync(ctx.Vapix, apis, dot1x.DeviceName, ct).ConfigureAwait(false);
+                await Dot1xSettings.DisableAsync(ctx.Vapix, state, apis, ct).ConfigureAwait(false);
                 step.Complete("Certificates stay on the device");
             }).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"IEEE 802.1X turned off on {dot1x.DeviceName}.");
@@ -261,7 +263,7 @@ public sealed class Dot1xDisableTask(Func<PkiService?> service) : PkiTaskBase(se
 
         await ctx.StepAsync(PkiSteps.Verify, async step =>
         {
-            var after = (await NetworkInfoApi.GetAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
+            var after = (await Dot1xSettings.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)).Dot1x;
             if (after is { Enabled: true })
             {
                 step.Warn("The device still reports 802.1X as enabled.");

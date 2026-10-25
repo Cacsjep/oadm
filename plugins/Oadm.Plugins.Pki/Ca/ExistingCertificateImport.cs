@@ -11,8 +11,8 @@ namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
 /// The one pass that brings certificates of the OADM CAs from before the list of issued certificates (OADM 4.1 and older)
-/// into it: some minutes after the start, the certificate list (REST cert v1, read only) of every device that answers and
-/// has AXIS OS 11.11 or later, 4 devices at a time. Done once per server (plugin setting <c>existingImported</c>), and only
+/// into it: some minutes after the start, the certificate list (REST cert v1 or SOAP, read only) of every device that answers and
+/// has AXIS OS 6.53 or later, 4 devices at a time. Done once per server (plugin setting <c>existingImported</c>), and only
 /// when a round reached the devices: at least one device was read, or there is nothing to read (no devices, or none that
 /// answers with the certificate API). A round that read no device (all offline, statuses not known yet) runs again after
 /// <see cref="RetryInterval"/> and at the next start. Devices that did not answer get theirs listed when a PKI task or the
@@ -77,7 +77,8 @@ public sealed partial class ExistingCertificateImport(PkiService service, ISyste
             try
             {
                 var vapix = await system.Vapix.CreateAsync(device.Id, token).ConfigureAwait(false);
-                var list = await CertApi.ListCertificatesAsync(vapix, token).ConfigureAwait(false);
+                var support = await PkiCompatibility.CachedAsync(vapix, device, time, token).ConfigureAwait(false);
+                var list = await DeviceCertificates.ListAsync(vapix, support.Certificates, token).ConfigureAwait(false);
                 Interlocked.Add(ref added, await service.ImportFoundAsync(device, list.Select(c => (c.Alias, c.Pem)), token).ConfigureAwait(false));
                 Interlocked.Increment(ref read);
             }

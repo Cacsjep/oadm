@@ -396,7 +396,7 @@ public sealed class HeadlessDialogTests
         var devices = new List<IDeviceInfo>();
         for (var i = 0; i < 3; i++)
         {
-            var device = new PkiFakeDevice(i == 0 ? h.Device.Id : Guid.NewGuid(), $"10.0.0.{48 + i}", i == 0 ? "B8A44F631339" : $"ACCC8E00000{i}");
+            var device = new PkiFakeDevice(i == 0 ? h.Device.Id : Guid.NewGuid(), $"10.0.0.{48 + i}", i == 0 ? "B8A44F631339" : $"ACCC8E00000{i}", i == 2 ? "6.50.5" : "12.11.77");
             devices.Add(device);
             cameras[device.Id] = i == 0 ? h.Camera : new FakeCamera { HasCertApi = i != 2 };
         }
@@ -420,7 +420,7 @@ public sealed class HeadlessDialogTests
                 await viewVm.LoadAsync();
                 Pump();
                 Capture(viewWindow, outDir, "pki-view-certificates.png");
-                Assert.Equal("Needs AXIS OS 11.11 or later.", viewVm.AllRows.Single(r => r.IsError).Error);
+                Assert.Equal("Needs AXIS OS 6.53 or later.", viewVm.AllRows.Single(r => r.IsError).Error);
                 viewWindow.Close();
 
                 // Delete certificates: CA certificates checked, the used and factory ones greyed.

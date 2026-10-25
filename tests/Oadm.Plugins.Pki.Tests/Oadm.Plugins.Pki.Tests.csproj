@@ -22,7 +22,8 @@
 
   <ItemGroup>
     <!-- Recorded read-only answers of 10.0.0.48 (AXIS OS 12.11) from the PKI research, plus the time-service answer. -->
-    <None Include="Fixtures\*.json;Fixtures\*.xml;Fixtures\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Legacy/<AXIS OS>/: recorded and sanitized SOAP and network settings answers of AXIS OS 6.53 to 11.11. -->
+    <None Include="Fixtures\**\*.json;Fixtures\**\*.xml;Fixtures\**\*.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Oadm.Plugins.DateTime.Tests\Fixtures\time-service-getDateTimeInfo-P3265-V-12.11.json" Link="Fixtures\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Runs plugins against a step list the way the task engine does. -->
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />

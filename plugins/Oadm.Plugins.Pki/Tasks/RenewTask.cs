@@ -41,12 +41,12 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
         var payload = PkiJson.TryDeserialize<RenewPayload>(payloadJson) ?? new RenewPayload();
         ctx.PlanSteps(PkiSteps.CheckCompatibility, PkiSteps.ReadCertificates, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork);
         // A chosen IEEE 802.1X policy deleted after the dialog fails the run before anything is written (also HTTPS).
-        var (service, apis) = await CheckCertificateTaskAsync(ctx, device, ct,
+        var (service, apis, support) = await CheckCertificateTaskAsync(ctx, device, ct,
             _ => IssuingChoice.Chosen(CertificateDeployment.RequireService(Service), Policies.PolicyKinds.Dot1xCertificate, payload.Dot1xPolicyId)).ConfigureAwait(false);
 
         var certificates = await ctx.StepAsync(PkiSteps.ReadCertificates, async step =>
         {
-            var list = await CertApi.ListCertificatesAsync(ctx.Vapix, ct).ConfigureAwait(false);
+            var list = await DeviceCertificates.ListAsync(ctx.Vapix, support.Certificates, ct).ConfigureAwait(false);
             await service.ImportFoundAsync(device, list.Select(c => (c.Alias, c.Pem)), ct).ConfigureAwait(false); // from before the list
             step.Complete($"{list.Count} certificates");
             return list;
@@ -63,7 +63,8 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
             webServer = null;
         }
 
-        var network = await HttpsEnableTask.ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
+        var state = await ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
+        var network = state.Network;
         var registry = await service.Issued.ForDeviceAsync(device, ct).ConfigureAwait(false);
         bool IsOadm(string? alias) =>
             alias is not null
@@ -76,7 +77,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
             : null;
 
         // 802.1X
-        var dot1x = network?.Dot1x;
+        var dot1x = state.Dot1x;
         var dot1xReason = dot1x is null ? "No OADM 802.1X certificate on this device"
             : !IsOadm(dot1x.CertClient) ? "No OADM 802.1X certificate on this device"
             : !dot1x.Enabled ? "IEEE 802.1X is off on this device"
@@ -90,12 +91,12 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
         Ca.CaMaterial? dot1xCa = null;
         if (httpsReason is null)
         {
-            (httpsPolicy, httpsCa, httpsReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.HttpsCertificate, null, ct).ConfigureAwait(false);
+            (httpsPolicy, httpsCa, httpsReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.HttpsCertificate, null, support, ct).ConfigureAwait(false);
         }
 
         if (dot1xReason is null)
         {
-            (dot1xPolicy, dot1xCa, dot1xReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.Dot1xCertificate, payload.Dot1xPolicyId, ct).ConfigureAwait(false);
+            (dot1xPolicy, dot1xCa, dot1xReason) = await PolicyOrReasonAsync(ctx, service, Policies.PolicyKinds.Dot1xCertificate, payload.Dot1xPolicyId, support, ct).ConfigureAwait(false);
         }
 
         if (dot1xReason is null && !CertificateDeployment.ChainComplete(dot1xCa!))
@@ -122,7 +123,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
         else
         {
             await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, payload.ClockConfirmed, ct).ConfigureAwait(false);
-            await HttpsEnableTask.DeployAsync(ctx, service, httpsCa!, device, webServer!, network, httpsPolicy!, HttpsPrefix, ct).ConfigureAwait(false);
+            await HttpsEnableTask.DeployAsync(ctx, service, httpsCa!, device, webServer!, network, httpsPolicy!, support, HttpsPrefix, ct).ConfigureAwait(false);
         }
 
         if (dot1xReason is not null)
@@ -136,7 +137,7 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
                 await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, payload.ClockConfirmed, ct).ConfigureAwait(false); // checked once
             }
 
-            await Dot1xEnableTask.DeployAsync(ctx, service, dot1xCa!, device, apis, network!, radius!, dot1xPolicy!, Dot1xPrefix, ct).ConfigureAwait(false);
+            await Dot1xEnableTask.DeployAsync(ctx, service, dot1xCa!, device, apis, state, radius!, dot1xPolicy!, support, Dot1xPrefix, ct).ConfigureAwait(false);
         }
     }
 
@@ -144,13 +145,18 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
     /// The policy <paramref name="policyId"/> of <paramref name="kind"/> (null: the first), the CA it names and the device's key
     /// check; or why this purpose is skipped (nothing written for it).
     /// </summary>
-    private static async Task<(Policies.PkiPolicy? Policy, Ca.CaMaterial? Ca, string? Reason)> PolicyOrReasonAsync(ITaskExecutionContext ctx, PkiService service, string kind, Guid? policyId, CancellationToken ct)
+    private static async Task<(Policies.PkiPolicy? Policy, Ca.CaMaterial? Ca, string? Reason)> PolicyOrReasonAsync(ITaskExecutionContext ctx, PkiService service, string kind, Guid? policyId, PkiDeviceSupport support, CancellationToken ct)
     {
         try
         {
             var policy = IssuingChoice.Resolve(service, kind, policyId);
             var ca = CertificateDeployment.RequireCa(service, policy);
-            await IssuingChoice.RequireKeyAsync(ctx.Vapix, policy, ct).ConfigureAwait(false);
+            await CertificateDeployment.RequireKeyAsync(ctx.Vapix, policy, support, ct).ConfigureAwait(false);
+            if (kind == Policies.PolicyKinds.Dot1xCertificate)
+            {
+                PkiCompatibility.RequireEapol(policy, support);
+            }
+
             return (policy, ca, null);
         }
         catch (Exception ex) when (ex is InvalidOperationException or DeviceNotCompatibleException)
@@ -158,6 +164,20 @@ public sealed class RenewTask(Func<PkiService?> service) : PkiTaskBase(service),
             return (null, null, Reason(ex));
         }
     }
+
+    /// <summary>
+    /// "Read network settings": host name and addresses for the certificate and the 802.1X settings, however the device keeps
+    /// them (<see cref="Dot1xSettings.ReadAsync"/>).
+    /// </summary>
+    private static Task<Dot1xState> ReadNetworkAsync(ITaskExecutionContext ctx, IReadOnlyList<DeviceApi> apis, CancellationToken ct) =>
+        ctx.StepAsync(PkiSteps.ReadNetwork, async step =>
+        {
+            var state = await Dot1xSettings.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false);
+            step.Complete(state.Api == Dot1xApiKind.ParametersAndCertSet
+                ? $"No network settings API; the certificate names the OADM address · 802.1X {(state.Dot1x is null ? "not offered" : state.Dot1x.Enabled ? "on" : "off")}"
+                : HttpsEnableTask.Describe(state.Network));
+            return state;
+        });
 
     private static string Reason(Exception ex) => ex.Message.Replace(" Nothing was changed.", string.Empty, StringComparison.Ordinal).TrimEnd('.');
 }

@@ -1,0 +1,16 @@
+{
+  "apis": {
+    "cert": {
+      "v1": {
+        "doc": "/config/discover/apis/cert/v1/doc.md",
+        "doc_html": "/config/web-ui/cu-doc.html?md-doc-loc=/config/discover/apis/cert/v1/doc.md",
+        "model": "/config/discover/apis/cert/v1/model.json",
+        "rest_api": "/config/rest/cert/v1beta",
+        "rest_openapi": "/config/discover/apis/cert/v1/openapi.json",
+        "rest_ui": "/config/web-ui/swagger-ui/?url=/config/discover/apis/cert/v1/openapi.json",
+        "state": "beta",
+        "version": "1.0.0-beta.1"
+      }
+    }
+  }
+}

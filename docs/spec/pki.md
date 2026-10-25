@@ -866,6 +866,63 @@ policies and are checked against the trusted / sign-in CA policies, the two are 
 - **Status** of a server without a usable certificate: "The 802.1X server has no certificate. Choose one in its policy.",
   or "The EST server cannot use its certificate: it has ended." (also gone, revoked, its key cannot be read).
 
+## Older AXIS OS (decisions 2026-10-25)
+
+Certificates, HTTPS and IEEE 802.1X run on **AXIS OS 6.53 and later** (researched on hardware on 6.53, 8.40, 9.80, 10.12,
+11.9, 11.11 and 12.11; the recorded answers, sanitized, in `tests/Oadm.Plugins.Pki.Tests/Fixtures/Legacy/<version>/`). EST
+stays at 12.10 (`docs/spec/est-server.md`). One decision per device, `Tasks/PkiCompatibility` (`Decide`, `Dot1xApiOf`),
+made fresh in Check compatibility before the first write; the menus use the cached firmware version only (6.53 or later).
+
+| | Certificates | HTTPS web server | IEEE 802.1X on/off, identity, EAPOL | 802.1X certificates | Keys | EAPOL |
+|---|---|---|---|---|---|---|
+| 12.11 and later (network settings 1.38) | REST cert v1 | SOAP, Admin policy | network settings | network settings | keystore's types (ECC, RSA) | 1-3 |
+| 11.11.135 to 12.10 | REST cert v1 | SOAP, Admin policy | network settings | SOAP certificate set | keystore's types (11.11: RSA) | 1-3 |
+| 10.1 to 11.11.134 | SOAP | SOAP, Admin policy | network settings | SOAP certificate set | RSA 2048 | 1-3 |
+| 8.50 to 10.0 (network settings listed) | SOAP | SOAP, Admin policy | network settings | SOAP certificate set | RSA 2048 | 1-2 |
+| 7.10 to 8.40 (no API list) | SOAP | SOAP, Admin policy | parameters | SOAP certificate set | RSA 2048 | 1-2 |
+| 6.53 to 7.0 | SOAP | SOAP, Admin + Operator + Viewer | parameters | SOAP certificate set | RSA 2048 | 1-2 |
+
+- **Certificate API**: REST `cert` v1 only when `config/discover` lists it **released** (11.11.135 and later; beta on 11.9
+  is not used); else the SOAP certificate service at `/vapix/services` (`Device/CertSoapApi`): `tds:GetCertificates`,
+  `GetCACertificates`, `LoadCertificates`, `LoadCACertificates`, `DeleteCertificates` (certificates and CA certificates,
+  DER in base64), `acertificates:CreateCertificate2`, `GetPkcs10Request2`, `LoadPkcs12`, `GetCertSet` / `SetCertSet`.
+  `config/discover` answering 404, 400, 405 or 501 means not listed. The AXIS OS version for the SOAP path comes fresh from
+  `basicdeviceinfo.cgi`, else `Properties.Firmware.Version`; an unknown or unreadable version, or one before 6.53, refuses
+  ("The device's AXIS OS version cannot be read. Nothing was changed." / "Needs AXIS OS 6.53 or later. Nothing was
+  changed."): never "unknown = allowed" for writes.
+- **Keys on SOAP**: `CreateCertificate2` takes no key type (10.12 refuses one with `ter:TagMismatch`): RSA 2048 only, an
+  ECC policy fails in Check compatibility with the existing "The device cannot create an ECC key. Choose a policy with
+  RSA. Nothing was changed." (6.53 also refuses an ECC PKCS#12). The key is created under the placeholder
+  "&lt;alias&gt; key" (a self-signed certificate), the request comes from it, the signed certificate is loaded under the
+  alias (the device finds the key; the placeholder's own id is refused as existing) and the placeholder is deleted after
+  that (the key stays; a failed delete is a Warning log line). A failure before the load deletes the placeholder again.
+- **802.1X certificates**: network settings before 1.38 (9.80 1.6, 10.12 1.15, 11.9 1.29, 11.11.232 1.33; 12.10 too)
+  answer success to `certClient` / `certsCA` but do not bind them and never report them in `getNetworkInfo`. OADM uses
+  network settings alone where `getNetworkInfo` names them (`Wired8021X.ReportsCertificates`; 12.11 lists 1.37 but
+  reports them) or the list says 1.38 or later; else the certificates go through `SetCertSet EAPTLS_WIRED` (client
+  certificate, CA certificates, trusted ones as read) **before** 802.1X is switched on, and the read-back of Verify 802.1X
+  settings takes them from `GetCertSet` (`Device/Dot1xSettings`). Also for Disable IEEE 802.1X (certificates stay bound),
+  Renew, Install certificates for 802.1X, View / Delete certificates (in use by 802.1X) and the EST step "Set the RADIUS
+  server CA" (only the CA certificates of the set change).
+- **Without network settings** (no API list before 8.50, or no `network-settings` in it): on/off, identity and EAPOL
+  version through `param.cgi action=update` `Network.Interface.I0.dot1x.Enabled`, `.EAPOLVersion`, `.EAPTLS.Identity`
+  (form body), read with `param.cgi list`; the certificates through the certificate set as above. Host names for the
+  HTTPS certificate are then not read (Read network settings Skipped, the OADM address and `axis-<serial>.local`).
+- **HTTPS before 7.10**: `SetWebServerTlsConfiguration` needs Operator and Viewer next to Admin (6.53: Admin alone is
+  `ter:InvalidArgs` "occurrence violation"): OADM sends all three when the device reported them or the version is before
+  7.10; Enable switches each HTTP-only role to HTTP and HTTPS, Disable sets all to HTTP.
+- **EAPOL version 3** needs AXIS OS 10.1 (release notes: IEEE 802.1X-2010; 6.53 breaks with it, 9.80 refuses it with
+  error 4004): an IEEE 802.1X policy with EAPOL 3 fails Check compatibility below 10.1 with "EAPOL version 3 needs AXIS
+  OS 10.1 or later. Choose a policy with EAPOL version 1 or 2. Nothing was changed." (Renew: the purpose is Skipped with
+  that reason). The default policy of a new installation (EAPOL 3, ECC) therefore needs a second policy for such devices.
+- Reads in the background (the one pass for certificates from before the list, the device reader of Revoke) take the
+  API from the cached `config/discover` and the device's cached AXIS OS version (`PkiCompatibility.CachedAsync`).
+- Tests: `LegacyDeviceApiTests` (every parser and request body against the recorded answers and requests of each version),
+  `CompatibilityMatrixTests` (the decision), `LegacyTaskTests` (every task per family against `FakeCamera.Legacy(version)`:
+  SOAP certificate service, certificate set, parameters, the roles of 6.53, the refusals with no write).
+- Not verified on hardware yet (the maintainer tries them on the lab devices): a whole Enable / Renew / Disable run per
+  version through OADM; the network settings between 8.50 and 9.80 (assumed: getNetworkInfo when listed).
+
 ## Not planned
 
 - A limit of devices per switch port (decision 2026-10-24): OADM sees no logoff without RADIUS accounting; set the limit

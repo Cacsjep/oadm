@@ -1,0 +1,1 @@
+action=update&Network.Interface.I0.dot1x.EAPTLS.Identity=oadm-param&Network.Interface.I0.dot1x.EAPOLVersion=2&Network.Interface.I0.dot1x.Enabled=yes

@@ -12,9 +12,20 @@ the [PKI](../../tools/pki/) page: OADM signs the device certificates itself, and
 as **Trusted** in the device list.
 
 <Aside>
-Every certificate task needs AXIS OS 11.11 or later. IEEE 802.1X also needs the device's network settings function.
-Other devices show the entries greyed with the reason.
+Every certificate task needs AXIS OS 6.53 or later. Other devices show the entries greyed with the reason.
 </Aside>
+
+## Supported AXIS OS
+
+| AXIS OS | HTTPS | IEEE 802.1X | Keys |
+|---|---|---|---|
+| 12.x | Yes | Yes, EAPOL version 1, 2 or 3 | ECC or RSA |
+| 10.1 to 11.11 | Yes | Yes, EAPOL version 1, 2 or 3 | RSA |
+| 6.53 to 10.0 | Yes | Yes, EAPOL version 1 or 2 | RSA |
+
+On AXIS OS before 12, choose policies with an RSA key. Before 10.1, choose an IEEE 802.1X policy with EAPOL version 1
+or 2. A device that cannot use the chosen policy is not changed. Enrollment on the [EST server](../../tools/est-server/)
+needs AXIS OS 12.10 or later.
 
 ## Enable or disable HTTPS
 
@@ -99,7 +110,8 @@ Certificates a device already has are skipped. At most 150 certificates per run.
 
 ## What OADM checks first
 
-- The device has AXIS OS 11.11 or later, read fresh from the device.
+- The device has AXIS OS 6.53 or later, read fresh from the device, and can make the policy's key and use its EAPOL
+  version.
 - A device whose certificate changed is refused; remove it and add it again once you know why the certificate
   changed.
 - The CA certificates are valid CA certificates and not expired.

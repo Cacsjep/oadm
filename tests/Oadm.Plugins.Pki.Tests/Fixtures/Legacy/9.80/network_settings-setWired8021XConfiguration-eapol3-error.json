@@ -1,0 +1,11 @@
+{
+  "apiVersion": "1.6",
+  "method": "setWired8021XConfiguration",
+  "error": {
+    "code": 4004,
+    "message": "Invalid parameter(s)",
+    "details": {
+      "subCode": 104
+    }
+  }
+}

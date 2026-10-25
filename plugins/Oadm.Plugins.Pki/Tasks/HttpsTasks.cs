@@ -36,7 +36,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             PkiSteps.CheckCompatibility, PkiSteps.CheckClock, PkiSteps.ReadWebServer, PkiSteps.ReadNetwork, PkiSteps.InstallCa, PkiSteps.CreateKey,
             PkiSteps.GetCsr, PkiSteps.Sign, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps, PkiSteps.RemovePrevious);
 
-        var (service, ca, apis, policy) = await CheckIssuingTaskAsync(ctx, device, Policies.PolicyKinds.HttpsCertificate, payloadJson, ct).ConfigureAwait(false);
+        var (service, ca, apis, policy, support) = await CheckIssuingTaskAsync(ctx, device, Policies.PolicyKinds.HttpsCertificate, payloadJson, ct).ConfigureAwait(false);
         await CertificateDeployment.CheckClockAsync(ctx, apis, service.Time, CameraClock.Confirmed(payloadJson), ct).ConfigureAwait(false);
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
         var network = await ReadNetworkAsync(ctx, apis, ct).ConfigureAwait(false);
@@ -45,20 +45,20 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
             ctx.Log(TaskLogLevel.Info, $"The device serves the OADM certificate \"{webServer.CertificateAlias}\"; it is replaced by a new one.");
         }
 
-        await DeployAsync(ctx, service, ca, device, webServer, network, policy, stepPrefix: null, ct).ConfigureAwait(false);
+        await DeployAsync(ctx, service, ca, device, webServer, network, policy, support, stepPrefix: null, ct).ConfigureAwait(false);
     }
 
     /// <summary>Install CA certificate ... Remove previous OADM certificate (also used by renew and manual install).</summary>
     internal static async Task DeployAsync(
-        ITaskExecutionContext ctx, PkiService service, Ca.CaMaterial ca, IDeviceInfo device, WebServerTlsConfiguration webServer, DeviceNetworkInfo? network, Policies.PkiPolicy policy, string? stepPrefix, CancellationToken ct)
+        ITaskExecutionContext ctx, PkiService service, Ca.CaMaterial ca, IDeviceInfo device, WebServerTlsConfiguration webServer, DeviceNetworkInfo? network, Policies.PkiPolicy policy, PkiDeviceSupport support, string? stepPrefix, CancellationToken ct)
     {
-        await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCa), CertificateDeployment.CaChain(ca), ct).ConfigureAwait(false);
+        await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCa), CertificateDeployment.CaChain(ca), support.Certificates, ct).ConfigureAwait(false);
         var alias = CertificateDeployment.NewAlias(CertificateDeployment.HttpsAliasPrefix, service.Time);
         var names = CertificateDeployment.NamesFor(device, network, service.InAnyGroup(device));
-        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, policy, stepPrefix, ct).ConfigureAwait(false);
+        var issued = await CertificateDeployment.IssueAsync(ctx, service, ca, device, names, CertificatePurpose.Https, alias, policy, support, stepPrefix, ct).ConfigureAwait(false);
         try
         {
-            await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
+            await CertificateDeployment.SwitchWebServerAsync(ctx, webServer, issued.Alias, support.WebServerAllRoles, PkiSteps.Prefixed(stepPrefix, PkiSteps.SwitchWebServer), ct).ConfigureAwait(false);
             await CertificateDeployment.FollowWebServerAsync(ctx, "https", issued.Fingerprint, service.Time, PkiSteps.Prefixed(stepPrefix, PkiSteps.VerifyHttps), ct).ConfigureAwait(false);
         }
         catch (Exception)
@@ -69,7 +69,7 @@ public sealed class HttpsEnableTask(Func<PkiService?> service) : PkiTaskBase(ser
         }
 
         await CertificateDeployment.ConfirmAsync(ctx, service, device, issued, CertificatePurpose.Https).ConfigureAwait(false);
-        await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Https, [issued.Alias], PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
+        await CertificateDeployment.RemovePreviousAsync(ctx, service, device, CertificatePurpose.Https, [issued.Alias], support.Certificates, PkiSteps.Prefixed(stepPrefix, PkiSteps.RemovePrevious), ct).ConfigureAwait(false);
     }
 
     /// <summary>Host name, domain and addresses for the certificate (network-settings 1.x); Skipped without that API.</summary>
@@ -119,8 +119,9 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
         ArgumentNullException.ThrowIfNull(device);
         ctx.PlanSteps(PkiSteps.CheckCompatibility, PkiSteps.ReadWebServer, PkiSteps.SetHttpOnly, PkiSteps.Verify);
 
-        await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
+        var support = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
+            var support = await PkiCompatibility.RequireAsync(ctx.Vapix, device.Id, Time, ct).ConfigureAwait(false);
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
             apis.Require("param-cgi", "1.0");
             var parameters = await ctx.Vapix.ListParametersAsync([AuthenticationPolicyParameter], ct).ConfigureAwait(false);
@@ -131,7 +132,8 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
                     "The device accepts only Basic authentication over HTTP, which OADM never sends unencrypted. Change the HTTP authentication policy first. Nothing was changed.");
             }
 
-            step.Complete("HTTP authentication " + (policy ?? "unknown"));
+            step.Complete($"{support.Describe()} · HTTP authentication {policy ?? "unknown"}");
+            return support;
         }).ConfigureAwait(false);
 
         var webServer = await ReadWebServerAsync(ctx, ct).ConfigureAwait(false);
@@ -143,7 +145,8 @@ public sealed class HttpsDisableTask(Func<PkiService?> service) : PkiTaskBase(se
         {
             await ctx.StepAsync(PkiSteps.SetHttpOnly, async step =>
             {
-                await WebServerTls.SetAsync(ctx.Vapix, webServer with { Policy = ConnectionPolicy.Http }, ct).ConfigureAwait(false);
+                var current = support.WebServerAllRoles ? webServer.WithRoles() : webServer;
+                await WebServerTls.SetAsync(ctx.Vapix, current.WithPolicies(_ => ConnectionPolicy.Http), ct).ConfigureAwait(false);
                 step.Complete("Connection policy HTTP only; certificates stay");
             }).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Connection policy changed from {ConnectionPolicy.Describe(webServer.Policy)} to HTTP only.");
