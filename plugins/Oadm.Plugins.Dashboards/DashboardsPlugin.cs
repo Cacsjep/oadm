@@ -56,6 +56,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private IEventSubscriptions? _subscriptions;
     private IDisposable? _subscription;
     private ITimer? _timer;
+
+    /// <summary>What each group sees (<see cref="Reach"/>), built again only when the group's devices change.</summary>
+    private ViewerScopes? _reaches;
     private List<Dashboard>? _dashboards;
     private bool _catalogDirty;
     private DateTimeOffset _catalogSent = DateTimeOffset.MinValue;
@@ -105,6 +108,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         ArgumentNullException.ThrowIfNull(ctx);
         _ctx = ctx;
         _dashboards = null;
+        _reaches = new ViewerScopes(ctx.DeviceScopes, _time);
         _subscriptions = ctx.EventSubscriptions;
         if (_subscriptions is not null)
         {
@@ -134,6 +138,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         _timer = null;
         _subscription?.Dispose();
         _subscription = null;
+        _reaches?.Dispose();
+        _reaches = null;
         if (_subscriptions is not null)
         {
             _subscriptions.TypesChanged -= OnTypesChanged;
@@ -679,14 +685,50 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         return new DevicesReply(type.Info.DeviceIds is { } ids ? [.. ids.Where(reach.Devices.Contains)] : null);
     }
 
-    /// <summary>What a group user may see (null: every device, every event).</summary>
-    private static async Task<Reach?> ReachOfAsync(ICallContext caller, CancellationToken ct) =>
-        caller.HasAllDevices ? null : Reach.Of(await caller.Devices.ListAsync(ct).ConfigureAwait(false), caller.DeviceScopeKey);
+    /// <summary>
+    /// What a group user may see (null: every device, every event): the group's <see cref="Reach"/> kept since its devices
+    /// last changed, else the user's devices read once (a host without device groups, a key the host does not know).
+    /// </summary>
+    private async Task<Reach?> ReachOfAsync(ICallContext caller, CancellationToken ct)
+    {
+        if (caller.HasAllDevices)
+        {
+            return null;
+        }
 
-    /// <summary>The devices and sites of a device scope (the background push of a group's catalog).</summary>
+        var key = caller.DeviceScopeKey;
+        if (_reaches is { } reaches && _ctx?.DeviceScopes is { } scopes && scopes.Exists(key))
+        {
+            return await reaches.ViewAsync(key, devices => Reach.Of(devices, key), ct).ConfigureAwait(false);
+        }
+
+        return Reach.Of(await caller.Devices.ListAsync(ct).ConfigureAwait(false), key);
+    }
+
+    /// <summary>The devices and sites of a device scope (the background push of a group's catalog), kept per group.</summary>
     private async Task<Reach?> ReachOfAsync(string scopeKey, CancellationToken ct) =>
         scopeKey == ICallContext.AllDevicesScopeKey ? null
-        : Reach.Of(_ctx?.DeviceScopes is { } scopes && scopes.Exists(scopeKey) ? await scopes.Devices(scopeKey).ListAsync(ct).ConfigureAwait(false) : [], scopeKey);
+        : _reaches is { } reaches ? await reaches.ViewAsync(scopeKey, devices => Reach.Of(devices, scopeKey), ct).ConfigureAwait(false)
+        : Reach.Of([], scopeKey);
+
+    /// <summary>
+    /// Whether a device is in a group now: the host's membership check (a few hash lookups) while the group exists, so a
+    /// device that left the group gets no more values at once; else the devices of <paramref name="reach"/>.
+    /// </summary>
+    private Func<Guid, bool> Membership(string scopeKey, Reach? reach)
+    {
+        if (reach is null)
+        {
+            return _ => true;
+        }
+
+        if (_ctx?.DeviceScopes is { } scopes && scopes.Exists(scopeKey))
+        {
+            return id => scopes.Contains(scopeKey, id);
+        }
+
+        return reach.Devices.Contains;
+    }
 
     // ------------------------------------------------------------------ watching
 
@@ -705,7 +747,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         if (!caller.HasAllDevices && keys.Count > 0)
         {
             var reach = (await ReachOfAsync(caller, ct).ConfigureAwait(false))!;
-            var missing = keys.Where(k => k.DeviceId is { } id && !reach.Devices.Contains(id)).Select(k => k.DeviceId).Distinct().Count();
+            var member = Membership(caller.DeviceScopeKey, reach);
+            var missing = keys.Where(k => k.DeviceId is { } id && !member(id)).Select(k => k.DeviceId).Distinct().Count();
             if (missing > 0)
             {
                 Unwatch(caller, request.WatchId); // a device left the user's devices: the old watch gets no more values
@@ -756,9 +799,19 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 }
 
                 var id = (caller.SessionId, request.WatchId);
-                if (!_watchers.ContainsKey(id) && _watchers.Count >= 1_000)
+                if (!_watchers.ContainsKey(id))
                 {
-                    throw new InvalidOperationException("Too many pages watch the dashboards.");
+                    // One session never takes the slots of the others: its oldest watch makes room (a page that went away).
+                    var own = _watchers.Where(w => w.Key.Session == caller.SessionId).ToList();
+                    if (own.Count >= DashboardsPluginInfo.MaxWatchesPerSession)
+                    {
+                        _watchers.Remove(own.MinBy(w => w.Value.LastSeen).Key);
+                    }
+
+                    if (_watchers.Count >= DashboardsPluginInfo.MaxWatches)
+                    {
+                        throw new InvalidOperationException("Too many pages watch the dashboards.");
+                    }
                 }
 
                 _watchers[id] = new Watcher(keys, _time.GetUtcNow(), caller.SessionId, caller.HasAllDevices ? ICallContext.AllDevicesScopeKey : caller.DeviceScopeKey, caller.HasAllDevices);
@@ -838,6 +891,21 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 replaced = _sessionJobs.GetValueOrDefault(session);
                 _sessionJobs[session] = job;
                 Registering(session);
+
+                // The replaced job's end no longer drops the session's watches (a newer job took over): the watches of the
+                // old group go now, so no value of the old devices reaches the session after its group changed.
+                if (replaced is not null)
+                {
+                    var scope = caller.DeviceScopeKey;
+                    var old = _watchers.Where(w => w.Key.Session == session && !w.Value.HasAllDevices
+                        && !string.Equals(w.Value.ScopeKey, scope, StringComparison.OrdinalIgnoreCase)).Select(w => w.Key).ToList();
+                    old.ForEach(id => _watchers.Remove(id));
+                    if (old.Count > 0)
+                    {
+                        RebuildWatched();
+                    }
+                }
+
                 var kept = job;
                 _ = kept.Completion.ContinueWith(_ => SessionJobEnded(session, kept), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             }
@@ -1008,18 +1076,20 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
                 var snapshots = changed.ToDictionary(k => k, Snapshot);
                 events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply([.. snapshots.Values])), PluginEventAudience.AllDevices);
 
-                // The devices each group has now: a device that left a group gets no more values there, also before the
-                // page renews its watch.
-                var reaches = new Dictionary<string, Reach?>(StringComparer.OrdinalIgnoreCase);
+                // The devices each group has now (the host's check per device, never a read of the device table): a device
+                // that left a group gets no more values there, also before the page renews its watch.
+                var members = new Dictionary<string, Func<Guid, bool>>(StringComparer.OrdinalIgnoreCase);
                 foreach (var scope in groupWatchers.Select(w => w.ScopeKey).Distinct(StringComparer.OrdinalIgnoreCase))
                 {
-                    reaches[scope] = await ReachOfAsync(scope, CancellationToken.None).ConfigureAwait(false);
+                    members[scope] = Membership(scope, await ReachOfAsync(scope, CancellationToken.None).ConfigureAwait(false));
                 }
 
                 foreach (var session in groupWatchers.GroupBy(w => w.SessionId, StringComparer.Ordinal))
                 {
-                    var mine = session.SelectMany(w => w.Keys.Where(k => k.DeviceId is not { } id || reaches[w.ScopeKey]?.Devices.Contains(id) != false))
-                        .Where(snapshots.ContainsKey).Distinct().Select(k => snapshots[k]).ToList();
+                    // The changed values the session watches, through the shorter of the two sets.
+                    var mine = session.SelectMany(w => (changed.Count <= w.Keys.Count ? changed.Where(w.Keys.Contains) : w.Keys.Where(snapshots.ContainsKey))
+                            .Where(k => k.DeviceId is not { } id || members[w.ScopeKey](id)))
+                        .Distinct().Select(k => snapshots[k]).ToList();
                     if (mine.Count > 0)
                     {
                         events.Publish(DashboardsMethods.ValuesTopic, Serialize(new ValuesReply(mine)), PluginEventAudience.Session(session.Key));

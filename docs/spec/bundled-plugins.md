@@ -381,7 +381,9 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   (`DashboardRules`). Device groups: each dashboard belongs to the group of the user who made it (none = all devices);
   group users see and change only their group's dashboards with the group's devices, get only the events of their devices
   and sites and only the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps
-  the owner.
+  the owner. Pushes never read the device table: each group's devices are read once and again only when the group's
+  devices change (or after 5 minutes), a device's membership is the host's check per device. At most 1,000 watches, 8 per
+  login session (a new one replaces the session's oldest).
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete audited);
   video needs "Live view".
 - Page: left card Dashboards and Events (the events with values, device triggers first); right card the tabs, while
@@ -391,7 +393,8 @@ Gauge, Live video; a gauge has the Number settings plus Min, Max and the line wi
   value, type, widget and its settings, every change shown at once); **Copy for other devices** (the copy icon of a widget's
   edit frame or the group panel: one copy per chosen device; the picker asks the server for the event's devices, `devices`). Empty states for Device triggers off
   (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device triggers**) and no dashboard.
-- Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices; headless
+- Tests: `tests/Oadm.Plugins.Dashboards.Tests` (+ Perf 50 widgets at 4 updates a second next to 30,000 devices, Perf pushes
+  to 50 group pages of 5 groups at 30,000 devices; headless
   screenshots with fake-mode video). Fake mode: `FakeOadmApi.Dashboards.cs`.
 
 ## Edge Recording Export (core plugin)

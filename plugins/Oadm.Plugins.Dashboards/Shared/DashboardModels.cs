@@ -49,6 +49,12 @@ public static class DashboardsPluginInfo
     /// <summary>Values one page may watch: the widgets of 100 open dashboards of 50.</summary>
     public const int MaxWatchedKeys = 5_000;
 
+    /// <summary>Watches (open pages) the server keeps at most.</summary>
+    public const int MaxWatches = 1_000;
+
+    /// <summary>Watches one login session keeps at most (one per open page); a new one replaces its oldest.</summary>
+    public const int MaxWatchesPerSession = 8;
+
     /// <summary>Values kept per event field for the type suggestion.</summary>
     public const int RecentValues = 20;
 
