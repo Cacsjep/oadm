@@ -6,6 +6,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.5.0-rc.1] - 2026-10-25
+
 ### Added
 
 - **PKI** is the one place for certificates. Its page has the tabs **Certificates**, **Policies**, **802.1X server** and
