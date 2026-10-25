@@ -662,9 +662,10 @@ public sealed class RenewDeleteInstallTests
     }
 
     [Fact]
-    public async Task Install_certificates_for_8021x_resolves_the_radius_server_ca_in_check_compatibility()
+    public async Task Install_certificates_for_8021x_installs_the_policys_radius_server_ca_also_after_a_new_oadm_ca()
     {
-        // A RADIUS server CA the cameras cannot use (here: the 802.1X server keeps its certificate of the previous OADM CA).
+        // The 802.1X server keeps its certificate of the previous OADM CA: no refusal (decision 2026-10-25, the user turns
+        // 802.1X off on the switch first).
         await using var h = await TaskHarness.StartAsync();
         await h.Pki.Service.EnsureServerCertificatesAsync(null, CancellationToken.None);
         var server = Radius.Server.RadiusPolicies.DefaultServerPolicy() with { CertificateId = h.Pki.Policies.EstServerPolicy!.CertificateId };
@@ -673,13 +674,11 @@ public sealed class RenewDeleteInstallTests
         using var ca = TestCa.Root("Customer CA");
         using var leaf = LeafWithKey(ca, "10.0.0.48");
         var payload = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.Dot1x, Password = "secret", Files = [new InstallFile(h.Device.Id, "f1", "cam48.pfx")] });
-        var before = h.Camera.Writes.Count;
 
         var ex = await RunWithFileAsync(h, payload, TestCa.Pfx("secret", leaf));
 
-        Assert.StartsWith("The 802.1X server's certificate is issued by", ex!.Message, StringComparison.Ordinal);
-        Assert.Equal("Check compatibility: Failed", h.Lines[0]); // before the file is read or anything is written
-        Assert.Equal(before, h.Camera.Writes.Count);
+        Assert.Null(ex);
+        Assert.DoesNotContain("Check compatibility: Failed", h.Lines);
     }
 
     [Fact]

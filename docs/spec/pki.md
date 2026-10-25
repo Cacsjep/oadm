@@ -750,13 +750,9 @@ It supersedes "only the OADM CA issues" of stage 4 and the Server certificate an
   (Import, CA certificate). The hint below the field names the CA that issued the 802.1X server policy's certificate
   ("The 802.1X server's certificate is issued by OADM Root CA."). Enable IEEE 802.1X installs that CA and the
   certificates above it PKI knows; the issue dialog shows its name. Such a CA counts as used (Used in, cannot be removed).
-  Device safety (fix of 2026-10-25): while the 802.1X server policy has a certificate, Enable IEEE 802.1X, Renew
-  certificates (IEEE 802.1X), Install certificates (IEEE 802.1X) and EST's Set up refuse in Check compatibility unless the
-  RADIUS server CA is the CA that issued that certificate (`CertificateDeployment.RadiusCas`: "The 802.1X server's
-  certificate is issued by OADM Root CA, but the policy IEEE 802.1X gives the cameras another RADIUS server CA. Choose that
-  CA in the policy, or choose a certificate of the policy's RADIUS server CA in the 802.1X server policy. Nothing was
-  changed."; Renew skips 802.1X with it); an issuer PKI does not know refuses too. After New OADM CA the server keeps
-  its certificate of the previous CA, so the cameras would refuse OADM's own 802.1X server. The replace question says so
+  The tasks never compare it with the 802.1X server's certificate (decision 2026-10-25): Enable, Renew and Install
+  certificates (IEEE 802.1X) and EST's Set up always install the policy's RADIUS server CA; turning 802.1X off on the switch
+  first is the user's job. After New OADM CA the server keeps its certificate of the previous CA; the replace question says so
   ("The 802.1X server and the EST server keep their certificate from the current CA. Choose a certificate of the new CA
   in their policies before cameras get the new CA.", `PreviewReplaceReply.Servers`).
   The summary adds "Cameras check the RADIUS server with OADM Root CA.". Converted once on start (owner

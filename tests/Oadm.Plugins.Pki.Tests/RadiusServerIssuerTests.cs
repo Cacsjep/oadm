@@ -5,8 +5,9 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// Device safety (docs/spec/pki.md "RADIUS server CA"): the cameras get the CA that issued OADM's 802.1X server certificate,
-/// else Enable, Renew and Install certificates (802.1X) refuse before the first write; Renew HTTPS checks the clock first.
+/// docs/spec/pki.md "RADIUS server CA": the tasks always install the policy's RADIUS server CA, also when it did not issue
+/// OADM's 802.1X server certificate (decision 2026-10-25: the user turns 802.1X off on the switch first); New OADM CA warns
+/// that the servers keep their certificate; Renew HTTPS checks the clock first.
 /// </summary>
 public sealed class RadiusServerIssuerTests
 {
@@ -22,28 +23,18 @@ public sealed class RadiusServerIssuerTests
     }
 
     [Fact]
-    public async Task After_a_new_oadm_ca_enable_refuses_while_the_8021x_server_keeps_its_certificate_of_the_previous_ca()
+    public async Task After_a_new_oadm_ca_enable_and_renew_still_install_the_policys_radius_server_ca()
     {
         await using var h = await WithServerCertificateAsync();
-        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable)); // the server's certificate is from the OADM CA the cameras get
         Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
-        var writes = h.Camera.Writes.Count;
 
-        var ex = await h.RunAsync(PkiTaskIds.Dot1xEnable);
-
-        Assert.NotNull(ex);
-        Assert.StartsWith("The 802.1X server's certificate is issued by OADM Root CA SERVER01, but the policy IEEE 802.1X gives the cameras another RADIUS server CA.", ex.Message, StringComparison.Ordinal);
-        Assert.EndsWith("Choose a certificate of the policy's RADIUS server CA in the 802.1X server policy. Nothing was changed.", ex.Message, StringComparison.Ordinal); // a previous CA cannot be chosen
-        Assert.Contains("Check compatibility: Failed", h.Lines);
-        Assert.Equal(writes, h.Camera.Writes.Count);
-
-        // Renew skips 802.1X with the reason; Install certificates (802.1X) refuses in Check compatibility.
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
         Assert.Null(await h.RunAsync(PkiTaskIds.Renew));
-        Assert.StartsWith("The 802.1X server's certificate is issued by", h.Detail(RenewTask.RenewDot1xStep), StringComparison.Ordinal);
+        Assert.DoesNotContain("Check compatibility: Failed", h.Lines);
     }
 
     [Fact]
-    public async Task A_radius_server_ca_that_is_not_the_server_certificates_issuer_names_both_ways_out()
+    public async Task A_radius_server_ca_that_did_not_issue_the_server_certificate_is_installed()
     {
         await using var h = await WithServerCertificateAsync();
         using var root = TestCa.Root("Contoso RADIUS");
@@ -51,9 +42,9 @@ public sealed class RadiusServerIssuerTests
         var policy = h.Pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)! with { RadiusCaId = PkiService.ImportedAuthorityId(Ca.CaCertificates.Fingerprint(root)) };
         Assert.Null((await h.Pki.Policies.SaveAsync(policy, "admin", PkiService.CipherSuites, CancellationToken.None)).Error);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => CertificateDeployment.RadiusCas(h.Pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!, h.Pki.Service));
+        var cas = CertificateDeployment.RadiusCas(h.Pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!, h.Pki.Service);
 
-        Assert.Contains("Choose that CA in the policy, or choose a certificate of the policy's RADIUS server CA in the 802.1X server policy.", ex.Message, StringComparison.Ordinal);
+        Assert.Equal([Ca.CaCertificates.Fingerprint(root)], cas.Select(c => c.Fingerprint));
     }
 
     [Fact]

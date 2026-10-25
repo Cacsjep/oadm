@@ -587,45 +587,11 @@ public static class CertificateDeployment
             throw new InvalidOperationException($"The policy {policy.Name} names no CA of the RADIUS server that is in the CA list. Choose one in the policy. Nothing was changed.");
         }
 
-        List<(string Alias, string Pem, string Fingerprint)> cas = [.. chain.Select(der =>
+        return [.. chain.Select(der =>
         {
             using var certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(der);
             var fingerprint = CaCertificates.Fingerprint(certificate);
             return (CaAlias(CaAliasPrefix, fingerprint), CaCertificates.ToPem(certificate), fingerprint);
         })];
-        RequireServerIssuer(policy, service, cas);
-        return cas;
-    }
-
-    /// <summary>
-    /// Device safety (no lock-out): when OADM's 802.1X server has a certificate, the cameras must get the CA that issued it,
-    /// else they refuse OADM's own 802.1X server (after New OADM CA the server keeps its certificate from the previous CA).
-    /// Fails closed when PKI does not know that CA.
-    /// </summary>
-    private static void RequireServerIssuer(Policies.PkiPolicy policy, PkiService service, List<(string Alias, string Pem, string Fingerprint)> cas)
-    {
-        if (service.Policies.FirstOf(Policies.PolicyKinds.Dot1xServer)?.CertificateId is null)
-        {
-            return;
-        }
-
-        var issuer = service.ServerIssuerChain(Policies.PolicyKinds.Dot1xServer);
-        if (issuer.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "The CA that issued the 802.1X server's certificate is not in the CA list. Choose another certificate in the 802.1X server policy. Nothing was changed.");
-        }
-
-        var fingerprint = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(issuer[0]));
-        if (!cas.Any(c => string.Equals(c.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase)))
-        {
-            using var certificate = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(issuer[0]);
-            var choosable = service.Authorities().Any(a => a.Kind != Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm
-                && a.Certificates.Count > 0 && a.Certificates[0].AsSpan().SequenceEqual(issuer[0]));
-            throw new InvalidOperationException(
-                $"The 802.1X server's certificate is issued by {CaCertificates.CommonName(certificate)}, but the policy {policy.Name} gives the cameras another RADIUS server CA. "
-                + (choosable ? "Choose that CA in the policy, or choose" : "Choose")
-                + " a certificate of the policy's RADIUS server CA in the 802.1X server policy. Nothing was changed.");
-        }
     }
 }
