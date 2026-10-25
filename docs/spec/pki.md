@@ -383,14 +383,15 @@ Decision 2026-10-24: a camera whose clock is behind sees a new certificate as "n
 
 - Every certificate the OADM CA issues to a device starts **5 minutes in the past** (`NotBefore = now - 5 min`), which
   covers small drifts silently (PKI tasks and EST).
-- The dialogs of **Enable HTTPS**, **Enable IEEE 802.1X** and EST's **Set up** read the camera's clock first (read-only
+- The dialogs of **Enable HTTPS**, **Enable IEEE 802.1X**, **Renew certificates** and EST's **Set up** read the camera's clock first (read-only
   query, `time.cgi` / the HTTP Date header as today). If the camera is still more than 5 seconds behind the
   certificate's start, they ask before starting: "The camera's time is 9 min 12 s behind. The certificate becomes valid on
   the camera only in 4 min 12 s. Set the camera to use NTP. Continue?" **Yes** / **No**. Several cameras: one question
   listing how many and the largest drift. The task gets the user's answer and does not ask again; a camera that is ahead
   is fine. The dialogs read at most the first 100 selected cameras (3 seconds each); the tasks check every camera.
 - A run without the answer (no dialog) still refuses a camera behind the certificate's start ("Nothing was changed").
-  Renew certificates checks the clock once before it renews the first purpose (HTTPS too, fix of 2026-10-25).
+  Renew certificates checks the clock once before it renews the first purpose (HTTPS too, fix of 2026-10-25), with the
+  answer of its dialog (since 2026-10-25).
 
 ## Pages of the services after this
 
@@ -538,10 +539,19 @@ fits the spec; to be confirmed by the maintainer).
   Start the task again. Nothing was changed."), check the values like a saved policy and the key types of the device's default
   keystore (`GET cert/v1`: `settings.keystore`, `keystores[].key_types`) in Check compatibility, before the first write. ECC
   is EC-P256 on the device, RSA is RSA-2048; a device that does not list its key types gets RSA only (decision of stage 4).
-  Renew certificates and Install certificates (IEEE 802.1X) take the first policy of each kind (decision of stage 4).
-- **Dialogs** (`IssueCertificateWindow`, `IssueCertificateViewModel`, no card, one form): Policy (the first preselected,
+  Renew certificates and Install certificates (IEEE 802.1X) always ask for the IEEE 802.1X certificate policy in their
+  dialog (decision 2026-10-25: the first one could rewrite a camera's EAP identity, EAPOL version or RADIUS server CA that
+  another policy set): Renew's payload `RenewPayload` (`Dot1xPolicyId`, `ClockConfirmed`), Install's `InstallPayload.PolicyId`,
+  resolved with `IssuingChoice.Resolve`; a chosen policy deleted after the dialog fails with "The chosen policy no longer
+  exists. Start the task again. Nothing was changed." before the first write (Renew: in Check compatibility, before HTTPS
+  too). Without a policy id (older clients) the first of the kind, as before. HTTPS of Renew keeps the first HTTPS
+  certificate policy. The preset is the first policy: PKI does not keep which policy issued a certificate
+  (`IssuedCertificate` has no policy id).
+- **Dialogs** (`IssueCertificateWindow`, `IssueCertificateViewModel`, no card, one form; also Renew certificates with the
+  field "IEEE 802.1X policy", the 802.1X warning and the button Renew): Policy (the shared field `IssuingPolicyField` /
+  `IssuingPolicyFieldViewModel`, also in Install certificates below Use for when it is IEEE 802.1X; the first preselected,
   read once through the task's read-only query `listIssuingPolicies` with the first selected device, `ui:LoadingOverlay`
-  while it reads), CA (the OADM CA's name, no choice today), Valid (days), Key, and for IEEE 802.1X its warning, EAPOL
+  while it reads, Cancel usable, the main button disabled until a policy is chosen), CA (the OADM CA's name, no choice today), Valid (days), Key, and for IEEE 802.1X its warning, EAPOL
   version, EAP identity, Custom identity and RADIUS server CA (since 2026-10-25 the name of the policy's CA, no choice; see "RADIUS server CA"). Enable gives
   the payload with every value; the clock check follows as before. The 802.1X confirmation popup is gone (its warning is
   in the dialog).
@@ -558,7 +568,8 @@ fits the spec; to be confirmed by the maintainer).
   (RADIUS server CA: since 2026-10-25 a CA of the list, no Import and View; see "RADIUS server CA"). Used by of the CAs lists the issuing policies since
   stage 5.
 - **Tests**: `Oadm.Plugins.Pki.Tests` `IssuingPolicyTests` (fixtures `pki-config-4.1.json`, `pki-config-4.1-imported-radius.json`,
-  `pki-policies-stage3.json`), `IssuingTaskTests`, `IssueDialogTests` (+ headless dialogs and editors);
+  `pki-policies-stage3.json`), `IssuingTaskTests`, `Dot1xPolicyChoiceTaskTests` (Renew and Install with the chosen,
+  a deleted and no IEEE 802.1X policy), `IssueDialogTests` (+ headless dialogs, Renew and Install for IEEE 802.1X, editors);
   `Oadm.Plugins.Est.Tests` `PolicyTests`, `ServerTests` and `PageTests` (profile policies, server certificate);
   `Oadm.Plugins.Radius.Tests` `ServerTests` (server certificate days).
 

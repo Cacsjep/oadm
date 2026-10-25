@@ -10,7 +10,7 @@
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Title bar, one card (purpose, files, password, file -> device table), footer. Shared controls only. -->
+  <!-- Title bar, one card (purpose, IEEE 802.1X policy, files, password, file -> device table), footer. Shared controls only. -->
   <Grid RowDefinitions="Auto,*,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallCertificatesViewModel.Title}" />
 
@@ -23,6 +23,10 @@
           <ui:FormField Label="Use for">
             <ComboBox ItemsSource="{Binding Purposes}" SelectedItem="{Binding SelectedPurpose}" />
           </ui:FormField>
+          <!-- IEEE 802.1X: the policy whose settings and RADIUS server CA the run sets (the file brings the certificate). -->
+          <Panel IsVisible="{Binding IsDot1x}">
+            <vm:IssuingPolicyField DataContext="{Binding Policy}" />
+          </Panel>
           <!-- Choose files right of the file text, inside the input width -->
           <ui:FormField Label="Files" Error="{Binding FilesError}">
             <ui:FileRow FileName="{Binding FilesText}" ButtonText="Choose files" Command="{Binding ChooseFilesCommand}" />
@@ -47,6 +51,7 @@
           </DataGrid.Columns>
         </DataGrid>
         <ui:ProgressRow Grid.Row="4" Value="{Binding UploadProgress}" Text="{Binding UploadStatus}" IsVisible="{Binding IsBusy}" Margin="0,10,0,0" />
+        <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="5" Text="Reading the policies" IsVisible="{Binding Policy.IsLoading}" />
       </Grid>
     </Border>
 

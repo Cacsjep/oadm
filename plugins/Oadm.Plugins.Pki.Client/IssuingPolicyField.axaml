@@ -1,0 +1,13 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Pki.Client"
+             x:Class="Oadm.Plugins.Pki.Client.IssuingPolicyField"
+             x:DataType="vm:IssuingPolicyFieldViewModel">
+  <!-- The issuing policy of a certificate dialog (Enable HTTPS, Enable IEEE 802.1X, Renew certificates, Install certificates):
+       the policy decides every value (decision 2026-10-25), what it issues in one sentence below it; its error below the
+       field. Shared controls only. -->
+  <ui:FormField Label="{Binding Label}" InputWidth="340" Hint="{Binding Summary}">
+    <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" />
+  </ui:FormField>
+</UserControl>

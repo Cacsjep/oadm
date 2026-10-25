@@ -160,8 +160,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
 - Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (sections, in place, Add/Edit/Delete, Check a device,
   a group user; + headless `pki-page-1700.png`, `pki-page-1000.png`,
   `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`, `pki-policy-block.png`,
-  `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `IssueDialogTests` (+ headless
-  `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
+  `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (+ headless
+  `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-renew.png`, `pki-install-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
   `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`,
   `pki-policies-1000.png` and their `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the
   conversion of the kinds, Used in), Perf `PolicyPerfTests` (30,000 devices).
@@ -212,9 +212,12 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   CA aliases), Verify 802.1X settings (read back, mismatch = Warning), Remove previous OADM certificate.
 - **Disable IEEE 802.1X** (`oadm.pki.dot1x-disable`, name "Disable IEEE 802.1X"): Check compatibility, Set 802.1X off
   (Skipped "Already off"), Verify; certificates stay.
-- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates"): Check compatibility, Read certificates, Read web
-  server settings, Read network settings, then per purpose whose current certificate is OADM's the enable flow (the first
-  policy of the kind) with
+- **Renew certificates** (`oadm.pki.renew`, name "Renew certificates", dialog `IssueCertificateWindow` via
+  `IssueCertificateViewModel.ForRenew`: the 802.1X warning and the IEEE 802.1X policy (`IssuingPolicyField`, the first
+  preselected), then the clock check; payload `RenewPayload` {`dot1xPolicyId`, `clockConfirmed`}): Check compatibility (a
+  chosen policy that no longer exists fails here, nothing written), Read certificates, Read web server settings, Read
+  network settings, then per purpose whose current certificate is OADM's the enable flow (HTTPS: the first HTTPS
+  certificate policy; IEEE 802.1X: the chosen one, without one the first) with
   prefixed steps ("HTTPS: Create key on the device", "IEEE 802.1X: ..."; 802.1X adds Check device clock and runs only
   while 802.1X is on); otherwise one Skipped step "Renew HTTPS certificate" / "Renew IEEE 802.1X certificate" with the
   reason ("No OADM HTTPS certificate on this device").
@@ -233,8 +236,11 @@ Configuration), time.cgi getDateTimeInfo (`DeviceClock`, HTTP Date header as fal
   certificates only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table
   File, Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
   `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
-  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}]}` (CA only: deviceId empty =
-  every device). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
+  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId}` (CA only: deviceId
+  empty = every device). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
+  task's query `listIssuingPolicies` when the purpose is first chosen, `ui:LoadingOverlay` over the card); the run sets that
+  policy's identity, EAPOL version and RADIUS server CA (without `policyId` the first policy; a deleted one fails in Check
+  compatibility, nothing written). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings, Install
   certificate (`install_from_pkcs12`), Switch web server, Verify HTTPS; 802.1X: Check device clock, Install CA
   certificates, Install certificate, Set 802.1X configuration, Verify 802.1X settings; CA only: Install CA certificates.
   A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N

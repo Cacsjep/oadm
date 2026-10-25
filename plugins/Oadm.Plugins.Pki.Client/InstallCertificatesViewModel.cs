@@ -3,6 +3,7 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 
@@ -60,11 +61,14 @@ public sealed partial class InstallFileRow(string path, byte[] data) : Observabl
 /// matched to one selected device by MAC address, IP address or host name / FQDN in its common name or alternative names; a
 /// file must match exactly one device and a device gets at most one file. "CA certificates only" sends every file to every
 /// selected device (no matching). Rows that cannot be installed show the reason in
-/// the Status column and block Install. Install uploads the matched files (<see cref="ITaskDialogContext.UploadAsync"/>) and
-/// returns the payload; the password stays in memory.
+/// the Status column and block Install. IEEE 802.1X asks for the IEEE 802.1X certificate policy whose settings the run sets
+/// (<see cref="IssuingPolicyFieldViewModel"/>, read once when the purpose is first chosen). Install uploads the matched files
+/// (<see cref="ITaskDialogContext.UploadAsync"/>) and returns the payload; the password stays in memory.
 /// </summary>
-public sealed partial class InstallCertificatesViewModel : ObservableObject
+public sealed partial class InstallCertificatesViewModel : ObservableObject, IDisposable
 {
+    private readonly CancellationTokenSource _closed = new();
+    private bool _disposed;
     private readonly ITaskDialogContext _ctx;
     private readonly IReadOnlyList<IDeviceInfo> _devices;
     private readonly Func<string, byte[]> _readFile;
@@ -76,6 +80,8 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _readFile = readFile ?? ReadLimited;
         _time = time ?? TimeProvider.System;
+        Policy = new IssuingPolicyFieldViewModel(PolicyKinds.Dot1xCertificate);
+        Policy.StateChanged += (_, _) => NotifyInstall();
         SelectedPurpose = Purposes[0];
     }
 
@@ -98,7 +104,17 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
     public string Scope => _devices.Count == 1 ? _devices[0].Address : string.Create(CultureInfo.InvariantCulture, $"{_devices.Count:N0} selected devices");
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDot1x))]
     public partial PurposeChoice SelectedPurpose { get; set; }
+
+    /// <summary>The purpose is IEEE 802.1X: the policy field shows.</summary>
+    public bool IsDot1x => SelectedPurpose.Value == InstallPurpose.Dot1x;
+
+    /// <summary>The IEEE 802.1X certificate policy of the run (shown for IEEE 802.1X only).</summary>
+    public IssuingPolicyFieldViewModel Policy { get; }
+
+    /// <summary>The read of the policies (started when IEEE 802.1X is first chosen); null before.</summary>
+    public Task? PolicyLoad { get; private set; }
 
     [ObservableProperty]
     public partial string? Password { get; set; }
@@ -137,6 +153,7 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
     /// <summary>Why Install is disabled (tooltip), or null.</summary>
     public string? InstallBlockedReason =>
         IsBusy ? "Uploading."
+        : IsDot1x && !Policy.IsReady ? Policy.NotReadyReason
         : Files.Count == 0 ? "Choose the certificate files."
         : Files.Any(f => f.IsError) ? "Some files cannot be installed; see the Status column."
         : null;
@@ -145,7 +162,40 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
 
     partial void OnPasswordChanged(string? value) => Evaluate();
 
-    partial void OnSelectedPurposeChanged(PurposeChoice value) => Evaluate();
+    partial void OnSelectedPurposeChanged(PurposeChoice value)
+    {
+        if (value.Value == InstallPurpose.Dot1x && PolicyLoad is null && _devices.Count > 0)
+        {
+            PolicyLoad = LoadPolicyAsync();
+        }
+
+        Evaluate();
+    }
+
+    /// <summary>Stops reading the policies (the window closed).</summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _closed.Cancel();
+        _closed.Dispose();
+    }
+
+    private async Task LoadPolicyAsync()
+    {
+        try
+        {
+            await Policy.LoadAsync(_ctx, _devices[0].Id, _closed.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // the dialog closed while reading
+        }
+    }
 
     partial void OnFilesChanged(IReadOnlyList<InstallFileRow> value)
     {
@@ -292,7 +342,13 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject
                 files.Add(new InstallFile(row.Device?.Id ?? Guid.Empty, uploaded.Id, row.FileName)); // CA only: for all devices
             }
 
-            CloseRequested?.Invoke(this, PkiJson.Serialize(new InstallPayload { Purpose = SelectedPurpose.Value, Password = Password, Files = files }));
+            CloseRequested?.Invoke(this, PkiJson.Serialize(new InstallPayload
+            {
+                Purpose = SelectedPurpose.Value,
+                Password = Password,
+                Files = files,
+                PolicyId = IsDot1x ? Policy.PolicyId : null,
+            }));
         }
 #pragma warning disable CA1031 // Shown in the dialog; the user can retry.
         catch (Exception ex)
