@@ -2,7 +2,7 @@
   <!--
     The NuGet package Oadm.Plugin.Templates: dotnet new oadm-task, oadm-page, oadm-action. The content is generated from
     samples/ before packing ("manage package nuget", tools/Oadm.NewPlugin/Templates.cs) and
-    passed as OadmTemplatesContent; nothing here is edited by hand. Not in Oadm.sln. Spec: docs/plugin-sdk.md.
+    passed as OadmTemplatesContent; nothing here is edited by hand. Not in Oadm.sln. Guide: website/src/content/docs/dev/plugin-sdk.md.
   -->
   <PropertyGroup>
     <PackageType>Template</PackageType>

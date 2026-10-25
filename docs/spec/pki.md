@@ -293,7 +293,7 @@ The Certificates list shows what is in use now, not the history. Code: `Ca/Issue
 - **The store** (plugin records `issued`, `issuedDer`): per camera and use (HTTPS, IEEE 802.1X, MQTT, RTSPS) the
   **current** certificate (the one confirmed on the camera) and at most one **pending** one (issued, not confirmed yet).
   Cameras are matched by their **serial** (`deviceSerial`, from `axis-<serial>.local`), never only by the device entry's id:
-  a camera removed and added again gets a new id. An entry without a serial (OADM before 4.2) counts by its device id;
+  a camera removed and added again gets a new id. An entry without a serial (OADM before 4.5) counts by its device id;
   the list then hides it when the camera has a newer current one under its serial. Every caller that keys by device finds
   a camera added again: `ForDevice(IDeviceInfo)` and `RevocableOf(IDeviceInfo)` look up the id and the serial (the tasks'
   reads, Revoke all of this device, the Revoke policies). Created, signed and imported certificates and the servers'

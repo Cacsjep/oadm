@@ -62,7 +62,7 @@ Both parts use the project SDK `Oadm.Plugin.Sdk`. It sets the assembly names (`<
 for a project ending in `.Client`), references the SDK without copying it (OADM brings its own), and writes `plugin.json`:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.2.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.5.0">
   <PropertyGroup>
     <OadmPluginId>acme.door-bell</OadmPluginId>
     <Version>1.0.0</Version>

@@ -44,7 +44,9 @@ with `dotnet run` of server and client. Installed plugins live in `<datafolder>/
 next to the published exe.
 
 The server loads `*.Server.dll`, the client `*.Client.dll`, each in its own load context. Shared assemblies come from
-the host and are never copied into the plugin folder:
+the host and are never copied into the plugin folder. Outside this repository the plugin project SDK `Oadm.Plugin.Sdk`
+does this by itself (the SDK packages without copies, Avalonia and the MVVM toolkit without a version). The bundled
+plugins of this repository that do not use it reference the SDK by hand:
 
 ```xml
 <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
