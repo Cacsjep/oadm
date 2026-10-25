@@ -222,7 +222,7 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
             var devices = Mode switch
             {
                 TimeMode.ServerTime or TimeMode.Manual when NoTimeApiCount > 0 =>
-                    $"{Count(NoTimeApiCount)} of the selected devices {(NoTimeApiCount == 1 ? "has" : "have")} no Time API (AXIS OS 9.30 or later): their tasks fail without changes.",
+                    $"{Count(NoTimeApiCount)} of the selected devices {(NoTimeApiCount == 1 ? "lacks" : "lack")} the date and time settings of AXIS OS 9.30 or later: their tasks fail without changes.",
                 TimeMode.Ntp when SingleNtpServerCount > 0 && ServerCount > 1 =>
                     $"{Count(SingleNtpServerCount)} of the selected devices {(SingleNtpServerCount == 1 ? "takes" : "take")} only one NTP server: their tasks fail without changes.",
                 _ => null,

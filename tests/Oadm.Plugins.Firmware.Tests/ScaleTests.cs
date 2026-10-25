@@ -59,7 +59,7 @@ public sealed class FirmwareScaleTests
         // 1 in 3 is up to date (12.11.77), 1 in 25 is a Q6135-LE (wrong product), the others upgrade.
         var upToDate = devices.Count(d => d.FirmwareVersion == "12.11.77" && d.Model == "P3265-V");
         Assert.Contains("already up to date", vm.Summary, StringComparison.Ordinal);
-        Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {Count:N0} device(s) will be updated, {upToDate:N0} already up to date"), vm.Summary, StringComparison.Ordinal);
+        Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {Count:N0} devices will be updated, {upToDate:N0} already up to date"), vm.Summary, StringComparison.Ordinal);
         Assert.True(open < 10000, $"Opening took {open} ms");
         Assert.True(evaluate < 5000, $"Re-evaluating 30,000 rows twice took {evaluate} ms");
     }

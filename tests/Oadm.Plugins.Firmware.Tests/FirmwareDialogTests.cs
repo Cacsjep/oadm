@@ -145,7 +145,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal(ClientVerdict.WrongProduct, vm.Devices[2].Check!.Verdict);
         Assert.True(vm.Devices[2].IsError);
         Assert.Equal(ClientVerdict.DowngradeBlocked, vm.Devices[3].Check!.Verdict);
-        Assert.Equal("1 of 4 device(s) will be updated, 1 already up to date, 2 not possible.", vm.Summary);
+        Assert.Equal("1 of 4 devices will be updated, 1 already up to date, 2 not possible.", vm.Summary);
         Assert.Equal(ClientDirection.Upgrade, vm.Direction());
         Assert.True(vm.StartCommand.CanExecute(null));
     }

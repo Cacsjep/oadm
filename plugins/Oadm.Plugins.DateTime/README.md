@@ -51,7 +51,7 @@ How OADM clones it (`DateTimeWindow`):
 | Synchronize with NTP server: Obtain from DHCP / Use server | Below the radio button: an **Obtain from DHCP** check box and one field for up to 5 host names or addresses, separated by commas. **Use NTS (Network Time Security)** when a selected device supports it (the field then takes NTS KE servers). |
 | Set manually | Below the radio button: date, time and "Use this computer's time", in the device's time zone; NTP off. |
 | (always writes everything) | Same, **exactly like ADM**: no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
-| OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the drop-down. Device notes ("500 of the selected devices have no Time API ...") are one small line below the chosen mode's input. |
+| OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the drop-down. Device notes ("500 of the selected devices lack the date and time settings of AXIS OS 9.30 or later ...") are one small line below the chosen mode's input. |
 
 ## VAPIX research
 

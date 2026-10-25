@@ -609,7 +609,8 @@ public sealed partial class NetworkSettingsViewModel : ValidatingViewModel
         var ipv6Connected = _devices.Count(d => d.Address.Contains(':', StringComparison.Ordinal));
         if (payload.Ipv6 is not null && ipv6Connected > 0)
         {
-            parts.Add($"{ipv6Connected} device(s) are reached over IPv6. Changing IPv6 can make them unreachable from the server.");
+            parts.Add((ipv6Connected == 1 ? "1 device is reached over IPv6. Changing IPv6 can make it" : $"{ipv6Connected} devices are reached over IPv6. Changing IPv6 can make them")
+                + " unreachable from the server.");
         }
 
         return parts.Count == 0 ? null : string.Join(" ", parts);

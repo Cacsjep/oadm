@@ -308,7 +308,7 @@ public sealed class ViewModelTests
         Assert.Equal(3_000, vm.NoTimeApiCount);
         Assert.Equal(3_000, vm.SingleNtpServerCount);
         Assert.Equal("Set date and time for 30,000 devices", vm.Title);
-        Assert.Contains("3,000 of the selected devices have no Time API", vm.ModeNote, StringComparison.Ordinal);
+        Assert.Contains("3,000 of the selected devices lack the date and time settings of AXIS OS 9.30 or later", vm.ModeNote, StringComparison.Ordinal);
         vm.IsNtp = true;
         Assert.StartsWith("3,000 of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
         Assert.False(vm.HasNtsHint);

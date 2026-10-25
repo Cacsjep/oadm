@@ -319,7 +319,7 @@ public sealed partial class UsersDialogViewModel : ValidatingViewModel
         PolicyHint = CredentialRules.Hint(result.Policy) + (_devices.Count > 1 ? " Every device also checks its own policy." : string.Empty);
         UsersStatus = !result.Supported
             ? result.Message ?? "This device does not support user management."
-            : result.Message ?? $"{result.Users.Count} user(s).";
+            : result.Message ?? (result.Users.Count == 1 ? "1 user." : $"{result.Users.Count} users.");
         Update();
     }
 

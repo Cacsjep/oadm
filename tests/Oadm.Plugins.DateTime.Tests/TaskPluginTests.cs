@@ -64,7 +64,7 @@ public sealed class TaskPluginTests
     {
         Assert.Equal("The device's certificate changed since it was added", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid(), Status: DeviceStatus.CertificateChanged)));
         Assert.Equal("Not read yet: refresh the device", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = [] }));
-        Assert.Equal("Needs the Time API (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = Fixture.FutureMajor }));
+        Assert.Equal("Needs the date and time settings of AXIS OS 9.30 or later (this device has 12.11.77)", _plugin.NotSupportedReason(new FakeDevice(Guid.NewGuid()) { Apis = Fixture.FutureMajor }));
     }
 
     [Fact]

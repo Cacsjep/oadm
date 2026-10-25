@@ -533,7 +533,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             }
 
             var skipped = Devices.Count - install - upToDate;
-            Summary = string.Create(CultureInfo.InvariantCulture, $"{install:N0} of {Devices.Count:N0} device(s) will be updated, {upToDate:N0} already up to date, {skipped:N0} not possible.");
+            Summary = string.Create(CultureInfo.InvariantCulture, $"{install:N0} of {Devices.Count:N0} {(Devices.Count == 1 ? "device" : "devices")} will be updated, {upToDate:N0} already up to date, {skipped:N0} not possible.");
         }
 
         StartCommand.NotifyCanExecuteChanged();

@@ -180,9 +180,9 @@ public sealed class UsersDialogViewModelTests
         vm.Apply(RecordedResult());
         Assert.Equal(["root", "fakeroot", "root20", "acs"], vm.ExistingUsers.Select(u => u.Name));
         Assert.Equal("Administrator with PTZ (used by OADM)", vm.ExistingUsers[0].RoleText);
-        Assert.Equal("4 user(s).", vm.UsersStatus);
+        Assert.Equal("4 users.", vm.UsersStatus);
         Assert.Contains("first of 3 selected devices", vm.UsersTitle, StringComparison.Ordinal);
-        Assert.Equal("4 user(s).", vm.UsersDescription);
+        Assert.Equal("4 users.", vm.UsersDescription);
     }
 
     [Fact]
