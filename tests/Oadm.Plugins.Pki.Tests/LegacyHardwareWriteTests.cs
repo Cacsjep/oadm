@@ -221,16 +221,14 @@ public sealed class LegacyHardwareWriteTests(ITestOutputHelper output)
             Assert.Equal("EAPoLv3", three.Dot1x!.EapolVersion);
             await RunTaskAsync(h, PkiTaskIds.Dot1xDisable, null);
 
+            // A Basic-only HTTP login runs here because the client allows Basic over HTTP (the server setting).
+            await RunTaskAsync(h, PkiTaskIds.HttpsDisable, null);
             if (h.BasicOnlyOverHttp)
             {
-                // OADM never sends Basic unencrypted: Disable HTTPS refuses before any write.
-                await ExpectRefusalAsync(h, guard, PkiTaskIds.HttpsDisable, "{}", "Disable HTTPS with a Basic-only HTTP login");
+                Assert.EndsWith("Basic login over HTTP allowed", h.Detail(PkiSteps.CheckCompatibility), StringComparison.Ordinal);
             }
-            else
-            {
-                await RunTaskAsync(h, PkiTaskIds.HttpsDisable, null);
-                Assert.True(ConnectionPolicy.IsHttpOnly((await WebServerTls.GetAsync(h.Vapix, CancellationToken.None)).Policy));
-            }
+
+            Assert.True(ConnectionPolicy.IsHttpOnly((await WebServerTls.GetAsync(h.Vapix, CancellationToken.None)).Policy));
         });
     }
 
@@ -550,6 +548,8 @@ internal sealed partial class GuardedVapix(IVapixClient inner, bool allowDot1xOn
 
     public Uri BaseAddress => inner.BaseAddress;
 
+    public bool AllowsBasicOverHttp => inner.AllowsBasicOverHttp;
+
     public void Protect(IEnumerable<string> ids) => _protected.UnionWith(ids);
 
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => inner.GetBasicDeviceInfoAsync(ct);
@@ -782,7 +782,7 @@ internal sealed class HardwareHarness : IAsyncDisposable
 
     public static async Task<HardwareHarness> StartAsync(IVapixClient vapix, string host, int httpsPort, string firmware, IReadOnlyList<DeviceApi> apis, Action<string> say)
     {
-        var pki = await PkiHarness.StartAsync();
+        var pki = await PkiHarness.StartAsync(webServerSettle: CertificateDeployment.DefaultWebServerSettle);
         PkiCompatibility.ClearCache();
         return new HardwareHarness(pki, vapix, host, httpsPort, new PkiFakeDevice(Guid.NewGuid(), host, "ACCC8E000000", firmware) { Apis = apis }, say);
     }
