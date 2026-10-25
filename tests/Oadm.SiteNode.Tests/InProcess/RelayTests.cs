@@ -264,6 +264,50 @@ public sealed class RelayTests
     }
 
     [Fact]
+    public async Task ADeviceThatStopsReadingLosesOnlyItsOwnConnection()
+    {
+        var port = Ports.FreeTcp();
+        await using var bound = await BoundNodeAsync(c => c.Allowed.Add(new PortEntry(PortUse.Listen, PortProtocol.Tcp, port, "EST")));
+        using var relay = bound.Link.Client.Relay();
+        await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Tcp, Port = port, Reason = "EST" } });
+        Assert.Equal(RelayStateKind.RelayStateRunning, (await NextAsync(relay)).State.State);
+
+        using var stuck = new TcpClient();
+        await stuck.ConnectAsync(IPAddress.Loopback, port);
+        var stuckId = (await NextAsync(relay)).Packet.ConnectionId;
+        using var reading = new TcpClient();
+        await reading.ConnectAsync(IPAddress.Loopback, port);
+        var readingId = (await NextAsync(relay)).Packet.ConnectionId;
+
+        // The server sends far more than the socket buffers hold to a device that never reads.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var closed = Task.Run(async () =>
+        {
+            while (await relay.ResponseStream.MoveNext(timeout.Token))
+            {
+                if (relay.ResponseStream.Current.Packet is { Closed: true } packet && packet.ConnectionId == stuckId)
+                    return true;
+            }
+
+            return false;
+        });
+        var chunk = ByteString.CopyFrom(new byte[64 * 1024]);
+        for (var sent = 0; sent < 1024 && !closed.IsCompleted; sent++)
+            await relay.RequestStream.WriteAsync(new RelayMessage { Packet = new RelayPacket { ConnectionId = stuckId, Data = chunk } }, timeout.Token);
+        Assert.True(await closed.WaitAsync(timeout.Token), "the stuck connection is closed");
+
+        // The other connection still gets its data at once.
+        await relay.RequestStream.WriteAsync(new RelayMessage { Packet = new RelayPacket { ConnectionId = readingId, Data = ByteString.CopyFromUtf8("ok") } }, timeout.Token);
+        var buffer = new byte[2];
+        var read = 0;
+        while (read < 2)
+            read += await reading.GetStream().ReadAsync(buffer.AsMemory(read), timeout.Token);
+        Assert.Equal("ok", Encoding.ASCII.GetString(buffer));
+        await Eventually.TrueAsync(() => bound.Node.Get<Logging.ConnectionLog>().Newest(10).Any(e => e.Result == "Not reading"), "the closed connection is logged");
+        await relay.RequestStream.CompleteAsync();
+    }
+
+    [Fact]
     public async Task AnUnboundNodeOpensNoRelay()
     {
         await using var server = new TestServer();

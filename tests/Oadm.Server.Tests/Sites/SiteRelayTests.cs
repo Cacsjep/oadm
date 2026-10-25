@@ -118,6 +118,66 @@ public sealed class SiteRelayTests
     }
 
     [Fact]
+    public async Task ADeviceThatSendsMoreThanThePluginReadsLosesItsConnection()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await RelayNode.StartAsync(server.Address);
+        var id = await BindAsync(server, node);
+        var port = FreeTcpPort();
+        node.Get<PortPolicy>().Allow(new PortEntry(PortUse.Listen, PortProtocol.Tcp, port, "EST"));
+        await using var relay = server.Manager.OpenTcp(id, port, "EST");
+        await Eventually.TrueAsync(() => relay.State == RelayState.Running, "the relay running");
+
+        using var cts = new CancellationTokenSource(Wait);
+        using var device = new TcpClient(AddressFamily.InterNetwork);
+        await device.ConnectAsync(IPAddress.Loopback, port, cts.Token);
+        await using var connection = await relay.AcceptAsync(cts.Token);
+
+        // The plugin reads nothing; the device keeps sending until the server lets go of its connection.
+        var deviceStream = device.GetStream();
+        var chunk = new byte[64 * 1024];
+        var sending = Task.Run(async () =>
+        {
+            try
+            {
+                for (var i = 0; i < 1024; i++)
+                {
+                    await deviceStream.WriteAsync(chunk, cts.Token);
+                }
+            }
+            catch (IOException)
+            {
+                // closed by the node
+            }
+        });
+        var read = 0;
+        try
+        {
+            read = await deviceStream.ReadAsync(new byte[16], cts.Token);
+        }
+        catch (IOException)
+        {
+            // closed with a reset
+        }
+
+        Assert.Equal(0, read);
+        await sending.WaitAsync(cts.Token);
+
+        // The plugin gets what was buffered, then the end of the connection.
+        var received = 0L;
+        var buffer = new byte[64 * 1024];
+        await Assert.ThrowsAsync<IOException>(async () =>
+        {
+            int n;
+            while ((n = await connection.Stream.ReadAsync(buffer, cts.Token)) > 0)
+            {
+                received += n;
+            }
+        });
+        Assert.InRange(received, 0, global::Oadm.Server.Sites.RelayConnection.MaxBuffered);
+    }
+
+    [Fact]
     public async Task TheRelayIsSiteOfflineWhileTheNodeIsGoneAndOpensAgainWhenItReconnects()
     {
         await using var server = await SiteServer.StartAsync();

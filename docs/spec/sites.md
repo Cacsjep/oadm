@@ -72,7 +72,9 @@ pairing code in the app). Add port in the app never marks a port as the server's
   own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and
   `ICorePluginContext.Network` (`PluginNetworkScope`: listeners bound by the host with the Windows firewall rule, a port in
   use retried every 30 s). `ICorePluginContext.Sites` = relays over the node's Relay call on worker links (`SiteRelay`,
-  states with `SiteTexts.RelayStateText`, reopened after a reconnect); the host disposes a plugin's listeners and relays
+  states with `SiteTexts.RelayStateText`, reopened after a reconnect; a TCP relay holds 256 connections on the node and
+  keeps at most 1 MB waiting per connection on each side: the server for the plugin (`RelayConnection.MaxBuffered`), the
+  node for the device (`RelayHost.MaxQueuedBytes`, a send pump per connection); more closes only that connection); the host disposes a plugin's listeners and relays
   when it stops or is turned off. `siteSupport` (manifest; missing = none; `ITaskPlugin` / `IComplianceCheckType.SiteSupport`
   override) is enforced by the host: tasks greyed "Not available for devices at a site", runs and queries refused,
   compliance Not checked, VAPIX clients and event streams of core plugins (`SiteSupportGuard`) and actions refuse site

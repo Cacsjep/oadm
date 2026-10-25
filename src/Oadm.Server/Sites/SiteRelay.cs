@@ -461,9 +461,12 @@ internal sealed class SiteTcpRelay(SiteManager manager, string siteName, Guid si
             return;
         }
 
-        if (!packet.Data.IsEmpty)
+        if (!packet.Data.IsEmpty && !known.Deliver(packet.Data.Memory))
         {
-            known.Deliver(packet.Data.Memory);
+            // The plugin is more than RelayConnection.MaxBuffered behind on this device: only this connection ends.
+            Close(packet.ConnectionId);
+            _ = SendAsync(new RelayPacket { ConnectionId = packet.ConnectionId, End = true, Closed = true }, CancellationToken.None).AsTask();
+            return;
         }
 
         if (packet.End)
@@ -514,10 +517,17 @@ internal sealed class SiteTcpRelay(SiteManager manager, string siteName, Guid si
     }
 }
 
-/// <summary>One device connection through a TCP relay.</summary>
+/// <summary>
+/// One device connection through a TCP relay. What the device sent waits here until the plugin reads it, at most
+/// <see cref="MaxBuffered"/> bytes: a device that sends more than the plugin reads loses its connection.
+/// </summary>
 internal sealed class RelayConnection(SiteTcpRelay relay, ulong id, IPEndPoint remote, Guid siteId) : IIncomingConnection
 {
+    /// <summary>Bytes from the device the plugin has not read yet; more close the connection.</summary>
+    public const int MaxBuffered = 1024 * 1024;
+
     private readonly Channel<ReadOnlyMemory<byte>> _input = Channel.CreateUnbounded<ReadOnlyMemory<byte>>(new UnboundedChannelOptions { SingleWriter = true, SingleReader = true });
+    private long _buffered;
     private int _closed;
 
     public Stream Stream => field ??= new RelayConnectionStream(this);
@@ -526,7 +536,16 @@ internal sealed class RelayConnection(SiteTcpRelay relay, ulong id, IPEndPoint r
 
     public Guid? SiteId { get; } = siteId;
 
-    internal void Deliver(ReadOnlyMemory<byte> data) => _input.Writer.TryWrite(data.ToArray());
+    /// <summary>False when the plugin is more than <see cref="MaxBuffered"/> behind (nothing is kept).</summary>
+    internal bool Deliver(ReadOnlyMemory<byte> data)
+    {
+        if (Interlocked.Add(ref _buffered, data.Length) > MaxBuffered)
+        {
+            return false;
+        }
+
+        return _input.Writer.TryWrite(data.ToArray());
+    }
 
     /// <summary>The device ended its side (null) or the connection broke.</summary>
     internal void EndInput(Exception? error) => _input.Writer.TryComplete(error);
@@ -535,7 +554,9 @@ internal sealed class RelayConnection(SiteTcpRelay relay, ulong id, IPEndPoint r
     {
         try
         {
-            return await _input.Reader.ReadAsync(ct).ConfigureAwait(false);
+            var chunk = await _input.Reader.ReadAsync(ct).ConfigureAwait(false);
+            Interlocked.Add(ref _buffered, -chunk.Length);
+            return chunk;
         }
         catch (ChannelClosedException e) when (e.InnerException is null)
         {
