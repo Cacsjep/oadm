@@ -64,7 +64,16 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
                 }
 
                 // The read takes a while: a job runs it after the call, and the page follows it through events.
-                _ctx!.Jobs!.Start(caller, "read", (job, token) => ReadAsync(job.Owner, scope, devices, token));
+                try
+                {
+                    _ctx!.Jobs!.Start(caller, "read", (job, token) => ReadAsync(job.Owner, scope, devices, token));
+                }
+                catch
+                {
+                    Publish(scope, StateOf(scope) with { Reading = false }); // no job: never "reading" for ever
+                    throw;
+                }
+
                 return null;
 
             default:
