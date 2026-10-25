@@ -167,6 +167,22 @@ public sealed class DeviceGroupsTests
     }
 
     [Fact]
+    public void Select_all_takes_excepted_devices_back_and_never_lists_a_device_as_chosen_and_excepted()
+    {
+        var initial = new DeviceGroupChoice(false, [SiteB], [], [], ["ACCC8E000003"]);
+        var picker = new DevicePickerViewModel(Devices(), initial, Options);
+        Assert.True(picker.Visible.Single(i => i.Address == "192.168.0.3").IsExcepted);
+
+        picker.SelectAllCommand.Execute(null);
+
+        DeviceGroupChoice choice = picker.GroupChoice;
+        Assert.Contains("ACCC8E000003", choice.Serials);
+        Assert.Empty(choice.ExceptSerials);
+        Assert.Empty(choice.Serials.Intersect(choice.ExceptSerials));
+        Assert.Equal("6 of 6 devices", picker.Summary);
+    }
+
+    [Fact]
     public void The_other_picker_modes_stay_as_they_were()
     {
         var picker = new DevicePickerViewModel(Devices(), DeviceChoice.Devices([], ["PTZ"]), DevicePickerOptions.Full());

@@ -169,7 +169,8 @@ tag of the initial choice and `DevicePickerOptions.TagNames` (the rule editor pa
 device has it; summary "1 tag: 42 of 5,000 devices" / "2 tags and 3 devices: ..."; the device group editor,
 `DevicePickerOptions.Group` / `DeviceGroupPickerOptions`: left **Sites** ("This server" first) and **Tags** with device
 counts, the devices a chosen site or tag covers checked and locked with "Site Building B" / "Tag PTZ" / "This server",
-single devices tickable, a row link **Except** / **Include** (an excepted device shows "Excepted from Site Building B"),
+single devices tickable, a row link **Except** / **Include** (an excepted device shows "Excepted from Site Building B";
+ticking it or Select all takes it back, a device is never chosen and excepted at once),
 the live count "412 of 4,812 devices", search also over the site name, result `DeviceGroupChoice` (serials of devices
 not listed are kept); the window's constructor takes a form shown on top of the card, `AcceptButton` and `Accept` (the
 window closes only when it returns true), `IsPickerVisible` false shows the form alone (the window as high as the form: a

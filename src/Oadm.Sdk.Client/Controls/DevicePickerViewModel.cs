@@ -539,6 +539,11 @@ public sealed partial class DevicePickerViewModel : ObservableObject
         {
             if (item.IsChecked != value && (item.IsAvailable || !value))
             {
+                if (value)
+                {
+                    item.SetExcepted(false, notify: false); // like ticking it: chosen takes it back, never in both lists
+                }
+
                 item.Set(value);
                 _chosen += value ? 1 : -1;
             }
