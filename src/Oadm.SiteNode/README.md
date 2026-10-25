@@ -125,19 +125,19 @@ behind each. Read-only towards the camera.
    Sites page, type the server's address in the app and Save (UAC / pkexec prompt): the pairing code shows below the
    address with "Valid for N more minutes.", the picture shows a purple line with "Connected". Close and open the app as a user
    without administrator rights: the code shows without a prompt; after 10 minutes the app shows a new one.
-   Bind on the Sites page with the code; the picture shows the server name and the site name, "Bound since ..." below it. A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
+   Bind on the Sites page with the code; the picture shows the server name and the site name, the Server card "Bound since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
    Five wrong codes: a new code, Bind refused for 10 minutes.
 3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
    app shows the new identity with **Accept**; nothing binds without the pairing code.
 4. **Two network cards**: All cards (default) reaches both; choose only the camera card: a camera on the office network
    is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN, `oadm-site-node networks add`) is reached.
-5. **Ports**: add a camera on 8443: the server asks, the app lists "Connect to TCP 8443: camera ..."; Allow; the camera
+5. **Ports**: add a camera on 8443: the server asks, the app lists Out, TCP, 8443, "device <address>", Requested; Allow; the camera
    is reached. Dismiss: the server asks again later. A port not allowed is never dialed (`oadm-site-node log`: "Port
    not allowed").
 6. **Pull the cable**: unplug the node's uplink: Site offline on the server after the waiting time; plug it in: online
    again after the stable time, the node reconnects with backoff (log), no device turns Unreachable.
 7. **mDNS and range scan**: Discovery and Network range on the add page find the camera behind the node.
-8. **NTP relay**: turn on NTP at sites; the app asks for Listen on UDP 123; Allow; the camera set to "Use OADM as NTP
+8. **NTP relay**: turn on NTP at sites; the app lists In, UDP, 123, Requested; Allow; the camera set to "Use OADM as NTP
    server" syncs; on Linux without `CAP_NET_BIND_SERVICE` the relay says "No permission to use UDP 123"; another program
    on UDP 123: "UDP 123 is used by another program".
 9. **Reset**: Reset in the app (confirmed) while the node is connected: within a few seconds the old site shows **Not

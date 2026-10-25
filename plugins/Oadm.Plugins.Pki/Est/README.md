@@ -19,8 +19,10 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     the CA of the profile's issuing policy (`Ca/IssuerChains`, `DeviceCertificateRequest.IssuerId`);
   - `Serving/EstPolicies`: a profile's issuing policy (`EstProfile.PolicyId`; HTTPS certificate for HTTPS and RTSPS, IEEE
     802.1X certificate for IEEE 802.1X and MQTT): its valid days for enrollments and renewals, its key for Set up; none
-    readable: 503 "The issuing policy of this profile cannot be read."; the once-only conversion of the profiles of 4.1
-    (owner `oadm.est:profiles`) and the profiles' uses PKI checks before deleting a policy; SAN = the server's addresses (network cards that
+    readable: 503 "The issuing policy of this profile cannot be read."; the conversion of the profiles of 4.1 (a profile
+    without a policy names the built-in policy of its kind, `ConvertAsync`; once, owner `oadm.est:issuing-2026-10-25`,
+    `CleanUpAsync`: profiles that named a policy an earlier conversion made ("EST HTTPS", "EST 802.1X") name the built-in
+    one, those policies are deleted) and the profiles' uses PKI checks before deleting a policy; SAN = the server's addresses (network cards that
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown profiles 404. Who may enroll: the camera's Axis device ID

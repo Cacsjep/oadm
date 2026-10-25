@@ -112,7 +112,7 @@ one WebSocket event stream per device and publishes every trigger as two event t
 ## Device side (AXIS P3265-V, AXIS OS 12.11, read-only)
 
 - Support: API `event-streaming-over-websocket` 1.0 in the device's API list (`device.Apis`); devices without it cannot be
-  chosen ("Needs the event stream over WebSocket (AXIS OS ...)").
+  chosen ("Cannot send events to OADM (update AXIS OS)").
 - Event list: SOAP `aev:GetEventInstances` (event1) at `/vapix/services`, read-only. `wstop:TopicSet` tree of topics with
   `aev:NiceName`; each leaf has one `aev:MessageInstance`: `aev:isProperty="true"` = on/off (stateful), else one-shot;
   `SourceInstance` / `KeyInstance` / `DataInstance` with `SimpleItemInstance` (Name, Type, NiceName, listed `Value`s);

@@ -41,7 +41,7 @@ Read-only for devices (param.cgi reads and image.cgi snapshots).
   `listSources` with no ids (every managed video device), otherwise the ids of the chosen cameras. A new choice after the
   first load reads at once; before it, choosing reads nothing.
 - Page: toolbar **Create snapshots** (opening the page contacts no device; the first load starts only
-  with this button, the page shows "No snapshots yet" until then; disabled afterwards), Refresh all (enabled after the first load), "Select all" check box, **Export PDF** (primary); picture size slider labeled "Size"
+  with this button, the page shows "No snapshots yet" until then; disabled afterwards), Refresh all (enabled after the first load), "Select all" check box, **Export PDF**; picture size slider labeled "Size"
   with its px value (200-720 px) and `ui:SearchBox` on the right; status line "14 pictures from 9 cameras · 13 selected
   · 3 failed"; `ui:ProgressRow` while loading ("Loading snapshots 5 of 14", 4 at a time). Tiles
   (`Border.tile`, accent outline on hover or keyboard focus; selection is the check box only) in a wrap panel: picture (`Button.picture` on

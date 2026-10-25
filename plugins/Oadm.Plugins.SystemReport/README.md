@@ -30,8 +30,7 @@ client saves one ZIP for Axis support. Read-only for devices.
   minutes unused, the plugin stopping); when the host ends it (the session ended) the report and its files are deleted.
   The devices are looked up in the caller's view.
 - Client (`SystemReportToolbarPlugin`, group Tasks, order 100, `ui:ToolbarButton` "System report" with text, icon `file`,
-  enabled with a selection, tooltip "System report: download the system reports of the selected devices for Axis support,
-  in one ZIP file"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
+  enabled with a selection, tooltip "Download the system reports of the selected devices as one ZIP"): save dialog first (`oadm-system-reports-<yyyy-MM-dd>.zip`), then `SystemReportWindow` (title bar, card
   "Devices" with the summary "6 devices · 2 done · 1 failed", `ui:ProgressRow` "Downloading system reports 4 of 6" /
   "Putting the reports into one file" / "Saving the file 40 %" / "Saved <path>", result chip "N system reports saved, M
   failed. summary.txt in the file lists the failures.", virtualized DataGrid Address, MAC address, Model, Status chip

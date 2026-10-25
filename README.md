@@ -83,7 +83,7 @@ More per system: [`packaging/README.md`](packaging/README.md).
    the line "Server TLS certificate fingerprint" in the server log, then confirm.
 3. While the server has no users, the login window creates the **first administrator**. From another computer you
    also need the setup code from `setup-code.txt` in the server's data folder (also in the server log). Add more users
-   on the **Users** page.
+   on the **Permissions** page.
 4. Add the passwords you use on the **Credentials** page. Then add devices with **Add** on the Devices page
    (**Discovery**, **Network range**, **Add manually**, **Import from file** or **Import from ADM**). OADM logs in to every
    device it finds.
@@ -316,7 +316,7 @@ OADM is developed together with Claude, and the repository is set up for it:
 | `tools/` | Developer tools: the `oadm` tool, `manage new`, the SDK reference and notices generators |
 | `website/` | Website and user docs (https://oadm.app/) |
 | `packaging/` | Installers (WiX, .deb, .pkg) |
-| `docs/` | Spec of the plugin SDK |
+| `docs/` | The feature specs (`docs/spec/`) and the RFCs the protocol code follows (`docs/rfc/`) |
 
 # License
 

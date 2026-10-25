@@ -50,7 +50,8 @@ implementation (SNTPv4 compatible), no library.
 - Page (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
   Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
   the field, "Checking <host>" accent chip while Save runs, "Answered: 3 ms off, 12 ms round trip" after
-  it, a line "Serving stratum 3 from ..." / "Serving the server clock ..."); Save (primary); "Last requests" DataGrid
+  it, a line while the server is on and has an upstream: "Synchronized with <host>" / "<host> does not answer, the cameras
+  get this computer's time" / "Checking <host>, the cameras get this computer's time meanwhile"); Save (primary); "Last requests" DataGrid
   (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
   stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
 - Task "Use OADM as NTP server" (contributed, id `oadm.ntp-server.use`, group Maintenance, no dialog, `CanRun`: ntp 1.x

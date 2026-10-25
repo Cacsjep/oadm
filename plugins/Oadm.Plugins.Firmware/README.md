@@ -70,11 +70,11 @@ Evaluated per device in the dialog (preview) and again on the server right befor
 | File / device | Factory default | Allow downgrade | Result |
 |---|---|---|---|
 | Not a `.bin` file, smaller than 1 MB or larger than 2 GB (the content is never inspected) | any | any | **Refused**, nothing changed |
-| Product from file name != device ProdNbr | any | any | **Refused** "wrong product" |
+| Product from file name != device ProdNbr | any | any | **Refused** "The file is for <product>, the device is <model>." |
 | Same version | any | any | **Done with warning** "Already up to date", nothing uploaded |
 | Newer version | none | any | **Upgrade**, settings kept, OADM commits after verifying |
 | Newer version | soft / hard | any | **Upgrade + factory default**, device commits itself |
-| Older version (same or older major line) | any | off | **Refused** "downgrade not allowed" |
+| Older version (same or older major line) | any | off | **Refused** "Downgrade X → Y is not allowed. Enable "Allow downgrade"." |
 | Older version | none | on | **Refused** "requires a factory default" (the device would answer 409) |
 | Older version | soft / hard | on | **Downgrade + factory default**, device commits itself |
 | Version or product unknown (other file name, device version unknown) | none | any | **Upload**, the device validates the image |
