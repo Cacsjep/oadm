@@ -185,11 +185,11 @@ public sealed class DiscoveryService : IAsyncDisposable
         return session.Handle;
     }
 
-    /// <summary>Snapshot of the devices discovered so far in a session.</summary>
-    /// <exception cref="KeyNotFoundException">Unknown session.</exception>
     /// <summary>True while the session exists (started and not stopped).</summary>
     public bool HasSession(string sessionId) => !string.IsNullOrEmpty(sessionId) && _sessions.ContainsKey(sessionId);
 
+    /// <summary>Snapshot of the devices discovered so far in a session.</summary>
+    /// <exception cref="KeyNotFoundException">Unknown session.</exception>
     public IReadOnlyList<DiscoveredDevice> GetDevices(string sessionId) => GetSession(sessionId).Snapshot().Devices;
 
     /// <summary>
