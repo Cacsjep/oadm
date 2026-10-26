@@ -201,7 +201,8 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.True(_dialogs.Last!.Completed);
         var imported = Assert.Single(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
         Assert.Equal("Customer Root CA", imported.Name);
-        Assert.Equal(["Root CA", "Imported", "Can issue"], imported.Badges);
+        Assert.Equal(["Root CA"], imported.Badges); // decision 2026-10-26: only Root CA or Intermediate CA
+        Assert.StartsWith("RSA ", imported.KeyType, StringComparison.Ordinal); // with its key: the key type, not "No key"
     }
 
     [Fact]
@@ -238,11 +239,10 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
 
         Assert.True(_dialogs.Last!.Completed);
 
-        // The folder is remembered for the next export.
-        await vm.Authorities.ExportDerCommand.ExecuteAsync(oadmRow);
-        Assert.Equal("C:/exports", _dialogs.FakeFiles.Saved[^1].StartFolder);
-        Assert.Equal("OADM Root CA SERVER01.cer", _dialogs.FakeFiles.Saved[^1].FileName);
-        Assert.Equal(PkiFileKind.CertificateDer, _dialogs.FakeFiles.Saved[^1].Kind);
+        // The folder is remembered for the next backup (a CA row's Export is the certificate list's, like every row).
+        await vm.BackupCommand.ExecuteAsync(oadmRow);
+        Assert.Equal(2, _dialogs.FakeFiles.Saved.Count);
+        Assert.Equal(("C:/exports", "OADM Root CA SERVER01.pfx"), (_dialogs.FakeFiles.Saved[^1].StartFolder, _dialogs.FakeFiles.Saved[^1].FileName));
     }
 
     [Fact]
@@ -386,7 +386,7 @@ public sealed class HeadlessPageTests
 
             // The intermediate with its key is a CA of the list that can issue; the OADM CA stays as it was.
             Assert.False(checks.firstSummary);
-            Assert.Equal(["Intermediate CA", "Imported", "Can issue"], checks.Imported);
+            Assert.Equal(["Intermediate CA"], checks.Imported);
             Assert.Equal("Acme Root CA", checks.ImportedIssuer);
             Assert.Equal(CaImporter.WrongKeyPassword, checks.keyPasswordError);
             Assert.Equal("The passwords do not match.", checks.backupError);

@@ -210,10 +210,10 @@ public sealed class CurrentCertificateTests
     }
 
     [Fact]
-    public void The_state_filter_offers_no_replaced_and_superseded_has_its_text()
+    public void The_state_filter_offers_no_replaced_and_no_revoked_and_superseded_has_its_text()
     {
         var list = new IssuedCertificateListViewModel(new NoSource());
-        Assert.Equal(["All states", "Valid", "Expires soon", "Expired", "Revoked"], list.StateChoices.Select(c => c.Label));
+        Assert.Equal(["All states", "Valid", "Expires soon", "Expired"], list.StateChoices.Select(c => c.Label)); // decision 2026-10-26: no revoke
         Assert.Equal("Replaced by a newer certificate", CertificateRevocation.ReasonText(RevocationReason.Superseded));
     }
 

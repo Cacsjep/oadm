@@ -47,10 +47,11 @@ public sealed class MergedPackageTests
         await plugin.StartAsync(core, CancellationToken.None);
         await plugin.Service!.Background;
 
-        var reply = PkiJson.Deserialize<PkiReply>(await plugin.InvokeAsync(PkiMethods.CreateAuthority, PkiJson.Serialize(new CreateCaRequest("OADM CA", false, null, CaKeys.Default, 10)), CancellationToken.None));
+        var reply = PkiJson.Deserialize<PkiReply>(await plugin.InvokeAsync(PkiMethods.CreateAuthority, PkiJson.Serialize(new CreateCaRequest("Contoso CA", false, null, CaKeys.Ecc, 10)), CancellationToken.None));
         Assert.Null(reply.Error);
         var state = PkiJson.Deserialize<PkiState>(await plugin.InvokeAsync(PkiMethods.GetState, null, CancellationToken.None));
-        Assert.Equal("OADM CA", state.Ca?.CommonName);
+        Assert.StartsWith("OADM Root CA", state.Ca?.CommonName, StringComparison.Ordinal); // the first-start CA
+        Assert.Contains(plugin.Service.Authorities(), a => a.Name == "Contoso CA" && a.Issues); // and the created one
         Assert.False(core.Pro!.IsActive);
     }
 }

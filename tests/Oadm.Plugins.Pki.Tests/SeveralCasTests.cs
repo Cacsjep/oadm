@@ -252,16 +252,17 @@ public sealed class SeveralCasTests
         await using (var pki = await PkiHarness.StartAsync(settings))
         {
             Assert.Equal([(PolicyKinds.EstServer, 45), (PolicyKinds.Block, 0)], pki.Policies.All.Select(p => (p.Kind, p.ValidDays ?? 0)));
-            Assert.True(pki.Policies.FirstOf(PolicyKinds.Block)!.AlsoRevoke);
+            Assert.Equal("Stolen", pki.Policies.FirstOf(PolicyKinds.Block)!.Name); // a Revoke policy became a Block (decision 2026-10-26: Block only refuses)
             Assert.Contains(PkiService.KindsOwner, pki.Policies.Converted);
 
             // A change made since stays: the conversion runs once.
-            Assert.Null((await pki.Policies.SaveAsync(pki.Policies.FirstOf(PolicyKinds.Block)! with { AlsoRevoke = false }, "admin", Suites, CancellationToken.None)).Error);
+            Assert.Null((await pki.Policies.SaveAsync(pki.Policies.FirstOf(PolicyKinds.Block)! with { Name = "Lost" }, "admin", Suites, CancellationToken.None)).Error);
         }
 
         await using (var again = await PkiHarness.StartAsync(settings))
         {
-            Assert.False(again.Policies.FirstOf(PolicyKinds.Block)!.AlsoRevoke);
+            var block = again.Policies.FirstOf(PolicyKinds.Block)!;
+            Assert.Equal(("Lost", (bool?)null), (block.Name, block.AlsoRevoke)); // saved: the old flag is gone
             Assert.Equal(2, again.Policies.All.Count);
         }
 

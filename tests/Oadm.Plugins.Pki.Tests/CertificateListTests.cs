@@ -293,42 +293,46 @@ public sealed class CertificateListTests
     }
 
     [Fact]
-    public async Task Delete_takes_only_what_nothing_uses_all_or_nothing_and_a_revocation_stays()
+    public async Task Delete_takes_every_row_but_a_ca_all_or_nothing_and_a_deleted_valid_certificate_is_no_longer_accepted()
     {
+        // Decision 2026-10-26: Delete is the only action, it never asks for a revoke first. A still valid certificate OADM
+        // issued goes on PKI's internal list of certificates no longer accepted (the 802.1X and EST servers refuse it).
         await using var pki = await PkiHarness.StartAsync();
         IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
         var device = Guid.NewGuid();
         var valid = (await RevocationTests.SignAsync(authority, device)).SerialNumber;
-        var revoked = (await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client)).SerialNumber;
-        await authority.RevokeAsync([revoked], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
-        Assert.Null(pki.Service.Issued.Find(revoked)); // a revoked device certificate leaves the store at once (nothing to delete)
-        Assert.True(authority.IsRevoked(revoked));
+        var other = (await RevocationTests.SignAsync(authority, device, use: DeviceCertificateUse.Client)).SerialNumber;
         var created = (await CreateAsync(pki)).Id!;
+        var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
         var ca = (await PageAsync(pki)).Rows.First(r => r.Kind == ListedCertificateKind.Authority).Id!;
         Task<DeleteCertificatesReply> DeleteAsync(params string[] ids) => pki.InvokeAsync<DeleteCertificatesReply>(CertificateMethods.Delete, new DeleteCertificatesRequest(ids));
 
-        // A device certificate that is still valid, a CA: refused with the reason, nothing deleted.
-        Assert.Equal("The certificate of B8A44F631339 is still valid. Revoke it first. Nothing was deleted.", (await DeleteAsync(valid, created)).Error);
-        Assert.Equal("Remove CAs in Certificate authorities. Nothing was deleted.", (await DeleteAsync(ca)).Error);
+        // A CA among the rows: refused with the reason, nothing deleted (CAs are deleted in their own list).
+        Assert.Equal("Remove CAs in Certificate authorities. Nothing was deleted.", (await DeleteAsync(valid, created, ca)).Error);
         Assert.Equal(PkiCertificateTexts.ChooseOne, (await DeleteAsync()).Error);
         Assert.NotNull(pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..]));
+        Assert.NotNull(pki.Service.Issued.Find(valid));
+        Assert.False(authority.IsRevoked(valid));
 
-        // An imported one goes at once.
+        // An imported one goes at once (OADM did not issue it: nothing to refuse).
         using var root = TestCa.Root("Contoso Root");
         using var leaf = TestCa.Leaf(root, "10.0.0.30");
         var imported = await pki.InvokeAsync<CertificateActionReply>(CertificateMethods.Import, new ImportCertificateRequest(Convert.ToBase64String(TestCa.Pem(leaf)), "leaf.crt", null));
         Assert.Equal(1, (await DeleteAsync(imported.Id!)).Deleted);
 
-        // A created one that is still valid (the OADM CA issued it): revoked first, then deleted (decision 2026-10-25); the
-        // revocations stay in force.
-        var createdSerial = pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..])!.Serial;
-        var deleted = await DeleteAsync(created);
-        Assert.Equal((1, (string?)null), (deleted.Deleted, deleted.Error));
+        // A still valid device certificate and a created one: deleted together, both no longer accepted ("Certificate deleted in OADM").
+        var deleted = await DeleteAsync(valid, created);
+        Assert.Equal((2, (string?)null), (deleted.Deleted, deleted.Error));
+        Assert.True(authority.IsRevoked(valid));
         Assert.True(authority.IsRevoked(createdSerial));
-        Assert.True(authority.IsRevoked(revoked));
+        Assert.Equal(NotAcceptedTexts.Deleted, NotAcceptedTexts.Of(authority.FindRevocation(valid)));
+        Assert.Null(pki.Service.Issued.Find(valid));
         Assert.Empty(pki.Service.Local.List);
         Assert.Empty(await pki.Records.ListAsync(LocalCertificates.Collection, CancellationToken.None));
-        Assert.NotNull(pki.Service.Issued.Find(valid));
+        var rows = (await PageAsync(pki)).Rows;
+        Assert.DoesNotContain(rows, r => r.SerialNumber == CertificateSerials.Normalize(valid)); // the list of no longer accepted ones is never shown
+        Assert.NotNull(pki.Service.Issued.Find(other)); // the other certificate of the device stays
+        Assert.False(authority.IsRevoked(other));
     }
 
     [Fact]

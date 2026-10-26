@@ -136,8 +136,9 @@ public sealed class CertificatesTabTests
         tab.SourceFilter = tab.SourceChoices.Single(c => c.Label == "OADM Root CA SERVER01");
         await Eventually.TrueAsync(() => tab.Total == 2 && !tab.IsReloading, "the two certificates of the OADM CA");
         tab.SourceFilter = tab.SourceChoices[0];
-        tab.StateFilter = tab.StateChoices.Single(c => c.Value == nameof(IssuedCertificateState.Revoked));
-        await Eventually.TrueAsync(() => tab.Total == 0 && !tab.IsReloading, "no revoked one");
+        Assert.DoesNotContain(tab.StateChoices, c => c.Value == nameof(IssuedCertificateState.Revoked)); // decision 2026-10-26: no revoke
+        tab.StateFilter = tab.StateChoices.Single(c => c.Value == nameof(IssuedCertificateState.Expired));
+        await Eventually.TrueAsync(() => tab.Total == 0 && !tab.IsReloading, "no expired one");
         Assert.Equal("No certificate matches.", tab.EmptyText);
     }
 
@@ -225,12 +226,12 @@ public sealed class CertificatesTabTests
     }
 }
 
-/// <summary>The Certificates tab, the revoke confirmation and the certificate window offscreen (OADM_SCREENSHOT_DIR writes PNGs).</summary>
+/// <summary>The Certificates tab and the certificate window offscreen (OADM_SCREENSHOT_DIR writes PNGs).</summary>
 [Collection(HeadlessSessions.Name)]
 public sealed class CertificatesTabHeadlessTests
 {
     [Fact]
-    public async Task The_tab_the_revoke_confirmation_and_the_certificate_window_render()
+    public async Task The_tab_and_the_certificate_window_render_without_any_revoke()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var devices = Enumerable.Range(0, 12).Select(i => new PkiFakeDevice(Guid.NewGuid(), "10.0.0." + (40 + i).ToString(System.Globalization.CultureInfo.InvariantCulture), "ACCC8E" + (0x123400 + i).ToString("X6", System.Globalization.CultureInfo.InvariantCulture))).ToList();
@@ -248,10 +249,11 @@ public sealed class CertificatesTabHeadlessTests
             }
         }
 
-        // A revoked certificate created here keeps its row with the badge (a revoked device certificate leaves the list).
+        // A certificate created here, then deleted: its row is gone, nothing says "revoked" (decision 2026-10-26).
         var created = (await CertificateListTests.CreateAsync(pki)).Id!;
-        var createdSerial = pki.Service.Local.Find(created[Oadm.Plugins.Pki.Certificates.LocalCertificates.RowPrefix.Length..])!.Serial;
-        await authority.RevokeAsync([createdSerial], RevocationReason.KeyCompromised, "admin", CancellationToken.None);
+        var kept = (await CertificateListTests.CreateAsync(pki, name: "nvr2.example.com", addresses: "nvr2.example.com")).Id!;
+        Assert.Equal(1, (await pki.InvokeAsync<Oadm.Plugins.Pki.Certificates.DeleteCertificatesReply>(Oadm.Plugins.Pki.Certificates.CertificateMethods.Delete,
+            new Oadm.Plugins.Pki.Certificates.DeleteCertificatesRequest([created]))).Deleted);
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
         var session = HeadlessEntry.Session;
         var checks = await session.Dispatch(async () =>
@@ -269,14 +271,15 @@ public sealed class CertificatesTabHeadlessTests
             var list = view.FindControl<IssuedCertificateList>("CertificatesList")!;
             list.BringIntoView(); // the card below the CAs
             HeadlessPageTests.Pump();
-            list.GetVisualDescendants().OfType<DataGrid>().First().ScrollIntoView(vm.Certificates.Rows.First(r => r.State == "Revoked"), null);
+            list.GetVisualDescendants().OfType<DataGrid>().First().ScrollIntoView(vm.Certificates.Rows.First(r => r.Source.Id == kept), null);
             HeadlessPageTests.Pump();
             HeadlessPageTests.Capture(window, outDir, "pki-certificates.png");
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+            var ids = vm.Certificates.Rows.Select(r => r.Source.Id).ToList();
             window.Close();
 
-            // The shared certificate window of a revoked certificate.
-            var details = await ctx.InvokeAsync(PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(created)), CancellationToken.None);
+            // The shared certificate window of a certificate created here.
+            var details = await ctx.InvokeAsync(PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(kept)), CancellationToken.None);
             var reply = PkiJson.Deserialize<CertificateDetailsReply>(details);
             var certificate = new CertificateWindow { DataContext = new CertificateDetails(reply.Certificate!, "Certificate · 10.0.0.48 · HTTPS", DateTime.UtcNow, reply.Revocation) };
             Oadm.Client.App.ApplyCrispText(certificate);
@@ -285,16 +288,19 @@ public sealed class CertificatesTabHeadlessTests
             HeadlessPageTests.Capture(certificate, outDir, "pki-certificate-window.png");
             var windowTexts = certificate.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
             certificate.Close();
-            return (texts, windowTexts);
+            return (texts, windowTexts, ids);
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
         Assert.Contains("Certificates", checks.texts);
-        Assert.Contains("Revoked", checks.texts);
+        Assert.DoesNotContain(checks.texts, t => t?.Contains("Revoke", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.DoesNotContain(checks.texts, t => t?.Contains("revoked", StringComparison.OrdinalIgnoreCase) == true);
         Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
         Assert.Contains("Create", checks.texts);
         Assert.Contains("Sign request", checks.texts);
-        Assert.Contains(checks.windowTexts, t => t?.StartsWith("Certificate revoked on ", StringComparison.Ordinal) == true);
+        Assert.DoesNotContain(created, checks.ids);
+        Assert.Contains(kept, checks.ids);
+        Assert.DoesNotContain(checks.windowTexts, t => t?.Contains("revoked", StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains("Issued by", checks.windowTexts);
         _ = Dispatcher.UIThread;
     }
