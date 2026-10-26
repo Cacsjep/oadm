@@ -375,13 +375,14 @@ is always on.
   CA: `IsReady`, `Chain`, `Changed`, `SignAsync`; OADM's names, never the request's; SHA-1/MD5 requests and weak keys
   refused with `CertificateRequestRefusedException`; device certificates go into PKI's issued registry with their
   `Source`; SDK 0.4.0 `DeviceCertificateRequest.IssuerId` names the CA of PKI's list that signs, an imported CA with its
-  key or the OADM CA for null, docs/spec/pki.md "Several CAs and the policy cleanup"). SDK 0.4.0 adds default members for the list of issued certificates and the revocation list (PKI implements
-  them; docs/spec/radius-server.md "Certificates and revocation"): `IsRevoked(serial)` (a hash lookup, any notation of
+  key or a created CA, the first-start root CA for null, docs/spec/pki.md "Several CAs and the policy cleanup"). SDK 0.4.0 adds default members for the list of issued certificates and the revocation list (PKI implements
+  them; docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted"; the names stay "revocation",
+  the UI says no longer accepted, decision 2026-10-26): `IsRevoked(serial)` (a hash lookup, any notation of
   the serial, `CertificateSerials.Normalize`), `FindRevocation`, `Revocations`, event `RevocationChanged` (it belongs to the
   offer: subscribe again when `Find` returns another instance), `ListIssuedAsync(IssuedCertificateQuery)`,
   `GetIssuedCertificateAsync(serial)` (DER), `RevokeAsync(serials, RevocationReason, userName)`, `PreviousChains` (the
   previous OADM CAs with their chains, DER, for servers that check device certificates: the 802.1X server; PKI reads them
-  once per change), `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory); the request's
+  once per change; since 2026-10-26 they pass only with a policy of their own), `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory); the request's
   `Purpose` (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
   in plain names. Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - **Protected tags** (`ICorePluginContext.ProtectedTags`, `Oadm.Sdk.Devices.IProtectedTags.Protect(names, refusal)`, SDK

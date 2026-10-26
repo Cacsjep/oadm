@@ -86,8 +86,12 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   certificates that are fine (more than 30 days left, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
   colored icon, with the error or warning message right of it when there is one; finished tasks
   show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and the CA list's Used in: Root
-  CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text) stays in the theme.
-  Menu entries that delete, revoke or remove are red (`MenuItem.danger`), last after a separator.
+  CA, Intermediate CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text) stays in the theme.
+  Menu entries that delete or remove are red (`MenuItem.danger`), last after a separator.
+- Grouped grids (`DataGrid.groups`): a collapsible header per group, chevron and name; a `ui:GridGroup` key adds its icon
+  between them (PKI's policy groups). Rows a link points to are tinted with the accent for a few seconds and fade back
+  (`DataGrid.highlightRows`, the rows `DataGridRow.highlight`; PKI's Policies tab after a server tab's "N policies
+  applied", 3 s).
 - Window chrome: title bar and caption buttons are 32 px high (caption buttons 46x32), exactly
   like the Windows default. Main window minimum size 1200x640.
 - **Small and scaled screens** (Full HD at 125 % leaves about 1536 x 816 logical pixels): every window, host and plugin
@@ -127,25 +131,26 @@ then its name, the details and an error below it; never a "No file chosen" line;
 row with the button on the right), `ProgressRow` (progress bar + status text), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden, ring and text in the middle, Cancel stays usable), `OffState` (a page or tab whose feature is off: a card with a large icon, "Site nodes are off", what it does and the Turn on button, all centered; Sites, Compliance, PKI's 802.1X and EST servers),
 `MessageWindow` (every message box and confirmation popup, host and plugins; dialogs never show
 inline "I understand" risk sections; line breaks start a new line, text between `**` is bold; `ConfirmWithChoiceAsync`: one
-select below the message, e.g. the Reason of Revoke, `danger` for a red confirm button of an action that cannot be undone),
+select below the message, `danger` for a red confirm button of an action that cannot be undone),
 `CertificateWindow` + `CertificateDetails` (every certificate shown in OADM's own window: EST enrollments, PKI's list of
-issued certificates, the 802.1X log; validity chip or the revocation, issued to and by, key and signature, serial,
+issued certificates, the 802.1X log; validity chip, issued to and by, key and signature, serial,
 fingerprint, uses, names, what uses it (`UsedBy`, when the page says), all selectable; the server describes the certificate with the SDK's `CertificateDescriber`, the
 802.1X log describes the DER it reads with it in the client),
 `IssuedCertificateList` + `IssuedCertificateListViewModel` (the PKI Certificates card: every certificate OADM knows, the CAs
 among them; columns name or device with the key and issuer below, type as neutral badges (the page's statuses below them,
 `MoreStatesOf`), valid until with a status only when it needs attention, used by as badges or the device (the full list as
 tooltip and in View), for a CA list (`ShowsUsedIn`) **Used in**: the first policy name as a badge and "+N", every name as
-tooltip, and a wider Type column (3.2 stars instead of 1.2: the OADM CA's four badges fit at 1,700 px, no sideways scroll at
-1,000 px), one narrow column with the row's ⋯ actions button (`MenuOf`: the same menu as the right click,
+tooltip, and a wider Type column (3.2 stars instead of 1.2: a root CA's badge with its two OS root store badges fits at
+1,700 px, no sideways scroll at 1,000 px), Key and the date of Valid until dimmed (secondary text, decision 2026-10-26), a
+CA without its key "No key", a CA row that cannot be read with "Cannot be read" and Delete only, one narrow column with the row's ⋯ actions button (`MenuOf`: the same menu as the right click,
 everyday entries, a separator, the red ones last); one toolbar row (`ToolbarRow`): the page's `Toolbar` left, Group by
 (`CanGroup`, groups counted on the server, `DataGrid.groups` headers), the filters state, use, issued by (the CAs the server
 lists, else Task and EST) and the search right, below as a whole on a narrow card (the search waits 300 ms for the typing to
 stop); the page's `Banner` below that row, progress row, virtualized grid with several rows chosen in one step and a double
 click for View certificate, the empty line, the overlay of the first read, the error
-and the pages of 500 below; `WorkText` (set by the page) shows a write such as "Revoking the certificates" in the progress row and `IsWorking` keeps the page's buttons off; `IIssuedCertificateSource` says where it reads, `IssuedCertificateList.ConfirmRevokeAsync` is
-the revoke confirmation with the reason, `IssuedCertificateTexts` the texts (with the SDK's `IssuedCertificateMessages`);
-View certificate shows the row's revocation and its "ends soon" uses the page's warning days, else the row's state),
+and the pages of 500 below; `WorkText` (set by the page) shows a write such as "Deleting the certificates" in the progress row and `IsWorking` keeps the page's buttons off; `IIssuedCertificateSource` says where it reads, `NoRowsText` the empty list's line,
+`IssuedCertificateTexts` the texts (with the SDK's `IssuedCertificateMessages`); View certificate's "ends soon" uses the
+page's warning days, else the row's state),
 `PasswordBox` (every password field: TextBox with bullet mask and eye button "Show password" /
 "Hide password", icons `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`), `CodeView`
 (every read-only code / response display: JSON and XML pretty-printed with 2 spaces and highlighted,
@@ -191,7 +196,9 @@ the same rules on the server), a frame per `ITileGridItem` of an `ITileGridSourc
 frame per tile to move, resize and remove it, the selected tile (`ITileGridItem.IsSelected`) marked, `FrameClass` a theme class of the frame (`valueTile`: no video background), `CopyCommand` a copy icon left of the X (shown while it can run; the X is red, `Button.toolbar.danger`), `ShowPreview` where a
 dragged item lands, `ShowSelectionArea` a selection rectangle, `TileLayout.PlaceSized` the first free place of a size,
 `ITileGridSource.CopyText` the copy icon's tooltip; theme `Panel.tile`, `Border.tileEdit`, `Border.tileHover`, `Panel.tile.selected`, `Panel.tile.valueTile`, `Border.dropPreview`;
-Live View, Dashboards), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles, the role columns and device groups of Permissions; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
+Live View, Dashboards), `GridGroup` (the group key of a `DataGrid.groups` grid whose header shows an icon: chevron, the
+theme icon `Icon.<IconKey>` and the name; equal by name and icon; a plain string key shows the name only; PKI's policy
+groups), `RowActions` (the ⋯ menu of a table row, one look everywhere: the certificate tables, PKI's policies, the 802.1X switches, the EST profiles, the role columns and device groups of Permissions; everyday entries, a separator, the red ones last; decision 2026-10-25), `InfoIcon` (every "what does this mean" explanation: an info icon whose text shows on hover and click; `FormField.Info`
 puts one right of the input instead of a long hint), `WizardSteps` + `WizardStepItem` (the step
 row of every wizard: numbered dot and name, thin line between, current accent, done with a check, a step opens when
 every step before it is complete; theme `Button.wizardStep`, `Border.wizardDot`, `TextBlock.wizardLabel`,

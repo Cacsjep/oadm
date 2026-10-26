@@ -5,7 +5,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 OADM stays fully open source. An OADM PRO license only tells PRO plugins and the PRO parts of PKI (the EST server and the
 802.1X server, `docs/spec/pki.md` "One plugin") that PRO is active, which plan, how many devices and until when. **OADM
 itself is never limited by it**: before, during and after a license nothing in OADM changes, only PRO plugins and the PRO
-parts of PKI read it (PKI's own parts, CAs, issuing, Revoke and Certificates, never need a key).
+parts of PKI read it (PKI's own parts, CAs, issuing and Certificates, never need a key).
 
 ## The license key
 

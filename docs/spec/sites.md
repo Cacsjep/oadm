@@ -66,7 +66,10 @@ pairing code in the app). Add port in the app never marks a port as the server's
 - Client: rail page **Sites** (right below Compliance, else Devices, no group; `HostPages.Sites`, icon `server`, `Sites/SitesViewModel`, one dialog
   `SiteFormWindow` for Bind / Rename / Replace / Remove (Remove site names the device groups that use the site, from
   `Site.group_names`: "Used by device group Building B."); Bind starts with the node's host name, "acs (2)" when a site has
-  it, or the site's own name when its node binds it again; Replace with lists only other online sites), device column **Site**
+  it, or the site's own name when its node binds it again; Replace with lists only other online sites). The page's table:
+  State, Name, Node address, Connections, Waiting for approval, Uploads and downloads, Version, Last seen and the row actions (Bind, Rename, Replace with, Remove) (fix of
+  2026-10-26: no Devices and Response time columns, so Bind stays visible); the counts line sits in the toolbar row, left of
+  Turn off / Accept site nodes; a node message that only repeats the state is not shown again as its detail. Device column **Site**
   (`Device.site_name = 31`, search and export); fake mode Building B (online), Warehouse (offline) and a waiting node.
 - Plugins at sites (stream 6): `IDeviceNetwork` (`Oadm.Core.Sites.DeviceNetworks`: `LocalDeviceNetwork` on the server's
   own network, `SiteDeviceNetwork` over `ISiteNetwork`) in `ITaskExecutionContext` / `ITaskQueryContext.Network` and

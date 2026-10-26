@@ -143,22 +143,24 @@ The package (one server and one client assembly, one `plugin.json`) also holds t
 (`oadm.est`, `Est/`) and **802.1X server** (`oadm.radius`, `Radius/`), whose pages are tabs of the PKI page
 (`ICorePluginPage.TabOf`, `docs/spec/pki.md` "One plugin" and "The PKI page"); only these two servers need OADM PRO, PKI itself never does (Plugins page: no PRO chip, the description says
 "802.1X and EST servers need OADM PRO.").
-The OADM CA for device certificates (generated on first start, replaced with New OADM CA) and any CA imported with its
-key (decision 2026-10-25: several CAs issue; an import always adds a CA), the server's trust in them, and
+The CAs for device certificates (decision 2026-10-26: no OADM CA; a root CA "OADM Root CA <server>" made on the first
+start, then an ordinary root CA; Create CA makes root and intermediate CAs, Import adds CAs, Delete takes any CA out of the
+list; every CA with its key can issue), the server's trust in them, and
 the Security tasks of the context menu: Enable / Disable HTTPS, Enable / Disable IEEE 802.1X, Renew certificates, View,
 Delete and Install certificates, Install CA certificates; one page (docs/spec/pki.md "The PKI page"): the certificate
 authorities, the policies (the issuing policies HTTPS certificate and IEEE 802.1X certificate: Issued by and the values
 Enable HTTPS, Enable IEEE 802.1X and the EST profiles issue with; 802.1X server (with its certificate), 802.1X trusted CA,
-VLAN, Block (Also revoke), EST server (its certificate), Enrollment, EST sign-in CA, Expiry warning; the 802.1X and EST
-servers read their rules there) and the list of every certificate OADM uses with the revocation list (Revoke; docs/spec/radius-server.md
-"Certificates and revocation"); the events "Certificate expires soon" and "Certificate expired" (group "Certificates").
+VLAN, Block, EST server (its certificate), Enrollment, EST sign-in CA, Expiry warning; the 802.1X and EST
+servers read their rules there) and the list of every certificate OADM uses (Delete; a deleted certificate OADM issued is no longer accepted;
+docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted"); the events "Certificate expires soon" and "Certificate expired" (group "Certificates").
 Details: plugin
 `README.md`; device API research:
 `tests/Oadm.Plugins.Pki.Tests/Fixtures/`.
 
 - Rules that must hold: the CA key is stored only encrypted with the master key (without `Secrets` no CA is kept; a key
-  that cannot be decrypted is the state "CA key cannot be read", nothing is overwritten); replacing the CA asks how many
-  devices have certificates from the current one; the CA and its previous CAs are trust anchors, so OADM-issued device
+  that cannot be decrypted shows "Key cannot be read" in the CA's row, nothing is overwritten; a stored CA that cannot be
+  read is a row with Delete only); a CA is never deleted while a policy or a service names it or while a CA it signed is
+  listed, and its certificates stay in the list; the CAs with their key are trust anchors, so OADM-issued device
   certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
   with its own subject and SAN (never the CSR's); every task checks AXIS OS 6.53+ (REST cert v1 from a fresh
   `config/discover`, else the SOAP certificate service; docs/spec/pki.md "Older AXIS OS") and the key type of the chosen issuing policy against the device's keystore before the first write and
@@ -171,15 +173,16 @@ Details: plugin
   run without that answer refuses; only OADM's own certificates that
   nothing uses are removed; passwords of imports and backups are never stored or logged; nothing in tests touches a real
   trust store; View and Delete certificates read at most 5,000 devices per window (each device is read, 4 at a time; a
-  larger selection gets "Choose at most 5,000 devices."), the other tasks take any number; while it runs it offers the
-  OADM CA to other plugins (`IDeviceCertificateAuthority`, `docs/spec/plugins.md` "Plugin services"), which signs the
-  same way; every certificate the OADM CA issues for a device (tasks and the service) goes into the list of issued
-  certificates with its DER; a revocation is written before the call returns, never changed and never undone, and
-  `IsRevoked` is a hash lookup in memory; a certificate stays in the store 30 days after it ended (decision 2026-10-25), a
-  revocation while its certificate is valid; the list shows each camera's current certificate per use
+  larger selection gets "Choose at most 5,000 devices."), the other tasks take any number; while it runs it offers its
+  CAs to other plugins (`IDeviceCertificateAuthority`, `docs/spec/plugins.md` "Plugin services"), which signs the
+  same way; every certificate a CA of PKI issues for a device (tasks and the service) goes into the list of issued
+  certificates with its DER; a certificate deleted while valid, replaced or unused goes on the internal list of
+  certificates no longer accepted (written before the call returns, never undone, never shown; `IsRevoked` is a hash
+  lookup in memory); a certificate stays in the store 30 days after it ended (decision 2026-10-25), an entry of that list
+  while its certificate is valid; nothing revokes in the UI (decision 2026-10-26); the list shows each camera's current certificate per use
   (`docs/spec/pki.md` "Current and pending").
-- Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Revoke too, and the Certificates card's Create, Sign request, Import, Export and Delete: `docs/spec/pki.md` "Certificates"); "Install in trusted root store" on the server asks with the CA's
-  SHA-256 fingerprint.
+- Roles: everything but `getState`, `getCertificates` and `getCertificate` is Admin and audited (Create CA, Delete CA, and the Certificates card's Create, Sign request, Import, Export and Delete: `docs/spec/pki.md` "Certificates"); "Install in trusted root store" (every root CA) asks with the
+  CA's SHA-256 fingerprint.
 - Device groups (SDK 0.4.0): every method but `getState`, `getCertificates` and `getCertificate` is for users with all
   devices (`RequiresAllDevices`); the Certificates card of a user with a group lists only the device certificates of the group's devices; a user
   with a group sees the page read only, the counts of issued certificates only of the group's devices (the `state` event
@@ -532,11 +535,12 @@ Part of the PKI package since OADM 4.5 (`docs/spec/pki.md` "One plugin"): `plugi
 source-available `Est/LICENSE`. The server is off by default: **Turn on** / **Turn off** on its tab (stored choice); it runs,
 and opens TCP 9454, only while it is on and OADM PRO is active. Spec: `docs/spec/est-server.md`; details: `Est/README.md`.
 
-- Rules that must hold: only cameras that sign in with a certificate of a CA an EST sign-in CA policy of PKI names (the Axis device ID, or a valid certificate an OADM CA itself issued them, naming exactly one camera; to renew also the
+- Rules that must hold: only cameras that sign in with a certificate of a CA an EST sign-in CA policy of PKI names (the Axis device ID, or a valid certificate a CA made in OADM itself issued them, naming exactly one camera; to renew also the
   camera's current certificate from OADM, whatever CA of PKI issued it, an imported CA with its key too), that an Enrollment policy holds for the profile, and that
   OADM manages (at a site: through that site) get certificates; OADM sets the names, never the request; the CA of the
   profile's issuing policy signs (no such CA, no PKI or no OADM PRO: 503, nothing issued); unknown and disabled profiles look the same (404); no keys or
-  requests are logged; a certificate on PKI's revocation list renews nothing (403 "Certificate revoked on ...");
+  requests are logged; a certificate PKI no longer accepts renews nothing (403 "Certificate deleted in OADM" or "Certificate replaced by a
+  newer certificate");
   the plugin checks the license on every request, and changing or removing that check is not
   allowed by its license.
 - Roles: reading for everyone; Turn on, Turn off, Save and Delete all of the enrollments Admin (permission "Change the EST
@@ -556,10 +560,10 @@ every site with switches (the node's relay); EAP-TLS with the server certificate
 event rules "Device authenticated" and "Authentication failed"; its rules (its certificate, TLS, trusted CAs, VLAN, Block) are PKI's
 policies (docs/spec/pki.md "Policies").
 
-- Rules that must hold: only devices whose client certificate passes (issued directly by a CA of an 802.1X trusted CA policy, a
-  root above it only anchoring the chain, or the Axis device ID roots; nothing without PKI and its policies; client
+- Rules that must hold: only devices whose client certificate passes (issued by a CA of an 802.1X trusted CA policy, directly
+  or through intermediate CAs OADM issues with, a root above it only anchoring the chain, or the Axis device ID roots; nothing without PKI and its policies; client
   authentication; exactly one managed device unless the policy allows any device; at a site a device of that site; not on
-  PKI's revocation list; no Block policy holds it) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
+  PKI's list of certificates no longer accepted; no Block policy holds it) are accepted; every Access-Request needs a valid Message-Authenticator; malformed packets
   and requests of unknown senders are dropped, never answered; OADM PRO is checked on every request; shared secrets are
   stored only encrypted, never logged and never sent to a page; keys are never logged.
 - Roles and device groups: reading for everyone with the page; Turn on, Turn off, saves and Delete all Admin

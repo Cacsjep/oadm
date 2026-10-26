@@ -23,7 +23,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
-  Exception, renewals by an OADM CA (`docs/spec/est-server.md`): a new server certificate issued directly by an OADM CA
+  Exception, renewals by a CA of PKI (`docs/spec/est-server.md`): a new server certificate issued directly by a CA of PKI with its key
   (the PKI's renewal issuers only, not the roots above them, not the OS store), valid now and naming the device
   and no other camera (exactly one `axis-<12 hex>.local`: `axis-<serial>.local`, `Device.Serial` through
   `VapixConnectionOptions.DeviceSerial` and `CertificatePinning.DeviceSerial`) is accepted
