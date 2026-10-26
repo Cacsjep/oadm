@@ -70,10 +70,11 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <summary>The role may install the CA in the server's trusted root store ("oadm.pki:trustServer"), for users with all devices.</summary>
     public bool MayTrustServer => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, PkiPermissions.TrustServer));
 
-    public PkiViewModel(ICorePluginClientContext ctx, ITrustStoreInstaller clientTrust, PkiClientSettingsStore? clientSettings = null)
+    /// <param name="time">The clock of the policies' highlight; tests pass a fake.</param>
+    public PkiViewModel(ICorePluginClientContext ctx, ITrustStoreInstaller clientTrust, PkiClientSettingsStore? clientSettings = null, TimeProvider? time = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
-        Policies = new PoliciesViewModel(ctx);
+        Policies = new PoliciesViewModel(ctx, time);
         _ctx.PermissionsChanged += (_, _) =>
         {
             OnPropertyChanged(nameof(MayManage));

@@ -78,15 +78,21 @@ public sealed partial class PkiViewModel
     /// <summary>Shows the tab of <paramref name="id"/> (a server's plugin id, or PKI's own id for Certificates); unknown ids are ignored.</summary>
     public void ShowTab(string id)
     {
-        // Edit policies of a server tab opens PKI's page (PKI's own id) and asks for Policies.
+        // Edit policies of a server tab opens PKI's page (PKI's own id) and asks for Policies, with the policies to highlight.
+        PolicyHighlight? highlight = null;
         if (id == PkiPluginInfo.PluginId && PkiTabRequest.Take() is { } requested)
         {
             id = requested;
+            highlight = PkiTabRequest.TakeHighlight();
         }
 
         if (Tabs.FirstOrDefault(t => t.Id == id) is { } tab)
         {
             Activate(tab);
+            if (highlight is not null && tab.Id == PoliciesTabId)
+            {
+                Policies.Highlight(highlight);
+            }
         }
     }
 
@@ -134,15 +140,23 @@ public sealed partial class PkiViewModel
 
 /// <summary>
 /// The tab a server tab's Edit policies asks for on PKI's page (the host opens the page with PKI's own id; the page shows
-/// this tab instead of Certificates). One request, taken once.
+/// this tab instead of Certificates), with the policies the Policies tab highlights. One request, taken once.
 /// </summary>
 public static class PkiTabRequest
 {
     private static string? _pending;
+    private static PolicyHighlight? _highlight;
 
-    /// <summary>The next open of PKI's page shows <paramref name="tabId"/>.</summary>
-    public static void Set(string tabId) => Volatile.Write(ref _pending, tabId);
+    /// <summary>The next open of PKI's page shows <paramref name="tabId"/> and highlights <paramref name="highlight"/> there.</summary>
+    public static void Set(string tabId, PolicyHighlight? highlight = null)
+    {
+        Volatile.Write(ref _highlight, highlight);
+        Volatile.Write(ref _pending, tabId);
+    }
 
-    /// <summary>The waiting request, cleared.</summary>
+    /// <summary>The waiting request's tab, cleared.</summary>
     public static string? Take() => Interlocked.Exchange(ref _pending, null);
+
+    /// <summary>The policies the waiting request highlights (after <see cref="Take"/>), cleared.</summary>
+    public static PolicyHighlight? TakeHighlight() => Interlocked.Exchange(ref _highlight, null);
 }

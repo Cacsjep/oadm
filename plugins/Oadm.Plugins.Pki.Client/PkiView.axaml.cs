@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.VisualTree;
 
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client.Controls;
@@ -39,8 +40,27 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     private void GroupPolicies(PoliciesViewModel policies)
     {
         var view = new Avalonia.Collections.DataGridCollectionView(policies.Rows);
-        view.GroupDescriptions.Add(new Avalonia.Collections.DataGridPathGroupDescription(nameof(PolicyRowViewModel.Group)));
+        view.GroupDescriptions.Add(new Avalonia.Collections.DataGridPathGroupDescription(nameof(PolicyRowViewModel.GroupKey)));
         PoliciesGrid.ItemsSource = view;
+    }
+
+    /// <summary>
+    /// The highlight of a jump from a server tab (<see cref="PoliciesViewModel.Highlight"/>): the rows' class <c>highlight</c>
+    /// follows <see cref="PolicyRowViewModel.IsHighlighted"/> (also on rows the virtualized grid realizes or reuses later),
+    /// the first highlighted row is scrolled into view once the tab has its layout. Layout only.
+    /// </summary>
+    private void FollowHighlight(PoliciesViewModel policies)
+    {
+        PoliciesGrid.LoadingRow += (_, e) => e.Row.Classes.Set("highlight", e.Row.DataContext is PolicyRowViewModel { IsHighlighted: true });
+        policies.HighlightChanged += (_, _) =>
+        {
+            foreach (var row in PoliciesGrid.GetVisualDescendants().OfType<DataGridRow>())
+            {
+                row.Classes.Set("highlight", row.DataContext is PolicyRowViewModel { IsHighlighted: true });
+            }
+        };
+        policies.HighlightShown += (_, row) =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => PoliciesGrid.ScrollIntoView(row, null), Avalonia.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>A policy's devices: the shared picker in its group mode.</summary>
@@ -96,6 +116,7 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
             vm.Policies.Dialogs = this;
             vm.Policies.Files = Files;
             GroupPolicies(vm.Policies);
+            FollowHighlight(vm.Policies);
             vm.Policies.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(PoliciesViewModel.IsShown))

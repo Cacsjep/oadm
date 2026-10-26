@@ -136,11 +136,11 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
         _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies applied"),
     };
 
-    /// <summary>Edit policies: the policies are on the PKI page.</summary>
+    /// <summary>Edit policies: the policies are on the PKI page, the 802.1X server's ones highlighted.</summary>
     [RelayCommand]
     private Task EditInPkiAsync()
     {
-        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId);
+        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PolicyHighlight.Dot1x);
         return _ctx.OpenAsync("plugin:" + PkiPluginId);
     }
 

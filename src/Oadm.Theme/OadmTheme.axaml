@@ -1290,6 +1290,19 @@
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
   </Style>
+  <!-- Rows a link pointed to (the Policies tab opened from a server tab): an accent tint for a few seconds that fades in
+       and out; the grid has the class highlightRows, the rows the class highlight while it lasts -->
+  <Style Selector="DataGrid.highlightRows DataGridRow">
+    <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.6" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="DataGrid.highlightRows DataGridRow.highlight">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusAccentBackgroundBrush}" />
+  </Style>
   <!-- Rows that cannot be selected (e.g. protected accounts in the Users dialog): greyed like muted rows -->
   <Style Selector="DataGridRow:disabled">
     <Setter Property="Opacity" Value="0.45" />
@@ -2178,7 +2191,7 @@
   </Style>
 
   <!-- A grouped grid (Plugins page): chevron + the group name (the group key's text), collapsible; the same look as the
-       tag groups without the color -->
+       tag groups without the color. A ui:GridGroup key (PKI's policies) adds its icon between chevron and name -->
   <Style Selector="DataGrid.groups DataGridRowGroupHeader">
     <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
     <Setter Property="MinHeight" Value="{StaticResource Oadm.GridRowHeight}" />
@@ -2189,8 +2202,10 @@
                                 ColumnDefinitions="Auto,Auto,Auto,Auto,*" RowDefinitions="*,Auto">
           <Rectangle Name="PART_IndentSpacer" Grid.Column="1" />
           <ToggleButton Name="PART_ExpanderButton" Grid.Column="2" Classes="groupExpander" Margin="8,0,0,0" Focusable="False" />
-          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
-            <TextBlock Classes="groupHeader" Text="{Binding Key}" />
+          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0" Spacing="8">
+            <ui:OadmIcon Data="{Binding Key, Converter={x:Static ui:GridGroup.IconOf}}"
+                         IsVisible="{Binding Key, Converter={x:Static ui:GridGroup.HasIcon}}" VerticalAlignment="Center" />
+            <TextBlock Classes="groupHeader" Text="{Binding Key}" VerticalAlignment="Center" />
             <TextBlock Name="PART_PropertyNameElement" IsVisible="False" />
             <TextBlock Name="PART_ItemCountElement" IsVisible="False" />
           </StackPanel>
