@@ -295,7 +295,7 @@ public sealed record IssuedCertificateInfo
     /// <summary>The id of the CA that issued it (<see cref="CertificateIssuerChoice.Id"/>, "other" for a CA PKI does not list); null when the server does not say.</summary>
     public string? IssuerId { get; init; }
 
-    /// <summary>The key, "RSA 4096", "ECDSA P-256"; null when the server does not say (device certificates).</summary>
+    /// <summary>The key, "RSA 4096", "ECC P-256"; null when the server does not say (device certificates).</summary>
     public string? KeyText { get; init; }
 
     /// <summary>A CA row: the kind of its CA (<see cref="CertificateAuthorityKind"/>); null for every other row.</summary>

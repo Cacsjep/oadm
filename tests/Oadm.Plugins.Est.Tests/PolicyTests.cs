@@ -188,7 +188,7 @@ public sealed class PolicyTests
 
         var choices = EstPolicies.Choices(store, [new CertificateAuthorityInfo("oadm", "OADM Root CA TEST", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(1), true)]);
         Assert.Equal(["HTTPS", "IEEE 802.1X", "HTTPS 2 years"], choices.Select(c => c.Name)); // no server certificates
-        Assert.Equal("OADM Root CA TEST, 730 days, RSA", choices[2].Summary);
+        Assert.Equal("OADM Root CA TEST, 730 days, RSA 2048", choices[2].Summary);
     }
 }
 

@@ -122,10 +122,10 @@ public sealed class CertificateGroupTests
         Assert.Equal("RSA 4096", root.Detail);
         Assert.Equal((false, (string?)null), (root.HasStateBadge, root.StateTip)); // a valid certificate: its date only
 
-        var intermediate = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.AxisDeviceId, KeyText = "ECDSA P-256",
+        var intermediate = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.AxisDeviceId, KeyText = "ECC P-256",
             IssuedBy = "Axis device ID", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(1.2) });
         Assert.Equal(["Intermediate CA", "Axis device ID"], intermediate.Badges);
-        Assert.Equal("ECDSA P-256 · issued by Axis device ID", intermediate.Detail);
+        Assert.Equal("ECC P-256 · issued by Axis device ID", intermediate.Detail);
         Assert.False(intermediate.HasStateBadge);
 
         var imported = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.Imported, IsRootCa = true, Purpose = ListedCertificateUses.Ca });

@@ -55,7 +55,7 @@ public static class CaCertificates
         return null;
     }
 
-    /// <summary>"RSA 4096", "ECDSA P-256", or the algorithm OID.</summary>
+    /// <summary>"RSA 4096", "ECC P-256", or the algorithm OID (decision 2026-10-26: never "ECDSA" in the UI).</summary>
     public static string KeyType(X509Certificate2 certificate)
     {
         ArgumentNullException.ThrowIfNull(certificate);
@@ -71,7 +71,7 @@ public static class CaCertificates
         {
             if (ecdsa is not null)
             {
-                return "ECDSA " + CurveName(ecdsa);
+                return "ECC " + CurveName(ecdsa);
             }
         }
 

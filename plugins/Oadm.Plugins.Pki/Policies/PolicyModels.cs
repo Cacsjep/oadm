@@ -218,11 +218,11 @@ public static class PolicyKeys
 
     public static bool IsKnown(string? key) => key is Ecc or Rsa;
 
-    /// <summary>"ECC", "RSA".</summary>
+    /// <summary>"ECC P-256", "RSA 2048": the key the device creates.</summary>
     public static string Name(string? key) => key switch
     {
-        Ecc => "ECC",
-        Rsa => "RSA",
+        Ecc => "ECC P-256",
+        Rsa => "RSA 2048",
         _ => key ?? string.Empty,
     };
 }
@@ -636,7 +636,7 @@ public static class PolicyTexts
     public const int ServerCertificateDays = 3650;
 
     /// <summary>The hint of Create server certificate.</summary>
-    public const string ServerCertificateHint = "Valid for 10 years, with an ECC key.";
+    public const string ServerCertificateHint = "Valid for 10 years, with an ECC P-256 key.";
 
     /// <summary>The server has no certificate: none chosen yet.</summary>
     public static string ServerNoCertificate(string server) => $"{server} has no certificate. Choose one in its policy.";

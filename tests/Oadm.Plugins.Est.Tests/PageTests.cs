@@ -75,7 +75,7 @@ public sealed class PageTests : IAsyncLifetime
         var https = vm.Profiles.Single(p => p.Name == "https");
         Assert.Equal(["HTTPS", "HTTPS 2 years"], https.PolicyChoices.Select(c => c.Label));
         Assert.Equal("HTTPS", https.Policy!.Label); // converted: the default with the same values
-        Assert.Equal("OADM CA, 365 days, ECC", https.PolicySummary); // the fake CA lists no OADM CA: the plain name
+        Assert.Equal("OADM CA, 365 days, ECC P-256", https.PolicySummary); // the fake CA lists no OADM CA: the plain name
         var dot1x = vm.Profiles.Single(p => p.Name == "dot1x");
         Assert.Equal(["IEEE 802.1X"], dot1x.PolicyChoices.Select(c => c.Label));
 

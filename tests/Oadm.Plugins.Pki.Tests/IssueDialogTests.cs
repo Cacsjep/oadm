@@ -66,12 +66,12 @@ public sealed class IssueDialogTests
         Assert.Equal([PkiQueries.ListIssuingPolicies], ctx.Methods); // one read, with the first device
         Assert.Equal(["HTTPS", "HTTPS 2 years"], vm.Choice.Policies.Select(p => p.Label));
         Assert.Equal("HTTPS", vm.Choice.Policy!.Label);
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", vm.Choice.Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC P-256 key.", vm.Choice.Summary);
         Assert.Null(vm.Warning);
         Assert.True(vm.StartCommand.CanExecute(null));
 
         vm.Choice.Policy = vm.Choice.Policies[1];
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", vm.Choice.Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA 2048 key.", vm.Choice.Summary);
         vm.StartCommand.Execute(null);
 
         Assert.True(vm.Completed);
@@ -221,7 +221,7 @@ public sealed class IssueDialogTests
         https.ValidDays = "730";
         https.Key = PolicyEditorViewModel.KeyChoices.Single(k => k.Value == PolicyKeys.Rsa);
         Assert.True(await https.SaveAsync());
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA key.", page.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 730 days, with an RSA 2048 key.", page.Rows.Single(r => r.Name == "HTTPS 2 years").Summary);
 
         // The built-in IEEE 802.1X policy: the identity and the RADIUS server CA, a CA of the list (decision 2026-10-25).
         using var radius = TestCa.Root("Corp RADIUS CA");
@@ -336,7 +336,7 @@ public sealed class IssueDialogHeadlessTests
 
         var https = checks[PolicyKinds.HttpsCertificate];
         Assert.Contains("Policy", https);
-        Assert.Contains("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", https);
+        Assert.Contains("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC P-256 key.", https);
         Assert.DoesNotContain("Valid (days)", https); // the policy decides
         Assert.DoesNotContain(PkiTaskIds.Dot1xWarning, https);
         var dot1x = checks[PolicyKinds.Dot1xCertificate];

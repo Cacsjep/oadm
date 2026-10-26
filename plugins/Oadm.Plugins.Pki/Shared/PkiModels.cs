@@ -382,7 +382,7 @@ public sealed record CaInfo
     /// <summary><see cref="CaSource"/>.</summary>
     public string Source { get; init; } = CaSource.Generated;
 
-    /// <summary>"RSA 4096", "ECDSA P-256".</summary>
+    /// <summary>"RSA 4096", "ECC P-256".</summary>
     public string KeyType { get; init; } = string.Empty;
 
     public DateTime NotBeforeUtc { get; init; }

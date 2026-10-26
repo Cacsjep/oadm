@@ -135,7 +135,7 @@ public sealed class CaTests
         var result = CaImporter.Import(new CaImportInput(root.RawData, "ec.cer", null, TestCa.Ascii(ec.ExportECPrivateKeyPem()), null), Now, 365);
 
         Assert.Empty(result.Errors);
-        Assert.Equal("ECDSA P-384", CaCertificates.KeyType(result.Ca!.Certificate));
+        Assert.Equal("ECC P-384", CaCertificates.KeyType(result.Ca!.Certificate));
         result.Ca.Dispose();
     }
 

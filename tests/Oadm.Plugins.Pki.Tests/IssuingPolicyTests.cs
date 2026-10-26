@@ -61,7 +61,7 @@ public sealed class IssuingPolicyTests
         var twoYears = (await store.SaveAsync(Https("HTTPS 2 years", 730, PolicyKeys.Rsa), "admin", Suites, CancellationToken.None)).Saved!;
         Assert.Equal((730, PolicyKeys.Rsa), (twoYears.ValidDays!.Value, twoYears.Key));
         Assert.Null(twoYears.Devices); // issuing policies have no devices
-        Assert.Equal("OADM Root CA SERVER01, 730 days, RSA", PolicyStore.IssuingSummary(twoYears, new Dictionary<string, string> { ["oadm"] = "OADM Root CA SERVER01" }));
+        Assert.Equal("OADM Root CA SERVER01, 730 days, RSA 2048", PolicyStore.IssuingSummary(twoYears, new Dictionary<string, string> { ["oadm"] = "OADM Root CA SERVER01" }));
 
         // IEEE 802.1X: the rules of the former IEEE 802.1X card.
         var dot1x = store.FirstOf(PolicyKinds.Dot1xCertificate)!;

@@ -67,7 +67,7 @@ public sealed class PolicyPageTests
             ],
             page.Rows.Where(r => r.Group is PolicyTableGroups.Issuing or PolicyTableGroups.Servers or PolicyTableGroups.Access).Select(r => (r.Group, r.Name, r.Type, r.IsSystem)));
         Assert.Equal(("All devices", true), (page.Rows.Single(r => r.Group == PolicyTableGroups.Expiry).Name, page.Rows.Single(r => r.Group == PolicyTableGroups.Expiry).IsSystem));
-        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC key.", page.Rows.Single(r => r.Name == "HTTPS").Summary);
+        Assert.Equal("Enable HTTPS issues certificates from OADM Root CA SERVER01, valid 365 days, with an ECC P-256 key.", page.Rows.Single(r => r.Name == "HTTPS").Summary);
         Assert.Equal("The 802.1X server puts these devices in VLAN 30.", page.Rows.Single(r => r.Name == "Building B").Summary);
         Assert.DoesNotContain(page.Rows, r => r.HasProblem);
         Assert.False(page.IsPanelOpen);

@@ -92,7 +92,7 @@ public sealed class CaListHeadlessTests
 
         // Item 4: only Root CA or Intermediate CA; item 5: "No key" for a certificate only.
         Assert.Contains(("OADM Root CA SERVER01", "Root CA", "RSA 2048"), checks.badges);
-        Assert.Contains(("OADM Issuing CA", "Intermediate CA", "ECDSA P-256"), checks.badges);
+        Assert.Contains(("OADM Issuing CA", "Intermediate CA", "ECC P-256"), checks.badges);
         Assert.Contains(("Contoso Root", "Root CA", CaKeyTexts.None), checks.badges);
         Assert.DoesNotContain(checks.badges, b => b.Item2.Contains("OADM CA", StringComparison.Ordinal) || b.Item2.Contains("Imported", StringComparison.Ordinal));
 

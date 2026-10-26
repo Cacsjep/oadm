@@ -43,7 +43,7 @@ public sealed record StoredLocalCertificate
 /// <summary>A listed certificate read once: its stored row and what the list shows of it.</summary>
 public sealed record LocalCertificate(StoredLocalCertificate Stored, byte[] Der, string Serial, string Fingerprint, DateTime NotBeforeUtc, DateTime NotAfterUtc, string IssuerName)
 {
-    /// <summary>The key, "RSA 2048", "ECDSA P-256".</summary>
+    /// <summary>The key, "RSA 2048", "ECC P-256".</summary>
     public string? KeyText { get; init; }
 
     public bool HasKey => Stored.KeyProtected is not null;
@@ -87,7 +87,7 @@ public sealed record ServerCertificate(string Slot, string Server, string Name, 
 {
     public string RowId => LocalCertificates.ServerPrefix + Slot;
 
-    /// <summary>The key, "ECDSA P-256".</summary>
+    /// <summary>The key, "ECC P-256".</summary>
     public string? KeyText { get; init; }
 }
 

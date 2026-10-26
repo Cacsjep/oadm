@@ -24,7 +24,7 @@ public static class CaImporter
 {
     public const string WrongPassword = "The password is wrong or the file is damaged.";
     public const string WrongKeyPassword = "The password is wrong or the key file is damaged.";
-    public const string UnsupportedKey = "This key type is not supported. Use RSA 2048 or larger, or ECDSA P-256 or P-384.";
+    public const string UnsupportedKey = "This key type is not supported. Use RSA 2048 or larger, or ECC P-256 or P-384.";
 
     public static CaImportResult Import(CaImportInput input, DateTimeOffset now, int deviceCertValidityDays)
     {

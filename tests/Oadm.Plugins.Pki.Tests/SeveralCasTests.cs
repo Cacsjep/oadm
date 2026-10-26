@@ -176,7 +176,7 @@ public sealed class SeveralCasTests
 
         var saved = await pki.Policies.SaveAsync(https with { CaId = id }, "admin", Suites, CancellationToken.None);
         Assert.Null(saved.Error);
-        Assert.Equal("Enable HTTPS issues certificates from Contoso Root, valid 365 days, with an ECC key.", pki.Policies.Rows([]).Single(r => r.Policy.Id == https.Id).Summary);
+        Assert.Equal("Enable HTTPS issues certificates from Contoso Root, valid 365 days, with an ECC P-256 key.", pki.Policies.Rows([]).Single(r => r.Policy.Id == https.Id).Summary);
         Assert.Same(pki.Service.IssuingCa(id), Tasks.CertificateDeployment.RequireCa(pki.Service, saved.Saved));
 
         // Used by a policy: Remove is refused with the policy's name; Used in names it.
