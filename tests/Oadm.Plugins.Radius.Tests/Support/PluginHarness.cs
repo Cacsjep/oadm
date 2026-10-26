@@ -250,10 +250,11 @@ public sealed class TestAuthority : IDeviceCertificateAuthority, Oadm.Plugins.Pk
         return CertificateSerials.Normalize(leaf.SerialNumber);
     }
 
-    public void Revoke(string serial, Guid? deviceId = null)
+    /// <summary>Puts <paramref name="serial"/> on PKI's list of certificates no longer accepted (deleted, or replaced with <see cref="RevocationReason.Superseded"/>).</summary>
+    public void Revoke(string serial, Guid? deviceId = null, RevocationReason reason = RevocationReason.KeyCompromised)
     {
         var normalized = CertificateSerials.Normalize(serial);
-        _revoked[normalized] = new CertificateRevocation(normalized, new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc), RevocationReason.KeyCompromised, "admin")
+        _revoked[normalized] = new CertificateRevocation(normalized, new DateTime(2026, 11, 2, 9, 0, 0, DateTimeKind.Utc), reason, "admin")
         {
             DeviceId = deviceId,
             NotAfterUtc = DateTime.UtcNow.AddYears(1),

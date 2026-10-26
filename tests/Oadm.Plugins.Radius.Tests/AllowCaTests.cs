@@ -1,3 +1,4 @@
+using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Radius;
@@ -155,10 +156,10 @@ public sealed class AllowCaTests
     }
 
     [Fact]
-    public async Task AnImportedCaThatIssuesKeepsPkisRevocationListLikeTheOadmCa()
+    public async Task AnImportedCaThatIssuesKeepsPkisNotAcceptedListLikeTheFirstStartCa()
     {
-        // Decision 2026-10-25: an imported CA with its key issues certificates in OADM; a certificate OADM revoked never
-        // passes, as for the OADM CA. Without its key the CA's certificates come from elsewhere: OADM's list does not apply.
+        // Decision 2026-10-25: an imported CA with its key issues certificates in OADM; a certificate deleted in OADM never
+        // passes, as for the first-start CA (decision 2026-10-26: deleted = no longer accepted). Without its key the CA's certificates come from elsewhere: OADM's list does not apply.
         using var company = new TestAuthority("Contoso Issuing CA");
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         var issuing = company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Issuing CA") with { Issues = true };
@@ -170,7 +171,7 @@ public sealed class AllowCaTests
         harness.Ca.Revoke(TestAuthority.SerialOf(camera));
 
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, camera))).Final);
-        Assert.Contains("revoked", (await LastLogRowAsync(harness)).Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(NotAcceptedTexts.Deleted, (await LastLogRowAsync(harness)).Reason);
 
         harness.Ca.AuthorityList = [.. harness.Ca.AuthorityList.Select(a => a.Id == issuing.Id ? a with { Issues = false } : a)];
         harness.Ca.RaiseChanged();

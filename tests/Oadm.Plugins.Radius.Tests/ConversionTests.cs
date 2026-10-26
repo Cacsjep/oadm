@@ -97,12 +97,12 @@ public sealed class ConversionTests
         Assert.Equal([FixtureSite], harness.Policies.PoliciesOf(PolicyKinds.Vlan)[0].Devices!.SiteIds);
         Assert.Equal(new Guid("5b0e7c1a-3f53-4d2b-9a8e-1d2c3b4a5f60"), harness.Policies.PoliciesOf(PolicyKinds.Vlan)[0].Id);
         Assert.Equal(99, harness.Policies.PoliciesOf(PolicyKinds.Vlan)[2].Vlan);
-        // A Block policy stays Block, a Revoke policy becomes Block with Also revoke (decision 2026-10-25).
+        // A Block policy stays Block, a Revoke policy becomes Block (decision 2026-10-26: no revoke, Block only refuses).
         var blocks = harness.Policies.PoliciesOf(PolicyKinds.Block);
         Assert.Equal(2, blocks.Count);
         Assert.Equal(["ACCC8E000001"], blocks[0].Devices!.Serials);
-        Assert.False(blocks[0].AlsoRevoke!.Value);
-        Assert.Equal(("Stolen", "admin", true), (blocks[1].Name, blocks[1].SavedBy, blocks[1].AlsoRevoke!.Value));
+        Assert.Equal(("Stolen", "admin"), (blocks[1].Name, blocks[1].SavedBy));
+        Assert.All(blocks, b => Assert.Null(b.AlsoRevoke));
         Assert.Equal([PolicyKinds.Dot1xServer, PolicyKinds.AllowCa, PolicyKinds.AllowCa, PolicyKinds.Vlan, PolicyKinds.Vlan, PolicyKinds.Block, PolicyKinds.Block, PolicyKinds.Vlan],
             harness.Policies.All.Where(p => PolicyKinds.IsDot1x(p.Kind)).Select(p => p.Kind)); // the age order: the stored order, the Default VLAN last
         Assert.Equal((null, null, null), (server.CaId, server.ValidDays, server.Key)); // the server policy picks a certificate of the list (decision 2026-10-25)
@@ -152,7 +152,7 @@ public sealed class ConversionTests
         await harness.StartAsync();
 
         Assert.Equal(first.Count - 1, harness.Policies.All.Count); // the deleted one stays deleted, nothing doubled
-        Assert.True(Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Block)).AlsoRevoke); // the converted Revoke policy stays
+        Assert.Equal("Stolen", Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Block)).Name); // the converted Revoke policy stays
         Assert.Contains(RadiusPlugin.PluginId, harness.Policies.Converted);
 
         // PKI's store read again from its settings (a restart of PKI) keeps the same list.
