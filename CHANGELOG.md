@@ -6,8 +6,29 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- **PKI**: **Create CA** makes a root CA or an intermediate CA signed by a CA of the list, with an RSA 4096 (preset),
+  ECC P-256, RSA 2048 or RSA 3072 key. It replaces New OADM CA. Certificates of an intermediate CA go to the cameras with
+  the CAs above it; a camera that refuses them gets the certificate alone.
+- **PKI**: **Delete** on every CA, also the first CA OADM made and the Axis device ID. A CA a policy uses, or that signed
+  another CA of the list, cannot be deleted. Its certificates stay in the list.
+- **PKI**: **Install in trusted root store** on every root CA, **Back up** on every CA with its key.
+- **PKI**: **N policies applied** on the 802.1X and EST server tabs highlights that server's policies on the Policies tab.
+  The policy groups have an icon.
+
 ### Changed
 
+- **PKI**: there is no special OADM CA any more. The CA OADM makes on the first start is an ordinary root CA. The CA list
+  shows only **Root CA** or **Intermediate CA**, and **No key** for a CA without its key. A CA replaced in an older OADM
+  stays as an ordinary CA and gets its own 802.1X trusted CA policy on the update, so its cameras keep their network
+  access.
+- **PKI**: **Delete** replaces Revoke. Every certificate can be deleted; the 802.1X and EST servers no longer accept a
+  deleted certificate that is still valid ("Certificate deleted in OADM"). Revoke, Revoke all of this device and the
+  Revoked state are gone, and a Block policy only refuses its devices (no Also revoke).
+- **PKI**: keys read ECC P-256 and RSA 2048, 3072 or 4096 everywhere. The Key and Valid until columns are dimmed.
+- **Sites**: the page no longer shows the Devices and Response time columns, so Bind stays in view. The site counts sit
+  in the toolbar row, and a waiting node no longer repeats its state.
 - **EST server**: after the update from 4.1, EST certificates follow the built-in HTTPS and IEEE 802.1X policies (their
   days and key), not the values of the 4.1 profiles.
 - **Install certificates**: when some devices are reached over HTTP, the dialog says how many and asks you to confirm
@@ -20,10 +41,12 @@ version and date, and the release workflow copies it into the GitHub release.
 
 - **PKI**: Delete certificates deletes nothing while OADM cannot read what a camera uses its certificates for. An HTTPS
   certificate the camera may already use is no longer revoked after a failed check. A previous certificate that cannot be
-  removed is a warning. A damaged stored OADM CA is never replaced by a new one by itself; New OADM CA replaces it after
-  you confirm.
+  removed is a warning. A damaged stored CA is never replaced by a new one by itself; its row says it cannot be read and
+  offers Delete.
 - **EST server**: saving the tab no longer turns on a profile that was off in 4.1.
 - **EST server**: the update removes the profiles that were off in 4.1. Their enrollments stay in the list.
+- **EST server**: the warning about addresses missing from the server's certificate follows a newly chosen interface at
+  once.
 
 ## [4.5.0-rc.1] - 2026-10-25
 
