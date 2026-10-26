@@ -324,7 +324,6 @@ public static class CertificateRefusals
     public const string NotForNetworkAccess = "Client certificate not allowed for network access";
     public const string NamesNoDevice = "Client certificate names no device";
     public const string OtherSite = "The device belongs to another site";
-    public const string Revoked = "Certificate revoked";
     public const string NoCa = "The PKI has no certificate authority";
     public const string PoliciesUnreadable = "The PKI policies cannot be read";
 
@@ -342,9 +341,6 @@ public static class CertificateRefusals
 
     /// <summary>"Blocked by Storage room" (TLS alert 49): the Block policy that holds the device.</summary>
     public static string Blocked(string policy) => $"Blocked by {policy}";
-
-    /// <summary>"Certificate revoked by Storage room" (TLS alert 44): the Revoke policy that holds the device.</summary>
-    public static string RevokedByPolicy(string policy) => $"Certificate revoked by {policy}";
 
     /// <summary>"Client certificate expired on 2026-09-30".</summary>
     public static string Expired(DateTime notAfterUtc) => "Client certificate expired on " + notAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);

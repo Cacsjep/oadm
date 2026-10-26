@@ -44,9 +44,6 @@ public static class EstRefusals
 
     /// <summary>No Enrollment policy of PKI holds the camera (docs/spec/pki.md "Policies").</summary>
     public const string NoEnrollmentPolicy = "No enrollment policy for this device.";
-
-    /// <summary>The camera signed in with a certificate on PKI's revocation list (with the date and reason when known).</summary>
-    public const string Revoked = "Certificate revoked";
 }
 
 /// <summary>

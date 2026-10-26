@@ -22,9 +22,9 @@ public sealed class PkiStore(IPluginSettings settings)
     public async Task<StoredCa?> LoadCaAsync(CancellationToken ct) => (await LoadCaStateAsync(ct).ConfigureAwait(false)).Ca;
 
     /// <summary>
-    /// The stored OADM CA. <c>Unreadable</c>: a value is stored but cannot be read (damaged); the caller never overwrites it
-    /// by itself (no new default CA over it): a backup restores it, or New OADM CA replaces it after the user confirmed (the
-    /// value is first kept in a file, <see cref="LoadCaRawAsync"/>).
+    /// The stored first-start root CA. <c>Unreadable</c>: a value is stored but cannot be read (damaged); the caller never
+    /// overwrites it by itself (no new default CA over it): a backup restores it, or the user deletes its row (the value is
+    /// first kept in a file, <see cref="LoadCaRawAsync"/>).
     /// </summary>
     public async Task<(StoredCa? Ca, bool Unreadable)> LoadCaStateAsync(CancellationToken ct)
     {

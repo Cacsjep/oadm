@@ -26,7 +26,7 @@ public sealed class ServerCertificateTrustTests
         ca.Revoke(ca.ServerSerial());
 
         Assert.Null(await certificates.GetAsync(CancellationToken.None));
-        Assert.Equal("The EST server cannot use its certificate: it is revoked.", certificates.Problem);
+        Assert.Equal("The EST server cannot use its certificate: it is no longer accepted.", certificates.Problem);
     }
 
     [Fact]

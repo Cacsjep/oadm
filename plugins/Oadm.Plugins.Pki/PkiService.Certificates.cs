@@ -35,11 +35,6 @@ public sealed partial class PkiService
     private (string Key, IReadOnlyList<X509Certificate2> Certificates) _known = (string.Empty, []);
     private int _certificatesEventPending;
 
-    /// <summary>
-    /// Reads a device's certificate list (alias and PEM, read only) for Revoke all of this device; null = no device access
-    /// (tests, a host without it). Set by the plugin.
-    /// </summary>
-    public Func<IDeviceInfo, CancellationToken, Task<IReadOnlyList<(string Alias, string Pem)>>>? DeviceCertificateReader { get; set; }
 
     /// <summary>OADM PRO is active (the policy list shows the kinds of the PRO servers); true without a host check (tests, in process).</summary>
     public Func<bool> IsPro { get; set; } = () => true;

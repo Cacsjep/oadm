@@ -308,7 +308,7 @@ public sealed class CertificateListTests
         Task<DeleteCertificatesReply> DeleteAsync(params string[] ids) => pki.InvokeAsync<DeleteCertificatesReply>(CertificateMethods.Delete, new DeleteCertificatesRequest(ids));
 
         // A CA among the rows: refused with the reason, nothing deleted (CAs are deleted in their own list).
-        Assert.Equal("Remove CAs in Certificate authorities. Nothing was deleted.", (await DeleteAsync(valid, created, ca)).Error);
+        Assert.Equal("Delete CAs in Certificate authorities. Nothing was deleted.", (await DeleteAsync(valid, created, ca)).Error);
         Assert.Equal(PkiCertificateTexts.ChooseOne, (await DeleteAsync()).Error);
         Assert.NotNull(pki.Service.Local.Find(created[LocalCertificates.RowPrefix.Length..]));
         Assert.NotNull(pki.Service.Issued.Find(valid));

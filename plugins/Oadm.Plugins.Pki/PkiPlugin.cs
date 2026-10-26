@@ -83,13 +83,6 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         };
         await service.StartAsync(ct).ConfigureAwait(false);
         service.IsPro = () => ctx.Pro?.IsActive == true; // the PRO servers' policies show only with OADM PRO
-        service.DeviceCertificateReader = async (device, token) =>
-        {
-            var vapix = await system.Vapix.CreateAsync(device.Id, token).ConfigureAwait(false);
-            var support = await PkiCompatibility.CachedAsync(vapix, device, _options.Time, token).ConfigureAwait(false);
-            var list = await DeviceCertificates.ListAsync(vapix, support.Certificates, token).ConfigureAwait(false);
-            return [.. list.Select(c => (c.Alias, c.Pem))];
-        };
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
         ctx.Services?.Offer(service.Policies); // the policies for the 802.1X server inside PKI (in process, no SDK contract)
