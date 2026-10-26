@@ -189,7 +189,6 @@ public sealed partial class PkiService : IAsyncDisposable
         await LoadImportedAsync(ct).ConfigureAwait(false);
         if (_secrets is null)
         {
-            _defaultCaExpected = false;
             LogNoSecrets();
             await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
             return;
