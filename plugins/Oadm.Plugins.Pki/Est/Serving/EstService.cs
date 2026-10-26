@@ -559,6 +559,8 @@ public sealed partial class EstService : IAsyncDisposable
         var portChanged = config.Port != _store.Config.Port;
         var reopen = portChanged || !string.Equals(config.InterfaceId, _store.Config.InterfaceId, StringComparison.Ordinal);
         await _store.SaveConfigAsync(config, ct).ConfigureAwait(false);
+        _certificateAddresses = null; // another interface: the certificate warning follows its addresses at once
+        _certificateNow = null;
         if (reopen)
         {
             await CloseAsync(release: true).ConfigureAwait(false);

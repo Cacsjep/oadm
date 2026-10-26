@@ -5,6 +5,7 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Plugins.Est.Serving;
 using Oadm.Plugins.Est.Tasks;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Testing;
 
@@ -25,6 +26,7 @@ public sealed class ListenTests : IAsyncLifetime
     private readonly FakePluginNetwork _network = new();
     private readonly Interfaces _interfaces = new() { List = [Lan, Cameras] };
     private EstService _est = null!;
+    private IReadOnlyList<string>? _localAddresses;
 
     public async Task InitializeAsync() => _est = await StartAsync();
 
@@ -134,6 +136,19 @@ public sealed class ListenTests : IAsyncLifetime
         Assert.Empty(camera.Profiles);
     }
 
+    [Fact]
+    public async Task Choosing_another_interface_updates_the_certificate_warning_at_once()
+    {
+        _localAddresses = ["10.0.0.17", "192.168.50.1"];
+        _time.Advance(TimeSpan.FromMinutes(1)); // past the 30 s the status keeps what it read
+        Assert.Equal(PolicyTexts.AddressNotInCertificate("192.168.50.1"), _est.GetState().CertificateWarning); // every address
+
+        var reply = await _est.SaveAsync(new SaveRequest(_est.Store.Config with { InterfaceId = "lan" }), CancellationToken.None);
+
+        Assert.Null(reply.Error);
+        Assert.Null(reply.State!.CertificateWarning); // no 30 s wait: 10.0.0.17 is in the certificate
+    }
+
     private async Task<EstService> StartAsync()
     {
         // PKI's policies of a new server; the profiles name their issuing policies, as after the EST core plugin's start.
@@ -144,6 +159,7 @@ public sealed class ListenTests : IAsyncLifetime
             Time = _time,
             Interfaces = _interfaces,
             Policies = () => policies,
+            LocalAddresses = () => _localAddresses ?? ServerCertificates.LocalAddresses(),
         });
         await est.StartAsync(CancellationToken.None);
         return est;
