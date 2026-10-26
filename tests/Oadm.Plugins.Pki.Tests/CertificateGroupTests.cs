@@ -28,7 +28,7 @@ public sealed class CertificateGroupTests
             await RevocationTests.SignAsync(authority, devices[i].Id, devices[i].Serial);
         }
 
-        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("OADM Root CA NEW", false, null, CaKeys.Default, 10))).Ok);
         for (var i = 3; i < 5; i++)
         {
             await RevocationTests.SignAsync(authority, devices[i].Id, devices[i].Serial);
@@ -121,8 +121,6 @@ public sealed class CertificateGroupTests
         Assert.Equal(["Root CA", "OADM CA"], root.Badges);
         Assert.Equal("RSA 4096", root.Detail);
         Assert.Equal((false, (string?)null), (root.HasStateBadge, root.StateTip)); // a valid certificate: its date only
-        Assert.True(root.IsOadmCa);
-        Assert.False(root.IsRemovableCa);
 
         var intermediate = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.AxisDeviceId, KeyText = "ECDSA P-256",
             IssuedBy = "Axis device ID", Purpose = ListedCertificateUses.Ca, NotAfterUtc = now.AddDays(1.2) });
@@ -132,7 +130,7 @@ public sealed class CertificateGroupTests
 
         var imported = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Authority, AuthorityKind = CertificateAuthorityKind.Imported, IsRootCa = true, Purpose = ListedCertificateUses.Ca });
         Assert.Equal(["Root CA", "Imported"], imported.Badges);
-        Assert.True(imported.IsRemovableCa);
+        Assert.True(imported.IsCa);
 
         var device = Row(new IssuedCertificateInfo { Kind = ListedCertificateKind.Device, Purpose = DeviceCertificatePurposes.Dot1x, IssuedBy = "OADM Root CA SERVER01",
             State = IssuedCertificateState.ExpiresSoon, NotAfterUtc = now.AddDays(12.5), Device = "10.0.0.48", DeviceManaged = true });
@@ -171,7 +169,7 @@ public sealed class CertificateGroupTests
         Assert.Equal(["Created, signed and imported", "Device certificates"], vm.Certificates.GroupTitles.Select(t => t[..t.IndexOf(" · ", StringComparison.Ordinal)]));
         Assert.Equal("Device certificates · 5", vm.Certificates.Rows[^1].GroupTitle);
         Assert.DoesNotContain(vm.Certificates.Rows, r => r.Source.Kind == ListedCertificateKind.Authority);
-        Assert.Empty(vm.Authorities.Rows.Single(r => r.IsOadmCa).MoreStates); // not installed: no trust badge
+        Assert.Empty(vm.Authorities.Rows.Single(r => r.AuthorityKind == CertificateAuthorityKind.Oadm).MoreStates); // not installed: no trust badge
 
         vm.Certificates.GroupBy = vm.Certificates.GroupChoices.Single(c => c.Value == IssuedCertificateGrouping.Issuer);
         await Wait.UntilAsync(() => vm.Certificates.GroupTitles.Count > 0 && vm.Certificates.GroupTitles[0].StartsWith("OADM Root CA NEW · ", StringComparison.Ordinal));
@@ -186,10 +184,10 @@ public sealed class CertificateGroupTests
         Assert.All(vm.Certificates.Rows, r => Assert.Null(r.GroupTitle));
 
         // Install in trusted root store: the OADM CA's row says where it is trusted now.
-        await vm.InstallTrustCommand.ExecuteAsync(null);
-        var states = vm.Authorities.Rows.Single(r => r.IsOadmCa).MoreStates;
+        await vm.InstallTrustCommand.ExecuteAsync(vm.Authorities.Rows.Single(r => r.AuthorityKind == CertificateAuthorityKind.Oadm));
+        var states = vm.Authorities.Rows.Single(r => r.AuthorityKind == CertificateAuthorityKind.Oadm).MoreStates;
         Assert.Contains(states, s => s.Text == "OS root store: client" && s.IsOk && s.Tip == Oadm.Plugins.Pki.Client.PkiViewModel.TrustedHereTip);
-        Assert.All(vm.Authorities.Rows.Where(r => !r.IsOadmCa), r => Assert.Empty(r.MoreStates));
+        Assert.All(vm.Authorities.Rows.Where(r => r.AuthorityKind != CertificateAuthorityKind.Oadm), r => Assert.Empty(r.MoreStates));
         Assert.All(vm.Certificates.Rows, r => Assert.Empty(r.MoreStates));
     }
 
@@ -209,7 +207,7 @@ public sealed class CertificateGroupTests
             await vm.LoadAsync();
             await vm.Authorities.LoadAsync();
             await vm.Certificates.LoadAsync();
-            var oadm = vm.Authorities.Rows.Single(r => r.IsOadmCa);
+            var oadm = vm.Authorities.Rows.Single(r => r.AuthorityKind == CertificateAuthorityKind.Oadm);
 
             // Export of the OADM CA's row is Export public certificate (PEM or DER), saved with the page's file picker.
             await vm.Authorities.ExportDerCommand.ExecuteAsync(oadm);
@@ -220,8 +218,6 @@ public sealed class CertificateGroupTests
             var axis = vm.Authorities.Rows.First(r => r.AuthorityKind == CertificateAuthorityKind.AxisDeviceId);
             await vm.Authorities.ExportPemCommand.ExecuteAsync(axis);
             Assert.EndsWith(".crt", Assert.Single(certificateDialogs.Files.Saved).FileName, StringComparison.Ordinal);
-            Assert.False(axis.IsRemovableCa);
-            Assert.False(vm.RemoveCaCommand.CanExecute(axis));
 
             // Several chosen rows: the menu of any of them acts on all of them (red); a row outside the choice keeps its own.
             var devices = vm.Certificates.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Device).Take(2).ToList();
@@ -230,7 +226,7 @@ public sealed class CertificateGroupTests
             Assert.Equal("View", vm.Authorities.MenuOf(oadm)[0].Text); // the CA list's own menu
 
             // Back up of the OADM CA's row: the backup dialog.
-            await vm.BackupCommand.ExecuteAsync(null);
+            await vm.BackupCommand.ExecuteAsync(oadm);
             Assert.IsType<BackupViewModel>(dialogs.Last);
         }
         finally

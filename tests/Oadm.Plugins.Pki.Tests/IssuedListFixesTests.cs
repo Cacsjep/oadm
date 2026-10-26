@@ -71,48 +71,11 @@ public sealed class IssuedListFixesTests
     public async Task Pki_keeps_an_unknown_serial_until_the_end_of_its_latest_ca()
     {
         await using var pki = await PkiHarness.StartAsync();
-        var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.Revoke, new RevokeRequest(["0BAD"], RevocationReason.KeyCompromised));
+        var reply = await ((IDeviceCertificateAuthority)new PkiCertificateAuthority(pki.Service)).RevokeAsync(["0BAD"], RevocationReason.KeyCompromised, PkiPlugin.InProcessUser, CancellationToken.None);
         Assert.Equal((1, 0, 0), (reply.Revoked, reply.AlreadyRevoked, reply.NotFound));
         var revocation = new PkiCertificateAuthority(pki.Service).FindRevocation("0BAD")!;
         Assert.Equal(pki.Service.Ca!.Certificate.NotAfter.ToUniversalTime(), revocation.NotAfterUtc);
         Assert.Equal(PkiPlugin.InProcessUser, revocation.UserName);
-    }
-
-    [Fact]
-    public async Task Revoke_all_of_this_device_reads_the_device_and_revokes_oadm_certificates_the_list_did_not_hold()
-    {
-        var device = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.48", "B8A44F631339");
-        await using var pki = await PkiHarness.StartAsync(devices: [device]);
-        using var onDevice = RevocationTests.Issue(pki.Service.Ca!, "B8A44F631339", client: true); // from before the list
-        var asked = new List<Guid>();
-        pki.Service.DeviceCertificateReader = (d, _) =>
-        {
-            asked.Add(d.Id);
-            return Task.FromResult<IReadOnlyList<(string Alias, string Pem)>>([("OADM 802.1X 20240101", CaCertificates.ToPem(onDevice))]);
-        };
-        Assert.Empty(pki.Service.Issued.ForDevice(device.Id));
-
-        var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.RevokeDevice, new RevokeDeviceRequest(device.Id, RevocationReason.KeyCompromised));
-
-        Assert.Equal([device.Id], asked);
-        Assert.Equal(1, reply.Revoked);
-        Assert.True(pki.Service.Issued.IsRevoked(onDevice.SerialNumber));
-        Assert.Equal(device.Id, pki.Service.Issued.FindRevocation(onDevice.SerialNumber)!.DeviceId);
-    }
-
-    [Fact]
-    public async Task Revoke_all_of_this_device_revokes_the_listed_ones_when_the_device_does_not_answer()
-    {
-        var device = new PkiFakeDevice(Guid.NewGuid(), "10.0.0.48", "B8A44F631339");
-        await using var pki = await PkiHarness.StartAsync(devices: [device]);
-        IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
-        var listed = (await RevocationTests.SignAsync(authority, device.Id)).SerialNumber;
-        pki.Service.DeviceCertificateReader = (_, _) => throw new HttpRequestException("unreachable");
-
-        var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.RevokeDevice, new RevokeDeviceRequest(device.Id, RevocationReason.DeviceReplaced));
-
-        Assert.Equal(1, reply.Revoked);
-        Assert.True(authority.IsRevoked(listed));
     }
 
     [Fact]

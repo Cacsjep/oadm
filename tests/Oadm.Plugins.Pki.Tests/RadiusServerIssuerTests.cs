@@ -23,17 +23,6 @@ public sealed class RadiusServerIssuerTests
     }
 
     [Fact]
-    public async Task After_a_new_oadm_ca_enable_and_renew_still_install_the_policys_radius_server_ca()
-    {
-        await using var h = await WithServerCertificateAsync();
-        Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
-
-        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
-        Assert.Null(await h.RunAsync(PkiTaskIds.Renew));
-        Assert.DoesNotContain("Check compatibility: Failed", h.Lines);
-    }
-
-    [Fact]
     public async Task A_radius_server_ca_that_did_not_issue_the_server_certificate_is_installed()
     {
         await using var h = await WithServerCertificateAsync();
@@ -45,29 +34,6 @@ public sealed class RadiusServerIssuerTests
         var cas = CertificateDeployment.RadiusCas(h.Pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!, h.Pki.Service);
 
         Assert.Equal([Ca.CaCertificates.Fingerprint(root)], cas.Select(c => c.Fingerprint));
-    }
-
-    [Fact]
-    public async Task Without_a_certificate_of_the_8021x_server_the_radius_server_ca_is_not_checked_against_it()
-    {
-        await using var h = await TaskHarness.StartAsync();
-        Assert.Null(h.Pki.Policies.FirstOf(PolicyKinds.Dot1xServer)?.CertificateId);
-        Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
-
-        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable));
-    }
-
-    [Fact]
-    public async Task New_oadm_ca_warns_that_the_server_certificates_stay_from_the_current_ca()
-    {
-        await using var h = await WithServerCertificateAsync();
-
-        var preview = await h.Pki.InvokeAsync<PreviewReplaceReply>(PkiMethods.PreviewReplace);
-
-        Assert.Equal(["802.1X server", "EST server"], preview.Servers);
-        Assert.Contains("The 802.1X server and the EST server keep their certificate from the current CA.",
-            Client.PkiViewModel.ReplaceMessage(0, preview.Servers), StringComparison.Ordinal);
-        Assert.Equal("Replace the CA?", Client.PkiViewModel.ReplaceMessage(0, []));
     }
 
     [Fact]

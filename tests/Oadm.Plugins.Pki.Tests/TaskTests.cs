@@ -722,26 +722,6 @@ public sealed class RenewDeleteInstallTests
     }
 
     [Fact]
-    public async Task Install_certificates_for_8021x_installs_the_policys_radius_server_ca_also_after_a_new_oadm_ca()
-    {
-        // The 802.1X server keeps its certificate of the previous OADM CA: no refusal (decision 2026-10-25, the user turns
-        // 802.1X off on the switch first).
-        await using var h = await TaskHarness.StartAsync();
-        await h.Pki.Service.EnsureServerCertificatesAsync(null, CancellationToken.None);
-        var server = Radius.Server.RadiusPolicies.DefaultServerPolicy() with { CertificateId = h.Pki.Policies.EstServerPolicy!.CertificateId };
-        Assert.Null((await h.Pki.Policies.SaveAsync(server, "admin", PkiService.CipherSuites, CancellationToken.None)).Error);
-        Assert.True((await h.Pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
-        using var ca = TestCa.Root("Customer CA");
-        using var leaf = LeafWithKey(ca, "10.0.0.48");
-        var payload = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.Dot1x, Password = "secret", Files = [new InstallFile(h.Device.Id, "f1", "cam48.pfx")] });
-
-        var ex = await RunWithFileAsync(h, payload, TestCa.Pfx("secret", leaf));
-
-        Assert.Null(ex);
-        Assert.DoesNotContain("Check compatibility: Failed", h.Lines);
-    }
-
-    [Fact]
     public void Certificate_files_match_devices_by_mac_ip_or_host_name()
     {
         Assert.True(CertificateFiles.Matches(["axis-b8a44f631339"], "B8A44F631339", "10.0.0.9", null));

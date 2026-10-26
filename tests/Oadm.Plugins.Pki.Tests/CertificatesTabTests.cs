@@ -168,48 +168,6 @@ public sealed class CertificatesTabTests
     }
 
     [Fact]
-    public async Task Revoke_asks_with_the_reason_revokes_the_chosen_rows_and_reads_the_page_again()
-    {
-        var time = new FakeTimeProvider(DateTimeOffset.UtcNow); // the server's and the window's clock: no midnight in between
-        var (pki, device, https, dot1x) = await StartWithCertificatesAsync(time);
-        await using var _ = pki;
-        var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
-        var dialogs = new FakeCertificateDialogs { Answer = null };
-        var tab = new IssuedCertificatesViewModel(ctx, time) { Dialogs = dialogs };
-        await tab.LoadAsync();
-        Assert.False(tab.RevokeCommand.CanExecute(null)); // nothing chosen
-        var httpsRow = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(https));
-        tab.SetSelection([httpsRow]);
-        Assert.True(tab.MayRevoke);
-
-        await tab.RevokeCommand.ExecuteAsync(null); // Cancel
-        var authority = new PkiCertificateAuthority(pki.Service);
-        Assert.False(authority.IsRevoked(https));
-        Assert.Equal(("Revoke the certificate of " + httpsRow.Device + "?", IssuedCertificatesViewModel.ConfirmMessageOne), dialogs.Asked[0]);
-
-        dialogs.Answer = RevocationReason.DeviceReplaced;
-        await tab.RevokeCommand.ExecuteAsync(null);
-        Assert.True(authority.IsRevoked(https));
-        Assert.Equal(RevocationReason.DeviceReplaced, authority.FindRevocation(https)!.Reason);
-        Assert.DoesNotContain(tab.Rows, r => r.Source.SerialNumber == CertificateSerials.Normalize(https)); // revoked: out of the list
-        Assert.Empty(tab.Selected);
-
-        // Revoke all of this device: the IEEE 802.1X one too; the camera has no row until it gets a new certificate.
-        var dot1xRow = tab.Rows.Single(r => r.Source.SerialNumber == CertificateSerials.Normalize(dot1x));
-        Assert.Equal(device, dot1xRow.Source.DeviceId);
-        await tab.RevokeDeviceCommand.ExecuteAsync(dot1xRow);
-        Assert.True(authority.IsRevoked(dot1x));
-        Assert.StartsWith("Revoke all certificates of ", dialogs.Asked[^1].Title, StringComparison.Ordinal);
-        Assert.DoesNotContain(tab.Rows, r => r.Source.Kind == ListedCertificateKind.Device);
-        Assert.Empty(ctx.Messages);
-        Assert.All(tab.Rows.Where(r => r.Source.Kind == ListedCertificateKind.Authority), r => Assert.False(r.CanRevoke)); // a CA is never revoked here
-
-        // Again: nothing left, the user is told.
-        await tab.RevokeDeviceCommand.ExecuteAsync(dot1xRow);
-        Assert.Equal("Nothing was revoked: these certificates are already revoked or expired.", Assert.Single(ctx.Messages).Message);
-    }
-
-    [Fact]
     public async Task A_group_user_can_view_but_not_revoke()
     {
         var (pki, _, _, _) = await StartWithCertificatesAsync();
@@ -219,13 +177,10 @@ public sealed class CertificatesTabTests
         await tab.LoadAsync();
         tab.SetSelection(tab.Rows.Take(1));
 
-        Assert.False(tab.MayRevoke);
         Assert.False(tab.MayManage);
         Assert.False(tab.CreateCommand.CanExecute(null));
         Assert.False(tab.DeleteCommand.CanExecute(null));
         Assert.False(tab.ExportPemCommand.CanExecute(tab.Rows[0]));
-        Assert.False(tab.RevokeCommand.CanExecute(null));
-        Assert.False(tab.RevokeDeviceCommand.CanExecute(tab.Rows[0]));
         Assert.True(tab.ViewCertificateCommand.CanExecute(null));
     }
 
@@ -320,24 +275,6 @@ public sealed class CertificatesTabHeadlessTests
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
             window.Close();
 
-            // The confirmation with the reason (the shared message window).
-            var confirm = new MessageWindow
-            {
-                Heading = "Revoke 2 certificates?",
-                Message = IssuedCertificatesViewModel.ConfirmMessage,
-                ConfirmText = "Revoke",
-                ChoiceLabel = "Reason",
-                Choices = [.. IssuedCertificatesViewModel.Reasons.Select(CertificateRevocation.ReasonText)],
-                IsDanger = true,
-            };
-            Oadm.Client.App.ApplyCrispText(confirm);
-            confirm.Show();
-            HeadlessPageTests.Pump();
-            HeadlessPageTests.Capture(confirm, outDir, "pki-revoke-confirm.png");
-            var reasons = confirm.ChoiceBox.ItemCount;
-            var danger = confirm.ConfirmButton.Classes.Contains("danger");
-            confirm.Close();
-
             // The shared certificate window of a revoked certificate.
             var details = await ctx.InvokeAsync(PkiMethods.GetCertificate, PkiJson.Serialize(new CertificateDetailsRequest(created)), CancellationToken.None);
             var reply = PkiJson.Deserialize<CertificateDetailsReply>(details);
@@ -348,7 +285,7 @@ public sealed class CertificatesTabHeadlessTests
             HeadlessPageTests.Capture(certificate, outDir, "pki-certificate-window.png");
             var windowTexts = certificate.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
             certificate.Close();
-            return (texts, reasons, danger, windowTexts);
+            return (texts, windowTexts);
         }, CancellationToken.None);
         GC.KeepAlive(session);
 
@@ -357,8 +294,6 @@ public sealed class CertificatesTabHeadlessTests
         Assert.DoesNotContain("Used by", checks.texts); // no Used by column (decision 2026-10-25)
         Assert.Contains("Create", checks.texts);
         Assert.Contains("Sign request", checks.texts);
-        Assert.Equal(4, checks.reasons);
-        Assert.True(checks.danger);
         Assert.Contains(checks.windowTexts, t => t?.StartsWith("Certificate revoked on ", StringComparison.Ordinal) == true);
         Assert.Contains("Issued by", checks.windowTexts);
         _ = Dispatcher.UIThread;

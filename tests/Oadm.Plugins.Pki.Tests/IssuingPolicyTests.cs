@@ -174,13 +174,11 @@ public sealed class IssuingPolicyTests
         string importedId;
         await using (var first = await PkiHarness.StartAsync(settings, secrets))
         {
-            Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true))).Ok);
             using var root = TestCa.Root("Contoso Root");
             using var rootPublic = System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadCertificate(root.RawData);
             Assert.True((await first.InvokeAsync<PkiReply>(PkiMethods.Import, new ImportRequest(Convert.ToBase64String(TestCa.Pfx("secret", root)), "contoso.pfx", "secret", null, null))).Ok);
             oadmPem = first.Service.Ca!.CertificatePem;
             importedId = PkiService.ImportedAuthorityId(CaCertificates.Fingerprint(rootPublic));
-            Assert.Single(first.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
         }
 
         // An update from OADM 4.1 whose IEEE 802.1X settings imported the OADM CA as RADIUS server CA: the policies are made
@@ -199,7 +197,6 @@ public sealed class IssuingPolicyTests
         Assert.Equal(CertificateAuthorityInfo.OadmId, pki.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!.RadiusCaId);
         Assert.Equal(importedId, Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.Imported).Id);
         Assert.NotNull(pki.Service.IssuingCa(importedId));
-        Assert.Single(pki.Service.Authorities(), a => a.Kind == CertificateAuthorityKind.PreviousOadm);
         Assert.Equal(importedBefore, await own.GetAsync(PkiStore.ImportedCasKey, CancellationToken.None));
     }
 

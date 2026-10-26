@@ -286,7 +286,7 @@ public sealed class PolicyStoreTests
     {
         var plugin = new PkiPlugin();
         Assert.Equal(UserRole.Operator, plugin.RequiredRole(PolicyMethods.GetPolicies));
-        foreach (var method in new[] { PolicyMethods.SavePolicy, PolicyMethods.DeletePolicy, PolicyMethods.CountRevocations })
+        foreach (var method in new[] { PolicyMethods.SavePolicy, PolicyMethods.DeletePolicy })
         {
             Assert.Equal(UserRole.Admin, plugin.RequiredRole(method)); // "Manage the certificate authority"
             Assert.True(plugin.RequiresAllDevices(method));
@@ -295,7 +295,6 @@ public sealed class PolicyStoreTests
 
         Assert.True(plugin.IsAudited(PolicyMethods.SavePolicy));
         Assert.True(plugin.IsAudited(PolicyMethods.DeletePolicy));
-        Assert.False(plugin.IsAudited(PolicyMethods.CountRevocations)); // only reads
         Assert.False(plugin.RequiresAllDevices(PolicyMethods.GetPolicies));
 
         var device = new FakeDevice { Serial = "ACCC8E000001", Tags = ["Lobby"] };
@@ -324,36 +323,6 @@ public sealed class PolicyStoreTests
         PkiJson.Deserialize<PolicyList>(await pki.Plugin.InvokeAsync(call, PolicyMethods.GetPolicies, null, CancellationToken.None));
 
     [Fact]
-    public async Task ARevokePolicyRevokesTheIeee8021xCertificatesOfItsDevicesOnSaveAndNewOnesEveryMinute()
-    {
-        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
-        var device = new FakeDevice { Serial = "ACCC8E000001" };
-        var other = new FakeDevice { Serial = "ACCC8E000002" };
-        await using var pki = await PkiHarness.StartAsync(time: time, devices: [device, other]);
-        IDeviceCertificateAuthority authority = new PkiCertificateAuthority(pki.Service);
-        var current = await RevocationTests.SignAsync(authority, device.Id, device.Serial, DeviceCertificateUse.Client);
-        var https = await RevocationTests.SignAsync(authority, device.Id, device.Serial);
-        var others = await RevocationTests.SignAsync(authority, other.Id, other.Serial, DeviceCertificateUse.Client);
-        var policy = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Serials = [device.Serial] } };
-
-        Assert.Equal(1, (await pki.InvokeAsync<PolicyRevocationCount>(PolicyMethods.CountRevocations, policy.Devices)).Count);
-        var reply = await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy);
-
-        Assert.Null(reply.Error);
-        Assert.Equal("OADM", reply.Saved!.SavedBy);
-        var revocation = pki.Service.Issued.FindRevocation(current.SerialNumber);
-        Assert.Equal((RevocationReason.Other, "OADM"), (revocation!.Reason, revocation.UserName));
-        Assert.False(pki.Service.Issued.IsRevoked(https.SerialNumber)); // another use: kept
-        Assert.False(pki.Service.Issued.IsRevoked(others.SerialNumber));
-        Assert.Equal(0, (await pki.InvokeAsync<PolicyRevocationCount>(PolicyMethods.CountRevocations, policy.Devices)).Count);
-
-        // A new certificate of the device (EST, a task): revoked by the minute round.
-        var fresh = await RevocationTests.SignAsync(authority, device.Id, device.Serial, DeviceCertificateUse.Client);
-        time.Advance(TimeSpan.FromMinutes(1));
-        await Eventually.TrueAsync(() => pki.Service.Issued.IsRevoked(fresh.SerialNumber), "the new certificate revoked");
-    }
-
-    [Fact]
     public async Task TheAllowCaPoliciesAreTheUsedByOfTheirCaAndAnImportedCaTheyNameIsNotRemoved()
     {
         await using var pki = await PkiHarness.StartAsync();
@@ -378,10 +347,10 @@ public sealed class PolicyStoreTests
         Assert.StartsWith("The 802.1X server lets in devices OADM manages", PolicyStore.Summary(oadm, new Dictionary<string, string>()), StringComparison.Ordinal);
         Assert.Equal(PolicyTexts.OnlyManaged, Client.PolicyEditorViewModel.OnlyManagedText);
 
-        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + Ca.CaCertificates.Fingerprint(root)));
         Assert.Equal("Used by the policy Contoso. Change or delete the policy first.", refused.Error);
         await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.DeletePolicy, new PolicyRef(allow.Saved!.Id));
-        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id))).Ok);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + Ca.CaCertificates.Fingerprint(root)))).Ok);
     }
 
     [Fact]

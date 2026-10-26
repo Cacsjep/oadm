@@ -22,18 +22,6 @@ public sealed class CertificateSafetyTests
     }
 
     [Fact]
-    public async Task The_certificate_a_server_policy_shows_cannot_be_revoked()
-    {
-        await using var pki = await PkiHarness.StartAsync();
-        var (_, serial) = await SharedServerCertificateAsync(pki);
-
-        var reply = await pki.InvokeAsync<RevokeReply>(PkiMethods.Revoke, new RevokeRequest([serial], RevocationReason.Other));
-
-        Assert.Equal("Used by the policy EST server. Pick another certificate first.", reply.Error);
-        Assert.False(pki.Service.Issued.IsRevoked(serial));
-    }
-
-    [Fact]
     public async Task The_server_certificate_choices_follow_a_revocation_at_once()
     {
         await using var pki = await PkiHarness.StartAsync();
