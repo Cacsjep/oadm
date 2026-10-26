@@ -24,8 +24,11 @@
 
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding ShowList}">
       <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-          <TextBlock Grid.Column="0" Classes="secondary" Text="{Binding AcceptText}" IsVisible="{Binding !MayChange}" VerticalAlignment="Center" />
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16" Margin="0,0,0,8">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+            <TextBlock Classes="secondary" Text="{Binding StatusText}" VerticalAlignment="Center" Margin="2,0,0,0" />
+            <TextBlock Classes="secondary" Text="{Binding AcceptText}" IsVisible="{Binding !MayChange}" VerticalAlignment="Center" />
+          </StackPanel>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
             <Button Classes="toolbar danger" Command="{Binding TurnOffCommand}" IsEnabled="{Binding !IsChangingAccept}" IsVisible="{Binding ShowTurnOff}">
               <ui:IconLabel Icon="{StaticResource Icon.stop}" Text="Turn off site nodes" Spacing="8" />
@@ -35,7 +38,6 @@
           </StackPanel>
         </Grid>
 
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding StatusText}" Margin="2,14,0,8" />
 
         <DataGrid x:Name="SiteGrid" Grid.Row="2" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
                   CanUserSortColumns="True" CanUserReorderColumns="False">
