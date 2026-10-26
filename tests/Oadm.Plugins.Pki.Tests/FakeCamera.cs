@@ -93,6 +93,19 @@ internal sealed record CameraRequest(string Method, string Path, string Body)
 /// server TLS calls, network_settings.cgi 802.1X, time.cgi and param.cgi, starting from the recorded 10.0.0.48 answers.
 /// Never touches the network.
 /// </summary>
+/// <summary>What <see cref="FakeCamera"/> does with a certificate sent with its chain.</summary>
+public enum ChainAnswer
+{
+    /// <summary>Takes it (REST keeps the PEM as sent, SOAP the certificate itself).</summary>
+    Takes,
+
+    /// <summary>Refuses it (REST an error answer, SOAP a fault); the certificate alone is taken.</summary>
+    Refuses,
+
+    /// <summary>SOAP takes it but keeps the whole DER sequence as the entry.</summary>
+    KeepsAsSent,
+}
+
 internal sealed class FakeCamera : IVapixClient
 {
     private readonly Dictionary<string, (string Pem, AsymmetricAlgorithm? Key)> _certificates = new(StringComparer.Ordinal);
@@ -219,6 +232,9 @@ internal sealed class FakeCamera : IVapixClient
 
     /// <summary>A SOAP operation with this name answers with a fault and changes nothing.</summary>
     public string? FailSoap { get; set; }
+
+    /// <summary>What the camera does with a certificate sent with its chain (REST PATCH, SOAP LoadCertificates).</summary>
+    public ChainAnswer Chains { get; set; } = ChainAnswer.Takes;
 
     /// <summary>The SOAP certificate set <c>EAPTLS_WIRED</c> (the 802.1X certificates where network settings do not bind them).</summary>
     public CertSet WiredSet { get; set; } = CertSet.Empty;
@@ -561,6 +577,11 @@ internal sealed class FakeCamera : IVapixClient
             if (method == "PATCH")
             {
                 var pem = data!["certificate"]!.GetValue<string>();
+                if (Chains == ChainAnswer.Refuses && pem.Split("BEGIN CERTIFICATE").Length > 2)
+                {
+                    return Error(HttpStatusCode.BadRequest, 5, "Validation error: Invalid certificate");
+                }
+
                 using var certificate = X509Certificate2.CreateFromPem(pem);
                 if (entry.Key is null || !certificate.PublicKey.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(entry.Key.ExportSubjectPublicKeyInfo()))
                 {
@@ -715,14 +736,23 @@ internal sealed class FakeCamera : IVapixClient
             {
                 var item = operation.Element(tds + "NVTCertificate")!;
                 var id = item.Element(tt + "CertificateID")!.Value;
-                using var loaded = X509CertificateLoader.LoadCertificate(Convert.FromBase64String(item.Element(tt + "Certificate")!.Element(tt + "Data")!.Value));
+                var bytes = Convert.FromBase64String(item.Element(tt + "Certificate")!.Element(tt + "Data")!.Value);
+                System.Formats.Asn1.AsnDecoder.ReadEncodedValue(bytes, System.Formats.Asn1.AsnEncodingRules.DER, out _, out _, out var first);
+                var chain = first < bytes.Length;
+                if (chain && Chains == ChainAnswer.Refuses)
+                {
+                    return Fault(HttpStatusCode.BadRequest, "SOAP-ENV:Sender", "ter:InvalidArgVal", "Invalid certificate");
+                }
+
+                using var loaded = X509CertificateLoader.LoadCertificate(bytes.AsSpan(0, first));
                 var key = _certificates.Values.Select(v => v.Key).FirstOrDefault(k => k is not null && loaded.PublicKey.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(k.ExportSubjectPublicKeyInfo()));
                 if (_certificates.ContainsKey(id) || key is null)
                 {
                     return Fault(HttpStatusCode.BadRequest, "SOAP-ENV:Sender", "ter:InvalidArgVal", "Invalid ID"); // also the id of the key itself (10.12)
                 }
 
-                _certificates[id] = (loaded.ExportCertificatePem() + "\n", key);
+                // KeepsAsSent: the whole sequence stays one entry (what an unknown AXIS OS might do); else the certificate itself.
+                _certificates[id] = (chain && Chains == ChainAnswer.KeepsAsSent ? new string(PemEncoding.Write("CERTIFICATE", bytes)) + "\n" : loaded.ExportCertificatePem() + "\n", key);
                 return SoapOk("<tds:LoadCertificatesResponse></tds:LoadCertificatesResponse>");
             }
 

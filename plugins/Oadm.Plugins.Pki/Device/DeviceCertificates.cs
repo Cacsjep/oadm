@@ -12,6 +12,12 @@ public enum CertificateApiKind
     Soap,
 }
 
+/// <summary>The outcome of installing a signed certificate.</summary>
+/// <param name="Tidy">False when the SOAP key placeholder could not be deleted (the certificate is installed).</param>
+/// <param name="WithChain">The device took the certificate with its chain.</param>
+/// <param name="ChainRefusal">Why the device got the certificate alone after it refused the chain; null when it was not refused.</param>
+public sealed record SignedInstall(bool Tidy, bool WithChain, string? ChainRefusal);
+
 /// <summary>
 /// The device's certificate store on either API: the same operations for the PKI tasks whichever API the device has. Keys
 /// are always made on the device.
@@ -86,23 +92,107 @@ public static class DeviceCertificates
     /// loads it under the alias (the device finds the key) and then deletes the placeholder. Returns false when that
     /// placeholder could not be deleted (the certificate is installed).
     /// </summary>
-    public static async Task<bool> InstallSignedAsync(IVapixClient vapix, CertificateApiKind api, string alias, string pem, CancellationToken ct)
+    public static async Task<bool> InstallSignedAsync(IVapixClient vapix, CertificateApiKind api, string alias, string pem, CancellationToken ct) =>
+        (await InstallSignedAsync(vapix, api, alias, pem, [], ct).ConfigureAwait(false)).Tidy;
+
+    /// <summary>
+    /// <see cref="InstallSignedAsync(IVapixClient, CertificateApiKind, string, string, CancellationToken)"/> with the issuer
+    /// chain (decision 2026-10-26: a certificate of an intermediate CA goes with its chain; <paramref name="chainPems"/> the
+    /// intermediate CAs from the issuer up, never a root; empty: the certificate alone, exactly as before). REST sends the
+    /// certificate followed by the chain in <c>certificate</c>; SOAP loads the certificate followed by the chain as one DER
+    /// sequence and then reads the entry back. A device that refuses the chain (an error answer or a SOAP fault), or SOAP that
+    /// keeps anything but the certificate itself, gets the certificate alone; <see cref="SignedInstall.ChainRefusal"/> says why.
+    /// </summary>
+    public static async Task<SignedInstall> InstallSignedAsync(
+        IVapixClient vapix, CertificateApiKind api, string alias, string pem, IReadOnlyList<string> chainPems, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(chainPems);
+        string? refusal = null;
+        var withChain = false;
         if (api == CertificateApiKind.Rest)
         {
-            await CertApi.PatchCertificateAsync(vapix, alias, pem, ct).ConfigureAwait(false);
-            return true;
+            if (chainPems.Count > 0)
+            {
+                try
+                {
+                    await CertApi.PatchCertificateAsync(vapix, alias, WithChain(pem, chainPems), ct).ConfigureAwait(false);
+                    withChain = true;
+                }
+                catch (PkiDeviceException ex)
+                {
+                    refusal = ex.Message;
+                }
+            }
+
+            if (!withChain)
+            {
+                await CertApi.PatchCertificateAsync(vapix, alias, pem, ct).ConfigureAwait(false);
+            }
+
+            return new SignedInstall(true, withChain, refusal);
         }
 
-        await CertSoapApi.LoadCertificateAsync(vapix, alias, pem, ct).ConfigureAwait(false);
+        if (chainPems.Count > 0)
+        {
+            try
+            {
+                await CertSoapApi.LoadCertificateChainAsync(vapix, alias, pem, chainPems, ct).ConfigureAwait(false);
+                withChain = true;
+            }
+            catch (PkiDeviceException ex)
+            {
+                refusal = ex.Message;
+            }
+
+            if (withChain && await KeptOtherThanAsync(vapix, alias, pem, ct).ConfigureAwait(false))
+            {
+                // Taken, but not kept as the certificate itself: removed again (the key stays with its placeholder) and loaded alone.
+                withChain = false;
+                refusal = "Install certificate: the device did not keep the certificate as sent.";
+                await CertSoapApi.DeleteAsync(vapix, alias, "Delete certificate", ct).ConfigureAwait(false);
+            }
+        }
+
+        if (!withChain)
+        {
+            await CertSoapApi.LoadCertificateAsync(vapix, alias, pem, ct).ConfigureAwait(false);
+        }
+
         try
         {
             await CertSoapApi.DeleteAsync(vapix, KeyAlias(api, alias), "Delete certificate", ct).ConfigureAwait(false);
-            return true;
+            return new SignedInstall(true, withChain, refusal);
         }
         catch (PkiDeviceException)
         {
-            return false;
+            return new SignedInstall(false, withChain, refusal);
+        }
+    }
+
+    /// <summary>The certificate followed by its chain, one PEM block each.</summary>
+    public static string WithChain(string pem, IReadOnlyList<string> chainPems)
+    {
+        ArgumentNullException.ThrowIfNull(pem);
+        ArgumentNullException.ThrowIfNull(chainPems);
+        return string.Concat(new[] { pem }.Concat(chainPems).Select(p => p.TrimEnd() + "\n"));
+    }
+
+    /// <summary>True when the SOAP entry <paramref name="alias"/> is missing or holds anything but <paramref name="pem"/> (read only).</summary>
+    private static async Task<bool> KeptOtherThanAsync(IVapixClient vapix, string alias, string pem, CancellationToken ct)
+    {
+        var stored = (await CertSoapApi.ListCertificatesAsync(vapix, ct).ConfigureAwait(false)).FirstOrDefault(c => string.Equals(c.Alias, alias, StringComparison.Ordinal));
+        if (stored is null || string.IsNullOrEmpty(stored.Pem))
+        {
+            return true;
+        }
+
+        try
+        {
+            return !CertSoapApi.Der(stored.Pem).AsSpan().SequenceEqual(CertSoapApi.Der(pem));
+        }
+        catch (FormatException)
+        {
+            return true;
         }
     }
 

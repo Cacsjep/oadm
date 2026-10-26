@@ -141,6 +141,18 @@ public static class CertificateDeployment
         })];
     }
 
+    /// <summary>
+    /// The chain a certificate of <paramref name="ca"/> goes to the camera with (decision 2026-10-26): an intermediate CA and
+    /// the intermediates above it (PEM, never a root); a root CA: none (the certificate alone, as before).
+    /// </summary>
+    public static IReadOnlyList<string> IssuerChainPems(CaMaterial ca)
+    {
+        ArgumentNullException.ThrowIfNull(ca);
+        return CaCertificates.IsSelfIssued(ca.Certificate)
+            ? []
+            : [.. new[] { ca.Certificate }.Concat(ca.Chain).Where(c => !CaCertificates.IsSelfIssued(c)).Select(CaCertificates.ToPem)];
+    }
+
     /// <summary>True when the CA is a self-signed root or its chain ends in one (802.1X needs the full chain).</summary>
     public static bool ChainComplete(CaMaterial ca)
     {
@@ -305,9 +317,21 @@ public static class CertificateDeployment
             pendingSerial = serial;
             await ctx.StepAsync(PkiSteps.Prefixed(stepPrefix, PkiSteps.InstallCertificate), async step =>
             {
-                var tidy = await DeviceCertificates.InstallSignedAsync(ctx.Vapix, api, alias, CaCertificates.ToPem(signed), ct).ConfigureAwait(false);
+                var chain = IssuerChainPems(ca);
+                var result = await DeviceCertificates.InstallSignedAsync(ctx.Vapix, api, alias, CaCertificates.ToPem(signed), chain, ct).ConfigureAwait(false);
                 installed = true;
-                if (!tidy)
+                if (result.WithChain)
+                {
+                    ctx.Log(TaskLogLevel.Info, chain.Count == 1
+                        ? $"Certificate \"{alias}\" installed with its chain (1 CA certificate)."
+                        : string.Create(CultureInfo.InvariantCulture, $"Certificate \"{alias}\" installed with its chain ({chain.Count} CA certificates)."));
+                }
+                else if (result.ChainRefusal is { } refusal)
+                {
+                    ctx.Log(TaskLogLevel.Warning, $"The device refused the certificate with its chain ({refusal}); the certificate was installed alone.");
+                }
+
+                if (!result.Tidy)
                 {
                     ctx.Log(TaskLogLevel.Warning, $"The key placeholder \"{DeviceCertificates.KeyAlias(api, alias)}\" could not be removed; delete it with \"Delete certificates\".");
                 }

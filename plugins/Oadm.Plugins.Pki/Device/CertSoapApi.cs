@@ -54,6 +54,21 @@ public static class CertSoapApi
     public static Task LoadCertificateAsync(IVapixClient vapix, string id, string pem, CancellationToken ct) =>
         DeviceSoap.SendAsync(vapix, BuildLoad("LoadCertificates", "NVTCertificate", id, pem), "Install certificate", ct);
 
+    /// <summary>
+    /// Loads a certificate for a key the device made with its issuer chain: the certificate's DER followed by the DER of each
+    /// chain certificate in one <c>tt:Data</c> (the service has no chain element). A device that refuses it faults.
+    /// </summary>
+    public static Task LoadCertificateChainAsync(IVapixClient vapix, string id, string pem, IReadOnlyList<string> chainPems, CancellationToken ct) =>
+        DeviceSoap.SendAsync(vapix, BuildLoadChain(id, pem, chainPems), "Install certificate", ct);
+
+    /// <summary>LoadCertificates with the certificate and its chain as one DER sequence in base64.</summary>
+    public static string BuildLoadChain(string id, string pem, IReadOnlyList<string> chainPems)
+    {
+        ArgumentNullException.ThrowIfNull(chainPems);
+        var der = new[] { pem }.Concat(chainPems).SelectMany(Der).ToArray();
+        return $"<tds:LoadCertificates><tds:NVTCertificate><tt:CertificateID>{DeviceSoap.Escape(id)}</tt:CertificateID><tt:Certificate><tt:Data>{Convert.ToBase64String(der)}</tt:Data></tt:Certificate></tds:NVTCertificate></tds:LoadCertificates>";
+    }
+
     public static Task LoadCaCertificateAsync(IVapixClient vapix, string id, string pem, CancellationToken ct) =>
         DeviceSoap.SendAsync(vapix, BuildLoad("LoadCACertificates", "CACertificate", id, pem), "Install CA certificate", ct);
 
