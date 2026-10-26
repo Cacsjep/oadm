@@ -6,47 +6,54 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-10-26
+
 ### Added
 
-- **PKI**: **Create CA** makes a root CA or an intermediate CA signed by a CA of the list, with an RSA 4096 (preset),
-  ECC P-256, RSA 2048 or RSA 3072 key. It replaces New OADM CA. Certificates of an intermediate CA go to the cameras with
-  the CAs above it; a camera that refuses them gets the certificate alone.
-- **PKI**: **Delete** on every CA, also the first CA OADM made and the Axis device ID. A CA a policy uses, or that signed
-  another CA of the list, cannot be deleted. Its certificates stay in the list.
-- **PKI**: **Install in trusted root store** on every root CA, **Back up** on every CA with its key.
-- **PKI**: **N policies applied** on the 802.1X and EST server tabs highlights that server's policies on the Policies tab.
-  The policy groups have an icon.
+- **PKI**: one page for every certificate, with the tabs **Certificates**, **Policies**, **802.1X server** and
+  **EST server**.
+  - **Certificates**: every CA and every certificate OADM uses. **Create CA** makes a root or an intermediate CA (RSA 4096
+    preset, ECC P-256, RSA 2048 or 3072); certificates of an intermediate CA go to the cameras with their chain. Create,
+    sign a request, import, export and delete certificates; every CA no policy uses can be deleted.
+  - **Policies**: every rule about certificates in one table: how HTTPS and IEEE 802.1X certificates are issued, the
+    servers' certificates, who gets onto the network, EST enrollment and expiry warnings. The settings of OADM 4.1
+    become policies on the first start.
+  - Enable HTTPS and Enable IEEE 802.1X pick a policy. Renew certificates and Install certificates ask for the IEEE
+    802.1X policy. The camera's clock is checked first.
+- Certificates, HTTPS and IEEE 802.1X work from **AXIS OS 6.53** (before: 11.11). Cameras before AXIS OS 12 need an RSA
+  policy; EAPOL version 3 needs AXIS OS 10.1.
+- **802.1X server** (OADM PRO): OADM answers your switches and lets only the cameras it manages onto the network, also
+  at sites. VLAN and Block policies per site, tag or device.
+- **Start 30-day trial** of OADM PRO in OADM itself (Settings > License), without an account or internet.
+- **Device groups**: limit a user to the devices of a group (sites, tags, single devices). After the update every user
+  keeps all devices.
+- Device list: an **Architecture** column (off by default).
+- Web View: **Apps**, **Recordings** and **Security** pages.
+- Plugin SDK 0.4.0: plugins get the user's devices with each call; plugins built for 4.1 work for users with all
+  devices. New plugin folders include an `AGENTS.md` for AI coding assistants.
 
 ### Changed
 
-- **PKI**: there is no special OADM CA any more. The CA OADM makes on the first start is an ordinary root CA. The CA list
-  shows only **Root CA** or **Intermediate CA**, and **No key** for a CA without its key. A CA replaced in an older OADM
-  stays as an ordinary CA and gets its own 802.1X trusted CA policy on the update, so its cameras keep their network
-  access.
-- **PKI**: **Delete** replaces Revoke. Every certificate can be deleted; the 802.1X and EST servers no longer accept a
-  deleted certificate that is still valid ("Certificate deleted in OADM"). Revoke, Revoke all of this device and the
-  Revoked state are gone, and a Block policy only refuses its devices (no Also revoke).
-- **PKI**: keys read ECC P-256 and RSA 2048, 3072 or 4096 everywhere. The Key and Valid until columns are dimmed.
-- **Sites**: the page no longer shows the Devices and Response time columns, so Bind stays in view. The site counts sit
-  in the toolbar row, and a waiting node no longer repeats its state.
-- **EST server**: after the update from 4.1, EST certificates follow the built-in HTTPS and IEEE 802.1X policies (their
-  days and key), not the values of the 4.1 profiles.
-- **Install certificates**: when some devices are reached over HTTP, the dialog says how many and asks you to confirm
-  before their private keys are sent unencrypted.
-
-- **Snapshot report**: the server keeps a finished report only until it was downloaded, and at most 30 minutes when it
-  never is.
+- The **EST server** and the **802.1X server** are tabs of the PKI page now; a server that was on stays on. The EST task
+  is called **EST - Certificate Enrollment**.
+- There is no special OADM CA any more: the CA of the first start is an ordinary root CA, and a CA replaced in an older
+  OADM gets its own 802.1X trusted CA policy, so its cameras keep their network access.
+- **Delete** replaces Revoke: the 802.1X and EST servers no longer accept a deleted certificate.
+- A new IEEE 802.1X policy uses EAPOL version 2 and the camera's IP address as identity.
+- HTTPS tasks wait for the camera's web server to restart. Disable HTTPS runs on cameras with Basic login only when
+  **Allow Basic login over HTTP** is on.
+- **Sites**: no Devices and Response time columns, so Bind stays in view.
+- The **Users** page is now **Permissions**. Settings cards fold; **This computer** is now **Client**.
+- Buttons look the same everywhere: flat toolbar buttons, one filled button for a dialog's main action.
 
 ### Fixed
 
-- **PKI**: Delete certificates deletes nothing while OADM cannot read what a camera uses its certificates for. An HTTPS
-  certificate the camera may already use is no longer revoked after a failed check. A previous certificate that cannot be
-  removed is a warning. A damaged stored CA is never replaced by a new one by itself; its row says it cannot be read and
-  offers Delete.
-- **EST server**: saving the tab no longer turns on a profile that was off in 4.1.
-- **EST server**: the update removes the profiles that were off in 4.1. Their enrollments stay in the list.
-- **EST server**: the warning about addresses missing from the server's certificate follows a newly chosen interface at
-  once.
+- The built-in Enrollment and Expiry warning policies can change their devices, so a second policy of their kind fits.
+- Starting the OADM PRO trial shows its policies at once.
+- EST server: the update removes the profiles that were off in 4.1, and the certificate warning follows a newly chosen
+  interface at once.
+- Settings: a card with a wrong value opens so the error shows; polling intervals up to 86,400 s are accepted.
+- Metadata Monitor: a stream the server no longer has shows Stopped instead of Live.
 
 ## [4.5.0-rc.1] - 2026-10-25
 
