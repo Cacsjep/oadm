@@ -117,7 +117,7 @@ default the shared certificate **802.1X and EST server** that OADM makes when OA
 computer's addresses and, while the EST server runs, the addresses of your site nodes. It is the same certificate for the
 server and every site.
 
-When you add a site or the server gets another address, the tab warns that the address is not in the certificate.
+When you add a site, the server gets another address or you choose another interface in **Listen on**, the tab warns that the address is not in the certificate.
 Create a certificate with every address on the Certificates tab and choose it in the EST server policy (see
 [Server certificates](../pki/#server-certificates)). Then set up the cameras again, so they trust the CA of the new
 certificate.
@@ -213,7 +213,7 @@ Certificate changed.
 The EST server only answers cameras that:
 
 - sign in with a certificate of a CA an **EST sign-in CA** policy names: by default their **Axis device ID** for new
-  certificates, and a certificate of the OADM CA for renewals. To renew, a camera may also sign in with its current
+  certificates, and a certificate of OADM Root CA for renewals. To renew, a camera may also sign in with its current
   certificate from OADM, whichever CA of the PKI page issued it (also a CA you imported with its key),
 - are **managed by OADM**: the serial number in the device ID must be a device in the device list, and
 - are in an **Enrollment** policy that allows the profile (by default "All devices", every profile). A camera no
@@ -221,7 +221,7 @@ The EST server only answers cameras that:
   exist, and the Enrollments list names the policy.
 
 A genuine Axis camera that OADM does not manage gets nothing. OADM sets the names in every certificate itself; what the
-camera asks for does not count. No password or code is needed. A revoked certificate renews nothing.
+camera asks for does not count. No password or code is needed. A certificate deleted or replaced in OADM renews nothing.
 
 ## Event rules
 
@@ -246,7 +246,7 @@ only. Only users with all devices change the settings and empty the list.
 | **The EST server needs OADM PRO** | Start the 30-day trial there, or import a license in Settings > License. |
 | Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
 | Status **The EST server has no certificate. Choose one in its policy.** | Choose a certificate in the EST server policy on the PKI page's Policies tab. |
-| Status **The EST server cannot use its certificate: ...** | The certificate ended, was revoked, was removed or its key cannot be read. Choose another one in the EST server policy. |
+| Status **The EST server cannot use its certificate: ...** | The certificate ended, was removed or its key cannot be read. Choose another one in the EST server policy. |
 | Status **TCP 9454 is used by another program** | Choose another port and set up the cameras again. |
 | Warning **... is not in the certificate of the EST server** | Create a certificate with that address on the Certificates tab and choose it in the EST server policy. |
 | Set-up ends with **Needs AXIS OS 12.10 or later** | Upgrade the camera's AXIS OS. |
@@ -255,7 +255,7 @@ only. Only users with all devices change the settings and empty the list.
 | Refused: **OADM does not manage this camera.** | Add the camera to OADM first, or check that it is the right camera. |
 | Refused: **No enrollment policy for this device.** | Add the camera to an Enrollment policy on the PKI page. |
 | Refused: **The enrollment policy ... does not allow the profile ...** | Allow the profile in that policy on the PKI page. |
-| **Cameras cannot sign in: there is no EST sign-in CA policy.** | Add an EST sign-in CA policy on the PKI page ("Axis device ID" for new certificates, "OADM CA" for renewals). |
+| **Cameras cannot sign in: there is no EST sign-in CA policy.** | Add an EST sign-in CA policy on the PKI page ("Axis device ID" for new certificates, a CA created in OADM for renewals). |
 | **The camera could not reach the EST server within 2 minutes.** | A firewall or routing blocks the camera's way to the OADM server (at a site: to the site node) on TCP 9454 (or the port you chose). |
 | **The camera reached the EST server but got no certificate within 2 minutes.** | The Enrollments list shows what reached the server and why it was refused. |
 | At a site: **waiting for approval in the OADM Site Node app** | Click **Allow** for TCP 9454 in the node app's Ports, then set up the camera again. |

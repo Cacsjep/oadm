@@ -69,7 +69,7 @@ devices. They are policies on the [PKI](../pki/) page; a click opens them.
 
 Cameras check the 802.1X server with its certificate, against the **RADIUS server CA** their IEEE 802.1X policy gave them.
 The **802.1X server** policy of the PKI page names the certificate: by default **802.1X and EST server**, which OADM makes
-from the OADM CA when OADM PRO becomes active. It needs an ECC key and never renews itself. To use another one, see
+from OADM Root CA when OADM PRO becomes active. It needs an ECC key and never renews itself. To use another one, see
 [Server certificates](../pki/#server-certificates).
 
 ### Switches
@@ -106,18 +106,18 @@ its MAC address does not match its certificate (a copied certificate shows this 
 - **View certificate** shows the certificate the camera sent (also a double click on a row).
 - **Delete all** (red, with a confirmation) empties the list for every client.
 
-To revoke certificates, use **Revoke** on the Certificates tab of the [PKI](../pki/) page, or a Block policy with
-**Also revoke their IEEE 802.1X certificates** there.
+To keep a camera out, add it to a **Block** policy on the [PKI](../pki/) page, or delete its certificate on the
+Certificates tab there: OADM no longer accepts a deleted certificate.
 
 ## Who gets onto the network
 
 OADM lets a camera in only when its certificate:
 
-- comes from a CA of an **802.1X trusted CA** policy on the PKI page (at the start the OADM CA with its previous CAs and
-  the Axis device ID), is valid now and is meant for network access,
+- comes from a CA of an **802.1X trusted CA** policy on the PKI page (at the start OADM Root CA and the Axis device ID),
+  or from a CA of OADM below such a CA, is valid now and is meant for network access,
 - names a device OADM manages (its `axis-<serial>.local` name or its Axis device ID), at a site a device of that site,
   unless the policy lets in any device with a valid certificate of that CA,
-- is not revoked, and no **Block** policy holds the device.
+- was not deleted or replaced in OADM, and no **Block** policy holds the device.
 
 A genuine Axis camera that OADM does not manage stays out. The name the camera sends before its certificate (the EAP
 identity) is shown, never trusted. A **VLAN** policy tells the switch which VLAN to put the camera in; a change applies at
@@ -131,8 +131,8 @@ it against the server first. So:
 
 - Turn 802.1X off on the switch ports, or test with one camera first, before you run Enable IEEE 802.1X, Renew
   certificates or Install certificates with a new policy or a new CA.
-- After **New OADM CA** the 802.1X server keeps its certificate from the previous CA. Choose a certificate of the new CA in
-  the 802.1X server policy before cameras get the new CA as RADIUS server CA (see
+- When you move to a new CA, the 802.1X server keeps its certificate from the old CA. Choose a certificate of the new
+  CA in the 802.1X server policy before cameras get the new CA as RADIUS server CA (see
   [Move to a new CA](../pki/#move-to-a-new-ca)).
 
 ## Users with a device group
@@ -147,7 +147,7 @@ with all devices change the settings, the switches and the list.
 | **The 802.1X server needs OADM PRO** | Start the 30-day trial there, or import a license in Settings > License. |
 | Status **The PKI has no certificate authority.** | Create or import a CA on the PKI page. |
 | Status **The 802.1X server has no certificate. Choose one in its policy.** | Choose a certificate with an ECC key in the 802.1X server policy on the PKI page's Policies tab. |
-| Status **The 802.1X server cannot use its certificate: ...** | The certificate ended, was revoked, was removed or its key cannot be read. Choose another one in the 802.1X server policy. |
+| Status **The 802.1X server cannot use its certificate: ...** | The certificate ended, was removed or its key cannot be read. Choose another one in the 802.1X server policy. |
 | Status **Port 1812 is used by another program** | Stop the other RADIUS server, or choose another port and change it on the switches. |
 | Switch shows **Wrong secret** | Enter the same shared secret on the switch and in OADM. |
 | Switch shows **No requests yet** | Check the switch's RADIUS server address and port, and that it reaches the OADM server. |
@@ -155,7 +155,7 @@ with all devices change the settings, the switches and the list.
 | **Certificate not issued by a trusted CA** | Add an 802.1X trusted CA policy for the CA of the camera's certificate. |
 | **Certificate of a device OADM does not manage** | Add the camera to OADM, or check that it is the right camera. |
 | **Client certificate expired** | Renew the certificate (Renew certificates on the Security menu, or Certificate enrollment). |
-| **Certificate revoked** | Give the camera a new certificate with Enable IEEE 802.1X or Certificate enrollment. |
+| **Certificate deleted in OADM**, **Certificate replaced by a newer certificate** | The camera uses a certificate OADM no longer accepts. Give it a new one with Enable IEEE 802.1X, Renew certificates or Certificate enrollment. |
 | **Blocked by** a policy | Remove the camera from the Block policy on the PKI page. |
 | **Too many sessions on the port** | Many devices tried to sign in on one port at once. Check what is plugged into that port. |
 | **Timed out** | The camera or the switch stopped answering. Check the cable, the switch port and its 802.1X settings. |

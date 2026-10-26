@@ -41,7 +41,7 @@ issued the 802.1X server's certificate. With another RADIUS server it is the CA 
 
 | Works without a license | Needs OADM PRO |
 |---|---|
-| The OADM CA, imported CAs, the Certificates tab | The [802.1X server](../radius-server/) |
+| The CAs and the Certificates tab | The [802.1X server](../radius-server/) |
 | Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the other tasks of the Security menu | The [EST server](../est-server/) and the **Certificate enrollment** task |
 | The policies HTTPS certificate, IEEE 802.1X certificate and Expiry warning | The server, 802.1X access and EST enrollment policies |
 
@@ -57,29 +57,40 @@ The tab has two lists, one above the other. Drag the bar between them to give on
 
 ### Certificate authorities
 
-On the first start OADM creates a CA named "OADM Root CA" plus the server's name, valid for 10 years. The list holds:
+On the first start OADM creates a root CA named "OADM Root CA" plus the server's name, valid for 10 years, with an RSA
+4096 key. The built-in policies use it. It is a CA like any other: you can replace it in the policies and delete it.
 
-| CA | Issues certificates | Where it comes from |
-|---|---|---|
-| **OADM CA** | Yes | Made by OADM. **New OADM CA** replaces it. |
-| **Previous OADM CA** | No | An OADM CA you replaced. Its certificates stay trusted until they end. |
-| **Axis device ID** | No | Built in: the CAs of the certificate Axis puts into every camera with AXIS Edge Vault. |
-| **Imported** | With its key: yes (**Can issue**) | **Import** > **CA certificate** or **CA with its key**. |
+Each row shows the name, **Root CA** or **Intermediate CA**, the issuer, the key and the date it is valid until. A CA
+without its key shows **No key** and cannot issue certificates. **Used in** names the policies that use a CA (point at
+it to see all). A root CA shows **OS root store: server** and **OS root store: client** once it is in the trusted root
+store of the server's computer and of your computer. The list also holds the CAs of the Axis device ID, the certificate
+Axis puts into every camera with AXIS Edge Vault.
 
-**Used in** names the policies that use a CA (point at it to see all). The OADM CA shows **OS root store: server** and
-**OS root store: client** once it is in the trusted root store of the server's computer and of your computer.
+**Create CA** makes a new CA:
+
+- **Name**: the name devices and browsers show for the CA.
+- **Type**: **Root CA (self-signed)** or **Intermediate CA**. An intermediate CA needs **Signed by**: a CA of the list
+  with its key. It ends at the latest with that CA.
+- **Key**: RSA 4096 (preset), ECC P-256, RSA 2048 or RSA 3072.
+- **Valid (years)**: 1 to 30.
+
+A new CA can issue at once: choose it as **Issued by** in a policy. Certificates of an intermediate CA go to the cameras
+with the CAs above it. Where a camera refuses that, it gets the certificate alone.
 
 Open a row's actions with **⋯** or a right click:
 
 - **View** shows the certificate.
 - **Export** saves the CA certificate as PEM (.crt) or DER (.cer).
-- **Install in trusted root store** (OADM CA) adds the OADM CA to the operating system of the server and of your
-  computer, so browsers and other programs trust your devices. OADM shows the CA's fingerprint to confirm first. On your
-  computer the system may ask for administrator rights.
-- **Back up** (OADM CA) saves the CA with its key as a file with a password of at least 8 characters.
-- **Remove** (red) removes an imported or previous CA. A CA that a policy uses cannot be removed: change the policy first.
+- **Install in trusted root store** (root CAs) adds the CA to the operating system of the server and of your computer,
+  so browsers and other programs trust your devices. OADM shows the CA's fingerprint to confirm first. On your computer
+  the system may ask for administrator rights.
+- **Back up** (CAs with their key) saves the CA with its key as a file with a password of at least 8 characters.
+- **Delete** (red) takes the CA out of the list. The certificates it issued stay in the list. A CA that a policy uses,
+  or that signed another CA in the list, cannot be deleted: change the policy or delete that CA first.
 
-**Import** adds a CA to the list. It never replaces the OADM CA.
+A CA whose stored data cannot be read shows **Cannot be read** and offers only **Delete**.
+
+**Import** adds a CA to the list. It never replaces another CA.
 
 - **CA certificate**: a root or intermediate certificate without its key. Use it to trust devices with its certificates
   on the network (802.1X trusted CA), or as the RADIUS server CA of another RADIUS server.
@@ -91,8 +102,8 @@ Open a row's actions with **⋯** or a right click:
 
 Every certificate OADM uses now: the servers' certificates, the certificates created, signed or imported here, and the
 current certificate of each camera for each use. Each row shows the name, its type as badges (HTTPS, IEEE 802.1X,
-Server, Signed, Imported), the issuer, the key and the date it is valid until. **Expires in 12 days**, **Expired** or
-**Revoked** next to the date says that it needs attention.
+Server, Signed, Imported), the issuer, the key and the date it is valid until. **Expires in 12 days** or **Expired** next
+to the date says that it needs attention.
 
 - **Group by** sorts the rows into groups by type, by the CA that issued them, or none. Filter by state and by the CA
   that issued them. **Search** finds text in every column, also a serial number.
@@ -104,22 +115,18 @@ Server, Signed, Imported), the issuer, the key and the date it is valid until. *
   stays on that system.
 - **Import**: a certificate (.crt, .cer, .pem), or a .pfx or .p12 file with its password.
 - Each row's **⋯**: **View**, **Export** (PEM, DER, and **With its key (.p12)** where OADM holds the key; never a CA key or a
-  camera's key), then in red **Revoke**, **Revoke all of this device** (camera certificates) and **Delete**. With several
-  rows chosen, the menu revokes or deletes all of them.
+  camera's key), then in red **Delete**. With several rows chosen, the menu deletes all of them.
 
-**Revoke** takes a certificate out of use: it no longer gets a camera onto the network through OADM's 802.1X server, and
-the camera cannot use it to renew. A revoked camera certificate leaves the list until the camera gets a new one.
-
-**Delete** removes a certificate from the list. A certificate created or signed here that is still valid is revoked
-first: the confirmation says so and its button reads **Revoke and delete**. A camera's certificate that is still valid
-must be revoked before you delete it. A certificate that the 802.1X or EST server
-shows cannot be deleted or revoked: choose another one in the server's policy first. A revocation stays in force.
+**Delete** removes a certificate from the list. A still valid certificate from a CA of OADM then no longer gets a camera
+onto the network through OADM's 802.1X server, and the camera cannot use it to renew ("Certificate deleted in OADM").
+The camera gets a new one with Enable IEEE 802.1X, Renew certificates or Certificate enrollment. A certificate that the
+802.1X or EST server shows cannot be deleted: choose another one in the server's policy first.
 
 ### Current and new certificates
 
 The list shows the certificate each camera uses now, not the history. When a camera gets a new certificate, the old one
-stays valid until the camera has the new one installed. Then OADM revokes the old one with the reason "Replaced by a
-newer certificate". A new IEEE 802.1X certificate from the EST server counts as installed once the camera signs in to
+stays valid until the camera has the new one installed. Then OADM no longer accepts the old one ("Certificate
+replaced by a newer certificate"). A new IEEE 802.1X certificate from the EST server counts as installed once the camera signs in to
 OADM's 802.1X server with it; with another RADIUS server the old certificate stays valid.
 
 A camera removed from OADM leaves the list. Its certificates stay valid. Added again, its certificates come back.
@@ -130,7 +137,8 @@ A camera removed from OADM leaves the list. Its certificates stay valid. Added a
 
 The Policies tab is one table, grouped into **Issuing policies**, **Server policies**, **802.1X access policies**,
 **EST enrollment policies** and **Expiry warnings**. Each row shows the name, the type and a summary sentence that says
-what the policy does, for example "The 802.1X server puts these devices in VLAN 30."
+what the policy does, for example "The 802.1X server puts these devices in VLAN 30." **N policies applied** on the
+802.1X or EST server tab opens this tab and highlights that server's policies for a few seconds.
 
 - **Built-in** marks the policies OADM needs. You can change their values but not delete them.
 - A red dot before a name says that the policy has a problem, for example a CA that can no longer issue. Point at it to
@@ -148,15 +156,15 @@ A server holds up to 200 policies. Changes apply at once. When another user chan
 
 | Kind | Fields | Devices |
 |---|---|---|
-| **HTTPS certificate** | **Issued by** (a CA with its key), **Valid (days)** (1 to 3,650), **Key** (ECC or RSA). Used by Enable HTTPS, Renew certificates and the EST profiles for HTTPS and RTSPS. | no |
+| **HTTPS certificate** | **Issued by** (a CA with its key), **Valid (days)** (1 to 3,650), **Key** (ECC P-256 or RSA 2048, made on the camera). Used by Enable HTTPS, Renew certificates and the EST profiles for HTTPS and RTSPS. | no |
 | **IEEE 802.1X certificate** | The same, plus **EAPOL version** (1, 2 or 3), **EAP identity** and **RADIUS server CA**. Used by Enable IEEE 802.1X, Renew certificates, Install certificates and the EST profiles for IEEE 802.1X and MQTT. | no |
 | **802.1X server** | **Certificate** (one of the Certificates tab with an ECC key), **Minimum TLS version** (1.0 to 1.3), **Largest EAP packet** (500 to 1,400 bytes) and **Reauthentication** (**Switch decides**, or every 10 to 1,440 minutes). One only. | no |
 | **EST server** | **Certificate** (one of the Certificates tab). One only. | no |
 | **802.1X trusted CA** | **CA**, and whether only devices OADM manages get in (default) or any device with a valid certificate of it. | no |
 | **VLAN** | **VLAN ID** (1 to 4094). The 802.1X server puts the devices in this VLAN. | yes |
-| **Block** | The 802.1X server refuses the devices, also with a valid certificate. With **Also revoke their IEEE 802.1X certificates** it revokes them too, and every new one while the policy exists (then only devices and sites, no tags). | yes |
+| **Block** | The 802.1X server refuses the devices, also with a valid certificate. | yes |
 | **Enrollment** | The EST profiles the devices may use: all, chosen ones, or none. The EST server refuses a camera no Enrollment policy holds. | yes |
-| **EST sign-in CA** | **CA** (the Axis device ID or an OADM CA) and **For** new certificates or renewals. Cameras may sign in to the EST server with certificates of this CA. **New certificates** lets them renew too. | no |
+| **EST sign-in CA** | **CA** (the Axis device ID or a CA created in OADM) and **For** new certificates or renewals. Cameras may sign in to the EST server with certificates of this CA. **New certificates** lets them renew too. | no |
 | **Expiry warning** | **Days before the end** (1 to 365). The certificates of the devices show **Expires soon** this many days before their end. | yes |
 
 The **EAP identity** is the name a camera gives the switch before its certificate: **MAC address**, **Host name**,
@@ -174,8 +182,8 @@ A new server starts with these:
 
 | Policy | Kind | Values |
 |---|---|---|
-| HTTPS | HTTPS certificate | OADM CA, 365 days, ECC |
-| IEEE 802.1X | IEEE 802.1X certificate | OADM CA, 365 days, ECC, EAPOL version 2, the IP address as EAP identity, RADIUS server CA the OADM CA |
+| HTTPS | HTTPS certificate | OADM Root CA, 365 days, ECC P-256 |
+| IEEE 802.1X | IEEE 802.1X certificate | OADM Root CA, 365 days, ECC P-256, EAPOL version 2, the IP address as EAP identity, RADIUS server CA OADM Root CA |
 | 802.1X server | 802.1X server | the shared certificate (see below), TLS 1.2, 1,020 bytes, Switch decides |
 | EST server | EST server | the shared certificate |
 | All devices | Expiry warning | 30 days |
@@ -185,15 +193,16 @@ And these, which you can delete:
 
 | Policy | Kind | Values |
 |---|---|---|
-| OADM CA | 802.1X trusted CA | the OADM CA and its previous CAs, only devices OADM manages |
+| OADM CA | 802.1X trusted CA | OADM Root CA, only devices OADM manages |
 | Axis device ID | 802.1X trusted CA | only devices OADM manages |
 | Axis device ID | EST sign-in CA | for new certificates |
-| OADM CA | EST sign-in CA | for renewals |
+| OADM Root CA and the server's name | EST sign-in CA | for renewals |
 
 After an update from OADM 4.1, HTTPS and IEEE 802.1X keep the values of the former cards and an RSA key, and the IEEE
 802.1X policy keeps its EAPOL version and EAP identity, so cameras get what they got before. EAPOL version 3 needs AXIS OS
 10.1 or later and ECC keys need AXIS OS 12: for older cameras, add a policy with RSA and EAPOL version 1 or 2 (see
-[Supported AXIS OS](../../tasks/certificates/#supported-axis-os)).
+[Supported AXIS OS](../../tasks/certificates/#supported-axis-os)). A CA replaced in an older OADM stays in the CA list
+as an ordinary CA and gets its own 802.1X trusted CA policy, so its cameras keep getting onto the network.
 
 ### When a device is in two policies
 
@@ -206,7 +215,6 @@ After an update from OADM 4.1, HTTPS and IEEE 802.1X keep the values of the form
 - The days of the expiry warning also count for the device list's **Certificate expires** column, the events
   **Certificate expires soon** and **Certificate expired** ([Event rules](../event-rules/)) and new checks on the
   [Compliance](../../devices/compliance/) page.
-- A Block policy that also revokes says how many certificates it revokes before you save. This cannot be undone.
 
 ## Server certificates
 
@@ -214,7 +222,7 @@ After an update from OADM 4.1, HTTPS and IEEE 802.1X keep the values of the form
 
 The 802.1X server and the EST server each show the certificate their policy names. When OADM PRO becomes active (a
 license or the trial) or when you turn a server on, OADM makes one certificate for both: **802.1X and EST server**, from
-the OADM CA, with an ECC key, valid for 10 years. It names the server's computer and its addresses and, while the EST server runs,
+OADM Root CA, with an ECC P-256 key, valid for 10 years. It names the server's computer and its addresses and, while the EST server runs,
 the addresses of your site nodes. The policy's **Certificate** field shows the names below it.
 
 This certificate never renews itself. The Expiry warning and the server's status remind you. To use another one:
@@ -241,7 +249,7 @@ RADIUS server CA: a certificate from another CA needs that CA on the cameras fir
 1. Select the cameras on the **Devices** page, for example all of one site. Right-click and open **Security** >
    **Enable HTTPS**.
 2. Choose the HTTPS certificate policy and click **Enable**. Each camera gets its own certificate.
-3. Optional: in the CA list choose **Install in trusted root store** on the OADM CA, so browsers on the server and on your
+3. Optional: in the CA list choose **Install in trusted root store** on the CA of the policy, so browsers on the server and on your
    computer trust the cameras.
 
 </Steps>
@@ -285,16 +293,17 @@ expiry warning and the event **Certificate expires soon** tell you when.
 
 <Steps>
 
-1. Click **New OADM CA** and fill in the dialog (1 to 30 years). The confirmation says how many devices have certificates
-   from the current CA, and which servers still show a certificate of it.
-2. Create a certificate for the 802.1X and EST server from the new CA (see [Server certificates](#server-certificates))
-   and choose it in their policies before cameras get the new CA.
-3. Run **Renew certificates** (or **Enable HTTPS** and **Enable IEEE 802.1X**) on the cameras.
+1. Click **Create CA** and fill in the dialog.
+2. With the 802.1X server: add an **802.1X trusted CA** policy for the new CA. Create a certificate for the 802.1X and
+   EST server from the new CA (see [Server certificates](#server-certificates)) and choose it in their policies before
+   cameras get the new CA.
+3. Choose the new CA as **Issued by** in the issuing policies, and as **RADIUS server CA** where it applies.
+4. Run **Renew certificates** (or **Enable HTTPS** and **Enable IEEE 802.1X**) on the cameras.
+5. Once no camera needs the old CA, change or delete the policies that still name it, then delete it.
 
 </Steps>
 
-The old CA stays in the list as a previous CA. Its certificates stay trusted until they end, so cameras keep working
-until they are renewed.
+The old CA stays in the list until you delete it, so cameras keep working until they are renewed.
 
 ## Use the certificates on devices
 
@@ -304,13 +313,13 @@ certificates and, with OADM PRO, Certificate enrollment. They need AXIS OS 6.53 
 [Certificates](../../tasks/certificates/) for each task and the supported AXIS OS versions.
 
 A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when a CA of the
-PKI page that can issue (or a previous OADM CA) issued it directly for the same camera.
+PKI page that can issue issued it directly for the same camera.
 
 ## Good to know
 
 <Aside type="caution">
-Keep a backup of the CA (**⋯** > **Back up** on the OADM CA, or a server backup). If the CA's key is lost, the page shows
-"CA key cannot be read" and you can only make or import a new CA.
+Keep a backup of your CAs (**⋯** > **Back up** on a CA, or a server backup). If a CA's key is lost, its row shows
+**Key cannot be read** and it can no longer issue: create or import another CA.
 </Aside>
 
 - Everything on the PKI page except viewing it needs the permission **Manage the certificate authority** and access to

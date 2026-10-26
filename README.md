@@ -106,7 +106,7 @@ holds the port (for example Windows Time on 123), the plugin's page says so and 
 The data folder holds the database, the plugin settings (including the PKI's certificate authority) and `master.key`,
 which encrypts all stored passwords. Back up the server with **Settings > Backup and restore**: one password-protected
 file with the devices, passwords, users, settings and plugin data, also every day automatically. A backup restores on
-another computer too. The PKI page can also back up the CA on its own.
+another computer too. The PKI page can also back up each CA with its key on its own.
 
 ## Logs and troubleshooting
 

@@ -21,12 +21,12 @@ Every certificate task needs AXIS OS 6.53 or later. Other devices show the entri
 
 | AXIS OS | HTTPS | IEEE 802.1X | Keys |
 |---|---|---|---|
-| 12.x | Yes | Yes, EAPOL version 1, 2 or 3 | ECC or RSA |
-| 10.1 to 11.11 | Yes | Yes, EAPOL version 1, 2 or 3 | RSA |
-| 6.53 to 10.0 | Yes | Yes, EAPOL version 1 or 2 | RSA |
+| 12.x | Yes | Yes, EAPOL version 1, 2 or 3 | ECC P-256 or RSA 2048 |
+| 10.1 to 11.11 | Yes | Yes, EAPOL version 1, 2 or 3 | RSA 2048 |
+| 6.53 to 10.0 | Yes | Yes, EAPOL version 1 or 2 | RSA 2048 |
 
 On AXIS OS before 12, choose policies with an RSA key. Before 10.1, choose an IEEE 802.1X policy with EAPOL version 1
-or 2. A new server's built-in policies use ECC and EAPOL version 2: add a policy with RSA for older devices on the PKI
+or 2. A new server's built-in policies use ECC P-256 and EAPOL version 2: add a policy with RSA for older devices on the PKI
 page. A device that cannot use the chosen policy is not changed. Enrollment on the [EST server](../../tools/est-server/)
 needs AXIS OS 12.10 or later.
 
@@ -36,10 +36,11 @@ needs AXIS OS 12.10 or later.
 of the [PKI](../../tools/pki/) page, the first one is chosen) and below it what the policy issues: the CA, the days and
 the key. To change these values, change the policy or choose another one. Then:
 
-1. The device creates a key of the policy's kind (ECC or RSA). The private key never leaves the device. A device that
+1. The device creates a key of the policy's kind (ECC P-256 or RSA 2048). The private key never leaves the device. A device that
    cannot create that key is not changed.
 2. OADM signs the request with the policy's CA, with the device's IP addresses and host names.
-3. OADM installs the certificate, switches the web server to it (HTTP only becomes HTTP and HTTPS) and connects again
+3. OADM installs the certificate (from an intermediate CA with the CAs above it; a device that refuses them gets the
+   certificate alone), switches the web server to it (HTTP only becomes HTTP and HTTPS) and connects again
    over HTTPS.
 4. Older OADM certificates that nothing uses any more are removed.
 
@@ -118,7 +119,7 @@ A device without a matching file ends with a warning and nothing is sent.
 ## Install CA certificates
 
 **Install CA certificates** installs one or more CA certificates on many devices, for example of a RADIUS server or a
-video management system. It does not need the OADM CA.
+video management system. It does not need a CA of the PKI page.
 
 <Image src={shot} alt="The Install CA certificates dialog with three certificates" class="screen" />
 

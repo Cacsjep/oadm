@@ -7,9 +7,9 @@ import { Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/sites-page.png';
 
-The **Sites** page (navigation rail, below Compliance) lists every site with its state, node address, devices, response
-time, connections, ports waiting for approval in the node app, running uploads and downloads, version and when it
-was last seen. Everyone with **See sites** sees it; changes are for
+The **Sites** page (navigation rail, below Compliance) lists every site with its state, node address, connections, ports
+waiting for approval in the node app, running uploads and downloads, version and when it was last seen. The line above
+the list counts the sites, how many are online and how many nodes wait to be bound. Everyone with **See sites** sees it; changes are for
 administrators.
 
 <Image src={shot} alt="The Sites page with an online site, an offline site and a node waiting to be bound" class="screen" />
