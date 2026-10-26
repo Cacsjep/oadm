@@ -40,9 +40,6 @@ public sealed class PkiOptions
     /// <summary>The pass runs again this long after a round that reached no device (all offline, or the list not read yet).</summary>
     public TimeSpan ExistingImportRetry { get; init; } = TimeSpan.FromHours(1);
 
-    /// <summary>Revoke all of this device reads the device's certificate list for at most this long first.</summary>
-    public TimeSpan DeviceReadTimeout { get; init; } = TimeSpan.FromSeconds(20);
-
     /// <summary>
     /// How long a device must keep answering over HTTP after Disable HTTPS before Verify passes (its web server restarts a
     /// few seconds after the change; <see cref="Tasks.CertificateDeployment.FollowWebServerAsync"/>).

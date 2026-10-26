@@ -76,16 +76,6 @@ public static class PolicyRules
             {
                 return new(PolicyFields.Devices, PolicyTexts.ChooseDevices);
             }
-
-            if (policy.Devices.AllDevices && Revokes(policy))
-            {
-                return new(PolicyFields.Devices, PolicyTexts.RevokeNoAll);
-            }
-
-            if (Revokes(policy) && (policy.Devices.Tags?.Any(t => !string.IsNullOrWhiteSpace(t)) ?? false))
-            {
-                return new(PolicyFields.Devices, PolicyTexts.RevokeNoTags);
-            }
         }
 
         return null;
@@ -112,18 +102,6 @@ public static class PolicyRules
         return policy.ReauthMinutes is { } minutes && minutes is < PolicyLimits.MinReauthMinutes or > PolicyLimits.MaxReauthMinutes
             ? new(PolicyFields.ReauthMinutes, PolicyTexts.ReauthRange)
             : null;
-    }
-
-    /// <summary>
-    /// Whether a policy revokes certificates: never any more (decision 2026-10-26: no revoke anywhere; a Block policy only
-    /// refuses its devices, a stored "Also revoke" of before is no longer read). Kept so the callers stay one place.
-    /// </summary>
-#pragma warning disable IDE0060 // The policy stays in the signature for the callers.
-    public static bool Revokes(PkiPolicy policy)
-#pragma warning restore IDE0060
-    {
-        ArgumentNullException.ThrowIfNull(policy);
-        return false;
     }
 
     /// <summary>
@@ -298,7 +276,7 @@ public sealed class PolicyMatcher
     private readonly HashSet<string> _except;
 
     /// <param name="devices">The chosen sites, tags and devices.</param>
-    /// <param name="useTags">False: the tags match no device (Revoke, or tags the host does not protect).</param>
+    /// <param name="useTags">False: the tags match no device (tags the host does not protect).</param>
     public PolicyMatcher(PolicyDevices? devices, bool useTags = true)
     {
         devices ??= new PolicyDevices();
@@ -313,13 +291,12 @@ public sealed class PolicyMatcher
     }
 
     /// <summary>
-    /// The matcher of <paramref name="policy"/>: a Block that also revokes never by tag; VLAN and Enrollment by tag only while
-    /// the host protects the tags.
+    /// The matcher of <paramref name="policy"/>: VLAN and Enrollment by tag only while the host protects the tags.
     /// </summary>
     public static PolicyMatcher Of(PkiPolicy policy, bool tagsProtected = true)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return new PolicyMatcher(policy.Devices, !PolicyRules.Revokes(policy) && (tagsProtected || !PolicyKinds.GrantsByTag(policy.Kind)));
+        return new PolicyMatcher(policy.Devices, tagsProtected || !PolicyKinds.GrantsByTag(policy.Kind));
     }
 
     /// <summary>"All devices": holds every device, also one OADM does not manage.</summary>

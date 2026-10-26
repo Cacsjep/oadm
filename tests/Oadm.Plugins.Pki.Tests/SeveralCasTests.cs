@@ -153,7 +153,7 @@ public sealed class SeveralCasTests
         using var elsewhere = TestCa.Leaf(intermediate);
         Assert.Null(await current.CurrentCameraAsync(elsewhere.RawData, CancellationToken.None));
 
-        // A newer one became current: the older one no longer names the camera (it is revoked as replaced).
+        // A newer one became current: the older one no longer names the camera (it is no longer accepted as replaced).
         var second = await authority.SignAsync(request, CancellationToken.None);
         await authority.DeliveredAsync(second.SerialNumber, CancellationToken.None);
         Assert.Null(await current.CurrentCameraAsync(first.Certificate, CancellationToken.None));

@@ -591,7 +591,7 @@ public sealed class TaskTests : IAsyncLifetime
         _ca.ServerIssuer = null;
         _ca.Revoke(_ca.ServerSerial());
         var revoked = await Assert.ThrowsAsync<InvalidOperationException>(() => task.ExecuteAsync(Context(), _device, "{}", CancellationToken.None));
-        Assert.Equal("The EST server cannot use its certificate: it is revoked. Nothing was changed.", revoked.Message);
+        Assert.Equal("The EST server cannot use its certificate: it is no longer accepted. Nothing was changed.", revoked.Message);
         Assert.Equal(0, _camera.Writes);
         Assert.Empty(_camera.Profiles);
     }

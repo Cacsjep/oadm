@@ -4,14 +4,13 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.Radius.Server;
 
 /// <summary>
-/// PKI's VLAN, Block and Revoke policies compiled for the certificate check (docs/spec/pki.md "Policies"): of the VLAN
+/// PKI's VLAN and Block policies compiled for the certificate check (docs/spec/pki.md "Policies"): of the VLAN
 /// policies that hold a device the oldest gives its VLAN, none gives no VLAN (the switch port keeps its own; there is no
-/// default VLAN); any Block or Revoke policy that holds it refuses it (Block over VLAN), a Revoke policy also revokes its
-/// certificate. A device OADM does not manage (a certificate of an Allow CA for any device) is held only by "All devices"
+/// default VLAN); any Block policy that holds it refuses it (Block over VLAN). A device OADM does not manage (a certificate of an Allow CA for any device) is held only by "All devices"
 /// policies (<see cref="PolicyDevices.AllDevices"/>): their VLAN, their Block. Immutable; a change of the policies builds a new one before the next handshake. The tag parts of VLAN
 /// policies apply only while the host protects the tags (<see cref="IProtectedTags"/>); without it they match no device
 /// (fail closed: a group user could tag a device into a VLAN). Block policies keep their tag parts (fail closed the other
-/// way). Revoke policies never match by tag: a tag could revoke the certificates of every device that gets it later.
+/// way).
 /// </summary>
 public sealed class PolicyPlan
 {
@@ -25,9 +24,7 @@ public sealed class PolicyPlan
         ArgumentNullException.ThrowIfNull(policies);
         var list = policies.Where(p => p is not null).ToList();
         _vlans = [.. list.Where(p => p.Kind == PolicyKinds.Vlan && p.Vlan is >= 1 and <= 4094).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
-        _refusals = [.. list.Where(p => p.Kind == PolicyKinds.Block).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];
-        RevokePolicies = [.. list.Where(PolicyRules.Revokes)];
-    }
+        _refusals = [.. list.Where(p => p.Kind == PolicyKinds.Block).Select(p => (p, PolicyMatcher.Of(p, tagsProtected)))];    }
 
     private PolicyPlan(string reason)
         : this([])
@@ -51,8 +48,6 @@ public sealed class PolicyPlan
     /// <summary>The refusal of every device while <see cref="IsUnavailable"/> (the Log's reason).</summary>
     public string? UnavailableReason { get; }
 
-    public IReadOnlyList<PkiPolicy> RevokePolicies { get; }
-
     /// <summary>
     /// The VLAN of <paramref name="device"/> and the policy that gives it; (null, null) for none. A device OADM does not manage
     /// (null) gets the VLAN of the oldest "All devices" VLAN policy.
@@ -71,7 +66,7 @@ public sealed class PolicyPlan
     }
 
     /// <summary>
-    /// The oldest Block policy (with or without Also revoke) that holds <paramref name="device"/>, null when none does. A device OADM does not
+    /// The oldest Block policy that holds <paramref name="device"/>, null when none does. A device OADM does not
     /// manage (null): the oldest "All devices" Block policy.
     /// </summary>
     public PkiPolicy? RefusalFor(IDeviceInfo? device)

@@ -114,7 +114,7 @@ internal sealed class FakeAuthority : IDeviceCertificateAuthority, Oadm.Plugins.
             using var leaf = X509CertificateLoader.LoadCertificate(_server.Leaf);
             if (IsRevoked(leaf.SerialNumber))
             {
-                return new(null, "The EST server cannot use its certificate: it is revoked."); // as PKI says it
+                return new(null, "The EST server cannot use its certificate: it is no longer accepted."); // as PKI says it
             }
 
             return new(_server with { Pkcs8 = (byte[])_server.Pkcs8.Clone(), IssuerChain = ServerIssuerChain(kind) }, null); // the reader clears its copy of the key

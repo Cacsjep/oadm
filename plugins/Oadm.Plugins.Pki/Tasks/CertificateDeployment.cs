@@ -410,8 +410,8 @@ public static class CertificateDeployment
 
     /// <summary>
     /// Enable HTTPS or Renew did not verify the new certificate. Before the switch request was sent
-    /// (<paramref name="switching"/> false) it is revoked as unused. After it, the web server may present it after a slow
-    /// restart or an answer lost after the device applied it: it is revoked only when a read of the web server settings shows
+    /// (<paramref name="switching"/> false) it is no longer accepted as unused. After it, the web server may present it after a
+    /// slow restart or an answer lost after the device applied it: it is no longer accepted only when a read of the web server settings shows
     /// another certificate; otherwise it stays pending (delivered) and the previous one stays valid. Never throws.
     /// </summary>
     public static async Task HttpsNotVerifiedAsync(ITaskExecutionContext ctx, PkiService service, IssuedOnDevice issued, bool switching)

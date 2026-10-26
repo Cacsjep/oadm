@@ -226,16 +226,13 @@ public static class CertificateRules
         return (ips, dns, null);
     }
 
-    /// <summary>"The certificate of 10.0.0.48 is still valid. Revoke it first." (Delete of a device certificate).</summary>
-    public static string StillValid(string name) => $"The certificate of {name} is still valid. Revoke it first.";
-
     /// <summary>"Used by the 802.1X server." (Delete of a server certificate in use).</summary>
     public static string UsedBy(string server) => $"Used by the {server}.";
 
     /// <summary>A certificate a server policy shows (decision 2026-10-25).</summary>
     public static string UsedByPolicy(string policy) => $"Used by the policy {policy}. Pick another certificate first.";
 
-    public const string RemoveCaThere = "Remove CAs in Certificate authorities.";
+    public const string RemoveCaThere = "Delete CAs in Certificate authorities.";
 
     public const string NothingDeleted = " Nothing was deleted.";
 

@@ -365,7 +365,7 @@ each stay fast. The full management view of PKI: two cards of the shared `ui:Iss
     cannot be undone." / "They leave the list. ...", red Delete; all or none, the first refusal says why): every device
     certificate, created and signed ones no server policy shows, imported ones nothing uses or that ended, ended server
     certificates. Refused for a certificate a server policy shows ("Used by the policy 802.1X server. Pick another
-    certificate first.") and for a CA ("Remove CAs in Certificate authorities."). A still valid one OADM issued (a device
+    certificate first.") and for a CA ("Delete CAs in Certificate authorities."). A still valid one OADM issued (a device
     certificate, a created or signed one) goes on PKI's internal list of certificates **no longer accepted** (see
     "Current and pending"), so a copy left on a camera or elsewhere is refused by the 802.1X and EST servers ("Certificate
     deleted in OADM") until it ends; the server log says "PKI: N still valid certificates deleted by <user> are no longer
@@ -943,8 +943,8 @@ the reason picker, the Revoked state and Block's Also revoke. The rules are in "
   feeds Create CA's Signed by.
 - **Policies** (`Policies/PolicyStore`): `CaChoices` lists every CA (no `PreviousCount`), `UsingCa(id)` has no kind (no CA
   follows another), the RADIUS server CA and 802.1X trusted CA may name a previous OADM CA. `DefaultCaPending` and
-  `CreatedCas` come from PKI. `IssuingCaName` is "OADM Root CA" while the first-start CA is made. `PolicyRules.Revokes` is
-  always false and `Normalize` drops `AlsoRevoke`; `PolicyMethods.CountRevocations` and the revoke round are gone.
+  `CreatedCas` come from PKI. `IssuingCaName` is "OADM Root CA" while the first-start CA is made. `PolicyRules.Revokes`,
+  the "Also revoke" rules and texts, `PolicyMethods.CountRevocations` and the revoke round are gone; `Normalize` drops `AlsoRevoke`.
 - **Certificates** (`PkiService.CertificateActions.cs`, `PkiService.CertificateList.cs`, `Ca/IssuedRegistry`): Delete puts
   still valid OADM certificates on the list of certificates no longer accepted (`IssuedRegistry.RevokeAsync`, reason
   Other, by the user) and deletes the rest; the list (`currentOnly`) leaves out whatever is on that list; server and local
@@ -1027,7 +1027,7 @@ policies and are checked against the trusted / sign-in CA policies, the two are 
   certificate (`PkiService.ServerIssuerChain`; `cacerts` is the profile's issuing CA's chain); the IEEE 802.1X policy
   names its RADIUS server CA itself (see "RADIUS server CA").
 - **Status** of a server without a usable certificate: "The 802.1X server has no certificate. Choose one in its policy.",
-  or "The EST server cannot use its certificate: it has ended." (also "it is no longer in the Certificates list.", "it is revoked." for one on the list of
+  or "The EST server cannot use its certificate: it has ended." (also "it is no longer in the Certificates list.", "it is no longer accepted." for one on the list of
   certificates no longer accepted, "its key cannot be read.").
 
 ## Older AXIS OS (decisions 2026-10-25)

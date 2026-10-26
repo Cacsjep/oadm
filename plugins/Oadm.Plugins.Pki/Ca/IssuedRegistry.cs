@@ -701,7 +701,7 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
         return new RevokeResult(revoked, already, missing);
     }
 
-    /// <summary>The serials of a device's certificates that are still valid and not revoked (Revoke all of this device).</summary>
+    /// <summary>The serials of a device's certificates that are still valid and still accepted.</summary>
     public IReadOnlyList<string> RevocableOf(Guid deviceId)
     {
         var now = Now;
@@ -714,8 +714,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
     }
 
     /// <summary>
-    /// The serials of a camera's certificates (by its device id and its serial) that are still valid and not revoked: Revoke
-    /// all of this device and the Revoke policies, also for a camera added again.
+    /// The serials of a camera's certificates (by its device id and its serial) that are still valid and still accepted, also
+    /// for a camera added again.
     /// </summary>
     public IReadOnlyList<string> RevocableOf(IDeviceInfo device)
     {

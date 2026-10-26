@@ -842,9 +842,7 @@ public sealed partial class PolicyStore : IDisposable
                 ? $"The 802.1X server lets in devices OADM manages that have a certificate from {ca}."
                 : $"The 802.1X server lets in any device with a valid certificate from {ca}.",
             PolicyKinds.Vlan => string.Create(CultureInfo.InvariantCulture, $"The 802.1X server puts these devices in VLAN {policy.Vlan}."),
-            PolicyKinds.Block => PolicyRules.Revokes(policy)
-                ? "The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too."
-                : "The 802.1X server refuses these devices.",
+            PolicyKinds.Block => "The 802.1X server refuses these devices.",
             PolicyKinds.Enrollment => PolicyTexts.EnrollmentSentence(policy),
             PolicyKinds.SignInCa => SignInSentence(policy, caNames),
             _ => PolicyKinds.Name(policy.Kind),
@@ -991,7 +989,6 @@ public sealed partial class PolicyStore : IDisposable
         PolicyKinds.Vlan => older,
         PolicyKinds.ExpiryWarning => (newer.Days ?? 0) > (older.Days ?? 0) ? newer : older,
         PolicyKinds.Enrollment => Narrower(older, newer),
-        PolicyKinds.Block => PolicyRules.Revokes(older) == PolicyRules.Revokes(newer) ? null : PolicyRules.Revokes(older) ? older : newer, // both refuse; the one that revokes does more
         _ => null,
     };
 
@@ -1160,9 +1157,9 @@ public sealed partial class PolicyStore : IDisposable
         _snapshot = new Snapshot(stored, _snapshot.Version + 1, TagsProtected);
     }
 
-    /// <summary>The tags of the policies are protected (a Block that also revokes never matches by tag).</summary>
+    /// <summary>The tags of the policies are protected.</summary>
     private void Protect(IEnumerable<PkiPolicy> policies) =>
-        _protectedTags?.Protect(PolicyMatcher.TagsOf(policies.Where(p => !PolicyRules.Revokes(p))), PolicyTexts.TagRefusal, PolicyTexts.TagChangeRefusal);
+        _protectedTags?.Protect(PolicyMatcher.TagsOf(policies), PolicyTexts.TagRefusal, PolicyTexts.TagChangeRefusal);
 
     public void Dispose() => _gate.Dispose();
 

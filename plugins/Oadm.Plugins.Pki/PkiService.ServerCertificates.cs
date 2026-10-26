@@ -322,7 +322,7 @@ public sealed partial class PkiService
 
         if (_issued.IsRevoked(local.Serial))
         {
-            return new(null, PolicyTexts.ServerCertificateUnusable(server, "it is revoked."));
+            return new(null, PolicyTexts.ServerCertificateUnusable(server, "it is no longer accepted."));
         }
 
         if (_local.KeyOf(local) is not { } pkcs8)

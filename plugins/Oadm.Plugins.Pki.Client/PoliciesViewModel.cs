@@ -837,10 +837,9 @@ public sealed partial class EnrollmentProfileViewModel(string name, bool isCheck
 /// <summary>
 /// The policy form in the side panel of the Policies tab (docs/spec/pki.md "Policies", decision 2026-10-25): the name and the
 /// kind's own fields (the kind is preset by Add; a policy keeps its kind), and where the kind has devices "All devices" or
-/// the shared device picker in its group mode behind Choose devices (sites with "This server", tags, single devices, Except;
-/// a Block that also revokes without tags). Save sends the policy (a new one at once, a stored one only with changes, the
-/// status left of Save); a Block policy that newly revokes or whose devices changed asks first with the count of
-/// certificates it revokes. Errors directly below the fields. A system policy (<see cref="IsInPlace"/>) keeps its name and
+/// the shared device picker in its group mode behind Choose devices (sites with "This server", tags, single devices, Except).
+/// Save sends the policy (a new one at once, a stored one only with changes, the status left of Save). Errors directly below
+/// the fields. A system policy (<see cref="IsInPlace"/>) keeps its name and
 /// devices and has no Delete.
 /// </summary>
 public sealed partial class PolicyEditorViewModel : ValidatingViewModel

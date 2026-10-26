@@ -120,7 +120,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     /// <summary>Why Save is off, for its tooltip.</summary>
     public string? SaveTip => Settings.FormError;
 
-    /// <summary>"6 policies apply": PKI's policies the server applies (802.1X server, Allow CA, VLAN, Block, Revoke).</summary>
+    /// <summary>"6 policies apply": PKI's policies the server applies (802.1X server, Allow CA, VLAN, Block).</summary>
     [ObservableProperty]
     public partial string PoliciesText { get; set; } = string.Empty;
 

@@ -172,7 +172,7 @@ public sealed record RadiusState
 
     public RadiusSettings Settings { get; init; } = new();
 
-    /// <summary>The policies of PKI the server applies (802.1X server, Allow CA, VLAN, Block, Revoke): "6 policies apply".</summary>
+    /// <summary>The policies of PKI the server applies (802.1X server, Allow CA, VLAN, Block): "6 policies apply".</summary>
     public int PoliciesApply { get; init; }
 
     /// <summary>Those policies' names and summaries: the tooltip of "6 policies applied".</summary>

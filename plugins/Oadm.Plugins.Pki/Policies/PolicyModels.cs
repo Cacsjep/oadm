@@ -17,7 +17,7 @@ public static class PolicyGroups
     public const string Dot1x = "dot1x";
     public const string Est = "est";
 
-    /// <summary>The groups in their order (decision 2026-10-25: Revoke is part of Block, its group is gone).</summary>
+    /// <summary>The groups in their order (decision 2026-10-25: the Revoke group is gone).</summary>
     public static IReadOnlyList<string> Shown { get; } = [All, Issuing, Certificates, Dot1x, Est];
 
     /// <summary>"All", "Issuing", "Certificates", "802.1X", "EST".</summary>
@@ -60,12 +60,11 @@ public static class PolicyKinds
     public const string Vlan = "vlan";
 
     /// <summary>
-    /// The 802.1X server refuses the devices; with <see cref="PkiPolicy.AlsoRevoke"/> their IEEE 802.1X certificates are
-    /// revoked too (on save and every new one while it exists).
+    /// The 802.1X server refuses the devices.
     /// </summary>
     public const string Block = "block";
 
-    /// <summary>Before 2026-10-25: the IEEE 802.1X certificates of the devices are revoked. Converted once into Block with Also revoke.</summary>
+    /// <summary>Before 2026-10-25: the IEEE 802.1X certificates of the devices are revoked. Converted once into Block.</summary>
     public const string LegacyRevoke = "revoke";
 
     /// <summary>The certificates of the devices count as "expires soon" this many days before their end.</summary>
@@ -133,8 +132,7 @@ public static class PolicyKinds
 
     /// <summary>
     /// The kind may hold "All devices" (<see cref="PolicyDevices.AllDevices"/>): every device, also of sites added later and,
-    /// for the 802.1X kinds, devices OADM does not manage. A Block policy that also revokes never does
-    /// (<see cref="PolicyRules.Revokes"/>: it would revoke every device's certificate).
+    /// for the 802.1X kinds, devices OADM does not manage.
     /// </summary>
     public static bool AllowsAllDevices(string kind) => HasDevices(kind);
 
@@ -367,7 +365,7 @@ public sealed record PkiPolicy
     /// </summary>
     public string? CertificateId { get; init; }
 
-    /// <summary>Block: also revoke the IEEE 802.1X certificates of its devices (on save and every new one while it exists); then no tags and no "All devices".</summary>
+    /// <summary>Block of before 2026-10-26: "Also revoke" (read only by the conversion, dropped on save; nothing is revoked).</summary>
     public bool? AlsoRevoke { get; init; }
 
     /// <summary>802.1X trusted CA: only certificates that name a device OADM manages pass (default); false: any valid certificate of the CA.</summary>
@@ -427,7 +425,7 @@ public sealed record PkiPolicy
     /// <summary>EST sign-in CA: new certificates or renewals (<see cref="PolicySignIn"/>).</summary>
     public string? SignInFor { get; init; }
 
-    /// <summary>Set by PKI: who saved it last (the user of a Block policy that also revokes's later revocations).</summary>
+    /// <summary>Set by PKI: who saved it last (the audit).</summary>
     public string? SavedBy { get; init; }
 
     /// <summary>
@@ -539,9 +537,6 @@ public sealed record PolicySaveReply
 /// <summary>The id of a policy (<see cref="PolicyMethods.DeletePolicy"/>).</summary>
 public sealed record PolicyRef(Guid Id);
 
-/// <summary>The answer of <see cref="PolicyMethods.CountRevocations"/>.</summary>
-public sealed record PolicyRevocationCount(int Count);
-
 /// <summary>The page methods of the policies (PKI's <c>InvokeAsync</c>).</summary>
 public static class PolicyMethods
 {
@@ -553,9 +548,6 @@ public static class PolicyMethods
 
     /// <summary><see cref="PolicyRef"/> -> <see cref="PolicySaveReply"/>. "Manage the certificate authority", all devices, audited.</summary>
     public const string DeletePolicy = "deletePolicy";
-
-    /// <summary><see cref="PolicyDevices"/> -> <see cref="PolicyRevocationCount"/>: the IEEE 802.1X certificates a Block policy that also revokes would revoke now.</summary>
-    public const string CountRevocations = "countRevocations";
 
     /// <summary>Event (payload <c>{}</c>): the policies changed; pages read them again.</summary>
     public const string Topic = "policies";
@@ -585,7 +577,6 @@ public static class PolicyFields
     public const string ProfileScope = "profileScope";
     public const string Profiles = "profiles";
     public const string SignInFor = "signInFor";
-    public const string AlsoRevoke = "alsoRevoke";
 
     /// <summary>A refusal of the whole policy, of no field (the page shows it in a message).</summary>
     public const string Policy = "policy";
@@ -598,11 +589,6 @@ public static class PolicyTexts
     public const string NameTooLong = "Use at most 64 characters.";
     public const string ChooseKind = "Choose a kind.";
     public const string ChooseDevices = "Choose sites, tags or devices.";
-    public const string RevokeNoTags = "To also revoke, choose devices and sites, not tags.";
-    public const string RevokeNoAll = "To also revoke, choose devices and sites, not all devices.";
-
-    /// <summary>The check box of a Block policy (decision 2026-10-25: Revoke is part of Block).</summary>
-    public const string AlsoRevoke = "Also revoke their IEEE 802.1X certificates";
     public const string SiteGone = "This site no longer exists.";
     public const string PolicyGone = "This policy no longer exists.";
 

@@ -2066,11 +2066,8 @@ public static class RadiusTexts
     public const string HostNameUnknown = "The server cannot find this host name.";
     public const string NoSecretStore = "This server cannot keep shared secrets.";
     public const string LogEntryGone = "This log entry is no longer kept.";
-    public const string RevokeCount = "Choose 1 to 5,000 certificates.";
-    public const string ChooseReason = "Choose a reason.";
     public const string NotRunning = "The 802.1X server is not running.";
     public const string CertificateGone = Oadm.Sdk.Certificates.IssuedCertificateMessages.NotListed;
-    public const string OnlyDot1x = "Only IEEE 802.1X certificates can be revoked here.";
 
     /// <summary>The plugin id of PKI (its policies and its page).</summary>
     public const string PkiPluginId = "oadm.pki";
