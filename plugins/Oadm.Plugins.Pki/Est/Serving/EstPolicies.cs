@@ -138,7 +138,8 @@ public static partial class EstPolicies
             var axis = ca.Kind == CertificateAuthorityKind.AxisDeviceId;
             list.Add(new PkiPolicy
             {
-                Name = axis ? PolicyStore.AxisDeviceIdName : ca.Kind == CertificateAuthorityKind.Oadm ? PolicyStore.IssuingCaName : ca.Name,
+                // The CA's real name (decision 2026-10-26, "OADM Root CA SERVER01"); the choice names a CA without one.
+                Name = axis ? PolicyStore.AxisDeviceIdName : ca.Name,
                 Kind = PolicyKinds.SignInCa,
                 CaId = ca.Id,
                 SignInFor = axis ? PolicySignIn.New : PolicySignIn.Renewal,
