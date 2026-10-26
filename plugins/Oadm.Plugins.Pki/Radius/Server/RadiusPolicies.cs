@@ -8,7 +8,7 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Radius.Server;
 
-/// <summary>A CA the 802.1X server trusts, from an Allow CA policy (previous OADM CAs follow the OADM CA).</summary>
+/// <summary>A CA the 802.1X server trusts, from an Allow CA policy.</summary>
 public sealed record TrustedCaChoice(string Id, bool OnlyManaged = true);
 
 /// <summary>The CAs the 802.1X server trusts now (the Allow CA policies of PKI); a CA left out is not trusted.</summary>
@@ -210,7 +210,7 @@ public static class RadiusPolicies
         return string.IsNullOrWhiteSpace(name) ? id : name.Trim();
     }
 
-    /// <summary>The default Allow CA policies of a new server: the OADM CA (with its previous ones) and the Axis device ID, both only managed.</summary>
+    /// <summary>The default Allow CA policies of a new server: the first-start root CA and the Axis device ID, both only managed.</summary>
     public static IReadOnlyList<PkiPolicy> DefaultAllowCaPolicies() =>
     [
         new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId, OnlyManaged = true },

@@ -191,6 +191,7 @@ public sealed partial class PkiService : IAsyncDisposable
         {
             LogNoSecrets();
             await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
+            await Policies.ConvertPreviousCasOnceAsync(ct).ConfigureAwait(false);
             return;
         }
 
@@ -230,6 +231,10 @@ public sealed partial class PkiService : IAsyncDisposable
         // Only once every CA is loaded (the OADM CA, the previous and the imported ones): the conversion matches PEMs against
         // the list and may add an imported CA, which saves the whole list of imported CAs.
         await ConvertRadiusCasAsync(ct).ConfigureAwait(false);
+
+        // Previous OADM CAs are ordinary CAs (decision 2026-10-26): their own 802.1X trusted CA policies, once. On a server
+        // whose 802.1X server has not converted yet, its start does it right after that conversion.
+        await Policies.ConvertPreviousCasOnceAsync(ct).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()

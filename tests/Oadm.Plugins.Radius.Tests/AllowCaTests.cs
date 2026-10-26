@@ -29,7 +29,7 @@ public sealed class AllowCaTests
     }
 
     [Fact]
-    public async Task TheOadmCaWithItsPreviousOnesAndTheAxisDeviceIdAreAllowedByDefault()
+    public async Task TheOadmCaAndTheAxisDeviceIdAreAllowedByDefaultAndAPreviousOadmCaOnlyWithItsOwnPolicy()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         using var previous = new TestAuthority("Previous OADM CA");
@@ -38,6 +38,10 @@ public sealed class AllowCaTests
 
         Assert.Equal([CertificateAuthorityInfo.OadmId, CertificateAuthorityInfo.AxisDeviceIdId], harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Select(p => p.CaId));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
+
+        // Decision 2026-10-26: a previous OADM CA is an ordinary CA, it no longer follows the OADM CA's policy.
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, previous.Camera(Serial)))).Final);
+        await harness.SetAllowCasAsync((CertificateAuthorityInfo.OadmId, true), (CertificateAuthorityInfo.AxisDeviceIdId, true), (CaTrust.PreviousId(previous.CaCertificate), true));
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, previous.Camera(Serial)))).Final);
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
         Assert.Empty(harness.Ca.UsedBy); // PKI knows its own policies: the 802.1X server tells it nothing
@@ -53,7 +57,7 @@ public sealed class AllowCaTests
         var loose = new TrustedCaChoice(CertificateAuthorityInfo.OadmId, OnlyManaged: false);
         var strict = new TrustedCaChoice("OADM", OnlyManaged: true);
         Assert.True(CaTrust.Chosen([oadm, previous], Of(loose, strict))[CertificateAuthorityInfo.OadmId]);
-        Assert.True(CaTrust.Chosen([oadm, previous], Of(strict, loose))["oadm-previous:1"]); // previous CAs follow the OADM CA
+        Assert.False(CaTrust.Chosen([oadm, previous], Of(strict, loose)).ContainsKey("oadm-previous:1")); // previous CAs no longer follow the OADM CA (decision 2026-10-26)
         Assert.False(CaTrust.Chosen([oadm], Of(loose))[CertificateAuthorityInfo.OadmId]);
     }
 

@@ -767,8 +767,7 @@ public static class CertificateDeployment
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(service);
-        var chain = service.Authorities().FirstOrDefault(a => a.Kind != Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm
-            && string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase))?.Certificates ?? [];
+        var chain = service.Authorities().FirstOrDefault(a => string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase))?.Certificates ?? [];
         if (chain.Count == 0)
         {
             throw new InvalidOperationException($"The policy {policy.Name} names no CA of the RADIUS server that is in the CA list. Choose one in the policy. Nothing was changed.");

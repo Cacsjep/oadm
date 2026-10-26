@@ -921,7 +921,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             : kind is not null && PolicyKinds.IsKnown(kind) && !taken.Contains(kind)
                 ? [new Choice<string>(kind, PolicyKinds.Name(kind))]
                 : [.. PolicyKinds.All.Where(k => !taken.Contains(k)).Select(k => new Choice<string>(k, PolicyKinds.Name(k)))];
-        CaChoices = [.. list.Cas.Select(c => new Choice<string>(c.Id, CaLabel(c)))];
+        CaChoices = [.. list.Cas.Select(c => new Choice<string>(c.Id, c.Name))];
         SignInCaChoices = [.. list.SignInCas.Select(c => new Choice<string>(c.Id, c.Name))];
 
         // "Issued by": every CA with its key (decision 2026-10-25); a CA the policy names that can no longer issue stays shown
@@ -1593,14 +1593,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(ProfilesError));
         OnPropertyChanged(nameof(DevicesError));
     }
-
-    /// <summary>"OADM CA (with 2 previous CAs)", "Axis device ID", "Contoso Root".</summary>
-    private static string CaLabel(PolicyCaChoice ca) => ca.PreviousCount switch
-    {
-        0 => ca.Name,
-        1 => ca.Name + " (with its previous CA)",
-        _ => string.Create(CultureInfo.CurrentCulture, $"{ca.Name} (with its {ca.PreviousCount:N0} previous CAs)"),
-    };
 
     internal static int? ParseInt(string? text) =>
         int.TryParse(text?.Trim(), NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var value) ? value : null;

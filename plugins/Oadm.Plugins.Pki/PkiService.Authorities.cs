@@ -596,16 +596,11 @@ public sealed partial class PkiService
     /// CA: IEEE 802.1X"), then the services.
     /// </summary>
     private List<string> AuthorityUsedBy(CertificateAuthorityInfo a) =>
-        [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id, a.Kind)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]), PolicyTexts.RadiusServerCa([.. RadiusPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
+        [.. new[] { PolicyTexts.UsedBy(Policies.UsingCa(a.Id)), PolicyTexts.Issuing([.. IssuingPoliciesOf(a)]), PolicyTexts.RadiusServerCa([.. RadiusPoliciesOf(a)]) }.OfType<string>(), .. UsedBy(a.Id)];
 
-    /// <summary>
-    /// The IEEE 802.1X certificate policies whose cameras check the RADIUS server with the CA (its RADIUS server CA; a
-    /// previous OADM CA is never one, <see cref="Tasks.CertificateDeployment.RadiusCas"/>).
-    /// </summary>
+    /// <summary>The IEEE 802.1X certificate policies whose cameras check the RADIUS server with the CA (its RADIUS server CA).</summary>
     private IEnumerable<string> RadiusPoliciesOf(CertificateAuthorityInfo authority) =>
-        authority.Kind == CertificateAuthorityKind.PreviousOadm
-            ? []
-            : Policies.PoliciesOf(PolicyKinds.Dot1xCertificate).Where(p => string.Equals(p.RadiusCaId, authority.Id, StringComparison.OrdinalIgnoreCase)).Select(p => p.Name);
+        Policies.PoliciesOf(PolicyKinds.Dot1xCertificate).Where(p => string.Equals(p.RadiusCaId, authority.Id, StringComparison.OrdinalIgnoreCase)).Select(p => p.Name);
 
     /// <summary>The names of the issuing policies that name the CA (the OADM CA or an imported CA; previous OADM CAs never issue).</summary>
     private IEnumerable<string> IssuingPoliciesOf(CertificateAuthorityInfo authority) =>
@@ -616,11 +611,11 @@ public sealed partial class PkiService
 
     /// <summary>
     /// The Used in column of the CA list (decision 2026-10-25): the names of the policies that use the CA, in the policies'
-    /// order: issuing ones, 802.1X trusted CA (a previous OADM CA: those of the OADM CA, which cover it) and EST sign-in CA.
+    /// order: issuing ones, 802.1X trusted CA and EST sign-in CA.
     /// </summary>
     internal IReadOnlyList<string> UsedIn(CertificateAuthorityInfo authority)
     {
-        var trusted = Policies.UsingCa(authority.Id, authority.Kind).Select(p => p.Id).ToHashSet();
+        var trusted = Policies.UsingCa(authority.Id).Select(p => p.Id).ToHashSet();
         var named = Policies.NamingCa(authority.Id).Select(p => p.Id).ToHashSet();
         return [.. Policies.All.Where(p => trusted.Contains(p.Id) || named.Contains(p.Id)).Select(p => p.Name).Distinct(StringComparer.Ordinal)];
     }

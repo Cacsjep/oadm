@@ -203,6 +203,64 @@ public sealed partial class PolicyStore : IDisposable
         return true;
     }
 
+    /// <summary>The owner of the conversion of 2026-10-26: the previous OADM CAs became ordinary CAs (<see cref="ConvertPreviousCas"/>).</summary>
+    public const string PreviousCasOwner = "oadm.pki:previous-cas-2026-10-26";
+
+    /// <summary>The owner of the 802.1X server's conversion, which makes its trusted CAs 802.1X trusted CA policies.</summary>
+    public const string RadiusOwner = "oadm.radius";
+
+    /// <summary>
+    /// Once (decision 2026-10-26), after the 802.1X server's trusted CAs became policies (<see cref="RadiusOwner"/>; before
+    /// that nothing is done and nothing is marked): <see cref="ConvertPreviousCas"/> with the CAs PKI lists now. Never on a
+    /// list that cannot be read. True when it converted now.
+    /// </summary>
+    public Task<bool> ConvertPreviousCasOnceAsync(CancellationToken ct)
+    {
+        if (IsUnreadable || !Converted.Contains(RadiusOwner, StringComparer.Ordinal) || Converted.Contains(PreviousCasOwner, StringComparer.Ordinal))
+        {
+            return Task.FromResult(false);
+        }
+
+        var authorities = _authorities();
+        return RewriteOnceAsync(PreviousCasOwner, list => ConvertPreviousCas(list, authorities), ct);
+    }
+
+    /// <summary>
+    /// The previous OADM CAs become ordinary CAs (decision 2026-10-26): until then an 802.1X trusted CA policy of the first-start
+    /// CA also trusted every previous OADM CA. Each previous CA that is still valid (<paramref name="authorities"/> lists only
+    /// those) gets its own 802.1X trusted CA policy with the settings of that policy, named after the CA and placed right after
+    /// it, so every camera passes as before and nothing follows implicitly any more. A previous CA a policy names already, or a
+    /// list without a policy of the first-start CA, stays as it is. Idempotent.
+    /// </summary>
+    public static IReadOnlyList<PkiPolicy> ConvertPreviousCas(IReadOnlyList<PkiPolicy> stored, IReadOnlyList<CertificateAuthorityInfo> authorities)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+        ArgumentNullException.ThrowIfNull(authorities);
+        var previous = authorities.Where(a => a.Kind == CertificateAuthorityKind.PreviousOadm).ToList();
+        var list = stored.ToList();
+        if (previous.Count == 0)
+        {
+            return list;
+        }
+
+        foreach (var policy in stored.Where(p => p.Kind == PolicyKinds.AllowCa && string.Equals(p.CaId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)))
+        {
+            var at = list.IndexOf(policy) + 1;
+            foreach (var ca in previous)
+            {
+                if (list.Any(p => p.Kind == PolicyKinds.AllowCa && string.Equals(p.CaId, ca.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var added = policy with { Id = Guid.NewGuid(), Name = string.IsNullOrWhiteSpace(ca.Name) ? "Previous OADM CA" : ca.Name.Trim(), CaId = ca.Id };
+                list.Insert(at++, added with { Name = UniqueName(list, added) });
+            }
+        }
+
+        return list;
+    }
+
     /// <summary>
     /// The kinds of 2026-10-25 (docs/spec/pki.md "Converting existing settings"), nothing the user set lost: the Server
     /// certificate policy of the 802.1X server goes into the 802.1X server policy (its CA, days and key; without an 802.1X
@@ -347,7 +405,7 @@ public sealed partial class PolicyStore : IDisposable
 
             // The RADIUS server CA of an IEEE 802.1X policy is a CA of the list (decision 2026-10-25).
             if (policy.Kind == PolicyKinds.Dot1xCertificate
-                && !_authorities().Any(a => a.Kind != CertificateAuthorityKind.PreviousOadm && string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase)))
+                && !_authorities().Any(a => string.Equals(a.Id, policy.RadiusCaId, StringComparison.OrdinalIgnoreCase)))
             {
                 return Refused(PolicyFields.RadiusCa, PolicyTexts.ChooseRadiusCa);
             }
@@ -360,7 +418,7 @@ public sealed partial class PolicyStore : IDisposable
 
             if (policy.Kind == PolicyKinds.AllowCa)
             {
-                if (!_authorities().Any(a => a.Kind != CertificateAuthorityKind.PreviousOadm && string.Equals(a.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
+                if (!_authorities().Any(a => string.Equals(a.Id, policy.CaId, StringComparison.OrdinalIgnoreCase)))
                 {
                     return Refused(PolicyFields.Ca, PolicyTexts.UnknownCa);
                 }
@@ -672,19 +730,8 @@ public sealed partial class PolicyStore : IDisposable
         return [.. _snapshot.Stored.Policies.Where(p => kinds(p.Kind)).Select(p => new PolicyLine(p.Name, Summary(p, names, certificates)))];
     }
 
-    /// <summary>The CAs an Allow CA policy can name (previous OADM CAs follow the OADM CA).</summary>
-    public IReadOnlyList<PolicyCaChoice> CaChoices()
-    {
-        var all = _authorities();
-        var previous = all.Count(a => a.Kind == CertificateAuthorityKind.PreviousOadm);
-        return
-        [
-            .. all.Where(a => a.Kind != CertificateAuthorityKind.PreviousOadm).Select(a => new PolicyCaChoice(a.Id, a.Name, a.Kind)
-            {
-                PreviousCount = a.Kind == CertificateAuthorityKind.Oadm ? previous : 0,
-            }),
-        ];
-    }
+    /// <summary>The CAs an Allow CA policy (and the RADIUS server CA of an IEEE 802.1X policy) can name: every CA of the list.</summary>
+    public IReadOnlyList<PolicyCaChoice> CaChoices() => [.. _authorities().Select(a => new PolicyCaChoice(a.Id, a.Name, a.Kind))];
 
     /// <summary>
     /// The CAs a Sign-in CA policy can name: the Axis device ID, the OADM CA and each previous OADM CA (EST reads a camera's
@@ -746,12 +793,9 @@ public sealed partial class PolicyStore : IDisposable
     private static string DefaultCaName(string id) =>
         string.Equals(id, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? AxisDeviceIdName : IssuingCaName;
 
-    /// <summary>The Allow CA policies that name <paramref name="authorityId"/> (a previous OADM CA: those of the OADM CA).</summary>
-    public IReadOnlyList<PkiPolicy> UsingCa(string authorityId, CertificateAuthorityKind kind)
-    {
-        var id = kind == CertificateAuthorityKind.PreviousOadm ? CertificateAuthorityInfo.OadmId : authorityId;
-        return [.. PoliciesOf(PolicyKinds.AllowCa).Where(p => string.Equals(p.CaId, id, StringComparison.OrdinalIgnoreCase))];
-    }
+    /// <summary>The Allow CA policies that name <paramref name="authorityId"/> (decision 2026-10-26: no CA follows another).</summary>
+    public IReadOnlyList<PkiPolicy> UsingCa(string authorityId) =>
+        [.. PoliciesOf(PolicyKinds.AllowCa).Where(p => string.Equals(p.CaId, authorityId, StringComparison.OrdinalIgnoreCase))];
 
     /// <summary>The tags a policy can name: those of <paramref name="devices"/> and of the policies, in name order.</summary>
     public IReadOnlyList<string> TagChoices(IReadOnlyList<IDeviceInfo> devices)

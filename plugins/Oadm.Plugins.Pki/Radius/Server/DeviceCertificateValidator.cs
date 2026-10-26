@@ -27,7 +27,7 @@ public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, boo
 
 /// <summary>
 /// The CAs a client certificate may chain to (docs/spec/radius-server.md "Who passes"): the CAs of PKI's Allow CA policies
-/// (PKI's <see cref="IDeviceCertificateAuthority.Authorities"/>; previous OADM CAs follow the OADM CA), as one immutable set.
+/// (PKI's <see cref="IDeviceCertificateAuthority.Authorities"/>; each CA only when a policy names it), as one immutable set.
 /// Self-signed certificates are the trust anchors (a CA list without one anchors at its last certificate), the rest
 /// intermediates (PKI's other intermediate CAs too, for the path). A certificate must chain to a checked CA (<see cref="Issuers"/>),
 /// itself or a CA of the path below it that PKI lists (decision 2026-10-26): an OADM CA imported as an intermediate of an
@@ -92,7 +92,7 @@ public sealed class CaTrust
     /// </summary>
     public TrustedCaSettings? Selection { get; }
 
-    /// <summary>The default selection: the OADM CA (with its previous ones) and the Axis device ID, both only managed devices.</summary>
+    /// <summary>The default selection: the first-start root CA and the Axis device ID, both only managed devices.</summary>
     public static TrustedCaSettings DefaultSelection { get; } = new()
     {
         Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId), new TrustedCaChoice(CertificateAuthorityInfo.AxisDeviceIdId)],
@@ -139,8 +139,9 @@ public sealed class CaTrust
     }
 
     /// <summary>
-    /// The checked CAs of <paramref name="selection"/> in <paramref name="authorities"/>: id -> only managed (previous OADM CAs
-    /// follow the OADM CA). A CA chosen twice (never saved so, but stored data may hold it) is only managed when any choice is.
+    /// The checked CAs of <paramref name="selection"/> in <paramref name="authorities"/>: id -> only managed. Each CA is checked
+    /// only when a choice names it (decision 2026-10-26: previous OADM CAs are ordinary CAs, they no longer follow the OADM CA).
+    /// A CA chosen twice (never saved so, but stored data may hold it) is only managed when any choice is.
     /// </summary>
     public static Dictionary<string, bool> Chosen(IReadOnlyList<CertificateAuthorityInfo> authorities, TrustedCaSettings selection)
     {
@@ -150,8 +151,7 @@ public sealed class CaTrust
         var chosen = new Dictionary<string, bool>(StringComparer.Ordinal);
         foreach (var ca in authorities)
         {
-            var id = ca.Kind == CertificateAuthorityKind.PreviousOadm ? CertificateAuthorityInfo.OadmId : ca.Id;
-            if (choices.TryGetValue(id, out var onlyManaged))
+            if (choices.TryGetValue(ca.Id, out var onlyManaged))
             {
                 chosen[ca.Id] = onlyManaged;
             }

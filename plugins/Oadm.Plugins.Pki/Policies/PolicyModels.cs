@@ -449,12 +449,8 @@ public sealed record PolicyRow(PkiPolicy Policy, string KindName, string Group, 
 /// <summary>One policy in the tooltip of a server tab's "N policies applied": its name and its summary sentence.</summary>
 public sealed record PolicyLine(string Name, string Summary);
 
-/// <summary>A CA a policy can name (previous OADM CAs follow the OADM CA and are no choice of their own).</summary>
-public sealed record PolicyCaChoice(string Id, string Name, CertificateAuthorityKind Kind)
-{
-    /// <summary>The OADM CA: how many previous OADM CAs it covers.</summary>
-    public int PreviousCount { get; init; }
-}
+/// <summary>A CA a policy can name.</summary>
+public sealed record PolicyCaChoice(string Id, string Name, CertificateAuthorityKind Kind);
 
 /// <summary>A cipher suite of the 802.1X server policy.</summary>
 /// <param name="Id">IANA id.</param>
