@@ -59,6 +59,14 @@ public sealed class LegacyHardwareWriteTests(ITestOutputHelper output)
     [HardwareWriteFact]
     public Task Local_12_119() => LocalAsync("10.0.0.12");
 
+    // Decision 2026-10-26 (items 14, 15): certificates of an intermediate CA with their chain, CAs of every key type.
+
+    [HardwareWriteFact]
+    public Task Chain_Local_200_1012() => LocalChainAsync("10.0.0.200");
+
+    [HardwareWriteFact]
+    public Task Chain_Local_12_119() => LocalChainAsync("10.0.0.12");
+
     private void Say(string text) => output.WriteLine(text);
 
     private Task WaitForDeviceAsync(IVapixClient vapix) => WaitForDeviceAsync(vapix, Say);
@@ -230,6 +238,161 @@ public sealed class LegacyHardwareWriteTests(ITestOutputHelper output)
 
             Assert.True(ConnectionPolicy.IsHttpOnly((await WebServerTls.GetAsync(h.Vapix, CancellationToken.None)).Policy));
         });
+    }
+
+    // ---------------------------------------------------------------- local lab: intermediate chains and CA key types
+
+    private async Task LocalChainAsync(string address)
+    {
+        var camera = Camera(address);
+        await RunAsync(camera, address, 80, 443, allowDot1xOn: true, async (h, guard) =>
+        {
+            var results = new List<string>();
+            await SavePoliciesAsync(h, eapol: 2);
+
+            // B: root CAs of every key type as the camera's CA certificate, each issuing the HTTPS certificate (camera key RSA).
+            var roots = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var key in new[] { CaKeys.Ecc, CaKeys.Rsa4096 })
+            {
+                var id = await CreateCaAsync(h, "HW Root " + key, null, key);
+                roots[key] = id;
+                await UseCaAsync(h, PolicyKinds.HttpsCertificate, id);
+                var ex = await h.RunAsync(PkiTaskIds.HttpsEnable, CameraClockPayload);
+                PrintSteps(h);
+                if (ex is not null)
+                {
+                    results.Add($"B root {key}: REFUSED at {FailedStep(h)}: {ex.Message}");
+                    continue;
+                }
+
+                var served = await PresentedAsync(h, address, 443);
+                results.Add($"B root {key}: passed (HTTPS served, leaf issued by {served[0].Issuer}, TLS presents {served.Count} · {CaInstall(h)})");
+            }
+
+            // A1: an intermediate CA under the RSA 4096 root issues the HTTPS certificate: chain served, or the certificate alone.
+            var intermediate = await CreateCaAsync(h, "HW Issuing CA", roots[CaKeys.Rsa4096], CaKeys.Rsa4096);
+            var issuing = h.Pki.Service.IssuingCa(intermediate)!;
+            await UseCaAsync(h, PolicyKinds.HttpsCertificate, intermediate);
+            await RunTaskAsync(h, PkiTaskIds.HttpsEnable, CameraClockPayload);
+            var install = ChainOutcome(h);
+            var presented = await PresentedAsync(h, address, 443);
+            var chainServed = presented.Skip(1).Any(c => c.Subject == issuing.Certificate.Subject);
+            var web = await WebServerTls.GetAsync(h.Vapix, CancellationToken.None);
+            var stored = (await DeviceCertificates.ListAsync(h.Vapix, h.Support!.Certificates, CancellationToken.None)).Single(c => c.Alias == web.CertificateAlias);
+            results.Add($"A1 HTTPS intermediate: install {install} · TLS presents {presented.Count} certificate{(presented.Count == 1 ? "" : "s")} ({(chainServed ? "chain served" : "certificate alone")}) · device holds {CaCertificates.ReadPemCertificates(stored.Pem).Count} in the entry");
+            Assert.Equal(issuing.Certificate.Subject, presented[0].Issuer);
+            Assert.Equal(install == "with chain", chainServed);
+
+            // A2: IEEE 802.1X with a client certificate of the intermediate CA and its CA certificates.
+            await UseCaAsync(h, PolicyKinds.Dot1xCertificate, intermediate, eapol: 2);
+            await RunTaskAsync(h, PkiTaskIds.Dot1xEnable, CameraClockPayload);
+            var dot1xInstall = ChainOutcome(h);
+            Assert.Equal("Verify 802.1X settings: Done", h.Lines.Single(l => l.StartsWith("Verify 802.1X settings", StringComparison.Ordinal)));
+            var state = await Dot1xSettings.ReadAsync(h.Vapix, h.Apis, CancellationToken.None);
+            var set = await CertSoapApi.GetCertSetAsync(h.Vapix, CertSoapApi.WiredDot1xSet, CancellationToken.None);
+            var client = Assert.Single(set.Certificates);
+            Assert.StartsWith(CertificateDeployment.Dot1xAliasPrefix, client, StringComparison.Ordinal);
+            var clientEntry = (await DeviceCertificates.ListAsync(h.Vapix, h.Support!.Certificates, CancellationToken.None)).Single(c => c.Alias == client);
+            var cas = await DeviceCertificates.ListCaAsync(h.Vapix, h.Support!.Certificates, CancellationToken.None);
+            var caNames = set.CaCertificates.Select(a => cas.FirstOrDefault(c => c.Alias == a) is { Pem.Length: > 0 } c ? CaCertificates.CommonName(CaCertificates.ReadPemCertificates(c.Pem)[0]) : a + " (not listed)").ToList();
+            results.Add($"A2 802.1X intermediate: install {dot1xInstall} · on {state.Dot1x?.Enabled} · {state.Dot1x?.EapolVersion} · GetCertSet client {client} ({CaCertificates.ReadPemCertificates(clientEntry.Pem).Count} in the entry) · CAs {string.Join(", ", caNames)} · trusted {string.Join(", ", set.TrustedCertificates)}");
+            Assert.True(state.Dot1x!.Enabled);
+            Assert.Equal(issuing.Certificate.Subject, CaCertificates.ReadPemCertificates(clientEntry.Pem)[0].Issuer);
+
+            await RunTaskAsync(h, PkiTaskIds.Dot1xDisable, null);
+            await RunTaskAsync(h, PkiTaskIds.HttpsDisable, null);
+
+            Say("==== RESULTS " + address + " · AXIS OS " + h.Device.FirmwareVersion);
+            foreach (var line in results)
+            {
+                Say("  " + line);
+            }
+        });
+    }
+
+    private static async Task<string> CreateCaAsync(HardwareHarness h, string name, string? issuerId, string key)
+    {
+        var reply = await h.Pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest(name, issuerId is not null, issuerId, key, 5));
+        Assert.True(reply.Ok, reply.Error);
+        return h.Pki.Service.Authorities().Single(a => a.Name == name).Id;
+    }
+
+    private static async Task UseCaAsync(HardwareHarness h, string kind, string caId, int? eapol = null)
+    {
+        var policy = h.Pki.Service.Policies.FirstOf(kind)!;
+        var reply = await h.Pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, policy with { CaId = caId, Key = PolicyKeys.Rsa, EapolVersion = eapol ?? policy.EapolVersion });
+        Assert.Null(reply.Error);
+    }
+
+    private static string FailedStep(HardwareHarness h) =>
+        h.Context.Steps.Snapshot().FirstOrDefault(s => s.State.ToString() == "Failed") is { } s ? $"\"{s.Name}\" ({s.Detail})" : "no step";
+
+    private static string CaInstall(HardwareHarness h) =>
+        h.Lines.FirstOrDefault(l => l.StartsWith(PkiSteps.InstallCa, StringComparison.Ordinal)) ?? "no CA step";
+
+    /// <summary>"with chain", "alone after refusal: ..." or "alone" from the task log.</summary>
+    private static string ChainOutcome(HardwareHarness h)
+    {
+        if (h.Context.LogEntries.Any(e => e.Message.Contains("installed with its chain", StringComparison.Ordinal)))
+        {
+            return "with chain";
+        }
+
+        return h.Context.LogEntries.FirstOrDefault(e => e.Message.StartsWith("The device refused the certificate with its chain", StringComparison.Ordinal)) is { Message: { } m }
+            ? "alone after refusal: " + m
+            : "alone";
+    }
+
+    /// <summary>The certificates the web server presents in its TLS handshake (leaf first), cross-checked with openssl where installed.</summary>
+    private async Task<IReadOnlyList<X509Certificate2>> PresentedAsync(HardwareHarness h, string host, int port)
+    {
+        await WaitForDeviceAsync(h.Vapix);
+        var list = new List<X509Certificate2>();
+        using var tcp = new TcpClient();
+        await tcp.ConnectAsync(host, port);
+#pragma warning disable CA5359 // Only reads what the device presents.
+        await using (var ssl = new SslStream(tcp.GetStream(), false, (_, certificate, chain, _) =>
+        {
+            list.Add(new X509Certificate2(certificate!));
+            foreach (var extra in chain!.ChainPolicy.ExtraStore)
+            {
+                if (extra.Thumbprint != list[0].Thumbprint)
+                {
+                    list.Add(new X509Certificate2(extra));
+                }
+            }
+
+            return true;
+        }))
+#pragma warning restore CA5359
+        {
+            await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = host });
+        }
+
+        Say($"  TLS presents: {string.Join(" -> ", list.Select(c => c.Subject))}");
+        var openssl = @"C:\Program Files\Git\mingw64\bin\openssl.exe";
+        if (File.Exists(openssl))
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(openssl, $"s_client -connect {host}:{port} -showcerts")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                RedirectStandardInput = true,
+            };
+            using var process = System.Diagnostics.Process.Start(start)!;
+            process.StandardInput.Close();
+            var text = await process.StandardOutput.ReadToEndAsync();
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await process.WaitForExitAsync(limit.Token);
+            var count = Regex.Count(text, "BEGIN CERTIFICATE");
+            Say($"  openssl s_client: {count} certificate{(count == 1 ? "" : "s")} · {string.Join(" | ", Regex.Matches(text, @"^\s*\d+ s:.*$", RegexOptions.Multiline).Select(m => m.Value.Trim()))}");
+            if (count != list.Count)
+            {
+                Say($"  MISMATCH: openssl saw {count}, SslStream {list.Count}");
+            }
+        }
+
+        return list;
     }
 
     // ---------------------------------------------------------------- the run, the saved state and the restore
