@@ -122,6 +122,7 @@ public sealed class PageTests : IAsyncLifetime
         await vm.EditInPkiCommand.ExecuteAsync(null);
         Assert.Equal(["plugin:oadm.pki"], _ctx.Opened);
         Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PkiTabRequest.Take()); // the page opens on Policies; taken here, the request is process-wide
+        Assert.Same(Oadm.Plugins.Pki.Client.PolicyHighlight.Est, Oadm.Plugins.Pki.Client.PkiTabRequest.TakeHighlight()); // the EST server's policies highlighted there
 
         // A save of the page keeps "Sign in with" of before the policies (read only by the conversion).
         var stored = _plugin.Service!.Store.Config.SignInWith;
