@@ -3,9 +3,9 @@ using Oadm.Plugins.Pki.Ca;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// A stored OADM CA that cannot be read is kept: no default CA over it, New OADM CA refused without the user's confirmation
-/// (fail closed), the page says so. Confirmed, the stored value goes to a file in the plugin's data folder, then a new CA
-/// replaces it.
+/// A stored first-start CA that cannot be read is kept: no default CA over it, the page says so (a row with Delete). Decision
+/// 2026-10-26 (item 13): it is deleted like any CA, refused while a policy names it; once the policies name another CA, the
+/// stored value goes to a file in the plugin's data folder and the CA leaves the list.
 /// </summary>
 public sealed class StoredCaUnreadableTests : IDisposable
 {
@@ -38,12 +38,18 @@ public sealed class StoredCaUnreadableTests : IDisposable
     }
 
     [Fact]
-    public async Task A_confirmed_new_ca_keeps_the_damaged_value_in_a_file_then_replaces_it()
+    public async Task Delete_is_refused_while_a_policy_names_it_then_keeps_the_damaged_value_in_a_file()
     {
         await using var pki = await StartDamagedAsync(_data);
         Assert.True((await pki.StateAsync()).CaUnreadable);
 
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(PkiService.UnreadableRowPrefix + Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId));
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(UnreadableRow));
+        Assert.Equal(Policies.PolicyTexts.UsedByPolicy(Policies.PolicyLimits.HttpsName), refused.Error);
+        Assert.Equal(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
+        Assert.False(Directory.Exists(_data) && Directory.GetFiles(_data).Length > 0);
+
+        await PointPoliciesElsewhereAsync(pki);
+        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(UnreadableRow));
 
         Assert.True(reply.Ok, reply.Error);
         Assert.NotEqual(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
@@ -55,16 +61,34 @@ public sealed class StoredCaUnreadableTests : IDisposable
     }
 
     [Fact]
-    public async Task Without_a_data_folder_the_confirmed_replace_changes_nothing()
+    public async Task Without_a_data_folder_delete_changes_nothing()
     {
         await using var pki = await StartDamagedAsync(dataDirectory: null);
+        await PointPoliciesElsewhereAsync(pki);
 
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(PkiService.UnreadableRowPrefix + Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId));
+        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(UnreadableRow));
 
         Assert.False(reply.Ok);
         Assert.Equal(PkiService.CaUnreadableNotSavedText, reply.Error);
         Assert.Null(pki.Service.Ca);
         Assert.Equal(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
+    }
+
+    private const string UnreadableRow = PkiService.UnreadableRowPrefix + Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId;
+
+    /// <summary>A created root CA issues for the built-in HTTPS and IEEE 802.1X policies (and checks the RADIUS server) instead of the damaged one.</summary>
+    private static async Task PointPoliciesElsewhereAsync(PkiHarness pki)
+    {
+        var created = await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("Site Root", false, null, CaKeys.Ecc, 10));
+        Assert.True(created.Ok, created.Error);
+        var id = pki.Service.Authorities().Single(a => a.Name == "Site Root").Id;
+        foreach (var kind in new[] { Policies.PolicyKinds.HttpsCertificate, Policies.PolicyKinds.Dot1xCertificate })
+        {
+            var policy = pki.Policies.FirstOf(kind)!;
+            var saved = await pki.InvokeAsync<Policies.PolicySaveReply>(Policies.PolicyMethods.SavePolicy,
+                policy with { CaId = id, RadiusCaId = kind == Policies.PolicyKinds.Dot1xCertificate ? id : policy.RadiusCaId });
+            Assert.Null(saved.Error);
+        }
     }
 
     private static async Task<PkiHarness> StartDamagedAsync(string? dataDirectory)
