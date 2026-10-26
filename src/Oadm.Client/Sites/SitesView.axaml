@@ -51,16 +51,6 @@
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Name" Width="160" MinWidth="120" Binding="{Binding Name}" x:DataType="vm:SiteRowViewModel" />
             <DataGridTextColumn Header="Node address" Width="150" MinWidth="120" Binding="{Binding NodeAddressText}" x:DataType="vm:SiteRowViewModel" />
-            <DataGridTextColumn Width="100" Binding="{Binding DeviceCountText}" SortMemberPath="DeviceCount" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
-              <DataGridTextColumn.Header>
-                <TextBlock Classes="numberHeader" Text="Devices" />
-              </DataGridTextColumn.Header>
-            </DataGridTextColumn>
-            <DataGridTextColumn Width="145" Binding="{Binding RoundTripText}" SortMemberPath="RoundTripMs" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
-              <DataGridTextColumn.Header>
-                <TextBlock Classes="numberHeader" Text="Response time" />
-              </DataGridTextColumn.Header>
-            </DataGridTextColumn>
             <DataGridTextColumn Width="130" Binding="{Binding ConnectionsText}" x:DataType="vm:SiteRowViewModel" CellStyleClasses="number">
               <DataGridTextColumn.Header>
                 <TextBlock Classes="numberHeader" Text="Connections" ToolTip.Tip="Now open" />

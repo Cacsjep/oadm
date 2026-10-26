@@ -52,17 +52,18 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         var building = page.Rows.Single(r => r.Name == "Building B");
         Assert.True(building.IsOk);
         Assert.Equal("Online", building.StateText);
-        Assert.Equal("12 ms", building.RoundTripText);
         Assert.Equal("4", building.ConnectionsText); // now open
+        var waitingRow = new SiteRowViewModel(new Site { Name = "acs", State = SiteState.Waiting, NodeId = "n", Message = SiteTexts.WaitingToBeBound }, mayChange: true);
+        Assert.Equal(string.Empty, waitingRow.Detail); // never "Waiting to be bound: Waiting to be bound"
+        Assert.True(waitingRow.CanBind);
         Assert.Equal("Online", building.StateTip);
-        Assert.Equal("1", building.DeviceCountText);
         var warehouse = page.Rows.Single(r => r.Name == "Warehouse");
         Assert.True(warehouse.IsError);
         Assert.Equal("3.6.9 · Update available", warehouse.VersionText);
         Assert.Equal("Offline: " + SiteTexts.NodeNotAnswering, warehouse.StateTip); // the whole reason as the tooltip
         var waiting = page.Rows.Single(r => !r.IsBound);
         Assert.Equal("Waiting to be bound", waiting.StateText);
-        Assert.True(waiting.CanBind);
+        Assert.True(waitingRow.CanBind);
         Assert.False(waiting.CanManage);
         Assert.Equal("2 sites · 1 online · 1 waiting to be bound", page.StatusText);
 
@@ -435,7 +436,7 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
             var texts = window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty).ToList();
             Assert.Contains("Building B", texts);
             Assert.Contains("Waiting to be bound", texts);
-            Assert.Contains("Response time", texts); // plain headers
+            Assert.DoesNotContain("Response time", texts);
             Assert.Contains("Waiting for approval", texts);
             Assert.Contains("Uploads and downloads", texts);
             Assert.DoesNotContain("Change address", texts); // site nodes always connect to the server

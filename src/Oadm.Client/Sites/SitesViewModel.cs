@@ -36,11 +36,11 @@ public sealed class SiteRowViewModel
         IsWarning = site.State is SiteState.NotBound or SiteState.Removed;
         IsInfo = site.State == SiteState.Waiting;
         IsGreyed = site.State is SiteState.BoundElsewhere or SiteState.BindingClosed;
-        Detail = site.Message.Length > 0 ? site.Message : SiteTexts.DefaultDetail(site.State);
+        // A message that only repeats the state ("Waiting to be bound") adds nothing next to it.
+        var message = string.Equals(site.Message, StateText, StringComparison.Ordinal) ? string.Empty : site.Message;
+        Detail = message.Length > 0 ? message : SiteTexts.DefaultDetail(site.State);
         StateTip = Detail.Length > 0 ? StateText + ": " + Detail : StateText;
         NodeAddressText = site.NodeAddress;
-        DeviceCountText = IsBound ? site.DeviceCount.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
-        RoundTripText = site.RoundTripMs > 0 ? site.RoundTripMs.ToString("N0", CultureInfo.CurrentCulture) + " ms" : string.Empty;
         ConnectionsText = IsBound && site.State == SiteState.Online
             ? (site.ShortConnections + site.PermanentConnections).ToString("N0", CultureInfo.CurrentCulture)
             : string.Empty;
@@ -92,14 +92,6 @@ public sealed class SiteRowViewModel
     public double RowOpacity => IsGreyed ? 0.5 : 1;
 
     public string NodeAddressText { get; }
-
-    public string DeviceCountText { get; }
-
-    public int DeviceCount => Site.DeviceCount;
-
-    public string RoundTripText { get; }
-
-    public int RoundTripMs => Site.RoundTripMs;
 
     public string ConnectionsText { get; }
 
