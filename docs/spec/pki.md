@@ -230,7 +230,9 @@ which are gone):** the cards made the tab about two screens long. The Policies t
   policy read only and closes a new one, a device group that hides the tab closes it (`PoliciesViewModel.NotifyRole`).
 
 System policies (decision 2026-10-25, `PolicyStore.IsSystem`): OADM needs them, so they have no Delete (the server refuses
-it: "OADM needs this policy. Change its values instead."); their values stay editable. They are the first (oldest) policy
+it: "OADM needs this policy. Change its values instead."); their values stay editable, also the devices of the
+Expiry warning and Enrollment ones (decision 2026-10-26: their "All devices" would otherwise overlap every policy added next
+to them, so a second policy of the kind could never be saved). They are the first (oldest) policy
 of HTTPS certificate, IEEE 802.1X certificate, 802.1X server, EST server, Expiry warning and Enrollment. Add never
 offers a second 802.1X server or EST server policy. Users add their own (User) policies: further issuing policies (picked
 in the task dialogs and the EST profiles), 802.1X trusted CA, VLAN, Block, EST sign-in CA and Expiry warning or

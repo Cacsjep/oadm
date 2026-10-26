@@ -24,7 +24,7 @@
     <ui:FormField Label="VLAN ID" IsVisible="{Binding IsVlan}">
       <TextBox Text="{Binding Vlan}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 4094" />
     </ui:FormField>
-    <ui:FormField Label="Days before the end" Hint="{Binding DaysHint}" IsVisible="{Binding IsExpiry}">
+    <ui:FormField Label="Days before the end" IsVisible="{Binding IsExpiry}">
       <TextBox Text="{Binding Days}" Width="120" HorizontalAlignment="Left" PlaceholderText="1 to 365" />
     </ui:FormField>
 
@@ -92,7 +92,7 @@
     </ui:FormField>
 
     <!-- Kinds with devices: All devices, or the chosen ones with Choose devices (the shared
-         picker in its group mode); the devices' error below. A system policy keeps its devices. -->
+         picker in its group mode); the devices' error below. A system policy's devices change too. -->
     <ui:FormField Label="Devices" InputWidth="440" Error="{Binding DevicesError}" IsVisible="{Binding ShowsDevicesField}">
       <StackPanel Spacing="8">
         <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:PolicyEditorViewModel.DeviceScopes}" SelectedItem="{Binding Scope}"

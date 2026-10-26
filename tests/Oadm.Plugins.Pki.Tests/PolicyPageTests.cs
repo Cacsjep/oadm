@@ -209,20 +209,28 @@ public sealed class PolicyPageTests
     }
 
     [Fact]
-    public async Task A_built_in_expiry_warning_for_chosen_devices_names_them_and_keeps_them_on_save()
+    public async Task A_built_in_policy_changes_its_devices_so_a_second_policy_of_its_kind_fits_next_to_it()
     {
+        // Decision 2026-10-26: a built-in "All devices" policy would overlap every policy added next to it, so its devices change too.
         await using var pki = await StartAsync();
-        var all = pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!;
-        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, all with { Devices = new PolicyDevices { Tags = ["PTZ"] } })).Error);
         var page = new PoliciesViewModel(Page(pki));
         await page.LoadAsync(CancellationToken.None);
 
         var expiry = Open(page, "All devices");
-        Assert.Equal("For Tag PTZ", expiry.DaysHint);
-        Assert.False(expiry.ShowsDevicesField); // a built-in policy keeps its devices
-        expiry.Days = "60";
-        Assert.True(await expiry.SaveAsync());
-        Assert.Equal((60, "PTZ"), (pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Devices!.Tags.Single()));
+        Assert.True(expiry.ShowsDevicesField);
+        Assert.True(expiry.IsAllDevices);
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)! with { Devices = new PolicyDevices { Tags = ["PTZ"] } })).Error);
+
+        await page.LoadAsync(CancellationToken.None);
+        var narrowed = Open(page, "All devices");
+        Assert.True(narrowed.ShowsPicker); // the built-in policy now holds the chosen devices
+        narrowed.Days = "60";
+        Assert.True(await narrowed.SaveAsync());
+        var saved = pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!;
+        Assert.Equal((60, "PTZ"), (saved.Days, saved.Devices!.Tags.Single())); // the devices stay as chosen
+
+        var second = new PkiPolicy { Name = "Doors", Kind = PolicyKinds.ExpiryWarning, Days = 10, Devices = new PolicyDevices { Tags = ["Door"] } };
+        Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, second)).Error); // no overlap with the built-in one
     }
 
     [Fact]

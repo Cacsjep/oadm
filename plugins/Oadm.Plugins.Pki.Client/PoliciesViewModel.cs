@@ -890,7 +890,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <param name="list">The list as the server answered it.</param>
     /// <param name="devices">The devices of the device picker.</param>
     /// <param name="kind">A new policy's kind (Add); null: the existing policy's, or the first kind Add could offer.</param>
-    /// <param name="inPlace">A system policy (no name, no devices to change, no Delete).</param>
+    /// <param name="inPlace">A system policy (no name, no Delete; its devices change like any policy's).</param>
     public PolicyEditorViewModel(ICorePluginClientContext ctx, PoliciesViewModel owner, PkiPolicy? existing, PolicyList list, IEnumerable<IDeviceInfo> devices, string? kind = null, bool inPlace = false)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
@@ -1377,16 +1377,14 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>"All devices" is chosen (for a kind that offers it).</summary>
     public bool IsAllDevices => OffersAllDevices && Scope.Value;
 
-    /// <summary>The devices are chosen in the picker: a kind with devices and not "All devices" (never for a system policy: its devices stay as stored).</summary>
-    public bool ShowsPicker => HasDevices && !IsAllDevices && !IsInPlace;
+    /// <summary>
+    /// The devices are chosen in the picker: a kind with devices and not "All devices". A system policy's devices change too
+    /// (decision 2026-10-26): its "All devices" would otherwise overlap every policy added next to it.
+    /// </summary>
+    public bool ShowsPicker => HasDevices && !IsAllDevices;
 
-    /// <summary>The Devices choice shows (a user policy of a kind that offers All devices).</summary>
-    public bool ShowsDeviceScope => OffersAllDevices && !IsInPlace;
-
-    /// <summary>A system Expiry warning for chosen devices: which ones (shown below the days).</summary>
-    public string? DaysHint => IsInPlace && HasDevices && !IsAllDevices
-        ? "For " + PolicyTexts.DevicesText(_existing?.Devices, _list.Sites.GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First().Name))
-        : null;
+    /// <summary>The Devices choice shows (a kind that offers All devices, also its system policy).</summary>
+    public bool ShowsDeviceScope => OffersAllDevices;
 
     /// <summary>What the kind does (below the kind).</summary>
     public string? KindHint => PolicyKinds.Description(Kind.Value);
@@ -1460,7 +1458,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             Id = _existing?.Id ?? Guid.Empty,
             Name = Name.Trim(),
             Kind = Kind.Value,
-            Devices = IsInPlace ? _existing?.Devices : IsAllDevices ? PolicyDevices.Everything : new PolicyDevices
+            Devices = IsAllDevices ? PolicyDevices.Everything : new PolicyDevices
             {
                 ThisServer = choice.ThisServer,
                 SiteIds = choice.SiteIds,
