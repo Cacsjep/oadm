@@ -381,7 +381,7 @@ public static class CertificateDeployment
         await service.Issued.ConfirmAsync(issued.SerialNumber, CancellationToken.None).ConfigureAwait(false);
         if (previous is not null && service.Issued.IsRevoked(previous))
         {
-            ctx.Log(TaskLogLevel.Info, $"The previous certificate (serial {previous}) was revoked: replaced by \"{issued.Alias}\".");
+            ctx.Log(TaskLogLevel.Info, $"The previous certificate (serial {previous}) was replaced by \"{issued.Alias}\" and is no longer accepted.");
         }
     }
 
@@ -397,7 +397,7 @@ public static class CertificateDeployment
         {
             if (await service.Issued.DiscardAsync(serialNumber, evenDelivered, CancellationToken.None).ConfigureAwait(false))
             {
-                ctx.Log(TaskLogLevel.Info, $"The new certificate (serial {serialNumber}) is not in use and was revoked.");
+                ctx.Log(TaskLogLevel.Info, $"The new certificate (serial {serialNumber}) is not in use and is no longer accepted.");
             }
         }
 #pragma warning disable CA1031 // The task's own error is what the user sees; an unused pending certificate is never accepted as current.

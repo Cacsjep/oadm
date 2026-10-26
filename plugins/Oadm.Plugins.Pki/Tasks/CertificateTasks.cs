@@ -291,7 +291,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
             return read;
         }).ConfigureAwait(false);
 
-        // A deleted certificate stays in the store, not listed (a copy could be in use): it can be revoked until it ends.
+        // A deleted certificate stays in the store, not listed (a copy could be in use): it can be refused until it ends.
         foreach (var choice in chosen)
         {
             await ctx.StepAsync("Delete certificate " + choice.Alias, async step =>
@@ -493,12 +493,12 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         }
     }
 
-    /// <summary>The installed file replaced OADM's current certificate of this use (verified): that one is revoked.</summary>
+    /// <summary>The installed file replaced OADM's current certificate of this use (verified): that one is no longer accepted.</summary>
     private static async Task ReplacedAsync(ITaskExecutionContext ctx, PkiService? service, IDeviceInfo device, string purpose)
     {
         if (service is not null && await service.Issued.ReplacedOnCameraAsync(device, purpose, CancellationToken.None).ConfigureAwait(false) is { } previous)
         {
-            ctx.Log(TaskLogLevel.Info, $"The previous OADM certificate (serial {previous}) was revoked: replaced by the installed one.");
+            ctx.Log(TaskLogLevel.Info, $"The previous OADM certificate (serial {previous}) was replaced by the installed one and is no longer accepted.");
         }
     }
 
