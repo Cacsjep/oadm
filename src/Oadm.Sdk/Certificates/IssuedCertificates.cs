@@ -312,6 +312,9 @@ public sealed record IssuedCertificateInfo
 
     /// <summary>A CA row: the names of the policies that use the CA (issuing, trusted, sign-in), in the policies' order; null for none.</summary>
     public IReadOnlyList<string>? UsedIn { get; init; }
+
+    /// <summary>A CA row whose stored CA cannot be read (damaged): it says so and offers only Delete; false for every other row.</summary>
+    public bool Unreadable { get; init; }
 }
 
 /// <summary>How the list of certificates is grouped (SDK 0.4.0): by type (the default), by the CA that issued them, or not.</summary>

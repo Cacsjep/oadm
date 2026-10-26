@@ -227,9 +227,9 @@ public sealed partial class PkiService
         await _serverCertificateGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            if (!Missing() || IssuingCa(null) is not { } oadm)
+            if (!Missing() || ServerIssuingCa() is not { } oadm)
             {
-                return; // another start was quicker, or no OADM CA yet
+                return; // another start was quicker, or no CA can issue yet
             }
 
             List<string> all = [.. names ?? [], .. Policies.Dot1xServerNames?.Invoke() ?? [], .. Policies.EstServerNames?.Invoke() ?? [],
@@ -255,6 +255,15 @@ public sealed partial class PkiService
 
         bool Missing() => Policies.FirstOf(PolicyKinds.Dot1xServer) is { CertificateId: null } || Policies.FirstOf(PolicyKinds.EstServer) is { CertificateId: null };
     }
+
+    /// <summary>
+    /// The CA of a new shared server certificate: the CA a server policy names when it can issue (the first-start root CA by
+    /// default), else the first CA that can issue (decision 2026-10-26: that CA may have been deleted).
+    /// </summary>
+    private CaMaterial? ServerIssuingCa() =>
+        IssuingCa(Policies.FirstOf(PolicyKinds.Dot1xServer)?.CaId ?? Policies.FirstOf(PolicyKinds.EstServer)?.CaId)
+        ?? IssuingCa(Policies.FirstOf(PolicyKinds.EstServer)?.CaId)
+        ?? (IssuingCas() is { Count: > 0 } all ? all[0] : null);
 
     private async Task<string?> ImportServerCertificateAsync(string kind, ServerCertificateImport existing, CancellationToken ct)
     {

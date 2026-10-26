@@ -46,9 +46,11 @@ public sealed partial class PkiService
         var previous = _previous;
         var imported = _imported;
         var material = _importedMaterial;
+        var deletedAxis = _deletedAxis;
         var now = Now.UtcDateTime;
         if (Volatile.Read(ref _authorities) is { } cached && ReferenceEquals(cached.Ca, ca) && ReferenceEquals(cached.Previous, previous)
-            && ReferenceEquals(cached.Imported, imported) && ReferenceEquals(cached.Material, material) && cached.NextEndUtc > now)
+            && ReferenceEquals(cached.Imported, imported) && ReferenceEquals(cached.Material, material) && ReferenceEquals(cached.DeletedAxis, deletedAxis)
+            && cached.NextEndUtc > now)
         {
             return cached.List;
         }
@@ -74,7 +76,8 @@ public sealed partial class PkiService
             }
         }
 
-        if (AxisCertificates.Value is { Count: > 0 } axis)
+        // The built-in Axis device ID CAs without those the user deleted (decision 2026-10-26: they stay deleted).
+        if (AxisCertificates.Value.Where(der => !deletedAxis.Contains(Convert.ToHexString(SHA256.HashData(der)))).ToList() is { Count: > 0 } axis)
         {
             list.Add(new CertificateAuthorityInfo(CertificateAuthorityInfo.AxisDeviceIdId, AxisDeviceIdName, CertificateAuthorityKind.AxisDeviceId, axis, LatestEnd(axis), false));
         }
@@ -89,7 +92,7 @@ public sealed partial class PkiService
             }
         }
 
-        Volatile.Write(ref _authorities, new AuthorityCache(ca, previous, imported, material, nextEnd, list));
+        Volatile.Write(ref _authorities, new AuthorityCache(ca, previous, imported, material, deletedAxis, nextEnd, list));
         return list;
     }
 
@@ -136,7 +139,7 @@ public sealed partial class PkiService
             if (known is null && _imported.Count >= PkiPluginInfo.MaxImportedCas)
             {
                 material.Dispose();
-                return new PkiReply { Errors = One(PkiFields.File, $"At most {PkiPluginInfo.MaxImportedCas} CAs can be imported. Remove one first.") };
+                return new PkiReply { Errors = One(PkiFields.File, $"At most {PkiPluginInfo.MaxImportedCas} CAs can be created or imported. Delete one first.") };
             }
 
             var entry = new StoredImportedCa
@@ -269,7 +272,7 @@ public sealed partial class PkiService
 
                 if (_imported.Count >= PkiPluginInfo.MaxImportedCas)
                 {
-                    return Field($"At most {PkiPluginInfo.MaxImportedCas} CAs can be imported. Remove one first.");
+                    return Field($"At most {PkiPluginInfo.MaxImportedCas} CAs can be created or imported. Delete one first.");
                 }
 
                 name = CaCertificates.CommonName(certificate);
@@ -297,42 +300,110 @@ public sealed partial class PkiService
         static PkiReply Field(string message) => new() { Errors = One(PkiFields.AuthorityFile, message) };
     }
 
-    /// <summary>Removes an imported CA; refused while a policy names it ("Used by the policy Contoso. Change or delete the policy first.") or a service uses it.</summary>
-    public async Task<PkiReply> RemoveAuthorityAsync(RemoveAuthorityRequest request, CancellationToken ct)
+    /// <summary>The row id of a CA that cannot be read: <c>ca-unreadable:&lt;authority id&gt;</c>.</summary>
+    public const string UnreadableRowPrefix = "ca-unreadable:";
+
+    /// <summary>
+    /// Delete of a CA row (decision 2026-10-26: every CA can be deleted: the first-start root CA, created, imported and
+    /// previous CAs, the built-in Axis device ID CAs, a CA that cannot be read). Refused while a policy names its CA ("Used by
+    /// the policy Contoso. Change or delete the policy first."), a service uses it, or it signed a CA that is still listed.
+    /// Its certificates stay in the list (nothing else is deleted, nothing is blocked). A deleted Axis device ID CA stays
+    /// deleted after an update; the first-start root CA is never made again.
+    /// </summary>
+    public async Task<PkiReply> DeleteAuthorityAsync(DeleteAuthorityRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         var id = request.Id ?? string.Empty;
-        if (!id.StartsWith(ImportedPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            return await ErrorAsync("Only imported CAs can be removed here.", ct).ConfigureAwait(false);
-        }
-
+        string name;
+        string authorityId;
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // Any policy that names it (issuing, 802.1X trusted CA, EST sign-in CA) keeps it (decision 2026-10-25).
-            if (Policies.NamingCa(id) is { Count: > 0 } naming)
+            if (id.StartsWith(UnreadableRowPrefix, StringComparison.Ordinal))
             {
-                return await ErrorAsync(PolicyTexts.UsedByPolicy(naming[0].Name), ct).ConfigureAwait(false);
+                authorityId = id[UnreadableRowPrefix.Length..];
+                name = UnknownCaName;
+                if (Refusal(authorityId) is { } refused)
+                {
+                    return await ErrorAsync(refused, ct).ConfigureAwait(false);
+                }
+
+                if (string.Equals(authorityId, CertificateAuthorityInfo.OadmId, StringComparison.Ordinal) && _caUnreadable)
+                {
+                    // Kept in a file for support first (never logged); without the file nothing changes.
+                    if (!await KeepUnreadableCaAsync(await _store.LoadCaRawAsync(ct).ConfigureAwait(false) ?? string.Empty, ct).ConfigureAwait(false))
+                    {
+                        return await ErrorAsync(CaUnreadableNotSavedText, ct).ConfigureAwait(false);
+                    }
+
+                    await _store.DeleteCaAsync(ct).ConfigureAwait(false);
+                    _caUnreadable = false;
+                    _stored = null;
+                    _defaultCaExpected = false;
+                }
+                else if (authorityId.StartsWith(ImportedPrefix, StringComparison.OrdinalIgnoreCase)
+                    && _imported.FirstOrDefault(i => string.Equals(ImportedAuthorityId(i.Id), authorityId, StringComparison.OrdinalIgnoreCase)) is { } entry
+                    && !_importedMaterial.ContainsKey(entry.Id))
+                {
+                    if (!await KeepUnreadableCaAsync(PkiJson.Serialize(entry), ct).ConfigureAwait(false))
+                    {
+                        return await ErrorAsync(CaUnreadableNotSavedText, ct).ConfigureAwait(false);
+                    }
+
+                    await RemoveImportedAsync(entry.Id, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    return await ErrorAsync(NoLongerListed, ct).ConfigureAwait(false);
+                }
+            }
+            else
+            {
+                var index = Issuers();
+                if (index.AuthorityRows.FirstOrDefault(r => r.Row.Id == id) is not { Row.AuthorityId: { } rowAuthority } row
+                    || index.Source.FirstOrDefault(a => a.Id == rowAuthority) is not { } authority)
+                {
+                    return await ErrorAsync(NoLongerListed, ct).ConfigureAwait(false);
+                }
+
+                authorityId = authority.Id;
+                name = row.Row.Name ?? authority.Name;
+                if (Refusal(authorityId) is { } refused)
+                {
+                    return await ErrorAsync(refused, ct).ConfigureAwait(false);
+                }
+
+                // A CA it signed that is still listed keeps it (its chain would end in nothing).
+                if (SignedBy(row, index) is { } signed)
+                {
+                    return await ErrorAsync($"It signed {signed}. Delete {signed} first.", ct).ConfigureAwait(false);
+                }
+
+                var fingerprint = Convert.ToHexString(SHA256.HashData(row.Der));
+                switch (authority.Kind)
+                {
+                    case CertificateAuthorityKind.Oadm:
+                        await _store.DeleteCaAsync(ct).ConfigureAwait(false);
+                        _stored = null;
+                        _ca = null; // left to the GC: a signing that read it may still run
+                        _defaultCaExpected = false;
+                        break;
+                    case CertificateAuthorityKind.PreviousOadm:
+                        var previous = _previous.Where(p => !string.Equals(PreviousAuthorityId(p.Id), authorityId, StringComparison.OrdinalIgnoreCase)).ToList();
+                        await _store.SavePreviousAsync(previous, ct).ConfigureAwait(false);
+                        _previous = previous;
+                        break;
+                    case CertificateAuthorityKind.AxisDeviceId:
+                        var deleted = new HashSet<string>(_deletedAxis, StringComparer.OrdinalIgnoreCase) { fingerprint };
+                        await _store.SaveDeletedAxisAsync(deleted, ct).ConfigureAwait(false);
+                        _deletedAxis = deleted;
+                        break;
+                    default:
+                        await RemoveImportedAsync(authorityId[ImportedPrefix.Length..], ct).ConfigureAwait(false);
+                        break;
+                }
             }
 
-            if (UsedByText(id) is { } used)
-            {
-                return await ErrorAsync(used, ct).ConfigureAwait(false);
-            }
-
-            var sha = id[ImportedPrefix.Length..];
-            var list = _imported.Where(i => !string.Equals(i.Id, sha, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (list.Count == _imported.Count)
-            {
-                return await ErrorAsync("This CA is no longer in the list.", ct).ConfigureAwait(false);
-            }
-
-            await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
-            var material = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase);
-            material.Remove(sha); // left to the GC: a signing that read it may still run
-            _importedMaterial = material;
-            _imported = list;
             ApplyAnchors();
         }
         finally
@@ -340,10 +411,88 @@ public sealed partial class PkiService
             _gate.Release();
         }
 
-        LogAuthorityRemoved(id);
-        CaChanged?.Invoke(this, EventArgs.Empty);
+        LogAuthorityDeleted(name, authorityId);
+        CaChanged?.Invoke(this, EventArgs.Empty); // the 802.1X and EST servers stop trusting it at once
         await PublishAsync().ConfigureAwait(false);
         return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
+
+        // Any policy that names it (issuing, 802.1X trusted CA, EST sign-in CA, RADIUS server CA) or a service that uses it keeps it.
+        string? Refusal(string authority) =>
+            Policies.NamingCa(authority) is { Count: > 0 } naming ? PolicyTexts.UsedByPolicy(naming[0].Name) : UsedByText(authority);
+    }
+
+    /// <summary>A CA row that is no longer listed.</summary>
+    private const string NoLongerListed = "This CA is no longer in the list.";
+
+    /// <summary>The name of a CA row whose stored CA cannot be read.</summary>
+    public const string UnknownCaName = "Unknown CA";
+
+    /// <summary>The name of another listed CA that <paramref name="row"/>'s certificate signed (subject and signature); null for none.</summary>
+    private static string? SignedBy(AuthorityListRow row, IssuerIndex index)
+    {
+        foreach (var other in index.AuthorityRows)
+        {
+            if (other.Row.Id == row.Row.Id || other.Row.IsRootCa)
+            {
+                continue;
+            }
+
+            using var certificate = X509CertificateLoader.LoadCertificate(other.Der);
+            if (IssuerIndex.FingerprintOfIssuer(certificate, [row.Der]) is not null)
+            {
+                return other.Row.Name;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Removes the imported or created CA <paramref name="sha"/> from the list and its key from memory. Call inside the gate.</summary>
+    private async Task RemoveImportedAsync(string sha, CancellationToken ct)
+    {
+        var list = _imported.Where(i => !string.Equals(i.Id, sha, StringComparison.OrdinalIgnoreCase)).ToList();
+        await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
+        var material = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase);
+        material.Remove(sha); // left to the GC: a signing that read it may still run
+        _importedMaterial = material;
+        _imported = list;
+    }
+
+    /// <summary>The ids of the CAs made on this server: the first-start root CA and those of Create CA (EST sign-in CA choices).</summary>
+    internal IReadOnlyCollection<string> CreatedAuthorityIds() =>
+        [CertificateAuthorityInfo.OadmId, .. _imported.Where(i => i.Created).Select(i => ImportedAuthorityId(i.Id))];
+
+    /// <summary>
+    /// The CA rows of entries that cannot be read (decision 2026-10-26: a row that says so, with Delete): the first-start CA
+    /// whose stored value is damaged and imported or created CAs whose certificate cannot be read.
+    /// </summary>
+    private List<IssuedCertificateInfo> UnreadableRows()
+    {
+        var rows = new List<IssuedCertificateInfo>();
+        if (_caUnreadable)
+        {
+            rows.Add(UnreadableRow(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm));
+        }
+
+        var material = _importedMaterial;
+        foreach (var entry in _imported.Where(i => !material.ContainsKey(i.Id)))
+        {
+            rows.Add(UnreadableRow(ImportedAuthorityId(entry.Id), CertificateAuthorityKind.Imported));
+        }
+
+        return rows;
+
+        static IssuedCertificateInfo UnreadableRow(string authorityId, CertificateAuthorityKind kind) => new()
+        {
+            Id = UnreadableRowPrefix + authorityId,
+            SerialNumber = string.Empty,
+            Kind = ListedCertificateKind.Authority,
+            AuthorityKind = kind,
+            AuthorityId = authorityId,
+            Name = UnknownCaName,
+            Purpose = ListedCertificateUses.Ca,
+            Unreadable = true,
+        };
     }
 
     /// <summary>"Used by the 802.1X server. Remove it there first." (several: "the 802.1X server and the EST server"); null when unused.</summary>
@@ -438,6 +587,7 @@ public sealed partial class PkiService
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
             UsedBy = withPolicies ? AuthorityUsedBy(a) : [.. UsedBy(a.Id)],
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
+            Issues = a.Issues,
         }),
     ];
 
@@ -523,6 +673,6 @@ public sealed partial class PkiService
     private partial void LogImportedKeyUnreadable(string id);
 
     private sealed record AuthorityCache(CaMaterial? Ca, IReadOnlyList<StoredPreviousCa> Previous, IReadOnlyList<StoredImportedCa> Imported,
-        IReadOnlyDictionary<string, CaMaterial> Material, DateTime NextEndUtc,
+        IReadOnlyDictionary<string, CaMaterial> Material, HashSet<string> DeletedAxis, DateTime NextEndUtc,
         IReadOnlyList<CertificateAuthorityInfo> List);
 }

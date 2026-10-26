@@ -29,8 +29,9 @@ public sealed record TrustedIssuer(string Id, CertificateAuthorityKind Kind, boo
 /// The CAs a client certificate may chain to (docs/spec/radius-server.md "Who passes"): the CAs of PKI's Allow CA policies
 /// (PKI's <see cref="IDeviceCertificateAuthority.Authorities"/>; previous OADM CAs follow the OADM CA), as one immutable set.
 /// Self-signed certificates are the trust anchors (a CA list without one anchors at its last certificate), the rest
-/// intermediates. A certificate must be issued directly by a checked CA (<see cref="Issuers"/>): an OADM CA imported as an
-/// intermediate of an enterprise root never makes the certificates of its sibling CAs pass. The Axis device ID is checked
+/// intermediates (PKI's other intermediate CAs too, for the path). A certificate must chain to a checked CA (<see cref="Issuers"/>),
+/// itself or a CA of the path below it that PKI lists (decision 2026-10-26): an OADM CA imported as an intermediate of an
+/// enterprise root never makes the certificates of its sibling CAs pass (the root is no checked CA). The Axis device ID is checked
 /// against its roots and intermediates (<see cref="DeviceIds"/>). A CA PKI no longer lists is not in the set (fail closed).
 /// Rebuilt when PKI changes its CAs or the selection changes (and checked every minute), never per authentication.
 /// </summary>
@@ -230,8 +231,39 @@ public sealed class CaTrust
             }
         }
 
-        return new CaTrust(key, anchors, intermediates, issuers, deviceIds, deviceIdIssuer, [.. chosen.Keys.Order(StringComparer.Ordinal)], authority, version, selection);
+        // Decision 2026-10-26: a certificate of an intermediate CA PKI lists passes a policy that trusts a CA above it. The
+        // intermediates of PKI's other CAs help build the path (never anchors: only a chosen CA ends a chain), and the CA
+        // that issued it directly decides whether PKI's lists apply (a CA OADM issues with: its deleted certificates are refused).
+        var oadmIssuers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var ca in authorities.Where(a => a.Kind != CertificateAuthorityKind.AxisDeviceId))
+        {
+            var loaded = Load(ca.Certificates);
+            if (loaded.Count > 0 && (ca.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm || ca.Issues))
+            {
+                oadmIssuers.Add(loaded[0].GetCertHashString(HashAlgorithmName.SHA256));
+            }
+
+            foreach (var certificate in loaded)
+            {
+                if (!IsSelfSigned(certificate) && seen.Add(certificate.Thumbprint))
+                {
+                    intermediates.Add(certificate);
+                }
+                else
+                {
+                    certificate.Dispose();
+                }
+            }
+        }
+
+        return new CaTrust(key, anchors, intermediates, issuers, deviceIds, deviceIdIssuer, [.. chosen.Keys.Order(StringComparer.Ordinal)], authority, version, selection)
+        {
+            OadmIssuers = oadmIssuers,
+        };
     }
+
+    /// <summary>The SHA-256 of every CA OADM issues with (also those no policy trusts): a certificate one of them issued directly keeps PKI's lists.</summary>
+    public IReadOnlySet<string> OadmIssuers { get; private init; } = new HashSet<string>();
 
     private static List<X509Certificate2> Load(IReadOnlyList<byte[]> certificates)
     {
@@ -338,8 +370,7 @@ public sealed partial class DeviceCertificateValidator(
     Func<IDeviceCertificateAuthority?> authority,
     Func<SwitchTable> switches,
     Func<PolicyPlan> policies,
-    TimeProvider time,
-    Action<string, PkiPolicy>? revokeByPolicy = null) : IClientCertificateValidator
+    TimeProvider time) : IClientCertificateValidator
 {
     private const string ClientAuthOid = "1.3.6.1.5.5.7.3.2";
     private const string AnyUsageOid = "2.5.29.37.0";
@@ -460,7 +491,7 @@ public sealed partial class DeviceCertificateValidator(
         var device = serial is null ? null : devices.BySerial(serial);
         if (issuer!.KeepsLists && ca.IsRevoked(certificateSerial))
         {
-            var text = ca.FindRevocation(certificateSerial)?.Describe() ?? CertificateRefusals.Revoked;
+            var text = Oadm.Plugins.Pki.Ca.NotAcceptedTexts.Of(ca.FindRevocation(certificateSerial));
             return ClientCertificateVerdict.Refuse(text, 44, new CheckedCertificate(device?.Id, serial, certificateSerial));
         }
 
@@ -495,17 +526,7 @@ public sealed partial class DeviceCertificateValidator(
 
         if (plan.RefusalFor(device) is { } refusal)
         {
-            if (!PolicyRules.Revokes(refusal))
-            {
-                return ClientCertificateVerdict.Refuse(CertificateRefusals.Blocked(refusal.Name), 49, tag);
-            }
-
-            if (issuer.KeepsLists)
-            {
-                revokeByPolicy?.Invoke(certificateSerial, refusal); // a new certificate of the policy's devices: revoked too
-            }
-
-            return ClientCertificateVerdict.Refuse(CertificateRefusals.RevokedByPolicy(refusal.Name), 44, tag);
+            return ClientCertificateVerdict.Refuse(CertificateRefusals.Blocked(refusal.Name), 49, tag); // decision 2026-10-26: Block only refuses
         }
 
         string? warning = null;
@@ -553,10 +574,23 @@ public sealed partial class DeviceCertificateValidator(
         chain.ChainPolicy.VerificationTimeIgnored = false;
         try
         {
-            return chain.Build(leaf) && chain.ChainElements.Count >= 2
-                && trust.Issuers.TryGetValue(chain.ChainElements[1].Certificate.GetCertHashString(HashAlgorithmName.SHA256), out var issuer)
-                ? issuer
-                : null;
+            if (!chain.Build(leaf) || chain.ChainElements.Count < 2)
+            {
+                return null;
+            }
+
+            // The nearest checked CA up the chain (decision 2026-10-26: also above an intermediate CA PKI lists). PKI's lists
+            // apply when the CA that issued it directly is one OADM issues with, whichever CA the policy trusts.
+            var direct = chain.ChainElements[1].Certificate.GetCertHashString(HashAlgorithmName.SHA256);
+            for (var i = 1; i < chain.ChainElements.Count; i++)
+            {
+                if (trust.Issuers.TryGetValue(chain.ChainElements[i].Certificate.GetCertHashString(HashAlgorithmName.SHA256), out var issuer))
+                {
+                    return i == 1 || issuer.KeepsLists || !trust.OadmIssuers.Contains(direct) ? issuer : issuer with { Issues = true };
+                }
+            }
+
+            return null;
         }
         catch (CryptographicException)
         {

@@ -124,8 +124,6 @@ public sealed partial class RadiusService : IAsyncDisposable
     private readonly Lock _rulesGate = new();
     private PolicyStore? _followedStore; // under _followGate
     private readonly AxisDeviceId _deviceIds;
-    private readonly ConcurrentDictionary<string, string> _policyRevokes = new(StringComparer.Ordinal); // serial -> user, revoked in the background
-    private int _policyRevoking; // 1 = the background revocation runs
     private RadiusSettings _config = new();
     private IUdpRelay? _listener;
     private IReadOnlyList<IPAddress> _requestedAddresses = []; // what the listener was asked for (empty = every address)
@@ -165,7 +163,7 @@ public sealed partial class RadiusService : IAsyncDisposable
         _index = new DeviceIndex(host.Devices, host.Time);
         _identity = new ServerIdentityKeeper(_store, host.Authority, host.Secrets, host.Logger);
         _deviceIds = host.DeviceIds ?? new AxisDeviceId();
-        var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time, QueuePolicyRevoke);
+        var validator = new DeviceCertificateValidator(TrustNow, _index, host.Authority, () => _switches, () => RulesNow().Plan, host.Time);
         _processor = new RadiusProcessor(new RadiusProtocolOptions(), validator, host.Time);
         _processor.SessionChanged += _board.Enqueue;
         _index.Missed += (_, _) => Track(Task.Run(() => RefreshIndexAsync(onlyAfterMiss: true)));
@@ -946,72 +944,6 @@ public sealed partial class RadiusService : IAsyncDisposable
         Track(Task.Run(() => RefreshIdentityAsync(CancellationToken.None))); // another certificate picked: the next handshake shows it
     }
 
-    /// <summary>A handshake met a certificate a revoke policy holds: revoked in the background (deduplicated, at most 10,000 waiting).</summary>
-    private void QueuePolicyRevoke(string serial, PkiPolicy policy)
-    {
-        if (_policyRevokes.Count >= 10_000 || !_policyRevokes.TryAdd(serial, policy.SavedBy ?? RadiusTexts.ServiceName))
-        {
-            return;
-        }
-
-        StartPolicyRevokes();
-    }
-
-    /// <summary>Starts the background revocation when serials wait and none runs (also the minute round: those of a failed round).</summary>
-    private void StartPolicyRevokes()
-    {
-        if (!_policyRevokes.IsEmpty && Interlocked.CompareExchange(ref _policyRevoking, 1, 0) == 0)
-        {
-            Track(Task.Run(DrainPolicyRevokesAsync));
-        }
-    }
-
-    private async Task DrainPolicyRevokesAsync()
-    {
-        var failed = false;
-        try
-        {
-            while (!_policyRevokes.IsEmpty && _host.Authority() is { } ca)
-            {
-                var due = _policyRevokes.ToArray();
-                foreach (var byUser in due.GroupBy(d => d.Value, StringComparer.Ordinal))
-                {
-                    var serials = byUser.Select(d => d.Key).Where(s => !ca.IsRevoked(s)).ToList();
-                    if (serials.Count > 0)
-                    {
-                        await ca.RevokeAsync(serials, RevocationReason.Other, byUser.Key, _cts.Token).ConfigureAwait(false);
-                    }
-
-                    foreach (var (serial, _) in byUser)
-                    {
-                        _policyRevokes.TryRemove(serial, out _);
-                    }
-                }
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
-        {
-            // stopping
-        }
-#pragma warning disable CA1031 // Tried again by the minute round; the reason goes to the server log.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            failed = true; // the serials stay queued: the minute round tries them again
-            LogMaintainFailed(ex);
-        }
-        finally
-        {
-            Volatile.Write(ref _policyRevoking, 0);
-        }
-
-        // A serial queued after the last check and before the flag went down found it set: revoked now, not lost.
-        if (!failed && !_cts.IsCancellationRequested)
-        {
-            StartPolicyRevokes();
-        }
-    }
-
     // ------------------------------------------------------------------ switches
 
     /// <summary>The switches; <paramref name="covers"/> (a user limited to a group): only those on the routes the group names.</summary>
@@ -1380,7 +1312,6 @@ public sealed partial class RadiusService : IAsyncDisposable
     /// </summary>
     internal async Task MaintainAsync(CancellationToken ct)
     {
-        StartPolicyRevokes(); // revocations a failed round left queued
         // A request while a round runs (a CA change in the middle of it) is never lost: the running round goes again.
         Volatile.Write(ref _maintainAgain, 1);
         while (Volatile.Read(ref _maintainAgain) == 1)

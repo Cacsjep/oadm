@@ -11,6 +11,12 @@ public sealed class PkiStore(IPluginSettings settings)
     public const string ConfigKey = "config";
     public const string ImportedCasKey = "importedCas";
 
+    /// <summary>"true" once the first-start root CA was deleted.</summary>
+    public const string CaDeletedKey = "caDeleted";
+
+    /// <summary>The built-in Axis device ID CAs deleted from the list (their SHA-256).</summary>
+    public const string DeletedAxisCasKey = "deletedAxisCas";
+
     private readonly IPluginSettings _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
     public async Task<StoredCa?> LoadCaAsync(CancellationToken ct) => (await LoadCaStateAsync(ct).ConfigureAwait(false)).Ca;
@@ -35,6 +41,27 @@ public sealed class PkiStore(IPluginSettings settings)
     public Task<string?> LoadCaRawAsync(CancellationToken ct) => _settings.GetAsync(CaKey, ct);
 
     public Task SaveCaAsync(StoredCa ca, CancellationToken ct) => _settings.SetAsync(CaKey, PkiJson.Serialize(ca), ct);
+
+    /// <summary>
+    /// The first-start root CA was deleted (decision 2026-10-26: it is an ordinary CA): its value is removed and the marker
+    /// <see cref="CaDeletedKey"/> written first, so no later start makes a new one in its place.
+    /// </summary>
+    public async Task DeleteCaAsync(CancellationToken ct)
+    {
+        await _settings.SetAsync(CaDeletedKey, "true", ct).ConfigureAwait(false);
+        await _settings.SetAsync(CaKey, null, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>True once the first-start root CA was deleted: a start makes no new one.</summary>
+    public async Task<bool> CaDeletedAsync(CancellationToken ct) =>
+        string.Equals((await _settings.GetAsync(CaDeletedKey, ct).ConfigureAwait(false))?.Trim(), "true", StringComparison.Ordinal);
+
+    /// <summary>The SHA-256 (upper hex) of the built-in Axis device ID CAs the user deleted (they stay deleted after an update).</summary>
+    public async Task<HashSet<string>> LoadDeletedAxisAsync(CancellationToken ct) =>
+        new(PkiJson.TryDeserialize<List<string>>(await _settings.GetAsync(DeletedAxisCasKey, ct).ConfigureAwait(false)) ?? [], StringComparer.OrdinalIgnoreCase);
+
+    public Task SaveDeletedAxisAsync(IReadOnlyCollection<string> fingerprints, CancellationToken ct) =>
+        _settings.SetAsync(DeletedAxisCasKey, PkiJson.Serialize(fingerprints.Order(StringComparer.Ordinal).ToList()), ct);
 
     public async Task<List<StoredPreviousCa>> LoadPreviousAsync(CancellationToken ct) =>
         PkiJson.TryDeserialize<List<StoredPreviousCa>>(await _settings.GetAsync(PreviousCasKey, ct).ConfigureAwait(false)) ?? [];

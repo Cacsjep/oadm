@@ -826,7 +826,8 @@ public sealed partial class IssuedRegistry : IAsyncDisposable
                 var device = entry.DeviceSerial is { Length: > 0 } cameraSerial ? bySerial.GetValueOrDefault(cameraSerial) : devices.GetValueOrDefault(entry.DeviceId);
                 var listed = device is not null && IsListedLocked(key, entry, device);
                 var deviceId = device?.Id ?? entry.DeviceId;
-                if ((currentOnly && !listed)
+                // The page (currentOnly) never lists a certificate that is no longer accepted (decision 2026-10-26: no Revoked state).
+                if ((currentOnly && (!listed || _revoked.ContainsKey(key)))
                     || (onlyListedDevices && device is null)
                     || (query.DeviceIds is { } ids && !ids.Contains(deviceId))
                     || (query.Purpose is { } purpose && !string.Equals(entry.Purpose, purpose, StringComparison.Ordinal))

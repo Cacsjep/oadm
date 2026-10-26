@@ -184,7 +184,7 @@ public sealed class PkiCertificateAuthority(PkiService service) : IDeviceCertifi
         if (service.IssuingCa(request.IssuerId) is not { } ca)
         {
             throw new CertificateRequestRefusedException(request.IssuerId is null || string.Equals(request.IssuerId, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase)
-                ? "The PKI has no certificate authority. Use New OADM CA first."
+                ? "The PKI has no certificate authority. Create a CA first."
                 : "The CA of this policy cannot issue certificates. Choose another CA in the policy.");
         }
 

@@ -510,6 +510,17 @@ public sealed partial class PolicyStore : IDisposable
     /// </summary>
     public Func<IReadOnlyList<PolicyCertificateChoice>>? ServerCertificates { get; set; }
 
+    /// <summary>
+    /// The first-start root CA ("oadm") is being made, set by PKI: only then do the CA choices offer it without its certificate
+    /// (decision 2026-10-26: once deleted it is gone). Null: never.
+    /// </summary>
+    public Func<bool>? DefaultCaPending { get; set; }
+
+    /// <summary>The ids of the CAs made on this server (the first-start root CA, Create CA), set by PKI: they may be EST sign-in CAs.</summary>
+    public Func<IReadOnlyCollection<string>>? CreatedCas { get; set; }
+
+    private bool Pending => DefaultCaPending?.Invoke() == true;
+
     /// <summary>The names a new 802.1X server certificate gets (this server's addresses and host name), set by the 802.1X server.</summary>
     public Func<IReadOnlyList<string>>? Dot1xServerNames { get; set; }
 
@@ -683,18 +694,21 @@ public sealed partial class PolicyStore : IDisposable
     public IReadOnlyList<PolicyCaChoice> SignInCaChoices()
     {
         var all = _authorities();
-        var choices = all.Where(a => a.Kind is CertificateAuthorityKind.AxisDeviceId or CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm)
+        // Decision 2026-10-26: the CAs made on this server (Create CA) too; their key never left OADM.
+        var created = new HashSet<string>(CreatedCas?.Invoke() ?? [], StringComparer.OrdinalIgnoreCase);
+        var choices = all.Where(a => a.Kind is CertificateAuthorityKind.AxisDeviceId or CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm
+                || (a.Kind == CertificateAuthorityKind.Imported && a.Issues && created.Contains(a.Id)))
             .OrderBy(a => a.Kind switch { CertificateAuthorityKind.AxisDeviceId => 0, CertificateAuthorityKind.Oadm => 1, _ => 2 })
             .GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
             .Select(a => new PolicyCaChoice(a.Id, string.IsNullOrWhiteSpace(a.Name) ? DefaultCaName(a.Id) : a.Name, a.Kind)).ToList();
-        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.AxisDeviceId))
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.AxisDeviceId) && all.Count == 0) // a PKI without its list yet; deleted Axis device ID CAs are no choice
         {
             choices.Insert(0, new PolicyCaChoice(CertificateAuthorityInfo.AxisDeviceIdId, AxisDeviceIdName, CertificateAuthorityKind.AxisDeviceId));
         }
 
-        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm))
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm) && Pending)
         {
-            choices.Insert(1, new PolicyCaChoice(CertificateAuthorityInfo.OadmId, IssuingCaName, CertificateAuthorityKind.Oadm));
+            choices.Insert(Math.Min(1, choices.Count), new PolicyCaChoice(CertificateAuthorityInfo.OadmId, IssuingCaName, CertificateAuthorityKind.Oadm));
         }
 
         return choices;
@@ -702,13 +716,13 @@ public sealed partial class PolicyStore : IDisposable
 
     /// <summary>
     /// The CAs an issuing policy can pick as "Issued by" (decision 2026-10-25): every CA that can issue (the OADM CA, the
-    /// imported CAs with their key). The OADM CA is listed while it has no certificate yet (being made).
+    /// imported CAs with their key). The first-start root CA is listed while it is being made (<see cref="DefaultCaPending"/>).
     /// </summary>
     public IReadOnlyList<PolicyCaChoice> IssuingCaChoices()
     {
         var choices = _authorities().Where(a => a.Issues && a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.Imported)
             .Select(a => new PolicyCaChoice(a.Id, a.Name, a.Kind)).ToList();
-        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm))
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.Oadm) && Pending)
         {
             choices.Insert(0, new PolicyCaChoice(CertificateAuthorityInfo.OadmId, IssuingCaName, CertificateAuthorityKind.Oadm));
         }
@@ -839,8 +853,8 @@ public sealed partial class PolicyStore : IDisposable
         return $"{ca}, {PolicyTexts.DaysText(policy.ValidDays)}, {PolicyKeys.Name(policy.Key)}";
     }
 
-    /// <summary>The OADM CA in a summary while it has no certificate (being made).</summary>
-    public const string IssuingCaName = "OADM CA";
+    /// <summary>The first-start root CA in a summary while it has no certificate (being made).</summary>
+    public const string IssuingCaName = "OADM Root CA";
 
     /// <summary>The names of PKI's CAs by id (previous OADM CAs too: a Sign-in CA policy names them).</summary>
     private Dictionary<string, string> CaNames() =>
