@@ -8,6 +8,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// header shows the chevron, the icon <c>Icon.&lt;IconKey&gt;</c> and <see cref="Name"/>. A plain string key shows the name
 /// only (the Plugins page). Groups are equal by name and icon, so rows with equal keys share one header.
 /// </summary>
+/// <param name="Name">The group's name, the header's text.</param>
+/// <param name="IconKey">The theme icon left of the name (<c>Icon.&lt;IconKey&gt;</c>, e.g. "key"); null: no icon.</param>
 public sealed record GridGroup(string Name, string? IconKey = null)
 {
     /// <summary>The header's text.</summary>
