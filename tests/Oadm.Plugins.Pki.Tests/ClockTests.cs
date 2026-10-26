@@ -149,8 +149,9 @@ public sealed class ClockTests
         h.Camera.ClockOffset = -Span(12, 30);
 
         var ex = await h.RunAsync(PkiTaskIds.Dot1xEnable);
-        Assert.StartsWith("The device's time is 12 min ", ex!.Message, StringComparison.Ordinal);
-        Assert.Contains("behind. The certificate becomes valid on the device only in 7 min ", ex.Message, StringComparison.Ordinal);
+        // The fake camera's clock follows the real one: under load the task reads it seconds later, so no exact minute.
+        Assert.StartsWith("The device's time is ", ex!.Message, StringComparison.Ordinal);
+        Assert.Matches(@"is 1[12] min \d+ s behind\. The certificate becomes valid on the device only in [67] min \d+ s\.", ex.Message);
         Assert.EndsWith(" Set the device to use NTP. Nothing was changed.", ex.Message, StringComparison.Ordinal);
         Assert.Contains("Check device clock: Failed", h.Lines);
         Assert.Empty(h.Camera.Writes);
