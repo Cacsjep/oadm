@@ -231,9 +231,10 @@ public sealed class CaTrust
             }
         }
 
-        // Decision 2026-10-26: a certificate of an intermediate CA PKI lists passes a policy that trusts a CA above it. The
-        // intermediates of PKI's other CAs help build the path (never anchors: only a chosen CA ends a chain), and the CA
-        // that issued it directly decides whether PKI's lists apply (a CA OADM issues with: its deleted certificates are refused).
+        // Decision 2026-10-26: a certificate of an intermediate CA OADM issues with (created here or imported with its key)
+        // passes a policy that trusts a CA above it, and PKI's lists apply to it (its deleted certificates are refused). The
+        // intermediates of PKI's other CAs help build the path (never anchors: only a chosen CA ends a chain). Every CA between
+        // the certificate and the trusted CA must be one OADM issues with: a sibling CA under a trusted enterprise root stays out.
         var oadmIssuers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var ca in authorities.Where(a => a.Kind != CertificateAuthorityKind.AxisDeviceId))
         {
@@ -581,12 +582,17 @@ public sealed partial class DeviceCertificateValidator(
 
             // The nearest checked CA up the chain (decision 2026-10-26: also above an intermediate CA PKI lists). PKI's lists
             // apply when the CA that issued it directly is one OADM issues with, whichever CA the policy trusts.
-            var direct = chain.ChainElements[1].Certificate.GetCertHashString(HashAlgorithmName.SHA256);
             for (var i = 1; i < chain.ChainElements.Count; i++)
             {
-                if (trust.Issuers.TryGetValue(chain.ChainElements[i].Certificate.GetCertHashString(HashAlgorithmName.SHA256), out var issuer))
+                var hash = chain.ChainElements[i].Certificate.GetCertHashString(HashAlgorithmName.SHA256);
+                if (trust.Issuers.TryGetValue(hash, out var issuer))
                 {
-                    return i == 1 || issuer.KeepsLists || !trust.OadmIssuers.Contains(direct) ? issuer : issuer with { Issues = true };
+                    return i == 1 || issuer.KeepsLists ? issuer : issuer with { Issues = true }; // below it only CAs OADM issues with
+                }
+
+                if (!trust.OadmIssuers.Contains(hash))
+                {
+                    return null; // a CA OADM does not issue with between the certificate and a trusted CA (fail closed)
                 }
             }
 
