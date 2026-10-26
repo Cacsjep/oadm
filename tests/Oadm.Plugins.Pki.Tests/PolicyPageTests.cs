@@ -532,9 +532,15 @@ public sealed class PolicyHeadlessTests
         Assert.Equal(4, checks.tabs); // Certificates, Policies, 802.1X server, EST server
 
         // Certificates: the CAs in their card, the certificates below; no policies.
-        foreach (var title in new[] { "Policies", "Certificate authorities", "Certificates", "New OADM CA", "Create", "Sign request", "Import", "OADM CA", "Previous OADM CA", "Root CA" })
+        foreach (var title in new[] { "Policies", "Certificate authorities", "Certificates", "Create CA", "Create", "Sign request", "Import", "Root CA", "Intermediate CA" })
         {
             Assert.Contains(title, checks.certificates.Texts);
+        }
+
+        // Decision 2026-10-26: no New OADM CA, no OADM CA or Previous OADM CA badges, no revoke.
+        foreach (var gone in new[] { "New OADM CA", "OADM CA", "Previous OADM CA", "Imported", "Can issue", "Revoke", "Revoked" })
+        {
+            Assert.DoesNotContain(gone, checks.certificates.Texts);
         }
 
         Assert.False(checks.certificates.Policies);

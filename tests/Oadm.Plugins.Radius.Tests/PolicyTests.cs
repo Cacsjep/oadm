@@ -105,8 +105,9 @@ public sealed class PolicyTests
     }
 
     [Fact]
-    public async Task ARevokePolicyRefusesANewCertificateOfItsDevicesAndRevokesIt()
+    public async Task AStoredAlsoRevokeOfBeforeOnlyBlocksAndRevokesNothing()
     {
+        // Decision 2026-10-26: no revoke anywhere; a Block policy stored with "Also revoke" before only refuses its devices.
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
         await harness.SavePolicyAsync(new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Serials = [Serial] } });
@@ -114,9 +115,10 @@ public sealed class PolicyTests
 
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, fresh))).Final);
 
-        Assert.Equal("Certificate revoked by Stolen", (await LastLogRowAsync(harness)).Reason);
-        await Eventually.TrueAsync(() => harness.Ca.IsRevoked(TestAuthority.SerialOf(fresh)), "the new certificate revoked in PKI");
-        Assert.Equal("admin", harness.Ca.RevokeCalls.Last().User);
+        Assert.Equal("Blocked by Stolen", (await LastLogRowAsync(harness)).Reason);
+        Assert.False(harness.Ca.IsRevoked(TestAuthority.SerialOf(fresh)));
+        Assert.Empty(harness.Ca.RevokeCalls);
+        Assert.Null(Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Block)).AlsoRevoke); // dropped on save
     }
 
     [Fact]
@@ -179,17 +181,17 @@ public sealed class PolicyTests
     }
 
     [Fact]
-    public void TheTagsOfVlanPoliciesMatchOnlyWhileTheHostProtectsThemAndRevokeNeverMatchesByTag()
+    public void TheTagsOfVlanPoliciesMatchOnlyWhileTheHostProtectsThemAndAStoredAlsoRevokeMatchesByTagLikeAnyBlock()
     {
         var tagged = new FakeDevice { Serial = Other, Tags = ["Lost"] };
         var vlan = Vlan("Lost VLAN", 20, new PolicyDevices { Tags = ["Lost"] });
         var block = new PkiPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Lost"] } };
-        var revoke = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] } };
+        var stored = new PkiPolicy { Name = "Stolen", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = new PolicyDevices { Tags = ["Lost"], Serials = [Serial] } };
 
         Assert.Equal((20, "Lost VLAN"), new PolicyPlan([vlan]).VlanFor(tagged));
         Assert.Equal((null, null), new PolicyPlan([vlan], tagsProtected: false).VlanFor(tagged)); // fail closed: a group user could tag a device into a VLAN
         Assert.Equal("Lost", new PolicyPlan([block], tagsProtected: false).RefusalFor(tagged)?.Name);
-        Assert.Null(new PolicyPlan([revoke]).RefusalFor(tagged));
-        Assert.Equal("Stolen", new PolicyPlan([revoke]).RefusalFor(new FakeDevice { Serial = Serial })?.Name);
+        Assert.Equal("Stolen", new PolicyPlan([stored]).RefusalFor(tagged)?.Name); // decision 2026-10-26: no revoke, an ordinary Block
+        Assert.Equal("Stolen", new PolicyPlan([stored]).RefusalFor(new FakeDevice { Serial = Serial })?.Name);
     }
 }

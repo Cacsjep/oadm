@@ -24,7 +24,7 @@ public sealed class RevocationTests
 
     /// <summary>Signs as EST does; <paramref name="confirm"/>: the camera got it too (it becomes current, as after EST's answer).</summary>
     internal static async Task<IssuedDeviceCertificate> SignAsync(IDeviceCertificateAuthority authority, Guid device, string serial = "B8A44F631339", DeviceCertificateUse use = DeviceCertificateUse.Server,
-        string? purpose = null, string? source = "EST", bool confirm = true)
+        string? purpose = null, string? source = "EST", bool confirm = true, string? issuerId = null)
     {
         var issued = await authority.SignAsync(
             new DeviceCertificateRequest(Csr(), "10.0.0.48", ["10.0.0.48"], ["axis-" + serial.ToLowerInvariant() + ".local"], use)
@@ -33,6 +33,7 @@ public sealed class RevocationTests
                 Source = source,
                 Purpose = purpose,
                 Validity = TimeSpan.FromDays(365),
+                IssuerId = issuerId,
             },
             CancellationToken.None);
         if (confirm && authority is PkiCertificateAuthority pki)

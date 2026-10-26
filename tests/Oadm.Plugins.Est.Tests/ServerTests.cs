@@ -306,7 +306,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_revoked_certificate_renews_nothing_and_the_refusal_is_listed()
+    public async Task A_deleted_certificate_renews_nothing_and_the_refusal_is_listed()
     {
         var (csr, key) = TestPki.Request("CN=whatever");
         using var _ = key;
@@ -315,7 +315,7 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(DeviceCertificatePurposes.Https, Assert.Single(DeviceRequests()).Purpose); // the use for PKI's list
         using var issued = X509CertificateLoader.LoadCertificate(EstMessages.ReadCertsOnly(Convert.FromBase64String(enrolled.Body))[0]);
         using var identity = TestPki.Usable(issued.CopyWithPrivateKey(key));
-        _ca.Revoke(issued.SerialNumber);
+        _ca.Revoke(issued.SerialNumber); // deleted on the PKI page: on PKI's list of certificates no longer accepted
         var (csr2, key2) = TestPki.Request();
         using var __ = key2;
 
@@ -324,8 +324,13 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(403, renewal.Status);
         Assert.Single(DeviceRequests()); // nothing signed
         var refused = _service.Store.Enrollments()[0];
-        Assert.Equal((false, EnrollmentKind.Renewal, "Certificate revoked on 2026-11-02 (Key compromised)"), (refused.Ok, refused.Kind, refused.Reason));
-        Assert.StartsWith(EstRefusals.Revoked, refused.Reason, StringComparison.Ordinal);
+        Assert.Equal((false, EnrollmentKind.Renewal, Oadm.Plugins.Pki.Ca.NotAcceptedTexts.Deleted), (refused.Ok, refused.Kind, refused.Reason));
+        Assert.DoesNotContain("revoked", refused.Reason, StringComparison.OrdinalIgnoreCase);
+
+        // Replaced by a newer certificate of the camera: refused with its own text.
+        _ca.Revoke(issued.SerialNumber, RevocationReason.Superseded);
+        Assert.Equal(403, (await SendAsync("POST", "/.well-known/est/https/simplereenroll", identity, Body(csr2))).Status);
+        Assert.Equal(Oadm.Plugins.Pki.Ca.NotAcceptedTexts.Replaced, _service.Store.Enrollments()[0].Reason);
 
         // The camera's own Axis device ID is never on the list: Set up gives it a new certificate.
         Assert.Equal(200, (await SendAsync("POST", "/.well-known/est/https/simpleenroll", _deviceId, Body(csr2))).Status);
@@ -696,11 +701,11 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal("EST server", _ca.UsedBy[EstPluginInfo.PluginId].Name);
         Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
 
-        // Only the Axis device ID signs in: the OADM CA still counts, EST signs with it.
+        // Only the Axis device ID signs in: no fixed OADM CA any more (decision 2026-10-26), the issuing policies name the CAs EST signs with.
         _ca.ListDefaults();
         var oadm = _policies!.PoliciesOf(Oadm.Plugins.Pki.Policies.PolicyKinds.SignInCa).Single(p => p.CaId == CertificateAuthorityInfo.OadmId);
         Assert.Null((await _policies.DeleteAsync(oadm.Id, "admin", CancellationToken.None)).Error);
-        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId, CertificateAuthorityInfo.OadmId], _ca.UsedBy[EstPluginInfo.PluginId].Ids.Order(StringComparer.Ordinal));
+        Assert.Equal([CertificateAuthorityInfo.AxisDeviceIdId], _ca.UsedBy[EstPluginInfo.PluginId].Ids);
 
         // A CA PKI no longer holds is not reported; PKI's Changed reports again.
         _ca.AuthorityList.Add(new("oadm-previous:AB", "OADM CA 2025", CertificateAuthorityKind.PreviousOadm, [_root.RawData], DateTime.UtcNow.AddYears(1), false));

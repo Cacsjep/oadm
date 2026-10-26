@@ -42,7 +42,7 @@ public sealed class PolicySentenceTests
             Of(new PkiPolicy { Kind = PolicyKinds.AllowCa, CaId = "imported:contoso", OnlyManaged = false }));
         Assert.Equal("The 802.1X server puts these devices in VLAN 30.", Of(new PkiPolicy { Kind = PolicyKinds.Vlan, Vlan = 30 }));
         Assert.Equal("The 802.1X server refuses these devices.", Of(new PkiPolicy { Kind = PolicyKinds.Block }));
-        Assert.Equal("The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too.", Of(new PkiPolicy { Kind = PolicyKinds.Block, AlsoRevoke = true }));
+        Assert.Equal("The 802.1X server refuses these devices.", Of(new PkiPolicy { Kind = PolicyKinds.Block, AlsoRevoke = true })); // a stored Also revoke of before: Block only refuses
         Assert.Equal("These cameras may get certificates from the EST server for every profile.",
             Of(new PkiPolicy { Kind = PolicyKinds.Enrollment, ProfileScope = PolicyProfiles.All }));
         Assert.Equal("These cameras may get certificates from the EST server for the profiles https and dot1x.",

@@ -67,7 +67,7 @@ public sealed class ServiceTests
         Assert.Equal(before, await other.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
 
         var backup = await other.InvokeAsync<FileReply>(PkiMethods.Backup, new BackupRequest("long enough"));
-        Assert.Equal("The CA key cannot be read, so it cannot be backed up.", backup.Error);
+        Assert.Equal("OADM cannot read the key of this CA, so it cannot be backed up.", backup.Error);
     }
 
     [Fact]
@@ -213,7 +213,7 @@ public sealed class ServiceTests
         Assert.Equal(ServiceStatus.Warning, PkiService.StatusOf(false, false, null, ca, end.AddDays(-20.5), 30).Kind);
         Assert.Equal("CA expires in 1 day", PkiService.StatusOf(false, false, null, ca, end.AddDays(-1.5), 30).Text);
         Assert.Equal("CA expires today", PkiService.StatusOf(false, false, null, ca, end.AddHours(-2), 30).Text);
-        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}. Use New OADM CA."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30));
+        Assert.Equal(new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {end:yyyy-MM-dd}."), PkiService.StatusOf(false, false, null, ca, end.AddDays(1), 30)); // no New OADM CA any more
         Assert.Equal("Creating the certificate authority", PkiService.StatusOf(false, true, null, null, end, 30).Text);
         using var noKey = new CaMaterial(X509CertificateLoader.LoadCertificate(ca.Certificate.RawData), [], null);
         Assert.Equal("CA key cannot be read", PkiService.StatusOf(false, false, null, noKey, end.AddDays(-100), 30).Text);
@@ -236,8 +236,10 @@ public sealed class ServiceTests
     {
         await using var pki = await PkiHarness.StartAsync();
         Assert.Equal(TimeSpan.FromDays(365), pki.Service.DeviceCertificateValidity());
-        await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("Short", false, null, CaKeys.Default, 1));
-        Assert.InRange(pki.Service.DeviceCertificateValidity(3650).TotalDays, 360, 367);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("Short", false, null, CaKeys.Ecc, 1))).Ok);
+        var shortCa = pki.Service.IssuingCa(pki.Service.Authorities().Single(a => a.Name == "Short").Id)!;
+        Assert.InRange(pki.Service.DeviceCertificateValidity(3650, shortCa).TotalDays, 360, 367); // the CA that signs ends first
+        Assert.Equal(TimeSpan.FromDays(3650), pki.Service.DeviceCertificateValidity(3650, pki.Service.IssuingCa(null))); // the first-start CA: 10 years
     }
 
     [Fact]

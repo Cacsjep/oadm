@@ -181,6 +181,12 @@ public sealed class PluginListTests
             Assert.Contains("Only this server's network", texts);
             Assert.Contains("UDP 123", texts);
 
+            // Group keys without an icon: the headers show the chevron and the name, no icon (ui:GridGroup keys add one, PKI's policies).
+            var headers = window.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Where(h => h.IsEffectivelyVisible).ToList();
+            Assert.NotEmpty(headers);
+            Assert.All(headers, h => Assert.DoesNotContain(h.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.OadmIcon>(), i => i.Name != "PART_Chevron" && i.IsEffectivelyVisible));
+            Assert.All(headers, h => Assert.IsNotType<Oadm.Sdk.Client.Controls.GridGroup>(((Avalonia.Collections.DataGridCollectionViewGroup)h.DataContext!).Key));
+
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
             if (!string.IsNullOrEmpty(outDir))

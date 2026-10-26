@@ -204,7 +204,9 @@ public sealed class AuthorityTests
             await vm.LoadAsync();
             await vm.Authorities.LoadAsync();
             IssuedCertificateRow[] Cas() => [.. vm.Authorities.Rows.Where(r => r.AuthorityKind is not null)];
-            Assert.Equal(["OADM CA", "Axis device ID"], Cas().Select(r => r.Badges[1]).Distinct());
+            // Decision 2026-10-26: one badge per CA, Root CA or Intermediate CA (no OADM CA, Axis device ID or Imported badge).
+            Assert.All(Cas(), r => Assert.Contains(Assert.Single(r.Badges), new[] { "Root CA", "Intermediate CA" }));
+            Assert.Equal(["Intermediate CA", "Root CA"], Cas().Select(r => r.Badges[0]).Distinct().Order(StringComparer.Ordinal));
             // Used by: the issuing policies name the OADM CA (they issue with it) and the IEEE 802.1X policy checks the RADIUS
             // server with it; the Axis device ID is used by nothing yet.
             Assert.Equal("Issuing: HTTPS, IEEE 802.1X; RADIUS server CA: IEEE 802.1X", Cas()[0].UsedBy); // one prefix per group (the server policies pick a certificate, decision 2026-10-25)
@@ -247,7 +249,7 @@ public sealed class AuthorityTests
             await vm.Authorities.LoadAsync();
             IssuedCertificateRow Imported() => Cas().Single(r => r.AuthorityKind == CertificateAuthorityKind.Imported);
             Assert.Equal("Contoso Root", Imported().Name);
-            Assert.Equal(["Root CA", "Imported"], Imported().Badges);
+            Assert.Equal(["Root CA"], Imported().Badges);
             Assert.True(Imported().IsCa);
 
             // Remove: refused while a service uses it, with the reason.
@@ -255,7 +257,7 @@ public sealed class AuthorityTests
             await vm.Authorities.LoadAsync();
             Assert.Equal("802.1X server", Imported().UsedBy);
             await vm.DeleteCaCommand.ExecuteAsync(Imported());
-            Assert.Equal(("Remove CA", "Used by the 802.1X server. Remove it there first."), ctx.Messages[^1]);
+            Assert.Equal(("Delete CA", "Used by the 802.1X server. Remove it there first."), ctx.Messages[^1]);
             Assert.Single(Cas(), r => r.AuthorityKind == CertificateAuthorityKind.Imported);
 
             Offer(pki).SetUsedBy("oadm.radius", "802.1X server", []);

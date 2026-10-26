@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Oadm.Plugins.Pki.Ca;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Pki.Servers;
 using Oadm.Plugins.Radius.Api;
@@ -80,7 +81,8 @@ public sealed class ServerTests
     {
         { "unknown CA", "Client certificate not issued by a trusted CA (TLS alert 48, unknown CA)" },
         { "unmanaged", "Certificate of a device OADM does not manage (ACCC8E999999)" },
-        { "revoked", "Certificate revoked on 2026-11-02 (Key compromised)" },
+        { "deleted", NotAcceptedTexts.Deleted },
+        { "replaced", NotAcceptedTexts.Replaced },
         { "expired", "Client certificate expired on " },
         { "server use", "Client certificate not allowed for network access" },
         { "two devices", "Client certificate names no device" },
@@ -102,9 +104,9 @@ public sealed class ServerTests
             "two devices" => harness.Ca.Camera(Serial, moreNames: ["axis-accc8e654321.local"]),
             _ => harness.Ca.Camera(Serial),
         };
-        if (kind == "revoked")
+        if (kind is "deleted" or "replaced") // on PKI's list of certificates no longer accepted (decision 2026-10-26: no revoke)
         {
-            harness.Ca.Revoke(TestAuthority.SerialOf(certificate), harness.Ctx.DeviceList[0].Id);
+            harness.Ca.Revoke(TestAuthority.SerialOf(certificate), harness.Ctx.DeviceList[0].Id, kind == "replaced" ? RevocationReason.Superseded : RevocationReason.KeyCompromised);
         }
 
         var conversation = await harness.Switch().RunAsync(Camera(harness, certificate));
@@ -117,8 +119,8 @@ public sealed class ServerTests
         var fired = Assert.Single(harness.Publisher.Fired);
         Assert.Equal(RadiusService.FailedEvent, fired.Type);
         Assert.StartsWith(reason, fired.Data["reason"], StringComparison.Ordinal);
-        // The device the certificate named counts only for a revoked certificate of a managed device.
-        Assert.Equal(kind == "revoked" ? harness.Ctx.DeviceList[0].Id : null, fired.Device);
+        // The device the certificate named counts only for a no longer accepted certificate of a managed device.
+        Assert.Equal(kind is "deleted" or "replaced" ? harness.Ctx.DeviceList[0].Id : null, fired.Device);
     }
 
     [Fact]
