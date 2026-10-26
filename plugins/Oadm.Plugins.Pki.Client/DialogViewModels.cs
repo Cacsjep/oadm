@@ -68,40 +68,70 @@ public abstract partial class PkiDialogViewModel : ValidatingViewModel
     }
 }
 
-/// <summary>"Generate new CA": common name, organization, validity in years; RSA 4096 is fixed. Then the replace confirmation.</summary>
-public sealed partial class GenerateCaViewModel : PkiDialogViewModel
+/// <summary>
+/// "Create CA" (decision 2026-10-26, replaces New OADM CA): a root CA (self-signed) or an intermediate CA signed by a CA with
+/// its key; name, type, signed by (intermediate), key (ECC or RSA), valid (years). The server checks everything again; its
+/// field errors go under the fields. Nothing is replaced: the new CA joins the list.
+/// </summary>
+public sealed partial class CreateCaViewModel : PkiDialogViewModel
 {
-    private readonly Func<GenerateCaViewModel, GenerateRequest, Task<bool>> _submit;
+    private readonly Func<CreateCaViewModel, CreateCaRequest, Task<bool>> _submit;
 
-    /// <param name="submit">The page: asks the replace confirmation, generates, applies the state; true = done.</param>
-    /// <param name="commonName">Prefilled common name.</param>
-    public GenerateCaViewModel(Func<GenerateCaViewModel, GenerateRequest, Task<bool>> submit, string commonName)
+    /// <param name="submit">The page: creates the CA, applies the state; true = done.</param>
+    /// <param name="issuers">The CAs with their key that can sign an intermediate (id and name).</param>
+    public CreateCaViewModel(Func<CreateCaViewModel, CreateCaRequest, Task<bool>> submit, IReadOnlyList<Choice> issuers)
     {
         _submit = submit ?? throw new ArgumentNullException(nameof(submit));
-        CommonName = commonName;
+        Issuers = issuers ?? throw new ArgumentNullException(nameof(issuers));
+        Type = TypeChoices[0];
+        Key = KeyChoices.First(k => k.Value == CaKeys.Default);
+        Issuer = Issuers.Count > 0 ? Issuers[0] : null;
         Validation.Rule(nameof(CommonName), () => PkiValidation.CommonName(CommonName));
-        Validation.Rule(nameof(Organization), () => PkiValidation.Organization(Organization));
         Validation.Rule(nameof(ValidityYears), () => PkiValidation.ValidityYears(ValidityYears));
+        Validation.Rule(nameof(Issuer), () => IsIntermediate && Issuer is null ? (Issuers.Count == 0 ? NoIssuerText : "Choose a CA.") : null);
+        Validation.Rule(nameof(Key), () => Key is null ? "Choose a key." : null);
         Validation.Reset();
     }
 
-    public static string Title => "Generate new CA";
+    public static string Title => "Create CA";
 
-    public static string KeyInfo => "RSA 4096 key, SHA-256 signatures";
+    public static string BusyText => "Creating the CA. This takes a few seconds.";
 
-    public static string BusyText => "Creating the certificate authority. This takes a few seconds.";
+    /// <summary>No CA can sign an intermediate yet.</summary>
+    public const string NoIssuerText = "No CA with its key yet. Create a root CA first.";
+
+    /// <summary>Root (self-signed) and Intermediate.</summary>
+    public static IReadOnlyList<Choice> TypeChoices { get; } = [new("root", "Root CA (self-signed)"), new("intermediate", "Intermediate CA")];
+
+    /// <summary>ECC P-256, RSA 2048, RSA 3072, RSA 4096.</summary>
+    public static IReadOnlyList<Choice> KeyChoices { get; } = [.. CaKeys.All.Select(k => new Choice(k, CaKeys.Name(k)))];
+
+    /// <summary>The CAs that can sign an intermediate.</summary>
+    public IReadOnlyList<Choice> Issuers { get; }
 
     [ObservableProperty]
-    public partial string CommonName { get; set; }
+    public partial string CommonName { get; set; } = string.Empty;
 
     [ObservableProperty]
-    public partial string Organization { get; set; } = string.Empty;
+    [NotifyPropertyChangedFor(nameof(IsIntermediate))]
+    public partial Choice Type { get; set; }
+
+    /// <summary>An intermediate CA: Signed by shows.</summary>
+    public bool IsIntermediate => Type.Value == "intermediate";
+
+    [ObservableProperty]
+    public partial Choice? Issuer { get; set; }
+
+    [ObservableProperty]
+    public partial Choice? Key { get; set; }
 
     [ObservableProperty]
     public partial string ValidityYears { get; set; } = PkiPluginInfo.DefaultValidityYears.ToString(CultureInfo.InvariantCulture);
 
-    [RelayCommand(CanExecute = nameof(CanGenerate))]
-    private async Task GenerateAsync()
+    partial void OnTypeChanged(Choice value) => Validation.Validate(); // Signed by is needed only for an intermediate
+
+    [RelayCommand(CanExecute = nameof(CanCreate))]
+    private async Task CreateAsync()
     {
         Validation.ShowAll();
         if (!Validation.IsValid)
@@ -109,7 +139,8 @@ public sealed partial class GenerateCaViewModel : PkiDialogViewModel
             return;
         }
 
-        var request = new GenerateRequest(CommonName.Trim(), string.IsNullOrWhiteSpace(Organization) ? null : Organization.Trim(), PkiValidation.ParseInt(ValidityYears) ?? 0, Confirmed: true);
+        var request = new CreateCaRequest(CommonName.Trim(), IsIntermediate, IsIntermediate ? Issuer?.Value : null, Key?.Value, PkiValidation.ParseInt(ValidityYears) ?? 0);
+        IsBusy = true;
         try
         {
             if (await _submit(this, request).ConfigureAwait(true))
@@ -129,12 +160,13 @@ public sealed partial class GenerateCaViewModel : PkiDialogViewModel
         }
     }
 
-    private bool CanGenerate() => IsFormValid && !IsBusy;
+    private bool CanCreate() => IsFormValid && !IsBusy;
 
-    protected override void OnValidationChanged() => GenerateCommand.NotifyCanExecuteChanged();
+    protected override void OnValidationChanged() => CreateCommand.NotifyCanExecuteChanged();
 
-    protected override void OnBusyChanged() => GenerateCommand.NotifyCanExecuteChanged();
+    protected override void OnBusyChanged() => CreateCommand.NotifyCanExecuteChanged();
 }
+
 
 /// <summary>
 /// "Import CA": a PKCS#12 file with its password, or a PEM certificate; a certificate without a key asks for the key file
@@ -449,7 +481,7 @@ public interface IPkiDialogs
     /// <summary>The shared certificate window (View of a CA in the list).</summary>
     Task ShowCertificateAsync(Oadm.Sdk.Client.Controls.CertificateDetails certificate);
 
-    Task ShowGenerateAsync(GenerateCaViewModel dialog);
+    Task ShowCreateCaAsync(CreateCaViewModel dialog);
 
     Task ShowImportAsync(ImportCaViewModel dialog);
 

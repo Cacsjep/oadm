@@ -6,7 +6,7 @@
              xmlns:srv="using:Oadm.Plugins.Pki.Client.Servers"
              x:Class="Oadm.Plugins.Est.Client.EstView"
              x:DataType="vm:EstViewModel"
-             ui:PageHeader.Subtitle="Cameras get and renew their certificates from the OADM CA by themselves.">
+             ui:PageHeader.Subtitle="Cameras get and renew their certificates from OADM by themselves.">
   <!-- Own cards (ICorePluginPage.HasOwnCards), two columns (decision 2026-10-25): Server (with Save and the status left of
        it) above Profiles left, the enrollments and, only when there are any, the certificates the cameras did not renew in
        time right, as high as the page; one column on narrower pages (EstView.Arrange). Shared controls and theme classes only. -->

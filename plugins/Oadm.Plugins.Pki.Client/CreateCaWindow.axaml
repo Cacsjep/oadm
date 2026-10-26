@@ -2,38 +2,59 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.Pki.Client"
-        x:Class="Oadm.Plugins.Pki.Client.GenerateCaWindow"
-        x:DataType="vm:GenerateCaViewModel"
-        Title="{x:Static vm:GenerateCaViewModel.Title}"
+        x:Class="Oadm.Plugins.Pki.Client.CreateCaWindow"
+        x:DataType="vm:CreateCaViewModel"
+        Title="{x:Static vm:CreateCaViewModel.Title}"
         Width="640" MinWidth="560" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Title bar, one card (form), footer. Shared controls and theme classes only. -->
+  <!-- One operation: title bar, the form in the dialog body (no card), footer. Shared controls and theme classes only. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:GenerateCaViewModel.Title}" />
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:CreateCaViewModel.Title}" />
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
-        <ui:FormField Label="Common name" Hint="The name devices and browsers show for this CA.">
-          <TextBox Text="{Binding CommonName}" />
+        <ui:FormField Label="Name" InputWidth="380" Hint="The name devices and browsers show for this CA.">
+          <TextBox Text="{Binding CommonName}" PlaceholderText="e.g. Contoso Root CA" />
         </ui:FormField>
-        <ui:FormField Label="Organization">
-          <TextBox Text="{Binding Organization}" PlaceholderText="Optional" />
+        <ui:FormField Label="Type">
+          <ComboBox Width="220" HorizontalAlignment="Left" ItemsSource="{x:Static vm:CreateCaViewModel.TypeChoices}" SelectedItem="{Binding Type}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:Choice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </ui:FormField>
-        <ui:FormField Label="Validity (years)">
-          <TextBox Text="{Binding ValidityYears}" />
+        <ui:FormField Label="Signed by" InputWidth="380" IsVisible="{Binding IsIntermediate}">
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Issuers}" SelectedItem="{Binding Issuer}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:Choice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </ui:FormField>
         <ui:FormField Label="Key">
-          <TextBlock Text="{x:Static vm:GenerateCaViewModel.KeyInfo}" />
+          <ComboBox Width="160" HorizontalAlignment="Left" ItemsSource="{x:Static vm:CreateCaViewModel.KeyChoices}" SelectedItem="{Binding Key}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:Choice">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
         </ui:FormField>
-        <ui:ProgressRow Text="{x:Static vm:GenerateCaViewModel.BusyText}" IsVisible="{Binding IsBusy}" />
+        <ui:FormField Label="Valid (years)">
+          <TextBox Width="160" HorizontalAlignment="Left" Text="{Binding ValidityYears}" />
+        </ui:FormField>
+        <ui:ProgressRow Text="{x:Static vm:CreateCaViewModel.BusyText}" IsVisible="{Binding IsBusy}" />
       </StackPanel>
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Generate" Command="{Binding GenerateCommand}"
+      <Button Classes="primary" Content="Create" Command="{Binding CreateCommand}"
               ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
