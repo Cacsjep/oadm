@@ -325,7 +325,7 @@ public sealed class PageTests : IAsyncLifetime
         Assert.Empty(vm.Enrollments);
         Assert.Empty(service.Store.Enrollments());
         Assert.False(vm.ClearEnrollmentsCommand.CanExecute(null));
-        Assert.Equal("No enrollments yet. Set up a camera with Certificate enrollment.", vm.EnrollmentsEmptyText);
+        Assert.Equal("No enrollments yet. Set up a camera with EST - Certificate Enrollment.", vm.EnrollmentsEmptyText);
         Assert.StartsWith("Delete every entry of the enrollments list?", _ctx.LastConfirm, StringComparison.Ordinal);
     }
 

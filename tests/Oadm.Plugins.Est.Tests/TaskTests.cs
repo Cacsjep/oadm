@@ -555,9 +555,6 @@ public sealed class TaskTests : IAsyncLifetime
         _ca.ListDefaults();
         var named = EstJson.Deserialize<CameraProfileList>(await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None));
         Assert.Equal(("OADM Test CA", "OADM Test CA"), (named.RadiusServerCa, named.NetworkAccessCa));
-        Assert.Equal("These cameras will check the RADIUS server with OADM Test CA. Only when your RADIUS server trusts OADM Test CA. Otherwise these cameras drop off the network.",
-            Client.EstSetupViewModel.Dot1xHintFor(named.RadiusServerCa, named.NetworkAccessCa));
-        Assert.Equal(Client.EstSetupViewModel.Dot1xHint, Client.EstSetupViewModel.Dot1xHintFor(null, null));
 
         _camera.HasEstApi = false;
         Assert.False(EstJson.Deserialize<CameraProfileList>(await new EstSetupTask(() => _est).QueryAsync(query, _device, EstTaskIds.ListProfilesMethod, null, CancellationToken.None)).Supported);

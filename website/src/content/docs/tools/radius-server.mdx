@@ -154,8 +154,8 @@ with all devices change the settings, the switches and the list.
 | **The device does not trust the server certificate** | The camera checks the server with another CA. Set the RADIUS server CA of its IEEE 802.1X policy to the CA of the 802.1X server's certificate and run **Renew certificates** or **Enable IEEE 802.1X** on the camera. |
 | **Certificate not issued by a trusted CA** | Add an 802.1X trusted CA policy for the CA of the camera's certificate. |
 | **Certificate of a device OADM does not manage** | Add the camera to OADM, or check that it is the right camera. |
-| **Client certificate expired** | Renew the certificate (Renew certificates on the Security menu, or Certificate enrollment). |
-| **Certificate deleted in OADM**, **Certificate replaced by a newer certificate** | The camera uses a certificate OADM no longer accepts. Give it a new one with Enable IEEE 802.1X, Renew certificates or Certificate enrollment. |
+| **Client certificate expired** | Renew the certificate (Renew certificates on the Security menu, or EST - Certificate Enrollment). |
+| **Certificate deleted in OADM**, **Certificate replaced by a newer certificate** | The camera uses a certificate OADM no longer accepts. Give it a new one with Enable IEEE 802.1X, Renew certificates or EST - Certificate Enrollment. |
 | **Blocked by** a policy | Remove the camera from the Block policy on the PKI page. |
 | **Too many sessions on the port** | Many devices tried to sign in on one port at once. Check what is plugged into that port. |
 | **Timed out** | The camera or the switch stopped answering. Check the cable, the switch port and its 802.1X settings. |

@@ -278,7 +278,7 @@ Stage 1, built 2026-10-24 (code: `plugins/Oadm.Plugins.Pki/README.md` "Issued ce
   certificate OADM issued goes on PKI's internal list of certificates no longer accepted (the `revoked` records with time,
   reason Other and user, never shown) until it ends. The confirmation of a newer certificate (reason Superseded) and an
   unused pending one (reason Other) put the old or unused one there too. No undo (the device gets a new certificate by
-  Enable IEEE 802.1X or Certificate enrollment). The page methods `revoke`, `revokeDevice` and `countRevocations` are gone
+  Enable IEEE 802.1X or EST - Certificate Enrollment). The page methods `revoke`, `revokeDevice` and `countRevocations` are gone
   (decision 2026-10-26); the CA service's `RevokeAsync` stays for PKI's own callers.
 - **Device groups:** a user with a group sees the tab with the certificates of the group's devices only (none of removed
   devices); View certificate of another device's certificate answers like an unknown one ("This certificate is not in

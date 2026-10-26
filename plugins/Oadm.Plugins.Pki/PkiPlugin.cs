@@ -25,6 +25,7 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
     private Task _import = Task.CompletedTask;
     private Oadm.Sdk.Licensing.IProLicense? _pro;
     private EventHandler? _onPro;
+    private EventHandler? _onProPolicies;
 
     /// <summary>Who revokes in calls without a user (in-process callers, tests).</summary>
     public const string InProcessUser = "OADM";
@@ -114,6 +115,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             _pro = pro;
             _onPro = (_, _) => EnsureServerCertificates(service, pro);
             pro.Changed += _onPro;
+            _onProPolicies = (_, _) => service.PublishPolicies(); // the PRO policies show or hide on the open pages at once
+            pro.Changed += _onProPolicies;
             service.Policies.ServerPluginsChanged += _onPro;
             EnsureServerCertificates(service, pro);
         }
@@ -149,6 +152,12 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         if (_pro is { } pro && _onPro is { } onPro)
         {
             pro.Changed -= onPro;
+            if (_onProPolicies is { } onProPolicies)
+            {
+                pro.Changed -= onProPolicies;
+                _onProPolicies = null;
+            }
+
             if (_service is { } running)
             {
                 running.Policies.ServerPluginsChanged -= onPro;

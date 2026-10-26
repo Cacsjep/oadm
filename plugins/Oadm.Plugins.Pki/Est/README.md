@@ -75,7 +75,7 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     own rows). Names (`EstEndpoint.CommonName`, `DnsNames`): host names only when `AddedByAllDevices`, the camera's
     reported host name only when no group covers the device (`EstService.InAnyGroup`, no scopes: covered). Background work
     (the listener, the renewal check) keeps `ctx.Devices`; the set-up task gets its device from the host.
-- Task **Certificate enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
+- Task **EST - Certificate Enrollment** (`Tasks/EstTasks.cs`, Security; the dialog `EstSetupWindow` like the Applications
   dialog: the chosen camera's profiles through the read-only query `listProfiles`, Remove with an inline confirmation, Set
   up with the IEEE 802.1X choice): set up
   (AXIS OS 12.10+, cert v1 and cert-est v1 checked fresh; the camera's profiles `oadm_<profile>` or `oadm2_<profile>` with

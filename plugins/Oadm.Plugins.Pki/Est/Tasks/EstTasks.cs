@@ -21,7 +21,7 @@ public static class EstTaskIds
     public const string Setup = "oadm.est.setup";
 
     /// <summary>The menu entry (Security) and the dialog.</summary>
-    public const string MenuName = "Certificate enrollment";
+    public const string MenuName = "EST - Certificate Enrollment";
 
     /// <summary>The name of a run that sets up.</summary>
     public const string SetupName = "Set up certificate enrollment";

@@ -210,9 +210,12 @@ public sealed partial class PkiService
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>Tells the open pages to read the policies again (also when OADM PRO starts or ends: its policies show or hide).</summary>
+    public void PublishPolicies() => _events?.Publish(PolicyMethods.Topic, "{}", PluginEventAudience.AllDevices);
+
     private void OnPoliciesChanged(object? sender, EventArgs e)
     {
-        _events?.Publish(PolicyMethods.Topic, "{}", PluginEventAudience.AllDevices);
+        PublishPolicies();
         HandExpiryWarning();
         _ = PublishAsync(); // Used by of the CAs
     }

@@ -127,7 +127,7 @@ certificate.
 <Steps>
 
 1. Select the cameras on the **Devices** page, right-click and open **Security**.
-2. Click **Certificate enrollment**. The entry shows with OADM PRO only. The dialog shows the enrollment profiles of the
+2. Click **EST - Certificate Enrollment**. The entry shows with OADM PRO only. The dialog shows the enrollment profiles of the
    first camera; with several cameras, choose one at the top right. When some of the cameras have IEEE 802.1X on, the
    dialog asks whether to replace their network access certificate too (see below).
 3. Click **Set up**. When a camera's clock is behind, OADM asks first: its new certificate is not valid yet on the camera.
@@ -167,7 +167,7 @@ Tick it only when your RADIUS server trusts the CA of the profile's issuing poli
 
 ### The dialog
 
-<Image src={dialogShot} alt="The Certificate enrollment dialog with the enrollment profiles of a camera" class="screen" />
+<Image src={dialogShot} alt="The EST - Certificate Enrollment dialog with the enrollment profiles of a camera" class="screen" />
 
 | Column | Meaning |
 |---|---|
@@ -230,7 +230,7 @@ The EST server adds three events to the [event rules](../event-rules/):
 - **Certificate enrolled**: a camera got a certificate (profile, New or Renewal).
 - **Enrollment refused**: the EST server refused a camera OADM manages (profile, reason).
 - **Certificate not renewed**: a camera did not renew a certificate within 2 days after the halfway point of its
-  validity (profile, valid until). Not for profiles you removed in **Certificate enrollment**.
+  validity (profile, valid until). Not for profiles you removed in **EST - Certificate Enrollment**.
 
 For example, send an email when a certificate is not renewed: a certificate of 1 year still has about six months left.
 

@@ -42,7 +42,7 @@ issued the 802.1X server's certificate. With another RADIUS server it is the CA 
 | Works without a license | Needs OADM PRO |
 |---|---|
 | The CAs and the Certificates tab | The [802.1X server](../radius-server/) |
-| Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the other tasks of the Security menu | The [EST server](../est-server/) and the **Certificate enrollment** task |
+| Enable HTTPS, Enable IEEE 802.1X, Renew certificates and the other tasks of the Security menu | The [EST server](../est-server/) and the **EST - Certificate Enrollment** task |
 | The policies HTTPS certificate, IEEE 802.1X certificate and Expiry warning | The server, 802.1X access and EST enrollment policies |
 
 Without OADM PRO the Policies tab shows only the policies OADM itself uses; the others stay stored and come back with a
@@ -119,7 +119,7 @@ to the date says that it needs attention.
 
 **Delete** removes a certificate from the list. A still valid certificate from a CA of OADM then no longer gets a camera
 onto the network through OADM's 802.1X server, and the camera cannot use it to renew ("Certificate deleted in OADM").
-The camera gets a new one with Enable IEEE 802.1X, Renew certificates or Certificate enrollment. A certificate that the
+The camera gets a new one with Enable IEEE 802.1X, Renew certificates or EST - Certificate Enrollment. A certificate that the
 802.1X or EST server shows cannot be deleted: choose another one in the server's policy first.
 
 ### Current and new certificates
@@ -281,7 +281,7 @@ RADIUS server CA: a certificate from another CA needs that CA on the cameras fir
 
 ### Let cameras renew by themselves (OADM PRO)
 
-Turn on the [EST server](../est-server/) and run **Security** > **Certificate enrollment** on the cameras. They renew
+Turn on the [EST server](../est-server/) and run **Security** > **EST - Certificate Enrollment** on the cameras. They renew
 their certificates halfway through the validity, without a task.
 
 ### Renew certificates
@@ -309,7 +309,7 @@ The old CA stays in the list until you delete it, so cameras keep working until 
 
 Right-click devices on the Devices page and open the **Security** group: Enable HTTPS, Disable HTTPS, Enable IEEE 802.1X,
 Disable IEEE 802.1X, Renew certificates, View certificates, Delete certificates, Install certificates, Install CA
-certificates and, with OADM PRO, Certificate enrollment. They need AXIS OS 6.53 or later. See
+certificates and, with OADM PRO, EST - Certificate Enrollment. They need AXIS OS 6.53 or later. See
 [Certificates](../../tasks/certificates/) for each task and the supported AXIS OS versions.
 
 A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when a CA of the

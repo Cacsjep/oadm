@@ -18,7 +18,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   **Start 30-day trial** for administrators (`docs/spec/licensing.md` "Trial"); when the license ends or is
   removed the server stops (enrolled cameras keep their certificates until they expire, renewals are refused while it is
   off) and a new license starts it again with the kept choice. A 4.1 server whose plugin was on keeps it on (the choice is
-  taken over once, its settings and records stay). The task Certificate enrollment fails while the server does not run
+  taken over once, its settings and records stay). The task EST - Certificate Enrollment fails while the server does not run
   ("The EST server is off. Turn it on on the EST server page. Nothing was changed.", or "OADM PRO is not active.").
 - **Page "EST server"** (the tab EST server of the PKI page; two columns, decision 2026-10-25, docs/spec/pki.md):
   - **Server** above **Profiles** left (Listen on, port, enrollments kept; below it, in the warning style, why
@@ -63,7 +63,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     Certificates, `docs/spec/radius-server.md` "Certificates and the list of certificates no longer accepted"; decision
     2026-10-26: no revoke anywhere); a certificate PKI no longer accepts renews nothing (below) and is never flagged Not
     renewed. **Remove** in the dialog still stops renewals.
-- **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
+- **Task "EST - Certificate Enrollment"** (device context menu, Security; one task per device), its dialog like the
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
   up by OADM or Other, EST server, status Enrolled / No certificate / Server not reached), **Remove** (red, inline
   confirmation; any profile, also of another EST server, decision 2026-10-22) and **Set up**; runs are named "Set up
@@ -252,7 +252,7 @@ records (`EstStore`, `EstService.CheckRenewalsAsync`):
 
 ## Setting up a camera (the deploy task)
 
-Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **Certificate enrollment**
+Built in stage 3 (`Tasks/EstTasks.cs`), tested on 10.0.0.48. Device context menu, Security: **EST - Certificate Enrollment**
 (`EstSetupTask`, one task id `oadm.est.setup`; the payload `SetupPayload` sets up, with the IEEE 802.1X choice below, or
 removes the chosen profile ids); the profiles come from the EST server page. Devices at a site too (stage 4).
 
@@ -280,10 +280,7 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    a profile serves is skipped with a warning,
    unless the payload says `replaceDot1x` (`SetupPayload`): the dialog (`EstSetupWindow`) shows, only when selected
    cameras have IEEE 802.1X on, the check box "Also replace the network access certificate of N cameras with IEEE 802.1X
-   on" with the hint naming the CAs of the dot1x profile's IEEE 802.1X policy ("These cameras will check the RADIUS server
-   with OADM Root CA. Only when your RADIUS server trusts OADM Root CA. Otherwise these cameras drop off the network.",
-   `CameraProfileList.RadiusServerCa` / `NetworkAccessCa` of the read-only query; without them the general hint) (off by
-   default); the task then logs that it was chosen. HTTPS
+   on" (off by default; no hint below it, decision 2026-10-26); the task then logs that it was chosen. HTTPS
    comes last (its certificate restarts the web server); the reads while waiting are retried during that restart.
 4. Same set as on the camera (id, server, CA aliases, device ID, services, SANs; `subject` is not compared): nothing is
    written. Otherwise remove those of OADM's profiles (`oadm_...`) and of the camera's profiles serving the same services
@@ -349,7 +346,7 @@ of OADM, PKI included, stays Apache 2.0. The THIRD-PARTY notices name the part (
    ("Plugin services"); accepting renewals of PKI's CAs without Certificate changed (`docs/spec/vapix.md`).
 2. **EST server** (built): listener, TLS, HTTP/1.1, the three operations, device ID check (the Axis device ID CA bundles
    from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
-3. **Deploy task** (built; since 2026-10-22 one task, Certificate enrollment, that sets up or removes) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
+3. **Deploy task** (built; since 2026-10-22 one task, EST - Certificate Enrollment, that sets up or removes) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
    write test on 10.0.0.48 passed. Open: removing unused certificates.
 4. **Sites** (built): `ISites.OpenTcpRelayAsync` per bound site with set-up cameras (`EstService.ServeSiteAsync`, called
    by the set-up task with the node's address towards the camera, `LocalAddressTowardsAsync` on the device's route); the

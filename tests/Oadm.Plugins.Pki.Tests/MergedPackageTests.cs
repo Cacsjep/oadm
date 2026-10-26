@@ -54,4 +54,22 @@ public sealed class MergedPackageTests
         Assert.Contains(plugin.Service.Authorities(), a => a.Name == "Contoso CA" && a.Issues); // and the created one
         Assert.False(core.Pro!.IsActive);
     }
+
+    [Fact]
+    public async Task Starting_the_PRO_trial_tells_the_open_pages_to_read_the_policies_again()
+    {
+        // The 802.1X and EST policies show only with OADM PRO: the Policies tab must show them at once, not after a page change.
+        var pro = new FakeProLicense();
+        var core = new FakeCoreContext { Pro = pro, Secrets = TestSecrets.Create() };
+        await using var plugin = new PkiPlugin(PkiHarness.Options(new FakeTrustStore()));
+        await plugin.StartAsync(core, CancellationToken.None);
+        await plugin.Service!.Background;
+        while (core.PublishedEvents.TryDequeue(out _))
+        {
+        }
+
+        pro.Current = FakeProLicense.ActivePro(trial: true).Current;
+
+        Assert.Contains(core.PublishedEvents, e => e.Topic == Oadm.Plugins.Pki.Policies.PolicyMethods.Topic);
+    }
 }
