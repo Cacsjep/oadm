@@ -6,8 +6,8 @@ layer ("Code (protocol)") and the server part ("Code (server)"); the page is the
 `docs/spec/pki.md` (2026-10-24) every rule of the server is a policy of PKI: 802.1X server (TLS, packet size,
 reauthentication), Allow CA, VLAN, Block and Revoke; the server keeps no rules of its own. Since decision 2026-10-25 the
 kinds are 802.1X server (also its certificate: Issued by, days, key), 802.1X trusted CA (the former Allow CA), VLAN and
-Block (with "Also revoke their IEEE 802.1X certificates", the former Revoke); `docs/spec/pki.md` "Several CAs and the
-policy cleanup".
+Block; `docs/spec/pki.md` "Several CAs and the policy cleanup". Since decision 2026-10-26 Block only refuses (no "Also
+revoke") and nothing in OADM revokes: a certificate deleted on the PKI page is no longer accepted (`docs/spec/pki.md`).
 
 A PRO part of the PKI package since OADM 4.5 (core plugin `oadm.radius`, `plugins/Oadm.Plugins.Pki/Radius`, its own
 source-available license like EST; `docs/spec/pki.md` "One plugin"). Off by default: **Turn on** in the tab's off state
@@ -22,9 +22,9 @@ the RFCs in `docs/rfc/` (verbatim copies; their README says which part each one 
 ## Decisions (2026-10-23)
 
 - **OADM PRO**, locked without a license or trial like EST (`docs/spec/licensing.md`).
-- **Only managed devices pass:** the client certificate must be issued by the OADM CA itself (the current or a previous
-  one; a root above an OADM CA imported as an intermediate anchors the chain, but a certificate of another CA under that
-  root never passes) **and** name a device OADM manages. A genuine certificate of a device OADM does not manage is refused.
+- **Only managed devices pass:** the client certificate must come from a CA of an 802.1X trusted CA policy (directly, or
+  through intermediate CAs OADM issues with; a root above an OADM CA imported as an intermediate anchors the chain, but a
+  certificate of another CA under that root never passes) **and** name a device OADM manages. A genuine certificate of a device OADM does not manage is refused.
   The PKI trusted root store is not used (decision 2026-10-24, review round 1: safer than the first wording).
 - **Result:** Access-Accept or Access-Reject; a **VLAN** only from a VLAN policy of PKI (none: the switch port keeps its
   own; there is no default VLAN).
@@ -214,7 +214,7 @@ Nothing is written from scratch that a maintained library or the SDK already doe
 | RADIUS packets | **own codec** (decision 2026-10-23), from RFC 2865 / 2869 / 3579 / 5080 / 8044 | the whole stack under our control for the session state, the log and the strict parsing rules; packets keep every attribute in order with its raw bytes (Proxy-State, fixtures, View details), malformed packets are a result value, never an exception. `Flexinets.Radius.Core` (MIT) was looked at and not taken |
 | EAP and EAP-TLS framing | own code (RFC 3748, 5216, 9190) | no .NET library exists; the format is a few header bytes, the logic is the session state |
 | MS-MPPE key encryption | own code (RFC 2548 2.4.2) with the RFC's construction and test vectors | a few lines; not in the RADIUS library |
-| Certificate checks | .NET `X509Chain` with custom root trust, offline: the OADM CAs (current and previous, issuer of the leaf itself) and the Axis device ID roots of EST (`plugins/Shared/DeviceId`), the `axis-<serial>.local` rule of PKI; never the trusted roots of the server | the chain rules of EST, one set built per CA change |
+| Certificate checks | .NET `X509Chain` with custom root trust, offline: the CAs of the 802.1X trusted CA policies (the leaf's issuer, or above it through CAs OADM issues with) and the Axis device ID roots of EST (`plugins/Shared/DeviceId`), the `axis-<serial>.local` rule of PKI; never the trusted roots of the server | the chain rules of EST, one set built per CA change |
 | MAC address parsing | own code | small, vendor formats listed below |
 
 No RADIUS server with EAP-TLS exists for .NET (FreeRADIUS is C, ToughRADIUS Go; neither fits a self-contained
@@ -256,49 +256,47 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
   Zyxel, MikroTik as available) under `tests/.../Fixtures/Radius`, each replayed in a test; new switch quirks become a
   fixture first.
 
-## Certificates and revocation (PKI)
+## Certificates and the list of certificates no longer accepted (PKI)
 
-Decision 2026-10-23: **PKI owns the list of issued certificates and the revocation list**; EST and the 802.1X server read
-it. One list, so a revoked certificate can neither authenticate nor renew. Stage 1, built 2026-10-24 (code:
-`plugins/Oadm.Plugins.Pki/README.md` "Issued certificates and revocation").
+Decision 2026-10-23: **PKI owns the list of issued certificates and the list of certificates it no longer accepts**; EST
+and the 802.1X server read it. One list, so a certificate OADM no longer accepts can neither authenticate nor renew.
+Stage 1, built 2026-10-24 (code: `plugins/Oadm.Plugins.Pki/README.md` "Issued certificates and revocation"). Decision
+2026-10-26: no revoke anywhere in the UI; Delete is the only action.
 
-- **PKI page, tab "Certificates"** (stage 1; today the tab of `docs/spec/pki.md` "Certificates" with its two cards
-  Certificate authorities and Certificates; nothing is read before the tab is opened): every certificate the OADM CA issued, by a PKI task (Enable HTTPS, IEEE 802.1X, Renew) or by
-  EST: device (its address; a device OADM no longer manages shows its serial with "(removed)"), use (HTTPS, IEEE 802.1X,
-  MQTT, RTSPS), issued by (the issuing CA since stage 5), valid until, state chip (Valid, Expires soon (the
-  settings' warning days, 30 by default), Expired, Revoked (tooltip: date, reason, user)); since 2026-10-25 only each
-  camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no Replaced. Filters (state, issued by; the use filter is gone since 2026-10-25) and search (device address, host name, device serial,
-  certificate serial in any notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of
-  12,345"), virtualized grid, `RangeObservableCollection`, overlay on the first read and a progress row on later ones;
-  **View certificate** (toolbar, row menu, double click: the shared `ui:CertificateWindow`, a revoked one says "Certificate
-  revoked on ..."). An event `certificates` (at most one per second) makes every open tab read its page again.
-- **Revoke** (red toolbar button and row menu; one or several rows, at most 5,000 at once; the confirmation
-  `ui:MessageWindow` with the choice **Reason**: Key compromised, Device replaced, Device removed, Other; red Revoke):
-  the serials go into the revocation list with time, reason and user and leave the store (decision 2026-10-25); **Revoke all of this device** (row menu, last):
-  every certificate of the row's device that is still valid; a device that answers has its certificate list read first
-  (read only, at most 20 s), so OADM certificates on it from before the list are revoked too. While either runs the
-  list's progress row says "Revoking the certificates" and both are off (a write runs to its end: no Cancel). Expired serials (and text
-  that is no serial number) are skipped and counted, an existing revocation is never changed. A serial the list does not
-  hold (decision 2026-10-24: a certificate of the OADM CA from before the list that no read found) is revoked too, without
-  a device, and kept until the latest end of the OADM CAs. No undo (the device gets a new certificate by Enable IEEE 802.1X or Certificate
-  enrollment). Methods `revoke` and `revokeDevice`: Admin with "Manage the certificate authority", `RequiresAllDevices`,
-  audited by the host (Admin methods), and logged with the count, reason and user.
+- **PKI page, tab "Certificates"** (today the tab of `docs/spec/pki.md` "Certificates" with its two cards Certificate
+  authorities and Certificates; nothing is read before the tab is opened): every certificate a CA of PKI issued, by a PKI
+  task (Enable HTTPS, IEEE 802.1X, Renew) or by EST: device (its address; a device OADM no longer manages shows its serial
+  with "(removed)"), use (HTTPS, IEEE 802.1X, MQTT, RTSPS), issued by, valid until, state chip (Expires soon (the Expiry
+  warning policy's days, 30 by default), Expired; no Revoked since 2026-10-26: a certificate no longer accepted is not
+  listed); since 2026-10-25 only each camera's current certificate per use (`docs/spec/pki.md` "Current and pending"), no
+  Replaced. Filters (state, issued by) and search (device address, host name, device serial, certificate serial in any
+  notation); newest first, 500 rows per page from the server (Previous / Next, "1-500 of 12,345"), virtualized grid,
+  `RangeObservableCollection`, overlay on the first read and a progress row on later ones; **View certificate** (row menu,
+  double click: the shared `ui:CertificateWindow`). An event `certificates` (at most one per second) makes every open tab
+  read its page again.
+- **Delete** (red, row menu; one or several rows, at most 5,000 at once; confirmed): the rows leave the list. A still valid
+  certificate OADM issued goes on PKI's internal list of certificates no longer accepted (the `revoked` records with time,
+  reason Other and user, never shown) until it ends. The confirmation of a newer certificate (reason Superseded) and an
+  unused pending one (reason Other) put the old or unused one there too. No undo (the device gets a new certificate by
+  Enable IEEE 802.1X or Certificate enrollment). The page methods `revoke`, `revokeDevice` and `countRevocations` are gone
+  (decision 2026-10-26); the CA service's `RevokeAsync` stays for PKI's own callers.
 - **Device groups:** a user with a group sees the tab with the certificates of the group's devices only (none of removed
   devices); View certificate of another device's certificate answers like an unknown one ("This certificate is not in
-  the list."); Revoke is hidden (and refused by the host).
-- **Kept** (plugin records, one row each, only changed rows written, new certificates batched every 2 s, a revocation
-  written before the call returns): `issued` (serial, device id, device serial from the `axis-<serial>.local` name, use,
-  source, CA id, valid from, valid until, issued, alias), `issuedDer` (the DER, read one at a time) and `revoked`
-  (serial, time, reason, user, device, valid until). A certificate leaves the store 30 days after it ended (decision
-  2026-10-25, before a year); a revocation when its certificate ended (it can no longer be used). Checked at the start and every hour. The plugin setting `issued`
-  of OADM 4.1 moves into the records at the first start and is deleted (those entries have no DER, `noCopy`: View
-  certificate says "OADM keeps no copy of this certificate." until a read of the device's certificate list finds the
-  certificate, which stores its copy). A certificate a task deletes from the device stays in the store, not
-  listed (`removedFromDeviceUtc`): a copy could still be in use, Revoke can take it. The PKI page's device counts (and the Replace CA question) count
-  only certificates still in use: not ended, not revoked, not deleted.
+  the list."); Delete is hidden (and refused by the host).
+- **Kept** (plugin records, one row each, only changed rows written, new certificates batched every 2 s, an entry of the
+  not-accepted list written before the call returns): `issued` (serial, device id, device serial from the
+  `axis-<serial>.local` name, use, source, CA id, valid from, valid until, issued, alias), `issuedDer` (the DER, read one
+  at a time) and `revoked` (serial, time, reason, user, device, valid until). A certificate leaves the store 30 days after
+  it ended (decision 2026-10-25, before a year); an entry of the not-accepted list when its certificate ended (it can no
+  longer be used). Checked at the start and every hour. The plugin setting `issued` of OADM 4.1 moves into the records at
+  the first start and is deleted (those entries have no DER, `noCopy`: View certificate says "OADM keeps no copy of this
+  certificate." until a read of the device's certificate list finds the certificate, which stores its copy). A
+  certificate a task deletes from the device stays in the store, not listed (`removedFromDeviceUtc`): a copy could still
+  be in use, so it can still be refused until it ends. The PKI page's device counts count only certificates still in use:
+  not ended, not on the not-accepted list, not deleted.
 - **Existing certificates** (decision 2026-10-24, the cheapest robust way without a new hook in the host's full refresh):
   (1) whenever PKI reads a device's certificate list (View / Delete certificates, Renew certificates), every certificate
-  there that one of the OADM CAs (active or previous) signed (checked by a chain build to that CA) and that names this
+  there that a CA of PKI issues with signed (checked by a chain build to that CA) and that names this
   device's `axis-<serial>.local` is added once (use: the one the EST profile name behind `oadm_` / `oadm2_` names when it
   fits the certificate (`oadm_mqtt`, `oadm2_mqtt_cameras` -> MQTT, `oadm_rtsps` -> RTSPS; MQTT and IEEE 802.1X only for
   clientAuth, HTTPS and RTSPS only without), else IEEE 802.1X for clientAuth and HTTPS for the others,
@@ -307,52 +305,53 @@ it. One list, so a revoked certificate can neither authenticate nor renew. Stage
   start, one background pass reads the certificate list (REST `cert` v1 or the SOAP certificate service, read only, `docs/spec/pki.md` "Older AXIS
   OS") of every device that answers and has AXIS OS 6.53 or later, 4 at a time (plugin setting `existingImported` when a round reached the devices: one device
   read, or nothing to read; a round that read no device runs again an hour later, a stop at the next start). Devices that
-  did not answer come in by (1) or when renewed.
-- **EST:** `simpleenroll` and `simplereenroll` with a revoked client certificate are refused (403, "Certificate revoked
-  on 2026-11-02 (Key compromised)"), listed in Enrollments; the camera's Axis device ID is never revoked, so Set up still
-  works. A revoked certificate is never flagged "Not renewed".
-- **802.1X server:** a revoked client certificate fails "Certificate revoked on 2026-11-02 (Key compromised)"
-  (`CertificateRevocation.Describe()`); the check is a hash lookup of the serial (`IDeviceCertificateAuthority.IsRevoked`:
-  an immutable set in memory, replaced when PKI changes it).
+  did not answer come in by (1) or when renewed. A serial on the not-accepted list is never added.
+- **EST:** `simpleenroll` and `simplereenroll` with a certificate on the not-accepted list are refused (403, "Certificate
+  deleted in OADM" or "Certificate replaced by a newer certificate", `Ca/NotAcceptedTexts`), listed in Enrollments; the
+  camera's Axis device ID is never on it, so Set up still works. Such a certificate is never flagged "Not renewed".
+- **802.1X server:** a certificate on the list fails with the same texts (alert 44); the check is a hash lookup of the
+  serial (`IDeviceCertificateAuthority.IsRevoked`: an immutable set in memory, replaced when PKI changes it).
 - **SDK 0.4.0** (`src/Oadm.Sdk/Certificates`), default members of `IDeviceCertificateAuthority` (the offer of PKI):
   `IsRevoked(serial)`, `FindRevocation(serial)`, `Revocations`, event `RevocationChanged` (subscribe again when `Find`
   returns another instance), `ListIssuedAsync(IssuedCertificateQuery)` (filters, search, `DeviceIds`, paging; rows
-  `IssuedCertificateInfo` with `IssuedCertificateState` and the revocation), `GetIssuedCertificateAsync(serial)` (DER),
+  `IssuedCertificateInfo` with `IssuedCertificateState`), `GetIssuedCertificateAsync(serial)` (DER),
   `RevokeAsync(serials, RevocationReason, userName)` (`RevokeResult`); `DeviceCertificateRequest.Purpose`
   (`DeviceCertificatePurposes`: https, dot1x, mqtt, rtsps); `IssuedCertificateSources` (Task, EST); `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory, review round 2); `CertificateSerials.Normalize`
   (any notation: upper hex, no separators, no leading zeros; .NET keeps a leading zero byte, BouncyCastle drops it);
-  `CertificateDescriber` / `CertificateDescription` for the shared certificate window.
-- **802.1X page:** no Revoked tab (decision 2026-10-24): revocation is PKI's Certificates tab; a **revoke policy** of
-  the 802.1X page revokes through `RevokeAsync` (Policies).
+  `CertificateDescriber` / `CertificateDescription` for the shared certificate window. The SDK names stay (revocation)
+  although the UI never says revoke.
+- **802.1X page:** no Revoked tab (decision 2026-10-24); deleting is PKI's Certificates tab.
 - **Later:** PKI publishes a CRL (and maybe OCSP) for RADIUS servers of other vendors.
 
 ## Who passes
 
-- The client certificate: issued directly by a CA of an **802.1X trusted CA** policy of PKI (decision 2026-10-24; a certificate of
-  another CA under the same root never passes, also when that root is imported and allowed), or for the Axis device ID a
-  chain to its roots; valid now, extended key usage client authentication (or none). Previous OADM CAs follow the OADM
-  CA's policy (no policies of their own), so replacing the CA never locks the cameras out. A CA PKI no longer lists drops
-  out at once (fail closed); without PKI's policies nothing passes.
+- The client certificate: issued by a CA of an **802.1X trusted CA** policy of PKI (decision 2026-10-24), directly or
+  through intermediate CAs below it that OADM issues with (decision 2026-10-26: created here or imported with their key;
+  `CaTrust.OadmIssuers`). Any other CA between the certificate and the trusted CA refuses it, so a certificate of a sibling
+  CA under a trusted enterprise root never passes. For the Axis device ID a chain to its roots. Valid now, extended key
+  usage client authentication (or none). Each CA passes only with a policy that names it (decision 2026-10-26: previous
+  OADM CAs no longer follow the first-start CA; the update gives each its own policy once, see "Code (server)"). A CA PKI
+  no longer lists drops out at once (fail closed); without PKI's policies nothing passes.
 - For a CA with **Only devices OADM manages** (the default) it must name **exactly one managed device**: the DNS name
-  `axis-<serial>.local` the OADM CA puts into every device certificate, or the serial of an **Axis device ID** (an imported
+  `axis-<serial>.local` PKI puts into every device certificate, or the serial of an **Axis device ID** (an imported
   CA: the name, else a serial in the subject). At a site: a device of that site. For a CA without it, any valid
   certificate of that CA passes; one that names a managed device counts as that device (site, policies, VLAN), any other
   passes without a device and without a VLAN, and the Device column of Sessions and Log shows its subject.
-- No **Block** policy holds the device ("Blocked by Storage room", alert 49); one with **Also revoke** says "Certificate
-  revoked by Stolen" (alert 44; a certificate of a CA OADM issues with is then revoked in PKI in the background). Block
-  wins over VLAN.
-- A CA OADM issues with (the OADM CA, a previous OADM CA, an imported CA with its key; decision 2026-10-25) keeps PKI's
-  lists: its certificates listed with another use are refused and those on the revocation list too
-  (`TrustedIssuer.KeepsLists`). An imported CA without its key: OADM's lists do not apply (its certificates come from
+- No **Block** policy holds the device ("Blocked by Storage room", alert 49; decision 2026-10-26: Block only refuses,
+  nothing is revoked). Block wins over VLAN.
+- A certificate whose direct issuer is a CA OADM issues with (the first-start root CA, a previous OADM CA, a created CA, an
+  imported CA with its key; decisions 2026-10-25 and 2026-10-26) keeps PKI's lists, whichever CA the policy trusts:
+  listed with another use it is refused, on the not-accepted list too (`TrustedIssuer.KeepsLists`). An imported CA without its key: OADM's lists do not apply (its certificates come from
   elsewhere).
-- A certificate of an OADM CA that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
+- A certificate of a CA OADM issues with that PKI lists with another use (MQTT, HTTPS, RTSPS) is refused (alert 42, "Certificate is
   not an IEEE 802.1X certificate"; review round 2). One created, signed or imported on PKI's Certificates card is refused
   too (alert 42, "Certificate is not a device certificate"), whatever it names. One PKI does not list (from before the list)
   passes as before.
 - PKI runs with a CA: without it nothing passes, an Axis device ID neither (alert 80, "The PKI has no certificate
-  authority"): without PKI there is no revocation list.
-- Not revoked (PKI's revocation list, above; checked for certificates of the OADM CAs); removing a device from OADM
-  refuses it at its next authentication.
+  authority"): without PKI there is no list of certificates no longer accepted.
+- Not on PKI's list of certificates no longer accepted (above: "Certificate deleted in OADM", "Certificate replaced by a
+  newer certificate", alert 44; checked for certificates of the CAs OADM issues with); removing a device from OADM refuses
+  it at its next authentication.
 - The EAP identity (sent before TLS, unprotected) is shown and logged, never trusted.
 
 ## Limits and load
@@ -392,8 +391,7 @@ interfaces and certificate, sites, senders that are no switch, how many policies
 their group names (none when it names none). The tags the policies use are protected by PKI (`docs/spec/pki.md` "Code
 (stage 3)"): a user who may tag devices but has a group could otherwise choose a device's VLAN or take it out of a Block
 policy. Until OADM 4.5 the 802.1X server protected them itself; its core plugin releases that set at its start. On a host
-without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed), those of Block policies still match,
-Block policies with Also revoke never match by tag.
+without `ProtectedTags` the tag parts of VLAN policies match no device (fail closed), those of Block policies still match.
 
 ## Secrets and logs
 
@@ -414,7 +412,7 @@ and reason, never secrets or key material.
 - Switches added, changed and removed while sessions run (the decision); the 802.1X server policy: minimum version 1.3 refuses a 1.2
   client with the alert text, an old CBC suite is offered only with minimum 1.0 or 1.1.
 - Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
-- Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with an OADM CA certificate on a real switch.
+- Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with a certificate of a CA of PKI on a real switch.
 
 ## Code (protocol)
 
@@ -444,7 +442,7 @@ UI; the server part feeds it datagrams. Tests: `tests/Oadm.Plugins.Radius.Tests`
   `MaxRoundTrips` 60, `MaxMessageLength` 64 KB, `MaxSessions` 10,000, `MaxSessionsPerClient` 1,000, `MaxSessionsPerPort` 8.
 - **TLS versions, suites, signatures**: only the versions with a checked suite the server key can use are offered
   (`TlsSettings.VersionsFor(key)`; TLS 1.3 without a checked TLS 1.3 suite is not offered), `Validate(key)` refuses a set
-  the key cannot use (only ECDHE_RSA suites with the ECDSA server certificate). The signature schemes OADM accepts and
+  the key cannot use (only ECDHE_RSA suites with the ECC P-256 server certificate). The signature schemes OADM accepts and
   uses (`EapTlsServer.AcceptedSignatures`): ECDSA, EdDSA, RSA-PSS and RSA PKCS#1 with SHA-256 or stronger, never
   SHA-224; SHA-1 only when the minimum is TLS 1.0 or 1.1 (RFC 9155 2), then also the RFC 5246 default for a TLS 1.2
   client without a list.
@@ -532,35 +530,43 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   moved or PKI started again (a new store) and puts the server policy's TLS, largest EAP packet and reauthentication into the
   processor's options; a change of the store also publishes the state ("6 policies apply"). `CaTrust.Build` takes PKI's
   `Authorities` and the CAs of the 802.1X trusted CA policies (`TrustedCaSettings`, rebuilt with the rules: the trusted set compares it
-  by reference): previous OADM CAs follow the OADM CA ("oadm-previous:<sha256>"), each issuing certificate's hash maps to its
-  CA (`TrustedIssuer`: kind, only managed; the Axis device ID through `AxisDeviceId.Verify` with PKI's roots and
-  intermediates). `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block policy
-  refuses (one with Also revoke never by tag, VLAN tags only while the host protects them). The settings of the
+  by reference): each CA only when a policy names it (decision 2026-10-26: previous OADM CAs no longer follow the
+  first-start CA), each issuing certificate's hash maps to its CA (`TrustedIssuer`: kind, only managed; the Axis device ID
+  through `AxisDeviceId.Verify` with PKI's roots and intermediates); `CaTrust.OadmIssuers` holds the SHA-256 of every CA
+  OADM issues with, and the intermediates of PKI's other CAs help build the path (never anchors). `PolicyPlan`: the oldest
+  VLAN policy that holds the device gives its VLAN and its name, any Block policy refuses (VLAN tags only while the host
+  protects them). The settings of the
   development builds before 4.5 (Advanced in `config`, `trustedCas`, `policies`, `vlans`) are read only once, by
   `RadiusPolicies.ConvertAsync` when the core plugin starts (PKI notes it), and are left as they are; their Revoke policies
-  become Block policies with Also revoke, the 802.1X server policy gets its certificate's defaults (OADM CA, 365 days, ECC).
-- **Block policies with Also revoke**: PKI revokes on save and every minute; a handshake that meets a certificate such a policy holds queues
-  it (deduplicated, at most 10,000 waiting) for a background `RevokeAsync` by the user who saved the policy; a serial
-  queued while that round ends starts another, and a failed round keeps its serials for the minute round (fix of
-  2026-10-25). The subject of a certificate of a device OADM does not manage is shown without control or format characters.
+  become Block policies (a stored "Also revoke" is no longer read and is dropped on the next save, decision 2026-10-26), the
+  802.1X server policy gets its certificate's defaults (the first-start root CA, 365 days, ECC P-256).
+- **Previous OADM CAs** (decision 2026-10-26, `PolicyStore.ConvertPreviousCasOnceAsync`, owner
+  `oadm.pki:previous-cas-2026-10-26`, once, right after the 802.1X conversion: at PKI's start, or at the 802.1X core
+  plugin's start when that converts later; never on a list that cannot be read): every 802.1X trusted CA policy of the
+  first-start CA gets one policy per still valid previous OADM CA right after it, with its settings and the CA's name
+  (made unique), so cameras keep passing; a previous CA a policy names already is skipped.
+- **Block** only refuses (decision 2026-10-26): no revoke on save, no minute round, no background queue from a handshake.
+  The subject of a certificate of a device OADM does not manage is shown without control or format characters.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on ..."),
   extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to `CaTrust`
-  (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors) whose direct issuer is one of the
-  OADM CAs themselves (`CaTrust.Issuers`: the first certificate of each chain, by SHA-256 hash; another CA under the same
-  root never passes); a handshake compares only the CA offer and a counter of its `Changed` events with those the set was
+  (the CA's `Chain` and `PreviousChains`, SDK 0.4.0: self-signed ones are the anchors): the nearest CA up the chain that
+  a policy names (`CaTrust.Issuers`: the first certificate of each chain, by SHA-256 hash), with only CAs of
+  `CaTrust.OadmIssuers` below it (decision 2026-10-26; any other CA in between, such as a sibling under the same root,
+  refuses); a handshake compares only the CA offer and a counter of its `Changed` events with those the set was
   built from (`CaTrust.Authority`, `CaTrust.Version`; review round 2: no hashing per handshake) and builds the set again at
   once for a new offer (PKI restarted) or after `Changed`; the minute round also compares the hashes of the chains
   (`CaTrust.Key`). A set of an offer that is gone refuses with alert 80. PKI reads its previous CAs from PEM once per change
-  (`PkiService.PreviousChains`, cached per list) and raises `Changed` when a previous CA is removed. A certificate of the
-  OADM CA that PKI lists with another use than dot1x (`IDeviceCertificateAuthority.PurposeOf`, SDK 0.4.0, a lookup in
+  (`PkiService.PreviousChains`, cached per list) and raises `Changed` when a CA is created or deleted. A certificate of a
+  CA OADM issues with that PKI lists with another use than dot1x (`IDeviceCertificateAuthority.PurposeOf`, SDK 0.4.0, a lookup in
   memory) refuses with alert 42 "Certificate is not an IEEE 802.1X certificate" (42 like the other refusals of what a
   certificate is made for; unlisted ones pass as before), and one PKI marks as not a device's
   (`PkiCertificateAuthority.NotDevicePurpose`: created, signed or imported on the Certificates card) with "Certificate is
   not a device certificate"; giving the one serial of its
   `axis-<serial>.local` names (none or two: "Client certificate names no
   device"), else the Axis device ID roots (`plugins/Shared/DeviceId/AxisDeviceId`, shared with EST) giving the subject's
-  serial, else alert 48; then the revocation list (44, `FindRevocation(...).Describe()`), the managed device by serial
+  serial, else alert 48; then the not-accepted list (44, `NotAcceptedTexts.Of(FindRevocation(...))`: "Certificate deleted
+  in OADM" or "Certificate replaced by a newer certificate"), the managed device by serial
   (`DeviceIndex`: the full device list read every 10 s and after a miss, at most every 2 s: a miss right after a read waits
   for the rest of the 2 s, never for the next round; 49 "Certificate of a device OADM does not
   manage (...)"), the switch's site (49 "The device belongs to another site"), the policies, the MAC
@@ -595,13 +601,14 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
 - **Page methods** (`RadiusMethods`, roles in `RequiredRole`, `RequiresAllDevices` for every save, `generateSecret`,
   `deleteSwitch` and `deleteLog`; Admin methods audited except `generateSecret`). The methods `listRevoked`, `revoke`,
   `listCertificates`, `getIssuedCertificate` (decision 2026-10-24: revocation is PKI's) and `getTrustedCas`,
-  `saveTrustedCas`, `getPolicies`, `savePolicies`, `countRevocations` (stage 3: the rules are PKI's policies) are gone.
+  `saveTrustedCas`, `getPolicies`, `savePolicies`, `countRevocations` (stage 3: the rules are PKI's policies) are gone; so are PKI's `revoke`, `revokeDevice` and
+  `countRevocations` (decision 2026-10-26).
   Rows of sessions, the log and `getLogCertificate` follow the caller's devices (`ViewedSet`); a row of another
   device answers like an unknown one; `listSites` the group's sites; `getState` gives a group user the status only
   (no settings, interfaces, server certificate, sites or unknown senders) and `listSwitches` the switches of the routes
   the group names (`CoversRoute`: its sites, This server only when the group has it). `state` goes to users with all
   devices and to each group that read the page (`ViewerScopes`, the status only), `switches` to users with all devices
-  only, `logCleared` and `revoked` (PKI's `RevocationChanged`) to every page.
+  only, `logCleared` to every page.
 - **Tests**: `tests/Oadm.Plugins.Radius.Tests` `ServerTests` (end to end through the in-memory listener and relays with a
   BouncyCastle camera: accept TLS 1.2 and 1.3 and the device ID, every refusal, removed device, MAC warning, sites,
   switches added and removed while sessions run, wrong secret, no PRO, no CA, server certificate kept and renewed,
@@ -614,7 +621,7 @@ camelCase with enums as camelCase strings; linked into the client part). Built 2
   never for group users, the cap of followed senders), `AllowCaTests` (the defaults, a CA without a policy or removed by
   PKI, an imported CA for any device with its subject in the log, an imported enterprise root and a sibling CA, a policy
   deleted while a handshake rebuilds the set), `PolicyTests` (VLAN with the policy in the log, the older VLAN and Block over
-  VLAN, Block, Revoke of a new certificate, nothing without PKI's policies, reauthentication attributes, the defaults, tags
+  VLAN, Block, nothing without PKI's policies, reauthentication attributes, the defaults, tags
   only with protection), `ConversionTests` (fixtures of every stored format, once, nothing dropped), `PluginTests`
   (manifest, the canary over every
   method, rows of a group user), `PluginPerfTests` (Category=Perf: 30,000 authentications through the plugin, the log at
@@ -671,7 +678,8 @@ data, also for the screenshots; the four, two and one column layout and the rows
 ## Stages
 
 1. **Built 2026-10-24:** PKI: the list of issued certificates and the revocation list (Certificates tab, Revoke, the SDK
-   members), device groups filtering of the Certificates tab; EST refuses revoked certificates.
+   members), device groups filtering of the Certificates tab; EST refuses revoked certificates. Since 2026-10-26 Delete replaces
+   Revoke (the list of certificates no longer accepted, never shown).
 2. **Built 2026-10-24 (server part):** RADIUS and EAP-TLS core (own RADIUS codec, BouncyCastle TLS proof first), fragmentation, the server certificate,
    switches (changed while running), Sessions and Log, the TLS alert texts, Advanced, the Revoked tab.
 3. **Built 2026-10-24 (server part):** VLAN rules (off by default), event rules, device groups filtering (the PKI Certificates tab was filtered in stage 1).
@@ -682,5 +690,6 @@ data, also for the screenshots; the four, two and one column layout and the rows
    Allow CA, VLAN, Block, Revoke), converted once from the stored settings; the page: Server | Switches, Sessions and Log
    with a splitter, "N policies apply" with Edit policies, the shared secret from 8 characters.
 
-The switches, settings, PKI's policies, the issued certificates and the revocation list are part of the encrypted backup
-(plugin settings and records, `docs/spec/settings-backup.md`); a restore brings back the revocation list with the CA.
+The switches, settings, PKI's policies, the issued certificates and the list of certificates no longer accepted are part
+of the encrypted backup (plugin settings and records, `docs/spec/settings-backup.md`); a restore brings that list back
+with the CAs.
