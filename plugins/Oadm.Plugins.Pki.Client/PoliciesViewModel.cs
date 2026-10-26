@@ -34,13 +34,51 @@ public static class PolicyTableGroups
         PolicyKinds.Enrollment or PolicyKinds.SignInCa => Enrollment,
         _ => Expiry,
     };
+
+    /// <summary>
+    /// The icon of a group's header (theme <c>Icon.*</c>): a key for issuing, a server, the network for 802.1X access, a
+    /// download for EST enrollment, a bell for expiry warnings.
+    /// </summary>
+    public static string IconOf(string group) => group switch
+    {
+        Issuing => "key",
+        Servers => "server",
+        Access => "network",
+        Enrollment => "download",
+        _ => "bell",
+    };
+
+    /// <summary>The group key of the table: the header shows the chevron, <see cref="IconOf"/> and the name.</summary>
+    public static GridGroup KeyOf(string group) => new(group, IconOf(group));
+}
+
+/// <summary>
+/// The policies a jump to the Policies tab points to (a server tab's "N policies applied"): the kinds of that server, or
+/// one policy. They are highlighted for <see cref="PoliciesViewModel.HighlightTime"/>, the first scrolled into view.
+/// </summary>
+public sealed record PolicyHighlight(Func<string, bool> Kinds, Guid? PolicyId = null)
+{
+    /// <summary>The 802.1X server's policies (the 802.1X server, trusted CA, VLAN, Block).</summary>
+    public static PolicyHighlight Dot1x { get; } = new(PolicyKinds.IsDot1x);
+
+    /// <summary>The EST server's policies (the EST server, Enrollment, EST sign-in CA).</summary>
+    public static PolicyHighlight Est { get; } = new(PolicyKinds.IsEst);
+
+    /// <summary>Exactly the policy <paramref name="id"/>.</summary>
+    public static PolicyHighlight Policy(Guid id) => new(_ => false, id);
+
+    public bool Matches(PkiPolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        return PolicyId is { } id ? policy.Id == id : Kinds(policy.Kind);
+    }
 }
 
 /// <summary>
 /// One row of the policy table: the name (a red dot when it needs attention: an overlap, a CA that cannot issue; the
 /// Built-in badge), the type and the summary sentence; its group (<see cref="PolicyTableGroups"/>).
 /// </summary>
-public sealed class PolicyRowViewModel(PolicyRow row, string? problem)
+public sealed partial class PolicyRowViewModel(PolicyRow row, string? problem) : ObservableObject
 {
     public PolicyRow Row { get; } = row ?? throw new ArgumentNullException(nameof(row));
 
@@ -55,6 +93,13 @@ public sealed class PolicyRowViewModel(PolicyRow row, string? problem)
 
     /// <summary>"Issuing policies", "802.1X access policies".</summary>
     public string Group => PolicyTableGroups.Of(Source.Kind);
+
+    /// <summary>The table's group key: <see cref="Group"/> with its header icon.</summary>
+    public GridGroup GroupKey => PolicyTableGroups.KeyOf(Group);
+
+    /// <summary>A jump to the tab points to this policy (<see cref="PolicyHighlight"/>): the accent tint for a few seconds.</summary>
+    [ObservableProperty]
+    public partial bool IsHighlighted { get; set; }
 
     public string Summary => Row.Summary;
 
@@ -105,10 +150,19 @@ public sealed partial class PoliciesViewModel : ObservableObject
     private int _loads;
     private bool _selecting;
     private IPkiFiles? _files;
+    private readonly TimeProvider _time;
+    private PolicyHighlight? _highlight;
+    private ITimer? _highlightTimer;
+    private int _highlightRun;
+    private bool _applied;
 
-    public PoliciesViewModel(ICorePluginClientContext ctx)
+    /// <summary>How long the policies a jump points to stay highlighted.</summary>
+    public static readonly TimeSpan HighlightTime = TimeSpan.FromSeconds(3);
+
+    public PoliciesViewModel(ICorePluginClientContext ctx, TimeProvider? time = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>The device picker (the page view).</summary>
@@ -157,6 +211,89 @@ public sealed partial class PoliciesViewModel : ObservableObject
         {
             Select(null);
         }
+    }
+
+    // ------------------------------------------------------------------ highlight
+
+    /// <summary>The highlighted rows changed (<see cref="PolicyRowViewModel.IsHighlighted"/>): the view sets the rows' class.</summary>
+    public event EventHandler? HighlightChanged;
+
+    /// <summary>A highlight started: the view scrolls this row (the first highlighted one) into view.</summary>
+    public event EventHandler<PolicyRowViewModel>? HighlightShown;
+
+    /// <summary>
+    /// Highlights the policies of <paramref name="highlight"/> for <see cref="HighlightTime"/> (a jump from a server tab).
+    /// Before the first read it waits for the policies; a search that would hide one of them is cleared.
+    /// </summary>
+    public void Highlight(PolicyHighlight highlight)
+    {
+        ArgumentNullException.ThrowIfNull(highlight);
+        StopHighlightTimer();
+        _highlight = highlight;
+        if (_applied)
+        {
+            StartHighlight();
+        }
+    }
+
+    private void StartHighlight()
+    {
+        if (_highlight is not { } highlight)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(SearchText) && _all.Any(r => highlight.Matches(r.Source) && !Rows.Contains(r)))
+        {
+            SearchText = null;
+        }
+
+        MarkHighlighted();
+        var run = ++_highlightRun;
+        var ui = SynchronizationContext.Current;
+        _highlightTimer = _time.CreateTimer(_ =>
+        {
+            if (ui is null)
+            {
+                EndHighlight(run);
+            }
+            else
+            {
+                ui.Post(_ => EndHighlight(run), null);
+            }
+        }, null, HighlightTime, Timeout.InfiniteTimeSpan);
+        if (Rows.FirstOrDefault(r => r.IsHighlighted) is { } first)
+        {
+            HighlightShown?.Invoke(this, first);
+        }
+    }
+
+    private void EndHighlight(int run)
+    {
+        if (run != _highlightRun)
+        {
+            return; // a later jump started its own
+        }
+
+        StopHighlightTimer();
+        _highlight = null;
+        MarkHighlighted();
+    }
+
+    private void StopHighlightTimer()
+    {
+        _highlightTimer?.Dispose();
+        _highlightTimer = null;
+    }
+
+    private void MarkHighlighted()
+    {
+        foreach (var row in _all)
+        {
+            row.IsHighlighted = _highlight?.Matches(row.Source) == true;
+        }
+
+        HighlightChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ------------------------------------------------------------------ panel
@@ -376,6 +513,20 @@ public sealed partial class PoliciesViewModel : ObservableObject
         finally
         {
             _selecting = false;
+        }
+
+        // A jump made before the first read highlights once the policies are there; a later read keeps the highlight on.
+        _applied = true;
+        if (_highlight is not null)
+        {
+            if (_highlightTimer is null)
+            {
+                StartHighlight();
+            }
+            else
+            {
+                MarkHighlighted();
+            }
         }
 
         _role = (IsShown, MayManage);

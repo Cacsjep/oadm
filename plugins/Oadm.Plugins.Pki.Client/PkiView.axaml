@@ -49,9 +49,10 @@
         <TextBlock DockPanel.Dock="Bottom" Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" Margin="0,8,0,0" />
         <Panel>
           <TextBlock Classes="secondary" Text="{x:Static vm:PoliciesViewModel.NoMatchText}" IsVisible="{Binding HasNoMatch}" />
-          <!-- Grouped like the Plugins page (PkiView.GroupPolicies: a collapsible header per group). At most 200 policies:
-               virtualized. A click opens the policy in the panel. -->
-          <DataGrid x:Name="PoliciesGrid" Classes="groups" SelectedItem="{Binding SelectedRow, Mode=TwoWay}" IsReadOnly="True" CanUserSortColumns="False"
+          <!-- Grouped like the Plugins page (PkiView.GroupPolicies: a collapsible header per group with its icon). At most 200
+               policies: virtualized. A click opens the policy in the panel. Rows a server tab's link points to are tinted for
+               a few seconds (PkiView.FollowHighlight, theme DataGridRow.highlight). -->
+          <DataGrid x:Name="PoliciesGrid" Classes="groups highlightRows" SelectedItem="{Binding SelectedRow, Mode=TwoWay}" IsReadOnly="True" CanUserSortColumns="False"
                     CanUserReorderColumns="False" SelectionMode="Single" IsVisible="{Binding !HasNoMatch}">
             <DataGrid.Columns>
               <DataGridTemplateColumn Header="Name" Width="300" x:DataType="vm:PolicyRowViewModel">

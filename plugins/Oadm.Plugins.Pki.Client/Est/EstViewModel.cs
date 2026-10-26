@@ -271,11 +271,11 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
         _ => string.Create(CultureInfo.CurrentCulture, $"{count:N0} policies applied"),
     };
 
-    /// <summary>Edit policies: the Enrollment and Sign-in CA policies are on the PKI page.</summary>
+    /// <summary>Edit policies: the Enrollment and Sign-in CA policies are on the PKI page, the EST server's ones highlighted.</summary>
     [RelayCommand]
     private Task EditInPkiAsync()
     {
-        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId);
+        Oadm.Plugins.Pki.Client.PkiTabRequest.Set(Oadm.Plugins.Pki.Client.PkiViewModel.PoliciesTabId, Oadm.Plugins.Pki.Client.PolicyHighlight.Est);
         return _ctx.OpenAsync("plugin:" + PkiPluginId);
     }
 
