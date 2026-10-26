@@ -214,7 +214,7 @@ public sealed class IssuingPolicyTests
                 ["All devices", "802.1X server", "OADM CA", "HTTPS", "IEEE 802.1X", "EST server"],
                 pki.Policies.All.Select(p => p.Name));
             Assert.Equal(45, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days); // nothing of stage 3 converted again
-            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner, PkiService.RadiusCaOwner], pki.Policies.Converted);
+            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner, PkiService.RadiusCaOwner, PolicyStore.PreviousCasOwner], pki.Policies.Converted);
             var server = pki.Policies.ServerPolicy!; // its certificate's defaults (stage 3 had none)
             Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
         }

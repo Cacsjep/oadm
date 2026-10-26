@@ -313,7 +313,7 @@ public sealed class ServerTests
     }
 
     [Fact]
-    public async Task ANewCaGivesANewServerCertificateAndCertificatesOfThePreviousCaStillPass()
+    public async Task ANewCaGivesANewServerCertificateAndCertificatesOfThePreviousCaPassWithTheirOwnPolicy()
     {
         await using var harness = await PluginHarness.CreateAsync(h => h.AddDevice(Serial));
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");
@@ -327,6 +327,10 @@ public sealed class ServerTests
 
         Assert.Equal(1, newCa.SignCount);
         var camera = new TestSupplicant(new SupplicantOptions { Certificate = oldCertificate, TrustedCa = newCa.CaCertificate });
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(camera)).Final); // decision 2026-10-26: no CA follows another
+
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Previous OADM CA", Kind = PolicyKinds.AllowCa, CaId = CaTrust.PreviousId(harness.Ca.CaCertificate), OnlyManaged = true });
+        camera = new TestSupplicant(new SupplicantOptions { Certificate = oldCertificate, TrustedCa = newCa.CaCertificate });
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(camera)).Final);
         newCa.Dispose();
     }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Time.Testing;
+using Oadm.Plugins.Pki.Policies;
 using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Radius;
 using Oadm.Plugins.Radius.Server;
@@ -135,14 +136,20 @@ public sealed class HardeningTests
 
         Assert.Equal(reads, harness.Ca.PreviousReads); // no hashing of the CAs per handshake
 
-        // The CA changed (a previous CA came with a replace): the next handshake builds the set again, without waiting for
-        // the minute round.
+        // A previous CA with its own trusted CA policy (decision 2026-10-26: it no longer follows the OADM CA) passes.
         using var previous = new TestAuthority("Previous OADM CA");
         var ofPrevious = previous.Camera(Serial);
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
         harness.Ca.Previous.Add([previous.CaCertificate]);
         harness.Ca.RaiseChanged();
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Previous OADM CA", Kind = PolicyKinds.AllowCa, CaId = CaTrust.PreviousId(previous.CaCertificate), OnlyManaged = true });
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
+
+        // The CA changed (the previous CA left PKI's list): the next handshake builds the set again, without waiting for the
+        // minute round.
+        harness.Ca.Previous.Clear();
+        harness.Ca.RaiseChanged();
+        Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness.Ca.CaCertificate, ofPrevious))).Final);
     }
 
     // ------------------------------------------------------------------ device groups

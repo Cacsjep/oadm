@@ -41,7 +41,7 @@ public sealed class AllowCaTests
 
         // Decision 2026-10-26: a previous OADM CA is an ordinary CA, it no longer follows the OADM CA's policy.
         Assert.Equal(RadiusCode.AccessReject, (await harness.Switch().RunAsync(Camera(harness, previous.Camera(Serial)))).Final);
-        await harness.SetAllowCasAsync((CertificateAuthorityInfo.OadmId, true), (CertificateAuthorityInfo.AxisDeviceIdId, true), (CaTrust.PreviousId(previous.CaCertificate), true));
+        await harness.SavePolicyAsync(new PkiPolicy { Name = "Previous OADM CA", Kind = PolicyKinds.AllowCa, CaId = CaTrust.PreviousId(previous.CaCertificate), OnlyManaged = true });
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, previous.Camera(Serial)))).Final);
         Assert.Equal(RadiusCode.AccessAccept, (await harness.Switch().RunAsync(Camera(harness, harness.DeviceIds.Device(Serial)))).Final);
         Assert.Empty(harness.Ca.UsedBy); // PKI knows its own policies: the 802.1X server tells it nothing

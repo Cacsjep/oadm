@@ -45,7 +45,7 @@ public sealed class EstPolicyPageTests
             [
                 ("All devices", "Enrollment", "These cameras may get certificates from the EST server for every profile.", true),
                 ("Axis device ID", "EST sign-in CA", "Cameras sign in to the EST server with their Axis device ID for new certificates and renewals.", false),
-                ("OADM CA", "EST sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", false),
+                ("OADM Root CA SERVER01", "EST sign-in CA", "Cameras with a certificate from OADM Root CA SERVER01 may sign in to renew it.", false),
             ],
             page.Rows.Where(r => r.Group == PolicyTableGroups.Enrollment).Select(r => (r.Name, r.Type, r.Summary, r.IsSystem)));
         Assert.Contains(page.Rows, r => r.Name == "EST server" && r.Group == PolicyTableGroups.Servers && r.IsSystem);

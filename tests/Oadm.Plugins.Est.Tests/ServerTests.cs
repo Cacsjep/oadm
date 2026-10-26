@@ -579,7 +579,7 @@ public sealed class ServerTests : IAsyncLifetime
         var oadm = signIn.Single(p => p.CaId == CertificateAuthorityInfo.OadmId);
 
         // The defaults keep today's behaviour: the Axis device ID for new certificates (and renewals), the OADM CA for renewals.
-        Assert.Equal(("Axis device ID", "new", "OADM CA", "renewal"), (axis.Name, axis.SignInFor, oadm.Name, oadm.SignInFor));
+        Assert.Equal(("Axis device ID", "new", "OADM Root CA TEST", "renewal"), (axis.Name, axis.SignInFor, oadm.Name, oadm.SignInFor));
         Assert.Equal(200, await StatusAsync(_deviceId, "simpleenroll"));
         Assert.Equal(200, await StatusAsync(_deviceId));
         Assert.Equal(200, await StatusAsync(own));

@@ -50,7 +50,7 @@ public sealed class EnrollmentPolicyTests
 
         var enrollment = Assert.Single(store.PoliciesOf(PolicyKinds.Enrollment));
         Assert.Equal((PolicyLimits.AllDevicesName, PolicyProfiles.All, true), (enrollment.Name, enrollment.ProfileScope, enrollment.Devices!.AllDevices));
-        Assert.Equal([("Axis device ID", CertificateAuthorityInfo.AxisDeviceIdId, PolicySignIn.New), ("OADM CA", CertificateAuthorityInfo.OadmId, PolicySignIn.Renewal)],
+        Assert.Equal([("Axis device ID", CertificateAuthorityInfo.AxisDeviceIdId, PolicySignIn.New), ("OADM Root CA TEST", CertificateAuthorityInfo.OadmId, PolicySignIn.Renewal)],
             store.PoliciesOf(PolicyKinds.SignInCa).Select(p => (p.Name, p.CaId!, p.SignInFor!)));
         Assert.Contains(EstPolicies.RulesOwner, store.Converted);
         Assert.All(store.All.Where(p => !PolicyKinds.IsServer(p.Kind)), p => Assert.Null(PolicyRules.Validate(p, PkiService.CipherSuites))); // policies like any other (a server policy waits for its certificate)
@@ -76,7 +76,7 @@ public sealed class EnrollmentPolicyTests
         var store = await StoreAsync(await FixtureAsync("est-config-stage4.json"));
 
         // The previous OADM CA by its name, for renewals; a CA PKI no longer holds let nothing in: nothing converted.
-        Assert.Equal([("Axis device ID", PolicySignIn.New), ("OADM CA", PolicySignIn.Renewal), ("OADM CA 2025", PolicySignIn.Renewal)],
+        Assert.Equal([("Axis device ID", PolicySignIn.New), ("OADM Root CA TEST", PolicySignIn.Renewal), ("OADM CA 2025", PolicySignIn.Renewal)],
             store.PoliciesOf(PolicyKinds.SignInCa).Select(p => (p.Name, p.SignInFor!)));
         Assert.DoesNotContain(store.All, p => p.CaId == "oadm-previous:GONE");
 
