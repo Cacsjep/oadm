@@ -9,39 +9,45 @@ own source-available `LICENSE`; the rest stays Apache 2.0
 (`Servers/ServerSwitch.cs`: Turn on / Turn off, the stored choice `serverOn`, started and stopped with the license); PKI's
 own parts never do. The core plugins keep their 4.1 ids, so their settings, records, permissions and events keep their
 keys; a 4.1 folder `oadm.est` or `oadm.radius` is skipped ("Merged into PKI") and its on/off choice taken over once. Device API research:
-`tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CA, its page and the server's trust;
-part 2: the contributed Security tasks (below), and the OADM CA service (`PkiCertificateAuthority`, offered as
+`tests/Oadm.Plugins.Pki.Tests/Fixtures/`. Part 1: the CAs, their page and the server's trust;
+part 2: the contributed Security tasks (below), and PKI's CA service (`PkiCertificateAuthority`, offered as
 `IDeviceCertificateAuthority` through `ICorePluginContext.Services` while the plugin runs; the EST server signs with it),
 the only writers of the list of issued certificates (see "Issued certificates and revocation" below).
-- CA store (plugin settings): `ca` (id = SHA-256 of the certificate, source generated/imported, certificate and chain PEM,
-  key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `previousCas` (public parts, at
-  most 10, newest first, expired ones dropped), `config`, `existingImported` (the one pass over the devices ran; below);
-  `issued` of OADM 4.1 moves into the plugin records at the first start (below). Without `Secrets` the plugin keeps no CA
-  ("CA cannot be stored on this server"); a key that cannot be decrypted (other master key) is the error state "CA key
-  cannot be read" with Generate / Import only, nothing is overwritten.
-- First start: the default CA "OADM Root CA <machine name>" in the background (status "Creating the certificate
-  authority"). Generate (`CaGenerator`, `CertificateRequest` only): RSA 4096, SHA-256 PKCS#1 v1.5, 16 random positive
-  serial bytes, NotBefore now - 5 min, BasicConstraints CA (critical), KeyUsage keyCertSign + cRLSign (critical), SKI +
-  AKI, 1..30 years (default 10), off the request thread.
+- CA store (plugin settings): `ca` (the first-start root CA: id = SHA-256 of the certificate, certificate and chain PEM,
+  key as PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`), `caDeleted` ("true" once that CA
+  was deleted: no start makes it again), `importedCas` (created and imported CAs, below), `deletedAxisCas` (SHA-256 of the
+  built-in Axis device ID CAs the user deleted), `previousCas` (public parts of CAs replaced before OADM 4.5; ended ones
+  dropped, nothing adds to it any more), `config`, `existingImported` (the one pass over the devices ran; below); `issued`
+  of OADM 4.1 moves into the plugin records at the first start (below). Without `Secrets` the plugin keeps no CA ("CA
+  cannot be stored on this server"); a key that cannot be decrypted (other master key) shows "Key cannot be read" in the
+  CA's row, the CA cannot issue, nothing is overwritten.
+- No OADM CA (decision 2026-10-26, `docs/spec/pki.md` "Certificate authorities"): every CA is an ordinary root or
+  intermediate CA. First start: the root CA "OADM Root CA <machine name>" in the background (progress row "Creating the
+  certificate authority"; RSA 4096, 10 years), because the built-in policies need an issuer; it keeps the id `oadm`.
+  `CaGenerator` (`CertificateRequest` only): a root or an intermediate signed by a CA with its key; RSA 2048 / 3072 / 4096
+  (SHA-256 PKCS#1 v1.5) or ECC P-256 (ECDSA SHA-256), 16 random positive serial bytes, NotBefore now - 5 min,
+  BasicConstraints CA (critical, no path length limit), KeyUsage keyCertSign + cRLSign (critical), SKI + AKI (the issuer's
+  key for an intermediate, which ends at the latest with it and keeps its chain), 1..30 years (default 10), off the
+  request thread; `CannotSignCa` refuses an issuer that is no CA or has a path length of 0.
+- Create CA (`createAuthority`, `CreateCaRequest`: name, intermediate, issuer id, key `CaKeys`, years; field errors
+  `CommonName`, `Issuer`, `Key`, `ValidityYears`): stored in `importedCas` with `Created` (its key never left OADM, so it
+  may be an EST sign-in CA); a name another CA has is refused.
 - Import (`CaImporter`): PKCS#12 + password (also the Back up file) or PEM certificate(s) + key (in the file or a separate
   PEM: PKCS#8, PKCS#1, SEC1, encrypted PKCS#8), at most 1 MB, password never stored or logged. Checks with field errors
   (`File`, `Password`, `KeyFile`, `KeyPassword`): readable / password right, exactly one certificate with a matching key,
-  a CA (keyCertSign when KeyUsage is present), RSA >= 2048 or ECDSA P-256 / P-384, valid now and NotAfter >= now +
+  a CA (keyCertSign when KeyUsage is present), RSA >= 2048 or ECC P-256 / P-384, valid now and NotAfter >= now +
   device validity + 1 year ("This CA expires on <date>, before certificates it would issue."). The other certificates on
   the issuer path become the chain.
 - Import (`import`, decision 2026-10-25) adds the CA with its key to `importedCas` (see "Certificate authorities"); it
-  never replaces the OADM CA and asks nothing.
-- Replace (New OADM CA only): without `confirmed` and with an existing CA the reply is `needsConfirmation` with
-  `devicesWithCurrentCa` (also for 0 devices, and only after all checks passed, so the page asks after the field
-  checks); the page asks "N devices have certificates from the current CA. They keep working until they are renewed.
-  Replace the CA?" (only "Replace the CA?" for 0). The old CA moves to
-  `previousCas`, the anchors are updated, a `state` event is published.
-- Trust anchors: the active CA, its chain, the previous CAs (+ chains) and every imported CA with its key (+ chain) go to
-  `ctx.TrustAnchors`, so device certificates they issued are **Trusted** in the device grid without an OS change (lazy,
-  next full refresh); the renewal issuers (`SetRenewalIssuers`) are the CAs that issue (OADM CA, imported with key) and
-  the previous OADM CAs.
-- Export `.crt` (PEM, with the chain) / `.cer` (DER, CA only), previous CAs as well; Back up = PKCS#12 with key and chain,
-  AES-256-CBC + SHA-256, 100,000 iterations, password >= 8 (twice in the dialog), warning popup, logged "CA backup exported".
+  never replaces another CA and asks nothing.
+- Delete (`deleteAuthority`, `DeleteAuthorityRequest` with the row id) of every CA; see "Certificate authorities".
+- Trust anchors: the first-start CA and its chain, the previous CAs (+ chains) and every created or imported CA with its
+  key (+ chain) go to `ctx.TrustAnchors`, so device certificates they issued are **Trusted** in the device grid without an
+  OS change (lazy, next full refresh); the renewal issuers (`SetRenewalIssuers`) are the CAs that issue and the previous
+  OADM CAs.
+- Export `.crt` (PEM, with the chain) / `.cer` (DER) of every CA row; Back up (`backup`, `BackupRequest.Id`: any CA with
+  its key, none: the first-start CA) = PKCS#12 with key and chain, AES-256-CBC + SHA-256, 100,000 iterations, password
+  >= 8 (twice in the dialog), warning popup, logged "CA backup exported".
 - OS trust store (`TrustStore/`, `TrustStoreInstallers.ForServer` / `.ForClient`, one class per OS behind
   `IProcessRunner` and `IMachineRootStore`, 30 s per tool, output to the log): Windows LocalMachine Root (client without
   admin: `certutil -addstore Root` with runas), Debian/Ubuntu `/usr/local/share/ca-certificates/oadm-<fp16>.crt` +
@@ -51,7 +57,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `osascript ... with administrator privileges`), check `find-certificate -Z -a`, remove `delete-certificate -Z <sha1>`.
   Texts: "Permission denied: the server must run as administrator / root", "No supported certificate tool found
   (update-ca-certificates or update-ca-trust)", "<tool> failed: <first line>", "The installation was cancelled.".
-  Tests use fakes only; nothing ever touches a real trust store.
+  Every root CA of the list can be installed (decision 2026-10-26: `installServerTrust` with `InstallTrustRequest`,
+  the state's `RootTrust` per root CA). Tests use fakes only; nothing ever touches a real trust store.
 - Settings of OADM before 4.5 (`config`, read only by the conversions since stage 4: they became the issuing policies
   "HTTPS" and "IEEE 802.1X"; `PkiValidation` keeps the field rules the policies use): `deviceCertValidityDays` 365 (1..3650), `expiryWarningDays` 30 (1..365; since OADM 4.5 only read once: it becomes the Expiry
   warning policy "All devices"), `dot1x.eapolVersion` 1|2, `dot1x.identity`
@@ -59,95 +66,111 @@ the only writers of the list of issued certificates (see "Issued certificates an
   `dot1x.radiusCa` oadm|imported + `radiusCaPem` (read once by the conversion of 2026-10-25: the RADIUS server CA of the
   IEEE 802.1X policy becomes a CA of the list, `PkiService.ConvertRadiusCasAsync`).
 - Page methods (`PkiMethods`, camelCase, errors as `{errors: {Field: message}}` or `{error}`): `getState` (status, ca,
-  previousCas, config, serverTrustInstalled (checked every call), counts, radiusCa, `simulated` in fake mode), `generate`,
-  `import`, `previewReplace`, `exportPublic`, `exportPrevious`, `removePrevious`, `backup`, `installServerTrust`,
-  `importAuthority`, `removeAuthority`, `getCertificates`, `getCertificate`, `revoke`, `revokeDevice` (below); event `state`
-  after every change, `certificates` (payload `{}`) when the list of issued certificates or the revocation list changed.
+  previousCas, config, `rootTrust` (every root CA and the server's root store), counts, radiusCa, `simulated` in fake
+  mode), `createAuthority`, `import`, `exportPublic`, `exportPrevious`, `backup`, `installServerTrust`,
+  `importAuthority`, `deleteAuthority`, `getCertificates`, `getCertificate` (below); event `state` after every change,
+  `certificates` (payload `{}`) when the list of issued certificates or the list of certificates no longer accepted
+  changed. Gone since 2026-10-26: `generate`, `previewReplace`, `removePrevious`, `removeAuthority`, `revoke`,
+  `revokeDevice`.
 - Page (stage 7 of `docs/spec/pki.md`, `HasOwnCards`, subtitle "Certificates, their policies, and the 802.1X and EST
   servers."): fixed tabs Certificates | Policies | 802.1X server | EST server (`PkiViewModel.Tabs`, the server pages from
-  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`). Policies: one grouped table and a
-  side panel (see below). Certificates: two cards that share the tab's height with a splitter between them: **Certificate
-  authorities** (New OADM CA, Import with "CA certificate" and "CA with its key", both add a row; the search; the OADM CA's
-  status below it only when it needs attention) and **Certificates** (Create, Sign request and Import as plain command
-  buttons; Group by, the state and issuer filters and the search).
-  The CAs are rows: the OADM CA's menu has View, Export (PEM / DER: Export public certificate), Install in trusted root
-  store and Back up, its Type cell where it is installed ("OS root store: server", "OS root store: client"); previous and
-  imported CAs Remove (red, confirmed); an imported CA with its key the badge "Can issue"; the column **Used in** (only
-  the CA list, `IssuedCertificateListViewModel.ShowsUsedIn`): the names of the policies that use the CA, the first as a
-  badge and "+N", every name as tooltip (`PkiService.UsedIn`). No Save: the settings of device certificates and IEEE
-  802.1X are issuing policies.
-  Policies: see "Policies". Dialogs `GenerateCaWindow`, `ImportCaWindow` (FileRow, key
+  `ICorePluginClientContext.Tabs`, `OpenTabRequested`; Edit policies: `PkiTabRequest`, with the policies to highlight).
+  Policies: one grouped table and a side panel (see below). Certificates: two cards that share the tab's height with a
+  splitter between them: **Certificate authorities** (Create CA, Import with "CA certificate" and "CA with its key", both
+  add a row; the search; below it only the first-start CA being made or a server that cannot keep a CA) and
+  **Certificates** (Create, Sign request and Import as plain command buttons; Group by, the state and issuer filters and
+  the search).
+  The CAs are rows (decision 2026-10-26): Type only "Root CA" or "Intermediate CA" (a root CA adds where it is installed:
+  "OS root store: server", "OS root store: client"); Key the key type, "No key" or "Key cannot be read"; the menu has
+  View, Export (PEM / DER), Install in trusted root store (every root CA), Back up (every CA with its key) and Delete
+  (red, confirmed); a CA that cannot be read is a row "Unknown CA" / "Cannot be read" with Delete only; the column **Used
+  in** (only the CA list, `IssuedCertificateListViewModel.ShowsUsedIn`): the names of the policies that use the CA, the
+  first as a badge and "+N", every name as tooltip (`PkiService.UsedIn`). Key and the date of Valid until are dimmed in
+  both cards. No Save: the settings of device certificates and IEEE 802.1X are issuing policies.
+  Policies: see "Policies". Dialogs `CreateCaWindow`, `ImportCaWindow` (FileRow, key
   FileRow only for a certificate without key), `BackupWindow`: `ValidatingViewModel`, errors under the fields, the
   confirmation popups owned by the dialog. Last export folder per client in
-  `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CA + one previous
-  CA, server store simulated, this computer never touched.
+  `LocalApplicationData/Oadm/plugins/oadm.pki/client.json`. Fake mode (`FakeOadmApi.Pki.cs`): in-memory CAs with Create
+  CA and Delete CA, server store simulated, this computer never touched.
 - Tests: `tests/Oadm.Plugins.Pki.Tests` (generator extensions, importer formats and every check, service with real secret
-  protector, event hub and anchor registry: default CA, restart, other master key, no secrets, replace + confirmation,
-  previous CAs cap/expiry/remove, export, backup restore, settings, RADIUS CA, status texts; trust store installers per
-  OS with the fake runner; page view model incl. dialogs; fake mode; headless screenshots `pki-page.png`,
-  `pki-page-imported-intermediate.png`, `pki-generate-dialog.png`, `pki-import-dialog-errors.png`, `pki-backup-dialog.png`;
-  the list of issued certificates and revocation: `IssuedRegistryTests`, `RevocationTests`, `ExistingCertificateImportTests`,
-  `CertificatesTabTests` (+ `pki-certificates.png`, `pki-revoke-confirm.png`, `pki-certificate-window.png`), `BackupTests`
-  (a restore on another server over the real database), Perf `IssuedScaleTests` (30,000 devices x 4 certificates));
+  protector, event hub and anchor registry: default CA, restart, other master key, no secrets, Create CA, Delete CA,
+  export, backup restore, settings, RADIUS CA, status texts; trust store installers per OS with the fake runner; page
+  view model incl. dialogs; fake mode; headless screenshots `pki-a-certificates-tab.png`, `pki-a-ca-list-end.png`,
+  `pki-a-create-ca-root.png`, `pki-a-create-ca-intermediate.png`, `pki-a-delete-ca.png`, `pki-import-dialog-errors.png`,
+  `pki-backup-dialog.png`; the list of issued certificates: `IssuedRegistryTests`, `ExistingCertificateImportTests`,
+  `CertificatesTabTests` (+ `pki-certificates.png`, `pki-certificate-window.png`), `BackupTests` (a restore on another
+  server over the real database), Perf `IssuedScaleTests` (30,000 devices x 4 certificates));
   `tests/Oadm.Core.Tests/Vapix/TrustAnchorTests.cs` (anchored leaf / intermediate Trusted, self-signed stays, registry,
   lazy re-rating in `CertificatePinning`, host context).
 
 ## Certificate authorities (docs/spec/pki.md)
 
-- `PkiService.Authorities()` (the CA service's `Authorities`): the OADM CA (`oadm`, `Issues` while its key is readable),
-  the previous OADM CAs not ended (`oadm-previous:<sha256>`, CA certificate then its chain), the Axis device ID (`axis-device-id`,
-  the PEMs of `plugins/Shared/DeviceId` embedded, roots first) and the imported CAs (`imported:<sha256>`, oldest first).
-  Built once per change of the lists (reference check, and again when a previous CA ends). `CaChanged` (the service's
-  `Changed`) after a replace, a removed previous CA, Import CA and Remove.
+- `PkiService.Authorities()` (the CA service's `Authorities`): the first-start root CA (`oadm`, `Issues` while its key is
+  readable), the previous OADM CAs not ended (`oadm-previous:<sha256>`, CA certificate then its chain), the Axis device ID
+  (`axis-device-id`, the PEMs of `plugins/Shared/DeviceId` embedded, roots first, without the deleted ones) and the
+  created and imported CAs (`imported:<sha256>`, oldest first). Built once per change of the lists (reference check, and
+  again when a previous CA ends). `CaChanged` (the service's `Changed`) after Create CA, Import CA and Delete.
 - `SetUsedBy(serviceId, serviceName, ids)`: in memory per service (each service tells it again after a start), an empty
   list clears it; a change publishes the state (no `Changed`). Shown as "Used by" (names in order, "-" for none).
-- Imported CAs (decision 2026-10-25: several issuing CAs): setting `importedCas` (at most 50, part of the backup): the
-  certificate PEM, the chain kept at import (`chainPem`, an intermediate's issuers) and, for a CA imported with its key,
-  `keyProtected` (PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`, exactly like the OADM
-  CA's key; never logged, never exported on its own). Loaded at the start (`ReadImported`): a key the master key cannot
-  read leaves the CA listed but unable to issue (logged once). `importAuthority` (PEM or DER, one certificate; errors under
-  the file `AuthorityFile`: not a certificate, larger than 1 MB, contains a private key, not a CA, expired, already in the
-  list), `import` (a CA with its key, `CaImporter`; the same CA imported before without its key gets it; the OADM CA, a
-  previous one or one with its key already listed: "This CA is already in the list.") and `removeAuthority` (imported
-  only; refused while a policy names it or a service uses it). All Admin ("manage", all devices, audited).
-- Issuing: `PkiService.IssuingCa(caId)` (the OADM CA for null or `oadm`, else an imported CA with its key; null: it cannot
-  issue), `IssuingCas()`; `PolicyStore.IssuingCaChoices()` (Issued by), `NamingCa(id)` (the policies that keep a CA).
-  Every signing path takes the CA of its policy: the tasks (`CertificateDeployment.RequireCa(service, policy)`), the CA
-  service (`DeviceCertificateRequest.IssuerId`: EST profiles, the 802.1X and EST servers' certificates through
-  `Ca/IssuerChains`), Create and Sign request. The chain sent with a certificate is the issuing CA's.
+- Created and imported CAs (decision 2026-10-25: several issuing CAs): setting `importedCas` (at most 50 together, part of
+  the backup): the certificate PEM, the chain (`chainPem`: an intermediate's issuers), `created` for Create CA and, for a
+  CA with its key, `keyProtected` (PKCS#8 PEM encrypted with `ICorePluginContext.Secrets`, purpose `pki:ca:<id>`; never
+  logged, never exported on its own). Loaded at the start (`ReadImported`): a key the master key cannot read leaves the
+  CA listed but unable to issue ("Key cannot be read", logged once); a certificate that cannot be read is a row that says
+  so. `importAuthority` (PEM or DER, one certificate; errors under the file `AuthorityFile`: not a certificate, larger than
+  1 MB, contains a private key, not a CA, expired, already in the list), `import` (a CA with its key, `CaImporter`; the
+  same CA imported before without its key gets it; one with its key already listed: "This CA is already in the list.").
+  All Admin ("manage", all devices, audited).
+- Delete (`deleteAuthority`, `PkiService.DeleteAuthorityAsync`, decision 2026-10-26): every CA row, also the first-start
+  CA, a previous one, each Axis device ID certificate and a row that cannot be read (`ca-unreadable:<authority id>`: its
+  stored value is first kept in `ca-unreadable-<UTC time>.json` in the data folder). Refused while a policy names it
+  (`PolicyStore.NamingCa`: "Used by the policy Contoso. Change or delete the policy first."), a service uses it, or it
+  signed a CA that is still listed ("It signed <name>. Delete <name> first."). Its certificates stay listed.
+- Issuing: `PkiService.IssuingCa(caId)` (the first-start CA for null or `oadm`, else a created or imported CA with its
+  key; null: it cannot issue), `IssuingCas()`; `PolicyStore.IssuingCaChoices()` (Issued by), `NamingCa(id)` (the
+  policies that keep a CA). Every signing path takes the CA of its policy: the tasks
+  (`CertificateDeployment.RequireCa(service, policy)`), the CA service (`DeviceCertificateRequest.IssuerId`: EST profiles,
+  the 802.1X and EST servers' certificates through `Ca/IssuerChains`), Create and Sign request. The chain sent with a
+  certificate is the issuing CA's; the tasks install a certificate of an intermediate CA with its chain
+  (`CertificateDeployment.IssuerChainPems`, `DeviceCertificates.InstallSignedAsync`: the certificate alone when the
+  device refuses the chain).
 - Page: the CA rows of the Certificates list (see "Page" above; **Import** > "CA certificate" opens
-  `ImportAuthorityWindow`, "CA with its key" `ImportCaWindow`). `removeAuthority` and `removePrevious` are refused while a
-  policy names the CA ("Used by the policy Contoso. Change or delete the policy first."). Tests: `AuthorityTests`,
-  `SeveralCasTests`, `PolicyStoreTests`.
+  `ImportAuthorityWindow`, "CA with its key" `ImportCaWindow`; **Create CA** `CreateCaWindow`). Tests: `AuthorityTests`,
+  `SeveralCasTests`, `StoredCaUnreadableTests`, `PreviousCaConversionTests`, `ChainUploadTests`, `CaListHeadlessTests`,
+  `PolicyStoreTests`.
 
 ## Policies (docs/spec/pki.md "Policies", "Code (stage 3)", "Code (stage 4)")
 
 - `Policies/`: `PolicyModels` (contract), `PolicyRules`, `PolicyMatcher`, `PolicyStore` (setting `policies`, part of the
-  backup), `ExpiryEvents`; `PkiService.Policies.cs` (the methods, PKI's own conversions, the revocations of Block
-  policies with Also revoke on save and every minute, the expiry days handed to the host). Kinds (decision 2026-10-25):
+  backup), `ExpiryEvents`; `PkiService.Policies.cs` (the methods, PKI's own conversions, the expiry days handed to the
+  host; no revocations since 2026-10-26: Block only refuses). Kinds (decision 2026-10-25):
   HTTPS certificate, IEEE 802.1X certificate (issuing, no devices), Expiry warning, 802.1X server (one only, its
-  certificate and TLS settings), 802.1X trusted CA (stored id `allowCa`), VLAN, Block (`alsoRevoke`), EST server (one
+  certificate and TLS settings), 802.1X trusted CA (stored id `allowCa`), VLAN, Block (a stored `alsoRevoke` is no longer read), EST server (one
   only, its certificate), Enrollment, EST sign-in CA (stored id `signInCa`). Defaults "HTTPS", "IEEE 802.1X", "EST server"
   (`PkiService.ConvertIssuing`, owner `oadm.pki:issuing`); the 802.1X server policy comes from `RadiusPolicies`. The kinds
   of before 2026-10-25 (`serverCertificate`, `revoke`) are converted once on start (`PolicyStore.ConvertKinds` through
-  `RewriteOnceAsync`, owner `oadm.pki:kinds-2026-10-25`; never on a store that cannot be read). The 802.1X server inside
+  `RewriteOnceAsync`, owner `oadm.pki:kinds-2026-10-25`; never on a store that cannot be read). The previous OADM CAs get
+  their own 802.1X trusted CA policies once (`PolicyStore.ConvertPreviousCasOnceAsync`, owner
+  `oadm.pki:previous-cas-2026-10-26`, after the 802.1X server's conversion; decision 2026-10-26: no CA follows another). The 802.1X server inside
   PKI reads the store in process (`IPluginServices`); `Radius/Server/RadiusPolicies.cs` converts its settings once.
 - Page: tab **Policies** (`PoliciesViewModel`, decision 2026-10-25, like Intune): **Create** and **Search policies** above
   one virtualized table grouped by `PolicyTableGroups` (Issuing policies, Server policies, 802.1X access policies, EST
-  enrollment policies, Expiry warnings; a group without rows shows no header, the PRO groups hide without OADM PRO):
+  enrollment policies, Expiry warnings; a group without rows shows no header, the PRO groups hide without OADM PRO; the
+  header shows the group's icon, `PolicyTableGroups.KeyOf` gives a `ui:GridGroup`):
   Name (the **Built-in** badge `Border.badge.system`, the red problem dot), Type, Summary. A click on a row or Create opens
   the side panel (`Border.sidePanel`, 560 px, pushes the table left): Create first lists the types ("Create a policy",
   Next), then the form; Delete (red, not for built-in policies), "Not saved", Cancel, Save; "Discard changes" before
   unsaved changes are lost. The form (`PolicyEditorViewModel`, `PolicyFormView`): the kind's description, Name, VLAN ID,
-  Days before the end, Block's "Also revoke their IEEE 802.1X certificates", Devices ("All devices" or the chosen ones
-  with Choose devices: the shared `DevicePickerWindow` in its group mode, made only on that click; not "All devices" for a
-  Block that also revokes), 802.1X trusted CA's CA and "Only devices OADM manages", the issuing kinds' Issued by
+  Days before the end, Devices ("All devices" or the chosen ones
+  with Choose devices: the shared `DevicePickerWindow` in its group mode, made only on that click), 802.1X trusted CA's CA and "Only devices OADM manages", the issuing kinds' Issued by
   (`PolicyList.IssuingCas`), Valid (days), Key, for IEEE 802.1X EAPOL version, EAP identity (MAC address, Host name, IP
   address, Last octet of the IP address, Custom), Custom identity and RADIUS server CA (a CA of the list, the hint names the
   issuer of the 802.1X server's certificate), the server kinds' Certificate (one of the Certificates list) and the 802.1X
   server's Minimum TLS version (1.0 to 1.3), Largest EAP packet (500 to 1,400), Reauthentication (Switch decides or 10 to
   1,440 minutes). A save sends the policy's revision; one over a later change is refused "Changed by someone else.
-  Reload.". A Block policy that newly revokes asks first with `countRevocations`.
+  Reload.". A jump from a server tab's "N policies applied" highlights that server's policies for 3 s
+  (`PoliciesViewModel.Highlight`, `PolicyHighlight.Dot1x` / `Est`, `PkiView.FollowHighlight`: the theme's
+  `DataGrid.highlightRows` / `DataGridRow.highlight`).
 - Events "Certificate expires soon", "Certificate expired" and their Any device twins (`ExpiryEvents`, group
   "Certificates", the ids of OADM 4.1's built-in events).
 - Server status without a usable certificate (`PolicyTexts.ServerNoCertificate`, `ServerCertificateUnusable`): "The
@@ -155,8 +178,8 @@ the only writers of the list of issued certificates (see "Issued certificates an
   ended."
 - Tests: `PolicyStoreTests`, `ExpiryEventTests`, `PolicyPageTests` (the table, the side panel, Create/Edit/Delete, a group
   user; + headless `pki-page-1700.png`, `pki-page-1000.png`,
-  `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`, `pki-policy-block.png`,
-  `pki-policy-revoke-question.png`), `IssuingPolicyTests`, `IssuingTaskTests`, `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (+ headless
+  `pki-policy-vlan.png`, `pki-policy-allow-ca.png`, `pki-policy-server.png`, `pki-policy-expiry.png`, `pki-policy-block.png`),
+  `IssuingPolicyTests`, `IssuingTaskTests`, `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (+ headless
   `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-renew.png`, `pki-install-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`,
   `pki-policy-est-server.png`, `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`,
   `pki-policies-1000.png` and their `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the
@@ -193,13 +216,15 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   `axis-<serial>.local`, the reported ones only for a device no group covers; never the CSR's; CSR key RSA >= 2048 or EC; EKU serverAuth / clientAuth; KeyUsage digitalSignature +
   keyEncipherment; AKI = CA SKI; 16 random serial bytes; validity of the issuing policy from now - 5 min, capped at the
   CA) -> `PATCH certificates/<alias>` (SOAP: `CreateCertificate2` under "<alias> key", `GetPkcs10Request2`, `LoadCertificates`
-  under the alias, then the placeholder is deleted); the entry goes into `issued`. A failure after the key was created deletes the
+  under the alias, then the placeholder is deleted); a certificate of an intermediate CA goes with its chain (REST: the
+  PEMs one after the other; SOAP: one DER sequence, read back), alone when the device refuses it or keeps anything else
+  (`SignedInstall`, a Warning in the task log; decision 2026-10-26); the entry goes into `issued`. A failure after the key was created deletes the
   unfinished key again. Aliases `OADM HTTPS|802.1X <yyyyMMdd-HHmmss>`, CA `OADM CA <8 hex>`, RADIUS CA `OADM RADIUS CA <8
   hex>`, manual installs `OADM import <ts>`, percent-encoded in URLs. CA certificates are matched by fingerprint (an
   existing alias is reused; an alias another CA holds becomes `<alias>-2`). "Remove previous OADM certificate" deletes older
   OADM certificates of the purpose that nothing uses (alias prefix + registry serial or the CA as issuer), never others; a
-  refused delete is a warning. A failure after the HTTPS switch request was sent revokes the new certificate only when the
-  web server settings name another one (`HttpsNotVerifiedAsync`).
+  refused delete is a warning. A failure after the HTTPS switch request was sent drops the new certificate as unused only
+  when the web server settings name another one (`HttpsNotVerifiedAsync`).
 - **Enable HTTPS** (`oadm.pki.https-enable`, dialog `IssueCertificateWindow`: the HTTPS certificate policy (the first preselected, read
   with the query `listIssuingPolicies`) with its summary, then the clock check; the run uses the policy's stored values; payload `IssuePayload`; name
   "Enable HTTPS"): Check compatibility (with the policy and the device's key types), Check device clock, Read web server
@@ -219,7 +244,7 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   name "Enable IEEE 802.1X"): Check compatibility (CA chain must end in a root, the policy and its RADIUS server CA, never
   compared with the 802.1X server's certificate, the
   device's key types, the certificate API, the policy's EAPOL version, wired 802.1X by `Dot1xSettings`, identity 1..128), Check device clock (below), Install CA certificates (RADIUS
-  server CA + the OADM CA chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
+  server CA + the issuing CA's chain), Create key / Get request / Sign / Install certificate, Set 802.1X configuration (enabled,
   EAP-TLS, identity MAC = serial / host name / IP address / last octet of the IP address / custom with `{serial}` `{hostName}`, EAPoLv<n>, certClient, certsCA = RADIUS
   CA aliases; below network settings 1.38 the certificates by `SetCertSet` first), Verify 802.1X settings (read back, from
   `GetCertSet` there; mismatch = Warning), Remove previous OADM certificate.
@@ -260,7 +285,7 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   A device without a file ends Done with warnings, nothing sent. Name "Install certificate <file>" / "Install N
   certificates".
 - **Install CA certificates** (`oadm.pki.install-ca`, icon `upload`, install one or more CA
-  certificates on many devices, no OADM CA needed): `InstallCaCertificatesWindow` (`InstallCaCertificatesViewModel`):
+  certificates on many devices, no CA of PKI needed): `InstallCaCertificatesWindow` (`InstallCaCertificatesViewModel`):
   **Add files** (several at once, again for more; PEM .crt / .pem / .cer incl. bundles with several certificates, DER
   .cer / .crt / .der, at most 1 MB each, read by the shared `CaCertificateFiles`), a virtualized table with one row per
   certificate (Name = subject CN, Issued by, Valid to, SHA-256 (first 8 bytes, tooltip the whole one), File, Status chip,
@@ -276,7 +301,7 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
   name; Skipped "Already installed" when the device has the fingerprint under any alias; alias "OADM CA <8 hex>" like
   the enable flows, "-2" when another certificate holds that alias), Verify CA certificates (every fingerprint listed,
   else Warning). Name "Install CA certificate <name>" / "Install N CA certificates".
-- Not done: the device grid's "Trusted (OADM CA)" / "Issued by a previous CA" texts (OADM certificates already rate
+- Not done: the device grid's "Trusted (<CA name>)" / "Issued by a previous CA" texts (OADM certificates already rate
   **Trusted** through the trust anchors). The Certificate expires column follows the Expiry warning policies since stage 3. Task names do not
   distinguish Enable from Update or one renewed purpose (the name is fixed per run, before the device is read).
 - Tests (`tests/Oadm.Plugins.Pki.Tests`): parsers and request bodies against the recorded answers of the development camera (linked from
@@ -294,9 +319,11 @@ keys are RSA 2048 (an ECC policy: "The device cannot create an ECC key. Choose a
 
 ## Issued certificates and revocation
 
-Spec: `docs/spec/radius-server.md` "Certificates and revocation (PKI)". EST and the coming 802.1X server read it through
-the CA service.
-- `Ca/IssuedRegistry` (`PkiService.Issued`): the store of device certificates the OADM CA issued (per camera and use the
+Spec: `docs/spec/pki.md` "Current and pending" and `docs/spec/radius-server.md`. EST and the 802.1X server read it through
+the CA service. Decision 2026-10-26: the UI never revokes; the `revoked` records are the internal list of certificates
+no longer accepted (Delete, a confirmed replacement, an unused certificate), refused as "Certificate deleted in OADM" /
+"Certificate replaced by a newer certificate" (`Ca/NotAcceptedTexts`) and never listed.
+- `Ca/IssuedRegistry` (`PkiService.Issued`): the store of device certificates PKI's CAs issued (per camera and use the
   current one and at most one pending one, `docs/spec/pki.md` "Current and pending"), in memory and in the plugin
   records `issued` (one row per serial: `IssuedCertificate` without DER), `issuedDer` (`{"der": base64}`, read one at a
   time by `GetDerAsync`) and `revoked` (`CertificateRevocation`). Indexes by normalized serial
@@ -317,7 +344,7 @@ the CA service.
   `LoadAsync` (in `PkiService.StartAsync`, before anything is answered) moves the settings value `issued` of OADM 4.1
   (entries marked `NoCopy`; `ImportFoundAsync` stores their DER, start and device serial when a read finds them).
   `RevokeAsync` also revokes a serial the list does not hold (hex, at most 20 bytes; no device; kept until
-  `UnknownNotAfter` = `PkiService.LatestCaEnd`, the latest end of the active and previous CAs). `MarkRemovedFromDevice`
+  `UnknownNotAfter` = `PkiService.LatestCaEnd`, the latest end of PKI's CAs). `MarkRemovedFromDevice`
   (the Delete certificates task, after the delete) sets `RemovedFromDeviceUtc`: no longer listed, still revocable.
   `IssuedCounts.From` (the page's counts) skips ended, revoked, deleted, pending and not current certificates.
   `ImportFoundAsync` never adds a revoked serial.
@@ -326,7 +353,7 @@ the CA service.
   `PkiCertificateAuthority.SignAsync` (the service: use from `DeviceCertificateRequest.Purpose`, DER, the serial of the
   `axis-<serial>.local` name; pending for EST, current at once for other callers); certificates a task deletes from the
   device stay in the store, not listed. `ImportFoundAsync` adds OADM
-  certificates found in a device's certificate list (signed by the active or a previous CA, checked by a chain build;
+  certificates found in a device's certificate list (signed by the first-start CA, a previous or a created CA, checked by a chain build;
   naming this device): `CertificateInventory.ReadAsync` with the device (View / Delete certificates), Renew certificates,
   and `Ca/ExistingCertificateImport` (once per server, 5 minutes after the start, every device that answers with AXIS OS
   6.53+, REST or SOAP, 4 at a time, read only; setting `existingImported` only when a round reached the devices: one read, no devices,
@@ -336,20 +363,16 @@ the CA service.
   removed devices with `DeviceManaged` false; an offset past the end answers the last page), `getCertificate`
   (`CertificateDetailsRequest` -> `CertificateDetailsReply` with the SDK's `CertificateDescription` and the revocation;
   not listed or another group's: "This certificate is not in the list."; no DER: "OADM keeps no copy of this
-  certificate."), `revoke` (`RevokeRequest`: serials, at most 5,000, and `RevocationReason`) and `revokeDevice`
-  (`RevokeDeviceRequest`: every certificate of the device that is still valid, after `PkiService.DeviceCertificateReader`
-  read the device's list for at most `PkiOptions.DeviceReadTimeout`, 20 s; a device that does not answer revokes what the
-  list holds) -> `RevokeReply` (revoked, already revoked, expired or no serial); the revoking user is the caller. Event `certificates` at most once per
+  certificate."); `revoke` and `revokeDevice` are gone (2026-10-26). Event `certificates` at most once per
   `PkiOptions.CertificatesEventDelay` (1 s) to `AllDevices` and to each group that read the page.
 - Client (`IssuedCertificatesViewModel`, in `PkiView.axaml`): the client SDK's shared list of issued certificates
   (`ui:IssuedCertificateList` with `IssuedCertificateListViewModel`, also the 802.1X server's certificate choice; PKI reads
   through `PkiCertificateSource`): filters (state, issued by; no use filter since 2026-10-25), search (300 ms after the last key), Previous / Next,
   `RangeObservableCollection` rows (`IssuedCertificateRow`), the selection handed over in one step and kept over a new
   page, View certificate (`ui:CertificateWindow`, a double click too; its "ends soon" follows the row's state: each device
-  has the days of its Expiry warning policy, `CertificatesReply.WarningDays` is null); the page adds Revoke and Revoke all of
-  this device with `MessageWindow.ConfirmWithChoiceAsync` (Reason, red Revoke), hidden for a user with a group or without
-  "manage"; while either runs (Revoke all of this device reads the device first, up to 20 s) the list's progress row says
-  "Revoking the certificates" and both are off (`WorkText`; a write runs to its end, no Cancel). The card reads with the page; every `certificates` event reads the shown page again.
+  has the days of its Expiry warning policy, `CertificatesReply.WarningDays` is null); the page adds Delete (red, also for
+  several rows), hidden for a user with a group or without "manage"; while it runs the list's progress row shows it
+  (`WorkText`; a write runs to its end, no Cancel). The card reads with the page; every `certificates` event reads the shown page again.
 - **Certificates card (stage 5, docs/spec/pki.md "Code (stage 5)")**: `PkiService.CertificateList` pages the CAs, the
   server certificates, the local certificates (`Certificates/LocalCertificates`, plugin records `localCertificates`, keys
   encrypted with the master key, purpose `pki:certificate:<id>`) and the registry in one list; `PkiService.CertificateActions`
@@ -357,11 +380,11 @@ the CA service.
   (`CertificateMethods`). Client: `CertificateDialogViewModels` with `CreateCertificateWindow`, `SignRequestWindow`,
   `ImportCertificateWindow`, `ExportKeyWindow`; row buttons in `PkiView.axaml`. Create and Sign request refuse a camera's
   `axis-<12 hex>` name (`CertificateRules.IsCameraName`); `PkiCertificateAuthority.PurposeOf` answers `NotDevicePurpose` for
-  every local certificate, so EST and the 802.1X server never take one for a camera's. Delete takes created and signed
-  certificates nothing uses; a still valid one is revoked first ("Revoke and delete"); one a server policy shows is
-  refused ("Used by the policy 802.1X server. Pick another certificate first.").
+  every local certificate, so EST and the 802.1X server never take one for a camera's. Delete takes every device
+  certificate and the created and signed certificates no server policy shows; a still valid one OADM issued goes on the
+  list of certificates no longer accepted (`DeleteCertificatesAsync`); one a server policy shows is refused ("Used by the policy 802.1X server. Pick another certificate first.").
 - Fake mode (`FakeOadmApi.PkiCertificates.cs`): 24 devices with HTTPS and some IEEE 802.1X certificates in every state;
-  View certificate describes a certificate the fake CA signs; Revoke changes the rows.
+  View certificate describes a certificate the fake CA signs; Delete changes the rows.
 
 ## Device groups (SDK 0.4.0)
 
@@ -383,6 +406,6 @@ the Certificates tab of a group user).
 ## Permissions
 
 `oadm.pki:show` (`getState`, `getCertificates`, `getCertificate`), `:manage` "Manage the certificate authority" (every other
-method, Revoke and the Certificates card's Create, Sign request, Import, Delete and Export too, except `installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
+method, Create CA, Delete CA and the Certificates card's Create, Sign request, Import, Delete and Export too, except `installServerTrust`) and `:trustServer` "Trust it on the server" (`installServerTrust`). The page hides the CA actions
 and locks the settings without "manage", and hides "Install in trusted root store" without "trustServer". The Security
 tasks have one key each (`task:oadm.pki....`). Operator default: show and the tasks.

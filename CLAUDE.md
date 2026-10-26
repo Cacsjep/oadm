@@ -193,10 +193,12 @@ must never break.
 - **[PKI, the certificate control center](docs/spec/pki.md)** (OADM 4.5): one package with the EST and 802.1X servers
   (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates, Policies,
   802.1X server, EST server; every rule about certificates is a PKI policy (issuing, 802.1X, EST, Expiry warning;
-  no overlaps; converted once from the old settings), the servers keep no rules of their own; an import adds a CA, any CA
+  no overlaps; converted once from the old settings), the servers keep no rules of their own; there is no OADM CA: Create
+  CA (root or intermediate) and an import add a CA, every CA can be deleted while no policy names it, any CA
   with its key can issue (the policy's Issued by); the certificate list holds
   every CA and each camera's current certificate per use (a new one replaces the old once confirmed on the camera; the old
-  one is then no longer accepted) with create, sign request, import, export and delete; certificates start 5 minutes early and
+  one is then no longer accepted) with create, sign request, import, export and delete (no revoke: a deleted certificate
+  is no longer accepted); certificates start 5 minutes early and
   the install dialogs ask when the camera's clock is behind.
 - **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, a PRO part of PKI: core plugin `oadm.radius`, off by default,
   Turn on on its tab of the PKI page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
