@@ -180,37 +180,18 @@ public sealed class SeveralCasTests
         Assert.Same(pki.Service.IssuingCa(id), Tasks.CertificateDeployment.RequireCa(pki.Service, saved.Saved));
 
         // Used by a policy: Remove is refused with the policy's name; Used in names it.
-        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + CaCertificates.Fingerprint(root)));
         Assert.Equal(PolicyTexts.UsedByPolicy("HTTPS"), refused.Error);
         Assert.Equal(["HTTPS"], pki.Service.UsedIn(pki.Service.Authorities().Single(a => a.Id == id)));
         var row = (await pki.InvokeAsync<CertificatesReply>(PkiMethods.GetCertificates, new CertificatesRequest())).Rows.Single(r => r.AuthorityId == id);
         Assert.Equal(["HTTPS"], row.UsedIn);
         Assert.True(row.CanIssue);
-        Assert.Equal(["Root CA", "Imported", IssuedCertificateTexts.CanIssue], IssuedCertificateTexts.Badges(row));
 
         // Back to the OADM CA: the CA is free and can go.
         Assert.Null((await pki.Policies.SaveAsync(saved.Saved! with { CaId = CertificateAuthorityInfo.OadmId }, "admin", Suites, CancellationToken.None)).Error);
-        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id))).Ok);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + CaCertificates.Fingerprint(root)))).Ok);
         Assert.Null(pki.Service.IssuingCa(id));
         Assert.Single(pki.Anchors.Current.Certificates);
-    }
-
-    [Fact]
-    public async Task A_previous_oadm_ca_an_est_sign_in_ca_names_stays()
-    {
-        await using var pki = await PkiHarness.StartAsync();
-        var old = pki.Service.Ca!.Id;
-        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
-        var previous = PkiService.PreviousAuthorityId(old);
-        Assert.Null((await pki.Policies.SaveAsync(new PkiPolicy { Name = "Old CA", Kind = PolicyKinds.SignInCa, CaId = previous, SignInFor = PolicySignIn.Renewal }, "admin", Suites, CancellationToken.None)).Error);
-
-        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemovePrevious, new RemovePreviousRequest(old));
-        Assert.Equal(PolicyTexts.UsedByPolicy("Old CA"), refused.Error);
-        Assert.Single(refused.State!.PreviousCas);
-
-        // An issuing policy never names a previous OADM CA or the Axis device ID (they keep no key that issues).
-        var https = pki.Policies.FirstOf(PolicyKinds.HttpsCertificate)!;
-        Assert.Equal(PolicyTexts.CannotIssue, (await pki.Policies.SaveAsync(https with { CaId = previous }, "admin", Suites, CancellationToken.None)).Error?.Message);
     }
 
     [Fact]

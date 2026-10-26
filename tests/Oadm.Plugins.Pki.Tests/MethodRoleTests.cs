@@ -12,8 +12,8 @@ public sealed class MethodRoleTests
         Assert.Equal(UserRole.Operator, plugin.RequiredRole(PkiMethods.GetState));
         foreach (var method in new[]
                  {
-                     PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
-                     PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust,
+                     PkiMethods.CreateAuthority, PkiMethods.Import, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
+                     PkiMethods.DeleteAuthority, PkiMethods.Backup, PkiMethods.InstallServerTrust,
                  })
         {
             Assert.Equal(UserRole.Admin, plugin.RequiredRole(method));

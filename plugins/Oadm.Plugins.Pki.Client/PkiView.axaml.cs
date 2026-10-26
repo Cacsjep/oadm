@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.VisualTree;
 
-using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Pki.Client;
@@ -73,19 +72,14 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
     public Task ShowCertificateAsync(CertificateDetails certificate) =>
         TopLevel.GetTopLevel(this) is Window owner ? CertificateWindow.ShowAsync(certificate, owner) : Task.CompletedTask;
 
-    public Task<RevocationReason?> ConfirmRevokeAsync(string title, string message) =>
-        TopLevel.GetTopLevel(this) is Window owner ? IssuedCertificateList.ConfirmRevokeAsync(owner, title, message) : Task.FromResult<RevocationReason?>(null);
-
     public IPkiFiles Files { get; }
 
     public IPkiFiles? CertificateFiles => Files;
 
-    public Task<bool> ConfirmDeleteAsync(string title, string message) => ConfirmDeleteAsync(title, message, "Delete");
-
-    /// <summary>Delete with a red confirm button (also "Revoke and delete").</summary>
-    public Task<bool> ConfirmDeleteAsync(string title, string message, string confirmText) =>
+    /// <summary>Delete with a red confirm button.</summary>
+    public Task<bool> ConfirmDeleteAsync(string title, string message) =>
         TopLevel.GetTopLevel(this) is Window owner
-            ? new MessageWindow { Heading = title, Message = message, ConfirmText = confirmText, CancelText = "Cancel", IsDanger = true }.ShowDialog<bool>(owner)
+            ? new MessageWindow { Heading = title, Message = message, ConfirmText = "Delete", CancelText = "Cancel", IsDanger = true }.ShowDialog<bool>(owner)
             : Task.FromResult(false);
 
     public Task ShowCreateAsync(CreateCertificateViewModel dialog) => ShowAsync(new CreateCertificateWindow(), dialog);
@@ -96,7 +90,7 @@ public partial class PkiView : UserControl, IPkiDialogs, IIssuedCertificatesDial
 
     public Task ShowExportKeyAsync(ExportKeyViewModel dialog) => ShowAsync(new ExportKeyWindow(), dialog);
 
-    public Task ShowGenerateAsync(GenerateCaViewModel dialog) => ShowAsync(new GenerateCaWindow(), dialog);
+    public Task ShowCreateCaAsync(CreateCaViewModel dialog) => ShowAsync(new CreateCaWindow(), dialog);
 
 
     public Task ShowImportAsync(ImportCaViewModel dialog) => ShowAsync(new ImportCaWindow(), dialog);

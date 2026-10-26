@@ -192,7 +192,7 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
     private static bool IsRead(string method) => method is PkiMethods.GetState or PkiMethods.GetCertificates or PkiMethods.GetCertificate or PolicyMethods.GetPolicies;
 
     /// <summary>Admin methods (the Certificates card's Create, Sign request, Import, Delete and Export too) are audited by the host; the count of a revoke policy only reads.</summary>
-    public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin && method != PolicyMethods.CountRevocations;
+    public bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin;
 
     /// <summary>The certificate authority ("manage") and the server's trust in it ("trustServer") are rights of their own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
@@ -229,8 +229,6 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             {
                 PolicyMethods.SavePolicy => PkiJson.Serialize(await service.SavePolicyAsync(PkiJson.Deserialize<PkiPolicy>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
                 PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, caller.UserName, ct).ConfigureAwait(false)),
-                PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
-                PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), caller.UserName, ct).ConfigureAwait(false)),
                 CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
                     await CertificateActionAsync(service, method, payloadJson, caller.UserName, ct).ConfigureAwait(false),
                 _ => await InvokeAsync(method, payloadJson, ct).ConfigureAwait(false),
@@ -278,21 +276,16 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             PolicyMethods.GetPolicies => PkiJson.Serialize(await service.PolicyListAsync(hasAllDevices: true, mayManage: true, ct).ConfigureAwait(false)),
             PolicyMethods.SavePolicy => PkiJson.Serialize(await service.SavePolicyAsync(PkiJson.Deserialize<PkiPolicy>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
             PolicyMethods.DeletePolicy => PkiJson.Serialize(await service.DeletePolicyAsync(PkiJson.Deserialize<PolicyRef>(payloadJson).Id, InProcessUser, ct).ConfigureAwait(false)),
-            PolicyMethods.CountRevocations => PkiJson.Serialize(await service.CountRevocationsAsync(PkiJson.Deserialize<PolicyDevices>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.GetCertificates => PkiJson.Serialize(await service.GetCertificatesForEveryDeviceAsync(PkiJson.Deserialize<CertificatesRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.GetCertificate => PkiJson.Serialize(await service.GetCertificateAsync(PkiJson.Deserialize<CertificateDetailsRequest>(payloadJson), null, ct).ConfigureAwait(false)),
-            PkiMethods.Revoke => PkiJson.Serialize(await service.RevokeAsync(PkiJson.Deserialize<RevokeRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
-            PkiMethods.RevokeDevice => PkiJson.Serialize(await service.RevokeDeviceAsync(PkiJson.Deserialize<RevokeDeviceRequest>(payloadJson), InProcessUser, ct).ConfigureAwait(false)),
-            PkiMethods.Generate => PkiJson.Serialize(await service.GenerateAsync(PkiJson.Deserialize<GenerateRequest>(payloadJson), ct).ConfigureAwait(false)),
+            PkiMethods.CreateAuthority => PkiJson.Serialize(await service.CreateAuthorityAsync(PkiJson.Deserialize<CreateCaRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.Import => PkiJson.Serialize(await service.ImportAsync(PkiJson.Deserialize<ImportRequest>(payloadJson), ct).ConfigureAwait(false)),
-            PkiMethods.PreviewReplace => PkiJson.Serialize(await service.PreviewReplaceAsync(ct).ConfigureAwait(false)),
             PkiMethods.ExportPublic => PkiJson.Serialize(service.ExportPublic(PkiJson.Deserialize<ExportRequest>(payloadJson))),
             PkiMethods.ExportPrevious => PkiJson.Serialize(service.ExportPrevious(PkiJson.Deserialize<ExportPreviousRequest>(payloadJson))),
-            PkiMethods.RemovePrevious => PkiJson.Serialize(await service.RemovePreviousAsync(PkiJson.Deserialize<RemovePreviousRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.Backup => PkiJson.Serialize(service.Backup(PkiJson.Deserialize<BackupRequest>(payloadJson))),
-            PkiMethods.InstallServerTrust => PkiJson.Serialize(await service.InstallServerTrustAsync(ct).ConfigureAwait(false)),
+            PkiMethods.InstallServerTrust => PkiJson.Serialize(await service.InstallServerTrustAsync(PkiJson.TryDeserialize<InstallTrustRequest>(payloadJson), ct).ConfigureAwait(false)),
             PkiMethods.ImportAuthority => PkiJson.Serialize(await service.ImportAuthorityAsync(PkiJson.Deserialize<ImportAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
-            PkiMethods.RemoveAuthority => PkiJson.Serialize(await service.RemoveAuthorityAsync(PkiJson.Deserialize<RemoveAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
+            PkiMethods.DeleteAuthority => PkiJson.Serialize(await service.DeleteAuthorityAsync(PkiJson.Deserialize<DeleteAuthorityRequest>(payloadJson), ct).ConfigureAwait(false)),
             CertificateMethods.Create or CertificateMethods.Sign or CertificateMethods.Import or CertificateMethods.Delete =>
                 await CertificateActionAsync(service, method, payloadJson, InProcessUser, ct).ConfigureAwait(false),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),

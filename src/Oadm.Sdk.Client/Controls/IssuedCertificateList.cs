@@ -106,7 +106,8 @@ public sealed class IssuedCertificateList : UserControl
         };
         Table.Columns.Add(_type);
         Table.Columns.Add(TextColumn("Issuer", nameof(IssuedCertificateRow.Issuer), new DataGridLength(1, DataGridLengthUnitType.Star), 130));
-        Table.Columns.Add(TextColumn("Key", nameof(IssuedCertificateRow.KeyType), new DataGridLength(110), 110));
+        // Key and the date of Valid until dimmed like a policy's summary (decision 2026-10-26).
+        Table.Columns.Add(TextColumn("Key", nameof(IssuedCertificateRow.KeyType), new DataGridLength(110), 110, dimmed: true));
         Table.Columns.Add(new DataGridTemplateColumn
         {
             Header = "Valid until",
@@ -116,6 +117,7 @@ public sealed class IssuedCertificateList : UserControl
             {
                 // The date; next to it a badge only when the state needs attention (expires soon, expired, revoked, replaced).
                 var date = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+                date.Classes.Add("secondary");
                 date.Bind(TextBlock.TextProperty, new Binding(nameof(IssuedCertificateRow.ValidUntil)));
                 var chip = new StatusChip { MaxLines = 1, VerticalAlignment = VerticalAlignment.Center };
                 chip.Bind(StatusChip.TextProperty, new Binding(nameof(IssuedCertificateRow.StateText)));
@@ -258,18 +260,6 @@ public sealed class IssuedCertificateList : UserControl
         set => SetValue(ToolbarProperty, value);
     }
 
-    /// <summary>
-    /// The revoke confirmation with the reason (the shared <see cref="MessageWindow"/>, red Revoke); null for Cancel.
-    /// </summary>
-    public static async Task<RevocationReason?> ConfirmRevokeAsync(Window owner, string title, string message)
-    {
-        ArgumentNullException.ThrowIfNull(owner);
-        var reasons = IssuedCertificateTexts.Reasons;
-        var chosen = await MessageWindow.ConfirmWithChoiceAsync(owner, title, message, "Revoke", "Reason",
-            [.. reasons.Select(CertificateRevocation.ReasonText)], danger: true).ConfigureAwait(true);
-        return chosen is { } index && index >= 0 && index < reasons.Count ? reasons[index] : null;
-    }
-
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         ArgumentNullException.ThrowIfNull(change);
@@ -358,8 +348,8 @@ public sealed class IssuedCertificateList : UserControl
         }
     }
 
-    /// <summary>A one-line text column with the whole text as tooltip.</summary>
-    private static DataGridTemplateColumn TextColumn(string header, string property, DataGridLength width, double minWidth) => new()
+    /// <summary>A one-line text column with the whole text as tooltip; <paramref name="dimmed"/>: the secondary text colour.</summary>
+    private static DataGridTemplateColumn TextColumn(string header, string property, DataGridLength width, double minWidth, bool dimmed = false) => new()
     {
         Header = header,
         Width = width,
@@ -367,6 +357,11 @@ public sealed class IssuedCertificateList : UserControl
         CellTemplate = new FuncDataTemplate<IssuedCertificateRow>((_, _) =>
         {
             var text = new TextBlock { Margin = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            if (dimmed)
+            {
+                text.Classes.Add("secondary");
+            }
+
             text.Bind(TextBlock.TextProperty, new Binding(property));
             text.Bind(ToolTip.TipProperty, new Binding(property));
             return text;

@@ -43,7 +43,7 @@ public sealed record IssuedCertificateStatus(string Text, string Kind, string? T
 /// <see cref="IssuedCertificateListViewModel.MenuOf"/>): its text, command and parameter, red for one that deletes, revokes or
 /// removes, or a submenu (<see cref="Items"/>). <see cref="Separator"/> is the line between the everyday and the red ones.
 /// </summary>
-/// <param name="Text">The entry's text ("Export", "Revoke").</param>
+/// <param name="Text">The entry's text ("Export", "Delete").</param>
 /// <param name="Command">What the entry runs; null for a submenu.</param>
 /// <param name="Parameter">The command's parameter (the row).</param>
 /// <param name="IsDanger">Red: the entry deletes, revokes or removes.</param>
@@ -80,10 +80,11 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     public string IssuedBy => Source.IssuedBy ?? Source.Source;
 
     /// <summary>The Issuer column: the CA that issued it; "Self-signed" for a root CA; "-" when unknown.</summary>
-    public string Issuer => Source.Kind == ListedCertificateKind.Authority && Source.IsRootCa ? IssuedCertificateMessages.SelfSigned
+    public string Issuer => Source.Unreadable ? "-"
+        : Source.Kind == ListedCertificateKind.Authority && Source.IsRootCa ? IssuedCertificateMessages.SelfSigned
         : string.IsNullOrEmpty(IssuedBy) ? "-" : IssuedBy;
 
-    /// <summary>The Key column: "RSA 4096", "ECC P-256"; "-" when unknown.</summary>
+    /// <summary>The Key column: "RSA 4096", "ECC P-256", "No key" (a CA certificate without its key); "-" when unknown.</summary>
     public string KeyType => string.IsNullOrEmpty(Source.KeyText) ? "-" : Source.KeyText;
 
     /// <summary>The device it is installed on, "802.1X server", "EST server"; "-" when nothing uses it.</summary>
@@ -112,26 +113,26 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>Start of validity, "2026-10-24".</summary>
     public string ValidFrom => Source.NotBeforeUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    /// <summary>End of validity, "2027-10-24".</summary>
-    public string ValidUntil => Source.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    /// <summary>End of validity, "2027-10-24"; "-" for a CA row that cannot be read.</summary>
+    public string ValidUntil => Source.Unreadable ? "-" : Source.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     /// <summary>"7D FD 05 ..." (pairs, like the certificate window).</summary>
     public string SerialNumber => IssuedCertificateTexts.Pairs(Source.SerialNumber);
 
-    /// <summary>"Valid", "Expires soon", "Expired", "Revoked" ("Replaced" only from a server before OADM 4.5).</summary>
-    public string State => IssuedCertificateTexts.State(Source.State);
+    /// <summary>"Valid", "Expires soon", "Expired" ("Revoked", "Replaced" only from a server before this list hid them); "Cannot be read" for a CA row that cannot be read.</summary>
+    public string State => Source.Unreadable ? IssuedCertificateTexts.CannotBeRead : IssuedCertificateTexts.State(Source.State);
 
     /// <summary>The time the row was read (the days left of <see cref="StateText"/>); null: the state alone.</summary>
     public DateTime? NowUtc { get; init; }
 
     /// <summary>
     /// The badge below the date of Valid until, one line: "Expires in 12 days" when it ends within its Expiry warning days,
-    /// "Expired", "Revoked"; a valid certificate has none (<see cref="HasStateBadge"/>).
+    /// "Expired", "Cannot be read"; a valid certificate has none (<see cref="HasStateBadge"/>).
     /// </summary>
-    public string StateText => Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.ExpiresIn(days) : State;
+    public string StateText => !Source.Unreadable && Source.State == IssuedCertificateState.ExpiresSoon && DaysLeft is { } days ? IssuedCertificateTexts.ExpiresIn(days) : State;
 
     /// <summary>The state needs attention: everything but a plain valid certificate.</summary>
-    public bool HasStateBadge => Source.State != IssuedCertificateState.Valid;
+    public bool HasStateBadge => Source.Unreadable || Source.State != IssuedCertificateState.Valid;
 
     /// <summary>Whole days until the end (0 on the last day); null without <see cref="NowUtc"/> or after the end.</summary>
     public int? DaysLeft => NowUtc is { } now && Source.NotAfterUtc > now ? (int)Math.Floor((Source.NotAfterUtc - now).TotalDays) : null;
@@ -149,9 +150,8 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     public string? GroupTitle { get; init; }
 
     /// <summary>
-    /// The Type column: what the row is, as badges. A CA: Root CA or Intermediate CA and its kind (OADM CA, Previous OADM CA,
-    /// Axis device ID, Imported); a server's certificate: Server; one made here: its use and Created, Signed or Imported; a
-    /// device certificate: its use.
+    /// The Type column: what the row is, as badges. A CA: Root CA or Intermediate CA only (decision 2026-10-26); a server's
+    /// certificate: Server; one made here: its use and Signed or Imported; a device certificate: its use.
     /// </summary>
     public IReadOnlyList<string> Badges => _badges ??= IssuedCertificateTexts.Badges(Source);
 
@@ -177,40 +177,34 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     /// <summary>Expires soon: amber.</summary>
     public bool IsWarning => Source.State == IssuedCertificateState.ExpiresSoon;
 
-    /// <summary>Expired or revoked: red.</summary>
-    public bool IsError => Source.State is IssuedCertificateState.Expired or IssuedCertificateState.Revoked;
+    /// <summary>Expired, revoked (a server before this list hid them) or a CA row that cannot be read: red.</summary>
+    public bool IsError => Source.Unreadable || Source.State is IssuedCertificateState.Expired or IssuedCertificateState.Revoked;
 
     /// <summary>Replaced (a server before OADM 4.5): grey.</summary>
     public bool IsNeutral => Source.State == IssuedCertificateState.Replaced;
 
-    /// <summary>A CA row of the OADM CA that issues now.</summary>
-    public bool IsOadmCa => AuthorityKind == CertificateAuthorityKind.Oadm;
+    /// <summary>A CA row (decision 2026-10-26: every CA can be deleted in its own list; the server refuses one a policy names).</summary>
+    public bool IsCa => Source.Kind == ListedCertificateKind.Authority;
 
-    /// <summary>A CA row that can be removed (previous OADM CAs and imported CAs; the server refuses one a policy names).</summary>
-    public bool IsRemovableCa => AuthorityKind is CertificateAuthorityKind.PreviousOadm or CertificateAuthorityKind.Imported;
+    /// <summary>A CA row that is a root CA (it can be installed in an operating system's trusted root store).</summary>
+    public bool IsRootCa => IsCa && Source.IsRootCa && !Source.Unreadable;
 
-    /// <summary>A row that is no CA: Export with its key, Revoke and Delete belong to these.</summary>
+    /// <summary>A row that is no CA: Export with its key and Delete belong to these.</summary>
     public bool IsCertificate => Source.Kind != ListedCertificateKind.Authority;
 
-    /// <summary>Issued by the OADM CA, still valid and not revoked: Revoke can take it.</summary>
-    public bool CanRevoke => Source.Kind is ListedCertificateKind.Device or ListedCertificateKind.Created or ListedCertificateKind.SignedRequest
-        && Source.State is IssuedCertificateState.Valid or IssuedCertificateState.ExpiresSoon or IssuedCertificateState.Replaced;
-
     /// <summary>
-    /// Nothing uses it: a revoked or expired device certificate, one imported here that no server uses, or one created or
-    /// signed here that no server policy shows (decision 2026-10-25: a still valid one is revoked and deleted). CAs are
-    /// removed in their own list. The server checks again.
+    /// Delete can take it (decision 2026-10-26: Delete is the only action): every device certificate, one imported here that
+    /// no server uses (or that ended), one created or signed here that no server policy shows, an ended server certificate.
+    /// CAs are deleted in their own list. The server checks again.
     /// </summary>
     public bool CanDelete => Source.Kind switch
     {
         ListedCertificateKind.Authority => false,
+        ListedCertificateKind.Device => true,
         ListedCertificateKind.Imported => string.IsNullOrEmpty(Source.UsedBy) || IsEnded,
         ListedCertificateKind.Created or ListedCertificateKind.SignedRequest => string.IsNullOrEmpty(Source.UsedBy),
         _ => IsEnded,
     };
-
-    /// <summary>Created or signed here and still valid: Delete revokes it first (Revoke and delete).</summary>
-    public bool DeleteRevokes => Source.Kind is ListedCertificateKind.Created or ListedCertificateKind.SignedRequest && !IsEnded;
 
     /// <summary>OADM holds the key: PKCS#12 can be exported.</summary>
     public bool HasKey => Source.HasKey;
@@ -218,21 +212,11 @@ public sealed class IssuedCertificateRow(IssuedCertificateInfo source)
     private bool IsEnded => Source.State is IssuedCertificateState.Revoked or IssuedCertificateState.Expired;
 }
 
-/// <summary>The texts of the list of issued certificates and of a revocation, one phrase each (PKI, 802.1X server).</summary>
+/// <summary>The texts of the list of certificates, one phrase each (PKI).</summary>
 public static class IssuedCertificateTexts
 {
-    /// <summary>The choices of the reason of Revoke, in the page's order.</summary>
-    public static IReadOnlyList<RevocationReason> Reasons { get; } =
-        [RevocationReason.KeyCompromised, RevocationReason.DeviceReplaced, RevocationReason.DeviceRemoved, RevocationReason.Other];
-
-    /// <summary>The confirmation of several certificates.</summary>
-    public const string ConfirmMessage = "OADM no longer accepts them for network access or renewal. This cannot be undone.";
-
-    /// <summary>The confirmation of one certificate.</summary>
-    public const string ConfirmMessageOne = "OADM no longer accepts it for network access or renewal. This cannot be undone.";
-
-    /// <summary>The answer when every chosen certificate was revoked or expired already.</summary>
-    public const string NothingRevoked = "Nothing was revoked: these certificates are already revoked or expired.";
+    /// <summary>The state badge of a CA row that cannot be read.</summary>
+    public const string CannotBeRead = "Cannot be read";
 
     /// <summary>The tooltip of a row's ⋯ button.</summary>
     public const string ActionsTip = "Actions";
@@ -241,21 +225,10 @@ public static class IssuedCertificateTexts
     public const string NoCertificates = "No certificates yet. Enable HTTPS or IEEE 802.1X on devices, or set up Certificate enrollment.";
 
     /// <summary>The confirmation of Delete.</summary>
-    public const string DeleteMessage = "They leave the list. A revocation stays in force. This cannot be undone.";
+    public const string DeleteMessage = "They leave the list. This cannot be undone.";
 
     /// <summary>The confirmation of Delete of one certificate.</summary>
-    public const string DeleteMessageOne = "It leaves the list. A revocation stays in force. This cannot be undone.";
-
-    /// <summary>The confirm button of a Delete that revokes still valid certificates first.</summary>
-    public const string RevokeAndDelete = "Revoke and delete";
-
-    /// <summary>"Lab cert is still valid. It is revoked first, so no device can use it any more." (one chosen).</summary>
-    public static string RevokedFirstOne(string name) => $"{name} is still valid. It is revoked first, so no device can use it any more.";
-
-    /// <summary>"3 of them are still valid. They are revoked first, ..." (several chosen).</summary>
-    public static string RevokedFirst(int count) => count == 1
-        ? "1 of them is still valid. It is revoked first, so no device can use it any more."
-        : string.Create(System.Globalization.CultureInfo.CurrentCulture, $"{count:N0} of them are still valid. They are revoked first, so no device can use them any more.");
+    public const string DeleteMessageOne = "It leaves the list. This cannot be undone.";
 
     /// <summary>The empty list with a filter or a search.</summary>
     public const string NoMatch = "No certificate matches.";
@@ -269,11 +242,6 @@ public static class IssuedCertificateTexts
     /// <summary>The overlay and the progress row while the list is read.</summary>
     public const string Reading = "Reading the certificates";
 
-    /// <summary>The progress row while Revoke runs.</summary>
-    public const string Revoking = "Revoking the certificates";
-
-    /// <summary>A revoked serial the list did not hold: OADM does not know its device.</summary>
-    public const string UnknownDevice = "Unknown device";
 
     /// <summary>The days before the end that count as "Expires soon" when the server does not say (the settings' default).</summary>
     public const int DefaultWarningDays = 30;
@@ -292,9 +260,6 @@ public static class IssuedCertificateTexts
     /// <summary>"Device certificates · 60,000": a group header.</summary>
     public static string GroupHeader(string title, int count) => string.Create(CultureInfo.CurrentCulture, $"{title} · {count:N0}");
 
-    /// <summary>The badge of an imported CA with its key: its policies can pick it as the CA that issues.</summary>
-    public const string CanIssue = "Can issue";
-
     /// <summary>The policy names a Used in cell shows as badges before "+N" (one: the column stays narrow, the tooltip lists all).</summary>
     public const int UsedInShown = 1;
 
@@ -307,15 +272,6 @@ public static class IssuedCertificateTexts
             : [.. names.Take(UsedInShown), string.Create(CultureInfo.CurrentCulture, $"+{names.Count - UsedInShown:N0}")];
     }
 
-    /// <summary>"OADM CA", "Previous OADM CA", "Axis device ID", "Imported".</summary>
-    public static string AuthorityKindText(CertificateAuthorityKind kind) => kind switch
-    {
-        CertificateAuthorityKind.Oadm => "OADM CA",
-        CertificateAuthorityKind.PreviousOadm => "Previous OADM CA",
-        CertificateAuthorityKind.AxisDeviceId => "Axis device ID",
-        _ => "Imported",
-    };
-
     /// <summary>The badges of the Type column (<see cref="IssuedCertificateRow.Badges"/>).</summary>
     public static IReadOnlyList<string> Badges(IssuedCertificateInfo row)
     {
@@ -323,12 +279,9 @@ public static class IssuedCertificateTexts
         var use = row.Purpose is ListedCertificateUses.Other or ListedCertificateUses.Ca ? null : ListedCertificateUses.Text(row.Purpose);
         return row.Kind switch
         {
-            ListedCertificateKind.Authority =>
-            [
-                row.IsRootCa ? "Root CA" : "Intermediate CA",
-                .. row.AuthorityKind is { } kind ? [AuthorityKindText(kind)] : Array.Empty<string>(),
-                .. row.AuthorityKind == CertificateAuthorityKind.Imported && row.CanIssue ? [CanIssue] : Array.Empty<string>(),
-            ],
+            // Decision 2026-10-26: only what it is, never where it came from (no OADM CA, Axis device ID, Imported, Can issue).
+            ListedCertificateKind.Authority when row.Unreadable => [],
+            ListedCertificateKind.Authority => [row.IsRootCa ? "Root CA" : "Intermediate CA"],
             ListedCertificateKind.Server => [ListedCertificateUses.Text(ListedCertificateUses.Server)],
             ListedCertificateKind.Created => [.. Use(use)], // no badge of its own (decision 2026-10-25): created is the usual case
             ListedCertificateKind.SignedRequest => [.. Use(use), "Signed"],
@@ -379,15 +332,6 @@ public static class IssuedCertificateTexts
         ArgumentNullException.ThrowIfNull(hex);
         var even = hex.Length % 2 == 1 ? "0" + hex : hex;
         return string.Join(' ', Enumerable.Range(0, even.Length / 2).Select(i => even.Substring(i * 2, 2)));
-    }
-
-    /// <summary>The title of the revoke confirmation: "Revoke the certificate of 10.0.0.48?" or "Revoke 3 certificates?".</summary>
-    public static string RevokeTitle(IReadOnlyList<IssuedCertificateRow> rows)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        return rows.Count == 1
-            ? $"Revoke the certificate of {rows[0].Device}?"
-            : string.Create(CultureInfo.CurrentCulture, $"Revoke {rows.Count:N0} certificates?");
     }
 }
 
@@ -444,8 +388,7 @@ public interface IIssuedCertificateListDialogs
 }
 
 /// <summary>
-/// The list of certificates the OADM CA issued (SDK 0.4.0; the PKI Certificates tab and the certificate choice of the
-/// 802.1X server's Revoke): newest first, read from the server one page at a time with the filters (state, use, issued by)
+/// The list of certificates (SDK 0.4.0; the PKI Certificates tab: its CA list and its certificate list): newest first, read from the server one page at a time with the filters (state, use, issued by)
 /// and the search (it waits for the typing to stop), the grid's selection in one step, View certificate. Shown by
 /// <see cref="IssuedCertificateList"/>; the first read shows the overlay, later ones the progress row.
 /// </summary>
@@ -594,13 +537,13 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     public Collections.RangeObservableCollection<IssuedCertificateRow> Rows { get; } = [];
 
     /// <summary>
-    /// "All states" and every state a row can have: Valid, Expires soon, Expired, Revoked (decision 2026-10-25: no Replaced,
-    /// the list holds only each camera's current certificates).
+    /// "All states" and every state a row can have: Valid, Expires soon, Expired (decision 2026-10-25: no Replaced, the list
+    /// holds only each camera's current certificates; decision 2026-10-26: no Revoked, a certificate no longer accepted is not listed).
     /// </summary>
     public IReadOnlyList<IssuedCertificateFilter> StateChoices { get; } =
     [
         new(string.Empty, "All states"),
-        .. Enum.GetValues<IssuedCertificateState>().Where(s => s != IssuedCertificateState.Replaced)
+        .. Enum.GetValues<IssuedCertificateState>().Where(s => s is not (IssuedCertificateState.Replaced or IssuedCertificateState.Revoked))
             .Select(s => new IssuedCertificateFilter(s.ToString(), IssuedCertificateTexts.State(s))),
     ];
 
@@ -658,7 +601,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     public partial bool IsReloading { get; set; }
 
     /// <summary>
-    /// The text of a write the page runs on the list ("Revoking the certificates"); null while none runs. The progress row
+    /// The text of a write the page runs on the list ("Deleting the certificates"); null while none runs. The progress row
     /// shows it above the grid.
     /// </summary>
     [ObservableProperty]
@@ -698,7 +641,10 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     /// <summary>One line when the list is empty: what to do first, or that nothing matches.</summary>
     public string? EmptyText => Total > 0 || !_loadedOnce ? null
         : IsFiltered ? IssuedCertificateTexts.NoMatch
-        : IssuedCertificateTexts.NoCertificates;
+        : NoRowsText;
+
+    /// <summary>The empty list without filters: what to do first (default <see cref="IssuedCertificateTexts.NoCertificates"/>).</summary>
+    public string NoRowsText { get; init; } = IssuedCertificateTexts.NoCertificates;
 
     private bool IsFiltered => StateFilter.Value.Length > 0 || UseFilter.Value.Length > 0 || SourceFilter.Value.Length > 0 || !string.IsNullOrWhiteSpace(Search);
 

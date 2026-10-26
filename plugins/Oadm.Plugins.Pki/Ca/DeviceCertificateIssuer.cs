@@ -213,7 +213,7 @@ public static class DeviceCertificateIssuer
 
         if (notAfter <= notBefore)
         {
-            throw new CertificateRequestRejectedException("The CA is no longer valid. Use New OADM CA, or choose another CA in the policy.");
+            throw new CertificateRequestRejectedException("The CA is no longer valid. Choose another CA in the policy.");
         }
 
         var serial = RandomNumberGenerator.GetBytes(16);

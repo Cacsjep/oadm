@@ -536,7 +536,7 @@ public sealed class CertificateListTests
 
             await Eventually.TrueAsync(() => tab.Rows.Any(r => r.Name == "nvr.example.com"), "the new row");
             var row = tab.Rows.Single(r => r.Name == "nvr.example.com");
-            Assert.True(row.HasKey && row.CanDelete && row.CanRevoke); // the OADM CA's and still valid: Delete revokes it first (decision 2026-10-25)
+            Assert.True(row.HasKey && row.CanDelete); // the OADM CA's and still valid: Delete revokes it first (decision 2026-10-25)
 
             // Export with key: the password dialog, then the file; PEM at once.
             dialogs.Drive = async d =>

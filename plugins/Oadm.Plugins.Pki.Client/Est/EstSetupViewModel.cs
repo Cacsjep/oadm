@@ -67,7 +67,7 @@ public sealed partial class EstSetupViewModel : ObservableObject
 {
     public const string Title = EstTaskIds.MenuName;
 
-    public const string Dot1xHint = "Only when your RADIUS server trusts the OADM CA. Otherwise these cameras drop off the network.";
+    public const string Dot1xHint = "Only when your RADIUS server trusts the CA of the policy. Otherwise these cameras drop off the network.";
 
     /// <summary>
     /// The hint once the server named the CAs of the IEEE 802.1X policy: Set up also replaces the CA the cameras check the

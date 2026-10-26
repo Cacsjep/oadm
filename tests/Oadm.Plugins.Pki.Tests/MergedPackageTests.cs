@@ -47,7 +47,7 @@ public sealed class MergedPackageTests
         await plugin.StartAsync(core, CancellationToken.None);
         await plugin.Service!.Background;
 
-        var reply = PkiJson.Deserialize<PkiReply>(await plugin.InvokeAsync(PkiMethods.Generate, PkiJson.Serialize(new GenerateRequest("OADM CA", null, 10, true)), CancellationToken.None));
+        var reply = PkiJson.Deserialize<PkiReply>(await plugin.InvokeAsync(PkiMethods.CreateAuthority, PkiJson.Serialize(new CreateCaRequest("OADM CA", false, null, CaKeys.Default, 10)), CancellationToken.None));
         Assert.Null(reply.Error);
         var state = PkiJson.Deserialize<PkiState>(await plugin.InvokeAsync(PkiMethods.GetState, null, CancellationToken.None));
         Assert.Equal("OADM CA", state.Ca?.CommonName);

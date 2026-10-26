@@ -217,11 +217,18 @@ public sealed partial class PkiService
             var usedIn = known is null ? [] : UsedIn(known);
             all.Add(Extra(ca.Row with
             {
+                // Decision 2026-10-26: a CA with its key shows the key, a certificate only "No key".
+                KeyText = known is { Issues: true } ? ca.Row.KeyText : KeyUnreadable(known) ? CaKeyTexts.Unreadable : CaKeyTexts.None,
                 State = StateOf(ca.Row.NotAfterUtc, revoked: null, now, days),
                 UsedBy = usedBy.Count == 0 ? null : string.Join("; ", usedBy),
                 UsedByBadges = usedBy.Count == 0 ? null : [.. usedBy.Select(UsedByGroup).Distinct(StringComparer.Ordinal)],
                 UsedIn = usedIn.Count == 0 ? null : usedIn,
             }, ca.IssuerId));
+        }
+
+        foreach (var unreadable in UnreadableRows())
+        {
+            all.Add(Extra(unreadable, OtherIssuerId));
         }
 
         foreach (var server in _local.Servers)
@@ -242,8 +249,7 @@ public sealed partial class PkiService
                 NotBeforeUtc = server.NotBeforeUtc,
                 NotAfterUtc = server.NotAfterUtc,
                 IssuedUtc = server.NotBeforeUtc,
-                State = StateOf(server.NotAfterUtc, _issued.FindRevocation(server.Serial), now, days),
-                Revocation = _issued.FindRevocation(server.Serial),
+                State = StateOf(server.NotAfterUtc, revoked: null, now, days), // decision 2026-10-26: no Revoked state
             }, issuer.Id));
         }
 
@@ -252,10 +258,12 @@ public sealed partial class PkiService
             all.Add(Extra(own, OtherIssuerId));
         }
 
-        foreach (var local in _local.List)
+        // Decision 2026-10-26: a certificate made here that is no longer accepted (revoked before 4.5) is not listed, unless a
+        // server policy still shows it.
+        foreach (var local in _local.List.Where(l => l.Stored.Kind == ListedCertificateKind.Imported || !_issued.IsRevoked(l.Serial)
+            || Policies.ShowingCertificate(l.Stored.Id) is not null))
         {
             var issuer = issuers.Of(local.Stored.IssuerFingerprint);
-            var revocation = local.Stored.Kind == ListedCertificateKind.Imported ? null : _issued.FindRevocation(local.Serial);
             all.Add(Extra(new IssuedCertificateInfo
             {
                 Id = local.RowId,
@@ -271,8 +279,7 @@ public sealed partial class PkiService
                 NotBeforeUtc = local.NotBeforeUtc,
                 NotAfterUtc = local.NotAfterUtc,
                 IssuedUtc = local.Stored.AddedUtc,
-                State = StateOf(local.NotAfterUtc, revocation, now, days),
-                Revocation = revocation,
+                State = StateOf(local.NotAfterUtc, revoked: null, now, days), // decision 2026-10-26: no Revoked state
                 HasKey = local.HasKey,
             }, issuer.Id));
         }
@@ -291,6 +298,15 @@ public sealed partial class PkiService
             row.Name, ListedCertificateUses.Text(row.Purpose), row.IssuedBy, row.UsedBy, IssuedCertificateTexts(row.State), row.KeyText,
             row.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
     }
+
+    /// <summary>A CA whose stored key the master key cannot read (it stays listed, it cannot issue).</summary>
+    private bool KeyUnreadable(CertificateAuthorityInfo? authority) => authority?.Kind switch
+    {
+        CertificateAuthorityKind.Oadm => _ca is { HasKey: false },
+        CertificateAuthorityKind.Imported => authority.Id.StartsWith(ImportedPrefix, StringComparison.OrdinalIgnoreCase)
+            && _imported.FirstOrDefault(i => string.Equals(ImportedAuthorityId(i.Id), authority.Id, StringComparison.OrdinalIgnoreCase)) is { KeyProtected.Length: > 0 },
+        _ => false,
+    };
 
     /// <summary>
     /// The badge of one entry of a CA's Used by: its group ("802.1X: OADM CA (...)" -> "802.1X", "Issuing: HTTPS" -> "Issuing")

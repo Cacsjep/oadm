@@ -178,7 +178,7 @@ public sealed partial class EstEndpoint(
         // the Axis device ID is never on it (OADM did not issue it), so Set up still gives the camera a new certificate.
         if (ca.IsRevoked(client.SerialNumber))
         {
-            return Refuse(403, ca.FindRevocation(client.SerialNumber)?.Describe() ?? EstRefusals.Revoked, device);
+            return Refuse(403, Oadm.Plugins.Pki.Ca.NotAcceptedTexts.Of(ca.FindRevocation(client.SerialNumber)), device);
         }
 
         // A certificate EST issued signs in only for its own device. A record of a device OADM no longer manages (the camera
@@ -279,7 +279,7 @@ public sealed partial class EstEndpoint(
 
         var issuers = legacy
             ? chosen.Contains(CertificateAuthorityInfo.OadmId) ? [ca.Chain] : []
-            : authorities.Where(a => a.Kind is CertificateAuthorityKind.Oadm or CertificateAuthorityKind.PreviousOadm && chosen.Contains(a.Id)).Select(a => a.Certificates).ToList();
+            : authorities.Where(a => a.Kind != CertificateAuthorityKind.AxisDeviceId && chosen.Contains(a.Id)).Select(a => a.Certificates).ToList(); // the sign-in CA policies name only CAs made in OADM
         // A certificate created, signed or imported on the PKI page is never a camera's, whatever it names (fail closed).
         return issuers.Any(chain => IssuedByCa(client, chain, now)) && ca.PurposeOf(client.SerialNumber) != Oadm.Plugins.Pki.Ca.PkiCertificateAuthority.NotDevicePurpose
             ? SerialFromAxisName(client)

@@ -40,28 +40,6 @@ public sealed class PolicyFormSafetyTests
     }
 
     [Fact]
-    public async Task Tags_of_a_block_that_also_revokes_are_an_error_of_the_devices_field()
-    {
-        await using var pki = await PolicyPageTests.StartAsync();
-        var page = new PoliciesViewModel(PolicyPageTests.Page(pki));
-        await page.LoadAsync(CancellationToken.None);
-        var editor = page.NewEditor(PolicyKinds.Block);
-        editor.Name = "Stolen";
-        var picker = editor.NewPicker();
-        picker.Tags.Single(t => t.Name == "PTZ").IsChecked = true;
-        editor.UsePicker(picker);
-        Assert.Null(editor.DevicesError);
-
-        editor.AlsoRevoke = true;
-
-        Assert.Equal(PolicyTexts.RevokeNoTags, editor.DevicesError);
-        Assert.False(editor.CanSave);
-        editor.AlsoRevoke = false;
-        Assert.Null(editor.DevicesError);
-        Assert.True(editor.CanSave);
-    }
-
-    [Fact]
     public async Task A_reload_while_choose_devices_is_open_keeps_the_form_and_its_choice()
     {
         await using var pki = await PolicyPageTests.StartAsync();

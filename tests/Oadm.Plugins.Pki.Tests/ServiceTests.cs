@@ -68,15 +68,6 @@ public sealed class ServiceTests
 
         var backup = await other.InvokeAsync<FileReply>(PkiMethods.Backup, new BackupRequest("long enough"));
         Assert.Equal("The CA key cannot be read, so it cannot be backed up.", backup.Error);
-
-        // Generate (or import) replaces it; the unreadable one becomes a previous CA.
-        var ask = await other.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("New CA", null, 5, Confirmed: false));
-        Assert.True(ask.NeedsConfirmation); // replacing always needs the user's confirmation (count 0 here)
-        Assert.Equal(0, ask.DevicesWithCurrentCa);
-        var reply = await other.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("New CA", null, 5, Confirmed: true));
-        Assert.True(reply.Ok);
-        Assert.False(reply.State!.KeyUnreadable);
-        Assert.Equal(id, Assert.Single(reply.State.PreviousCas).Id);
     }
 
     [Fact]
@@ -89,62 +80,7 @@ public sealed class ServiceTests
         Assert.Null(state.Ca);
         Assert.Equal("CA cannot be stored on this server", state.Status.Text);
         Assert.Null(await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
-        Assert.NotNull((await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("CA", null, 10, true))).Error);
-    }
-
-    [Fact]
-    public async Task Generate_validates_fields_and_asks_before_replacing_a_ca_with_issued_devices()
-    {
-        await using var pki = await PkiHarness.StartAsync();
-        var oldId = pki.Service.Ca!.Id;
-
-        var invalid = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest(" ", new string('x', 65), 31, true));
-        Assert.Equal("Enter a name.", invalid.Errors![PkiFields.CommonName]);
-        Assert.Equal("At most 64 characters.", invalid.Errors[PkiFields.Organization]);
-        Assert.Equal("Enter a whole number from 1 to 30.", invalid.Errors[PkiFields.ValidityYears]);
-
-        var a = Guid.NewGuid();
-        var b = Guid.NewGuid();
-        await pki.SetIssuedAsync(
-        [
-            new IssuedCertificate { SerialNumber = "01", DeviceId = a, Purpose = CertificatePurpose.Https, CaId = oldId, IssuedUtc = DateTime.UtcNow.AddDays(-3), NotAfterUtc = DateTime.UtcNow.AddDays(300) },
-            new IssuedCertificate { SerialNumber = "02", DeviceId = a, Purpose = CertificatePurpose.Dot1x, CaId = oldId, IssuedUtc = DateTime.UtcNow.AddDays(-3), NotAfterUtc = DateTime.UtcNow.AddDays(10) },
-            new IssuedCertificate { SerialNumber = "03", DeviceId = b, Purpose = CertificatePurpose.Https, CaId = oldId, IssuedUtc = DateTime.UtcNow.AddDays(-2), NotAfterUtc = DateTime.UtcNow.AddDays(300) },
-        ]);
-        Assert.Equal(2, (await pki.InvokeAsync<PreviewReplaceReply>(PkiMethods.PreviewReplace)).DevicesWithCurrentCa);
-        var before = await pki.StateAsync();
-        Assert.Equal(2, before.IssuedDevices);
-        Assert.Equal(2, before.DevicesWithCurrentCa);
-        Assert.Equal(1, before.ExpiringSoon);
-
-        var ask = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Site CA", "Acme", 3, Confirmed: false));
-        Assert.True(ask.NeedsConfirmation);
-        Assert.Equal(2, ask.DevicesWithCurrentCa);
-        Assert.Equal(oldId, pki.Service.Ca!.Id); // nothing changed
-
-        using var watch = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        var events = pki.Hub.WatchAsync(PkiPluginInfo.PluginId, watch.Token).GetAsyncEnumerator(watch.Token);
-        var next = events.MoveNextAsync();
-        await Wait.UntilAsync(() => pki.Hub.WatcherCount(PkiPluginInfo.PluginId) == 1);
-        var done = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Site CA", "Acme", 3, Confirmed: true));
-        Assert.True(done.Ok);
-        Assert.True(await next);
-        Assert.Equal(PkiMethods.StateTopic, events.Current.Topic);
-        await events.DisposeAsync();
-
-        var state = done.State!;
-        Assert.Equal("CN=Site CA, O=Acme", state.Ca!.Subject);
-        Assert.Equal("Acme", state.Ca.Organization);
-        Assert.Equal(DateTime.UtcNow.AddYears(3).Date, state.Ca.NotAfterUtc.Date);
-        var previous = Assert.Single(state.PreviousCas);
-        Assert.Equal(oldId, previous.Id);
-        Assert.Equal("OADM Root CA SERVER01", previous.CommonName);
-        Assert.Equal(2, previous.Devices);
-        Assert.Equal(0, state.DevicesWithCurrentCa);
-        Assert.Equal(2, state.DevicesWithPreviousCa);
-
-        // Both CAs are trusted during the transition.
-        Assert.Equal(2, pki.Anchors.Current.Certificates.Count);
+        Assert.NotNull((await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("CA", false, null, CaKeys.Default, 10))).Error);
     }
 
     [Fact]
@@ -200,15 +136,7 @@ public sealed class ServiceTests
 
         Assert.NotNull((await pki.InvokeAsync<FileReply>(PkiMethods.ExportPublic, new ExportRequest("zip"))).Error);
 
-        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
-        var previous = await pki.InvokeAsync<FileReply>(PkiMethods.ExportPrevious, new ExportPreviousRequest(oldId, "der"));
-        Assert.Equal("OADM Root CA SERVER01.cer", previous.FileName);
         Assert.Equal("This previous CA no longer exists.", (await pki.InvokeAsync<FileReply>(PkiMethods.ExportPrevious, new ExportPreviousRequest("nope", "pem"))).Error);
-
-        var removed = await pki.InvokeAsync<PkiReply>(PkiMethods.RemovePrevious, new RemovePreviousRequest(oldId));
-        Assert.True(removed.Ok);
-        Assert.Empty(removed.State!.PreviousCas);
-        Assert.Single(pki.Anchors.Current.Certificates);
     }
 
     [Fact]
@@ -270,36 +198,8 @@ public sealed class ServiceTests
         Assert.Equal(id, pki.Policies.Find(policy.Id)!.RadiusCaId);
 
         // Used: it cannot be removed.
-        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + Ca.CaCertificates.Fingerprint(radius)));
         Assert.Equal(Policies.PolicyTexts.UsedByPolicy(policy.Name), refused.Error);
-    }
-
-    [Fact]
-    public async Task Previous_cas_are_capped_and_expired_ones_are_dropped()
-    {
-        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
-        var settings = new InMemoryPluginSettingsProvider();
-        var secrets = TestSecrets.Create();
-        await using (var pki = await PkiHarness.StartAsync(settings, secrets, time: time))
-        {
-            for (var i = 0; i < PkiPluginInfo.MaxPreviousCas + 1; i++)
-            {
-                Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("CA " + i, null, 1, true))).Ok);
-            }
-
-            var state = await pki.StateAsync();
-            Assert.Equal(PkiPluginInfo.MaxPreviousCas, state.PreviousCas.Count);
-            Assert.Equal("CA 9", state.PreviousCas[0].CommonName); // newest first
-        }
-
-        // Two years later the one-year CAs have expired: dropped on start (the 10-year default fell off the list of 10
-        // before). The active one is expired too.
-        time.Advance(TimeSpan.FromDays(800));
-        await using var later = await PkiHarness.StartAsync(settings, secrets, time: time);
-        var after = await later.StateAsync();
-        Assert.Empty(after.PreviousCas);
-        Assert.Equal("CA expired", after.Status.Text);
-        Assert.Empty(PkiJson.Deserialize<List<StoredPreviousCa>>(await later.Settings.GetAsync(PkiStore.PreviousCasKey, CancellationToken.None)));
     }
 
     [Fact]
@@ -336,7 +236,7 @@ public sealed class ServiceTests
     {
         await using var pki = await PkiHarness.StartAsync();
         Assert.Equal(TimeSpan.FromDays(365), pki.Service.DeviceCertificateValidity());
-        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Short", null, 1, true));
+        await pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("Short", false, null, CaKeys.Default, 1));
         Assert.InRange(pki.Service.DeviceCertificateValidity(3650).TotalDays, 360, 367);
     }
 

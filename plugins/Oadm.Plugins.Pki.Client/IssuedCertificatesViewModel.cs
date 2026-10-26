@@ -11,14 +11,8 @@ namespace Oadm.Plugins.Pki.Client;
 /// <summary>What the Certificates card asks of its view: the certificate window, the confirmations, its dialogs and file pickers.</summary>
 public interface IIssuedCertificatesDialogs : IIssuedCertificateListDialogs
 {
-    /// <summary>The confirmation with the reason; null for Cancel.</summary>
-    Task<RevocationReason?> ConfirmRevokeAsync(string title, string message);
-
     /// <summary>The confirmation of Delete (red Delete); true when confirmed.</summary>
     Task<bool> ConfirmDeleteAsync(string title, string message) => Task.FromResult(false);
-
-    /// <summary>The confirmation of Delete with its own red confirm button ("Revoke and delete"); true when confirmed.</summary>
-    Task<bool> ConfirmDeleteAsync(string title, string message, string confirmText) => ConfirmDeleteAsync(title, message);
 
     Task ShowCreateAsync(CreateCertificateViewModel dialog) => Task.CompletedTask;
 
@@ -82,23 +76,18 @@ internal sealed class PkiCertificateSource(ICorePluginClientContext ctx, PkiList
 /// <summary>
 /// The Certificates card of the PKI page (docs/spec/pki.md "Certificates"): the shared list (<see cref="IssuedCertificateListViewModel"/>:
 /// pages of 500, Group by (kept on this computer), filters, search, View certificate) read from PKI, plus, for users with
-/// all devices who may manage the CA, Create, Sign request and Import (toolbar), Export, Revoke and Delete (row buttons and
-/// the row menu; Revoke and Delete also for several chosen rows) and Revoke all of this device. The CA rows' own actions
-/// (the OADM CA's Export, Install, Back up; Remove of other CAs) are the page's (<see cref="PkiViewModel"/>). A change on
-/// the server (topic <c>certificates</c>) reads the shown page again.
+/// all devices who may manage the CA, Create, Sign request and Import (toolbar), Export and Delete (the row menu; Delete
+/// also for several chosen rows). Decision 2026-10-26: no revoke anywhere, only Delete. The CA rows' own actions (Install in
+/// the trusted root store, Back up, Delete) are the page's (<see cref="PkiViewModel"/>). A change on the server (topic
+/// <c>certificates</c>) reads the shown page again.
 /// </summary>
 public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListViewModel
 {
-    /// <summary>The choices of the reason, in the page's order.</summary>
-    public static IReadOnlyList<RevocationReason> Reasons => IssuedCertificateTexts.Reasons;
-
-    public const string ConfirmMessage = IssuedCertificateTexts.ConfirmMessage;
-
-    /// <summary>The confirmation of one certificate.</summary>
-    public const string ConfirmMessageOne = IssuedCertificateTexts.ConfirmMessageOne;
-
     /// <summary>The progress row while Delete runs.</summary>
     public const string Deleting = "Deleting the certificates";
+
+    /// <summary>The empty CA list: what to do first.</summary>
+    public const string NoAuthorities = "No certificate authorities yet. Use Create CA or Import.";
 
     private readonly ICorePluginClientContext _ctx;
     private readonly PkiClientSettingsStore _clientSettings;
@@ -114,6 +103,7 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         CanGroup = part != PkiListPart.Authorities;
         ShowsFilters = part != PkiListPart.Authorities;
         ShowsUsedIn = part == PkiListPart.Authorities; // the policies that use each CA (decision 2026-10-25)
+        NoRowsText = part == PkiListPart.Authorities ? NoAuthorities : IssuedCertificateTexts.NoCertificates;
         if (CanGroup && ctx.GetLocalSetting(GroupBySetting) is { } kept && GroupChoices.FirstOrDefault(c => c.Value.ToString() == kept) is { } choice)
         {
             GroupBy = choice;
@@ -121,7 +111,6 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
 
         _ctx.PermissionsChanged += (_, _) =>
         {
-            OnPropertyChanged(nameof(MayRevoke));
             OnPropertyChanged(nameof(MayManage));
             NotifyCommands();
         };
@@ -130,32 +119,29 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     /// <summary>The key of the kept Group by on this computer.</summary>
     public const string GroupBySetting = "certificates.groupBy";
 
-    /// <summary>The statuses below the state of a row (the OADM CA's trust, from the page); none without.</summary>
+    /// <summary>The statuses next to the type of a row (a root CA's trust, a CA that cannot be read; from the page); none without.</summary>
     public Func<IssuedCertificateInfo, IReadOnlyList<IssuedCertificateStatus>>? TrustStates { get; set; }
-
-    /// <summary>Export of the OADM CA's row: the page's Export public certificate ("pem" or "der"); null: the row's download.</summary>
-    public Func<string?, Task>? ExportOadmCa { get; set; }
 
     protected override IReadOnlyList<IssuedCertificateStatus> MoreStatesOf(IssuedCertificateInfo row) => TrustStates?.Invoke(row) ?? [];
 
     protected override void OnGroupingChanged(IssuedCertificateGrouping grouping) => _ctx.SetLocalSetting(GroupBySetting, grouping.ToString());
 
     /// <summary>
-    /// The page's actions of a CA row (the OADM CA's Install in trusted root store and Back up; Remove of a previous or
-    /// imported CA): everyday entries and red ones. Set by the page (the CA's commands are the page's).
+    /// The page's actions of a CA row (Install in trusted root store of a root CA, Back up of a CA with its key; Delete of
+    /// every CA): everyday entries and red ones. Set by the page (the CA's commands are the page's).
     /// </summary>
     public Func<IssuedCertificateRow, (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger)>? CaActions { get; set; }
 
     /// <summary>
     /// A row's menu: View, Export (PEM, DER, with its key where OADM holds it), the CA's own actions, then a separator and the
-    /// red ones: Revoke, Revoke all of this device, Remove, Delete. Users who may not manage the CA get View only.
+    /// red Delete. A CA row that cannot be read offers only Delete. Users who may not manage the CA get View only.
     /// </summary>
     protected override IReadOnlyList<IssuedCertificateAction> ActionsOf(IssuedCertificateRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        List<IssuedCertificateAction> everyday = [new("View", ViewRowCommand, row)];
+        List<IssuedCertificateAction> everyday = row.Source.Unreadable ? [] : [new("View", ViewRowCommand, row)];
         List<IssuedCertificateAction> danger = [];
-        if (MayManage)
+        if (MayManage && !row.Source.Unreadable)
         {
             everyday.Add(new("Export", Items:
             [
@@ -163,16 +149,6 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
                 new("DER (.cer)", ExportDerCommand, row),
                 .. row.HasKey ? [new IssuedCertificateAction("With its key (.p12)", ExportKeyCommand, row)] : Array.Empty<IssuedCertificateAction>(),
             ]));
-            if (row.CanRevoke)
-            {
-                danger.Add(new("Revoke", RevokeRowCommand, row, IsDanger: true));
-            }
-
-            if (row.Source.Kind == ListedCertificateKind.Device)
-            {
-                danger.Add(new("Revoke all of this device", RevokeDeviceCommand, row, IsDanger: true));
-            }
-
             if (row.CanDelete)
             {
                 danger.Add(new("Delete", DeleteRowCommand, row, IsDanger: true));
@@ -185,27 +161,23 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
             danger.InsertRange(0, ca.Danger);
         }
 
-        return danger.Count == 0 ? everyday : [.. everyday, IssuedCertificateAction.Separator, .. danger];
+        return danger.Count == 0 ? everyday : everyday.Count == 0 ? danger : [.. everyday, IssuedCertificateAction.Separator, .. danger];
     }
 
-    /// <summary>Several chosen rows: Revoke and Delete of all of them (red).</summary>
-    protected override IReadOnlyList<IssuedCertificateAction> SelectionActions() => !MayManage ? [] :
+    /// <summary>Several chosen rows: Delete of all of them (red); none in the CA list (each CA is deleted on its own).</summary>
+    protected override IReadOnlyList<IssuedCertificateAction> SelectionActions() => !MayManage || Selected.Any(r => r.IsCa) ? [] :
     [
-        new($"Revoke {Selected.Count:N0} certificates", RevokeCommand, IsDanger: true),
         new($"Delete {Selected.Count:N0} certificates", DeleteCommand, IsDanger: true),
     ];
 
-    /// <summary>The OADM CA's trust changed: its row shows it.</summary>
+    /// <summary>The trust of a root CA changed: its row shows it.</summary>
     public void RefreshTrust() => RefreshRows();
 
     /// <summary>The policies of the page (the issuing policies of Create and Sign request); empty without.</summary>
     public Func<IReadOnlyList<PkiPolicy>> PolicySource { get; set; } = () => [];
 
-    /// <summary>Users with all devices whose role manages the CA (the server refuses others).</summary>
-    public bool MayRevoke => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
-
-    /// <summary>Create, Sign request, Import, Export and Delete: the same users as Revoke.</summary>
-    public bool MayManage => MayRevoke;
+    /// <summary>Create, Sign request, Import, Export and Delete: users with all devices whose role manages the CA (the server refuses others).</summary>
+    public bool MayManage => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
     /// <summary>A live event of the page (the list changed on the server).</summary>
     public Task HandleEventAsync(string topic) => topic == PkiMethods.CertificatesTopic ? LoadAsync() : Task.CompletedTask;
@@ -218,9 +190,6 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
 
     private void NotifyCommands()
     {
-        RevokeCommand.NotifyCanExecuteChanged();
-        RevokeDeviceCommand.NotifyCanExecuteChanged();
-        RevokeRowCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         DeleteRowCommand.NotifyCanExecuteChanged();
         CreateCommand.NotifyCanExecuteChanged();
@@ -229,92 +198,6 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
         ExportPemCommand.NotifyCanExecuteChanged();
         ExportDerCommand.NotifyCanExecuteChanged();
         ExportKeyCommand.NotifyCanExecuteChanged();
-    }
-
-    // ------------------------------------------------------------------ revoke
-
-    private bool CanRevoke() => MayRevoke && !IsWorking && Selected.Any(r => r.CanRevoke);
-
-    /// <summary>Revoke (red, row menu): the chosen rows that can still be revoked, with a reason, confirmed.</summary>
-    [RelayCommand(CanExecute = nameof(CanRevoke))]
-    private Task RevokeAsync() => RevokeRowsAsync([.. Selected.Where(r => r.CanRevoke)]);
-
-    private bool CanRevokeRow(IssuedCertificateRow? row) => MayRevoke && !IsWorking && row is { CanRevoke: true };
-
-    /// <summary>Revoke (row button): this row.</summary>
-    [RelayCommand(CanExecute = nameof(CanRevokeRow))]
-    private Task RevokeRowAsync(IssuedCertificateRow? row) => row is { CanRevoke: true } ? RevokeRowsAsync([row]) : Task.CompletedTask;
-
-    private async Task RevokeRowsAsync(List<IssuedCertificateRow> rows)
-    {
-        if (rows.Count == 0 || Dialogs is not IIssuedCertificatesDialogs dialogs)
-        {
-            return;
-        }
-
-        if (await dialogs.ConfirmRevokeAsync(RevokeTitle(rows), rows.Count == 1 ? ConfirmMessageOne : ConfirmMessage).ConfigureAwait(true) is not { } reason)
-        {
-            return;
-        }
-
-        await SendRevokeAsync(PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([.. rows.Select(r => r.Source.SerialNumber)], reason))).ConfigureAwait(true);
-    }
-
-    /// <summary>"Revoke the certificate of 10.0.0.48?", "Revoke the certificate nvr.example.com?" or "Revoke 3 certificates?".</summary>
-    private static string RevokeTitle(List<IssuedCertificateRow> rows) =>
-        rows.Count == 1 && rows[0].Source.Kind != ListedCertificateKind.Device ? $"Revoke the certificate {rows[0].Name}?" : IssuedCertificateTexts.RevokeTitle(rows);
-
-    private bool CanRevokeDevice(IssuedCertificateRow? row) =>
-        MayRevoke && !IsWorking && (row ?? (Selected.Count == 1 ? Selected[0] : null)) is { Source.Kind: ListedCertificateKind.Device };
-
-    /// <summary>Revoke all of this device (row menu): every certificate of the row's device that is still valid.</summary>
-    [RelayCommand(CanExecute = nameof(CanRevokeDevice))]
-    private async Task RevokeDeviceAsync(IssuedCertificateRow? row)
-    {
-        row ??= Selected.Count == 1 ? Selected[0] : null;
-        if (row is not { Source.Kind: ListedCertificateKind.Device } || Dialogs is not IIssuedCertificatesDialogs dialogs)
-        {
-            return;
-        }
-
-        if (await dialogs.ConfirmRevokeAsync($"Revoke all certificates of {row.Device}?", ConfirmMessage).ConfigureAwait(true) is not { } reason)
-        {
-            return;
-        }
-
-        await SendRevokeAsync(PkiMethods.RevokeDevice, PkiJson.Serialize(new RevokeDeviceRequest(row.Source.DeviceId, reason))).ConfigureAwait(true);
-    }
-
-    /// <summary>
-    /// Sends Revoke or Revoke all of this device (a write: it runs to its end, no Cancel; Revoke all of this device reads the
-    /// device first, up to 20 s): the progress row above the grid meanwhile, the commands off; then the page again.
-    /// </summary>
-    private async Task SendRevokeAsync(string method, string payload)
-    {
-        string? answer;
-        WorkText = IssuedCertificateTexts.Revoking;
-        try
-        {
-            var reply = PkiJson.Deserialize<RevokeReply>(await _ctx.InvokeAsync(method, payload, CancellationToken.None).ConfigureAwait(true));
-            answer = reply.Error ?? (reply.Revoked == 0 ? IssuedCertificateTexts.NothingRevoked : null);
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            answer = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            WorkText = null;
-        }
-
-        if (answer is not null)
-        {
-            await _ctx.ShowMessageAsync("Revoke", answer).ConfigureAwait(true);
-        }
-
-        await LoadAsync().ConfigureAwait(true);
     }
 
     // ------------------------------------------------------------------ delete
@@ -338,16 +221,9 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
             return;
         }
 
-        // Still valid ones created or signed here are revoked first (decision 2026-10-25: Revoke and delete).
-        var revoking = rows.Count(r => r.DeleteRevokes);
+        // Decision 2026-10-26: Delete only takes it out of the list (the server stops accepting a still valid one by itself).
         var message = rows.Count == 1 ? IssuedCertificateTexts.DeleteMessageOne : IssuedCertificateTexts.DeleteMessage;
-        if (revoking > 0)
-        {
-            message = (rows.Count == 1 ? IssuedCertificateTexts.RevokedFirstOne(rows[0].Name) : IssuedCertificateTexts.RevokedFirst(revoking)) + " " + message;
-        }
-
-        if (!await dialogs.ConfirmDeleteAsync(IssuedCertificateTexts.DeleteTitle(rows), message, revoking > 0 ? IssuedCertificateTexts.RevokeAndDelete : "Delete")
-                .ConfigureAwait(true))
+        if (!await dialogs.ConfirmDeleteAsync(IssuedCertificateTexts.DeleteTitle(rows), message).ConfigureAwait(true))
         {
             return;
         }
@@ -497,12 +373,6 @@ public sealed partial class IssuedCertificatesViewModel : IssuedCertificateListV
     private async Task ExportAsync(IssuedCertificateRow? row, string format, PkiFileKind kind)
     {
         row ??= Selected.Count == 1 ? Selected[0] : null;
-        if (row is { IsOadmCa: true } && ExportOadmCa is { } exportCa)
-        {
-            await exportCa(format == CertificateFormats.Der ? "der" : "pem").ConfigureAwait(true); // the public certificate, as Export public certificate
-            return;
-        }
-
         if (row is null || Dialogs is not IIssuedCertificatesDialogs dialogs)
         {
             return;

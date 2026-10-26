@@ -27,14 +27,6 @@ public sealed class FakeModeTests : IDisposable
         Assert.Equal(365, state.Config.DeviceCertValidityDays);
         Assert.Equal(Dot1xIdentity.Mac, state.Config.Dot1x.Identity);
 
-        var ask = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.Generate, new GenerateRequest("New fake CA", null, 5, false)));
-        Assert.True(ask.NeedsConfirmation);
-        Assert.Equal(12, ask.DevicesWithCurrentCa);
-        var done = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.Generate, new GenerateRequest("New fake CA", null, 5, true)));
-        Assert.True(done.Ok);
-        Assert.Equal("New fake CA", done.State!.Ca!.CommonName);
-        Assert.Equal("OADM Root CA FAKE-SERVER", Assert.Single(done.State.PreviousCas).CommonName);
-
         var der = PkiJson.Deserialize<FileReply>(await Invoke(PkiMethods.ExportPublic, new ExportRequest("der")));
         using (var cert = X509CertificateLoader.LoadCertificate(Convert.FromBase64String(der.DataBase64!)))
         {
@@ -65,10 +57,6 @@ public sealed class FakeModeTests : IDisposable
         var valid = page.Rows.First(r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Valid);
         var details = PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(valid.SerialNumber)));
         Assert.Contains("IP " + valid.Device, details.Certificate!.Names);
-        var revoked = PkiJson.Deserialize<RevokeReply>(await Invoke(PkiMethods.Revoke, new RevokeRequest([valid.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.DeviceRemoved)));
-        Assert.Equal(1, revoked.Revoked);
-        Assert.NotNull(PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(valid.SerialNumber))).Revocation);
-        Assert.True(PkiJson.Deserialize<RevokeReply>(await Invoke(PkiMethods.RevokeDevice, new RevokeDeviceRequest(valid.DeviceId, Oadm.Sdk.Certificates.RevocationReason.DeviceRemoved))).AlreadyRevoked >= 1); // the one revoked above
     }
 
     [Fact]
@@ -79,13 +67,9 @@ public sealed class FakeModeTests : IDisposable
         await vm.LoadAsync();
 
         Assert.True(vm.HasCa);
-        Assert.Equal("OADM Root CA FAKE-SERVER", vm.CaName);
-        Assert.Single(vm.PreviousCas);
-        Assert.Contains("Fake mode", vm.ClientTrustTip, StringComparison.Ordinal);
 
-        await vm.InstallTrustCommand.ExecuteAsync(null);
-        Assert.Equal("Installed on the server", vm.ServerTrustText);
-        Assert.Equal("Not installed on this computer", vm.ClientTrustText);
+        await vm.Authorities.LoadAsync();
+        await vm.InstallTrustCommand.ExecuteAsync(vm.Authorities.Rows.FirstOrDefault(r => r.IsRootCa));
         Assert.Empty(clientTrust.Installed);
     }
 

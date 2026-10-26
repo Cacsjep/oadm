@@ -11,15 +11,11 @@ namespace Oadm.Plugins.Pki;
 
 /// <summary>
 /// The policies of the page (docs/spec/pki.md "Policies"): the store, PKI's own conversion (warn before expiry -> Expiry
-/// warning "All devices"), the page methods and Revoke (the IEEE 802.1X certificates of a revoke policy's devices are
-/// revoked on save and every minute: new ones too). Revoke is PKI's own and never needs OADM PRO.
+/// warning "All devices") and the page methods. Decision 2026-10-26: no policy revokes certificates (Block only refuses).
 /// </summary>
 public sealed partial class PkiService
 {
-    private static readonly TimeSpan RevokeRound = TimeSpan.FromMinutes(1);
     private readonly ISites? _sites;
-    private ITimer? _revokeTimer;
-    private int _revokeRunning;
     private string? _expiryKey; // the Expiry warning policies the host was last told
 
     /// <summary>The policies (one store; the 802.1X server inside PKI reads it in process).</summary>
@@ -194,7 +190,7 @@ public sealed partial class PkiService
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the RADIUS server CA of the policy {Policy} cannot be read; choose a CA in the policy")]
     private partial void LogRadiusCaNotConverted(string policy);
 
-    /// <summary>Loads the policies, converts PKI's own settings once and starts the minute round of Revoke.</summary>
+    /// <summary>Loads the policies and converts PKI's own settings once.</summary>
     private async Task StartPoliciesAsync(CancellationToken ct)
     {
         await Policies.LoadAsync(ct).ConfigureAwait(false);
@@ -204,19 +200,14 @@ public sealed partial class PkiService
         await Policies.RewriteOnceAsync(KindsOwner, list => PolicyStore.ConvertKinds(list, RadiusPolicies.DefaultServerPolicy), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
-        _revokeTimer = _options.Time.CreateTimer(_ => _ = RevokeByPoliciesAsync(null, CancellationToken.None), null, RevokeRound, RevokeRound);
     }
 
-    private async ValueTask StopPoliciesAsync()
+    private ValueTask StopPoliciesAsync()
     {
         Policies.Changed -= OnPoliciesChanged;
         _anchors?.SetExpiryWarning(null, PolicyLimits.DefaultExpiryDays);
-        if (_revokeTimer is { } timer)
-        {
-            await timer.DisposeAsync().ConfigureAwait(false);
-        }
-
         Policies.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private void OnPoliciesChanged(object? sender, EventArgs e)
@@ -288,11 +279,6 @@ public sealed partial class PkiService
             return new PolicySaveReply { Error = error };
         }
 
-        if (result.Saved is { } saved && PolicyRules.Revokes(saved))
-        {
-            await RevokeByPoliciesAsync(saved.Id, ct).ConfigureAwait(false);
-        }
-
         return new PolicySaveReply { Saved = result.Saved, List = await PolicyListAsync(hasAllDevices: true, mayManage: true, ct).ConfigureAwait(false) };
     }
 
@@ -302,88 +288,6 @@ public sealed partial class PkiService
         return result.Error is { } error
             ? new PolicySaveReply { Error = error }
             : new PolicySaveReply { List = await PolicyListAsync(hasAllDevices: true, mayManage: true, ct).ConfigureAwait(false) };
-    }
-
-    /// <summary>How many IEEE 802.1X certificates a revoke policy with <paramref name="devices"/> would revoke now.</summary>
-    internal async Task<PolicyRevocationCount> CountRevocationsAsync(PolicyDevices devices, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(devices);
-        var policy = PolicyRules.Normalize(new PkiPolicy { Name = "count", Kind = PolicyKinds.Block, AlsoRevoke = true, Devices = devices });
-        return new PolicyRevocationCount((await SerialsToRevokeAsync(policy, ct).ConfigureAwait(false)).Count);
-    }
-
-    /// <summary>The IEEE 802.1X certificates of <paramref name="policy"/>'s devices (never by tag) that are neither ended nor revoked.</summary>
-    private async Task<List<string>> SerialsToRevokeAsync(PkiPolicy policy, CancellationToken ct)
-    {
-        var matcher = PolicyMatcher.Of(policy);
-        var devices = await SystemDevicesAsync(ct).ConfigureAwait(false);
-        var serials = new List<string>();
-        foreach (var device in devices)
-        {
-            if (!matcher.Holds(device))
-            {
-                continue;
-            }
-
-            foreach (var serial in _issued.RevocableOf(device)) // by device id and serial: also a camera added again
-            {
-                if (string.Equals(_issued.Find(serial)?.Purpose, DeviceCertificatePurposes.Dot1x, StringComparison.Ordinal))
-                {
-                    serials.Add(serial);
-                }
-            }
-        }
-
-        return serials;
-    }
-
-    /// <summary>
-    /// Revokes the current IEEE 802.1X certificates of the revoke policies' devices (one policy after its save, else all of
-    /// them: the minute round catches new certificates), by the user who saved each policy, at most 5,000 per call. One round
-    /// at a time; a round asked for while one runs is skipped (the next minute catches up), a save waits for its own.
-    /// </summary>
-    internal async Task RevokeByPoliciesAsync(Guid? only, CancellationToken ct)
-    {
-        var policies = Policies.PoliciesOf(PolicyKinds.Block).Where(p => PolicyRules.Revokes(p) && (only is null || p.Id == only)).ToList();
-        if (policies.Count == 0)
-        {
-            return;
-        }
-
-        if (only is null && Interlocked.CompareExchange(ref _revokeRunning, 1, 0) != 0)
-        {
-            return;
-        }
-
-        try
-        {
-            foreach (var policy in policies)
-            {
-                var serials = await SerialsToRevokeAsync(policy, ct).ConfigureAwait(false);
-                foreach (var batch in serials.Chunk(PkiPluginInfo.MaxRevokeAtOnce))
-                {
-                    var result = await _issued.RevokeAsync(batch, RevocationReason.Other, policy.SavedBy ?? PkiPlugin.InProcessUser, ct).ConfigureAwait(false);
-                    LogPolicyRevoked(result.Revoked, policy.Name);
-                }
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested || _stopping.IsCancellationRequested)
-        {
-            // stopping
-        }
-#pragma warning disable CA1031 // The minute round tries again; the reason goes to the server log.
-        catch (Exception ex) when (only is null)
-#pragma warning restore CA1031
-        {
-            LogPolicyRevokeFailed(ex);
-        }
-        finally
-        {
-            if (only is null)
-            {
-                Volatile.Write(ref _revokeRunning, 0);
-            }
-        }
     }
 
     /// <summary>The days before the end that the certificates of <paramref name="deviceId"/> count as "expires soon".</summary>
@@ -398,10 +302,4 @@ public sealed partial class PkiService
         var fallback = PolicyLimits.DefaultExpiryDays;
         return id => days.TryGetValue(id, out var d) ? d : fallback;
     }
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} certificates revoked by policy {Policy}")]
-    private partial void LogPolicyRevoked(int count, string policy);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: revoking by policy failed")]
-    private partial void LogPolicyRevokeFailed(Exception ex);
 }

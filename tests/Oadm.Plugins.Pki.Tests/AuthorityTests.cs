@@ -43,20 +43,17 @@ public sealed class AuthorityTests
         Assert.True(axis.NotAfterUtc > DateTime.UtcNow);
         Assert.Same(initial, ca.Authorities); // built once per change
 
-        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
         using var root = TestCa.Root("Contoso Root");
         var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, Request(root.RawData));
         Assert.True(reply.Ok);
 
         var list = ca.Authorities;
         Assert.Equal(
-            [CertificateAuthorityInfo.OadmId, "oadm-previous:" + first, CertificateAuthorityInfo.AxisDeviceIdId, "imported:" + CaCertificates.Fingerprint(root)],
+            [CertificateAuthorityInfo.OadmId, CertificateAuthorityInfo.AxisDeviceIdId, "imported:" + CaCertificates.Fingerprint(root)],
             list.Select(a => a.Id));
-        Assert.Equal(CertificateAuthorityKind.PreviousOadm, list[1].Kind);
-        Assert.Equal("OADM Root CA SERVER01", list[1].Name);
-        Assert.Equal("Contoso Root", list[3].Name);
-        Assert.Equal(CertificateAuthorityKind.Imported, list[3].Kind);
-        Assert.Equal(root.RawData, list[3].Certificates[0]);
+        Assert.Equal("Contoso Root", list[2].Name);
+        Assert.Equal(CertificateAuthorityKind.Imported, list[2].Kind);
+        Assert.Equal(root.RawData, list[2].Certificates[0]);
 
         // The page shows the same rows.
         var state = reply.State!;
@@ -78,7 +75,7 @@ public sealed class AuthorityTests
 
             Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, Request(Encoding.ASCII.GetBytes(root.ExportCertificatePem())))).Ok);
             Assert.Equal(1, changes);
-            Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest("imported:" + CaCertificates.Fingerprint(root)))).Ok);
+            Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest("ca:" + CaCertificates.Fingerprint(root)))).Ok);
             Assert.Equal(2, changes);
             Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, Request(root.RawData))).Ok); // DER
             Assert.Equal(3, changes);
@@ -123,6 +120,7 @@ public sealed class AuthorityTests
         using var root = TestCa.Root("Contoso Root");
         await pki.InvokeAsync<PkiReply>(PkiMethods.ImportAuthority, Request(root.RawData));
         var id = "imported:" + CaCertificates.Fingerprint(root);
+        var rowId = "ca:" + CaCertificates.Fingerprint(root);
 
         ca.SetUsedBy("oadm.radius", "802.1X server", [id, CertificateAuthorityInfo.OadmId]);
         ca.SetUsedBy("oadm.est", "EST server", [CertificateAuthorityInfo.OadmId]);
@@ -132,22 +130,21 @@ public sealed class AuthorityTests
         Assert.Equal(["802.1X server"], state.Authorities.Single(a => a.Id == id).UsedBy);
         Assert.Empty(state.Authorities.Single(a => a.Id == CertificateAuthorityInfo.AxisDeviceIdId).UsedBy);
 
-        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id));
+        var refused = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(rowId));
         Assert.False(refused.Ok);
         Assert.Equal("Used by the 802.1X server. Remove it there first.", refused.Error);
         ca.SetUsedBy("oadm.est", "EST server", [id]);
         Assert.Equal("Used by the 802.1X server and the EST server. Remove it there first.",
-            (await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id))).Error);
+            (await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(rowId))).Error);
 
         // An empty list clears the service; then Remove works.
         ca.SetUsedBy("oadm.radius", "802.1X server", []);
         ca.SetUsedBy("oadm.est", "EST server", []);
-        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id))).Ok);
+        Assert.True((await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(rowId))).Ok);
         Assert.DoesNotContain(ca.Authorities, a => a.Id == id);
 
         // Only imported CAs can be removed; a gone one says so.
-        Assert.Equal("Only imported CAs can be removed here.", (await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(CertificateAuthorityInfo.OadmId))).Error);
-        Assert.Equal("This CA is no longer in the list.", (await pki.InvokeAsync<PkiReply>(PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id))).Error);
+        Assert.Equal("This CA is no longer in the list.", (await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(rowId))).Error);
     }
 
     [Fact]
@@ -184,12 +181,12 @@ public sealed class AuthorityTests
     {
         await using var pki = await PkiHarness.StartAsync();
         Assert.Equal(UserRole.Admin, pki.Plugin.RequiredRole(PkiMethods.ImportAuthority));
-        Assert.Equal(UserRole.Admin, pki.Plugin.RequiredRole(PkiMethods.RemoveAuthority));
+        Assert.Equal(UserRole.Admin, pki.Plugin.RequiredRole(PkiMethods.DeleteAuthority));
         Assert.True(((ICorePlugin)pki.Plugin).IsAudited(PkiMethods.ImportAuthority));
-        Assert.True(((ICorePlugin)pki.Plugin).IsAudited(PkiMethods.RemoveAuthority));
+        Assert.True(((ICorePlugin)pki.Plugin).IsAudited(PkiMethods.DeleteAuthority));
         Assert.Null(pki.Plugin.RequiredPermission(PkiMethods.ImportAuthority)); // the plugin's "manage"
         Assert.True(pki.Plugin.RequiresAllDevices(PkiMethods.ImportAuthority));
-        Assert.True(pki.Plugin.RequiresAllDevices(PkiMethods.RemoveAuthority));
+        Assert.True(pki.Plugin.RequiresAllDevices(PkiMethods.DeleteAuthority));
     }
 
     [Fact]
@@ -220,7 +217,6 @@ public sealed class AuthorityTests
             Assert.Equal(string.Join(Environment.NewLine, "HTTPS", "IEEE 802.1X"), Cas()[0].UsedInTip);
             Assert.All(Cas().Skip(1), row => Assert.Empty(row.UsedIn)); // no policy: nothing
             Assert.All(Cas().Skip(1), row => Assert.Null(row.UsedInTip));
-            Assert.All(Cas(), row => Assert.False(row.IsRemovableCa));
 
             // View: the shared certificate window with the CA.
             await vm.Authorities.ViewRowCommand.ExecuteAsync(Cas()[0]);
@@ -252,18 +248,18 @@ public sealed class AuthorityTests
             IssuedCertificateRow Imported() => Cas().Single(r => r.AuthorityKind == CertificateAuthorityKind.Imported);
             Assert.Equal("Contoso Root", Imported().Name);
             Assert.Equal(["Root CA", "Imported"], Imported().Badges);
-            Assert.True(Imported().IsRemovableCa);
+            Assert.True(Imported().IsCa);
 
             // Remove: refused while a service uses it, with the reason.
             Offer(pki).SetUsedBy("oadm.radius", "802.1X server", [Imported().Source.AuthorityId!]);
             await vm.Authorities.LoadAsync();
             Assert.Equal("802.1X server", Imported().UsedBy);
-            await vm.RemoveCaCommand.ExecuteAsync(Imported());
+            await vm.DeleteCaCommand.ExecuteAsync(Imported());
             Assert.Equal(("Remove CA", "Used by the 802.1X server. Remove it there first."), ctx.Messages[^1]);
             Assert.Single(Cas(), r => r.AuthorityKind == CertificateAuthorityKind.Imported);
 
             Offer(pki).SetUsedBy("oadm.radius", "802.1X server", []);
-            await vm.RemoveCaCommand.ExecuteAsync(Imported());
+            await vm.DeleteCaCommand.ExecuteAsync(Imported());
             Assert.DoesNotContain(Cas(), r => r.AuthorityKind == CertificateAuthorityKind.Imported);
         }
         finally

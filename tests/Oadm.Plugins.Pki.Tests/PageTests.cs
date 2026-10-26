@@ -56,7 +56,7 @@ internal sealed class FakeDialogs : IPkiDialogs
 
     public PkiDialogViewModel? Last { get; private set; }
 
-    public Task ShowGenerateAsync(GenerateCaViewModel dialog) => RunAsync(dialog);
+    public Task ShowCreateCaAsync(CreateCaViewModel dialog) => RunAsync(dialog);
 
     public Task ShowImportAsync(ImportCaViewModel dialog) => RunAsync(dialog);
 
@@ -139,52 +139,10 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         vm.Activate();
         await Wait.UntilAsync(() => vm.HasCa);
 
-        Assert.Equal("OADM Root CA SERVER01", vm.CaName);
-        Assert.Equal("Generated", vm.CaSourceText);
-        Assert.Equal("RSA 2048", vm.KeyText);
-        Assert.Matches("^([0-9A-F]{2}:){31}[0-9A-F]{2}$", vm.Fingerprint);
         Assert.True(vm.IsStatusOk);
         Assert.StartsWith("CA valid until ", vm.StatusText, StringComparison.Ordinal);
-        Assert.Equal("Not installed on the server", vm.ServerTrustText);
-        await Wait.UntilAsync(() => vm.ClientTrustText == "Not installed on this computer");
-        Assert.Empty(vm.PreviousCas);
-        Assert.False(vm.HasChain);
         Assert.False(vm.HasErrors);
         vm.Deactivate();
-    }
-
-    [Fact]
-    public async Task A_failed_export_says_why_in_a_message_of_its_own()
-    {
-        using var vm = CreateViewModel();
-        await vm.LoadAsync();
-        _ctx.Intercept = (method, _) => method == PkiMethods.ExportPublic ? throw new InvalidOperationException("The server is not reachable.") : Task.FromResult<string?>(null);
-
-        await vm.ExportCommand.ExecuteAsync("pem"); // never the generic crash message
-
-        Assert.Equal(("Export public certificate", "The server is not reachable."), Assert.Single(_ctx.Messages));
-        Assert.Empty(_dialogs.FakeFiles.Saved);
-    }
-
-    [Fact]
-    public async Task Install_in_trusted_root_store_installs_on_the_server_and_on_this_computer()
-    {
-        using var vm = CreateViewModel();
-        await vm.LoadAsync();
-
-        _clientTrust.FailWith = TrustStoreTexts.Cancelled;
-        await vm.InstallTrustCommand.ExecuteAsync(null);
-        Assert.True(vm.IsServerTrustOk);
-        Assert.Equal("Installed on the server", vm.ServerTrustText);
-        Assert.True(vm.IsClientTrustError);
-        Assert.Equal("Failed on this computer", vm.ClientTrustText);
-        Assert.Equal(TrustStoreTexts.Cancelled, vm.ClientTrustTip);
-
-        _clientTrust.FailWith = null;
-        await vm.InstallTrustCommand.ExecuteAsync(null);
-        Assert.Equal("Installed on this computer", vm.ClientTrustText);
-        Assert.True(vm.IsClientTrustOk);
-        Assert.Single(_clientTrust.Installed);
     }
 
     [Fact]
@@ -192,58 +150,17 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     {
         using var vm = CreateViewModel();
         await vm.LoadAsync();
+        await vm.Authorities.LoadAsync();
         var fingerprint = vm.State!.Ca!.Fingerprint;
         _ctx.ConfirmAnswer = false;
 
-        await vm.InstallTrustCommand.ExecuteAsync(null);
+        await vm.InstallTrustCommand.ExecuteAsync(vm.Authorities.Rows.Single(r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm));
 
         var (title, message, confirm) = Assert.Single(_ctx.Confirmations);
         Assert.Equal("Install in trusted root store", title);
         Assert.Equal("Install", confirm);
         Assert.Contains(fingerprint, message, StringComparison.Ordinal);
         Assert.Empty(_clientTrust.Installed);
-        Assert.NotEqual("Installed on the server", vm.ServerTrustText);
-    }
-
-    [Fact]
-    public async Task Generate_asks_with_the_device_count_and_replaces_the_ca()
-    {
-        using var vm = CreateViewModel();
-        await vm.LoadAsync();
-        var oldId = _pki.Service.Ca!.Id;
-        await _pki.SetIssuedAsync([
-            new IssuedCertificate { SerialNumber = "01", DeviceId = Guid.NewGuid(), CaId = oldId, IssuedUtc = DateTime.UtcNow, NotAfterUtc = DateTime.UtcNow.AddDays(300) },
-            new IssuedCertificate { SerialNumber = "02", DeviceId = Guid.NewGuid(), CaId = oldId, IssuedUtc = DateTime.UtcNow, NotAfterUtc = DateTime.UtcNow.AddDays(300) },
-        ]);
-
-        _dialogs.ConfirmAnswer = false;
-        _dialogs.Drive = async d =>
-        {
-            var dialog = (GenerateCaViewModel)d;
-            Assert.Equal("OADM Root CA SERVER01", dialog.CommonName);
-            Assert.Equal("10", dialog.ValidityYears);
-            dialog.ValidityYears = "40";
-            Assert.Equal("Enter a whole number from 1 to 30.", dialog.ErrorOf(nameof(dialog.ValidityYears)));
-            Assert.False(dialog.GenerateCommand.CanExecute(null));
-            dialog.ValidityYears = "5";
-            dialog.Organization = "Acme";
-            await dialog.GenerateCommand.ExecuteAsync(null);
-        };
-        await vm.GenerateCommand.ExecuteAsync(null);
-        var (title, message) = Assert.Single(_dialogs.Confirmations);
-        Assert.Equal(PkiViewModel.ReplaceTitle, title);
-        Assert.Equal("2 devices have certificates from the current CA. They keep working until they are renewed. Replace the CA?", message);
-        Assert.False(_dialogs.Last!.Completed);
-        Assert.Equal(oldId, _pki.Service.Ca!.Id); // cancelled: nothing changed
-
-        _dialogs.ConfirmAnswer = true;
-        await vm.GenerateCommand.ExecuteAsync(null);
-        Assert.True(_dialogs.Last!.Completed);
-        Assert.NotEqual(oldId, _pki.Service.Ca!.Id);
-        Assert.Equal("OADM Root CA SERVER01", vm.CaName);
-        var row = Assert.Single(vm.PreviousCas);
-        Assert.Equal(oldId, row.Id);
-        Assert.Contains("2 devices", row.Tooltip, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -251,7 +168,6 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
     {
         using var vm = CreateViewModel();
         await vm.LoadAsync();
-        var oadm = vm.CaName;
         using var rsa = RSA.Create(2048);
         using var root = TestCa.Root("Customer Root CA", rsa: rsa);
 
@@ -283,7 +199,6 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         // Decision 2026-10-25: the CA is added to the list and can issue; the OADM CA stays, so nothing is asked.
         Assert.Empty(_dialogs.Confirmations);
         Assert.True(_dialogs.Last!.Completed);
-        Assert.Equal((oadm, "Generated"), (vm.CaName, vm.CaSourceText));
         var imported = Assert.Single(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
         Assert.Equal("Customer Root CA", imported.Name);
         Assert.Equal(["Root CA", "Imported", "Can issue"], imported.Badges);
@@ -307,7 +222,9 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
             dialog.ConfirmPassword = "long enough";
             await dialog.BackupCommand.ExecuteAsync(null);
         };
-        await vm.BackupCommand.ExecuteAsync(null);
+        await vm.Authorities.LoadAsync();
+        var oadmRow = vm.Authorities.Rows.Single(r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm);
+        await vm.BackupCommand.ExecuteAsync(oadmRow);
 
         Assert.Equal((BackupViewModel.Title, BackupViewModel.Warning), Assert.Single(_dialogs.Confirmations));
         var saved = Assert.Single(_dialogs.FakeFiles.Saved);
@@ -322,38 +239,10 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         Assert.True(_dialogs.Last!.Completed);
 
         // The folder is remembered for the next export.
-        await vm.ExportCommand.ExecuteAsync("der");
+        await vm.Authorities.ExportDerCommand.ExecuteAsync(oadmRow);
         Assert.Equal("C:/exports", _dialogs.FakeFiles.Saved[^1].StartFolder);
         Assert.Equal("OADM Root CA SERVER01.cer", _dialogs.FakeFiles.Saved[^1].FileName);
         Assert.Equal(PkiFileKind.CertificateDer, _dialogs.FakeFiles.Saved[^1].Kind);
-    }
-
-    [Fact]
-    public async Task Previous_cas_are_rows_of_the_list_exported_and_removed_after_confirmation()
-    {
-        await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("Second", null, 10, true));
-        using var vm = CreateViewModel();
-        var certificateDialogs = new FakeCertificateDialogs();
-        vm.Authorities.Dialogs = certificateDialogs;
-        await vm.LoadAsync();
-        await vm.Authorities.LoadAsync();
-        Assert.Equal("OADM Root CA SERVER01", Assert.Single(vm.PreviousCas).Name);
-        var row = Assert.Single(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // once: a row of the CA list
-        Assert.Equal(("OADM Root CA SERVER01", true, false), (row.Name, row.IsRemovableCa, row.IsOadmCa));
-        Assert.Equal(["Root CA", "Previous OADM CA"], row.Badges);
-        Assert.False(vm.Authorities.Rows.Single(r => r.IsOadmCa).IsRemovableCa);
-
-        await vm.Authorities.ExportPemCommand.ExecuteAsync(row);
-        Assert.Equal("OADM Root CA SERVER01.crt", Assert.Single(certificateDialogs.Files.Saved).FileName);
-
-        _ctx.ConfirmAnswer = false;
-        await vm.RemoveCaCommand.ExecuteAsync(row);
-        Assert.Single(vm.PreviousCas);
-        _ctx.ConfirmAnswer = true;
-        await vm.RemoveCaCommand.ExecuteAsync(row);
-        Assert.Empty(vm.PreviousCas);
-        Assert.DoesNotContain(vm.Authorities.Rows, r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm); // the list was read again
-        Assert.Equal(2, _ctx.Confirmations.Count);
     }
 
     [Fact]
@@ -363,20 +252,9 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         vm.Activate();
         await Wait.UntilAsync(() => vm.HasCa && _pki.Hub.WatcherCount(PkiPluginInfo.PluginId) == 1);
 
-        await _pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("From another client", null, 10, true));
-        await Wait.UntilAsync(() => vm.CaName == "From another client");
+        await _pki.InvokeAsync<PkiReply>(PkiMethods.CreateAuthority, new CreateCaRequest("From another client", false, null, CaKeys.Default, 10));
+        await Wait.UntilAsync(() => vm.State?.Authorities.Any(a => a.Name == "From another client") == true);
         vm.Deactivate();
-    }
-
-    [Fact]
-    public async Task Fake_mode_simulates_the_server_and_disables_this_computer()
-    {
-        using var vm = CreateViewModel();
-        var state = await _pki.StateAsync();
-        await vm.ApplyStateAsync(state with { Simulated = true });
-        Assert.Equal("Not installed on this computer", vm.ClientTrustText);
-        Assert.Contains("Fake mode", vm.ClientTrustTip, StringComparison.Ordinal);
-        Assert.Empty(_clientTrust.Installed);
     }
 }
 
@@ -464,9 +342,9 @@ public sealed class HeadlessPageTests
                 Capture(window, outDir, "pki-page-imported-intermediate.png");
                 window.Close();
 
-                // Generate dialog with its defaults.
-                var generate = new GenerateCaWindow { Width = 640, Height = 420 };
-                PkiDialogs.Attach(generate, new GenerateCaViewModel((_, _) => Task.FromResult(false), "OADM Root CA SERVER01"));
+                // Create CA dialog with its defaults.
+                var generate = new CreateCaWindow { Width = 640, Height = 420 };
+                PkiDialogs.Attach(generate, new CreateCaViewModel((_, _) => Task.FromResult(false), [new Choice(Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId, "OADM Root CA SERVER01")]));
                 Oadm.Client.App.ApplyCrispText(generate);
                 generate.Show();
                 Pump();
@@ -503,13 +381,11 @@ public sealed class HeadlessPageTests
                 backup.Close();
 
                 var importedRow = vm2.Authorities.Rows.FirstOrDefault(r => r.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.Imported);
-                return (firstSummary, vm2.HasChain, HasPreviousCas: vm2.PreviousCas.Count > 0, Imported: importedRow?.Badges, ImportedIssuer: importedRow?.Issuer, keyPasswordError, backupError);
+                return (firstSummary, Imported: importedRow?.Badges, ImportedIssuer: importedRow?.Issuer, keyPasswordError, backupError);
             }, CancellationToken.None);
 
             // The intermediate with its key is a CA of the list that can issue; the OADM CA stays as it was.
             Assert.False(checks.firstSummary);
-            Assert.False(checks.HasChain);
-            Assert.False(checks.HasPreviousCas);
             Assert.Equal(["Intermediate CA", "Imported", "Can issue"], checks.Imported);
             Assert.Equal("Acme Root CA", checks.ImportedIssuer);
             Assert.Equal(CaImporter.WrongKeyPassword, checks.keyPasswordError);

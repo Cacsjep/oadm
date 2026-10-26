@@ -210,24 +210,11 @@ public sealed class CurrentCertificateTests
     }
 
     [Fact]
-    public async Task Revoke_policies_take_the_certificates_of_a_camera_added_again()
-    {
-        await using var pki = await PkiHarness.StartAsync();
-        var old = Guid.NewGuid();
-        await pki.SetIssuedAsync([Entry("51", old, purpose: CertificatePurpose.Dot1x)], manage: false);
-        var again = pki.Manage(Guid.NewGuid(), "B8A44F631339"); // the same camera, a new device id
-        var count = await pki.InvokeAsync<Policies.PolicyRevocationCount>(Policies.PolicyMethods.CountRevocations,
-            new Policies.PolicyDevices { Serials = [again.Serial] });
-        Assert.Equal(1, count.Count);
-    }
-
-    [Fact]
     public void The_state_filter_offers_no_replaced_and_superseded_has_its_text()
     {
         var list = new IssuedCertificateListViewModel(new NoSource());
         Assert.Equal(["All states", "Valid", "Expires soon", "Expired", "Revoked"], list.StateChoices.Select(c => c.Label));
         Assert.Equal("Replaced by a newer certificate", CertificateRevocation.ReasonText(RevocationReason.Superseded));
-        Assert.DoesNotContain(RevocationReason.Superseded, IssuedCertificateTexts.Reasons); // never the user's choice
     }
 
     private sealed class NoSource : IIssuedCertificateSource

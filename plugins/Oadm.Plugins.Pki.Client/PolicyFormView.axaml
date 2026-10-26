@@ -91,12 +91,7 @@
       </StackPanel>
     </ui:FormField>
 
-    <!-- Block: also revoke the devices' IEEE 802.1X certificates (then devices and sites only) -->
-    <ui:FormField Label="Revoke" IsVisible="{Binding IsBlock}">
-      <CheckBox Content="{x:Static vm:PolicyEditorViewModel.AlsoRevokeText}" IsChecked="{Binding AlsoRevoke}" />
-    </ui:FormField>
-
-    <!-- Kinds with devices: All devices (not a Block that also revokes), or the chosen ones with Choose devices (the shared
+    <!-- Kinds with devices: All devices, or the chosen ones with Choose devices (the shared
          picker in its group mode); the devices' error below. A system policy keeps its devices. -->
     <ui:FormField Label="Devices" InputWidth="440" Error="{Binding DevicesError}" IsVisible="{Binding ShowsDevicesField}">
       <StackPanel Spacing="8">

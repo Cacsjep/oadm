@@ -662,7 +662,7 @@ public static class PolicyTexts
     public const string ChooseProfileScope = "Choose which profiles.";
     public const string ChooseProfiles = "Choose at least one profile.";
     public const string ChooseSignInFor = "Choose new certificates or renewals.";
-    public const string NoSignInCa = "Cameras sign in with the Axis device ID or an OADM CA.";
+    public const string NoSignInCa = "Cameras sign in with the Axis device ID or a CA created in OADM.";
 
 
     /// <summary>"The EST server has no profile web." (an Enrollment policy names a profile the EST server does not have).</summary>

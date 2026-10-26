@@ -383,9 +383,6 @@ public sealed class PolicyPageTests
 
         var block = page.NewEditor(PolicyKinds.Block);
         Assert.True(block.OffersAllDevices); // Block alone may hold every device
-        block.AlsoRevoke = true;
-        Assert.False(block.OffersAllDevices); // also revoking: devices and sites only
-        Assert.True(block.ShowsPicker);
     }
 
     [Fact]
@@ -461,43 +458,6 @@ public sealed class PolicyPageTests
         Assert.Contains("Cameras sign in with their IP address.", page.Rows.Single(r => r.Name == "IEEE 802.1X").Summary, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task A_revoke_policy_says_so_below_the_device_choice_for_a_tag_and_asks_with_the_count()
-    {
-        await using var pki = await StartAsync();
-        IDeviceCertificateAuthority authority = new Ca.PkiCertificateAuthority(pki.Service);
-        await RevocationTests.SignAsync(authority, Camera.Id, Camera.Serial, DeviceCertificateUse.Client);
-        var page = new PoliciesViewModel(Page(pki));
-        await page.LoadAsync(CancellationToken.None);
-        var editor = page.NewEditor(PolicyKinds.Block);
-        Assert.True(editor.IsBlock);
-        editor.AlsoRevoke = true;
-        editor.Name = "Stolen";
-        var withTag = editor.NewPicker();
-        withTag.Tags.Single(t => t.Name == "PTZ").IsChecked = true;
-        editor.UsePicker(withTag);
-        Assert.Equal(PolicyTexts.RevokeNoTags, editor.DevicesError);
-        var device = editor.NewPicker();
-        device.Tags.Single(t => t.Name == "PTZ").IsChecked = false;
-        device.Visible.Single(i => i.Id == Camera.Id).Chosen = true;
-        editor.UsePicker(device);
-        Assert.Null(editor.DevicesError);
-
-        string? question = null;
-        editor.ConfirmRevoke = (_, message) =>
-        {
-            question = message;
-            return Task.FromResult(true);
-        };
-        Assert.True(await editor.SaveAsync());
-
-        Assert.Equal("Saving revokes 1 IEEE 802.1X certificate of these devices, and every new one while the policy exists. This cannot be undone.", question);
-        var stolen = Assert.Single(page.Rows, r => r.Name == "Stolen");
-        Assert.Equal(("Block", true), (stolen.Type, stolen.Source.AlsoRevoke));
-        Assert.Equal("The 802.1X server refuses these devices. Their IEEE 802.1X certificates are revoked, new ones too.", stolen.Summary);
-        Assert.NotEmpty(pki.Service.Issued.Revocations);
-    }
-
     /// <summary>The page's device picker in a test: OK or Cancel, with the choice <see cref="Choose"/> makes.</summary>
     internal sealed class PickerAnswers(bool ok, Action<DevicePickerViewModel>? choose = null) : IPolicyDialogs
     {
@@ -520,7 +480,6 @@ public sealed class PolicyHeadlessTests
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         await using var pki = await PolicyPageTests.StartAsync();
-        await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA SERVER01", null, 10, true)); // a previous CA
         IDeviceCertificateAuthority authority = new Ca.PkiCertificateAuthority(pki.Service);
         for (var i = 0; i < 6; i++)
         {

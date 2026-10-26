@@ -69,7 +69,8 @@ public sealed partial class EstService
             return;
         }
 
-        var used = EstRules.Held(Rules.AllSignInCas, ca.Authorities).Append(CertificateAuthorityInfo.OadmId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        // The CAs its profiles issue with are named by their issuing policies (decision 2026-10-26: no fixed OADM CA).
+        var used = EstRules.Held(Rules.AllSignInCas, ca.Authorities).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         ca.SetUsedBy(EstPluginInfo.PluginId, EstPluginInfo.DisplayName, _stopping ? [] : used);
     }
 

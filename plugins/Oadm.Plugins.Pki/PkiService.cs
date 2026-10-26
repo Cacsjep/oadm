@@ -78,9 +78,11 @@ public sealed partial class PkiService : IAsyncDisposable
     private PreviousChainCache? _previousChains; // PreviousChains() of the list in _previous
     private volatile PkiConfig _config = new();
     private volatile bool _generating;
-    private volatile bool _caUnreadable; // the stored OADM CA is damaged: kept, never overwritten
+    private volatile bool _caUnreadable; // the stored first-start CA is damaged: kept (a row with Delete), never overwritten
+    private volatile bool _defaultCaExpected = true; // until the start knows: the first-start root CA exists or comes (the policies may name it)
     private volatile string? _generationError;
-    private volatile string? _serverTrustError;
+    private volatile IReadOnlyDictionary<string, string> _serverTrustErrors = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); // root SHA-256 -> why the install failed
+    private volatile HashSet<string> _deletedAxis = new(StringComparer.OrdinalIgnoreCase); // built-in Axis device ID CAs the user deleted (read only)
     private Task _background = Task.CompletedTask;
 
     /// <param name="options">Clock, key size, trust store.</param>
@@ -123,6 +125,8 @@ public sealed partial class PkiService : IAsyncDisposable
         Policies = new Policies.PolicyStore(settings, SystemDevicesAsync, () => sites?.List ?? [], Authorities, protectedTags, logger)
         {
             ServerCertificates = ServerCertificateChoices,
+            DefaultCaPending = () => _defaultCaExpected && _ca is null,
+            CreatedCas = CreatedAuthorityIds,
         };
     }
 
@@ -180,6 +184,7 @@ public sealed partial class PkiService : IAsyncDisposable
         await _local.LoadAsync(ct).ConfigureAwait(false);
         _config = await _store.LoadConfigAsync(ct).ConfigureAwait(false);
         await StartPoliciesAsync(ct).ConfigureAwait(false);
+        _deletedAxis = await _store.LoadDeletedAxisAsync(ct).ConfigureAwait(false);
         _previous = await PrunePreviousAsync(await _store.LoadPreviousAsync(ct).ConfigureAwait(false), ct).ConfigureAwait(false);
         await LoadImportedAsync(ct).ConfigureAwait(false);
         if (_secrets is null)
@@ -192,9 +197,14 @@ public sealed partial class PkiService : IAsyncDisposable
         var (stored, unreadable) = await _store.LoadCaStateAsync(ct).ConfigureAwait(false);
         if (unreadable)
         {
-            // Damaged: never overwritten by a new default CA (a backup restores it); the page says so.
+            // Damaged: never overwritten by a new default CA (a backup restores it); its row says so and offers Delete.
             _caUnreadable = true;
             LogCaSettingUnreadable();
+        }
+        else if (stored is null && await _store.CaDeletedAsync(ct).ConfigureAwait(false))
+        {
+            // The first-start root CA was deleted (decision 2026-10-26: an ordinary CA): none is made in its place.
+            _defaultCaExpected = false;
         }
         else if (stored is null)
         {
@@ -205,7 +215,11 @@ public sealed partial class PkiService : IAsyncDisposable
         {
             _stored = stored;
             _ca = LoadMaterial(stored);
-            if (_ca is { HasKey: false })
+            if (_ca is null)
+            {
+                _caUnreadable = true; // its certificate cannot be read: a row that says so, with Delete
+            }
+            else if (_ca is { HasKey: false })
             {
                 LogKeyUnreadable(stored.Id);
             }
@@ -263,25 +277,14 @@ public sealed partial class PkiService : IAsyncDisposable
         // The warning days of each device (its Expiry warning policy): the caller's devices in a group user's call.
         var counts = IssuedCounts.From(issued, ca?.Id, now, WarningDaysFor(devices ?? await SystemDevicesAsync(ct).ConfigureAwait(false)), _issued.IsRevoked);
 
-        bool? installed = null;
-        var trustError = _serverTrustError;
-        if (ca is not null)
-        {
-            try
-            {
-                installed = await _trustStore.IsInstalledAsync(ca.Certificate, ct).ConfigureAwait(false);
-            }
-#pragma warning disable CA1031 // A failed lookup only means "unknown" on the page.
-            catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
-            {
-                trustError ??= ex.Message;
-            }
-        }
+        var roots = view is null ? await RootTrustAsync(ct).ConfigureAwait(false) : []; // a group's users see no CAs
+        var oadmRoot = ca is null ? null : roots.FirstOrDefault(r => string.Equals(r.Fingerprint, ca.Id, StringComparison.OrdinalIgnoreCase));
+        bool? installed = oadmRoot?.ServerInstalled;
+        var trustError = oadmRoot?.ServerError;
 
         return new PkiState
         {
-            Status = _caUnreadable && ca is null ? CaUnreadableStatus : StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
+            Status = StatusOf(Unavailable, _generating, _generationError, ca, now, Policies.DefaultExpiryDays),
             Ca = ca?.Describe(stored?.Source ?? CaSource.Generated),
             KeyUnreadable = ca is { HasKey: false },
             CaUnreadable = _caUnreadable,
@@ -297,25 +300,63 @@ public sealed partial class PkiService : IAsyncDisposable
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
             Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
+            RootTrust = roots,
         };
     }
 
-    /// <summary>The refusal while the stored OADM CA cannot be read and the user did not confirm replacing it (nothing is written over it).</summary>
-    public const string CaUnreadableText = "The OADM CA cannot be read. Restore a backup.";
+    /// <summary>
+    /// Every root CA of the list (decision 2026-10-26: each can be installed in the OS root store) and whether the server's
+    /// machine root store holds it; a lookup that fails is "unknown" with its reason. A few lookups (the list holds at most a
+    /// few dozen CAs).
+    /// </summary>
+    private async Task<List<RootTrustState>> RootTrustAsync(CancellationToken ct)
+    {
+        var roots = new List<RootTrustState>();
+        foreach (var row in Issuers().AuthorityRows.Where(r => r.Row.IsRootCa))
+        {
+            var fingerprint = CertificateFingerprint(row.Der);
+            bool? installed = null;
+            var error = _serverTrustErrors.GetValueOrDefault(fingerprint);
+            try
+            {
+                using var certificate = X509CertificateLoader.LoadCertificate(row.Der);
+                installed = await _trustStore.IsInstalledAsync(certificate, ct).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // A failed lookup only means "unknown" on the page.
+            catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+            {
+                error ??= ex.Message;
+            }
 
-    /// <summary>The header status while the stored OADM CA cannot be read.</summary>
-    public static readonly ServiceStatus CaUnreadableStatus = new(ServiceStatus.Error, "OADM CA cannot be read", "Restore a backup or use New OADM CA.");
+            roots.Add(new RootTrustState
+            {
+                Fingerprint = fingerprint,
+                Name = row.Row.Name ?? string.Empty,
+                CertificatePem = new string(PemEncoding.Write("CERTIFICATE", row.Der)) + "\n",
+                ServerInstalled = installed,
+                ServerError = installed == true ? null : error,
+            });
+        }
 
-    /// <summary>The refusal when the unreadable stored OADM CA cannot be kept in a file before it is replaced (nothing changed).</summary>
-    public const string CaUnreadableNotSavedText = "The stored OADM CA cannot be kept for support. Nothing was changed.";
+        return roots;
+    }
+
+    private static string CertificateFingerprint(byte[] der) => Convert.ToHexString(SHA256.HashData(der));
+
+    /// <summary>The refusal when a CA row that cannot be read is deleted but its stored value cannot be kept in a file (nothing changed).</summary>
+    public const string CaUnreadableNotSavedText = "The stored CA cannot be kept for support. Nothing was changed.";
 
     /// <summary>
-    /// The PKI plugin's data folder (<see cref="ICorePluginContext.DataDirectory"/>): a stored OADM CA that cannot be read is
-    /// written there before New OADM CA replaces it. Null: no folder, such a replace is refused.
+    /// The PKI plugin's data folder (<see cref="ICorePluginContext.DataDirectory"/>): a stored CA that cannot be read is
+    /// written there before Delete removes it. Null: no folder, such a delete is refused.
     /// </summary>
     public string? DataDirectory { get; init; }
 
-    /// <summary>The header status: valid until / expires in N days / expired / key unreadable.</summary>
+    /// <summary>
+    /// The page status (decision 2026-10-26: no OADM CA, the CA rows show their own state): it says only that the server
+    /// cannot keep a CA, that the first-start CA is being made or could not be made; else the first-start CA's validity.
+    /// </summary>
     public static ServiceStatus StatusOf(bool unavailable, bool generating, string? generationError, CaMaterial? ca, DateTime nowUtc, int warningDays)
     {
         if (unavailable)
@@ -337,13 +378,13 @@ public sealed partial class PkiService : IAsyncDisposable
 
         if (!ca.HasKey)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key. Use New OADM CA.");
+            return new ServiceStatus(ServiceStatus.Error, "CA key cannot be read", "The CA was stored with another master key.");
         }
 
         var notAfter = ca.Certificate.NotAfter.ToUniversalTime();
         if (nowUtc > notAfter)
         {
-            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}. Use New OADM CA.");
+            return new ServiceStatus(ServiceStatus.Error, "CA expired", $"Expired on {notAfter:yyyy-MM-dd}.");
         }
 
         var days = (int)Math.Floor((notAfter - nowUtc).TotalDays);
@@ -355,13 +396,18 @@ public sealed partial class PkiService : IAsyncDisposable
                 1 => "CA expires in 1 day",
                 _ => string.Create(CultureInfo.InvariantCulture, $"CA expires in {days} days"),
             };
-            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}. Use New OADM CA.");
+            return new ServiceStatus(ServiceStatus.Warning, text, $"Valid until {notAfter:yyyy-MM-dd}.");
         }
 
         return new ServiceStatus(ServiceStatus.Ok, string.Create(CultureInfo.InvariantCulture, $"CA valid until {notAfter:yyyy-MM-dd}"));
     }
 
-    public async Task<PkiReply> GenerateAsync(GenerateRequest request, CancellationToken ct)
+    /// <summary>
+    /// Create CA (decision 2026-10-26): a root CA, or an intermediate signed by a listed CA with its key. The new CA joins the
+    /// list like an imported CA with its key (its key encrypted with the master key, never logged) and can issue at once.
+    /// Field errors under the fields; nothing is stored on a refusal.
+    /// </summary>
+    public async Task<PkiReply> CreateAuthorityAsync(CreateCaRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (Unavailable)
@@ -371,65 +417,69 @@ public sealed partial class PkiService : IAsyncDisposable
 
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         Add(errors, PkiFields.CommonName, PkiValidation.CommonName(request.CommonName));
-        Add(errors, PkiFields.Organization, PkiValidation.Organization(request.Organization));
         Add(errors, PkiFields.ValidityYears, PkiValidation.ValidityYears(request.ValidityYears));
+        Add(errors, PkiFields.Key, request.Key is { } key && CaKeys.All.Contains(key, StringComparer.Ordinal) ? null : "Choose a key.");
+        CaMaterial? issuer = null;
+        if (request.Intermediate)
+        {
+            issuer = IssuingCa(request.IssuerId);
+            if (issuer is null)
+            {
+                errors[PkiFields.Issuer] = "Choose a CA with its key.";
+            }
+            else if (issuer.Certificate.NotAfter.ToUniversalTime() <= Now.UtcDateTime)
+            {
+                errors[PkiFields.Issuer] = "This CA has expired.";
+            }
+            else if (CaGenerator.CannotSignCa(issuer.Certificate) is { } cannot)
+            {
+                errors[PkiFields.Issuer] = cannot;
+            }
+        }
+
+        if (!errors.ContainsKey(PkiFields.CommonName) && Authorities().Any(a => string.Equals(a.Name, request.CommonName!.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            errors[PkiFields.CommonName] = "Another CA has this name.";
+        }
+
         if (errors.Count > 0)
         {
             return new PkiReply { Errors = errors };
         }
 
-        if (_generating)
+        if (_imported.Count >= PkiPluginInfo.MaxImportedCas)
         {
-            return await ErrorAsync("A certificate authority is being created. Try again in a moment.", ct).ConfigureAwait(false);
+            return new PkiReply { Errors = One(PkiFields.CommonName, $"At most {PkiPluginInfo.MaxImportedCas} CAs can be created or imported. Delete one first.") };
         }
 
-        if (_caUnreadable && !request.ReplaceUnreadable)
-        {
-            return await ErrorAsync(CaUnreadableText, ct).ConfigureAwait(false); // fail closed: only after the user's confirmation
-        }
-
+        var now = Now;
+        var keyChoice = request.Key!;
+        var material = await Task.Run(() => CaGenerator.Generate(request.CommonName!, null, request.ValidityYears, now, keyChoice, issuer), ct).ConfigureAwait(false);
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var replacingUnreadable = _caUnreadable;
-            if (replacingUnreadable && !await KeepUnreadableCaAsync(ct).ConfigureAwait(false))
+            var entry = new StoredImportedCa
             {
-                return new PkiReply { Error = CaUnreadableNotSavedText };
-            }
-
-            var affected = await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false);
-            if (_stored is not null && !request.Confirmed)
-            {
-                return new PkiReply { NeedsConfirmation = true, DevicesWithCurrentCa = affected };
-            }
-
-            _generating = true;
-            await PublishAsync().ConfigureAwait(false);
-            CaMaterial material;
-            try
-            {
-                var now = Now;
-                material = await Task.Run(() => CaGenerator.Generate(request.CommonName!, request.Organization, request.ValidityYears, now, _options.CaKeySize), ct).ConfigureAwait(false);
-            }
-            finally
-            {
-                _generating = false;
-            }
-
-            if (replacingUnreadable)
-            {
-                _caUnreadable = false; // kept in a file above: the new CA may be written over it
-            }
-
-            await ReplaceAsync(material, CaSource.Generated, ct).ConfigureAwait(false);
-            var (subject, notAfter) = (material.Certificate.Subject, material.Certificate.NotAfter);
-            LogGenerated(subject, notAfter);
+                Id = material.Id,
+                CertificatePem = material.CertificatePem,
+                ChainPem = material.ChainPem,
+                KeyProtected = _secrets!.Protect(material.KeyPkcs8Pem!, KeyPurposePrefix + material.Id),
+                ImportedUtc = now.UtcDateTime,
+                Created = true,
+            };
+            var list = new List<StoredImportedCa>(_imported) { entry };
+            await _store.SaveImportedAsync(list, ct).ConfigureAwait(false);
+            _importedMaterial = new Dictionary<string, CaMaterial>(_importedMaterial, StringComparer.OrdinalIgnoreCase) { [material.Id] = material };
+            _imported = list;
+            ApplyAnchors();
+            LogCreated(material.Certificate.Subject, issuer?.Certificate.Subject ?? "itself", material.Certificate.NotAfter);
         }
         finally
         {
             _gate.Release();
         }
 
+        CaChanged?.Invoke(this, EventArgs.Empty);
         await PublishAsync().ConfigureAwait(false);
         return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
     }
@@ -459,28 +509,8 @@ public sealed partial class PkiService : IAsyncDisposable
             return new PkiReply { Errors = result.Errors };
         }
 
-        // Decision 2026-10-25: a CA with its key is added to the list (it can issue); it never replaces the OADM CA.
+        // Decision 2026-10-25: a CA with its key is added to the list (it can issue); it never replaces another CA.
         return await AddImportedAsync(material, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Devices whose newest certificate comes from the current CA and the servers whose certificate it issued (the replace
-    /// warning: those keep their certificate, so cameras given the new CA would not trust them).
-    /// </summary>
-    public async Task<PreviewReplaceReply> PreviewReplaceAsync(CancellationToken ct) =>
-        new(await DevicesWithCurrentCaAsync(ct).ConfigureAwait(false)) { Servers = ServersWithCurrentCa() };
-
-    private List<string> ServersWithCurrentCa()
-    {
-        if (_ca is not { } ca)
-        {
-            return [];
-        }
-
-        return [.. new[] { (Kind: Pki.Policies.PolicyKinds.Dot1xServer, Name: "802.1X server"), (Kind: Pki.Policies.PolicyKinds.EstServer, Name: "EST server") }
-            .Where(s => Policies.FirstOf(s.Kind)?.CertificateId is { } id && _local.Find(id) is { } local
-                && string.Equals(local.Stored.IssuerFingerprint, ca.Id, StringComparison.OrdinalIgnoreCase))
-            .Select(s => s.Name)];
     }
 
     public FileReply ExportPublic(ExportRequest request)
@@ -570,41 +600,10 @@ public sealed partial class PkiService : IAsyncDisposable
         }
     }
 
-    public async Task<PkiReply> RemovePreviousAsync(RemovePreviousRequest request, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        await _gate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            // A policy that names this previous CA itself (an EST sign-in CA) keeps it (decision 2026-10-25).
-            if (Policies.NamingCa(PreviousAuthorityId(request.Id ?? string.Empty)) is { Count: > 0 } naming)
-            {
-                return await ErrorAsync(Pki.Policies.PolicyTexts.UsedByPolicy(naming[0].Name), ct).ConfigureAwait(false);
-            }
-
-            var list = _previous.Where(p => !string.Equals(p.Id, request.Id, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (list.Count == _previous.Count)
-            {
-                return await ErrorAsync("This previous CA no longer exists.", ct).ConfigureAwait(false);
-            }
-
-            await _store.SavePreviousAsync(list, ct).ConfigureAwait(false);
-            _previous = list;
-            ApplyAnchors();
-            LogPreviousRemoved(request.Id ?? string.Empty);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-
-        CaChanged?.Invoke(this, EventArgs.Empty); // the 802.1X server stops trusting the removed CA at once
-
-        await PublishAsync().ConfigureAwait(false);
-        return new PkiReply { Ok = true, State = await GetStateAsync(ct).ConfigureAwait(false) };
-    }
-
-    /// <summary>PKCS#12 with certificate, chain and key, AES-256-CBC + SHA-256, 100,000 iterations. The password is never stored or logged.</summary>
+    /// <summary>
+    /// Back up of a CA with its key (<see cref="BackupRequest.Id"/>; none: the first-start root CA): PKCS#12 with certificate,
+    /// chain and key, AES-256-CBC + SHA-256, 100,000 iterations. The password is never stored or logged.
+    /// </summary>
     public FileReply Backup(BackupRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -613,10 +612,10 @@ public sealed partial class PkiService : IAsyncDisposable
             return new FileReply { Errors = One(PkiFields.Password, passwordError) };
         }
 
-        var ca = _ca;
-        if (ca is not { HasKey: true })
+        var ca = IssuingCa(request.Id);
+        if (ca is null)
         {
-            return new FileReply { Error = ca is null ? "There is no certificate authority yet." : "The CA key cannot be read, so it cannot be backed up." };
+            return new FileReply { Error = "OADM cannot read the key of this CA, so it cannot be backed up." };
         }
 
         using var withKey = ca.WithPrivateKey();
@@ -631,19 +630,36 @@ public sealed partial class PkiService : IAsyncDisposable
         return new FileReply { FileName = CaCertificates.FileNameFor(CaCertificates.CommonName(ca.Certificate), ".pfx"), DataBase64 = Convert.ToBase64String(bytes) };
     }
 
-    /// <summary>Installs the active CA into the server's machine root store.</summary>
-    public async Task<InstallReply> InstallServerTrustAsync(CancellationToken ct)
+    /// <summary>Installs the first-start root CA into the server's machine root store.</summary>
+    public Task<InstallReply> InstallServerTrustAsync(CancellationToken ct) => InstallServerTrustAsync(null, ct);
+
+    /// <summary>
+    /// Installs a root CA of the list (<see cref="InstallTrustRequest.Fingerprint"/>; none: the first-start root CA) into the
+    /// server's machine root store (decision 2026-10-26: every root CA can be installed).
+    /// </summary>
+    public async Task<InstallReply> InstallServerTrustAsync(InstallTrustRequest? request, CancellationToken ct)
     {
-        var ca = _ca;
-        if (ca is null)
+        byte[]? der = null;
+        if (request?.Fingerprint is { Length: > 0 } wanted)
         {
-            return new InstallReply(false, "There is no certificate authority yet.", await GetStateAsync(ct).ConfigureAwait(false));
+            der = Issuers().AuthorityRows.FirstOrDefault(r => r.Row.IsRootCa && string.Equals(CertificateFingerprint(r.Der), wanted, StringComparison.OrdinalIgnoreCase))?.Der;
+        }
+        else if (_ca is { } first && CaCertificates.IsSelfIssued(first.Certificate))
+        {
+            der = first.Certificate.RawData;
         }
 
+        if (der is null)
+        {
+            return new InstallReply(false, "This root CA is no longer in the list.", await GetStateAsync(ct).ConfigureAwait(false));
+        }
+
+        using var certificate = X509CertificateLoader.LoadCertificate(der);
+        var fingerprint = CertificateFingerprint(der);
         TrustStoreResult result;
         try
         {
-            result = await _trustStore.InstallAsync(ca.Certificate, ct).ConfigureAwait(false);
+            result = await _trustStore.InstallAsync(certificate, ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Shown on the page.
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -652,21 +668,30 @@ public sealed partial class PkiService : IAsyncDisposable
             result = new TrustStoreResult(false, ex.Message);
         }
 
-        _serverTrustError = result.Error;
-        if (result.Installed)
+        var errors = new Dictionary<string, string>(_serverTrustErrors, StringComparer.OrdinalIgnoreCase);
+        if (result.Error is { } error)
         {
-            LogTrustInstalled(ca.Certificate.Subject);
+            errors[fingerprint] = error;
         }
         else
         {
-            LogTrustFailed(ca.Certificate.Subject, result.Error ?? string.Empty);
+            errors.Remove(fingerprint);
+        }
+
+        _serverTrustErrors = errors;
+        if (result.Installed)
+        {
+            LogTrustInstalled(certificate.Subject);
+        }
+        else
+        {
+            LogTrustFailed(certificate.Subject, result.Error ?? string.Empty);
         }
 
         await PublishAsync().ConfigureAwait(false);
         return new InstallReply(result.Installed, result.Error, await GetStateAsync(ct).ConfigureAwait(false));
     }
 
-    /// <summary>
     /// Device certificate validity for a certificate issued now: <paramref name="days"/> (an issuing policy's; null: the first
     /// HTTPS certificate policy's, else 365), shortened to the end of validity of the CA that signs (<paramref name="issuer"/>;
     /// null: the OADM CA), logged.
@@ -732,11 +757,11 @@ public sealed partial class PkiService : IAsyncDisposable
     }
 
     /// <summary>
-    /// The user confirmed replacing the stored OADM CA that cannot be read: its stored value is first written as it is to
-    /// <c>ca-unreadable-&lt;UTC time&gt;.json</c> in <see cref="DataDirectory"/> for support (never logged), then the CA may be
-    /// replaced. False (nothing changed): no folder, or the file could not be written. Call inside the gate.
+    /// The user deletes a stored CA that cannot be read: its stored value (<paramref name="raw"/>) is first written as it is
+    /// to <c>ca-unreadable-&lt;UTC time&gt;.json</c> in <see cref="DataDirectory"/> for support (never logged), then it may be
+    /// removed. False (nothing changed): no folder, or the file could not be written. Call inside the gate.
     /// </summary>
-    private async Task<bool> KeepUnreadableCaAsync(CancellationToken ct)
+    private async Task<bool> KeepUnreadableCaAsync(string raw, CancellationToken ct)
     {
         if (DataDirectory is not { Length: > 0 } folder)
         {
@@ -745,7 +770,6 @@ public sealed partial class PkiService : IAsyncDisposable
 
         try
         {
-            var raw = await _store.LoadCaRawAsync(ct).ConfigureAwait(false) ?? string.Empty;
             Directory.CreateDirectory(folder);
             var name = string.Create(CultureInfo.InvariantCulture, $"ca-unreadable-{Now.UtcDateTime:yyyyMMdd-HHmmss-fff}.json");
             var path = Path.Combine(folder, name);
@@ -760,25 +784,13 @@ public sealed partial class PkiService : IAsyncDisposable
         }
     }
 
-    /// <summary>The new CA becomes active; the current one moves to the previous CAs (public part). Call inside the gate.</summary>
+    /// <summary>The first-start root CA is stored and becomes the CA with the id "oadm" (the built-in policies name it). Call inside the gate.</summary>
     private async Task ReplaceAsync(CaMaterial material, string source, CancellationToken ct)
     {
         if (_caUnreadable)
         {
-            throw new InvalidOperationException(CaUnreadableText); // never written over a damaged stored CA
+            throw new InvalidOperationException("The stored CA cannot be read."); // never written over a damaged stored CA
         }
-
-        var now = Now.UtcDateTime;
-        var previous = _previous.ToList();
-        if (_stored is { } current && !string.Equals(current.Id, material.Id, StringComparison.OrdinalIgnoreCase))
-        {
-            previous.Insert(0, new StoredPreviousCa { Id = current.Id, CertificatePem = current.CertificatePem, ChainPem = current.ChainPem, ReplacedUtc = now });
-        }
-
-        previous = [.. previous
-            .Where(p => !string.Equals(p.Id, material.Id, StringComparison.OrdinalIgnoreCase))
-            .DistinctBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
-            .Take(PkiPluginInfo.MaxPreviousCas)];
 
         var stored = new StoredCa
         {
@@ -787,15 +799,12 @@ public sealed partial class PkiService : IAsyncDisposable
             CertificatePem = material.CertificatePem,
             ChainPem = material.ChainPem,
             KeyProtected = _secrets!.Protect(material.KeyPkcs8Pem!, KeyPurposePrefix + material.Id),
-            CreatedUtc = now,
+            CreatedUtc = Now.UtcDateTime,
         };
-        await _store.SavePreviousAsync(previous, ct).ConfigureAwait(false);
         await _store.SaveCaAsync(stored, ct).ConfigureAwait(false);
-        _previous = previous;
         _stored = stored;
-        _ca = material; // the replaced material is left to the GC: a concurrent state read may still use it
+        _ca = material;
         _generationError = null;
-        _serverTrustError = null;
         ApplyAnchors();
         CaChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -930,17 +939,6 @@ public sealed partial class PkiService : IAsyncDisposable
         }
 
         return kept;
-    }
-
-    private async Task<int> DevicesWithCurrentCaAsync(CancellationToken ct)
-    {
-        if (_ca is not { } ca)
-        {
-            return 0;
-        }
-
-        var issued = await _issued.SnapshotAsync(ct).ConfigureAwait(false);
-        return IssuedCounts.From(issued, ca.Id, Now.UtcDateTime, Policies.DefaultExpiryDays, _issued.IsRevoked).WithCurrentCa;
     }
 
     private async Task PublishAsync()
@@ -1092,16 +1090,16 @@ public sealed partial class PkiService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the server offers no secret protection; no CA is kept")]
     private partial void LogNoSecrets();
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the stored CA {Id} cannot be decrypted (other master key); generate or import a CA")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the stored CA {Id} cannot be decrypted (other master key); it cannot issue certificates")]
     private partial void LogKeyUnreadable(string id);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored OADM CA cannot be read; it is kept and no new CA is made over it. Restore a backup.")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored first-start CA cannot be read; it is kept and no new CA is made over it. Restore a backup or delete it.")]
     private partial void LogCaSettingUnreadable();
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: the stored OADM CA that cannot be read was kept in {File} and is replaced by a new CA")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PKI: a stored CA that cannot be read was kept in {File} and is deleted")]
     private partial void LogUnreadableCaKept(string file);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored OADM CA that cannot be read could not be kept in a file ({Error}); it is not replaced")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: a stored CA that cannot be read could not be kept in a file ({Error}); it is not deleted")]
     private partial void LogUnreadableCaNotKept(string error);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the stored CA {Id} cannot be read")]
@@ -1110,8 +1108,8 @@ public sealed partial class PkiService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: generated the default CA {Subject}, valid until {NotAfter:yyyy-MM-dd}")]
     private partial void LogDefaultGenerated(string subject, DateTime notAfter);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: generated a new CA {Subject}, valid until {NotAfter:yyyy-MM-dd}; the previous CA was kept for the transition")]
-    private partial void LogGenerated(string subject, DateTime notAfter);
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: created the CA {Subject}, signed by {Issuer}, valid until {NotAfter:yyyy-MM-dd}")]
+    private partial void LogCreated(string subject, string issuer, DateTime notAfter);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: imported the CA {Subject} with its key and {ChainCount} issuer certificates into the list of CAs")]
     private partial void LogImported(string subject, int chainCount);
@@ -1119,8 +1117,8 @@ public sealed partial class PkiService : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: creating the default CA failed")]
     private partial void LogGenerationFailed(Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: removed the previous CA {Id}")]
-    private partial void LogPreviousRemoved(string id);
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: deleted the CA {Name} from the list of CAs ({Id})")]
+    private partial void LogAuthorityDeleted(string name, string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: removed {Count} expired previous CAs")]
     private partial void LogPreviousExpired(int count);

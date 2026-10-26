@@ -1,5 +1,3 @@
-using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
@@ -20,30 +18,11 @@ namespace Oadm.Plugins.Pki.Client;
 /// <summary>One choice of a select field.</summary>
 public sealed record Choice(string Value, string Label);
 
-/// <summary>One row of "Previous certificate authorities".</summary>
-public sealed class PreviousCaRowViewModel(PreviousCaInfo info)
-{
-    public string Id { get; } = info.Id;
-
-    public string Name { get; } = info.CommonName;
-
-    public string ValidUntil { get; } = info.NotAfterUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    public string Replaced { get; } = info.ReplacedUtc.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-
-    public string Tooltip { get; } = info.Devices switch
-    {
-        0 => info.Subject,
-        1 => info.Subject + " · 1 device still uses a certificate of this CA",
-        _ => $"{info.Subject} · {info.Devices} devices still use certificates of this CA",
-    };
-}
-
 /// <summary>
-/// The PKI page (docs/spec/pki.md "The PKI page"): the tab Certificates with Policies and the list of every certificate,
-/// the CAs among them with the OADM CA's actions (trusted root store, export, backup, new CA, import, remove), and the server
-/// tabs the host hands over (<see cref="Tabs"/>). <see cref="Activate"/> while the page is shown (reads everything and
-/// watches the live events).
+/// The PKI page (docs/spec/pki.md "The PKI page"): the tab Certificates with the list of the CAs (Create CA, Import, and per
+/// CA Install in trusted root store, Back up, Delete) and the list of every other certificate, the tab Policies, and the
+/// server tabs the host hands over (<see cref="Tabs"/>). Decision 2026-10-26: there is no OADM CA; every CA is an ordinary
+/// root or intermediate CA. <see cref="Activate"/> while the page is shown (reads everything and watches the live events).
 /// </summary>
 public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 {
@@ -55,21 +34,22 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     private readonly ICorePluginClientContext _ctx;
     private readonly ITrustStoreInstaller _clientTrust;
     private readonly PkiClientSettingsStore _clientSettings;
+    private readonly Dictionary<string, IssuedCertificateStatus?> _clientTrustStates = new(StringComparer.OrdinalIgnoreCase); // root SHA-256 -> badge (null: not installed)
+    private readonly Dictionary<string, IssuedCertificateStatus> _serverWork = new(StringComparer.OrdinalIgnoreCase); // root SHA-256 -> an install that runs or failed
     private CancellationTokenSource? _active;
-    private string? _clientCheckedCaId;
 
-    /// <param name="ctx">Page context of the host.</param>
-    /// <param name="clientTrust">This computer's trusted root store (<see cref="TrustStoreInstallers.ForClient"/>); tests pass a fake.</param>
-    /// <param name="clientSettings">Where the last folder is remembered.</param>
     /// <summary>
     /// The role may manage the certificate authority ("oadm.pki:manage": CA actions and settings) and the user has all
     /// devices (the CA is server-wide; users limited to a device group only read the page).
     /// </summary>
     public bool MayManage => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, Oadm.Sdk.Plugins.PermissionKeys.Manage));
 
-    /// <summary>The role may install the CA in the server's trusted root store ("oadm.pki:trustServer"), for users with all devices.</summary>
+    /// <summary>The role may install a root CA in the server's trusted root store ("oadm.pki:trustServer"), for users with all devices.</summary>
     public bool MayTrustServer => _ctx.HasAllDevices && _ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Of(PkiPluginInfo.PluginId, PkiPermissions.TrustServer));
 
+    /// <param name="ctx">Page context of the host.</param>
+    /// <param name="clientTrust">This computer's trusted root store (<see cref="TrustStoreInstallers.ForClient"/>); tests pass a fake.</param>
+    /// <param name="clientSettings">Where the last folder is remembered.</param>
     /// <param name="time">The clock of the policies' highlight; tests pass a fake.</param>
     public PkiViewModel(ICorePluginClientContext ctx, ITrustStoreInstaller clientTrust, PkiClientSettingsStore? clientSettings = null, TimeProvider? time = null)
     {
@@ -79,6 +59,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         {
             OnPropertyChanged(nameof(MayManage));
             OnPropertyChanged(nameof(MayTrustServer));
+            CreateCaCommand.NotifyCanExecuteChanged();
             Policies.NotifyRole();
             RebuildTabs(); // Policies only for users with all devices
         };
@@ -88,14 +69,12 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         {
             PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
             TrustStates = TrustStatesOf,
-            ExportOadmCa = ExportAsync,
             CaActions = CaActionsOf,
         };
         Certificates = new IssuedCertificatesViewModel(ctx, clientSettings: _clientSettings, part: PkiListPart.Certificates)
         {
             PolicySource = () => [.. Policies.List.Rows.Select(r => r.Policy)],
             TrustStates = TrustStatesOf,
-            ExportOadmCa = ExportAsync,
             CaActions = CaActionsOf,
         };
         InitTabs();
@@ -104,12 +83,10 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <summary>The dialogs and file pickers of the page view.</summary>
     public IPkiDialogs? Dialogs { get; set; }
 
-    public ObservableCollection<PreviousCaRowViewModel> PreviousCas { get; } = [];
-
     /// <summary>The last state of the server.</summary>
     public PkiState? State { get; private set; }
 
-    // ---------------------------------------------------------------- header status
+    // ---------------------------------------------------------------- status
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = "Loading";
@@ -122,13 +99,13 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     public partial string StatusKind { get; set; } = "accent";
 
     /// <summary>
-    /// The PKI status stands above the list: a CA whose key cannot be read, that expired or ends soon, a failed start. Not
-    /// while it is fine (its row says it), without a CA (<see cref="NoCaText"/>) or while one is created (the progress row).
+    /// The PKI status stands above the CA list only when the server cannot keep a CA or the first-start CA could not be made
+    /// (decision 2026-10-26: each CA row shows its own state; a page read that failed says so too).
     /// </summary>
-    public bool ShowCaStatus => HasCa && !IsGenerating && StatusKind is ServiceStatus.Warning or ServiceStatus.Error;
+    public bool ShowCaStatus => !IsGenerating && StatusKind == ServiceStatus.Error && (IsUnavailable || !HasCa);
 
-    /// <summary>Something about the OADM CA stands above the list: it is being created, there is none, or <see cref="ShowCaStatus"/>.</summary>
-    public bool ShowCaNotice => IsGenerating || HasNoCa || ShowCaStatus;
+    /// <summary>Something stands above the CA list: the first-start CA is being made, or <see cref="ShowCaStatus"/>.</summary>
+    public bool ShowCaNotice => IsGenerating || ShowCaStatus;
 
     public bool IsStatusOk => StatusKind == ServiceStatus.Ok;
 
@@ -138,94 +115,26 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     public bool IsStatusAccent => StatusKind == "accent";
 
-    // ---------------------------------------------------------------- certificate authority card
-
+    /// <summary>The first-start root CA exists (the status line speaks of it).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNoCa), nameof(ShowCaStatus), nameof(ShowCaNotice))]
-    [NotifyCanExecuteChangedFor(nameof(InstallTrustCommand), nameof(ExportCommand), nameof(BackupCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowCaStatus), nameof(ShowCaNotice))]
     public partial bool HasCa { get; set; }
-
-    public bool HasNoCa => !HasCa;
-
-    [ObservableProperty]
-    public partial string NoCaText { get; set; } = "Loading the certificate authority.";
-
-    [ObservableProperty]
-    public partial string CaName { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string CaSourceText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string ValidText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string KeyText { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    public partial string Fingerprint { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasChain))]
-    public partial string? ChainText { get; set; }
-
-    public bool HasChain => !string.IsNullOrEmpty(ChainText);
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(BackupCommand))]
-    public partial bool IsKeyUnreadable { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowCaStatus), nameof(ShowCaNotice))]
-    [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(ImportCommand), nameof(InstallTrustCommand), nameof(BackupCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CreateCaCommand), nameof(ImportCommand))]
     public partial bool IsGenerating { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(GenerateCommand), nameof(ImportCommand), nameof(InstallTrustCommand), nameof(BackupCommand), nameof(ExportCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowCaStatus), nameof(ShowCaNotice))]
+    [NotifyCanExecuteChangedFor(nameof(CreateCaCommand), nameof(ImportCommand))]
     public partial bool IsUnavailable { get; set; }
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(InstallTrustCommand))]
-    public partial bool IsInstalling { get; set; }
-
-    [ObservableProperty]
-    public partial string ServerTrustText { get; set; } = "Checking the server";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsServerTrustOk), nameof(IsServerTrustError), nameof(IsServerTrustAccent))]
-    public partial string ServerTrustKind { get; set; } = ServiceStatus.Neutral;
-
-    public bool IsServerTrustOk => ServerTrustKind == ServiceStatus.Ok;
-
-    public bool IsServerTrustError => ServerTrustKind == ServiceStatus.Error;
-
-    public bool IsServerTrustAccent => ServerTrustKind == "accent";
-
-    [ObservableProperty]
-    public partial string? ServerTrustTip { get; set; }
-
-    [ObservableProperty]
-    public partial string ClientTrustText { get; set; } = "Checking this computer";
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsClientTrustOk), nameof(IsClientTrustError), nameof(IsClientTrustAccent))]
-    public partial string ClientTrustKind { get; set; } = ServiceStatus.Neutral;
-
-    public bool IsClientTrustOk => ClientTrustKind == ServiceStatus.Ok;
-
-    public bool IsClientTrustError => ClientTrustKind == ServiceStatus.Error;
-
-    public bool IsClientTrustAccent => ClientTrustKind == "accent";
-
-    [ObservableProperty]
-    public partial string? ClientTrustTip { get; set; }
-
 
     public bool IsActive => _active is not null;
 
     // ---------------------------------------------------------------- policies and certificates
 
-    /// <summary>The Certificates card: every certificate the OADM CA issued, revoke.</summary>
+    /// <summary>The Certificates card: every certificate but the CAs.</summary>
     public IssuedCertificatesViewModel Certificates { get; }
 
     /// <summary>The Certificate authorities card: every CA of PKI's list with its actions (decision 2026-10-25).</summary>
@@ -261,7 +170,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
     public void Dispose() => Deactivate();
 
-    /// <summary>Reads the whole state; the settings form is filled the first time (later reads keep what the user typed).</summary>
+    /// <summary>Reads the whole state.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
         try
@@ -303,168 +212,53 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             : Task.CompletedTask;
     }
 
-    /// <summary>Shows a state of the server (also used by tests and the screenshots).</summary>
+    /// <summary>Shows a state of the server (also used by tests and the screenshots); a change of the CAs reads the CA list again.</summary>
     public async Task ApplyStateAsync(PkiState state)
     {
         ArgumentNullException.ThrowIfNull(state);
+        var authoritiesChanged = State is null || !State.Authorities.Select(a => a.Id + a.Fingerprint).SequenceEqual(state.Authorities.Select(a => a.Id + a.Fingerprint), StringComparer.Ordinal);
         State = state;
         SetStatus(state.Status.Kind, state.Status.Text, state.Status.Detail);
         IsGenerating = state.IsGenerating;
         IsUnavailable = state.Unavailable;
-        IsKeyUnreadable = state.KeyUnreadable;
-        if (state.Ca is { } ca)
-        {
-            HasCa = true;
-            CaName = ca.CommonName;
-            CaSourceText = ca.Source == CaSource.Imported ? "Imported" : "Generated";
-            ValidText = $"{ca.NotBeforeUtc:yyyy-MM-dd} to {ca.NotAfterUtc:yyyy-MM-dd}";
-            KeyText = state.KeyUnreadable ? ca.KeyType + " · the key cannot be read" : ca.KeyType;
-            Fingerprint = ca.Fingerprint;
-            ChainText = ca.IsIntermediate && ca.ChainSubjects.Count > 0 ? "Issued by " + string.Join(", issued by ", ca.ChainSubjects) : null;
-        }
-        else
-        {
-            HasCa = false;
-            NoCaText = state.Unavailable ? "The server cannot keep a certificate authority (no secret protection)."
-                : state.IsGenerating ? "Creating the certificate authority."
-                : NoCaYet;
-        }
-
-        ApplyServerTrust(state.ServerTrustInstalled, state.ServerTrustError);
-
-        PreviousCas.Clear();
-        foreach (var previous in state.PreviousCas)
-        {
-            PreviousCas.Add(new PreviousCaRowViewModel(previous));
-        }
-
-
+        HasCa = state.Ca is not null;
         await CheckClientTrustAsync(state).ConfigureAwait(true);
-    }
-
-    // ---------------------------------------------------------------- commands
-
-    /// <summary>Text of the confirmation before the install: the CA's SHA-256 fingerprint, to compare with the page.</summary>
-    internal static string InstallTrustMessage(CaInfo ca) =>
-        $"The OADM server and this computer will trust every certificate {ca.CommonName} issues. Install only when the "
-        + $"fingerprint is the one shown on this page.\n\nSHA-256 fingerprint:\n{ca.Fingerprint}";
-
-    [RelayCommand(CanExecute = nameof(CanInstallTrust))]
-    private async Task InstallTrustAsync()
-    {
-        if (State?.Ca is { } toInstall
-            && !await _ctx.ConfirmAsync("Install in trusted root store", InstallTrustMessage(toInstall), "Install").ConfigureAwait(true))
+        Authorities.RefreshTrust();
+        if (authoritiesChanged && IsActive)
         {
-            return;
-        }
-
-        IsInstalling = true;
-        try
-        {
-            ServerTrustText = "Installing on the server";
-            ServerTrustKind = "accent";
-            var reply = PkiJson.Deserialize<InstallReply>(await _ctx.InvokeAsync(PkiMethods.InstallServerTrust, null, CancellationToken.None).ConfigureAwait(true));
-            ApplyServerTrust(reply.Installed, reply.Error);
-            if (reply.State is { } state)
-            {
-                State = state;
-            }
-
-            if (State is not { Ca: { } ca } current)
-            {
-                return;
-            }
-
-            if (current.Simulated)
-            {
-                SetClientTrust(ServiceStatus.Neutral, "Not installed on this computer", "Fake mode: nothing is installed on this computer.");
-                return;
-            }
-
-            SetClientTrust("accent", "Installing on this computer", null);
-            using var certificate = Certificate(ca);
-            var result = await Task.Run(() => _clientTrust.InstallAsync(certificate, CancellationToken.None)).ConfigureAwait(true);
-            if (result.Installed)
-            {
-                SetClientTrust(ServiceStatus.Ok, "Installed on this computer", TrustTooltip);
-            }
-            else
-            {
-                SetClientTrust(ServiceStatus.Error, "Failed on this computer", result.Error);
-            }
-
-            _clientCheckedCaId = ca.Id;
-        }
-#pragma warning disable CA1031 // Shown in the chips.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ApplyServerTrust(false, PkiDialogViewModel.Message(ex));
-        }
-        finally
-        {
-            IsInstalling = false;
+            await Authorities.LoadAsync().ConfigureAwait(true);
         }
     }
 
-    private bool CanInstallTrust() => HasCa && !IsInstalling && !IsGenerating && !IsUnavailable;
+    // ---------------------------------------------------------------- the CA card's commands
 
-    /// <summary>Exports the public certificate: "pem" (.crt) or "der" (.cer).</summary>
-    [RelayCommand(CanExecute = nameof(CanExport))]
-    private async Task ExportAsync(string? format)
-    {
-        var der = string.Equals(format, "der", StringComparison.OrdinalIgnoreCase);
-        if (await CallAsync<FileReply>("Export public certificate", PkiMethods.ExportPublic, new ExportRequest(der ? "der" : "pem")).ConfigureAwait(true) is { } reply)
-        {
-            await SaveFileAsync("Export public certificate", reply, der ? PkiFileKind.CertificateDer : PkiFileKind.CertificatePem).ConfigureAwait(true);
-        }
-    }
+    private bool CanCreateCa() => MayManage && !IsGenerating && !IsUnavailable;
 
-    /// <summary>
-    /// A page call whose failure (the connection, a refusal) goes into a message titled <paramref name="title"/>, never the
-    /// generic crash message; null then.
-    /// </summary>
-    private async Task<T?> CallAsync<T>(string title, string method, object payload)
-        where T : class
-    {
-        try
-        {
-            return PkiJson.Deserialize<T>(await _ctx.InvokeAsync(method, PkiJson.Serialize(payload), CancellationToken.None).ConfigureAwait(true));
-        }
-#pragma warning disable CA1031 // Shown in a message.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
-        {
-            await _ctx.ShowMessageAsync(title, ServerErrors.Message(ex)).ConfigureAwait(true);
-            return null;
-        }
-    }
-
-    private bool CanExport(string? format) => HasCa && !IsUnavailable;
-
-    [RelayCommand(CanExecute = nameof(CanBackup))]
-    private async Task BackupAsync()
+    /// <summary>Create CA (toolbar of the CA card): a root CA or an intermediate CA signed by a CA with its key.</summary>
+    [RelayCommand(CanExecute = nameof(CanCreateCa))]
+    private async Task CreateCaAsync()
     {
         if (Dialogs is null)
         {
             return;
         }
 
-        await Dialogs.ShowBackupAsync(new BackupViewModel(SubmitBackupAsync)).ConfigureAwait(true);
+        var issuers = (State?.Authorities ?? []).Where(a => a.Issues).Select(a => new Choice(a.Id, a.Name)).ToList();
+        await Dialogs.ShowCreateCaAsync(new CreateCaViewModel(SubmitCreateCaAsync, issuers)).ConfigureAwait(true);
     }
 
-    private bool CanBackup() => HasCa && !IsKeyUnreadable && !IsGenerating && !IsUnavailable;
-
-    [RelayCommand(CanExecute = nameof(CanReplace))]
-    private async Task GenerateAsync()
+    /// <summary>Create CA: the server makes it (field errors under the fields), then the state and the CA list.</summary>
+    internal async Task<bool> SubmitCreateCaAsync(CreateCaViewModel dialog, CreateCaRequest request)
     {
-        if (Dialogs is null)
+        ArgumentNullException.ThrowIfNull(dialog);
+        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.CreateAuthority, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
+        var done = await FinishAsync(dialog, reply, PkiFields.CommonName).ConfigureAwait(true);
+        if (done)
         {
-            return;
+            await LoadListsAsync().ConfigureAwait(true);
         }
 
-        var name = State?.Ca is { Source: CaSource.Generated } ca ? ca.CommonName : "OADM Root CA";
-        await Dialogs.ShowGenerateAsync(new GenerateCaViewModel(SubmitGenerateAsync, name)).ConfigureAwait(true);
+        return done;
     }
 
     [RelayCommand(CanExecute = nameof(CanImportWithKey))]
@@ -478,55 +272,8 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         await Dialogs.ShowImportAsync(new ImportCaViewModel(SubmitImportAsync)).ConfigureAwait(true);
     }
 
-    private bool CanReplace() => !IsGenerating && !IsUnavailable;
-
-    /// <summary>A CA with its key can be kept only with the server's master key (like the OADM CA).</summary>
-    private bool CanImportWithKey() => !IsUnavailable;
-
-    private async Task ExportPreviousAsync(PreviousCaRowViewModel? row)
-    {
-        if (row is null)
-        {
-            return;
-        }
-
-        if (await CallAsync<FileReply>("Export previous CA certificate", PkiMethods.ExportPrevious, new ExportPreviousRequest(row.Id, "pem")).ConfigureAwait(true) is { } reply)
-        {
-            await SaveFileAsync("Export previous CA certificate", reply, PkiFileKind.CertificatePem).ConfigureAwait(true);
-        }
-    }
-
-    private async Task RemovePreviousAsync(PreviousCaRowViewModel? row)
-    {
-        if (row is null)
-        {
-            return;
-        }
-
-        var confirmed = await _ctx.ConfirmAsync(
-            "Remove previous CA",
-            $"OADM no longer counts certificates issued by {row.Name} as trusted. Devices that still use them show the certificate as untrusted until they are renewed. Remove {row.Name}?",
-            "Remove").ConfigureAwait(true);
-        if (!confirmed)
-        {
-            return;
-        }
-
-        if (await CallAsync<PkiReply>("Remove previous CA", PkiMethods.RemovePrevious, new RemovePreviousRequest(row.Id)).ConfigureAwait(true) is not { } reply)
-        {
-            return;
-        }
-
-        if (reply.Error is { } error)
-        {
-            await _ctx.ShowMessageAsync("Remove previous CA", error).ConfigureAwait(true);
-        }
-
-        if (reply.State is { } state)
-        {
-            await ApplyStateAsync(state).ConfigureAwait(true);
-        }
-    }
+    /// <summary>A CA with its key can be kept only with the server's master key.</summary>
+    private bool CanImportWithKey() => !IsUnavailable && !IsGenerating;
 
     [RelayCommand]
     private async Task ImportAuthorityAsync()
@@ -539,9 +286,10 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         await Dialogs.ShowImportAuthorityAsync(new ImportAuthorityViewModel(SubmitImportAuthorityAsync)).ConfigureAwait(true);
     }
 
-    /// <summary>Import CA of the list: the server checks the file (errors under it), then the state.</summary>
+    /// <summary>Import CA certificate: the server checks the file (errors under it), then the state.</summary>
     internal async Task<bool> SubmitImportAuthorityAsync(ImportAuthorityViewModel dialog, ImportAuthorityRequest request)
     {
+        ArgumentNullException.ThrowIfNull(dialog);
         var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.ImportAuthority, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
         if (!reply.Ok)
         {
@@ -555,168 +303,20 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             await ApplyStateAsync(state).ConfigureAwait(true);
         }
 
-        return true;
-    }
-
-    private bool CanRemoveCa(IssuedCertificateRow? row) => MayManage && row is { IsRemovableCa: true };
-
-    /// <summary>
-    /// Remove of a CA row (red): a previous OADM CA (its certificates are no longer trusted) or an imported CA, confirmed;
-    /// the server refuses one a policy or a service uses, with the reason. The list is read again.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanRemoveCa))]
-    private async Task RemoveCaAsync(IssuedCertificateRow? row)
-    {
-        if (row is not { IsRemovableCa: true } || row.Source.AuthorityId is not { } id)
-        {
-            return;
-        }
-
-        if (row.AuthorityKind == Oadm.Sdk.Certificates.CertificateAuthorityKind.PreviousOadm)
-        {
-            if (PreviousCas.FirstOrDefault(p => string.Equals(PkiService.PreviousAuthorityId(p.Id), id, StringComparison.OrdinalIgnoreCase)) is { } previous)
-            {
-                await RemovePreviousAsync(previous).ConfigureAwait(true);
-            }
-        }
-        else if (await _ctx.ConfirmAsync("Remove CA", $"Services can no longer use {row.Name}. Remove {row.Name}?", "Remove").ConfigureAwait(true))
-        {
-            var reply = await CallAsync<PkiReply>("Remove CA", PkiMethods.RemoveAuthority, new RemoveAuthorityRequest(id)).ConfigureAwait(true);
-            if (reply?.Error is { } error)
-            {
-                await _ctx.ShowMessageAsync("Remove CA", error).ConfigureAwait(true);
-            }
-
-            if (reply?.State is { } state)
-            {
-                await ApplyStateAsync(state).ConfigureAwait(true);
-            }
-        }
-
         await LoadListsAsync().ConfigureAwait(true);
-    }
-
-    /// <summary>Reads the CAs and the certificates again.</summary>
-    private async Task LoadListsAsync(CancellationToken ct = default)
-    {
-        await Authorities.LoadAsync(ct).ConfigureAwait(true);
-        await Certificates.LoadAsync(ct).ConfigureAwait(true);
-    }
-
-    /// <summary>
-    /// The CA entries of a row's menu: the OADM CA's Install in trusted root store (its own permission) and Back up; Remove
-    /// (red) of a previous or imported CA.
-    /// </summary>
-    private (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger) CaActionsOf(IssuedCertificateRow row)
-    {
-        List<IssuedCertificateAction> everyday = [];
-        List<IssuedCertificateAction> danger = [];
-        if (row.IsOadmCa && MayTrustServer)
-        {
-            everyday.Add(new("Install in trusted root store", InstallTrustCommand));
-        }
-
-        if (row.IsOadmCa && MayManage)
-        {
-            everyday.Add(new("Back up", BackupCommand));
-        }
-
-        if (row.IsRemovableCa && MayManage)
-        {
-            danger.Add(new("Remove", RemoveCaCommand, row, IsDanger: true));
-        }
-
-        return (everyday, danger);
-    }
-
-    /// <summary>The line without a CA: what to do first.</summary>
-    public const string NoCaYet = "There is no OADM CA yet. Use New OADM CA.";
-
-    /// <summary>The OADM CA row's statuses: whether it is in the trusted root store of the server and of this computer.</summary>
-    private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
-    {
-        if (row is not { Kind: Oadm.Sdk.Certificates.ListedCertificateKind.Authority, AuthorityKind: Oadm.Sdk.Certificates.CertificateAuthorityKind.Oadm })
-        {
-            return [];
-        }
-
-        // Accent badges next to its type (decision 2026-10-25): "OS root store: server", "OS root store: client" once
-        // installed; the work or a failure in its own words (a failure's reason as tooltip); nothing while it is not
-        // installed (the row menu has Install).
-        List<IssuedCertificateStatus> states = [];
-        if (TrustBadge(ServerTrustKind, ServerTrustText, TrustedByServer, TrustedByServerTip, ServerTrustTip) is { } server)
-        {
-            states.Add(server);
-        }
-
-        if (TrustBadge(ClientTrustKind, ClientTrustText, TrustedHere, TrustedHereTip, ClientTrustTip) is { } client)
-        {
-            states.Add(client);
-        }
-
-        return states;
-    }
-
-    /// <summary>The OADM CA's badge once it is in the server's root store.</summary>
-    public const string TrustedByServer = "OS root store: server";
-
-    /// <summary>The OADM CA's badge once it is in this computer's root store.</summary>
-    public const string TrustedHere = "OS root store: client";
-
-    public const string TrustedByServerTip = "Installed in the operating system's trusted root store of the computer running the OADM server.";
-
-    public const string TrustedHereTip = "Installed in the operating system's trusted root store of this computer.";
-
-    private static IssuedCertificateStatus? TrustBadge(string kind, string text, string installed, string installedTip, string? tip) => kind switch
-    {
-        ServiceStatus.Ok => new IssuedCertificateStatus(installed, kind, installedTip),
-        ServiceStatus.Neutral => null,
-        _ => new IssuedCertificateStatus(text, kind, tip),
-    };
-
-    partial void OnServerTrustTextChanged(string value) => Authorities?.RefreshTrust();
-
-    partial void OnClientTrustTextChanged(string value) => Authorities?.RefreshTrust();
-
-    partial void OnServerTrustTipChanged(string? value) => Authorities?.RefreshTrust();
-
-    partial void OnClientTrustTipChanged(string? value) => Authorities?.RefreshTrust();
-
-    // ---------------------------------------------------------------- dialog backends
-
-    /// <summary>
-    /// Generate: the replace confirmation first (field rules are the server's), then the new CA. A stored OADM CA that cannot
-    /// be read is replaced only after its own confirmation (<see cref="UnreadableReplaceMessage"/>); the server refuses without it.
-    /// </summary>
-    internal async Task<bool> SubmitGenerateAsync(GenerateCaViewModel dialog, GenerateRequest request)
-    {
-        var unreadable = State?.CaUnreadable == true;
-        if (unreadable)
-        {
-            if (!await dialog.ConfirmAsync(ReplaceTitle, UnreadableReplaceMessage, "Replace").ConfigureAwait(true))
-            {
-                return false;
-            }
-        }
-        else if (HasCa && !await ConfirmReplaceAsync(dialog).ConfigureAwait(true))
-        {
-            return false;
-        }
-
-        dialog.IsBusy = true;
-        var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Generate, PkiJson.Serialize(request with { Confirmed = true, ReplaceUnreadable = unreadable }), CancellationToken.None).ConfigureAwait(true));
-        return await FinishReplaceAsync(dialog, reply, PkiFields.CommonName).ConfigureAwait(true);
+        return true;
     }
 
     /// <summary>
     /// Import of a CA with its key (decision 2026-10-25): the server checks the file (field errors) and adds the CA to the list;
-    /// it never replaces the OADM CA, so nothing is asked.
+    /// it never replaces another CA, so nothing is asked.
     /// </summary>
     internal async Task<bool> SubmitImportAsync(ImportCaViewModel dialog, ImportRequest request)
     {
+        ArgumentNullException.ThrowIfNull(dialog);
         dialog.IsBusy = true;
         var reply = PkiJson.Deserialize<PkiReply>(await _ctx.InvokeAsync(PkiMethods.Import, PkiJson.Serialize(request), CancellationToken.None).ConfigureAwait(true));
-        var done = await FinishReplaceAsync(dialog, reply, PkiFields.File).ConfigureAwait(true);
+        var done = await FinishAsync(dialog, reply, PkiFields.File).ConfigureAwait(true);
         if (done)
         {
             await LoadListsAsync().ConfigureAwait(true);
@@ -725,10 +325,87 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return done;
     }
 
-    /// <summary>Backup: the server builds the PKCS#12, then the save dialog.</summary>
-    internal async Task<bool> SubmitBackupAsync(BackupViewModel dialog, string password)
+    // ---------------------------------------------------------------- a CA row's actions
+
+    /// <summary>
+    /// The CA entries of a row's menu: Install in trusted root store of a root CA (its own permission), Back up of a CA with
+    /// its key, and Delete (red) of every CA (decision 2026-10-26). A row that cannot be read offers Delete only.
+    /// </summary>
+    private (IReadOnlyList<IssuedCertificateAction> Everyday, IReadOnlyList<IssuedCertificateAction> Danger) CaActionsOf(IssuedCertificateRow row)
     {
-        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.Backup, PkiJson.Serialize(new BackupRequest(password)), CancellationToken.None).ConfigureAwait(true));
+        List<IssuedCertificateAction> everyday = [];
+        List<IssuedCertificateAction> danger = [];
+        if (!row.IsCa)
+        {
+            return (everyday, danger);
+        }
+
+        if (row.IsRootCa && MayTrustServer)
+        {
+            everyday.Add(new("Install in trusted root store", InstallTrustCommand, row));
+        }
+
+        if (row.Source.CanIssue && !row.Source.Unreadable && MayManage)
+        {
+            everyday.Add(new("Back up", BackupCommand, row));
+        }
+
+        if (MayManage)
+        {
+            danger.Add(new("Delete", DeleteCaCommand, row, IsDanger: true));
+        }
+
+        return (everyday, danger);
+    }
+
+    /// <summary>The confirmation of Delete of a CA: its certificates stay in the list (decision 2026-10-26).</summary>
+    public const string DeleteCaMessage = "Its certificates stay in the list. This cannot be undone.";
+
+    /// <summary>"Delete the CA Contoso Root?".</summary>
+    public static string DeleteCaTitle(string name) => $"Delete the CA {name}?";
+
+    private bool CanDeleteCa(IssuedCertificateRow? row) => MayManage && row is { IsCa: true };
+
+    /// <summary>Delete of a CA row (red), confirmed; the server refuses one a policy or a service names or that signed a listed CA, with the reason.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteCa))]
+    private async Task DeleteCaAsync(IssuedCertificateRow? row)
+    {
+        if (row is not { IsCa: true } || !await _ctx.ConfirmAsync(DeleteCaTitle(row.Name), DeleteCaMessage, "Delete").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var reply = await CallAsync<PkiReply>("Delete CA", PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(row.Key)).ConfigureAwait(true);
+        if (reply?.Error is { } error)
+        {
+            await _ctx.ShowMessageAsync("Delete CA", error).ConfigureAwait(true);
+        }
+
+        if (reply?.State is { } state)
+        {
+            await ApplyStateAsync(state).ConfigureAwait(true);
+        }
+
+        await LoadListsAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Back up of a CA with its key: the password dialog, then the PKCS#12 file.</summary>
+    [RelayCommand]
+    private async Task BackupAsync(IssuedCertificateRow? row)
+    {
+        if (Dialogs is null || row is not { IsCa: true } || row.Source.AuthorityId is not { } id)
+        {
+            return;
+        }
+
+        await Dialogs.ShowBackupAsync(new BackupViewModel((dialog, password) => SubmitBackupAsync(dialog, password, id))).ConfigureAwait(true);
+    }
+
+    /// <summary>Backup: the server builds the PKCS#12, then the save dialog.</summary>
+    internal async Task<bool> SubmitBackupAsync(BackupViewModel dialog, string password, string? authorityId = null)
+    {
+        ArgumentNullException.ThrowIfNull(dialog);
+        var reply = PkiJson.Deserialize<FileReply>(await _ctx.InvokeAsync(PkiMethods.Backup, PkiJson.Serialize(new BackupRequest(password, authorityId)), CancellationToken.None).ConfigureAwait(true));
         if (reply.Errors is { Count: > 0 } || reply.Error is not null)
         {
             dialog.SetServerErrors(reply.Errors, reply.Error, PkiFields.Password);
@@ -752,40 +429,179 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         return true;
     }
 
-    public const string ReplaceTitle = "Replace the certificate authority";
+    /// <summary>Text of the confirmation before the install: the CA's SHA-256 fingerprint, to compare with the CA's View.</summary>
+    internal static string InstallTrustMessage(string name, string fingerprint) =>
+        $"The OADM server and this computer will trust every certificate {name} issues. Install only when the "
+        + $"fingerprint is the one shown in View.\n\nSHA-256 fingerprint:\n{CaCertificates.ColonFingerprint(fingerprint)}";
 
-    /// <summary>The confirmation of New OADM CA while the stored OADM CA cannot be read.</summary>
-    public const string UnreadableReplaceMessage = "The stored OADM CA cannot be read. A new CA replaces it; cameras with certificates of the old CA need new ones.";
+    private bool CanInstallTrust(IssuedCertificateRow? row) => MayTrustServer && row is { IsRootCa: true } && !_serverWork.ContainsKey(FingerprintOf(row.Source) ?? string.Empty);
 
     /// <summary>
-    /// The replace confirmation; the count line only when devices are affected, the server line only when a server's
-    /// certificate comes from the current CA (it stays: cameras given the new CA would not trust that server).
+    /// Install in trusted root store of a root CA (decision 2026-10-26: every root CA): confirmed with its fingerprint, then the
+    /// server's machine root store and this computer's; the row's badges show the work and the result.
     /// </summary>
-    public static string ReplaceMessage(int devices, IReadOnlyList<string>? servers = null)
+    [RelayCommand(CanExecute = nameof(CanInstallTrust))]
+    private async Task InstallTrustAsync(IssuedCertificateRow? row)
     {
-        var count = devices switch
+        if (row is not { IsRootCa: true } || FingerprintOf(row.Source) is not { } fingerprint
+            || State?.RootTrust.FirstOrDefault(r => string.Equals(r.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase)) is not { } root
+            || !await _ctx.ConfirmAsync("Install in trusted root store", InstallTrustMessage(row.Name, fingerprint), "Install").ConfigureAwait(true))
         {
-            0 => string.Empty,
-            1 => "1 device has certificates from the current CA. It keeps working until it is renewed. ",
-            _ => string.Create(CultureInfo.InvariantCulture, $"{devices} devices have certificates from the current CA. They keep working until they are renewed. "),
-        };
-        var kept = servers is { Count: > 0 }
-            ? (servers.Count == 1 ? "The " + servers[0] + " keeps its" : "The " + string.Join(" and the ", servers) + " keep their")
-                + " certificate from the current CA. Choose a certificate of the new CA in "
-                + (servers.Count == 1 ? "its policy" : "their policies") + " before cameras get the new CA. "
-            : string.Empty;
-        return count + kept + "Replace the CA?";
+            return;
+        }
+
+        _serverWork[fingerprint] = new IssuedCertificateStatus("Installing on the server", "accent");
+        Authorities.RefreshTrust();
+        try
+        {
+            var reply = PkiJson.Deserialize<InstallReply>(await _ctx.InvokeAsync(PkiMethods.InstallServerTrust, PkiJson.Serialize(new InstallTrustRequest(fingerprint)), CancellationToken.None)
+                .ConfigureAwait(true));
+            _serverWork.Remove(fingerprint);
+            if (reply.Error is { } error && !reply.Installed)
+            {
+                _serverWork[fingerprint] = new IssuedCertificateStatus("Failed on the server", ServiceStatus.Error, error);
+            }
+
+            if (reply.State is { } state)
+            {
+                State = state;
+            }
+
+            if (State?.Simulated == true)
+            {
+                return; // fake mode: nothing is installed on this computer
+            }
+
+            _clientTrustStates[fingerprint] = new IssuedCertificateStatus("Installing on this computer", "accent");
+            Authorities.RefreshTrust();
+            using var certificate = Certificate(root.CertificatePem);
+            var result = await Task.Run(() => _clientTrust.InstallAsync(certificate, CancellationToken.None)).ConfigureAwait(true);
+            _clientTrustStates[fingerprint] = result.Installed
+                ? new IssuedCertificateStatus(TrustedHere, ServiceStatus.Ok, TrustedHereTip)
+                : new IssuedCertificateStatus("Failed on this computer", ServiceStatus.Error, result.Error);
+        }
+#pragma warning disable CA1031 // Shown in the badges.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _serverWork[fingerprint] = new IssuedCertificateStatus("Failed on the server", ServiceStatus.Error, PkiDialogViewModel.Message(ex));
+        }
+        finally
+        {
+            InstallTrustCommand.NotifyCanExecuteChanged();
+            Authorities.RefreshTrust();
+        }
+    }
+
+    /// <summary>The badge of a root CA once it is in the server's root store.</summary>
+    public const string TrustedByServer = "OS root store: server";
+
+    /// <summary>The badge of a root CA once it is in this computer's root store.</summary>
+    public const string TrustedHere = "OS root store: client";
+
+    public const string TrustedByServerTip = "Installed in the operating system's trusted root store of the computer running the OADM server.";
+
+    public const string TrustedHereTip = "Installed in the operating system's trusted root store of this computer.";
+
+    /// <summary>
+    /// A root CA row's statuses (tinted badges next to its type, decision 2026-10-25, every root CA since 2026-10-26): "OS root
+    /// store: server", "OS root store: client" once installed; the work or a failure in its own words (a failure's reason as
+    /// tooltip); nothing while it is not installed (the row menu has Install).
+    /// </summary>
+    private List<IssuedCertificateStatus> TrustStatesOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row)
+    {
+        if (row is not { Kind: Oadm.Sdk.Certificates.ListedCertificateKind.Authority, IsRootCa: true, Unreadable: false } || FingerprintOf(row) is not { } fingerprint)
+        {
+            return [];
+        }
+
+        List<IssuedCertificateStatus> states = [];
+        if (_serverWork.TryGetValue(fingerprint, out var work))
+        {
+            states.Add(work);
+        }
+        else if (State?.RootTrust.FirstOrDefault(r => string.Equals(r.Fingerprint, fingerprint, StringComparison.OrdinalIgnoreCase)) is { } root)
+        {
+            if (root.ServerInstalled == true)
+            {
+                states.Add(new IssuedCertificateStatus(TrustedByServer, ServiceStatus.Ok, TrustedByServerTip));
+            }
+            else if (root.ServerError is { } error)
+            {
+                states.Add(new IssuedCertificateStatus("Failed on the server", ServiceStatus.Error, error));
+            }
+        }
+
+        if (_clientTrustStates.GetValueOrDefault(fingerprint) is { } client)
+        {
+            states.Add(client);
+        }
+
+        return states;
+    }
+
+    /// <summary>The SHA-256 of a CA row (its id "ca:&lt;SHA-256&gt;"); null for another row.</summary>
+    private static string? FingerprintOf(Oadm.Sdk.Certificates.IssuedCertificateInfo row) =>
+        row.Id is { } id && id.StartsWith("ca:", StringComparison.Ordinal) ? id[3..] : null;
+
+    /// <summary>
+    /// Checks once per root CA whether this computer's root store holds it (events arrive often; an install checks again).
+    /// Fake mode installs nothing here.
+    /// </summary>
+    private async Task CheckClientTrustAsync(PkiState state)
+    {
+        if (state.Simulated)
+        {
+            return;
+        }
+
+        foreach (var root in state.RootTrust.Where(r => !_clientTrustStates.ContainsKey(r.Fingerprint)))
+        {
+            try
+            {
+                using var certificate = Certificate(root.CertificatePem);
+                var installed = await Task.Run(() => _clientTrust.IsInstalledAsync(certificate, CancellationToken.None)).ConfigureAwait(true);
+                _clientTrustStates[root.Fingerprint] = installed ? new IssuedCertificateStatus(TrustedHere, ServiceStatus.Ok, TrustedHereTip) : null;
+            }
+#pragma warning disable CA1031 // Unknown is shown as not installed.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                _clientTrustStates[root.Fingerprint] = null;
+            }
+        }
     }
 
     // ---------------------------------------------------------------- helpers
 
-    private async Task<bool> ConfirmReplaceAsync(PkiDialogViewModel dialog)
+    /// <summary>Reads the CAs and the certificates again.</summary>
+    private async Task LoadListsAsync(CancellationToken ct = default)
     {
-        var preview = PkiJson.Deserialize<PreviewReplaceReply>(await _ctx.InvokeAsync(PkiMethods.PreviewReplace, null, CancellationToken.None).ConfigureAwait(true));
-        return await dialog.ConfirmAsync(ReplaceTitle, ReplaceMessage(preview.DevicesWithCurrentCa, preview.Servers), "Replace").ConfigureAwait(true);
+        await Authorities.LoadAsync(ct).ConfigureAwait(true);
+        await Certificates.LoadAsync(ct).ConfigureAwait(true);
     }
 
-    private async Task<bool> FinishReplaceAsync(PkiDialogViewModel dialog, PkiReply reply, string fallbackField)
+    /// <summary>
+    /// A page call whose failure (the connection, a refusal) goes into a message titled <paramref name="title"/>, never the
+    /// generic crash message; null then.
+    /// </summary>
+    private async Task<T?> CallAsync<T>(string title, string method, object payload)
+        where T : class
+    {
+        try
+        {
+            return PkiJson.Deserialize<T>(await _ctx.InvokeAsync(method, PkiJson.Serialize(payload), CancellationToken.None).ConfigureAwait(true));
+        }
+#pragma warning disable CA1031 // Shown in a message.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(title, ServerErrors.Message(ex)).ConfigureAwait(true);
+            return null;
+        }
+    }
+
+    private async Task<bool> FinishAsync(PkiDialogViewModel dialog, PkiReply reply, string fallbackField)
     {
         if (!reply.Ok)
         {
@@ -799,27 +615,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
 
         return true;
-    }
-
-    private async Task SaveFileAsync(string title, FileReply reply, PkiFileKind kind)
-    {
-        if (reply.Error is { } error)
-        {
-            await _ctx.ShowMessageAsync(title, error).ConfigureAwait(true);
-            return;
-        }
-
-        if (Dialogs?.Files is not { } files || reply.DataBase64 is null)
-        {
-            return;
-        }
-
-        var settings = _clientSettings.Load();
-        var folder = await files.SaveAsync(title, reply.FileName ?? "ca.crt", kind, Convert.FromBase64String(reply.DataBase64), settings.LastFolder).ConfigureAwait(true);
-        if (folder is not null)
-        {
-            Remember(settings, folder);
-        }
     }
 
     private void Remember(PkiClientSettings settings, string folder)
@@ -874,75 +669,6 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
     }
 
-    private void ApplyServerTrust(bool? installed, string? error)
-    {
-        if (installed == true)
-        {
-            SetServerTrust(ServiceStatus.Ok, "Installed on the server", null);
-        }
-        else if (!string.IsNullOrEmpty(error))
-        {
-            SetServerTrust(ServiceStatus.Error, "Failed on the server", error);
-        }
-        else if (installed == false)
-        {
-            SetServerTrust(ServiceStatus.Neutral, "Not installed on the server", null);
-        }
-        else
-        {
-            SetServerTrust(ServiceStatus.Neutral, "Not checked on the server", null);
-        }
-    }
-
-    private async Task CheckClientTrustAsync(PkiState state)
-    {
-        if (state.Ca is not { } ca)
-        {
-            SetClientTrust(ServiceStatus.Neutral, "Not installed on this computer", null);
-            _clientCheckedCaId = null;
-            return;
-        }
-
-        if (state.Simulated)
-        {
-            SetClientTrust(ServiceStatus.Neutral, "Not installed on this computer", "Fake mode: nothing is installed on this computer.");
-            return;
-        }
-
-        if (ca.Id == _clientCheckedCaId)
-        {
-            return; // checked for this CA already (events arrive often)
-        }
-
-        _clientCheckedCaId = ca.Id;
-        try
-        {
-            using var certificate = Certificate(ca);
-            var installed = await Task.Run(() => _clientTrust.IsInstalledAsync(certificate, CancellationToken.None)).ConfigureAwait(true);
-            SetClientTrust(installed ? ServiceStatus.Ok : ServiceStatus.Neutral, installed ? "Installed on this computer" : "Not installed on this computer", TrustTooltip);
-        }
-#pragma warning disable CA1031 // Unknown is shown as not installed with the reason.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            SetClientTrust(ServiceStatus.Neutral, "Not installed on this computer", ex.Message);
-        }
-    }
-
-    private void SetServerTrust(string kind, string text, string? tip)
-    {
-        ServerTrustKind = kind;
-        ServerTrustText = text;
-        ServerTrustTip = tip;
-    }
-
-    private void SetClientTrust(string kind, string text, string? tip)
-    {
-        ClientTrustKind = kind;
-        ClientTrustText = text;
-        ClientTrustTip = tip;
-    }
-
     private void SetStatus(string kind, string text, string? detail)
     {
         StatusKind = kind;
@@ -950,9 +676,9 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         StatusDetail = detail;
     }
 
-    private static X509Certificate2 Certificate(CaInfo ca)
+    private static X509Certificate2 Certificate(string pem)
     {
-        var certificates = CaCertificates.ReadPemCertificates(ca.CertificatePem);
+        var certificates = CaCertificates.ReadPemCertificates(pem);
         if (certificates.Count == 0)
         {
             throw new CryptographicException("The CA certificate cannot be read.");
@@ -965,5 +691,4 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
         return certificates[0];
     }
-
 }

@@ -36,7 +36,7 @@ public static class PkiPluginInfo
     /// <summary>Most imported CAs (Certificate authorities card).</summary>
     public const int MaxImportedCas = 50;
 
-    /// <summary>Most serial numbers of one Revoke.</summary>
+    /// <summary>Most certificates of one Delete.</summary>
     public const int MaxRevokeAtOnce = 5000;
 
     /// <summary>"OADM Root CA &lt;server name&gt;".</summary>
@@ -49,14 +49,17 @@ public static class PkiMethods
     /// <summary>() -> <see cref="PkiState"/>.</summary>
     public const string GetState = "getState";
 
-    /// <summary><see cref="GenerateRequest"/> -> <see cref="PkiReply"/>.</summary>
-    public const string Generate = "generate";
+    /// <summary><see cref="CreateCaRequest"/> -> <see cref="PkiReply"/>: a new root or intermediate CA into the list of CAs.</summary>
+    public const string CreateAuthority = "createAuthority";
+
+    /// <summary>
+    /// <see cref="DeleteAuthorityRequest"/> -> <see cref="PkiReply"/>: a CA out of the list (refused while a policy or a
+    /// service names it or while a CA it signed is listed); its certificates stay.
+    /// </summary>
+    public const string DeleteAuthority = "deleteAuthority";
 
     /// <summary><see cref="ImportRequest"/> -> <see cref="PkiReply"/>: a CA with its key into the list of CAs (it never replaces the OADM CA).</summary>
     public const string Import = "import";
-
-    /// <summary>() -> <see cref="PreviewReplaceReply"/>.</summary>
-    public const string PreviewReplace = "previewReplace";
 
     /// <summary><see cref="ExportRequest"/> -> <see cref="FileReply"/>.</summary>
     public const string ExportPublic = "exportPublic";
@@ -64,13 +67,10 @@ public static class PkiMethods
     /// <summary><see cref="ExportPreviousRequest"/> -> <see cref="FileReply"/>.</summary>
     public const string ExportPrevious = "exportPrevious";
 
-    /// <summary><see cref="RemovePreviousRequest"/> -> <see cref="PkiReply"/>.</summary>
-    public const string RemovePrevious = "removePrevious";
-
     /// <summary><see cref="BackupRequest"/> -> <see cref="FileReply"/> (PKCS#12 with the key).</summary>
     public const string Backup = "backup";
 
-    /// <summary>() -> <see cref="InstallReply"/>: the CA into the server's machine root store.</summary>
+    /// <summary><see cref="InstallTrustRequest"/> (none: the first-start root CA) -> <see cref="InstallReply"/>: a root CA into the server's machine root store.</summary>
     public const string InstallServerTrust = "installServerTrust";
 
     /// <summary>Event: <see cref="PkiState"/> after every change.</summary>
@@ -82,20 +82,11 @@ public static class PkiMethods
     /// <summary><see cref="CertificateDetailsRequest"/> -> <see cref="CertificateDetailsReply"/>: one issued certificate in plain names.</summary>
     public const string GetCertificate = "getCertificate";
 
-    /// <summary><see cref="RevokeRequest"/> -> <see cref="RevokeReply"/> (users with all devices, audited).</summary>
-    public const string Revoke = "revoke";
-
-    /// <summary><see cref="RevokeDeviceRequest"/> -> <see cref="RevokeReply"/>: every certificate of one device that is still valid.</summary>
-    public const string RevokeDevice = "revokeDevice";
-
     /// <summary>Event (payload <c>{}</c>): the issued certificates or the revocation list changed; pages read their page again.</summary>
     public const string CertificatesTopic = "certificates";
 
     /// <summary><see cref="ImportAuthorityRequest"/> -> <see cref="PkiReply"/>: a CA certificate without key into the list of CAs.</summary>
     public const string ImportAuthority = "importAuthority";
-
-    /// <summary><see cref="RemoveAuthorityRequest"/> -> <see cref="PkiReply"/>: an imported CA out of the list (refused while a service uses it).</summary>
-    public const string RemoveAuthority = "removeAuthority";
 }
 
 /// <summary>The payload of <see cref="PkiMethods.GetCertificates"/>; filters as in <see cref="Oadm.Sdk.Certificates.IssuedCertificateQuery"/>.</summary>
@@ -156,24 +147,6 @@ public sealed record CertificateDetailsReply
     public Oadm.Sdk.Certificates.CertificateDescription? Certificate { get; init; }
 
     public Oadm.Sdk.Certificates.CertificateRevocation? Revocation { get; init; }
-
-    public string? Error { get; init; }
-}
-
-/// <summary>The payload of <see cref="PkiMethods.Revoke"/>.</summary>
-public sealed record RevokeRequest(IReadOnlyList<string> SerialNumbers, Oadm.Sdk.Certificates.RevocationReason Reason);
-
-/// <summary>The payload of <see cref="PkiMethods.RevokeDevice"/>.</summary>
-public sealed record RevokeDeviceRequest(Guid DeviceId, Oadm.Sdk.Certificates.RevocationReason Reason);
-
-/// <summary>What a revoke did.</summary>
-public sealed record RevokeReply
-{
-    public int Revoked { get; init; }
-
-    public int AlreadyRevoked { get; init; }
-
-    public int NotFound { get; init; }
 
     public string? Error { get; init; }
 }
@@ -300,6 +273,12 @@ public sealed record StoredImportedCa
     public string? KeyProtected { get; init; }
 
     public DateTime ImportedUtc { get; init; }
+
+    /// <summary>
+    /// Made on this server with Create CA (decision 2026-10-26), not imported: its key never left OADM, so like the first-start
+    /// root CA it may be an EST sign-in CA.
+    /// </summary>
+    public bool Created { get; init; }
 }
 
 /// <summary>One row of the Certificate authorities card (<see cref="Oadm.Sdk.Certificates.CertificateAuthorityInfo"/> plus what the page shows).</summary>
@@ -322,11 +301,12 @@ public sealed record AuthorityRow
 
     /// <summary>The certificates (PEM, public), the CA's own first: View shows them.</summary>
     public IReadOnlyList<string> CertificatesPem { get; init; } = [];
+
+    /// <summary>PKI holds the CA's key: it issues and can sign an intermediate CA (Create CA's Signed by).</summary>
+    public bool Issues { get; init; }
 }
 
 public sealed record ImportAuthorityRequest(string? FileBase64, string? FileName);
-
-public sealed record RemoveAuthorityRequest(string? Id);
 
 /// <summary>
 /// One device certificate the OADM CA issued: a row of the plugin records <c>issued</c> (by serial number; its DER in
@@ -465,7 +445,7 @@ public sealed record PkiState
     /// <summary>The stored CA key cannot be decrypted (other master key): only Generate / Import.</summary>
     public bool KeyUnreadable { get; init; }
 
-    /// <summary>The stored OADM CA cannot be read (damaged): New OADM CA replaces it only after the user confirmed.</summary>
+    /// <summary>The stored first-start CA cannot be read (damaged): the CA list has a row that says so, with Delete.</summary>
     public bool CaUnreadable { get; init; }
 
     /// <summary>A CA is being created (RSA 4096 takes a few seconds).</summary>
@@ -500,13 +480,87 @@ public sealed record PkiState
     /// <summary>Every CA PKI holds: the OADM CA, previous ones, the Axis device ID, imported CAs.</summary>
     public IReadOnlyList<AuthorityRow> Authorities { get; init; } = [];
 
+    /// <summary>Every root CA of the list with its state in the server's root store (decision 2026-10-26: every root CA can be installed).</summary>
+    public IReadOnlyList<RootTrustState> RootTrust { get; init; } = [];
+
     /// <summary>Set by the client's fake backend: nothing is installed on this computer.</summary>
     public bool Simulated { get; init; }
 }
 
-/// <param name="Confirmed">The user confirmed replacing the current OADM CA.</param>
-/// <param name="ReplaceUnreadable">The user confirmed replacing a stored OADM CA that cannot be read (without it the server refuses).</param>
-public sealed record GenerateRequest(string? CommonName, string? Organization, int ValidityYears, bool Confirmed, bool ReplaceUnreadable = false);
+/// <summary>Create CA (decision 2026-10-26): a root CA (self-signed) or an intermediate CA signed by a listed CA with its key.</summary>
+/// <param name="CommonName">The CA's name.</param>
+/// <param name="Intermediate">True: signed by <paramref name="IssuerId"/>; false: a root CA.</param>
+/// <param name="IssuerId">The authority id of the signing CA (<see cref="Oadm.Sdk.Certificates.CertificateAuthorityInfo.Id"/>); only for an intermediate.</param>
+/// <param name="Key"><see cref="CaKeys"/>.</param>
+/// <param name="ValidityYears">1 to 30; an intermediate ends at the latest with its issuer.</param>
+public sealed record CreateCaRequest(string? CommonName, bool Intermediate, string? IssuerId, string? Key, int ValidityYears);
+
+/// <summary>The key of a CA made on this server (Create CA).</summary>
+public static class CaKeys
+{
+    public const string Ecc = "ecc";
+    public const string Rsa2048 = "rsa2048";
+    public const string Rsa3072 = "rsa3072";
+    public const string Rsa4096 = "rsa4096";
+
+    /// <summary>The default: RSA 4096, like the CA every OADM made before (cameras of every AXIS OS take it).</summary>
+    public const string Default = Rsa4096;
+
+    /// <summary>Every key in the choice's order.</summary>
+    public static IReadOnlyList<string> All { get; } = [Ecc, Rsa2048, Rsa3072, Rsa4096];
+
+    /// <summary>"ECC P-256", "RSA 2048", ...</summary>
+    public static string Name(string? key) => key switch
+    {
+        Ecc => "ECC P-256",
+        Rsa2048 => "RSA 2048",
+        Rsa3072 => "RSA 3072",
+        _ => "RSA 4096",
+    };
+
+    /// <summary>The RSA key size of <paramref name="key"/>; null for ECC.</summary>
+    public static int? RsaSize(string key) => key switch
+    {
+        Rsa2048 => 2048,
+        Rsa3072 => 3072,
+        Rsa4096 => 4096,
+        _ => null,
+    };
+}
+
+/// <summary>The Key column of a CA row that cannot issue (decision 2026-10-26).</summary>
+public static class CaKeyTexts
+{
+    /// <summary>A CA certificate without its key (imported, Axis device ID, a previous CA).</summary>
+    public const string None = "No key";
+
+    /// <summary>A CA stored with a key the master key cannot read.</summary>
+    public const string Unreadable = "Key cannot be read";
+}
+
+/// <param name="Id">The row id of the CA (<c>ca:&lt;SHA-256&gt;</c>, or the row of a CA that cannot be read).</param>
+public sealed record DeleteAuthorityRequest(string? Id);
+
+/// <param name="Fingerprint">SHA-256 (hex) of the root CA certificate; null: the first-start root CA.</param>
+public sealed record InstallTrustRequest(string? Fingerprint);
+
+/// <summary>A root CA of the list and whether the server's machine root store holds it (the tinted badges of its row).</summary>
+public sealed record RootTrustState
+{
+    /// <summary>SHA-256 of the certificate (upper hex).</summary>
+    public string Fingerprint { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The certificate (PEM, public): the page checks and installs it on the client computer.</summary>
+    public string CertificatePem { get; init; } = string.Empty;
+
+    /// <summary>In the server's root store; null when unknown.</summary>
+    public bool? ServerInstalled { get; init; }
+
+    /// <summary>Why the server's store could not be checked or written.</summary>
+    public string? ServerError { get; init; }
+}
 
 /// <param name="FileBase64">PKCS#12, or PEM certificate(s) (may contain the key), or a DER certificate.</param>
 /// <param name="FileName">For the format guess and messages.</param>
@@ -520,9 +574,9 @@ public sealed record ExportRequest(string? Format);
 
 public sealed record ExportPreviousRequest(string? Id, string? Format);
 
-public sealed record RemovePreviousRequest(string? Id);
-
-public sealed record BackupRequest(string? Password);
+/// <param name="Password">The file's password (never stored or logged).</param>
+/// <param name="Id">The authority id of a CA with its key; null: the first-start root CA.</param>
+public sealed record BackupRequest(string? Password, string? Id = null);
 
 /// <summary>Reply of the changing methods.</summary>
 public sealed record PkiReply
@@ -535,18 +589,7 @@ public sealed record PkiReply
     /// <summary>Field errors (field name -> message), shown under the fields.</summary>
     public IReadOnlyDictionary<string, string>? Errors { get; init; }
 
-    /// <summary>Replacing needs the user's confirmation; nothing was changed.</summary>
-    public bool NeedsConfirmation { get; init; }
-
-    public int DevicesWithCurrentCa { get; init; }
-
     public PkiState? State { get; init; }
-}
-
-public sealed record PreviewReplaceReply(int DevicesWithCurrentCa)
-{
-    /// <summary>The servers ("802.1X server", "EST server") whose certificate the current CA issued: they keep it after a replace.</summary>
-    public IReadOnlyList<string> Servers { get; init; } = [];
 }
 
 /// <summary>A file for the save dialog.</summary>
@@ -581,6 +624,12 @@ public static class PkiFields
     public const string CustomIdentity = "CustomIdentity";
     public const string RadiusCa = "RadiusCa";
     public const string AuthorityFile = "AuthorityFile";
+
+    /// <summary>Create CA: the CA that signs an intermediate.</summary>
+    public const string Issuer = "Issuer";
+
+    /// <summary>Create CA: the key.</summary>
+    public const string Key = "Key";
 }
 
 public static class PkiJson

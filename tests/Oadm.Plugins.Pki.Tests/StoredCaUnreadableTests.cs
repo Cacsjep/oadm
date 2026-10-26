@@ -35,11 +35,6 @@ public sealed class StoredCaUnreadableTests : IDisposable
 
         Assert.Null(pki.Service.Ca); // no new default CA over it
         Assert.Equal(damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
-        Assert.Equal(PkiService.CaUnreadableStatus, (await pki.StateAsync()).Status);
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true));
-        Assert.False(reply.Ok);
-        Assert.Equal(PkiService.CaUnreadableText, reply.Error);
-        Assert.Equal(damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
     }
 
     [Fact]
@@ -48,17 +43,15 @@ public sealed class StoredCaUnreadableTests : IDisposable
         await using var pki = await StartDamagedAsync(_data);
         Assert.True((await pki.StateAsync()).CaUnreadable);
 
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true, ReplaceUnreadable: true));
+        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(PkiService.UnreadableRowPrefix + Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId));
 
         Assert.True(reply.Ok, reply.Error);
-        Assert.Equal("OADM Root CA NEW", pki.Service.Ca!.Certificate.GetNameInfo(System.Security.Cryptography.X509Certificates.X509NameType.SimpleName, false));
         Assert.NotEqual(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
         var kept = Assert.Single(Directory.GetFiles(_data));
         Assert.Matches(@"^ca-unreadable-\d{8}-\d{6}-\d{3}\.json$", Path.GetFileName(kept));
         Assert.Equal(Damaged, await File.ReadAllTextAsync(kept));
         var state = await pki.StateAsync();
         Assert.False(state.CaUnreadable);
-        Assert.NotEqual(PkiService.CaUnreadableStatus, state.Status);
     }
 
     [Fact]
@@ -66,37 +59,12 @@ public sealed class StoredCaUnreadableTests : IDisposable
     {
         await using var pki = await StartDamagedAsync(dataDirectory: null);
 
-        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.Generate, new GenerateRequest("OADM Root CA NEW", null, 10, true, ReplaceUnreadable: true));
+        var reply = await pki.InvokeAsync<PkiReply>(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(PkiService.UnreadableRowPrefix + Oadm.Sdk.Certificates.CertificateAuthorityInfo.OadmId));
 
         Assert.False(reply.Ok);
         Assert.Equal(PkiService.CaUnreadableNotSavedText, reply.Error);
         Assert.Null(pki.Service.Ca);
         Assert.Equal(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task New_oadm_ca_on_the_page_asks_first_and_replaces_only_after_replace()
-    {
-        await using var pki = await StartDamagedAsync(_data);
-        var dialogs = new FakeDialogs();
-        using var vm = new Oadm.Plugins.Pki.Client.PkiViewModel(new PluginPageContext(pki.Plugin, pki.Hub), new FakeClientTrust(), new Oadm.Plugins.Pki.Client.PkiClientSettingsStore(_settingsFile)) { Dialogs = dialogs };
-        await vm.LoadAsync();
-        dialogs.ConfirmAnswer = false;
-        dialogs.Drive = d => ((Oadm.Plugins.Pki.Client.GenerateCaViewModel)d).GenerateCommand.ExecuteAsync(null);
-
-        await vm.GenerateCommand.ExecuteAsync(null); // the user cancels the question
-        var (title, message) = Assert.Single(dialogs.Confirmations);
-        Assert.Equal(Oadm.Plugins.Pki.Client.PkiViewModel.ReplaceTitle, title);
-        Assert.Equal("The stored OADM CA cannot be read. A new CA replaces it; cameras with certificates of the old CA need new ones.", message);
-        Assert.Null(pki.Service.Ca);
-        Assert.Equal(Damaged, await pki.Settings.GetAsync(PkiStore.CaKey, CancellationToken.None));
-
-        dialogs.ConfirmAnswer = true;
-        await vm.GenerateCommand.ExecuteAsync(null);
-        Assert.True(dialogs.Last!.Completed);
-        Assert.NotNull(pki.Service.Ca);
-        Assert.True(vm.HasCa);
-        Assert.Single(Directory.GetFiles(_data));
     }
 
     private static async Task<PkiHarness> StartDamagedAsync(string? dataDirectory)

@@ -413,8 +413,10 @@ public sealed partial class PkiService
     }
 
     /// <summary>
-    /// Deletes rows nothing uses: device certificates and certificates created or signed here that are revoked or expired,
-    /// imported certificates, ended server certificates. All or nothing: the first row that cannot go says why. Revocations stay.
+    /// Deletes rows (decision 2026-10-26: Delete is the only action, it never needs a revoke first): device certificates and
+    /// certificates created, signed or imported here, ended server certificates. Still valid ones OADM issued go on the internal
+    /// list of certificates the 802.1X and EST servers no longer accept (until they end; never shown). Refused for a
+    /// certificate a server policy shows. All or nothing: the first row that cannot go says why.
     /// </summary>
     internal async Task<DeleteCertificatesReply> DeleteCertificatesAsync(DeleteCertificatesRequest request, string userName, CancellationToken ct)
     {
@@ -434,11 +436,10 @@ public sealed partial class PkiService
         var serials = new List<string>();
         var locals = new List<string>();
         var servers = new List<string>();
-        var revokeFirst = new List<string>();
-        Dictionary<Guid, string>? addresses = null;
+        var notAccepted = new List<string>(); // still valid ones OADM issued: no longer accepted once deleted
         foreach (var id in ids)
         {
-            if (id.StartsWith(AuthorityRowPrefix, StringComparison.Ordinal))
+            if (id.StartsWith(AuthorityRowPrefix, StringComparison.Ordinal) || id.StartsWith(UnreadableRowPrefix, StringComparison.Ordinal))
             {
                 return Refused(CertificateRules.RemoveCaThere);
             }
@@ -467,12 +468,12 @@ public sealed partial class PkiService
                     return Refused(CertificateRules.UsedByPolicy(showing.Name));
                 }
 
-                // A CA of OADM issued created and signed ones: still valid, they would be accepted without a trace. Revoke and
-                // delete (decision 2026-10-25): they are revoked first, with the delete.
+                // A CA of OADM issued created and signed ones: still valid, they would be accepted without a trace. Delete puts
+                // them on the internal list of certificates no longer accepted (decision 2026-10-26, never shown).
                 if (_local.Find(localId) is { Stored.Kind: ListedCertificateKind.Created or ListedCertificateKind.SignedRequest } local
                     && local.NotAfterUtc > now && !_issued.IsRevoked(local.Serial))
                 {
-                    revokeFirst.Add(local.Serial);
+                    notAccepted.Add(local.Serial);
                 }
 
                 locals.Add(localId);
@@ -481,23 +482,26 @@ public sealed partial class PkiService
 
             if (_issued.Find(id) is { } entry)
             {
+                // Decision 2026-10-26: a device certificate can always be deleted; a still valid one is no longer accepted by
+                // the 802.1X and EST servers (the internal list until it ends) and leaves the store with it.
                 if (!_issued.IsRevoked(entry.SerialNumber) && entry.NotAfterUtc > now)
                 {
-                    addresses ??= (await SystemDevicesAsync(ct).ConfigureAwait(false)).ToDictionary(d => d.Id, d => d.Address);
-                    return Refused(CertificateRules.StillValid(addresses.GetValueOrDefault(entry.DeviceId) ?? entry.DeviceSerial ?? IssuedCertificateTextsUnknown));
+                    notAccepted.Add(entry.SerialNumber);
                 }
 
                 serials.Add(entry.SerialNumber);
             }
         }
 
-        if (revokeFirst.Count > 0)
+        if (notAccepted.Count > 0)
         {
-            await _issued.RevokeAsync(revokeFirst, RevocationReason.Other, userName, ct).ConfigureAwait(false);
-            LogRevokedToDelete(revokeFirst.Count, userName);
+            await _issued.RevokeAsync(notAccepted, RevocationReason.Other, userName, ct).ConfigureAwait(false);
+            LogNotAcceptedOnDelete(notAccepted.Count, userName);
         }
 
-        var deleted = await _issued.DeleteEndedAsync(serials, ct).ConfigureAwait(false)
+        // The still valid device certificates left the store with the list above; the rest leaves it here.
+        await _issued.DeleteEndedAsync(serials, ct).ConfigureAwait(false);
+        var deleted = serials.Count
             + await _local.DeleteAsync(locals, ct).ConfigureAwait(false)
             + _local.DeleteServers(servers);
         if (deleted > 0)
@@ -509,8 +513,6 @@ public sealed partial class PkiService
 
         static DeleteCertificatesReply Refused(string why) => new() { Error = why + CertificateRules.NothingDeleted };
     }
-
-    private const string IssuedCertificateTextsUnknown = "this device";
 
     /// <summary>
     /// The file of Export: PEM or DER of any listed certificate; PKCS#12 (with the issuing CA, AES-256, the password of the
@@ -859,8 +861,8 @@ public sealed partial class PkiService
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} certificates deleted from the list by {User}")]
     private partial void LogCertificatesDeleted(int count, string user);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} certificates revoked by {User} to delete them")]
-    private partial void LogRevokedToDelete(int count, string user);
+    [LoggerMessage(Level = LogLevel.Information, Message = "PKI: {Count} still valid certificates deleted by {User} are no longer accepted until they end")]
+    private partial void LogNotAcceptedOnDelete(int count, string user);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "PKI: certificate {Name} exported with its key by {User}")]
     private partial void LogCertificateKeyExported(string name, string user);

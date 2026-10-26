@@ -115,13 +115,15 @@ public static class PolicyRules
     }
 
     /// <summary>
-    /// A Block policy that also revokes the IEEE 802.1X certificates of its devices (the Revoke of before 2026-10-25): its
-    /// devices are chosen by device and site only, never by tag or "All devices" (a tag could revoke every device that gets it later).
+    /// Whether a policy revokes certificates: never any more (decision 2026-10-26: no revoke anywhere; a Block policy only
+    /// refuses its devices, a stored "Also revoke" of before is no longer read). Kept so the callers stay one place.
     /// </summary>
+#pragma warning disable IDE0060 // The policy stays in the signature for the callers.
     public static bool Revokes(PkiPolicy policy)
+#pragma warning restore IDE0060
     {
         ArgumentNullException.ThrowIfNull(policy);
-        return policy.Kind == PolicyKinds.Block && policy.AlsoRevoke == true;
+        return false;
     }
 
     /// <summary>
@@ -269,7 +271,7 @@ public static class PolicyRules
             RadiusCaId = dot1x && !string.IsNullOrWhiteSpace(policy.RadiusCaId) ? policy.RadiusCaId.Trim() : null,
             RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
             RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
-            AlsoRevoke = kind == PolicyKinds.Block ? policy.AlsoRevoke ?? false : null,
+            AlsoRevoke = null, // decision 2026-10-26: Block only refuses; a stored "Also revoke" is dropped on save
             Server = null, // only Server certificate policies of before 2026-10-25 had it (the conversion reads the stored ones)
             ProfileScope = scope,
             Profiles = enrollment && scope == PolicyProfiles.Chosen

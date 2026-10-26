@@ -20,9 +20,8 @@ public sealed class DeviceGroupTests
 {
     private static readonly string[] ManageMethods =
     [
-        PkiMethods.Generate, PkiMethods.Import, PkiMethods.PreviewReplace, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
-        PkiMethods.RemovePrevious, PkiMethods.Backup, PkiMethods.InstallServerTrust,
-        PkiMethods.Revoke, PkiMethods.RevokeDevice,
+        PkiMethods.CreateAuthority, PkiMethods.Import, PkiMethods.ExportPublic, PkiMethods.ExportPrevious,
+        PkiMethods.DeleteAuthority, PkiMethods.Backup, PkiMethods.InstallServerTrust,
     ];
 
     [Fact]
@@ -119,16 +118,6 @@ public sealed class DeviceGroupTests
         Assert.Equal(PkiCertificateTexts.NotListed, await DetailsAsync(group, "0BAD"));
         Assert.Equal("shown", await DetailsAsync(admin, theirs.SerialNumber));
         Assert.Empty(ctx.RefusedAccesses);
-
-        // Revoking is for users with all devices; the group's page hears of it with its own audience.
-        Assert.True(plugin.RequiresAllDevices(PkiMethods.Revoke));
-        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, group, PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([mine.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.Other))));
-        Assert.False(authority.IsRevoked(mine.SerialNumber));
-        await ctx.InvokeAsync(plugin, admin, PkiMethods.Revoke, PkiJson.Serialize(new RevokeRequest([mine.SerialNumber], Oadm.Sdk.Certificates.RevocationReason.Other)));
-        Assert.True(authority.IsRevoked(mine.SerialNumber));
-        Assert.Equal("admin", authority.FindRevocation(mine.SerialNumber)!.UserName);
-        Assert.Contains(ctx.EventsSeenBy(group), e => e.Topic == PkiMethods.CertificatesTopic);
-        Assert.Contains(ctx.EventsSeenBy(admin), e => e.Topic == PkiMethods.CertificatesTopic);
     }
 
     [Fact]

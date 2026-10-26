@@ -733,7 +733,6 @@ public sealed partial class PoliciesViewModel : ObservableObject
 
         var message = policy.Kind switch
         {
-            PolicyKinds.Block when PolicyRules.Revokes(policy) => $"Delete the policy {policy.Name}? Revoked certificates stay revoked: the devices need new certificates.",
             PolicyKinds.AllowCa => $"Delete the policy {policy.Name}? Certificates of this CA no longer pass the 802.1X server.",
             PolicyKinds.SignInCa => $"Delete the policy {policy.Name}? Cameras can no longer sign in to the EST server with this CA.",
             PolicyKinds.Enrollment => $"Delete the policy {policy.Name}? The EST server refuses its devices unless another Enrollment policy holds them.",
@@ -822,10 +821,6 @@ public sealed partial class PoliciesViewModel : ObservableObject
             editor.UsePicker(picker);
         }
     }
-
-    /// <summary>The IEEE 802.1X certificates a Block policy that also revokes with <paramref name="devices"/> revokes now.</summary>
-    internal async Task<int> CountRevocationsAsync(PolicyDevices devices) =>
-        PkiJson.Deserialize<PolicyRevocationCount>(await _ctx.InvokeAsync(PolicyMethods.CountRevocations, PkiJson.Serialize(devices), CancellationToken.None).ConfigureAwait(true)).Count;
 }
 
 /// <summary>One EST profile of an Enrollment policy: a check box with the profile's name.</summary>
@@ -854,9 +849,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>The choice next to the Minutes field ("Every" [60] minutes).</summary>
     public const string ReauthEvery = "Every";
     public const string OnlyManagedText = PolicyTexts.OnlyManaged;
-
-    /// <summary>The check box of a Block policy.</summary>
-    public const string AlsoRevokeText = PolicyTexts.AlsoRevoke;
 
     /// <summary>"Off: any device with a valid certificate of this CA".</summary>
     public static string OnlyManagedTip { get; } = "Off: " + PolicyTexts.AllowCaScope(onlyManaged: false) + " of this CA";
@@ -951,7 +943,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         Ca = CaChoices.FirstOrDefault(c => string.Equals(c.Value, policy.CaId, StringComparison.OrdinalIgnoreCase))
             ?? CaChoices.FirstOrDefault(c => !allowed.Contains(c.Value)) ?? (CaChoices.Count > 0 ? CaChoices[0] : null);
         OnlyManaged = policy.OnlyManaged ?? true;
-        AlsoRevoke = policy.AlsoRevoke ?? false;
 
         // Sign-in CA: a new one starts with the first CA no Sign-in CA policy names yet, for new certificates.
         var signingIn = list.Rows.Where(r => r.Policy.Kind == PolicyKinds.SignInCa && r.Policy.Id != existing?.Id).Select(r => r.Policy.CaId).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1026,11 +1017,10 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             .Rule(nameof(CustomIdentity), () => IsDot1xCertificate ? PkiValidation.CustomIdentity(Identity.Value, CustomIdentity) : null)
             .Rule(nameof(RadiusCa), () => !IsDot1xCertificate ? null
                 : RadiusCa is { } radius && RadiusCaChoices.Any(c => string.Equals(c.Value, radius.Value, StringComparison.OrdinalIgnoreCase)) ? null : PolicyTexts.ChooseRadiusCa)
-            // The devices are a field like the others (CLAUDE.md validation): none chosen, tags for a Block that also revokes,
+            // The devices are a field like the others (CLAUDE.md validation): none chosen,
             // and the server's refusal (an overlap) below the device choice until the choice changes.
             .Rule(DevicesField, () => !ShowsPicker ? null
                 : _choice.IsEmpty ? PolicyTexts.ChooseDevices
-                : Revokes && _choice.TagIds.Count > 0 ? PolicyTexts.RevokeNoTags
                 : null);
         Validation.Validate();
         _baseline = PkiJson.Serialize(ToPolicy());
@@ -1242,16 +1232,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial Choice<string>? IssuingCa { get; set; }
 
-    /// <summary>Block: also revoke the IEEE 802.1X certificates of its devices (then no tags and no "All devices").</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Revokes), nameof(OffersAllDevices), nameof(ShowsDeviceScope), nameof(IsAllDevices), nameof(ShowsPicker), nameof(CanSave), nameof(SaveBlockedReason))]
-    public partial bool AlsoRevoke { get; set; }
-
-    /// <summary>The check box Also revoke shows (a Block policy).</summary>
+    /// <summary>A Block policy.</summary>
     public bool IsBlock => Kind.Value == PolicyKinds.Block;
-
-    /// <summary>The policy also revokes: a Block policy with the box checked.</summary>
-    public bool Revokes => IsBlock && AlsoRevoke;
 
     [ObservableProperty]
     public partial string ValidDays { get; set; }
@@ -1300,7 +1282,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsVlan), nameof(IsExpiry), nameof(IsAllowCa), nameof(IsServer), nameof(HasDevices), nameof(KindHint), nameof(NamePlaceholder),
-        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(ShowsDeviceScope), nameof(Title), nameof(Heading), nameof(KindName), nameof(IsIssuing), nameof(IsServerKind), nameof(IsDot1xCertificate), nameof(IsBlock), nameof(Revokes),
+        nameof(OffersAllDevices), nameof(IsAllDevices), nameof(ShowsPicker), nameof(ShowsDeviceScope), nameof(Title), nameof(Heading), nameof(KindName), nameof(IsIssuing), nameof(IsServerKind), nameof(IsDot1xCertificate), nameof(IsBlock),
         nameof(IsSignInCa), nameof(IsEnrollment), nameof(IsChosenProfiles), nameof(ProfilesError))]
     public partial Choice<string> Kind { get; set; }
 
@@ -1389,8 +1371,8 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
     /// <summary>The kind chooses devices.</summary>
     public bool HasDevices => PolicyKinds.HasDevices(Kind.Value);
 
-    /// <summary>The kind may hold "All devices" (not a Block that also revokes): the Devices choice shows.</summary>
-    public bool OffersAllDevices => PolicyKinds.AllowsAllDevices(Kind.Value) && !Revokes;
+    /// <summary>The kind may hold "All devices": the Devices choice shows.</summary>
+    public bool OffersAllDevices => PolicyKinds.AllowsAllDevices(Kind.Value);
 
     /// <summary>"All devices" is chosen (for a kind that offers it).</summary>
     public bool IsAllDevices => OffersAllDevices && Scope.Value;
@@ -1435,9 +1417,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(CanDelete));
     }
-
-    /// <summary>Asks before a revoke policy revokes; null: the page's question.</summary>
-    public Func<string, string, Task<bool>>? ConfirmRevoke { get; set; }
 
     public bool CanSave => !IsBusy && !ReadOnly && IsFormValid && (IsNew || IsDirty);
 
@@ -1494,7 +1473,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             CaId = IsIssuing ? IssuingCa?.Value : IsSignInCa ? SignInCa?.Value : Ca?.Value,
             CertificateId = IsServerKind ? Certificate?.Value : null,
             OnlyManaged = OnlyManaged,
-            AlsoRevoke = AlsoRevoke,
             MinimumTls = MinimumTls.Value,
             LargestEapPacket = ParseInt(LargestPacket),
             ReauthMinutes = Reauth.Value ? ParseInt(ReauthMinutes) : null,
@@ -1533,31 +1511,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         IsBusy = true;
         try
         {
-            if (PolicyRules.Revokes(policy) && RevokeChanged(policy))
-            {
-                var count = await _owner.CountRevocationsAsync(policy.Devices!).ConfigureAwait(true);
-                var question = count == 0
-                    ? "These devices have no IEEE 802.1X certificate now. Every new one is revoked while the policy exists."
-                    : string.Create(CultureInfo.CurrentCulture, $"Saving revokes {count:N0} IEEE 802.1X {(count == 1 ? "certificate" : "certificates")} of these devices, and every new one while the policy exists. This cannot be undone.");
-                bool confirmed;
-                DialogsOpen++; // a reload meanwhile keeps this form
-                try
-                {
-                    confirmed = ConfirmRevoke is { } confirm
-                        ? await confirm(Title, question).ConfigureAwait(true)
-                        : await _ctx.ConfirmAsync(Title, question, "Revoke").ConfigureAwait(true);
-                }
-                finally
-                {
-                    DialogsOpen--;
-                }
-
-                if (!confirmed)
-                {
-                    return false;
-                }
-            }
-
             var reply = await _owner.SaveAsync(policy, this).ConfigureAwait(true);
             if (reply.Error is { } refused)
             {
@@ -1580,10 +1533,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
         }
     }
 
-    /// <summary>A new Block policy that revokes, one that starts to revoke, or one whose devices changed: it revokes with the save.</summary>
-    private bool RevokeChanged(PkiPolicy policy) =>
-        _existing is null || !PolicyRules.Revokes(_existing) || !(_existing.Devices ?? new PolicyDevices()).SameAs(policy.Devices);
-
     /// <summary>
     /// A refusal below the field it names; one of a field the form does not show (the kind, which Create preset) or of the
     /// whole policy (changed by someone else) in a message.
@@ -1602,7 +1551,6 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             PolicyFields.Profiles => nameof(ProfileChoices),
             PolicyFields.ValidDays => nameof(ValidDays),
             PolicyFields.Key => nameof(Key),
-            PolicyFields.AlsoRevoke => nameof(AlsoRevoke),
             PolicyFields.EapolVersion => nameof(Eapol),
             PolicyFields.Identity => nameof(Identity),
             PolicyFields.CustomIdentity => nameof(CustomIdentity),

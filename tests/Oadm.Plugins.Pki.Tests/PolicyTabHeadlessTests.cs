@@ -67,9 +67,8 @@ public sealed class PolicyTabHeadlessTests
             clipped.AddRange(Clipped(view));
             vm.Policies.Editor.MinimumTls = PolicyEditorViewModel.TlsVersions[2];
 
-            // Block with Also revoke: devices and sites only.
+            // Block.
             vm.Policies.SelectedRow = vm.Policies.Rows.Single(r => r.Name == "Storage room");
-            vm.Policies.Editor!.AlsoRevoke = true;
             Settle();
             HeadlessPageTests.Capture(window, outDir, $"pki-policies-{width}-block.png");
             var block = PanelTexts(view);
@@ -107,8 +106,6 @@ public sealed class PolicyTabHeadlessTests
         Assert.Contains(PolicyEditorViewModel.OldTlsHint, checks.server);
         Assert.DoesNotContain("Cipher suites", checks.server);
         Assert.DoesNotContain("Reset to default", checks.server);
-        Assert.Contains(PolicyTexts.AlsoRevoke, checks.block);
-        Assert.DoesNotContain(PolicyTexts.AllDevices, checks.block); // also revoking: devices and sites only
         Assert.Equal(1, checks.primaries); // Save of the panel
         Assert.Empty(checks.clipped);
         Assert.All(checks.table.Concat(checks.create), t => Assert.False(t?.EndsWith("...", StringComparison.Ordinal) == true || t?.EndsWith('…') == true, t));

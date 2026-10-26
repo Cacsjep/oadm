@@ -148,15 +148,15 @@
 
       <!-- ============================== Certificate authorities ============================== -->
       <!-- The CAs in their own table (decision 2026-10-25): the shared list without groups and filters (search stays), the CA
-           rows' actions in the ⋯ menu; New OADM CA and the CA imports in its toolbar row. The OADM CA when it needs attention
-           below that row. -->
+           rows' actions in the ⋯ menu; Create CA and the CA imports in its toolbar row. Below that row only the first-start CA
+           being made or a server that cannot keep a CA (decision 2026-10-26: every CA row shows its own state). -->
       <Border x:Name="AuthoritiesCard" Grid.Row="0" Classes="card" ClipToBounds="True">
           <ui:IssuedCertificateList x:Name="AuthoritiesList" DataContext="{Binding Authorities}" x:DataType="vm:IssuedCertificatesViewModel">
             <ui:IssuedCertificateList.Toolbar>
                 <WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="8" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}">
                   <TextBlock Classes="cardTitle" Text="Certificate authorities" VerticalAlignment="Center" Margin="0,0,12,0" />
                   <!-- Flat toolbar buttons like the device toolbar (no accent button on this tab, decision 2026-10-25). -->
-                  <ui:ToolbarButton Text="New OADM CA" IconKey="add" Command="{Binding GenerateCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="It replaces the OADM CA" />
+                  <ui:ToolbarButton Text="Create CA" IconKey="add" Command="{Binding CreateCaCommand}" IsVisible="{Binding MayManage}" ToolTip.Tip="A root CA, or one signed by a listed CA" />
                   <ui:ToolbarButton Text="Import" IconKey="upload" IsVisible="{Binding MayManage}">
                     <ui:ToolbarButton.Flyout>
                       <MenuFlyout Placement="BottomEdgeAlignedLeft">
@@ -171,7 +171,6 @@
                 <StackPanel Spacing="8" Margin="0,8,0,0" x:DataType="vm:PkiViewModel" DataContext="{Binding $parent[vm:PkiView].DataContext}"
                           IsVisible="{Binding ShowCaNotice}">
                   <ui:ProgressRow Text="Creating the certificate authority. This takes a few seconds." IsVisible="{Binding IsGenerating}" />
-                  <TextBlock Classes="secondary" Text="{Binding NoCaText}" IsVisible="{Binding HasNoCa}" TextWrapping="Wrap" />
                   <ui:StatusChip Text="{Binding StatusText}" Detail="{Binding StatusDetail}" IsWarning="{Binding IsStatusWarning}" IsError="{Binding IsStatusError}"
                                  MaxLines="2" IsVisible="{Binding ShowCaStatus}" />
                 </StackPanel>
