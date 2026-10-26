@@ -8,9 +8,10 @@ using Oadm.Sdk.Certificates;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// The PKI Certificates tab in fake mode: one certificate per fake device and use (HTTPS for every device, IEEE 802.1X for
-/// every third), a few older ones replaced, one expired; Revoke and Revoke all of this device change the rows. View
-/// certificate describes a real certificate the fake CA signs for the row. JSON like the plugin (camelCase, enums as numbers).
+/// The PKI certificate lists in fake mode: the CA rows of the fake CAs (the Certificate authorities card) and one certificate
+/// per fake device and use (HTTPS for every device, IEEE 802.1X for every third), one expired; Delete takes rows out of the
+/// list (decision 2026-10-26: no revoke). View certificate describes a real certificate the fake CA signs for the row. JSON
+/// like the plugin (camelCase, enums as numbers).
 /// </summary>
 public sealed partial class FakeOadmApi
 {
@@ -33,11 +34,9 @@ public sealed partial class FakeOadmApi
         public DateTime NotBefore { get; init; }
 
         public DateTime NotAfter { get; init; }
-
-        public (DateTime At, int Reason, string User)? Revoked { get; set; }
     }
 
-    /// <summary>The Certificates tab's methods; null for other methods (called inside the gate).</summary>
+    /// <summary>The certificate lists' methods; null for other methods (called inside the gate).</summary>
     private JsonObject? FakePkiCertificates(string method, JsonNode? payload)
     {
         var issued = _pkiIssued ??= CreateFakeIssued();
@@ -49,69 +48,57 @@ public sealed partial class FakeOadmApi
                 int? state = payload?["state"]?.GetValue<int>();
                 string? purpose = payload?["purpose"]?.GetValue<string>();
                 string? source = payload?["source"]?.GetValue<string>();
+                bool noAuthorities = payload?["noAuthorities"]?.GetValue<bool>() ?? false;
                 string search = payload?["search"]?.GetValue<string>()?.Trim() ?? string.Empty;
                 int offset = Math.Max(0, payload?["offset"]?.GetValue<int>() ?? 0);
                 int limit = Math.Clamp(payload?["limit"]?.GetValue<int>() ?? 500, 1, 500);
-                var matching = issued
-                    .Where(c => (state is null || (int)FakeIssuedState(c, now) == state)
-                        && (purpose is null || c.Purpose == purpose)
-                        && (source is null || c.Source == source)
-                        && (search.Length == 0 || c.Device.Contains(search, StringComparison.OrdinalIgnoreCase)
-                            || c.DeviceSerial.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Serial.Contains(search.Replace(" ", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase)))
-                    .OrderByDescending(c => c.NotBefore)
-                    .ToList();
-                JsonArray rows = [.. matching.Skip(offset).Take(limit).Select(c => (JsonNode)FakeIssuedRow(c, now))];
+                var authorities = noAuthorities || (purpose is not null && purpose != ListedCertificateUses.Ca) || source is not null
+                    ? []
+                    : _pkiAuthorities!.Where(a => search.Length == 0 || a.Ca.CommonName.Contains(search, StringComparison.OrdinalIgnoreCase))
+                        .Select(a => FakeAuthorityRow(a, now)).Where(r => state is null || r["state"]!.GetValue<int>() == state).ToList();
+                var devices = purpose == ListedCertificateUses.Ca
+                    ? []
+                    : issued
+                        .Where(c => (state is null || (int)FakeIssuedState(c, now) == state)
+                            && (purpose is null || c.Purpose == purpose)
+                            && (source is null || c.Source == source)
+                            && (search.Length == 0 || c.Device.Contains(search, StringComparison.OrdinalIgnoreCase)
+                                || c.DeviceSerial.Contains(search, StringComparison.OrdinalIgnoreCase) || c.Serial.Contains(search.Replace(" ", string.Empty, StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase)))
+                        .OrderByDescending(c => c.NotBefore)
+                        .Select(c => FakeIssuedRow(c, now))
+                        .ToList();
+                var matching = authorities.Concat(devices).ToList();
+                JsonArray rows = [.. matching.Skip(offset).Take(limit).Select(r => (JsonNode)r)];
                 return new JsonObject { ["rows"] = rows, ["total"] = matching.Count, ["offset"] = offset, ["warningDays"] = 30 };
             }
 
             case "getCertificate":
             {
                 string serial = payload?["serialNumber"]?.GetValue<string>() ?? string.Empty;
-                if (issued.Find(c => c.Serial == serial) is not { } found)
+                byte[]? der = _pkiAuthorities!.Find(a => string.Equals("ca:" + a.Ca.Id, serial, StringComparison.OrdinalIgnoreCase))?.Ca.Certificate.RawData
+                    ?? (issued.Find(c => c.Serial == serial) is { } found ? FakeLeaf(found) : null);
+                if (der is null)
                 {
                     return new JsonObject { ["error"] = "This certificate is not in the list." };
                 }
 
-                var description = CertificateDescriber.Describe(FakeLeaf(found));
-                var reply = new JsonObject { ["certificate"] = System.Text.Json.JsonSerializer.SerializeToNode(description, FakeJson) };
-                if (FakeRevocation(found) is { } revocation)
-                {
-                    reply["revocation"] = revocation;
-                }
-
-                return reply;
+                var description = CertificateDescriber.Describe(der);
+                return new JsonObject { ["certificate"] = System.Text.Json.JsonSerializer.SerializeToNode(description, FakeJson) };
             }
 
-            case "revoke":
-            case "revokeDevice":
+            case "deleteCertificates":
             {
-                int reason = payload?["reason"]?.GetValue<int>() ?? 0;
-                var chosen = method == "revoke"
-                    ? (payload?["serialNumbers"]?.AsArray().Select(n => n?.GetValue<string>()).OfType<string>().ToHashSet(StringComparer.Ordinal) ?? [])
-                    : issued.Where(c => c.DeviceId == payload?["deviceId"]?.GetValue<string>()).Select(c => c.Serial).ToHashSet(StringComparer.Ordinal);
-                int revoked = 0, already = 0;
-                foreach (var certificate in issued.Where(c => chosen.Contains(c.Serial)))
-                {
-                    if (certificate.Revoked is not null)
-                    {
-                        already++;
-                    }
-                    else if (certificate.NotAfter > now)
-                    {
-                        certificate.Revoked = (now, reason, FakeUser);
-                        revoked++;
-                    }
-                }
-
-                return new JsonObject { ["revoked"] = revoked, ["alreadyRevoked"] = already, ["notFound"] = chosen.Count - revoked - already };
+                var chosen = payload?["ids"]?.AsArray().Select(n => n?.GetValue<string>()).OfType<string>().ToHashSet(StringComparer.Ordinal) ?? [];
+                int deleted = issued.RemoveAll(c => chosen.Contains(c.Serial));
+                return deleted == 0
+                    ? new JsonObject { ["deleted"] = 0, ["error"] = "These certificates are no longer in the list." }
+                    : new JsonObject { ["deleted"] = deleted };
             }
 
             default:
                 return null;
         }
     }
-
-    private const string FakeUser = "admin";
 
     private static List<FakeIssued> CreateFakeIssued()
     {
@@ -133,7 +120,6 @@ public sealed partial class FakeOadmApi
                 {
                     Serial = FakeSerial(i, 1), DeviceId = id, DeviceSerial = serial, Device = device, Purpose = "dot1x", Source = "EST",
                     NotBefore = now.AddDays(-10 - i), NotAfter = now.AddDays(355 - i),
-                    Revoked = i == 9 ? (now.AddDays(-2), 1, FakeUser) : null,
                 });
             }
 
@@ -154,38 +140,62 @@ public sealed partial class FakeOadmApi
         "1" + Convert.ToHexString(SHA256.HashData(BitConverter.GetBytes(device * 10 + kind)))[..31];
 
     private static IssuedCertificateState FakeIssuedState(FakeIssued c, DateTime now) =>
-        c.Revoked is not null ? IssuedCertificateState.Revoked
-        : c.NotAfter <= now ? IssuedCertificateState.Expired
+        c.NotAfter <= now ? IssuedCertificateState.Expired
         : c.NotAfter <= now.AddDays(30) ? IssuedCertificateState.ExpiresSoon
         : IssuedCertificateState.Valid;
 
-    private static JsonObject FakeIssuedRow(FakeIssued c, DateTime now)
+    private JsonObject FakeIssuedRow(FakeIssued c, DateTime now) => new()
     {
+        ["serialNumber"] = c.Serial,
+        ["deviceId"] = c.DeviceId,
+        ["deviceSerial"] = c.DeviceSerial,
+        ["device"] = c.Device,
+        ["deviceManaged"] = true,
+        ["purpose"] = c.Purpose,
+        ["source"] = c.Source,
+        ["notBeforeUtc"] = c.NotBefore,
+        ["notAfterUtc"] = c.NotAfter,
+        ["issuedUtc"] = c.NotBefore,
+        ["state"] = (int)FakeIssuedState(c, now),
+        ["kind"] = (int)ListedCertificateKind.Device,
+        ["issuedBy"] = FakeSigningCa()?.Ca.CommonName,
+        ["usedBy"] = c.Device,
+    };
+
+    /// <summary>A CA row of the Certificate authorities card, as the plugin builds it.</summary>
+    private static JsonObject FakeAuthorityRow(FakeAuthority a, DateTime now)
+    {
+        var certificate = a.Ca.Certificate;
+        var end = certificate.NotAfter.ToUniversalTime();
         var row = new JsonObject
         {
-            ["serialNumber"] = c.Serial,
-            ["deviceId"] = c.DeviceId,
-            ["deviceSerial"] = c.DeviceSerial,
-            ["device"] = c.Device,
-            ["deviceManaged"] = true,
-            ["purpose"] = c.Purpose,
-            ["source"] = c.Source,
-            ["notBeforeUtc"] = c.NotBefore,
-            ["notAfterUtc"] = c.NotAfter,
-            ["issuedUtc"] = c.NotBefore,
-            ["state"] = (int)FakeIssuedState(c, now),
+            ["id"] = "ca:" + a.Ca.Id,
+            ["serialNumber"] = certificate.SerialNumber,
+            ["kind"] = (int)ListedCertificateKind.Authority,
+            ["authorityKind"] = a.Kind,
+            ["authorityId"] = a.Id,
+            ["isRootCa"] = a.Issuer is null,
+            ["canIssue"] = a.HasKey,
+            ["keyText"] = a.Ca.KeyText,
+            ["name"] = a.Ca.CommonName,
+            ["purpose"] = ListedCertificateUses.Ca,
+            ["issuedBy"] = (a.Issuer ?? a.Ca).CommonName,
+            ["notBeforeUtc"] = certificate.NotBefore.ToUniversalTime(),
+            ["notAfterUtc"] = end,
+            ["issuedUtc"] = certificate.NotBefore.ToUniversalTime(),
+            ["state"] = (int)(end <= now ? IssuedCertificateState.Expired : end <= now.AddDays(30) ? IssuedCertificateState.ExpiresSoon : IssuedCertificateState.Valid),
         };
-        if (FakeRevocation(c) is { } revocation)
+        if (a.Kind == FakeKindOadm)
         {
-            row["revocation"] = revocation;
+            row["usedIn"] = new JsonArray("HTTPS", "IEEE 802.1X", "802.1X server", "EST server");
+            row["usedByBadges"] = new JsonArray("Issuing", "802.1X", "EST");
         }
 
         return row;
     }
 
-    private static JsonObject? FakeRevocation(FakeIssued c) => c.Revoked is { } r
-        ? new JsonObject { ["serialNumber"] = c.Serial, ["revokedUtc"] = r.At, ["reason"] = r.Reason, ["userName"] = r.User, ["deviceId"] = c.DeviceId, ["notAfterUtc"] = c.NotAfter }
-        : null;
+    /// <summary>The CA the fake device certificates name: the first-start CA, else any CA with its key.</summary>
+    private FakeAuthority? FakeSigningCa() => FakeFirstStartCa() ?? _pkiAuthorities!.Find(a => a.HasKey);
 
     /// <summary>A real certificate of the row, signed by the fake CA (EC key, made when the window opens).</summary>
     private byte[] FakeLeaf(FakeIssued c)
@@ -197,11 +207,19 @@ public sealed partial class FakeOadmApi
         san.AddDnsName("axis-" + c.DeviceSerial.ToLowerInvariant() + ".local");
         request.CertificateExtensions.Add(san.Build());
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new Oid(c.Purpose == "dot1x" ? "1.3.6.1.5.5.7.3.2" : "1.3.6.1.5.5.7.3.1")], false));
-        using var caKey = _pkiCa!.Certificate.GetRSAPrivateKey()!;
-        var generator = X509SignatureGenerator.CreateForRSA(caKey, RSASignaturePadding.Pkcs1);
         var notBefore = new DateTimeOffset(c.NotBefore);
         var notAfter = new DateTimeOffset(c.NotAfter);
-        using var leaf = request.Create(_pkiCa.Certificate.SubjectName, generator, notBefore, notAfter, Convert.FromHexString(c.Serial.Length % 2 == 1 ? "0" + c.Serial : c.Serial));
+        var serial = Convert.FromHexString(c.Serial.Length % 2 == 1 ? "0" + c.Serial : c.Serial);
+        if (FakeSigningCa() is not { } ca)
+        {
+            using var self = request.CreateSelfSigned(notBefore, notAfter);
+            return self.RawData;
+        }
+
+        using var caRsa = ca.Ca.Certificate.GetRSAPrivateKey();
+        using var caEc = caRsa is null ? ca.Ca.Certificate.GetECDsaPrivateKey() : null;
+        var generator = caRsa is not null ? X509SignatureGenerator.CreateForRSA(caRsa, RSASignaturePadding.Pkcs1) : X509SignatureGenerator.CreateForECDsa(caEc!);
+        using var leaf = request.Create(ca.Ca.Certificate.SubjectName, generator, notBefore, notAfter, serial);
         return leaf.RawData;
     }
 }

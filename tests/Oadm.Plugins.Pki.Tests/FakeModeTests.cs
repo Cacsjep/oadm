@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 
 using Oadm.Client.Api;
+using Oadm.Plugins.Pki.Certificates;
 using Oadm.Plugins.Pki.Client;
 using Oadm.Sdk.Client;
 
@@ -22,7 +23,9 @@ public sealed class FakeModeTests : IDisposable
         Assert.True(state.Simulated);
         Assert.Equal("OADM Root CA FAKE-SERVER", state.Ca!.CommonName);
         Assert.Equal("ok", state.Status.Kind);
-        Assert.Single(state.PreviousCas);
+        Assert.Equal(["OADM Root CA FAKE-SERVER", "OADM Root CA OLD-SERVER", "OADM Issuing CA FAKE-SERVER"], state.Authorities.Select(a => a.Name));
+        Assert.Equal([true, false, true], state.Authorities.Select(a => a.Issues));
+        Assert.Equal(2, state.RootTrust.Count); // the root CAs
         Assert.Equal(12, state.IssuedDevices);
         Assert.Equal(365, state.Config.DeviceCertValidityDays);
         Assert.Equal(Dot1xIdentity.Mac, state.Config.Dot1x.Identity);
@@ -30,7 +33,7 @@ public sealed class FakeModeTests : IDisposable
         var der = PkiJson.Deserialize<FileReply>(await Invoke(PkiMethods.ExportPublic, new ExportRequest("der")));
         using (var cert = X509CertificateLoader.LoadCertificate(Convert.FromBase64String(der.DataBase64!)))
         {
-            Assert.Equal("CN=New fake CA", cert.Subject);
+            Assert.Equal("CN=OADM Root CA FAKE-SERVER", cert.Subject);
         }
 
         var backup = PkiJson.Deserialize<FileReply>(await Invoke(PkiMethods.Backup, new BackupRequest("long enough")));
@@ -43,12 +46,46 @@ public sealed class FakeModeTests : IDisposable
     }
 
     [Fact]
-    public async Task The_certificates_tab_of_the_fake_backend_lists_filters_shows_and_revokes()
+    public async Task Create_ca_makes_root_and_intermediate_cas_and_delete_ca_follows_the_plugins_refusals()
     {
-        var page = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest()));
+        var invalid = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.CreateAuthority, new CreateCaRequest("", true, "nope", "dsa", 0)));
+        Assert.Equal([PkiFields.CommonName, PkiFields.Issuer, PkiFields.Key, PkiFields.ValidityYears], invalid.Errors!.Keys.Order(StringComparer.Ordinal));
+
+        var root = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.CreateAuthority, new CreateCaRequest("Site Root", false, null, CaKeys.Ecc, 10)));
+        Assert.True(root.Ok);
+        var rootId = Assert.Single(root.State!.Authorities, a => a.Name == "Site Root").Id;
+        var intermediate = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.CreateAuthority, new CreateCaRequest("Site Issuing", true, rootId, CaKeys.Rsa2048, 5)));
+        Assert.True(intermediate.Ok);
+
+        var cas = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = Oadm.Sdk.Certificates.ListedCertificateUses.Ca }));
+        Assert.All(cas.Rows, r => Assert.Equal(Oadm.Sdk.Certificates.ListedCertificateKind.Authority, r.Kind));
+        var siteRoot = Assert.Single(cas.Rows, r => r.Name == "Site Root");
+        var siteIssuing = Assert.Single(cas.Rows, r => r.Name == "Site Issuing");
+        Assert.True(siteRoot.IsRootCa);
+        Assert.Equal("ECC P-256", siteRoot.KeyText);
+        Assert.False(siteIssuing.IsRootCa);
+        Assert.Equal("Site Root", siteIssuing.IssuedBy);
+        Assert.Equal("RSA 2048", siteIssuing.KeyText);
+        Assert.Contains(PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(siteIssuing.Id!))).Certificate!.Subject, p => p.Value == "Site Issuing");
+
+        // A CA that signed a listed CA, and the first-start CA the built-in policies name, stay.
+        Assert.Equal("It signed Site Issuing. Delete Site Issuing first.", PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(siteRoot.Id))).Error);
+        var first = Assert.Single(cas.Rows, r => r.Name == "OADM Root CA FAKE-SERVER");
+        Assert.Equal("Used by the policy HTTPS. Change or delete the policy first.", PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(first.Id))).Error);
+
+        Assert.True(PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(siteIssuing.Id))).Ok);
+        var after = PkiJson.Deserialize<PkiReply>(await Invoke(PkiMethods.DeleteAuthority, new DeleteAuthorityRequest(siteRoot.Id)));
+        Assert.True(after.Ok);
+        Assert.DoesNotContain(after.State!.Authorities, a => a.Name.StartsWith("Site ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_certificates_of_the_fake_backend_list_filter_show_and_delete_without_revoke()
+    {
+        var page = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { NoAuthorities = true }));
         Assert.True(page.Total > 20);
-        Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Revoked && r.Revocation is not null);
-        Assert.DoesNotContain(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Replaced); // only current certificates
+        Assert.DoesNotContain(page.Rows, r => r.Kind == Oadm.Sdk.Certificates.ListedCertificateKind.Authority);
+        Assert.DoesNotContain(page.Rows, r => r.State is Oadm.Sdk.Certificates.IssuedCertificateState.Revoked or Oadm.Sdk.Certificates.IssuedCertificateState.Replaced);
         Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Expired);
         Assert.Contains(page.Rows, r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.ExpiresSoon);
         var dot1x = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { Purpose = "dot1x" }));
@@ -57,6 +94,12 @@ public sealed class FakeModeTests : IDisposable
         var valid = page.Rows.First(r => r.State == Oadm.Sdk.Certificates.IssuedCertificateState.Valid);
         var details = PkiJson.Deserialize<CertificateDetailsReply>(await Invoke(PkiMethods.GetCertificate, new CertificateDetailsRequest(valid.SerialNumber)));
         Assert.Contains("IP " + valid.Device, details.Certificate!.Names);
+
+        var deleted = PkiJson.Deserialize<DeleteCertificatesReply>(await Invoke(CertificateMethods.Delete, new DeleteCertificatesRequest([valid.SerialNumber])));
+        Assert.Equal(1, deleted.Deleted);
+        var again = PkiJson.Deserialize<CertificatesReply>(await Invoke(PkiMethods.GetCertificates, new CertificatesRequest { NoAuthorities = true }));
+        Assert.Equal(page.Total - 1, again.Total);
+        Assert.DoesNotContain(again.Rows, r => r.SerialNumber == valid.SerialNumber);
     }
 
     [Fact]
