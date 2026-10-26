@@ -701,7 +701,7 @@ public sealed partial class PolicyStore : IDisposable
             .OrderBy(a => a.Kind switch { CertificateAuthorityKind.AxisDeviceId => 0, CertificateAuthorityKind.Oadm => 1, _ => 2 })
             .GroupBy(a => a.Id, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
             .Select(a => new PolicyCaChoice(a.Id, string.IsNullOrWhiteSpace(a.Name) ? DefaultCaName(a.Id) : a.Name, a.Kind)).ToList();
-        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.AxisDeviceId) && all.Count == 0) // a PKI without its list yet; deleted Axis device ID CAs are no choice
+        if (!choices.Any(c => c.Kind == CertificateAuthorityKind.AxisDeviceId)) // a deleted Axis device ID stays a choice: EST then lets nothing in through it (fail closed)
         {
             choices.Insert(0, new PolicyCaChoice(CertificateAuthorityInfo.AxisDeviceIdId, AxisDeviceIdName, CertificateAuthorityKind.AxisDeviceId));
         }
