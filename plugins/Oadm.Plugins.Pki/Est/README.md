@@ -14,8 +14,8 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     at most 64 connections (`Serving/EstConnectionSlots`: 4 per address, IPv6 per /64, 16 without a client certificate
     with 10 s for the handshake), 20 requests and 30 s idle per connection.
   - `Serving/ServerCertificates`: the server's TLS certificate is the one PKI's EST server policy picks from the
-    Certificates list (docs/spec/pki.md "Server certificates": by default the shared "802.1X and EST server", OADM CA,
-    ECC P-256, 10 years), loaded with its key and again when the policies change; one certificate for this server and
+    Certificates list (docs/spec/pki.md "Server certificates": by default the shared "802.1X and EST server" of the
+    first-start root CA, ECC P-256, 10 years), loaded with its key and again when the policies change; one certificate for this server and
     every site, never renewed by itself; the TLS chain is its issuer's chain; `cacerts` and the answers carry the chain of
     the CA of the profile's issuing policy (`Ca/IssuerChains`, `DeviceCertificateRequest.IssuerId`);
   - `Serving/EstPolicies`: a profile's issuing policy (`EstProfile.PolicyId`; HTTPS certificate for HTTPS and RTSPS, IEEE
@@ -28,10 +28,11 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
     are up) and host name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,
     `POST .../simplereenroll`; everything else and unknown profiles 404. Who may enroll: the camera's Axis device ID
-    (or a valid certificate of an OADM CA for it; to renew also its current certificate from OADM, whatever CA of PKI
+    (or a valid certificate of a CA created in OADM for it; to renew also its current certificate from OADM, whatever CA of PKI
     issued it) whose serial is a managed device of the same site. Answers: PKCS#7 certs-only, base64 at 76 characters, leaf and chain. Refusals: 401 (no or no valid
-    identity), 403 (not managed, other site, certificate of another camera, a certificate on PKI's revocation list:
-    `IDeviceCertificateAuthority.IsRevoked`, "Certificate revoked on ... (reason)"), 400 (request unreadable or refused by
+    identity), 403 (not managed, other site, certificate of another camera, a certificate PKI no longer accepts:
+    `IDeviceCertificateAuthority.IsRevoked`, "Certificate deleted in OADM" or "Certificate replaced by a newer certificate",
+    `Ca/NotAcceptedTexts`), 400 (request unreadable or refused by
     the CA), 503 (no PRO, no CA). Every request names its use (`DeviceCertificateRequest.Purpose`) for PKI's list.
   - `AxisDeviceId` (`plugins/Shared/DeviceId`, linked, shared with the 802.1X server): the Axis device ID CAs (RSA and ECC bundles, roots and intermediates as Axis publishes
     them, embedded); the serial is the subject's X.520 serialNumber (12 hex digits).
@@ -91,8 +92,8 @@ Spec: `docs/spec/est-server.md`. License: `LICENSE` in this folder (source-avail
   on, port, enrollments kept; Save with the status and Turn off left of it, the "N policies applied" link) above Profiles
   (name, use, issuing policy; at most one per use; Add profile) in the left column, Enrollments right (live, search,
   View certificate, Delete all; `EstPage.HasOwnCards`, one column on a narrow page); Not renewed (only while there
-  are any; a revoked certificate is never flagged). No Revoke and no list of every certificate here: both are PKI's (card
-  Certificates, docs/spec/radius-server.md "Certificates and revocation").
+  are any; a certificate PKI no longer accepts is never flagged). No list of every certificate here: PKI's (card Certificates, Delete,
+  docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted").
 - Tests: `tests/Oadm.Plugins.Est.Tests` (protocol, device ID, TLS end to end over in-memory connections with a test device
   ID hierarchy and a fake CA, the page with screenshots; `DeviceGroupTests`: the `PluginCanary`, the filtered lists and
   certificate, the events per group, the names of a device a group user added, the page for a group user).

@@ -5,7 +5,7 @@ Agreed 2026-10-22; stages 1 to 4 and 6 built (stages at the end). Code details: 
 
 The first OADM PRO feature: since OADM 4.5 a PRO part of the PKI package (core plugin `oadm.est`, `plugins/Oadm.Plugins.Pki/Est`;
 OADM 4.1 shipped it as the plugin `oadm.est`). OADM runs an EST server (RFC 7030) and sets up the cameras' own EST client, so
-every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from the OADM CA and **renews them by itself**
+every camera gets its certificates (HTTPS, IEEE 802.1X, MQTT, RTSPS) from a CA of PKI and **renews them by itself**
 also at sites (through a relay of the site node). A clean-room implementation from RFC 7030 and the Axis camera APIs.
 
 ## What the user sees
@@ -59,9 +59,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
     client's list empties: topic `enrollmentsCleared`).
   - **Not renewed** (only while there are any): device, profile, valid until, state (Not renewed, Expired), 500 at most
     with "Showing 500 of ...". No list of every certificate: the certificates are on the cameras (PKI page, device
-    details; every certificate the OADM CA issued: PKI page, tab Certificates). No Revoke here: revoking is PKI's (tab
-    Certificates, `docs/spec/radius-server.md` "Certificates and revocation", built 2026-10-24); a revoked certificate
-    renews nothing (below) and is never flagged Not renewed. **Remove** in the dialog still stops renewals.
+    details; every certificate a CA of PKI issued: PKI page, tab Certificates). No Delete here: it is PKI's (tab
+    Certificates, `docs/spec/radius-server.md` "Certificates and the list of certificates no longer accepted"; decision
+    2026-10-26: no revoke anywhere); a certificate PKI no longer accepts renews nothing (below) and is never flagged Not
+    renewed. **Remove** in the dialog still stops renewals.
 - **Task "Certificate enrollment"** (device context menu, Security; one task per device), its dialog like the
   Applications (ACAP) dialog: the chosen camera's enrollment profiles (read-only query `listProfiles`: profile, use, set
   up by OADM or Other, EST server, status Enrolled / No certificate / Server not reached), **Remove** (red, inline
@@ -98,29 +99,34 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   intermediates). No passwords, nothing to hand out. **And** the serial in the device ID certificate must be a device of
   the device list (at a site: a device of that site): a genuine Axis camera OADM does not manage gets nothing. **And**
   (since stage 6 of docs/spec/pki.md) the CA must be named by an **EST sign-in CA** policy of PKI (default: "Axis device ID"
-  for new certificates, which renews too, and "OADM CA" for renewals; none, no PKI or policies that cannot be read: nothing
-  signs in), and an **Enrollment** policy must hold the device and allow the profile (default "All devices", every
+  for new certificates, which renews too, and the first-start root CA by its real name, "OADM Root CA SERVER01", for
+  renewals (decision 2026-10-26: the converted policy takes the CA's name, never "OADM CA"); none, no PKI or policies that
+  cannot be read: nothing signs in). The choices of an EST sign-in CA policy are the Axis device ID, the first-start root
+  CA, previous OADM CAs and the CAs created in OADM (Create CA), never imported CAs ("Cameras sign in with the Axis device
+  ID or a CA created in OADM.", `PolicyTexts.NoSignInCa`). A deleted Axis device ID stays a choice and its policy lets
+  nothing in (fail closed), and an **Enrollment** policy must hold the device and allow the profile (default "All devices", every
   profile). None holds it: 403 "No enrollment policy for this device."; a profile not allowed: the 404 of an unknown
   profile (no probing), listed in Enrollments with the policy that refused it.
 - **Renewal with the current certificate** (maintainer decision 2026-10-25): for `simplereenroll` a camera also signs in
-  with its current certificate when OADM issued exactly that certificate, whatever CA of PKI issued it (OADM CA, previous
-  OADM CA, an imported CA with its key): valid now, its serial is the camera's **current** certificate in PKI's store (a
-  pending one does not count), the same DER, not on the revocation list, not one of the Certificates list made here
+  with its current certificate when OADM issued exactly that certificate, whatever CA of PKI issued it (the first-start root
+  CA, a previous OADM CA, a created CA, an imported CA with its key): valid now, its serial is the camera's **current** certificate in PKI's store (a
+  pending one does not count), the same DER, not on PKI's list of certificates no longer accepted, not one of the Certificates list made here
   (`ICurrentCertificates.CurrentCameraAsync`, O(1) by serial). The camera comes from the store entry (serial -> camera),
   never from a name in the certificate; a certificate of the same CA issued outside OADM stays refused (401). Order in
   `EstEndpoint.SerialOfAsync`: the Axis device ID (an EST sign-in CA policy names it), then this rule (renewals only), then
-  the EST sign-in CA policies' OADM CAs by the axis name; then, as before, the managed device, its site, the Enrollment
-  policies, the revocation list and the record's device. New enrollments keep the EST sign-in CA policies alone.
-- **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate the OADM CA
-  itself issued (chain element 1 is the OADM CA, never another CA below a root above an imported OADM CA) whose DNS
+  the CAs of the EST sign-in CA policies by the axis name; then, as before, the managed device, its site, the Enrollment
+  policies, the not-accepted list and the record's device. New enrollments keep the EST sign-in CA policies alone.
+- **Renewal** (`simplereenroll`): the client certificate must be the device ID or a valid certificate a CA of an EST
+  sign-in CA policy issued itself (chain element 1 is that CA, never another CA below a root above it) whose DNS
   names hold exactly one `axis-<serial>.local` serial, a managed device, and that PKI does not mark as not a device's
   (`PurposeOf` = `PkiCertificateAuthority.NotDevicePurpose`: created, signed or imported on PKI's Certificates card; 401
   like no identity); with a record of it, the record's device must
   be that device (a record of a device OADM no longer manages is forgotten: a camera removed and added again). A record
   is not needed: a camera whose answers got lost renews with an older certificate than the two the store keeps. A
-  certificate on PKI's revocation list (`IDeviceCertificateAuthority.IsRevoked`, one lookup) is refused, for
-  `simpleenroll` too: 403 "Certificate revoked on 2026-11-02 (Key compromised)" (`CertificateRevocation.Describe()`), listed
-  in Enrollments; the Axis device ID is never revoked, so Set up gives the camera a new certificate. EST and
+  certificate on PKI's list of certificates no longer accepted (`IDeviceCertificateAuthority.IsRevoked`, one lookup) is
+  refused, for `simpleenroll` too: 403 "Certificate deleted in OADM" or "Certificate replaced by a newer certificate"
+  (`Ca/NotAcceptedTexts`), listed in Enrollments; the Axis device ID is never on it, so Set up gives the camera a new
+  certificate. EST and
   PKI never take a reported host name or FQDN `axis-<12 hex>...` of another serial into a certificate, so a camera
   cannot name another camera (`EstEndpoint.NamesOtherCamera`, `CertificateNames.NamesOtherCamera`).
 - **Not from strangers:** a request without a valid identity (401) is not listed in Enrollments and logged at debug level
@@ -134,7 +140,7 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   user with a group added, the certificate and the camera's profile name only its stored IP address and
   `axis-<serial>.local` (CN = that address, or the axis name for a name address); for a covered device a user with all
   devices added, also the name address it was added with. EC keys only on P-256, P-384 or P-521.
-- **Issuing:** the OADM CA of the PKI plugin signs (one CA for everything), through the SDK's plugin services: PKI offers
+- **Issuing:** the CA of the profile's issuing policy signs (see "Issuing" below), through the SDK's plugin services: PKI offers
   "sign a device certificate" and "CA chain", EST uses them. Like PKI's `DeviceCertificateIssuer`, OADM sets subject and
   SANs from what it knows (the stored address, host name, FQDN, `axis-<serial>.local`; never the address a connection
   came from, never another camera's axis name), never from the CSR; EKU from the profile; key
@@ -143,8 +149,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   certificates with its use (`DeviceCertificateRequest.Purpose`: HTTPS, IEEE 802.1X, MQTT, RTSPS) and source EST, pending
   until the camera has it (decision 2026-10-25, `docs/spec/pki.md` "Current and pending"): once the 200 answer is written
   (`EstService` after `EstHttp.WriteAsync`, `ICertificateDelivery.DeliveredAsync`) HTTPS, RTSPS and MQTT certificates
-  become current and the previous one of the camera and use is revoked; an IEEE 802.1X one only when the camera signs in
-  to OADM's 802.1X server with it. An answer that cannot be written revokes the new certificate as unused. EST's own
+  become current and the previous one of the camera and use is no longer accepted; an IEEE 802.1X one only when the
+  camera signs in to OADM's 802.1X server with it. An answer that cannot be written makes the new certificate not accepted
+  as unused. EST's own
   store takes the certificate only once the answer is written (an unsent one never pushes out the camera's older one), and
   a failure of PKI's delivered call is logged without losing the enrollment record (fix of 2026-10-25).
 - **The server's TLS certificate** (decision 2026-10-25, docs/spec/pki.md "Server certificates"): the certificate PKI's
@@ -155,9 +162,11 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   certificate row (its policy does) but warns
   when a site's node address or one of this server's addresses is not in it ("Site Parking is not in the certificate of
   the EST server. Create a certificate with its address on the Certificates tab and choose it in the EST server
-  policy.", `PolicyTexts.AddressNotInCertificate` for an own address). A revoked one is never shown again, also not from
-  the copy read before (`ServerCertificates` checks the revocation and the end by the server clock).
-- Revocation: PKI's revocation list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
+  policy.", `PolicyTexts.AddressNotInCertificate` for an own address). The warning follows a newly chosen **Listen on**
+  interface at once after Save (fix of 2026-10-26: the cached addresses are dropped with the save). One on the not-accepted
+  list is never shown again, also not from the copy read before (`ServerCertificates` checks that list and the end by the
+  server clock).
+- Certificates no longer accepted: PKI's list (above); no CRL, no OCSP yet. **Remove** in the dialog stops renewals.
 - Logs: one line per request (no keys, no CSR bodies).
 - Limits (`EstConnectionSlots`): 64 connections at once, 4 per address (per site: the same address at two sites is two
   cameras; IPv6 per /64, IPv4 mapped into IPv6 as IPv4), at most 16 of them before the handshake showed a client certificate
@@ -168,9 +177,9 @@ also at sites (through a relay of the site node). A clean-room implementation fr
   device's Enrollment policy does not allow), 503 no OADM PRO or no CA (Retry-After 600; "The CA of this profile cannot
   issue certificates." when the CA of the profile's issuing policy cannot issue).
 - Issuing (decision 2026-10-25): a profile's certificates come from the CA its issuing policy names ("Issued by": the
-  OADM CA or an imported CA with its key; `DeviceCertificateRequest.IssuerId`); `cacerts` and the answer carry that CA's
-  chain. The EST sign-in CAs stay as they are: only the Axis device ID and OADM CAs (the current and previous ones) can be
-  EST sign-in CAs, because EST reads a camera's serial from a certificate's name only where OADM vouches for it; an
+  first-start root CA, a created CA or an imported CA with its key; `DeviceCertificateRequest.IssuerId`); `cacerts` and
+  the answer carry that CA's chain. Only the Axis device ID and CAs made in OADM (the first-start root CA, previous OADM
+  CAs, created CAs: their key never left OADM) can be EST sign-in CAs, because EST reads a camera's serial from a certificate's name only where OADM vouches for it; an
   imported CA's key may also be used outside OADM, so a name in its certificate proves nothing. A camera with a certificate
   of an imported CA renews with that certificate when it is its current one in PKI's store ("Renewal with the current
   certificate"), else with its Axis device ID.
@@ -181,10 +190,10 @@ also at sites (through a relay of the site node). A clean-room implementation fr
 ## Certificate renewals and pinning
 
 A camera that renews its HTTPS certificate by EST presents a new certificate every period. OADM accepts a new device
-certificate **without** Certificate changed when a CA of PKI issued it **directly** (the OADM CA, a previous OADM CA or an
-imported CA with its key, `ITrustAnchors.SetRenewalIssuers`; never the roots above an imported CA, never another plugin's
+certificate **without** Certificate changed when a CA of PKI issued it **directly** (the first-start root CA, a previous OADM CA, a
+created CA or an imported CA with its key, `ITrustAnchors.SetRenewalIssuers`; never the roots above an imported CA, never another plugin's
 anchors), it is valid now,
-has serverAuth and names the same device (`axis-<serial>.local`), and pins it again. Any other change still shows **Certificate changed**. Applies to all OADM-CA certificates
+has serverAuth and names the same device (`axis-<serial>.local`), and pins it again. Any other change still shows **Certificate changed**. Applies to all certificates of PKI's CAs
 (also PKI's own HTTPS task).
 
 ## Renewals and Not renewed
@@ -259,7 +268,7 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    `supportedServices` lists only the services no profile uses yet, so the services of the camera's profiles count too.
 2. Read the camera's certificates: the device ID of the profile's key (ECC or RSA, the smallest key).
 3. Install the CA certificates: the issuer chain of the certificate the EST server policy picks (fix of 2026-10-25: it
-   may be a previous OADM CA or an imported CA, never simply the current OADM CA) with `cert` v1, matched by fingerprint
+   may be any CA of the list, never simply the first-start root CA) with `cert` v1, matched by fingerprint
    (an existing alias is reused), new ones as "OADM CA <8 hex>" like PKI's; never deleting. The check step refuses when
    the EST server has no usable certificate (its status text), when PKI does not know its issuer ("The CA that issued
    the EST server's certificate is not in the CA list. Choose another certificate in the EST server policy.") and when
@@ -295,7 +304,8 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    changes how OADM connects.
 6. With the dot1x profile (decision 2026-10-25): **Install the RADIUS server CA** and **Set the RADIUS server CA**, so the
    camera checks the RADIUS server with the RADIUS server CA of the profile's IEEE 802.1X policy, as Enable IEEE 802.1X
-   sets it (else a new OADM CA leaves the camera trusting the old one: TLS alert 48, seen 2026-10-25). The CA is found in
+   sets it (else a camera whose RADIUS server certificate now comes from another CA keeps trusting the old one: TLS
+   alert 48, seen 2026-10-25). The CA is found in
    the check step, only with IEEE 802.1X on (missing from the CA list: nothing is
    changed; with IEEE 802.1X off it is not needed). Run before the HTTPS profile is written (its certificate restarts the
    web server), else after the profiles. Only the CA list of the camera's EAP-TLS settings is written
@@ -336,7 +346,7 @@ of OADM, PKI included, stays Apache 2.0. The THIRD-PARTY notices name the part (
 
 1. **Host and SDK** (built): `"pro": true` in plugin.json, the Plugins page lock and badge, turning PRO plugins off when
    the license ends (`docs/spec/plugins.md` "OADM PRO plugins"); plugin services, PKI offers `IDeviceCertificateAuthority`
-   ("Plugin services"); accepting OADM-CA renewals without Certificate changed (`docs/spec/vapix.md`).
+   ("Plugin services"); accepting renewals of PKI's CAs without Certificate changed (`docs/spec/vapix.md`).
 2. **EST server** (built): listener, TLS, HTTP/1.1, the three operations, device ID check (the Axis device ID CA bundles
    from axis.com, checksums checked), managed-device check, issuing through PKI, enrollments, events, the page; tests over TLS with a test device ID hierarchy. Recorded camera requests follow with stage 3.
 3. **Deploy task** (built; since 2026-10-22 one task, Certificate enrollment, that sets up or removes) with the camera's `cert` / `cert-est` APIs; fixtures from a real camera, the
