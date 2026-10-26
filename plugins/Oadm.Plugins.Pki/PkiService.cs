@@ -278,7 +278,7 @@ public sealed partial class PkiService : IAsyncDisposable
         // The warning days of each device (its Expiry warning policy): the caller's devices in a group user's call.
         var counts = IssuedCounts.From(issued, ca?.Id, now, WarningDaysFor(devices ?? await SystemDevicesAsync(ct).ConfigureAwait(false)), _issued.IsRevoked);
 
-        var roots = await RootTrustAsync(ct).ConfigureAwait(false);
+        var roots = view is null ? await RootTrustAsync(ct).ConfigureAwait(false) : []; // a group's users see no CAs
         var oadmRoot = ca is null ? null : roots.FirstOrDefault(r => string.Equals(r.Fingerprint, ca.Id, StringComparison.OrdinalIgnoreCase));
         bool? installed = oadmRoot?.ServerInstalled;
         var trustError = oadmRoot?.ServerError;
@@ -301,7 +301,7 @@ public sealed partial class PkiService : IAsyncDisposable
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
             Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
-            RootTrust = view is null ? roots : [],
+            RootTrust = roots,
         };
     }
 
