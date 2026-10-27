@@ -136,7 +136,7 @@ public sealed class FirmwareTaskPluginTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None));
 
-        Assert.Contains("Downgrade 11.11.160 → 10.12.236 (older major version) is not allowed", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Downgrade 11.11.160 → 10.12.236 (older major version) is not allowed. Turn on \"Allow downgrade to an older AXIS OS version\".", ex.Message, StringComparison.Ordinal);
         Assert.Contains("Nothing was changed", ex.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("upgrade", device.Methods);
         Assert.Equal(

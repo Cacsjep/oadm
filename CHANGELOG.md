@@ -7,6 +7,12 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Changed
+
+- On a new server the 802.1X trusted CA policy of the first CA carries the CA's real name.
+- The NTP, DHCP, 802.1X and EST servers say the same thing when another program uses their port.
+- A refused firmware downgrade names the checkbox to turn on.
+
 ## [4.5.2] - 2026-10-27
 
 ### Added

@@ -228,7 +228,7 @@ public sealed partial class WaitingDeviceRunner(
             {
                 // Devices added another way meanwhile leave the list without a try (read only while something waits;
                 // every entry, also failed logins, by address as a device stores it or by the expected MAC address).
-                // Per route (docs/spec/sites.md, "Overlapping networks"): an entry of a site compares with that site's devices.
+                // Per route (docs/spec/sites.md, Discovery and moves at sites): an entry of a site compares with that site's devices.
                 var managed = await devices.ListAddressesAsync(ct).ConfigureAwait(false);
                 var gone = await store.RemoveManagedAsync(managed, ct).ConfigureAwait(false);
                 if (gone.Count > 0)

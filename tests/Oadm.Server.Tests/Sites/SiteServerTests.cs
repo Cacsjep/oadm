@@ -27,8 +27,8 @@ using SdkStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// The server side of the sites with the real OADM Site Node in this process (docs/spec/sites.md, Tests: "Server with an
-/// in-process node"), over real TLS and gRPC on loopback.
+/// The server side of the sites with the real OADM Site Node in this process (docs/spec/sites.md, Server side;
+/// src/Oadm.SiteNode/README.md, "Tests"), over real TLS and gRPC on loopback.
 /// </summary>
 public sealed class SiteServerTests
 {

@@ -4,7 +4,7 @@ using System.Net.Sockets;
 namespace Oadm.Sites.Transport;
 
 /// <summary>
-/// Counts attempts per source address and in all within a fixed window (docs/spec/sites.md, Security review): the site port of
+/// Counts attempts per source address and in all within a fixed window (docs/spec/sites.md, Server side: Limits before a site is bound): the site port of
 /// the server before TLS, the pairing calls of the node. IPv6 addresses count per /64 (one host owns a whole /64). At most
 /// <c>maxAddresses</c> are kept: entries older than the window go first, and when the table is full the address whose
 /// window started first makes room (a flood from many addresses never locks out a new one). Every call is O(1) apart from

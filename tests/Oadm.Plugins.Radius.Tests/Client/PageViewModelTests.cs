@@ -94,10 +94,10 @@ public sealed class PageViewModelTests
     {
         using var vm = new RadiusViewModel(_ctx);
         await vm.LoadServerAsync(CancellationToken.None);
-        _server.Failures[RadiusMethods.SaveSettings] = new InvalidOperationException("Port 1812 is used by another program");
+        _server.Failures[RadiusMethods.SaveSettings] = new InvalidOperationException("Port 1812 is used by another program.");
         vm.Settings.Port = "1813";
         await vm.SaveCommand.ExecuteAsync(null);
-        Assert.Equal("Port 1812 is used by another program", vm.Settings.ErrorOf(nameof(SettingsViewModel.Port)));
+        Assert.Equal("Port 1812 is used by another program.", vm.Settings.ErrorOf(nameof(SettingsViewModel.Port)));
         Assert.Null(vm.ActionError);
 
         _server.Failures[RadiusMethods.SaveSettings] = new InvalidOperationException("OADM PRO is not active.");
@@ -369,11 +369,11 @@ public sealed class PageViewModelTests
         vm.OnEvent(new Oadm.Sdk.Plugins.PluginEvent(RadiusTopics.State, RadiusJson.Serialize(_server.State with
         {
             Running = false,
-            StatusText = "Port 1812 is used by another program",
+            StatusText = "Port 1812 is used by another program.",
             StatusKind = Oadm.Sdk.Network.ServiceStatus.Error,
             SitesNotAllowed = [new SiteRef(FakeRadiusBackend.BuildingB, "Building B")],
         })));
-        Assert.Equal(("Port 1812 is used by another program", false), (vm.StatusText, vm.StatusOk));
+        Assert.Equal(("Port 1812 is used by another program.", false), (vm.StatusText, vm.StatusOk));
         Assert.Equal("Building B: allow the 802.1X server in the OADM Site Node app", vm.SitesText);
         Assert.Equal("1900", vm.Settings.Port);
 

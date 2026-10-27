@@ -3,7 +3,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Config;
 
 /// <summary>
-/// The two port lists (docs/spec/sites.md, "Ports"): Connect to (devices) and Listen on (relays). A port allowed for one use
+/// The two port lists (docs/spec/sites.md, The node: Node app, Ports): Connect to (devices) and Listen on (relays). A port allowed for one use
 /// never allows the other. The server asks for more with RequestPorts; nothing is allowed by itself.
 /// </summary>
 public sealed class PortPolicy(NodeStore store)

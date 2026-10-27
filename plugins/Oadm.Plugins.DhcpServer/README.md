@@ -85,7 +85,7 @@ When bound to 0.0.0.0, every OS also checks the interface each packet arrived on
   Running two DHCP servers causes address conflicts. Enable anyway?"; after "Enable anyway" the status says `Running on
   ...`.
 - Status (`DhcpStatusTexts`, `ui:StatusChip` left of Save, detail as tooltip; protocol details only in the server log):
-  `Running on Ethernet (10.0.0.17/24)`, `Stopped`, `Port 67 is in use by another program` (the Windows tooltip names the
+  `Running on Ethernet (10.0.0.17/24)`, `Stopped`, `Port 67 is used by another program.` (`PortBindErrors.InUseText`; the Windows tooltip names the
   running DHCP Server role or Internet Connection Sharing, via `sc query DHCPServer` / `SharedAccess`; AccessDenied on
   Windows also means in use; Linux: dnsmasq, isc-dhcp-server, NetworkManager + `ss`; macOS: bootpd/Internet Sharing +
   `lsof`), `Insufficient permission to use port 67` (Linux: root or `setcap`; macOS: sudo), `Interface <name> is not
@@ -194,7 +194,7 @@ Never run these on a production network: a second DHCP server hands out wrong ad
     DHCP server (10.0.0.138) answers on this network. ... Enable anyway?" appears; Cancel keeps it off, Enable anyway
     starts it.
 11. **Port in use**: on Windows start Internet Connection Sharing (or on Linux `dnsmasq --port=0 --dhcp-range=...`), save:
-    "Port 67 is in use by another program" with the hint in the tooltip; stop the other program: OADM starts within 30 s.
+    "Port 67 is used by another program." with the hint in the tooltip; stop the other program: OADM starts within 30 s.
 12. **Restart**: restart the OADM server: it comes back enabled with the same leases; the cameras keep their addresses
     at the next renewal.
 13. **Automatic add**: add the cameras' credential on the Credentials page, check "Automatically add Axis devices that

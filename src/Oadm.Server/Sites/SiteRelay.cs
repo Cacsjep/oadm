@@ -14,7 +14,7 @@ using SdkSiteTexts = Oadm.Sdk.Sites.SiteTexts;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// A relay at a site (docs/spec/sites.md, "Relay"): keeps one node <c>Relay</c> call open while the site is online and opens it
+/// A relay at a site (docs/spec/sites.md, Plugins at sites): keeps one node <c>Relay</c> call open while the site is online and opens it
 /// again after the node reconnects. Its <see cref="State"/> follows the node's answers (running, waiting for approval in
 /// the node app, port in use, no permission) and the site (offline, node too old). The node asks its user for a port it
 /// has not allowed (Listen on, with the reason) when the call opens. <see cref="ReleaseAsync"/> tells the node that the plugin

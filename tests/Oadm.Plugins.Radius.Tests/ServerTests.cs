@@ -297,7 +297,7 @@ public sealed class ServerTests
         Assert.Equal(3, state.PoliciesApply); // the defaults: 802.1X server, Allow CA OADM CA and Axis device ID
 
         harness.Listener.SetState(RelayState.PortInUse);
-        Assert.Equal("Port 1812 is used by another program", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
+        Assert.Equal("Port 1812 is used by another program.", (await harness.CallAsync<RadiusState>(RadiusMethods.GetState)).StatusText);
     }
 
     [Fact]

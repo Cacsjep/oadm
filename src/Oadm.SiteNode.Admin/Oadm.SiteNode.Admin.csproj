@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- The local admin channel of the OADM Site Node (docs/spec/sites.md, "Site node program"): what the service, its command
+  <!-- The local admin channel of the OADM Site Node (src/Oadm.SiteNode/README.md, "Local channel"): what the service, its command
        line and the app share. No ASP.NET, no Avalonia. -->
   <ItemGroup>
     <InternalsVisibleTo Include="Oadm.SiteNode.Tests" />

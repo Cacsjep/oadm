@@ -84,7 +84,7 @@ public sealed partial class RadiusViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsSaving { get; set; }
 
-    /// <summary>"Running on port 1812", "Port 1812 is used by another program", ... left of Save.</summary>
+    /// <summary>"Running on port 1812", "Port 1812 is used by another program.", ... left of Save.</summary>
     [ObservableProperty]
     public partial string StatusText { get; set; } = "Loading";
 

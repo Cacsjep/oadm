@@ -10,7 +10,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// One TLS connection between the server and a site node, whichever side opened it (docs/spec/sites.md, Transport): the node
+/// One TLS connection between the server and a site node, whichever side opened it (src/Oadm.SiteNode/README.md, "Links"): the node
 /// serves gRPC on it and the server is the HTTP/2 client. The channel's connect callback hands out this one connection
 /// once; when it ends, every call on it fails and <see cref="Closed"/> completes.
 /// </summary>

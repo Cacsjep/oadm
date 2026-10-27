@@ -52,6 +52,9 @@ public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
 /// </summary>
 public static class FirmwareCompatibility
 {
+    /// <summary>The downgrade checkbox of the dialog as the refusals name it (its label without the hint in brackets).</summary>
+    public const string AllowDowngradeName = "Allow downgrade to an older AXIS OS version";
+
     public static FirmwareCheck Evaluate(string? deviceModel, string? deviceVersion, FirmwareImageInfo image, FactoryDefaultMode mode, bool allowDowngrade)
     {
         ArgumentNullException.ThrowIfNull(image);
@@ -71,7 +74,7 @@ public static class FirmwareCompatibility
             if (mode != FactoryDefaultMode.None && !allowDowngrade)
             {
                 return new(FirmwareVerdict.UnknownVersionRefused,
-                    "The firmware version could not be compared, so a downgrade cannot be ruled out. Enable \"Allow downgrade\" to use a factory default with this file.");
+                    $"The firmware version could not be compared, so a downgrade cannot be ruled out. Turn on \"{AllowDowngradeName}\" to use a factory default with this file.");
             }
 
             return new(FirmwareVerdict.DeviceValidates, "Version not known from the file name; the device checks the image before installing it.");
@@ -93,7 +96,7 @@ public static class FirmwareCompatibility
         var across = target.Major != current.Major ? " (older major version)" : string.Empty;
         if (!allowDowngrade)
         {
-            return new(FirmwareVerdict.DowngradeBlocked, $"Downgrade {current} → {target}{across} is not allowed. Enable \"Allow downgrade\".");
+            return new(FirmwareVerdict.DowngradeBlocked, $"Downgrade {current} → {target}{across} is not allowed. Turn on \"{AllowDowngradeName}\".");
         }
 
         if (mode == FactoryDefaultMode.None)

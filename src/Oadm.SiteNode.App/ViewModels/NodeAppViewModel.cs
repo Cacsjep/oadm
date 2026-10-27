@@ -44,7 +44,7 @@ public enum NodeStatusKind
 }
 
 /// <summary>
-/// The one window of the OADM Site Node app (docs/spec/sites.md, "App"): server and pairing code, networks, ports and
+/// The one window of the OADM Site Node app (docs/spec/sites.md, The node: Node app): server and pairing code, networks, ports and
 /// requests, the node status, Reset. Reads the service's state every 2 seconds (the pairing code is part of it while the
 /// node is not bound); every change goes through <see cref="IElevation"/> unless the app runs as an administrator.
 /// </summary>

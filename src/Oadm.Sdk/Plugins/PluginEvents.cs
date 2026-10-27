@@ -24,7 +24,7 @@ public interface IPluginEvents
 
     /// <summary>
     /// Sends an event to the watchers <paramref name="audience"/> covers (SDK 0.4.0): an event about devices reaches only
-    /// users who can see them. On OADM 4.2 and later <see cref="Publish(string, string?)"/> reaches only watchers with all
+    /// users who can see them. On OADM 4.5 and later <see cref="Publish(string, string?)"/> reaches only watchers with all
     /// devices. The default (older hosts, which have no device groups) is <see cref="Publish(string, string?)"/>.
     /// </summary>
     void Publish(string topic, string? payloadJson, PluginEventAudience audience) => Publish(topic, payloadJson);

@@ -149,7 +149,7 @@ public static class EstTaskIds
     }
 }
 
-/// <summary>Common part of the EST tasks: group Security, AXIS OS 12.10+, not at sites yet (stage 4).</summary>
+/// <summary>Common part of the EST tasks: group Security, AXIS OS 12.10+, also at sites (through a relay of the site node).</summary>
 public abstract class EstTaskBase(Func<EstService?> service, Func<bool>? shown = null) : ITaskPlugin
 {
     public abstract string Id { get; }

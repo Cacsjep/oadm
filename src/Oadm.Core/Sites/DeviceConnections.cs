@@ -8,7 +8,7 @@ namespace Oadm.Core.Sites;
 
 /// <summary>
 /// The one place that builds <see cref="VapixConnectionOptions"/>, so every connection to a device carries its route
-/// (docs/spec/sites.md, Server: Routing). A test checks that no other code in src/ or plugins/ creates options; the banned-API
+/// (docs/spec/vapix.md, Routing). A test checks that no other code in src/ or plugins/ creates options; the banned-API
 /// analyzer cannot see a missing route. Callers change address, scheme or pin with a <c>with</c> expression; the route
 /// stays the device's.
 /// </summary>

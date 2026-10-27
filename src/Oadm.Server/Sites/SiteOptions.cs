@@ -1,6 +1,6 @@
 namespace Oadm.Server.Sites;
 
-/// <summary>The limits and waiting times of the sites (docs/spec/sites.md, the defaults); tests shorten or replace them.</summary>
+/// <summary>The limits and waiting times of the sites (docs/spec/sites.md, Server side); tests shorten or replace them.</summary>
 public sealed class SiteOptions
 {
     /// <summary>An online site goes offline after this long without an answer from its node.</summary>

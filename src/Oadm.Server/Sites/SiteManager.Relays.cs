@@ -4,7 +4,7 @@ using Oadm.Sdk.Sites;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// Relays into the sites (docs/spec/sites.md, "Relay", <see cref="ISiteRelays"/>): the bound sites for plugins and one
+/// Relays into the sites (docs/spec/sites.md, Plugins at sites, <see cref="ISiteRelays"/>): the bound sites for plugins and one
 /// self-reopening relay per <see cref="OpenUdp"/> / <see cref="OpenTcp"/> over the node's <c>Relay</c> call.
 /// </summary>
 public sealed partial class SiteManager : ISiteRelays

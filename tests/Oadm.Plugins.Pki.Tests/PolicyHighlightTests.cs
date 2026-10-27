@@ -54,7 +54,7 @@ public sealed class PolicyHighlightTests
         Assert.Empty(page.Rows); // nothing read yet: it waits
         await page.LoadAsync(CancellationToken.None);
 
-        Assert.Equal(["802.1X server", "OADM CA", "Axis device ID", "Building B", "Storage room"], Highlighted(page));
+        Assert.Equal(["802.1X server", "OADM Root CA SERVER01", "Axis device ID", "Building B", "Storage room"], Highlighted(page));
         Assert.All(page.Rows.Where(r => !r.IsHighlighted), r => Assert.False(PolicyKinds.IsDot1x(r.Source.Kind)));
         Assert.Equal("802.1X server", shown?.Name); // the first one is scrolled into view
 

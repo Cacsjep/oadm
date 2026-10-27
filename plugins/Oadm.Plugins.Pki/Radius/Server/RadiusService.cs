@@ -2080,7 +2080,7 @@ public static class RadiusTexts
 
     public static string Running(int port) => string.Create(CultureInfo.InvariantCulture, $"Running on port {port}");
 
-    public static string PortInUse(int port) => string.Create(CultureInfo.InvariantCulture, $"Port {port} is used by another program");
+    public static string PortInUse(int port) => Sdk.Network.PortBindErrors.InUseText(port);
 
     public static string NotAvailable(string interfaceName) => $"Interface {interfaceName} is not available";
 }

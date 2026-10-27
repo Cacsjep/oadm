@@ -12,7 +12,7 @@ namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
 /// After a server start every site is "starting" until its node is back (or the start window passed): the devices show
-/// Site offline meanwhile, but no event changes because of it (docs/spec/sites.md, Site offline; stream 2 found the edges).
+/// Site offline meanwhile, but no event changes because of it (docs/spec/sites.md, Server side: SiteOptions).
 /// </summary>
 public sealed class SiteStartupGraceTests
 {

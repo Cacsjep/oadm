@@ -10,7 +10,7 @@ using Oadm.SiteNode.Networks;
 namespace Oadm.SiteNode.Devices;
 
 /// <summary>
-/// The limits of one node (docs/spec/sites.md, "Limits per node"). Probes (ProbeTcp, the ping fallback and every address of a
+/// The limits of one node (src/Oadm.SiteNode/README.md, "Dial"). Probes (ProbeTcp, the ping fallback and every address of a
 /// range scan) wait for one of <paramref name="Probes"/> places; at most <paramref name="Scans"/> range scans run at once.
 /// </summary>
 public sealed record DialLimits(int ShortOpen = 1024, int ShortConnecting = 256, int PermanentConnecting = 64, int Probes = 64, int Scans = 4)
@@ -64,7 +64,7 @@ public enum ProbeResult
 }
 
 /// <summary>
-/// Opens the TCP connections of <c>Dial</c> (docs/spec/sites.md, "Transport"): the port must be on Connect to, the address on
+/// Opens the TCP connections of <c>Dial</c> (src/Oadm.SiteNode/README.md, "Dial"): the port must be on Connect to, the address on
 /// a reached network, the node under its limits; then the device's own socket error comes back as a DEVICE_* error and
 /// the node's problems as SITE_* errors. Every dial is a line in the connection log.
 /// </summary>

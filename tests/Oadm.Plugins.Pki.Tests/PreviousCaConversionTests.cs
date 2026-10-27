@@ -90,7 +90,7 @@ public sealed class PreviousCaConversionTests
         await using var pki = await PkiHarness.StartAsync();
         Assert.DoesNotContain(PolicyStore.PreviousCasOwner, pki.Policies.Converted); // no trusted CA policies yet: nothing marked
 
-        await pki.Policies.ConvertOnceAsync(PolicyStore.RadiusOwner, _ => Task.FromResult(RadiusPolicies.DefaultAllowCaPolicies()), CancellationToken.None);
+        await pki.Policies.ConvertOnceAsync(PolicyStore.RadiusOwner, _ => Task.FromResult(RadiusPolicies.DefaultAllowCaPolicies(pki.Service.Authorities())), CancellationToken.None);
         var before = pki.Policies.All.ToList();
         Assert.True(await pki.Policies.ConvertPreviousCasOnceAsync(CancellationToken.None));
 

@@ -91,8 +91,8 @@ public sealed record DiscoveredDevice(
     public Sites.DeviceRoute Route { get; init; }
 
     /// <summary>
-    /// The other routes the same device (MAC address) answered through in the session (docs/spec/sites.md, "Discovery,
-    /// everywhere by itself"): the row shows <see cref="Route"/>, its tooltip names these.
+    /// The other routes the same device (MAC address) answered through in the session (docs/spec/sites.md,
+    /// Discovery and moves at sites): the row shows <see cref="Route"/>, its tooltip names these.
     /// </summary>
     public DeviceRoutes OtherRoutes { get; init; } = DeviceRoutes.Empty;
 }

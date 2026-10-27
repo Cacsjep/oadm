@@ -136,22 +136,11 @@ public sealed partial class MetadataMonitorPlugin : ICorePlugin, IAsyncDisposabl
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
-    /// <summary>The refusal text for a device status, or null when the stream may be opened.</summary>
-    internal static string? RefusalFor(DeviceStatus status) => status switch
-    {
-        DeviceStatus.CertificateChanged => DeviceMessages.CertificateChanged,
-        DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
-        DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
-        DeviceStatus.SiteOffline => Oadm.Sdk.Sites.SiteTexts.SiteOffline(null),
-        _ => null,
-    };
-
-    /// <summary>The refusal text for <paramref name="device"/>: "Site offline: Building B" while its site is offline (nothing is sent).</summary>
-    internal static string? RefusalFor(IDeviceInfo device)
-    {
-        ArgumentNullException.ThrowIfNull(device);
-        return device.Status == DeviceStatus.SiteOffline ? Oadm.Sdk.Sites.SiteTexts.SiteOffline(device.SiteName) : RefusalFor(device.Status);
-    }
+    /// <summary>
+    /// The shared refusal text for <paramref name="device"/> (<see cref="DeviceMessages.Refusal(IDeviceInfo, bool)"/>), or null
+    /// when the stream may be opened: "Site offline: Building B" while its site is offline (nothing is sent).
+    /// </summary>
+    internal static string? RefusalFor(IDeviceInfo device) => DeviceMessages.Refusal(device);
 
 
     /// <summary>The user's stream job; another user's id and an unknown one answer alike.</summary>

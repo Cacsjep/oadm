@@ -175,7 +175,7 @@ public sealed class AssignIpTests
     [Fact]
     public async Task Check_query_lists_only_the_managed_devices_on_the_routes_of_the_device()
     {
-        // Two sites both use 192.168.0.20 (docs/spec/sites.md, "Overlapping networks"): only the device's own site counts.
+        // Two sites both use 192.168.0.20 (docs/spec/sites.md, Discovery and moves at sites): only the device's own site counts.
         var siteA = Guid.NewGuid();
         var siteB = Guid.NewGuid();
         var mine = new FakeDevice(Guid.NewGuid(), "192.168.0.10", Serial: "ACCC8E0000A0") { SiteId = siteA };

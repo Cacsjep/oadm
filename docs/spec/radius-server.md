@@ -16,7 +16,8 @@ certificate deleted on the PKI page is no longer accepted.
 
 - **Only managed devices pass:** the client certificate must come from a CA of an 802.1X trusted CA policy (directly, or
   through intermediate CAs OADM issues with) **and** name a device OADM manages (see "Who passes"). A genuine certificate
-  of a device OADM does not manage is refused. The trusted root store of the server is not used.
+  of a device OADM does not manage is refused. The trusted root store of the server is not used. A new server trusts the
+  first-start root CA (policy named after the CA, e.g. "OADM Root CA SERVER01") and the Axis device ID.
 - **Result:** Access-Accept or Access-Reject; a **VLAN** only from a VLAN policy (none: the switch port keeps its own; there
   is no default VLAN).
 - **Switches change while the server runs:** adding, editing or removing a switch applies at once to the running server,
@@ -38,7 +39,7 @@ certificate deleted on the PKI page is no longer accepted.
     the link "N policies applied" left (802.1X server, 802.1X trusted CA, VLAN and Block policies, 3 on a new server; opens
     PKI's Policies tab), the status chip ("Running on port 1812", "OADM PRO is not active.", "The PKI has no certificate
     authority.", "The 802.1X server has no certificate. Choose one in its policy.", "The 802.1X server cannot use its
-    certificate: it has ended." (`docs/spec/pki.md` "Server certificates"), "Port 1812 is used by another program",
+    certificate: it has ended." (`docs/spec/pki.md` "Server certificates"), "Port 1812 is used by another program." (`PortBindErrors.InUseText`, the one text of every plugin),
     "Interface Ethernet 2 is not available") and Turn off directly left of **Save** (the one accent button of the page).
     Below it the sites that did not allow the port and a save error without a field.
   - **Switches:** Name (flexes; a switch that needs attention gets a dot before its name, red for "Wrong secret" and "Site

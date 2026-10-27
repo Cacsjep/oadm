@@ -60,7 +60,7 @@ public sealed class PolicyPageTests
                 (PolicyTableGroups.Issuing, "IEEE 802.1X", "IEEE 802.1X certificate", true),
                 (PolicyTableGroups.Servers, "EST server", "EST server", true), // in age order: PKI made it before the 802.1X server's conversion
                 (PolicyTableGroups.Servers, "802.1X server", "802.1X server", true),
-                (PolicyTableGroups.Access, "OADM CA", "802.1X trusted CA", false),
+                (PolicyTableGroups.Access, "OADM Root CA SERVER01", "802.1X trusted CA", false),
                 (PolicyTableGroups.Access, "Axis device ID", "802.1X trusted CA", false),
                 (PolicyTableGroups.Access, "Building B", "VLAN", false),
                 (PolicyTableGroups.Access, "Storage room", "Block", false),
@@ -411,10 +411,10 @@ public sealed class PolicyPageTests
         Assert.Equal(PolicyTexts.CaTaken, editor.ErrorOf(nameof(PolicyEditorViewModel.Ca)));
 
         // An existing policy keeps its type.
-        var existing = Open(page, "OADM CA");
+        var existing = Open(page, "OADM Root CA SERVER01");
         Assert.False(existing.IsNew);
         Assert.Equal([PolicyKinds.AllowCa], existing.KindChoices.Select(k => k.Value));
-        Assert.Equal("OADM CA", existing.Heading);
+        Assert.Equal("OADM Root CA SERVER01", existing.Heading);
     }
 
     [Fact]

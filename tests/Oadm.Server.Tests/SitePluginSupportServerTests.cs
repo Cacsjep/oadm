@@ -17,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests;
 
 /// <summary>
-/// <c>siteSupport</c> on the server (docs/spec/sites.md, Plugins and SDK: Declaration): a task of a package that does not work
+/// <c>siteSupport</c> on the server (docs/spec/sites.md, Plugins at sites: siteSupport): a task of a package that does not work
 /// at sites is greyed for devices there with "Not available for devices at a site" and refused before it runs; a query too;
 /// the Plugins page gets the site support and the ports; the task's network is the device's route.
 /// </summary>

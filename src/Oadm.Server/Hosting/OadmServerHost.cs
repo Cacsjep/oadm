@@ -222,7 +222,7 @@ public static partial class OadmServerHost
         // VAPIX
         // Extra trust anchors of core plugins (PKI CA): device certificates chaining to them are rated Trusted.
         services.AddSingleton<TrustAnchorRegistry>();
-        // Routing (docs/spec/sites.md): every device connection opens on its route; without a site transport only the server's
+        // Routing (docs/spec/vapix.md): every device connection opens on its route; without a site transport only the server's
         // own network exists and everything connects as before.
         services.AddSingleton(sp => new Core.Sites.DeviceRouter(sp.GetService<Core.Sites.ISiteTransport>(), sp.GetService<Core.Sites.ISiteStates>()));
         services.AddSingleton(sp => new Core.Sites.RoutedDns(sp.GetService<Core.Sites.ISiteStates>(), sp.GetService<Core.Sites.ISiteNetwork>()));

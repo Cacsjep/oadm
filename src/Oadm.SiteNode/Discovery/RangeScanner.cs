@@ -15,7 +15,7 @@ using Oadm.SiteNode.State;
 namespace Oadm.SiteNode.Discovery;
 
 /// <summary>
-/// <c>RangeScan</c>: the first contact of a range scan on the node (docs/spec/sites.md, "Discovery"), so thousands of short
+/// <c>RangeScan</c>: the first contact of a range scan on the node (src/Oadm.SiteNode/README.md, "Network checks and discovery"), so thousands of short
 /// connects stay at the site: every address of an IPv4 range on the reached networks with an open TCP 443 and / or 80
 /// (only the ports on Connect to). Addresses outside the networks are counted as tried. Progress every 1 % of the range;
 /// the last message has <c>finished</c>. One line in the connection log per scan. Every connect is a probe of the

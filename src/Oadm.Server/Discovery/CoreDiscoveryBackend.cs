@@ -14,7 +14,7 @@ namespace Oadm.Server.Discovery;
 
 /// <summary><see cref="IDiscoveryBackend"/> over the Core discovery (mDNS browser, range scanner, sessions).</summary>
 /// <remarks>
-/// Every mode asks everywhere by itself (docs/spec/sites.md, "Discovery, everywhere by itself"): the Core discovery runs
+/// Every mode asks everywhere by itself (docs/spec/sites.md, Discovery and moves at sites): the Core discovery runs
 /// zero-conf and range scans on the server's own network and every online site; an address of "Add manually", an imported
 /// line and a waiting device go to the server's own network and each online site that reaches the address, a host name to
 /// all of them (each resolves it itself).

@@ -10,7 +10,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// The server's site identity (docs/spec/sites.md, Server identity): an ECDSA P-256 key and self-signed certificate the server
+/// The server's site identity (docs/spec/sites.md, Server side: SiteIdentityStore): an ECDSA P-256 key and self-signed certificate the server
 /// presents to site nodes, apart from its TLS certificate, so a new TLS certificate or a moved server keeps its sites.
 /// Kept in the setting <see cref="SiteSettings.Identity"/> as PKCS#12, encrypted with the master key (purpose
 /// <see cref="SiteSettings.IdentityPurpose"/>), so it travels with a backup (oadm.db + master.key). A key that cannot be

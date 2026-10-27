@@ -84,7 +84,7 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-            <Button Classes="secondary" Command="{Binding TryCommand}" IsVisible="{Binding MaySend}" ToolTip.Tip="Send the selected command to this device now (read-only commands run immediately, changes ask first)">
+            <Button Classes="secondary" Command="{Binding TryCommand}" IsVisible="{Binding MaySend}" ToolTip.Tip="Changes ask first">
               <ui:IconLabel Icon="{DynamicResource Icon.send}" Text="Send" />
             </Button>
           </StackPanel>

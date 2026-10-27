@@ -17,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// The server side of the sites (docs/spec/sites.md, Server): the bound sites and their node sessions, the nodes waiting to be
+/// The server side of the sites (docs/spec/sites.md, Server side): the bound sites and their node sessions, the nodes waiting to be
 /// bound, the site listener (Accept site nodes), and the one way the server opens a connection through a node
 /// (<see cref="ISiteTransport"/>). Online and offline live in memory only, with the waiting times of
 /// <see cref="SiteOptions"/>: offline after 30 s without an answer, online again after 60 s stable, and after a server
@@ -1294,7 +1294,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 }
 
-/// <summary>Audit actions of the sites (docs/spec/sites.md, Roles, audit and secrets).</summary>
+/// <summary>Audit actions of the sites (docs/spec/sites.md, Access and audit).</summary>
 public static class SiteAudit
 {
     public const string AcceptOn = "Turned on site nodes";

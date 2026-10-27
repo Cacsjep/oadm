@@ -9,7 +9,7 @@ using Oadm.Core.Sites;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// The connections of one bound site's node (docs/spec/sites.md, "Two connections per node"): the <b>control</b> link (Watch,
+/// The connections of one bound site's node (docs/spec/sites.md, Server side: Sessions): the <b>control</b> link (Watch,
 /// the heartbeat, requests) and up to 8 <b>worker</b> links that carry every <c>Dial</c>, so a large transfer never
 /// delays the heartbeat. The node opens worker links when asked (<c>OpenConnections</c>). The session ends when the control link ends or stops answering.
 /// </summary>

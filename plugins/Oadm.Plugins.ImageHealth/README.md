@@ -13,7 +13,7 @@ AXIS Image Health Analytics (AIHA) on the chosen cameras that have the app. Read
 | Load | 24 cameras at a time for the plugin (the checks of every device group together), 3 s per request. |
 | Rows | A camera with the app stopped stays in the table as **Not running**; cameras without the app are only counted. |
 | Counts | Each camera with the app counts in exactly one of Good, Detected, Pending, Errors; the worst state wins (Errors > Detected > Pending > Good). A detection turned off in the app is no problem: such a camera is Good, and Detection off counts the checked cameras with a detection off on top. Not running and could not be checked count as Errors. The cards count every camera, not the search (`ImageHealthCounts`, O(n)). |
-| Events | A live display only: no background check and no events. Event rules use the app's own events through Device triggers (`Image Health Analytics - Blur` ... `Any-Active-Events`, on/off). An old stored plugin setting `config` is ignored. |
+| Events | A live display only: no background check and no events. Event rules use the app's own events through Device triggers (`Image Health Analytics - Blur` ... `Any-Active-Events`, on/off). |
 
 ## Device API
 

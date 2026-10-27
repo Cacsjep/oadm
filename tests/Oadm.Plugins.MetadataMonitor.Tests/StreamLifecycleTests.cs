@@ -143,10 +143,10 @@ public sealed class StreamLifecycleTests
     }
 
     [Theory]
-    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed. Remove the device and add it again to trust the new certificate.")]
+    [InlineData(DeviceStatus.CertificateChanged, DeviceMessages.CertificateChanged)]
     [InlineData(DeviceStatus.SiteOffline, "Site offline")]
-    [InlineData(DeviceStatus.CredentialsRequired, "Credentials required - the device rejects the stored credentials")]
-    [InlineData(DeviceStatus.PasswordNotSet, "Password not set - the device is in factory default")]
+    [InlineData(DeviceStatus.CredentialsRequired, DeviceMessages.CredentialsRequired)]
+    [InlineData(DeviceStatus.PasswordNotSet, DeviceMessages.PasswordNotSet)]
     public async Task Devices_with_a_bad_status_are_refused_without_connecting(DeviceStatus status, string text)
     {
         await using var rig = await new Rig().StartAsync();

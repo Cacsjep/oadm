@@ -5,7 +5,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Sdk.Plugins;
 
 /// <summary>
-/// The user's call of a plugin method (SDK 0.4.0, OADM 4.2): who calls, what the role allows, and the devices the user may
+/// The user's call of a plugin method (SDK 0.4.0, OADM 4.5): who calls, what the role allows, and the devices the user may
 /// reach. A user can be limited to a device group; <see cref="Devices"/>, <see cref="Vapix"/>, <see cref="Tasks"/> and
 /// <see cref="EventStreams"/> see only the devices of that group. Device ids outside it are treated like unknown ids:
 /// <see cref="IDeviceRepository.FindAsync"/> answers null, the others throw <see cref="DevicesNotAvailableException"/>

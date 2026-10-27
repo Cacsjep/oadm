@@ -14,7 +14,7 @@ using Oadm.Tests.Shared;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// The site events of the event rules (docs/spec/sites.md, Event rules): "Site offline: &lt;site&gt;" per site and "Any site
+/// The site events of the event rules (docs/spec/data-model.md, device statuses: event rules): "Site offline: &lt;site&gt;" per site and "Any site
 /// offline", server scope, types that follow the sites; devices of an offline site never fire "Device unreachable".
 /// </summary>
 public sealed class SiteEventsTests

@@ -81,7 +81,7 @@ Evaluated per device in the dialog (preview) and again on the server right befor
 | Same version | any | any | **Done with warning** "Already up to date", nothing uploaded |
 | Newer version | none | any | **Upgrade**, settings kept, OADM commits after verifying |
 | Newer version | soft / hard | any | **Upgrade + factory default**, device commits itself |
-| Older version (same or older major line) | any | off | **Refused** "Downgrade X → Y is not allowed. Enable "Allow downgrade"." |
+| Older version (same or older major line) | any | off | **Refused** "Downgrade X → Y is not allowed. Turn on "Allow downgrade to an older AXIS OS version"." |
 | Older version | none | on | **Refused** "requires a factory default" (the device would answer 409) |
 | Older version | soft / hard | on | **Downgrade + factory default**, device commits itself |
 | Version or product unknown (other file name, device version unknown) | none | any | **Upload**, the device validates the image |

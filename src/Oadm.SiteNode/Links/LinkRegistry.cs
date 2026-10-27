@@ -5,7 +5,7 @@ namespace Oadm.SiteNode.Links;
 
 /// <summary>
 /// The open links. Every link is one the node opened to the one server address it chose, so they all belong to one server
-/// session (docs/spec/sites.md, "Server identity"; the server refuses a second control link of the same identity). Serves every
+/// session (src/Oadm.SiteNode/README.md, "Calls"; the server refuses a second control link of the same identity). Serves every
 /// link on Kestrel through the <see cref="AcceptedStreamListener"/>.
 /// </summary>
 public sealed class LinkRegistry(AcceptedStreamListener listener, BindingState state)

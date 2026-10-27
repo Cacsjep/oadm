@@ -5,7 +5,7 @@ namespace Oadm.Core.Sites;
 
 /// <summary>
 /// The status a device shows: its stored status, or <see cref="DeviceStatus.SiteOffline"/> while its site is not online
-/// (docs/spec/sites.md, Site offline). Computed on every read and every published change, never stored, O(1) per device.
+/// (docs/spec/data-model.md, device statuses). Computed on every read and every published change, never stored, O(1) per device.
 /// </summary>
 public static class SiteDeviceStatus
 {

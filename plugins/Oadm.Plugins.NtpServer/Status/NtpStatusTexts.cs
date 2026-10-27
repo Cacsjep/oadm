@@ -71,7 +71,7 @@ public static class NtpStatusTexts
             case BindErrorKind.InUse:
                 if (os == HostOs.Windows && windowsTimeRunning)
                 {
-                    return new(ServiceStatus.Error, PortBindErrors.InUseText(port) + " (Windows Time service)",
+                    return new(ServiceStatus.Error, PortBindErrors.InUseText(port, "Windows Time service"),
                         $"The Windows Time service (W32Time) holds UDP port {p}. To serve time from OADM, stop it as administrator: " +
                         "\"net stop w32time\" and \"sc config w32time start= disabled\". Windows then no longer synchronizes its own clock; " +
                         "configure an upstream server in OADM instead.");

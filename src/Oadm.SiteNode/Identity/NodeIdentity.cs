@@ -7,7 +7,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.Identity;
 
 /// <summary>
-/// The node's TLS identity (docs/spec/sites.md, "Identity"): ECDSA P-256, self-signed, 100 years (<see cref="SiteTls.CreateIdentity"/>),
+/// The node's TLS identity (src/Oadm.SiteNode/README.md, "Data folder"): ECDSA P-256, self-signed, 100 years (<see cref="SiteTls.CreateIdentity"/>),
 /// new at first start and at every Reset. Stored as a PKCS#12 encrypted with AES-256-GCM under a local key file
 /// (local.key, 32 random bytes, readable by the service account only: 0600 on Linux, the data folder's ACL on Windows).
 /// </summary>

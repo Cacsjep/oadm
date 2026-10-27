@@ -16,7 +16,7 @@ using Oadm.Sites.Transport;
 
 namespace Oadm.SiteNode.Tests;
 
-/// <summary>The node's states with a fake clock (docs/spec/sites.md, "States", "Binding").</summary>
+/// <summary>The node's states with a fake clock (src/Oadm.SiteNode/README.md, "States").</summary>
 public sealed class BindingStateTests : IDisposable
 {
     private readonly TempFolder _folder = new();

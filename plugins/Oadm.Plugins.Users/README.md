@@ -51,8 +51,10 @@ The client references the server project for the shared payload, roles and valid
 | `systemready` 1.x | `systemready.cgi` for the passphrase policy | policy enforced before writing |
 | no `systemready` | none | base rule only (1-64 printable ASCII); the device still enforces its own policy |
 
-`CanRun` applies the same `user-management` 1.0 check to the cached `device.Apis`, so the menu entry
-is hidden for devices whose API list is unknown or incompatible.
+`CanRun` applies the same `user-management` 1.0 check to the cached `device.Apis` (and needs the status Ok or Unknown).
+The context menu always lists **Users**; for such devices it is greyed out with `NotSupportedReason` as tooltip: the status
+text, "Not read yet: refresh the device" while the API list is empty, else "Needs the user management API (this device
+has ...)".
 
 ## Lock-out protection
 

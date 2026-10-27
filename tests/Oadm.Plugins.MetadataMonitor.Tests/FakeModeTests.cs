@@ -61,7 +61,7 @@ public sealed class FakeModeTests : IDisposable
         var reply = MetadataJson.Deserialize<StartReply>(await _api.InvokeCorePluginAsync(MetadataMonitorPluginInfo.PluginId, MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(Guid.Parse(device.Id))), CancellationToken.None));
 
         Assert.Null(reply.StreamId);
-        Assert.Equal("Credentials required - the device rejects the stored credentials", reply.Error);
+        Assert.Equal(DeviceMessages.CredentialsRequired, reply.Error);
     }
 
     private sealed class FakeContext(FakeOadmApi api, IDeviceInfo device) : ICorePluginClientContext

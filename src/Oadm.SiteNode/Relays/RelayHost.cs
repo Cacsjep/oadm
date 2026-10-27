@@ -16,7 +16,7 @@ using Oadm.SiteNode.Networks;
 namespace Oadm.SiteNode.Relays;
 
 /// <summary>
-/// <c>Relay</c> (docs/spec/sites.md, "Relay"): a UDP or TCP listener on the reached cards for as long as the call lives; every
+/// <c>Relay</c> (src/Oadm.SiteNode/README.md, "Relay"): a UDP or TCP listener on the reached cards for as long as the call lives; every
 /// datagram or connection goes to the server and the answers go back to the sender. The port must be on Listen on: a port
 /// that is not is requested (with the reason) and the relay waits for approval in the app. A port another program holds or
 /// the node may not use is reported and tried again every 30 seconds and after every change in the app or of the cards

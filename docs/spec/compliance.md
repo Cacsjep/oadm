@@ -33,7 +33,8 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   `ComplianceCheckSummary.owner`; a check whose group was deleted shows none and "Choose All devices or a device group."
   below the field; a refusal of the server below the form), Devices, Kind of check, its settings through the shared
   `SettingsFormView` of the event rules). For users with all devices the card names a group that owns its check after the
-  result ("failed · Building B", "No devices" without an owner).
+  result ("failed · Building B", "No devices" without an owner). Owner fields are left out for a server without device
+  groups (UNIMPLEMENTED; [device-scope.md](device-scope.md) "The editors").
   **Devices grid**: the Compliance column and Show each compliance check ([main-window.md](main-window.md)).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
 - **Device groups** ([device-scope.md](device-scope.md), Shared objects): every check has an owner (`ComplianceCheck.Owner`,

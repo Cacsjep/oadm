@@ -7,7 +7,7 @@ using Oadm.SiteNode.Tests.Support;
 
 namespace Oadm.SiteNode.Tests;
 
-/// <summary>Reached networks and both port lists (docs/spec/sites.md, "Reach", "Ports").</summary>
+/// <summary>Reached networks and both port lists (src/Oadm.SiteNode/README.md, "Reach"; docs/spec/sites.md, The node: Node app, Ports).</summary>
 public sealed class NetworksAndPortsTests : IDisposable
 {
     private readonly TempFolder _folder = new();

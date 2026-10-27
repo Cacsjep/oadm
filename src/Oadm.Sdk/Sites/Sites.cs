@@ -124,7 +124,7 @@ public interface IRelay : IAsyncDisposable
     /// The addresses a listener on the server's own network has bound now: the chosen addresses that were ready (an address
     /// of the interface that is not ready yet, such as an IPv6 address still checked, is left out while the others serve),
     /// or the wildcard addresses of a listener on every address; empty while it does not listen. Null when the host does not
-    /// tell (a relay at a site, a host before SDK 0.4.0, OADM 4.2): then assume the requested addresses. A plugin that wants
+    /// tell (a relay at a site, a host before SDK 0.4.0, OADM 4.5): then assume the requested addresses. A plugin that wants
     /// every chosen address listens again on its own later when one is missing.
     /// </summary>
     IReadOnlyList<IPAddress>? BoundAddresses => null;
@@ -248,7 +248,7 @@ public interface IPluginNetwork
 
     /// <summary>
     /// Listens on UDP <paramref name="port"/> on <paramref name="addresses"/> of the server only (the addresses of the
-    /// interface a page's "Listen on" chose); an empty list listens on every address. SDK 0.4.0 (OADM 4.2): implementations
+    /// interface a page's "Listen on" chose); an empty list listens on every address. SDK 0.4.0 (OADM 4.5): implementations
     /// that do not override it listen on every address.
     /// </summary>
     Task<IUdpRelay> ListenUdpAsync(int port, string reason, IReadOnlyList<IPAddress> addresses, CancellationToken ct) =>
@@ -296,7 +296,7 @@ public static class SiteTexts
         {
             RelayState.Running => "running",
             RelayState.WaitingForApproval => "waiting for approval in the OADM Site Node app",
-            RelayState.PortInUse => name + " is used by another program",
+            RelayState.PortInUse => Network.PortBindErrors.InUseText(port).TrimEnd('.'), // the shared text inside a sentence
             RelayState.NoPermission => "not allowed to use " + name,
             RelayState.SiteOffline => "site offline",
             RelayState.NotSupported => "update the site node",

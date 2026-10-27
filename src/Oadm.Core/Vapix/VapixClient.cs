@@ -443,7 +443,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             : _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp
             : _http;
 
-        // Through a site at most a few large transfers run at once (docs/spec/sites.md). A task waits as long as it takes and
+        // Through a site at most a few large transfers run at once (docs/spec/sites.md, Server side: Large transfers). A task waits as long as it takes and
         // says "Waiting for the site link"; its device timeout starts after the wait. Anyone else waits inside the request's
         // timeout, and a wait that uses it up is "Site ... is busy", never a device timeout. A streamed answer keeps its slot
         // until the caller disposes the response (or drops it: the slot is freed when it is collected).
@@ -490,7 +490,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
         catch (HttpRequestException ex) when (SiteFailure(ex) is { } site)
         {
-            // The site could not carry the connection: a site error, never a device error (docs/spec/sites.md).
+            // The site could not carry the connection: a site error, never a device error (docs/spec/data-model.md, device statuses).
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(site).Throw();
             throw;
         }

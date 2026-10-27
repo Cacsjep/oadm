@@ -11,7 +11,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// The site port (docs/spec/sites.md, Server listener): TCP on <c>Sites.ListenUrl</c> (default 0.0.0.0:5081), apart from the
+/// The site port (docs/spec/sites.md, Server side: SiteListener): TCP on <c>Sites.ListenUrl</c> (default 0.0.0.0:5081), apart from the
 /// clients' endpoint, open only while Accept site nodes is on. Every connection goes through TLS with the server's site
 /// identity (any node key: the manager decides by fingerprint and Hello), each handshake within
 /// <see cref="SiteTls.HandshakeTimeout"/>, at most a fixed number at once and a few per address (IPv6 per /64), so one

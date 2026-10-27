@@ -608,7 +608,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     }
 
     /// <summary>
-    /// A (site, address) as the waiting list keeps it (docs/spec/sites.md: "Already waiting" compares the site too): the site's
+    /// A (site, address) as the waiting list keeps it (docs/spec/sites.md, Discovery and moves at sites: the waiting list is per site and address): the site's
     /// name upper case (empty = everywhere) and <see cref="WaitingKey(string)"/> of the address.
     /// </summary>
     internal static string WaitingKey(string? site, string address) => (site ?? "").Trim().ToUpperInvariant() + "|" + WaitingKey(address);
@@ -1193,7 +1193,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     /// <summary>
     /// A row an address probe found. Different devices at the same address through several sites are all listed, none
-    /// checked by itself, each with "Answers through Building A and Building B." (docs/spec/sites.md, "Import from file").
+    /// checked by itself, each with "Answers through Building A and Building B." (docs/spec/sites.md, Discovery and moves at sites).
     /// </summary>
     private void TrackProbeRow(string sessionId, DiscoveredRowViewModel row)
     {

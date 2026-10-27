@@ -473,7 +473,7 @@ public interface ICorePluginContext
     Sites.ISites? Sites => null;
 
     /// <summary>
-    /// Services core plugins offer each other (<see cref="IPluginServices"/>), e.g. the OADM CA of the PKI plugin. Null on
+    /// Services core plugins offer each other (<see cref="IPluginServices"/>), e.g. the CAs of PKI. Null on
     /// hosts without them.
     /// </summary>
     IPluginServices? Services => null;
@@ -678,7 +678,7 @@ public static class SdkInfo
     public const string Version = "0.5.0";
 
     /// <summary>
-    /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.2). Users with a device group may call only
+    /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.5). Users with a device group may call only
     /// plugins whose <c>minSdkVersion</c> is at least this; older plugins keep working for users with all devices.
     /// </summary>
     public const string CallContextVersion = "0.4.0";

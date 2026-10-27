@@ -35,8 +35,8 @@ support for service plugins: [plugins/README.md](../README.md#host-support-for-s
   server start. Interfaces from the SDK `IServerNetworkInterfaces` (every up, non-loopback interface with an address;
   "All interfaces" binds 0.0.0.0 and [::]; an interface binds all its addresses except IPv6 link-local). A failed bind
   (port in use, interface gone) is retried every 30 s while enabled.
-- Per OS: Windows needs nothing but a free port 123 (W32Time holds it on many machines: stop it, then OADM serves; the
-  firewall must allow inbound UDP 123); Linux needs root or `cap_net_bind_service` (chronyd/ntpd must not hold 123);
+- The Windows service keeps a firewall rule for UDP 123 while the server is enabled (`ctx.Firewall`).
+- Per OS: Windows needs nothing but a free port 123 (W32Time holds it on many machines: stop it, then OADM serves); Linux needs root or `cap_net_bind_service` (chronyd/ntpd must not hold 123);
   macOS needs sudo for a single interface (wildcard binds below 1024 are allowed without root since 10.14).
 
 ## Page
@@ -49,8 +49,8 @@ support for service plugins: [plugins/README.md](../README.md#host-support-for-s
   (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
   stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
 - Status (one at a time, `ui:StatusChip`, detail as tooltip): `Running on 10.0.0.17:123` / `Running on all
-  interfaces, port 123` (ok), `Stopped` (neutral), `Port 123 is in use by another program` (error; Windows +
-  " (Windows Time service)" when `sc query W32Time` says RUNNING, tooltip: net stop w32time; Windows has no privileged
+  interfaces, port 123` (ok), `Stopped` (neutral), `Port 123 is used by another program.` (error, `PortBindErrors.InUseText`; Windows:
+  `Port 123 is used by another program (Windows Time service).` when `sc query W32Time` says RUNNING, tooltip: net stop w32time; Windows has no privileged
   ports, so AccessDenied there also means in use), `Insufficient permission to use port 123` (error; Linux tooltip: run
   as root or `sudo setcap 'cap_net_bind_service=+ep' <server exe>`; macOS: run with sudo or choose All interfaces),
   `Interface <name> is not available` (error; AddressNotAvailable or the interface is gone), then warnings in this

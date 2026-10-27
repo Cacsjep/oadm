@@ -8,7 +8,7 @@ using Oadm.Core.Vapix;
 namespace Oadm.Server.Sites;
 
 /// <summary>
-/// Removing and replacing sites with their devices (docs/spec/sites.md, Binding 6 and "Replace"). A site
+/// Removing and replacing sites with their devices (docs/spec/sites.md, Server side: SiteAdmin). A site
 /// removed with Keep devices leaves a tombstone (<see cref="SiteManager.MarkRemovedAsync"/>): its devices show
 /// "&lt;site&gt; (removed)", their status events go off, the Sites page lists it as Removed with Replace with and Remove
 /// devices until the last device left. Waiting entries of a removed site are removed; Replace moves them to the new site.

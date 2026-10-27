@@ -2,7 +2,7 @@ namespace Oadm.Core.Sites;
 
 /// <summary>
 /// Tells a running task that one of its requests waits for the site link (a free large-transfer slot of the site,
-/// docs/spec/sites.md, Large transfers). The task engine sets a reporter for the flow of each task device; the VAPIX client
+/// docs/spec/sites.md, Server side: Large transfers). The task engine sets a reporter for the flow of each task device; the VAPIX client
 /// calls it when it starts and ends such a wait. Outside a task there is no reporter: such a wait counts inside the
 /// request's timeout.
 /// </summary>

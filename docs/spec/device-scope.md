@@ -109,8 +109,8 @@ the Permissions page and the client's hiding rules are in `docs/spec/security.md
   `CertificateDeployment.NamesFor(device, network, inAnyGroup)` and `EstEndpoint.DnsNames(device, inAnyGroup)` read
   `IDeviceInfo.AddedByAllDevices` and `IDeviceScopes.InAnyGroup` (SDK 0.4.0, default true; no scopes: covered).
 - **Hidden for users with a group:** the server log (its text names devices), Delete all of tasks, Clear of the event
-  log, compliance on or off. System report, backups, audit log and support report stay with
-  administrators or users with all devices.
+  log, compliance on or off. The System report stays with users with all devices (`RequiresAllDevices`); backups, the
+  audit log and the support report are Administrator only (`AccessRule.Admin`; administrators always have all devices).
 - **Sites page:** users with a group see only the sites of their group, with their group's counts.
 
 ## Accepted risks
@@ -187,8 +187,8 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   "This server") and **Tags** (with counts); right the searchable, virtualized device list: devices covered by a site or
   tag checked and locked ("Site Building B"), single devices tickable, an "Except" state; a live count ("412 of 4,812
   devices") that counts like the server (an excepted device is out, also when it is a single device; ticking it takes it
-  back). An except stays stored while no chosen site or tag covers the device. Owner fields of compliance checks are left
-  out for a server without device groups (UNIMPLEMENTED).
+  back). An except stays stored while no chosen site or tag covers the device. The Owner field of compliance checks:
+  [compliance.md](compliance.md).
 - **User form:** a **Devices** field (All devices or a group); **Your role** shows the group and its summary. For an
   administrator the field is locked and shows what the account stores (a group stays stored and applies once the role
   changes); every role change below Administrator sends the Devices choice the form shows. A chosen group deleted while

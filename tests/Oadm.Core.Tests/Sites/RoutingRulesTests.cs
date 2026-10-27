@@ -5,7 +5,7 @@ using Oadm.Tests.Shared;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// The routing rules the compiler cannot check (docs/spec/sites.md, Server: Routing): connection options come from one helper,
+/// The routing rules the compiler cannot check (docs/spec/vapix.md, Routing): connection options come from one helper,
 /// and every exception to the banned-API analyzer is a reviewed one.
 /// </summary>
 public sealed partial class RoutingRulesTests

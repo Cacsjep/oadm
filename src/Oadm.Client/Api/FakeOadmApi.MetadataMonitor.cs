@@ -87,8 +87,8 @@ public sealed partial class FakeOadmApi
         string? error = device?.Status switch
         {
             null => Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1),
-            DeviceStatus.CredentialsRequired => "Credentials required - the device rejects the stored credentials",
-            DeviceStatus.PasswordNotSet => "Password not set - the device is in factory default",
+            DeviceStatus.CredentialsRequired => Oadm.Sdk.Devices.DeviceMessages.CredentialsRequired,
+            DeviceStatus.PasswordNotSet => Oadm.Sdk.Devices.DeviceMessages.PasswordNotSet,
             DeviceStatus.CertificateChanged => Oadm.Sdk.Devices.DeviceMessages.CertificateChanged,
             DeviceStatus.Unreachable => $"Unreachable - RTSP port 554 on {device.Address} is not reachable",
             DeviceStatus.SiteOffline => FakeSiteOfflineText(device),

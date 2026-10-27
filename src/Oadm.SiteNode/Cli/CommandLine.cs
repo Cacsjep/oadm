@@ -5,7 +5,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Cli;
 
 /// <summary>
-/// The command line of the installed node (docs/spec/sites.md, "App": headless machines): it talks to the running service over
+/// The command line of the installed node (src/Oadm.SiteNode/README.md, "Command line"): it talks to the running service over
 /// the local channel. Reading the state and the pairing code needs no rights; every change needs an administrator
 /// (sudo / an elevated prompt).
 /// </summary>

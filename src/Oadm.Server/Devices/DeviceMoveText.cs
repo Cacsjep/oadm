@@ -5,7 +5,7 @@ namespace Oadm.Server.Devices;
 /// <summary>
 /// The detail of the audit entry "Device moved": "from 10.0.0.5 to 10.0.0.20" on the server's own network, and with a site
 /// on either side every side names its route ("from Building B 192.168.0.20 to This server 10.0.0.20", docs/spec/sites.md
-/// "Moving devices").
+/// "Discovery and moves at sites": Moves).
 /// </summary>
 public static class DeviceMoveText
 {

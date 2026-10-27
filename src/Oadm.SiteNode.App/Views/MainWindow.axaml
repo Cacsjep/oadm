@@ -13,7 +13,7 @@
         WindowStartupLocation="CenterScreen"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
-  <!-- docs/spec/sites.md "App": one page, no tabs. The custom title bar of the client (minimize and close), then cards: Node
+  <!-- docs/spec/sites.md, The node: Node app: one page, no tabs. The custom title bar of the client (minimize and close), then cards: Node
        status, Server (address left, while not bound the pairing code right), Networks (a select with check boxes),
        Ports (one table). Footer: Reset left (red), Save (the one accent button: the
        address has changes) and Close right. Changes run elevated (UAC / pkexec); errors stand below their field. -->

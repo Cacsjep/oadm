@@ -331,7 +331,7 @@ public sealed class ServerIntegrationTests : IAsyncLifetime
         var reply = NtpJson.Deserialize<SaveReply>(await plugin.InvokeAsync(NtpServerMethods.Save, NtpJson.Serialize(new SaveRequest(true, "lo-id", null)), CancellationToken.None));
         Assert.True(reply.Saved);
         Assert.Equal(ServiceStatus.Error, reply.State.Status.Kind);
-        Assert.Equal($"Port {port} is in use by another program", reply.State.Status.Text);
+        Assert.Equal($"Port {port} is used by another program.", reply.State.Status.Text);
 
         blocker.Dispose();
         await Wait.UntilAsync(() => plugin.Service!.GetState(false).Status.Kind == ServiceStatus.Ok);

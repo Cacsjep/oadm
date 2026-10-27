@@ -12,8 +12,8 @@ using Oadm.Tests.Shared;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// What a slow or busy site link must never turn into (docs/spec/sites.md, Large transfers, Timeouts, Site errors are not
-/// device errors): a page relayed by Web View holds no large-transfer slot, a wait for a slot ends inside the request's
+/// What a slow or busy site link must never turn into (docs/spec/sites.md, Server side: Large transfers,
+/// Dials): a page relayed by Web View holds no large-transfer slot, a wait for a slot ends inside the request's
 /// timeout as "busy" (a task waits and says so), status reads never wait behind long requests, a dropped answer frees its
 /// slot, and a device copy read before a newer change never overwrites it.
 /// </summary>

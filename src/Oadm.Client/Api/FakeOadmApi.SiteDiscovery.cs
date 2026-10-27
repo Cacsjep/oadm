@@ -5,7 +5,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake mode: discovery and imports at the sample sites (docs/spec/sites.md, Client: add page). Two cameras a scan finds answer
+/// Fake mode: discovery and imports at the sample sites (docs/spec/sites.md, Discovery and moves at sites). Two cameras a scan finds answer
 /// through "Building B" (one also through this server), an address of 192.168.0.x answers through Building B, and
 /// 192.168.0.20 answers through Building B and this server with different cameras (an import line without a site lists both).
 /// </summary>

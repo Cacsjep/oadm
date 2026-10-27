@@ -289,7 +289,8 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
 - `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.5.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.5.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
-  packages set 0.4.0.
+  packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
+  `ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
   button (toolbars have no filled buttons); `IPluginEvents.Publish(topic, payload)` without an audience reaches only

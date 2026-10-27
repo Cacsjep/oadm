@@ -18,7 +18,7 @@ using Oadm.SiteNode.Tests.Support;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// Relays into a site with the real OADM Site Node in this process (docs/spec/sites.md, "Relay"): the node listens on a port of
+/// Relays into a site with the real OADM Site Node in this process (docs/spec/sites.md, Plugins at sites): the node listens on a port of
 /// its reached card (loopback here), asks its user for a port it has not allowed, passes every datagram and connection to
 /// the server, and the relay opens again after the node reconnects.
 /// </summary>

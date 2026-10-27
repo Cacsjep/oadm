@@ -156,18 +156,18 @@ public sealed class StatusMappingTests
     {
         var withW32 = NtpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 123, "Ethernet", HostOs.Windows, windowsTimeRunning: true);
         Assert.Equal(ServiceStatus.Error, withW32.Kind);
-        Assert.Equal("Port 123 is in use by another program (Windows Time service)", withW32.Text);
+        Assert.Equal("Port 123 is used by another program (Windows Time service).", withW32.Text);
         Assert.Contains("net stop w32time", withW32.Detail, StringComparison.Ordinal);
 
         var other = NtpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 123, "Ethernet", HostOs.Windows);
-        Assert.Equal("Port 123 is in use by another program", other.Text);
+        Assert.Equal("Port 123 is used by another program.", other.Text);
     }
 
     [Fact]
     public void Access_denied_on_Windows_means_in_use_because_Windows_has_no_privileged_ports()
     {
         var status = NtpStatusTexts.ForBindError(SocketError.AccessDenied, 123, "Ethernet", HostOs.Windows, windowsTimeRunning: true);
-        Assert.Equal("Port 123 is in use by another program (Windows Time service)", status.Text);
+        Assert.Equal("Port 123 is used by another program (Windows Time service).", status.Text);
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public sealed class StatusMappingTests
     public void Address_in_use_on_Linux_and_macOS(HostOs os, string hint)
     {
         var status = NtpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 123, "eth0", os);
-        Assert.Equal("Port 123 is in use by another program", status.Text);
+        Assert.Equal("Port 123 is used by another program.", status.Text);
         Assert.Contains(hint, status.Detail, StringComparison.Ordinal);
     }
 

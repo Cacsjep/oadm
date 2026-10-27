@@ -12,7 +12,7 @@ using Oadm.Sdk.Events;
 namespace Oadm.Core.Events;
 
 /// <summary>
-/// The site events of the event rules (docs/spec/sites.md, Event rules): one stateful server event per site "Site offline:
+/// The site events of the event rules (docs/spec/data-model.md, device statuses: event rules): one stateful server event per site "Site offline:
 /// &lt;site&gt;" (values {site}, {address}) and "Any site offline" (values {count}, {site} = the names of the offline sites),
 /// on while the site's node is not online (after the waiting time of <see cref="ISiteStates"/>). The types follow the
 /// sites like Device triggers' dynamic types: a bound, renamed or removed site changes them.

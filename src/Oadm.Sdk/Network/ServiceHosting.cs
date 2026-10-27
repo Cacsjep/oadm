@@ -83,8 +83,12 @@ public static class PortBindErrors
         _ => BindErrorKind.Other,
     };
 
-    /// <summary>"Port 67 is in use by another program".</summary>
-    public static string InUseText(int port) => string.Create(CultureInfo.InvariantCulture, $"Port {port} is in use by another program");
+    /// <summary>"Port 67 is used by another program.": the one text of a port another program holds, for every plugin.</summary>
+    public static string InUseText(int port) => string.Create(CultureInfo.InvariantCulture, $"Port {port} is used by another program.");
+
+    /// <summary>"Port 123 is used by another program (Windows Time service).": the same text naming the program.</summary>
+    public static string InUseText(int port, string program) =>
+        string.Create(CultureInfo.InvariantCulture, $"Port {port} is used by another program ({program}).");
 
     /// <summary>"Insufficient permission to use port 67".</summary>
     public static string PermissionText(int port) => string.Create(CultureInfo.InvariantCulture, $"Insufficient permission to use port {port}");

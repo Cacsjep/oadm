@@ -174,7 +174,7 @@ public sealed class PolicyTests
 
         var server = Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Dot1xServer));
         Assert.Equal(("802.1X server", "1.2", 1020, (int?)null), (server.Name, server.MinimumTls, server.LargestEapPacket!.Value, server.ReauthMinutes));
-        Assert.Equal([("OADM CA", CertificateAuthorityInfo.OadmId, true), ("Axis device ID", CertificateAuthorityInfo.AxisDeviceIdId, true)],
+        Assert.Equal([("OADM Root CA", CertificateAuthorityInfo.OadmId, true), ("Axis device ID", CertificateAuthorityInfo.AxisDeviceIdId, true)],
             harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Select(p => (p.Name, p.CaId!, p.OnlyManaged!.Value)));
         Assert.Empty(harness.Policies.PoliciesOf(PolicyKinds.Vlan)); // no default VLAN
         Assert.Equal(3, harness.Service.GetState(hasAllDevices: true).PoliciesApply);

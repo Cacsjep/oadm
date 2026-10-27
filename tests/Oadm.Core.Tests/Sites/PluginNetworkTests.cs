@@ -28,7 +28,7 @@ using FakeDevice = Oadm.Sdk.Testing.FakeDevice;
 namespace Oadm.Core.Tests.Sites;
 
 /// <summary>
-/// The host's side of the plugin SDK for sites (docs/spec/sites.md, Plugins and SDK): <see cref="IDeviceNetwork"/> per route,
+/// The host's side of the plugin SDK for sites (docs/spec/sites.md, Plugins at sites): <see cref="IDeviceNetwork"/> per route,
 /// listeners on the server's own network (loopback only here), the relays a plugin opened closed when it stops, and
 /// <c>siteSupport</c> enforced for tasks, compliance types, pages and actions.
 /// </summary>
@@ -157,7 +157,7 @@ public sealed class PluginNetworkTests
 
         var listener = await scope.ListenUdpAsync(port, "NTP", CancellationToken.None);
         Assert.Equal(RelayState.PortInUse, listener.State);
-        Assert.Equal($"NTP at this server: UDP {port} is used by another program", listener.StateText);
+        Assert.Equal($"NTP at this server: Port {port} is used by another program", listener.StateText);
 
         var changed = 0;
         listener.StateChanged += (_, _) => Interlocked.Increment(ref changed);

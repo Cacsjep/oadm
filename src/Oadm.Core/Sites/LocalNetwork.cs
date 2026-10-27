@@ -8,7 +8,7 @@ using Oadm.Sdk.Sites;
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// The server's own network as <see cref="IDeviceNetwork"/> (docs/spec/sites.md, Plugins and SDK): ping, a TCP probe, DNS and
+/// The server's own network as <see cref="IDeviceNetwork"/> (docs/spec/sites.md, Plugins at sites): ping, a TCP probe, DNS and
 /// the server's address towards a device. The only place plugins' network checks open sockets on the server; a site route
 /// is <see cref="SiteDeviceNetwork"/>.
 /// </summary>

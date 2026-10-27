@@ -1,7 +1,7 @@
 namespace Oadm.Core.Sites;
 
 /// <summary>
-/// How the server and a site node find each other (docs/spec/sites.md, Decisions: Direction): the node always connects to the
+/// How the server and a site node find each other (docs/spec/sites.md, The node: Outbound only): the node always connects to the
 /// server's site port. The column Sites.Mode stays for the migrations (never deleted); nothing else is stored in it.
 /// </summary>
 public enum SiteMode
@@ -79,7 +79,7 @@ public sealed class RemovedSite
     public override string ToString() => $"RemovedSite {Name} ({Id})";
 }
 
-/// <summary>Server settings of the sites (docs/spec/sites.md, Server listener and Server identity).</summary>
+/// <summary>Server settings of the sites (docs/spec/sites.md, Server side).</summary>
 public static class SiteSettings
 {
     /// <summary>The server's site identity (certificate and key, the key encrypted with the master key).</summary>

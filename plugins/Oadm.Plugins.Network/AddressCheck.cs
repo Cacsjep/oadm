@@ -27,7 +27,7 @@ public static class AddressCheck
 
     /// <summary>
     /// The query for <paramref name="device"/>'s dialog: the managed devices listed are those on its route only (docs/spec/sites.md,
-    /// "Overlapping networks": 192.168.0.20 at another site is another network and no conflict). Null = every device.
+    /// "Discovery and moves at sites": 192.168.0.20 at another site is another network and no conflict). Null = every device.
     /// </summary>
     /// <param name="probe">The probe; null = on the route of the query's device (<see cref="ITaskQueryContext.Network"/>).</param>
     public static Task<string> QueryAsync(ITaskQueryContext ctx, Sdk.Devices.IDeviceInfo? device, string? payloadJson, IAddressProbe? probe, CancellationToken ct) =>

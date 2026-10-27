@@ -48,8 +48,8 @@ temperature, tampering, ACAP events). Read only for devices. Spec:
   with Category "Invalid" and the raw text.
 - Info text (like the AXIS tool's Info column): `[INIT] port = 33; active = 0;` = `[INIT]` / `[CHANGED]` / `[DELETED]`
   from the property operation, then every Source, Key and Data item as `name = value;` in document order.
-- Refused without a request: Certificate changed, Credentials required, Password not set ("Credentials required - the
-  device rejects the stored credentials", ...) and Site offline. At most 16 streams at once (`MaxStreams`; "Too many event
+- Refused without a request: Certificate changed, Credentials required, Password not set and Site offline, with the
+  shared texts of the other plugins (`DeviceMessages.Refusal`, "Site offline: Building B"). At most 16 streams at once (`MaxStreams`; "Too many event
   streams are open (16); stop one first"): `start` takes a place in one step before the job starts and the job gives it
   back when it ends, so Starts at the same time never open more.
 - One stream per page session; it ends on Stop, when the page's watch ends (client closed or switched page) or without

@@ -16,7 +16,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.Links;
 
 /// <summary>
-/// The node's only way to the server (docs/spec/sites.md "Direction"; the node never listens): it opens TCP + TLS to the server's site port and then serves
+/// The node's only way to the server (docs/spec/sites.md, The node: Outbound only; the node never listens): it opens TCP + TLS to the server's site port and then serves
 /// gRPC on that connection. Not bound with binding open: any server key (the pairing proves both sides); bound: only the
 /// pinned key (another one is noted for "Accept" in the app); binding closed: no connection. The typed address first,
 /// then the server's own addresses (SetServerAddresses); after a failure 1, 2, 4 ... 60 s. OpenConnections adds worker

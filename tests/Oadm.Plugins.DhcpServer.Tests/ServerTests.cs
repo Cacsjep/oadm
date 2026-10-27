@@ -226,7 +226,7 @@ public sealed class ServerTests : IAsyncLifetime
         var reply = await Save(Options.Enable());
         Assert.True(reply.Saved);
         Assert.Equal(ServiceStatus.Error, reply.State.Status.Kind);
-        Assert.Equal("Port 67 is in use by another program", reply.State.Status.Text);
+        Assert.Equal("Port 67 is used by another program.", reply.State.Status.Text);
 
         _network.FailPorts.Clear();
         await Wait.UntilAsync(() => Service.IsRunning);
@@ -243,7 +243,7 @@ public sealed class ServerTests : IAsyncLifetime
         await using var plugin = new DhcpServerPlugin(Options.Test(network) with { Os = HostOs.Windows, WindowsServices = services });
         await plugin.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(DhcpServerPluginInfo.PluginId), null), default);
         var reply = DhcpJson.Deserialize<DhcpSaveReply>(await plugin.InvokeAsync(DhcpServerMethods.Save, DhcpJson.Serialize(Options.Enable()), default));
-        Assert.Equal("Port 67 is in use by another program", reply.State.Status.Text);
+        Assert.Equal("Port 67 is used by another program.", reply.State.Status.Text);
         Assert.StartsWith("The Internet Connection Sharing service is running", reply.State.Status.Detail, StringComparison.Ordinal);
     }
 
@@ -385,11 +385,11 @@ public sealed class StatusTests
     public void Port_in_use_on_Windows_names_the_DHCP_Server_role_or_ICS()
     {
         var known = DhcpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 67, "Ethernet", HostOs.Windows, "Windows DHCP Server");
-        Assert.Equal("Port 67 is in use by another program", known.Text);
+        Assert.Equal("Port 67 is used by another program.", known.Text);
         Assert.Contains("Windows DHCP Server service is running", known.Detail, StringComparison.Ordinal);
 
         var unknown = DhcpStatusTexts.ForBindError(SocketError.AccessDenied, 67, "Ethernet", HostOs.Windows);
-        Assert.Equal("Port 67 is in use by another program", unknown.Text); // no privileged ports on Windows
+        Assert.Equal("Port 67 is used by another program.", unknown.Text); // no privileged ports on Windows
         Assert.Contains("Internet Connection Sharing", unknown.Detail, StringComparison.Ordinal);
         Assert.Contains("netstat -abno -p UDP", unknown.Detail, StringComparison.Ordinal);
     }
@@ -400,7 +400,7 @@ public sealed class StatusTests
     public void Port_in_use_on_Linux_and_macOS_names_the_usual_programs(HostOs os, string hint)
     {
         var status = DhcpStatusTexts.ForBindError(SocketError.AddressAlreadyInUse, 67, "eth0", os);
-        Assert.Equal("Port 67 is in use by another program", status.Text);
+        Assert.Equal("Port 67 is used by another program.", status.Text);
         Assert.Contains(hint, status.Detail, StringComparison.Ordinal);
     }
 

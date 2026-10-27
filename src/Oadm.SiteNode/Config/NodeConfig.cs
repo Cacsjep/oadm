@@ -3,7 +3,7 @@ using Oadm.SiteNode.Admin;
 namespace Oadm.SiteNode.Config;
 
 /// <summary>
-/// node.json in the data folder (docs/spec/sites.md, "Data"): the node's choices and its bound server. No device data, no
+/// node.json in the data folder (src/Oadm.SiteNode/README.md, "Data folder"): the node's choices and its bound server. No device data, no
 /// passwords, ever. The TLS key is in its own encrypted file (<see cref="Identity.NodeIdentity"/>).
 /// </summary>
 public sealed class NodeConfig

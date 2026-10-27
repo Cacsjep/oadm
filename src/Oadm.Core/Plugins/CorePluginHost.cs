@@ -195,7 +195,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     entry.Subscriptions,
                     _registry.Licenses?.LicenseOf(registered.Origin.PackageId))
                 {
-                    // Not for devices at a site: no route into a site and no relays (docs/spec/sites.md, Declaration).
+                    // Not for devices at a site: no route into a site and no relays (docs/spec/sites.md, Plugins at sites: siteSupport).
                     Network = SiteSupportGuard.Guard(entry.Network, siteSupport),
                     Pro = entry.Pro = _registry.Pro is { } pro ? new PluginProLicense(pro) : null,
                     Services = _services?.For(registered.Id),

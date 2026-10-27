@@ -17,7 +17,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests.Sites;
 
 /// <summary>
-/// The site port under a flood (docs/spec/sites.md, Server listener): one address never holds every handshake, strangers never
+/// The site port under a flood (docs/spec/sites.md, Server side: Limits before a site is bound): one address never holds every handshake, strangers never
 /// keep the sites' own nodes out, and closing the port waits for every handshake.
 /// </summary>
 public sealed class SiteListenerLimitTests

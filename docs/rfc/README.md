@@ -28,3 +28,9 @@ source of truth for the protocol code: read the RFC, not a summary, and cite the
 
 Not an RFC, also read: the Blast-RADIUS advisory (2024, blastradius.fail): why Message-Authenticator is required on every
 request and sent first in every answer.
+
+## EST server ([est-server.md](../spec/est-server.md))
+
+| RFC | What we take from it |
+|---|---|
+| [7030](rfc7030.txt) | EST: cacerts, simpleenroll and simplereenroll, client authentication, the answers (4.1.3) |

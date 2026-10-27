@@ -82,7 +82,7 @@ public sealed class ConversionTests
             (RadiusStore.TrustedCasKey, "trusted-cas.json"),
             (RadiusStore.PoliciesKey, "policies-main.json"));
         using var company = new TestAuthority("Contoso Root");
-        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM Root CA"), harness.DeviceIds.Info,
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM Root CA SERVER01"), harness.DeviceIds.Info,
             company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Root")];
         harness.Ctx.FakeSites.Add("Building B");
 
@@ -91,7 +91,7 @@ public sealed class ConversionTests
         var server = Assert.Single(harness.Policies.PoliciesOf(PolicyKinds.Dot1xServer));
         Assert.Equal(("1.3", 1200, (int?)null), (server.MinimumTls, server.LargestEapPacket!.Value, server.ReauthMinutes));
         Assert.True(server.CipherSuites is null or { Count: 0 }); // the suites follow the minimum version (decision 2026-10-25)
-        Assert.Equal([("OADM CA", CertificateAuthorityInfo.OadmId, true), ("Contoso Root", "imported:contoso", false)],
+        Assert.Equal([("OADM Root CA SERVER01", CertificateAuthorityInfo.OadmId, true), ("Contoso Root", "imported:contoso", false)],
             harness.Policies.PoliciesOf(PolicyKinds.AllowCa).Select(p => (p.Name, p.CaId!, p.OnlyManaged!.Value))); // one per checked CA
         Assert.Equal(["Building B", "PTZ", PolicyLimits.AllDevicesName], harness.Policies.PoliciesOf(PolicyKinds.Vlan).Select(p => p.Name));
         Assert.Equal([FixtureSite], harness.Policies.PoliciesOf(PolicyKinds.Vlan)[0].Devices!.SiteIds);
@@ -117,7 +117,7 @@ public sealed class ConversionTests
     {
         await using var harness = await StoredAsync((RadiusStore.TrustedCasKey, "trusted-cas.json"), (RadiusStore.PoliciesKey, "policies-main.json"));
         using var company = new TestAuthority("Contoso Root");
-        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM Root CA"), harness.DeviceIds.Info,
+        harness.Ca.AuthorityList = [harness.Ca.Info(CertificateAuthorityInfo.OadmId, CertificateAuthorityKind.Oadm, "OADM Root CA SERVER01"), harness.DeviceIds.Info,
             company.Info("imported:contoso", CertificateAuthorityKind.Imported, "Contoso Root")];
         await harness.StartAsync();
         await harness.AddSwitchAsync("Core switch", "10.0.0.2");

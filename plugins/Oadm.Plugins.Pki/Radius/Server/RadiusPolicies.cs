@@ -94,7 +94,7 @@ public static class RadiusPolicies
     /// <summary>
     /// The 802.1X server's settings from before the policies, made into policies once (docs/spec/pki.md "Converting existing
     /// settings"): Advanced (setting <c>config</c>) -> the 802.1X server policy; Trusted CAs (<c>trustedCas</c>; none stored =
-    /// the OADM CA and the Axis device ID, only managed) -> one Allow CA per checked CA; the policies (<c>policies</c>) or OADM
+    /// the first-start root CA and the Axis device ID, only managed) -> one Allow CA per checked CA, named after the CA; the policies (<c>policies</c>) or
     /// the older VLAN rules (<c>vlans</c>, only when Assign VLANs was on) -> VLAN, Block and Revoke policies with the same names,
     /// devices and order; a Default VLAN that applied -> a last VLAN policy "All devices" (every device, also of sites added
     /// later and devices OADM does not manage), so no device changes its VLAN. Nothing stored: the defaults of the kinds. Nothing is dropped; the old settings stay as they are.
@@ -193,29 +193,37 @@ public static class RadiusPolicies
         };
     }
 
-    /// <summary>"OADM CA", "Axis device ID", an imported CA by its name (a CA PKI no longer lists: its id, the policy then matches nothing).</summary>
+    /// <summary>
+    /// The CA's real name in PKI, like EST's sign-in CA policies ("OADM Root CA SERVER01", "Axis device ID", an imported CA by
+    /// its name). A CA PKI does not list: "Axis device ID", "OADM Root CA" for the first-start root CA still being made, else
+    /// its id (the policy then matches nothing).
+    /// </summary>
     private static string CaPolicyName(string id, IReadOnlyList<CertificateAuthorityInfo> authorities)
     {
-        if (string.Equals(id, CertificateAuthorityInfo.OadmId, StringComparison.Ordinal))
-        {
-            return "OADM CA";
-        }
-
-        if (string.Equals(id, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.Ordinal))
-        {
-            return "Axis device ID";
-        }
-
         var name = authorities.FirstOrDefault(a => string.Equals(a.Id, id, StringComparison.OrdinalIgnoreCase))?.Name;
-        return string.IsNullOrWhiteSpace(name) ? id : name.Trim();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return name.Trim();
+        }
+
+        return string.Equals(id, CertificateAuthorityInfo.AxisDeviceIdId, StringComparison.OrdinalIgnoreCase) ? PolicyStore.AxisDeviceIdName
+            : string.Equals(id, CertificateAuthorityInfo.OadmId, StringComparison.OrdinalIgnoreCase) ? PolicyStore.IssuingCaName
+            : id;
     }
 
-    /// <summary>The default Allow CA policies of a new server: the first-start root CA and the Axis device ID, both only managed.</summary>
-    public static IReadOnlyList<PkiPolicy> DefaultAllowCaPolicies() =>
-    [
-        new PkiPolicy { Name = "OADM CA", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId, OnlyManaged = true },
-        new PkiPolicy { Name = "Axis device ID", Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.AxisDeviceIdId, OnlyManaged = true },
-    ];
+    /// <summary>
+    /// The default Allow CA policies of a new server: the first-start root CA under its real name and the Axis device ID, both
+    /// only managed.
+    /// </summary>
+    public static IReadOnlyList<PkiPolicy> DefaultAllowCaPolicies(IReadOnlyList<CertificateAuthorityInfo> authorities)
+    {
+        ArgumentNullException.ThrowIfNull(authorities);
+        return
+        [
+            new PkiPolicy { Name = CaPolicyName(CertificateAuthorityInfo.OadmId, authorities), Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.OadmId, OnlyManaged = true },
+            new PkiPolicy { Name = CaPolicyName(CertificateAuthorityInfo.AxisDeviceIdId, authorities), Kind = PolicyKinds.AllowCa, CaId = CertificateAuthorityInfo.AxisDeviceIdId, OnlyManaged = true },
+        ];
+    }
 }
 
 /// <summary>

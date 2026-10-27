@@ -14,7 +14,7 @@ using Oadm.Sites.Transport;
 namespace Oadm.SiteNode.State;
 
 /// <summary>
-/// The node's states (docs/spec/sites.md, "States" and "Binding"): unbound with binding open (24 hours of run time, counted by
+/// The node's states (src/Oadm.SiteNode/README.md, "States"): unbound with binding open (24 hours of run time, counted by
 /// <see cref="Tick"/> and saved every minute), unbound with binding closed, bound to one server. The pairing code lives in
 /// memory only (a new one at every start, every <see cref="CodeLifetime"/>, Allow binding, Reset, Unbind and after 5 wrong
 /// codes). Every local user may read it while it is shown: it lasts minutes only and the node binds only to the server
