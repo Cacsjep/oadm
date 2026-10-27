@@ -30,7 +30,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). The first
   connection asks "Trust this server?" (`TrustServerWindow`: "First connection to <server>", trust it only if it is your
   OADM server; the fingerprint, two lines of 16 pairs, one click away behind **Fingerprint**, the server writes it to its log
-  at startup; decision 2026-10-27). Not trusted: "The server is not trusted" below the server field. A changed certificate is
+  at startup; decision 2026-10-27). It asks only when an OADM server answers with that certificate: the client reads the
+  status (no login, nothing sent) with the certificate pinned for that request and removes the pin again when nothing answers
+  (another TLS service on the port, e.g. 5081 of the site nodes: "Cannot reach the server", no question) or the user does
+  not trust it. The login window is hidden while the question is open. Not trusted: "The server is not trusted" below the server field. A changed certificate is
   refused with "The server certificate changed" below the server field and its **Forget server** re-pins. An address without scheme means https.
 
 ## Users, roles and sessions

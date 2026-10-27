@@ -356,40 +356,58 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     private async Task<AuthStatus?> ConnectAsync(string address)
     {
         PointApiAt(address);
-        for (int attempt = 0; attempt < 2; attempt++)
+        _trust.ResetCheck();
+        try
         {
-            _trust.ResetCheck();
-            try
+            return await _api.GetAuthStatusAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is RpcException or HttpRequestException)
+        {
+            LogConnectFailed(_logger, address, ex.Message);
+            switch (_trust.LastCheck)
             {
-                return await _api.GetAuthStatusAsync(CancellationToken.None).ConfigureAwait(true);
-            }
-            catch (Exception ex) when (ex is RpcException or HttpRequestException)
-            {
-                LogConnectFailed(_logger, address, ex.Message);
-                switch (_trust.LastCheck)
-                {
-                    case PinCheck.Unknown when attempt == 0 && _trust.PresentedFingerprint is { } fingerprint:
-                        if (!await _dialogs.ConfirmServerTrustAsync(address, fingerprint).ConfigureAwait(true))
-                        {
-                            SetServerProblem(NotTrustedTitle, NotTrustedMessage, CalloutKind.Warning);
-                            return null;
-                        }
-
-                        _trust.Trust(fingerprint);
-                        continue;
-                    case PinCheck.Changed:
-                        SetServerProblem(CertificateChangedTitle, CertificateChangedMessage, CalloutKind.Warning);
-                        CanForgetServer = true;
-                        return null;
-                    default:
-                        Unreachable(address);
-                        return null;
-                }
+                case PinCheck.Unknown when _trust.PresentedFingerprint is { } fingerprint:
+                    return await TrustNewServerAsync(address, fingerprint).ConfigureAwait(true);
+                case PinCheck.Changed:
+                    SetServerProblem(CertificateChangedTitle, CertificateChangedMessage, CalloutKind.Warning);
+                    CanForgetServer = true;
+                    return null;
+                default:
+                    Unreachable(address);
+                    return null;
             }
         }
+    }
 
-        Unreachable(address);
-        return null;
+    /// <summary>
+    /// A certificate seen for the first time: asks only when an OADM server answers with it (another TLS service on that
+    /// port, e.g. the site node port 5081, is "Cannot reach the server", nothing asked). The answer is read with the
+    /// certificate pinned for that one request (the status needs no login, nothing is sent); not trusted removes the pin again.
+    /// </summary>
+    private async Task<AuthStatus?> TrustNewServerAsync(string address, string fingerprint)
+    {
+        _trust.Trust(fingerprint);
+        AuthStatus status;
+        try
+        {
+            status = await _api.GetAuthStatusAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is RpcException or HttpRequestException)
+        {
+            LogConnectFailed(_logger, address, ex.Message);
+            _trust.Forget();
+            Unreachable(address);
+            return null;
+        }
+
+        if (!await _dialogs.ConfirmServerTrustAsync(address, fingerprint).ConfigureAwait(true))
+        {
+            _trust.Forget();
+            SetServerProblem(NotTrustedTitle, NotTrustedMessage, CalloutKind.Warning);
+            return null;
+        }
+
+        return status;
     }
 
     /// <summary>"AA:BB:...:PP\nQQ:..." (16 pairs per line) so the window never breaks inside a pair.</summary>

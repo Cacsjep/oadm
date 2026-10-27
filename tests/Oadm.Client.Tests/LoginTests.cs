@@ -235,8 +235,11 @@ public sealed class LoginTests
     public async Task A_refused_fingerprint_or_a_changed_certificate_stops_the_login()
     {
         var f = new Fixture();
+        bool trusted = false;
+        f.Trust.When(t => t.Trust(Arg.Any<string>())).Do(_ => trusted = true);
+        f.Trust.When(t => t.Forget()).Do(_ => trusted = false);
         f.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>())
-            .Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "ssl")));
+            .Returns(_ => trusted ? Task.FromResult(new AuthStatus()) : throw new RpcException(new Status(StatusCode.Unavailable, "ssl")));
         f.Trust.PresentedFingerprint.Returns(Fingerprint);
         f.Trust.LastCheck.Returns(PinCheck.Unknown);
         f.Dialogs.ConfirmServerTrustAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(false);
@@ -246,7 +249,10 @@ public sealed class LoginTests
         await vm.SubmitCommand.ExecuteAsync(null);
         Assert.Equal((LoginViewModel.NotTrustedTitle, LoginViewModel.NotTrustedMessage), (vm.ServerProblemTitle, vm.ServerProblem));
         Assert.Equal(Oadm.Theme.Controls.CalloutKind.Warning, vm.ServerProblemKind);
-        f.Trust.DidNotReceive().Trust(Arg.Any<string>());
+        Assert.False(trusted); // the pin of the one status request is gone again
+        f.Trust.ClearReceivedCalls();
+        f.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>())
+            .Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "ssl")));
 
         f.Trust.LastCheck.Returns(PinCheck.Changed);
         await vm.SubmitCommand.ExecuteAsync(null);
@@ -259,6 +265,24 @@ public sealed class LoginTests
         f.Trust.Received(1).Forget();
         Assert.Equal("Check the address and that the OADM server is running on localhost:5080.", vm.ServerProblem);
         Assert.False(vm.CanForgetServer);
+    }
+
+    [Fact]
+    public async Task A_certificate_of_something_that_is_not_an_OADM_server_asks_nothing()
+    {
+        // e.g. localhost:5081, the port the server listens on for site nodes: TLS answers, the login service does not.
+        var f = new Fixture();
+        f.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>())
+            .Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "not gRPC")));
+        f.Trust.PresentedFingerprint.Returns(Fingerprint);
+        f.Trust.LastCheck.Returns(PinCheck.Unknown);
+        LoginViewModel vm = f.Create("localhost:5081");
+
+        await vm.InitializeAsync();
+
+        Assert.Empty(f.TrustQuestions);
+        f.Trust.Received(1).Forget(); // the pin of the status request is removed again
+        Assert.Equal((LoginViewModel.UnreachableTitle, LoginViewModel.UnreachableText("localhost:5081")), (vm.ServerProblemTitle, vm.ServerProblem));
     }
 
     [Fact]

@@ -53,8 +53,22 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
             return false;
         }
 
+        // The login window steps aside while the question is open (both have the logo band; one over the other overlaps)
+        // and comes back afterwards.
         var window = new Shell.TrustServerWindow { DataContext = new Shell.TrustServerViewModel(address, fingerprint) };
-        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+        var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.Closed += (_, _) => closed.TrySetResult(window.Trusted);
+        owner.Hide();
+        try
+        {
+            window.Show();
+            return await closed.Task.ConfigureAwait(true);
+        }
+        finally
+        {
+            owner.Show();
+            owner.Activate();
+        }
     }
 
     public Window? Owner => CurrentOwner();
