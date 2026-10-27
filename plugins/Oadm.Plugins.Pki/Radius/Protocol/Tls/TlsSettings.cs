@@ -12,7 +12,7 @@ public enum TlsVersion
     Tls13 = 13,
 }
 
-/// <summary>Which cipher suite group a suite belongs to (docs/spec/radius-server.md "Advanced").</summary>
+/// <summary>Which cipher suite group a suite belongs to (docs/spec/pki.md "Kinds", 802.1X server policy).</summary>
 public enum CipherSuiteGroup
 {
     /// <summary>TLS 1.3 suites.</summary>

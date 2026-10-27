@@ -14,7 +14,7 @@ namespace Oadm.Plugins.Pki.Ca;
 
 /// <summary>
 /// The store of device certificates the OADM CA issued and the revocation list (docs/spec/pki.md "Current and pending",
-/// docs/spec/radius-server.md "Certificates and revocation"). Per camera (by its serial; the device id for entries without
+/// docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted"). Per camera (by its serial; the device id for entries without
 /// one) and use the store holds the current certificate, the one confirmed on the camera, and at most one pending one
 /// (issued, not confirmed yet). Confirming a pending one puts the previous current one on the revocation list and removes it
 /// from the store; an unused pending one goes the same way; Revoke removes the certificate from the store too. Entries of

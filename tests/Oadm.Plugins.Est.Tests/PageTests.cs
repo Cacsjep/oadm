@@ -472,7 +472,7 @@ public sealed class PageTests : IAsyncLifetime
             Pump();
             Capture(window, outDir, $"est-page-{width}.png");
 
-            // The card of each title: Enrollments apart from General and Profiles (docs/spec/pki.md "Pages of the services after this").
+            // The card of each title: Enrollments apart from General and Profiles (docs/spec/pki.md "The PKI page").
             Border? CardOf(string title) => window.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == title)
                 .GetVisualAncestors().OfType<Border>().FirstOrDefault(b => b.Classes.Contains("card"));
             var result = (General: CardOf("Server"), Profiles: CardOf("Profiles"), Enrollments: CardOf("Enrollments"));

@@ -21,7 +21,7 @@ public sealed record RadiusClient(string Key, ReadOnlyMemory<byte> Secret)
 /// </summary>
 public sealed record RadiusProtocolOptions
 {
-    /// <summary>The smallest and largest "Largest fragment" (docs/spec/radius-server.md "Advanced").</summary>
+    /// <summary>The smallest and largest "Largest fragment" (docs/spec/pki.md "Kinds", 802.1X server policy).</summary>
     public const int MinFragment = 500;
 
     public const int MaxFragment = 1400;

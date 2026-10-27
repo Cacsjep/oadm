@@ -171,7 +171,7 @@ public sealed partial class EstEndpoint(
                 : Refuse(check.Status, check.Reason ?? EstRefusals.NoEnrollmentPolicy, device);
         }
 
-        // A certificate on PKI's revocation list renews nothing (docs/spec/radius-server.md "Certificates and revocation"):
+        // A certificate on PKI's revocation list renews nothing (docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted"):
         // the Axis device ID is never on it (OADM did not issue it), so Set up still gives the camera a new certificate.
         if (ca.IsRevoked(client.SerialNumber))
         {

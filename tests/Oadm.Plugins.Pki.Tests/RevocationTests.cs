@@ -10,8 +10,8 @@ using Oadm.Sdk.Testing;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// The list of issued certificates and the revocation list through the plugin (docs/spec/radius-server.md "Certificates and
-/// revocation"): every certificate the CA service signs is listed with its use and DER, the page methods, the CA service's
+/// The list of issued certificates and the revocation list through the plugin (docs/spec/radius-server.md "Certificates
+/// and the list of certificates no longer accepted"): every certificate the CA service signs is listed with its use and DER, the page methods, the CA service's
 /// SDK 0.4.0 members for EST and the 802.1X server, a restart, and certificates of the OADM CAs found on devices.
 /// </summary>
 public sealed class RevocationTests

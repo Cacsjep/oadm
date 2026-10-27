@@ -11,7 +11,7 @@ using Oadm.Sdk.Testing;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// The list of issued certificates and the revocation list (docs/spec/radius-server.md "Certificates and revocation"):
+/// The list of issued certificates and the revocation list (docs/spec/radius-server.md "Certificates and the list of certificates no longer accepted"):
 /// plugin records, batched writes of only the changed rows, the move from the settings of OADM 4.1, how long entries stay,
 /// revocation that is written at once and answered by a hash lookup.
 /// </summary>
