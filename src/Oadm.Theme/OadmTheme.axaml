@@ -2319,7 +2319,7 @@
     <Setter Property="IsHitTestVisible" Value="False" />
   </Style>
   <Style Selector="ui|OadmIcon.fieldIcon.inner">
-    <Setter Property="Margin" Value="3,0,0,0" />
+    <Setter Property="Margin" Value="7,0,0,0" />
   </Style>
   <!-- Labels above the inputs (ui:FormField LabelAbove) -->
   <Style Selector="ui|FormField:labelAbove TextBlock.fieldLabel">
