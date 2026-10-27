@@ -29,13 +29,13 @@ The **Logs** page shows them without opening a file:
 
 ## Common problems
 
-**The client cannot connect.**
+**The client cannot connect ("Cannot reach the server").**
 Check that the service runs (`OADM Server` in Windows services, `systemctl status oadm-server`) and that TCP 5080 is
-open on the server's firewall.
+open on the server's firewall, then click **Try again**. Port 5081 is for site nodes, not for the client.
 
 **"The server certificate changed".**
 The server got a new certificate, for example after a reinstall with a new data folder. If you expect that, click
-**Forget server** and confirm the new fingerprint.
+**Forget server** in the box below the server field and trust the server again.
 
 **Devices show Credentials required.**
 The device rejects the stored password. Right-click > **Log in** and enter the right one for all of them.

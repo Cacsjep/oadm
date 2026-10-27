@@ -9,18 +9,18 @@ page says what OADM checks, what it promises today and what you do before you up
 
 ## The SDK version
 
-The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.4.0`), separate from the
+The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.5.0`), separate from the
 OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
-"minSdkVersion": "0.4.0"
+"minSdkVersion": "0.5.0"
 ```
 
 When the server starts, it compares the two. A plugin that needs a newer SDK than the server has is not loaded; the
 server log says why:
 
 ```text
-Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.5.0, host has 0.4.0.
+Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.6.0, host has 0.5.0.
 ```
 
 `minSdkVersion` also decides who may use the plugin. Users limited to a device group get only plugins with 0.4.0 or
@@ -79,12 +79,14 @@ in a context of its own, so two plugins can use different versions of the same l
 
 | SDK | OADM | What changed |
 |---|---|---|
+| 0.5.0 | 4.5.2 | `ITaskPluginDialog.ShowForDevicesAsync` and `TaskDialogResult`: a task dialog names the selected devices its task runs on. Client: `FormField.LabelAbove`. |
 | 0.4.0 | 4.5 | Device groups: the call context. `ICallContext` (`UserName`, `SessionId`, `DeviceScopeKey`, `Has`, `HasAllDevices`, `Devices`, `Vapix`, `Tasks`, `EventStreams`, `Contains`) in the overloads `ICorePlugin.InvokeAsync(caller, ...)`, `ICorePluginDownloads.OpenDownloadAsync(caller, ...)`, `ITaskPluginQuery.QueryAsync(ctx, caller, ...)` and `ITaskExecutionContext.Caller`; `ICorePlugin.RequiresAllDevices` and `SystemAccessReason`; `ICorePluginContext.System` (`ISystemAccess`), `Jobs` (`IPluginJobs`, `IPluginJob`) and `DeviceScopes` (`IDeviceScopes`); `IPluginEvents.Publish(topic, json, audience)` (`PluginEventAudience`); `ITaskQueryContext.ManagedAddressesAsync` and `ITaskExecutionContext.ManagedAddressesAsync`; `DevicesNotAvailableException`, `DeviceAccessRefusedException`, `DeviceGroupMessages`, `IDeviceInfo.AddedByAllDevices`; `IPluginNetwork.ListenUdpAsync` with the addresses of one interface; `IDeviceCertificateAuthority` issued-certificate list, revocation list and `PreviousChains`. Testing: `FakeCoreContext.InvokeAsync` / `OpenDownloadAsync` / `QueryAsync` with `CallAsGroup` / `CallAsAllDevices`, `RefusedAccesses`, `EventsSeenBy`, `EndTask`, `PluginCanary`, `FakeCallContext.Over` / `OverGroup`, `FakeTaskContext.OtherDeviceAddresses`, `FakePluginNetwork.LastUdpAddresses`. See [Device groups](../device-groups/) Client: `ICorePluginPage.TabOf`, `ICorePluginClientContext.Tabs` / `TabsChanged` / `OpenTabRequested`, `CorePluginTab` (pages shown as tabs of another plugin's page); `ICorePluginClientContext.IsAdministrator` / `StartProTrialAsync` and `ProLicenseInfo.TrialAvailable` (the 30-day OADM PRO trial started in OADM). |
 | 0.3.0 | 4.1 | OADM PRO and plugin services: `ICorePluginContext.Pro` (`IProLicense`, `ProLicenseInfo`, `ProLicenseTexts`), `"pro": true` in `plugin.json`, `ICorePluginContext.Services` (`IPluginServices`: `Offer`, `Withdraw`, `Find`), `IDeviceCertificateAuthority` (PKI's CA), `ITrustAnchors.SetRenewalIssuers`. Task dialogs: `ITaskDialogContext.CanRunTasks` and `RunTaskAsync` (`TaskRunState`, `TaskRunStatus`). Records: `ICorePluginContext.Records` (`IPluginRecords` with `GetAsync`, `MemoryPluginRecords`, `PluginRecordRules`). Network: `IPluginNetwork.ListenTcpAsync` with the addresses of one interface, `InterfaceOptions.All` / `AllId` / `AllLabel` / `IsAll`. Testing: `FakeProLicense`, `FakePluginServices`, `FakeCoreContext.PluginRecords`, `FakePluginNetwork.LastTcpAddresses` |
 | 0.2.0 | 4.0 | Devices at a site: `DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `ICorePluginContext.Network` and `Sites` (relays), `siteSupport` / `sitePorts` in `plugin.json` (the project SDK writes `full` by default), `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`, `IRelay.ReleaseAsync`, `{site}` placeholder, `DeviceMessages.Refusal(IDeviceInfo)` / `TaskSupportReasons.ForStatus(IDeviceInfo)` (they say "Site offline: <site>") and `TaskSupportReasons.ForSiteSupport`, `HostPages.Sites`, `HostPermissionKeys.SitesView`. Client: `ICorePluginClientContext.OpenDeviceRequested`, `CheckChoice` / `ICheckChoice` / `CheckChoiceList` (`ComboBox Classes="multiSelect"`), `PageTab.Count` and fixed tabs (no `CloseCommand`), `DeviceTexts.OpenNotAllowed`. Testing: `FakeDevice.SiteId` / `SiteName`, `FakeDeviceNetwork`, `FakeSites`, `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. The project SDK adds the banned-API analyzer (warning RS0030 for own sockets). See [Sites](../sites/) |
 | 0.1.0 | 3.x | The first SDK on NuGet |
 
-A plugin built with the 4.5 packages (SDK 0.4.0) needs OADM 4.5 or later; one built with the 4.1 packages (SDK 0.3.0)
+A plugin built with the 4.5.2 packages (SDK 0.5.0) needs OADM 4.5.2 or later; one built with the 4.5 packages (SDK 0.4.0)
+needs OADM 4.5 or later; one built with the 4.1 packages (SDK 0.3.0)
 needs OADM 4.1 or later; one built with the 4.0 packages (SDK 0.2.0)
 needs OADM 4.0 or later. A plugin built with SDK 0.1.0 still loads on 0.2.0 or later, but its `plugin.json` has no `siteSupport`: OADM keeps it away from
 devices at a site until you rebuild it with the new project SDK (or add `"siteSupport": "full"` to your own

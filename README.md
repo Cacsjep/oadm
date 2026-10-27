@@ -79,8 +79,9 @@ More per system: [`packaging/README.md`](packaging/README.md).
 
 1. Install OADM on the computer that runs the server. The service starts on its own.
 2. Start the client. It connects to `localhost:5080`; for another computer enter `<server>:5080`
-   (`--server <server>:5080` preselects it). On the first connection, compare the fingerprint the client shows with
-   the line "Server TLS certificate fingerprint" in the server log, then confirm.
+   (`--server <server>:5080` preselects it). On the first connection the client asks **Trust this server?**: click
+   **Trust server**; **Fingerprint** shows the fingerprint to compare with the line "Server TLS certificate fingerprint"
+   in the server log.
 3. While the server has no users, the login window creates the **first administrator**. From another computer you
    also need the setup code from `setup-code.txt` in the server's data folder (also in the server log). Add more users
    on the **Permissions** page.
@@ -170,7 +171,7 @@ Both scripts read their help from [`scripts/manage-help.txt`](scripts/manage-hel
 | `manage build [all\|server\|client\|plugins\|docs] [--release]` | Build the solution (default), the server with the bundled plugins, the client, only the plugins, or with `docs` the SDK reference of the website |
 | `manage run server [--port N] [--data DIR] [--release] [--no-plugin-build]` | Build and run the server in the foreground (default `https://0.0.0.0:5080`) |
 | `manage run client [--fake] [--server URL] [--data DIR] [--release] [--no-plugin-build]` | Build the client and all plugins, then run the client; `--fake` uses sample data without a server |
-| `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: confirm the fingerprint, then create the first administrator (no setup code on the same computer) |
+| `manage run dev [--port N] [--data DIR] [--release] [--no-plugin-build]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server. First run: trust the server, then create the first administrator (no setup code on the same computer) |
 | `manage test [unit\|perf\|hardware\|all] [--filter EXPR] [--release]` | Unit tests (default, what CI runs), scale tests with 30,000 devices and 50,000 tasks (`Category=Perf`, a few minutes), read-only hardware tests against `dev-cameras.yaml`, or all |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/`, see [`packaging/README.md`](packaging/README.md) |

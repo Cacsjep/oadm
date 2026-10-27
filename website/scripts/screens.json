@@ -63,6 +63,8 @@
   "live-view-edit.png": "plugin-live-view-edit.png",
   "live-view-page.png": "plugin-live-view.png",
   "login-first-admin.png": "login-first-admin.png",
+  "login-trust-server.png": "login-fingerprint-open.png",
+  "login-unreachable.png": "login-unreachable.png",
   "login-window.png": "login-window.png",
   "logs-audit-tab.png": "logs-audit-tab.png",
   "metadata-monitor-page.png": "metadata-monitor-page.png",
@@ -94,5 +96,6 @@
   "sites-page.png": "sites-page.png",
   "snapshot-report-page.png": "snapshot-report-page.png",
   "system-report-dialog.png": "system-report-dialog.png",
+  "update-dialog.png": "update-dialog-notes.png",
   "web-view-page.png": "web-view-page.png"
 }

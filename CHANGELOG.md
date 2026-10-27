@@ -7,10 +7,13 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.5.2] - 2026-10-27
+
 ### Added
 
 - A notice at client start when a new OADM version is available, with its release notes.
 - Upgrade firmware takes one file per model at once.
+- Plugin SDK 0.5.0.
 
 ### Changed
 
