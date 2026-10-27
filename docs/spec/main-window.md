@@ -12,7 +12,8 @@ version"): "OADM V4.6.0 is available", "You have V4.5.0", What's new with the re
 CHANGELOG section; `ReleaseNotes.Parse`: `###` groups, `-` entries, plain text), **Later** (asks again next start),
 **Open download page** (https://oadm.app/start/install/) and "Don't tell me about new versions" (client setting
 `TellAboutNewVersions`; Settings, Client card "Tell me about new versions" turns it on again). A development build
-(version 1.0.0) never asks.
+(version 1.0.0) never asks; to see the dialog from one, start the client as an older version (`--as-version 4.4.0` or the
+environment variable `OADM_CLIENT_VERSION=4.4.0`).
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in Visual Style.

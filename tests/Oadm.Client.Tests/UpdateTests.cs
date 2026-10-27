@@ -113,6 +113,19 @@ public sealed class UpdateTests
     }
 
     [Fact]
+    public async Task A_development_build_started_as_an_older_version_shows_the_dialog()
+    {
+        AppOptions options = AppOptions.Parse(["--as-version", "4.4.0"], _ => null);
+        Assert.Equal("4.4.0", options.AsVersion);
+        Assert.Equal("4.3.0", AppOptions.Parse([], name => name == AppOptions.AsVersionVariable ? " 4.3.0 " : null).AsVersion);
+        var f = new Fixture();
+
+        await new UpdateNotifier(f.Check, f.Settings, f.Dialogs, f.Urls, NullLogger<UpdateNotifier>.Instance, options).ShowIfNewerAsync(CancellationToken.None);
+
+        Assert.Equal("You have V4.4.0", Assert.Single(f.Shown).Current);
+    }
+
+    [Fact]
     public async Task Dont_tell_me_is_saved_and_turns_the_check_off()
     {
         var f = new Fixture();

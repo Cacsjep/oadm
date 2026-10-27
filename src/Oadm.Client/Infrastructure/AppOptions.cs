@@ -15,6 +15,15 @@ public sealed record AppOptions
     /// <summary>The environment variable that sets <see cref="FakeUser"/> (the arguments win).</summary>
     public const string FakeUserVariable = "OADM_FAKE_USER";
 
+    /// <summary>
+    /// The version this client takes itself for when it asks for a newer release (<c>--as-version 4.4.0</c>, or the environment
+    /// variable <c>OADM_CLIENT_VERSION</c>): shows the new version dialog from a development build. Null = the real version.
+    /// </summary>
+    public string? AsVersion { get; init; }
+
+    /// <summary>The environment variable that sets <see cref="AsVersion"/> (the arguments win).</summary>
+    public const string AsVersionVariable = "OADM_CLIENT_VERSION";
+
     /// <summary>Overrides the server address from the client settings for this run.</summary>
     public string? ServerAddress { get; init; }
 
@@ -41,8 +50,14 @@ public sealed record AppOptions
     public static AppOptions Parse(IReadOnlyList<string> args, Func<string, string?>? environment = null)
     {
         ArgumentNullException.ThrowIfNull(args);
-        string? fakeUser = (environment ?? Environment.GetEnvironmentVariable)(FakeUserVariable);
-        var options = new AppOptions { FakeUser = string.IsNullOrWhiteSpace(fakeUser) ? null : fakeUser.Trim() };
+        Func<string, string?> env = environment ?? Environment.GetEnvironmentVariable;
+        string? fakeUser = env(FakeUserVariable);
+        string? asVersion = env(AsVersionVariable);
+        var options = new AppOptions
+        {
+            FakeUser = string.IsNullOrWhiteSpace(fakeUser) ? null : fakeUser.Trim(),
+            AsVersion = string.IsNullOrWhiteSpace(asVersion) ? null : asVersion.Trim(),
+        };
         for (int i = 0; i < args.Count; i++)
         {
             string arg = args[i];
@@ -53,6 +68,10 @@ public sealed record AppOptions
             else if (string.Equals(arg, "--fake-user", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
             {
                 options = options with { FakeUser = args[++i] };
+            }
+            else if (string.Equals(arg, "--as-version", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
+            {
+                options = options with { AsVersion = args[++i] };
             }
             else if (string.Equals(arg, "--server", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Count)
             {

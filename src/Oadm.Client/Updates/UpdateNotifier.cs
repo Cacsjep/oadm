@@ -11,12 +11,13 @@ namespace Oadm.Client.Updates;
 /// again); never in a development build.
 /// </summary>
 public sealed partial class UpdateNotifier(
-    IReleaseCheck check, IClientSettingsStore settings, IDialogService dialogs, IUrlLauncher urls, ILogger<UpdateNotifier> logger)
+    IReleaseCheck check, IClientSettingsStore settings, IDialogService dialogs, IUrlLauncher urls, ILogger<UpdateNotifier> logger,
+    AppOptions? options = null)
 {
     private bool _done;
 
-    /// <summary>This client's version; tests set another.</summary>
-    internal string CurrentVersion { get; init; } = ClientVersion.Text;
+    /// <summary>This client's version, or the one of <c>--as-version</c> / <c>OADM_CLIENT_VERSION</c>; tests set another.</summary>
+    internal string CurrentVersion { get; init; } = options?.AsVersion ?? ClientVersion.Text;
 
     /// <summary>Never throws: the check is started without waiting for it.</summary>
     public async Task ShowIfNewerAsync(CancellationToken ct)
