@@ -108,6 +108,11 @@ html[data-has-hero] header site-search {
 	box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
 }
 
+/* Dialog screenshots (first start): 70 % of the column; a click opens them full size. */
+.screen.small {
+	width: 70%;
+}
+
 /* Landing page feature rows: text and screenshot side by side, stacked on phones. */
 .feature {
 	display: grid;
