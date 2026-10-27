@@ -54,7 +54,8 @@ public sealed class CallContextContractTests
         IPluginEvents events = new CountingEvents();
         events.Publish("t", "{}", PluginEventAudience.Device(Guid.NewGuid()));
         Assert.Equal(1, ((CountingEvents)events).Count);
-        Assert.Equal(SdkInfo.Version, SdkInfo.CallContextVersion);
+        Assert.Equal("0.4.0", SdkInfo.CallContextVersion); // the first SDK with the call context, fixed
+        Assert.True(Version.Parse(SdkInfo.Version) >= Version.Parse(SdkInfo.CallContextVersion));
     }
 
     [Fact]

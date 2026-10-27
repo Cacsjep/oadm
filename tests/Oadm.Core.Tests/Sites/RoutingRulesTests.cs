@@ -27,6 +27,7 @@ public sealed partial class RoutingRulesTests
         "src/Oadm.Server/Sites/NodeLink.cs",
         "src/Oadm.Server/Sites/SiteListener.cs",
         "src/Oadm.Client/DeviceWeb/DeviceWebRelay.cs",
+        "src/Oadm.Client/Updates/ReleaseCheck.cs", // the new version check asks GitHub, never a device
         "plugins/Oadm.Plugins.DhcpServer/Serving/DhcpSockets.cs",
         "plugins/Oadm.Plugins.Notifications/SendHttpAction.cs",
         "plugins/Oadm.Plugins.Notifications/SendTcpAction.cs",
