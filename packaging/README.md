@@ -6,17 +6,19 @@ installer into `artifacts/packages/`. The publish step writes self-contained sin
 next to each exe.
 
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
-when the jobs before it passed:
+when the jobs it needs passed (details in `docs/spec/packaging.md` "CI"):
 1. `tests`: build and unit tests on Windows, Linux and macOS (30 min timeout, hang detection after 5 min).
-2. `installers`: the x64 installers, plus the .deb packages for arm64 (built on a native ARM runner), and the portable
-   ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders). The .deb packages
-   are installed, checked and removed on the runner, as "Server and client" and as "Client only"; the .pkg is checked
-   without installing it.
-3. `smoke-windows`: the MSI installed, checked and removed, as "Server and client" and as "Client only".
-4. `nuget-pack`: the plugin SDK packages; every template is built and tested with them.
-5. `release`: the GitHub release of the tag with the installers, the ZIPs and `SHA256SUMS.txt`. A tag with a
-   pre-release part (`v1.2.0-rc.1`) makes a pre-release, never the latest release.
-6. `nuget`: the plugin SDK packages on nuget.org (Trusted Publishing); needs the repository variable `NUGET_USER`.
+2. `installers`: every installer (the .deb packages for arm64 on a native ARM runner), the OADM Site Node packages and
+   the portable ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders). The
+   .deb packages are installed, checked and removed on the runner, as "Server and client", as "Client only" and the site
+   node; the .pkg is checked without installing it.
+3. `smoke-windows` and `smoke-windows-node`: the MSI (both ways) and the site node MSI installed, checked and removed,
+   each on a runner of its own.
+4. `nuget-pack` (after `tests`): the plugin SDK packages; every template is built and tested with them.
+5. `release`: the GitHub release of the tag with the installers, the ZIPs and `SHA256SUMS.txt`, the release text from
+   `CHANGELOG.md`. A tag with a pre-release part (`v1.2.0-rc.1`) makes a pre-release, never the latest release.
+6. `nuget`: the plugin SDK packages on nuget.org (Trusted Publishing); needs the repository variable `NUGET_USER`,
+   skipped for a pre-release.
 
 Installers are not signed; check downloads against `SHA256SUMS.txt`.
 
@@ -26,8 +28,8 @@ Every installer offers **"Server and client"** (default) or **"Client only"**:
   and Features switches between the two.
 - Linux: two packages, `oadm-server` and `oadm-client`: `sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb`
   (server and client), `sudo apt install ./oadm-server_*.deb` (server only) or `sudo apt install ./oadm-client_*.deb`
-  (client only). Both replace the former single package `oadm` (before 0.0.3). The metapackage `oadm` of
-  0.0.3..1.0.0 is gone; apt removes an installed one on the next upgrade.
+  (client only). Both replace an installed package `oadm` (the former single package and metapackage); apt removes it on
+  the upgrade.
 - macOS: **Customize** lists "OADM client" (always) and "OADM server" (clear it for the client only). From the command
   line: `installer -applyChoiceChangesXML` with `com.oadm.choice.server` deselected.
 
@@ -53,22 +55,11 @@ Notes:
   interface binding.
 - As an installed service (Windows service, systemd, or launchd with `OADM_SERVICE=launchd` from the plist) the server
   checks at start that the data folder, the extraction folder and every plugin folder are writable only by
-  administrators / root (Windows ACL: owner SYSTEM / Administrators / TrustedInstaller, no write entry for anyone else;
-  Unix: owner root, no group or world write). A folder that fails is reset (Windows: protected ACL SYSTEM +
-  Administrators, plus Users read for plugin folders; Unix: `chown -R 0:0`, `chmod -R go-w`). If that fails too, the
-  plugin folder is skipped with an error, and an insecure data folder stops the start. The service never uses the
-  repository's `artifacts/plugins`. Console runs (`manage run`) and tests are not checked.
-- License texts: `manage publish` runs `tools/Oadm.Notices`. It reads the published `*.deps.json` files (server,
-  client, every plugin) and writes `THIRD-PARTY-NOTICES.txt`: the hand-written part (`THIRD-PARTY-NOTICES.md`: FFmpeg,
-  Inter, .NET), every NuGet package with license, copyright, project and where it is used, the full license texts from
-  `notices/licenses/` (MIT, Apache-2.0, BSD-2/3-Clause, OFL-1.1, LGPL-2.1) and the license and notice files the
-  packages ship (FFmpeg `legal/`, runtime packs), deduplicated. A license without a text is a warning: add it as
-  `notices/licenses/<SPDX id>.txt`. The client shows the file on the About page.
-- Terms of use (`/TERMS.md`): accepted on the first start of the client on each computer (`Shell/TermsWindow`, stored
-  with the version of the text in the client settings; changed terms ask again). The installers show no license page:
-  silent and command-line installs skipped it and Debian packages never ask, so the client is the one place every user
-  passes. `TERMS.md` also lies next to every published exe, in `/usr/share/doc/<package>/` and at the top of the About
-  page.
+  administrators / root and resets them if not (`docs/spec/security.md` "Service: firewall and folders"). The service
+  never uses the repository's `artifacts/plugins`. Console runs (`manage run`) and tests are not checked.
+- License texts and terms of use: `manage publish` runs `tools/Oadm.Notices` and writes `THIRD-PARTY-NOTICES.txt`
+  (`docs/spec/packaging.md` "Notices and terms of use"). A license without a text is a warning: add it as
+  `notices/licenses/<SPDX id>.txt`. The terms are accepted on the first start of the client, never in an installer.
 - Service definitions always pass the data folder. Without it the server would use the service account's
   LocalApplicationData (`C:\Windows\System32\config\systemprofile\AppData\Local\Oadm`, `/root/.local/share/Oadm`).
 - The single-file server extracts its native libraries (SQLite) at start. Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR`
@@ -76,9 +67,8 @@ Notes:
 - Linux overrides without editing the unit: `/etc/default/oadm-server` (`EnvironmentFile`), e.g.
   `Oadm__ListenUrl=https://0.0.0.0:5090`. The package also works without systemd (containers); postinst then prints
   how to start the server by hand.
-- macOS packages are unsigned (executables ad hoc signed). Developer ID signing (`productsign`,
-  `codesign --options runtime`) and notarization (`notarytool`) come later; until then open the .pkg with right-click >
-  Open.
+- macOS packages are unsigned (executables ad hoc signed); Developer ID signing (`productsign`,
+  `codesign --options runtime`) and notarization (`notarytool`) are not built yet. Open the .pkg with right-click > Open.
 - Icons: `icons/make-icons.py` builds `oadm.ico` (also the client exe icon), `oadm.icns` and the PNGs from
   `/icon/oadm-app-icon-<size>.png`; the client uses `oadm-256.png` as window icon.
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
@@ -86,7 +76,7 @@ Notes:
 
 ## OADM Site Node
 
-`manage package site-node [--rid RID] [--version V]` (docs/spec/packaging.md) publishes the node service
+`manage package site-node [--rid RID] [--version V]` (`docs/spec/packaging.md`) publishes the node service
 (`src/Oadm.SiteNode`, `oadm-site-node`) and the app (`src/Oadm.SiteNode.App`, `oadm-site-node-app`) self-contained
 single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site-node-app/<rid>`, writes the notices
 (`tools/Oadm.Notices --product site-node`: hand-written part `notices/site-node.md`, no LGPL part, so no
@@ -112,5 +102,5 @@ change no firewall.
 
 CI (`release.yml`): job `installers` builds the node packages next to the others on Windows and on both Linux runners,
 installs the .deb packages, checks the service (`oadm-site-node status` answers "Not bound") and removes them;
-`smoke-windows` does the same with the node MSI (`windows/smoke.ps1 -Mode SiteNode`); `release` uploads them with the
-others and lists them in `SHA256SUMS.txt`.
+`smoke-windows-node` does the same with the node MSI (`windows/smoke.ps1 -Mode SiteNode`); `release` uploads them with
+the others and lists them in `SHA256SUMS.txt`.

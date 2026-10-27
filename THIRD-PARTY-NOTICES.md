@@ -43,7 +43,7 @@ license and notice files the packages ship.
   cross-platform "Core" build), https://github.com/empira/PDFsharp, MIT License,
   Copyright (c) 2005-2025 empira Software GmbH, Troisdorf (Cologne Area), Germany.
 - Shipped in `plugins/oadm.snapshot-report/` next to `Oadm.Plugins.SnapshotReport.Server.dll`; it
-  builds the maintenance report PDF. 
+  builds the maintenance report PDF.
 
 ## Roboto font (Snapshot report plugin, embedded)
 

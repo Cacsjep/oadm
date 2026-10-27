@@ -4,7 +4,7 @@ Verbatim plain-text copies from rfc-editor.org (the IETF Trust allows copying an
 source of truth for the protocol code: read the RFC, not a summary, and cite the section in code comments and tests
 ("RFC 2865 5.33"). Never edit these files; a newer RFC is a new file.
 
-## 802.1X server (`docs/spec/radius-server.md`)
+## 802.1X server ([radius-server.md](../spec/radius-server.md))
 
 | RFC | What we take from it |
 |---|---|

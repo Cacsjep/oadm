@@ -26,9 +26,9 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   kept as `.unreadable`; writes go through a temporary file flushed to the disk (`Config/DataFiles`).
 - **Links** (`Links/`): the node always connects to the server and never listens. Every TLS connection it opens is a
   `SiteLink`; Kestrel serves `SiteNodeService` on it through `AcceptedStreamListener` (no socket endpoint of its own).
-  `OutboundConnector` connects to the
-  typed address (port 5081 unless typed), then the server's own addresses (`SetServerAddresses`), backoff 1, 2, 4, 8, then every 10
-  s, started over only after a session that lasted 30 s or served the bound server (a server that accepts TLS and
+  `OutboundConnector` connects to the typed address (port 5081 unless typed), then the server's own addresses
+  (`SetServerAddresses`), backoff 1, 2, 4, 8, then every 10 s (`NodeOptions.MaxBackoff`), started over only after a
+  session that lasted 30 s or served the bound server (a server that accepts TLS and
   closes at once is not tried every second); dual mode where the OS has IPv6, else IPv4. Unbound: any server key (the
   pairing proves it); bound: only the pinned key, another one is noted with where it came from (a waiting one is not
   replaced for an hour, never once accepted); **Accept** lets that identity pair with the code, it binds nothing by
@@ -40,13 +40,14 @@ of the link, `AcceptedStreamListener`, J-PAKE pairing, `AddressRateLimiter`, `He
   server's round 2 and proof; PairStart 10 a minute per address and 30 in all. Calls of servers the node is not bound to
   may send at most 64 KB (`NodeHost.LinkLimits`). Everything else only to the bound identity, checked on every call
   against the binding of that moment. All links go to the one address the node chose, so they are one server session (the
-  server refuses a second control link of the same identity). Kestrel keeps idle links (no
-  keep-alive timeout: the HTTP/2 pings keep them). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many
-  wrong codes RESOURCE_EXHAUSTED.
+  server refuses a second control link of the same identity). Kestrel keeps idle links (no keep-alive timeout: the
+  HTTP/2 pings keep them). Refusals: FAILED_PRECONDITION with the text; a wrong code PERMISSION_DENIED; too many wrong
+  codes RESOURCE_EXHAUSTED.
 - **States** (`State/BindingState`): binding open for 24 hours of run time (`BindingClock` ticks every minute and saves),
-  then closed until Allow binding; the pairing code lives in memory (new at start, every 10 minutes, Allow binding, Reset, Unbind
-  and after 5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so parallel links get no more
-than 5 guesses); Reset = new id, key and code, the server forgotten.
+  then closed until Allow binding; the pairing code lives in memory (new at start, every 10 minutes, Allow binding,
+  Reset, Unbind and after 5 wrong codes, which also refuse Bind for 10 minutes; proofs are checked one at a time, so
+  parallel links get no more than 5 guesses); Reset = new id, key and code, the server forgotten. The rules of the code
+  that the app and the command line show: `docs/spec/sites.md` "The node".
 - **Reach** (`Networks/NetworkScope`): all cards (default) or the chosen cards (no chosen card = all cards; a machine that
   also sits in an office network chooses the camera cards), and the extra networks (at least /8, IPv6 /16), never
   special addresses (0.0.0.0/8, loopback, 169.254/16, multicast, 240/4; IPv6 loopback, link-local, multicast) and never
@@ -64,19 +65,20 @@ than 5 guesses); Reset = new id, key and code, the server forgotten.
   most 100,000); a TCP relay holds at most 256 connections.
 - **Network checks and discovery** (only for reached addresses): Resolve (only the reached addresses of a name),
   ReverseLookup (a full name, not `.local` / `.arpa`, that resolves back to the address; empty outside the networks),
-  Ping (the OS, else TCP 80 / 443 when on Connect to), ProbeTcp, LocalAddressFor (empty outside the networks), Browse (`_axis-video._tcp` on the reached cards),
-  RangeScan (open 443 / 80 on the reached part of a range, only ports on Connect to).
+  Ping (the OS, else TCP 80 / 443 when on Connect to), ProbeTcp, LocalAddressFor (empty outside the networks), Browse
+  (`_axis-video._tcp` on the reached cards), RangeScan (open 443 / 80 on the reached part of a range, only ports on
+  Connect to).
 - **Local channel** (`AdminChannel/`): named pipe `oadm-site-node` (Windows) or `/run/oadm-site-node/admin.sock` (Linux;
   the unit needs `RuntimeDirectory=oadm-site-node`, mode 0755); a node with its own data folder uses names derived from
-  it. Every local user reads the state (with the pairing code while not bound) and the connection log; every change needs
-  an administrator
-  (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root or the service user).
+  it. Every local user reads the state (with the pairing code while not bound) and the connection log; every change
+  needs an administrator (Windows: SYSTEM or an elevated token of Administrators, never the service account; Linux: root
+  or the service user).
   Before sending, the app and the command line check who serves the channel (`AdminServerCheck`): on Windows the pipe's
   owner must be SYSTEM, `NT SERVICE\OadmSiteNode` or Administrators (a node with its own data folder may also run as the
   current user, `manage run node`); on Linux the installed socket's folder must not be writable by others. Otherwise
   nothing is sent and the app says "Another program answers in place of the OADM Site Node service. Nothing was sent.".
-  A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a change through an elevated copy of
-  itself (`--admin-request ... --out ...`, UAC or pkexec). The copy hands the answer back over its standard output on
+  A channel that cannot be opened is logged and tried again every 30 s; the node runs on without it. The app runs a
+  change through an elevated copy of itself (`--admin-request ... --out ...`, UAC or pkexec). The copy hands the answer back over its standard output on
   Linux (`--out -`, a line `OADM-ANSWER <base64>`; never a file in /tmp), in a file in the user's own temp folder on
   Windows. A dismissed prompt (UAC 1223, pkexec 126 / 127) shows nothing; no pkexec or a copy without an answer shows
   why in the app.
@@ -123,16 +125,18 @@ behind each. Read-only towards the camera.
    24 more hours.".
 2. **Outbound through NAT**: server in the office network, node behind a NAT router. Turn on Accept site nodes on the
    Sites page, type the server's address in the app and Save (UAC / pkexec prompt): the pairing code shows below the
-   address with "Valid for N more minutes.", the picture shows a purple line with "Connected". Close and open the app as a user
-   without administrator rights: the code shows without a prompt; after 10 minutes the app shows a new one.
-   Bind on the Sites page with the code; the picture shows the server name and the site name, the Server card "Bound since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt.
-   Five wrong codes: a new code, Bind refused for 10 minutes.
+   address with "Valid for N more minutes.", the picture shows a purple line with "Ready to bind". Close and open the app
+   as a user without administrator rights: the code shows without a prompt; after 10 minutes the app shows a new one.
+   Bind on the Sites page with the code; the picture shows the server name and the site name, the Server card "Bound
+   since ...". A wrong code once: "The pairing code is wrong." on the server, the app lists the attempt. Five wrong
+   codes: a new code, Bind refused for 10 minutes.
 3. **Another server**: point the bound node at a second OADM server; it refuses the connection (the pinned key) and the
    app shows the new identity with **Accept**; nothing binds without the pairing code.
 4. **Two network cards**: All cards (default) reaches both; choose only the camera card: a camera on the office network
-   is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN, `oadm-site-node networks add`) is reached.
-5. **Ports**: add a camera on 8443: the server asks, the app lists Out, TCP, 8443, "device <address>", Requested; Allow; the camera
-   is reached. Dismiss: the server asks again later. A port not allowed is never dialed (`oadm-site-node log`: "Port
+   is "outside the networks"; All cards again reaches it; an extra network (a routed camera VLAN, `oadm-site-node
+   networks add`) is reached.
+5. **Ports**: add a camera on 8443: the server asks, the app lists Out, TCP, 8443, "device <address>", Requested; Allow;
+   the camera is reached. Dismiss: the server asks again later. A port not allowed is never dialed (`oadm-site-node log`: "Port
    not allowed").
 6. **Pull the cable**: unplug the node's uplink: Site offline on the server after the waiting time; plug it in: online
    again after the stable time, the node reconnects with backoff (log), no device turns Unreachable.
@@ -152,7 +156,7 @@ behind each. Read-only towards the camera.
 
 ## What should move to a shared library
 
-The node has its own small copies of logic the server also has (stream 3 did not touch `Oadm.Core`):
-`Discovery/DnsWire` + `AxisAggregator` (the server's `Oadm.Core.Discovery.Mdns`), `Devices/DnsNameRules` (the server's
+The node has its own small copies of logic the server also has: `Discovery/DnsWire` + `AxisAggregator`
+(`Discovery/AxisBrowser.cs`; the server's `Oadm.Core.Discovery.Mdns`), `DnsNameRules` (`Devices/DeviceNetwork.cs`; the server's
 `SystemDnsNameLookup.Normalize` and the verified reverse lookup), `Discovery/RangeScanner.TryParse` (`Ipv4Range`), and
 the TCP first contact of a range scan. They belong in one library without EF Core that the server and the node share.
