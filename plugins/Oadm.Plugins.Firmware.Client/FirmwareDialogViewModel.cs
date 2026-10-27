@@ -39,11 +39,7 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     [ObservableProperty]
     public partial string? CurrentVersion { get; set; } = device.FirmwareVersion;
 
-    /// <summary>Rollback image / commit state from the fwmgr status query.</summary>
-    [ObservableProperty]
-    public partial string? FirmwareState { get; set; }
-
-    /// <summary>True while the status query of this row runs (the Rollback cell shows "Reading").</summary>
+    /// <summary>True while the status query of this row runs (the Firmware cell shows "Reading").</summary>
     [ObservableProperty]
     public partial bool IsReadingStatus { get; set; }
 
@@ -292,7 +288,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
             row.Supported = status.Supported;
             row.CurrentVersion = status.ActiveVersion ?? row.CurrentVersion;
-            row.FirmwareState = DescribeState(status);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -302,30 +297,12 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         catch (Exception)
 #pragma warning restore CA1031
         {
-            row.FirmwareState = "-"; // unknown: the Rollback column stays quiet
+            // the cached version stays
         }
         finally
         {
             _statusSlots.Release();
         }
-    }
-
-    public static string DescribeState(FirmwareStatusInfo status)
-    {
-        ArgumentNullException.ThrowIfNull(status);
-        if (!status.Supported)
-        {
-            return "Firmware management not supported";
-        }
-
-        if (status.IsCommitted == false || status.TimeToRollback is not null)
-        {
-            return status.TimeToRollback is { } s
-                ? string.Create(CultureInfo.InvariantCulture, $"Not committed, rolls back to {status.InactiveVersion} in {s} s")
-                : $"Not committed (previous {status.InactiveVersion})";
-        }
-
-        return status.InactiveVersion is { } inactive ? $"Rollback to {inactive} possible" : "No rollback image";
     }
 
     /// <summary>Uses a file without the picker (tests, drag and drop).</summary>

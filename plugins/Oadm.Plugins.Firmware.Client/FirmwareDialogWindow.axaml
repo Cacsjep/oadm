@@ -30,7 +30,16 @@
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />
-            <DataGridTextColumn Header="Firmware" Width="110" Binding="{Binding CurrentVersion}" x:DataType="fw:FirmwareDeviceRow" />
+            <DataGridTemplateColumn Header="Firmware" Width="110" SortMemberPath="CurrentVersion">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="fw:FirmwareDeviceRow">
+                  <Panel>
+                    <ui:StatusChip IsAccent="True" Text="Reading" IsVisible="{Binding IsReadingStatus}" />
+                    <TextBlock Text="{Binding CurrentVersion}" IsVisible="{Binding !IsReadingStatus}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTemplateColumn Header="Result" Width="170" SortMemberPath="VerdictText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
@@ -43,16 +52,6 @@
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
                   <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxLines="2" Margin="10,6" ToolTip.Tip="{Binding Message}" />
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="Rollback" Width="*" SortMemberPath="FirmwareState">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="fw:FirmwareDeviceRow">
-                  <Panel>
-                    <ui:StatusChip IsAccent="True" Text="Reading" IsVisible="{Binding IsReadingStatus}" />
-                    <TextBlock Text="{Binding FirmwareState}" ToolTip.Tip="{Binding FirmwareState}" IsVisible="{Binding !IsReadingStatus}" />
-                  </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

@@ -326,7 +326,7 @@ public sealed class FirmwareDialogViewModelTests
     }
 
     [Fact]
-    public async Task Status_query_updates_versions_and_rollback_state_and_tolerates_failures()
+    public async Task Status_query_updates_versions_and_tolerates_failures()
     {
         var ctx = new FakeDialogContext();
         ctx.Status[Devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "12.11.77", InactiveVersion = "11.11.160", IsCommitted = true }.ToJson();
@@ -340,13 +340,10 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal(4, ctx.Queries.Count);
         Assert.All(ctx.Queries, q => Assert.Equal("status", q));
         Assert.Equal("12.11.77", vm.Devices[0].CurrentVersion);
-        Assert.Equal("Rollback to 11.11.160 possible", vm.Devices[0].FirmwareState);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[0].Check!.Verdict);
         Assert.False(vm.Devices[1].WillInstall);
         Assert.Equal("This device's firmware cannot be updated from OADM.", vm.Devices[1].Message);
-        Assert.Equal("Not committed, rolls back to 11.11.100 in 120 s", vm.Devices[2].FirmwareState);
-        Assert.Equal("-", vm.Devices[3].FirmwareState);
-        Assert.Equal("12.20.10", vm.Devices[3].CurrentVersion);
+        Assert.Equal("12.20.10", vm.Devices[3].CurrentVersion); // the query failed: the cached version stays
     }
 
     [Fact]
@@ -363,8 +360,7 @@ public sealed class FirmwareDialogViewModelTests
         await load;
 
         Assert.DoesNotContain(vm.Devices, r => r.IsReadingStatus);
-        Assert.Equal("Rollback to 11.11.160 possible", vm.Devices[0].FirmwareState);
-        Assert.Equal("-", vm.Devices[1].FirmwareState);
+        Assert.Equal("12.11.77", vm.Devices[0].CurrentVersion);
     }
 
     [Fact]

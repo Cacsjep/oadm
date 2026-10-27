@@ -42,14 +42,11 @@ public sealed class FirmwareScaleTests
 
         Assert.Equal(DialogViewModel.StatusPreloadCount, ctx.Queries); // not one query per selected device
         Assert.True(ctx.MaxInFlight <= DialogViewModel.MaxParallelStatusQueries, $"{ctx.MaxInFlight} status queries in flight");
-        Assert.Equal("Rollback to 11.11.100 possible", vm.Devices[0].FirmwareState);
-        Assert.Null(vm.Devices[4000].FirmwareState); // read when the grid shows the row
 
         // The grid shows a row far down: only that row is read.
         await vm.EnsureStatusAsync(vm.Devices[4000]);
         await vm.EnsureStatusAsync(vm.Devices[4000]);
         Assert.Equal(DialogViewModel.StatusPreloadCount + 1, ctx.Queries);
-        Assert.Equal("Rollback to 11.11.100 possible", vm.Devices[4000].FirmwareState);
 
         watch.Restart();
         vm.SelectedMode = vm.Modes[1];

@@ -152,9 +152,9 @@ version (several: "3 files" and each product with its version). With several fil
 product (`FirmwareCompatibility.Choose`, else a file whose product the name does not tell); a device without one shows
 "No file" ("No file for this model."), and on the server its Validate file step warns and the later steps are Skipped.
 Two files for one product are refused at the file row ("Two files are for P3265-V. Choose one file per model."). Table of the
-selected devices: address, model, firmware, result with tooltip, details, rollback state from the status query (read
+selected devices: address, model, firmware (refreshed by the status query, read
 for the first 50 devices when the dialog opens, for other rows when the grid shows them, at most 4 queries at a time;
-a row shows the running chip "Reading" in that column until its query answered).
+a row shows the running chip "Reading" in the Firmware column until its query answered), result with tooltip, details.
 Options: factory default none (default) / soft / hard with warnings, "Allow downgrade". **Upgrade** is enabled when at
 least one device would be upgraded; it uploads the file with `ITaskDialogContext.UploadAsync` (progress bar,
 cancellable; several files: only those a device installs, one after the other, one progress bar) and returns
