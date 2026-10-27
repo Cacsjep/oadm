@@ -1208,6 +1208,41 @@
     </Style.Animations>
   </Style>
 
+  <!-- The loading line of the login (above its footer while it connects): an accent segment sliding across, no value -->
+  <Style Selector="ProgressBar.busyLine">
+    <Setter Property="IsIndeterminate" Value="True" />
+    <Setter Property="Height" Value="3" />
+    <Setter Property="MinHeight" Value="3" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="Background" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="Template">
+      <ControlTemplate TargetType="ProgressBar">
+        <Border Background="{TemplateBinding Background}" ClipToBounds="True">
+          <Panel>
+            <Border Name="PART_Indicator" IsVisible="False" />
+            <Border Name="PART_Slide" Width="140" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="2">
+              <Border.RenderTransform>
+                <TranslateTransform />
+              </Border.RenderTransform>
+            </Border>
+          </Panel>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ProgressBar.busyLine /template/ Border#PART_Slide">
+    <Style.Animations>
+      <Animation Duration="0:0:1.2" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="TranslateTransform.X" Value="-140" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="TranslateTransform.X" Value="440" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+
   <!-- Data grids -->
   <Style Selector="DataGrid">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />

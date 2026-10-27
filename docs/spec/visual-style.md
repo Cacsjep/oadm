@@ -115,8 +115,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `Border.heroBody` with the labels above the inputs (`ui:FormField LabelAbove`, 4 px gap), and the buttons in
   `Border.heroFooter` (`ui:DialogFooter`). Login: dots on both sides of the logo (none above or below), an icon inside
   the server, user name and password fields (`ui:OadmIcon.fieldIcon`), no refresh button (Try again sits in the server
-  problem, Log in connects first anyway); while it connects only the text "Logging in to <server>" shows right in the
-  footer, Log in is hidden. A problem that stops the login is a `tc:Callout` directly below its field: server not
+  problem, Log in connects first anyway); while it connects an accent line slides across the top of the footer
+  (`ProgressBar.busyLine`) and the text "Logging in to <server>" shows right in the footer, Log in is hidden. A problem that stops the login is a `tc:Callout` directly below its field: server not
   reachable (error, Try again), certificate changed or not trusted (warning, Forget server), login locked (error, below
   the password); the session ended is an info line above the server. A wrong password stays the usual field error.
   Trust this server?: the shield icon instead of the logo, one line on what trusting means, the fingerprint behind

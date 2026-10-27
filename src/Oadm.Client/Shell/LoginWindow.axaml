@@ -78,6 +78,7 @@
       </StackPanel>
     </Border>
 
+    <ProgressBar Classes="busyLine" IsVisible="{Binding IsBusy}" />
     <Border Classes="heroFooter">
       <ui:DialogFooter x:Name="Footer" CancelText="Quit">
         <TextBlock Classes="secondary" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
