@@ -202,10 +202,26 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         string? pathAdvice = null;
         using (var step = ctx.BeginStep(Steps.ValidateFile))
         {
-            file = await ctx.Files.FindAsync(payload.FileId, ct).ConfigureAwait(false)
-                ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
-            image = FirmwareImageInspector.Inspect(payload.FileName ?? file.Name, file.Size);
-            var check = FirmwareCompatibility.Evaluate(info.ProdNbr, info.Version, image, payload.FactoryDefaultMode, payload.AllowDowngrade);
+            var files = new List<UploadedFile>();
+            var images = new List<FirmwareImageInfo>();
+            foreach (var f in payload.AllFiles())
+            {
+                var found = await ctx.Files.FindAsync(f.FileId, ct).ConfigureAwait(false)
+                    ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
+                files.Add(found);
+                images.Add(FirmwareImageInspector.Inspect(f.FileName ?? found.Name, found.Size));
+            }
+
+            var (index, check) = FirmwareCompatibility.Choose(info.ProdNbr, info.Version, images, payload.FactoryDefaultMode, payload.AllowDowngrade);
+            if (index < 0)
+            {
+                step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
+                SkipRemaining(ctx, FirmwareCompatibility.NoFileForModel);
+                return;
+            }
+
+            file = files[index];
+            image = images[index];
             ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
             if (check.IsNoOp)
             {

@@ -417,6 +417,45 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    public async Task Several_files_install_the_file_for_the_device_model()
+    {
+        var device = new FakeAxisDevice();
+        var files = new FakeFiles();
+        var other = files.Add("Q6135-LE_12_11_77.bin", Fixture.Image());
+        var own = files.Add("P3265-V_12_11_77.bin", Fixture.Image());
+        var ctx = new RecordingContext(device, files);
+        var payload = new FirmwarePayload
+        {
+            FileId = other.Id,
+            FileName = other.Name,
+            Files = [new FirmwareFile(other.Id, other.Name), new FirmwareFile(own.Id, own.Name)],
+        };
+
+        await Run(ctx, payload.ToJson(), new FakeDevice(), Plugin(), CancellationToken.None);
+
+        Assert.True(device.Committed);
+        Assert.StartsWith("P3265-V_12_11_77.bin", StepRun.Detail(ctx.Steps, "Validate file"), StringComparison.Ordinal);
+        Assert.Equal("Upgrade firmware to 12.11.77", payload.TaskName());
+    }
+
+    [Fact]
+    public async Task Several_files_without_one_for_the_model_skip_the_device()
+    {
+        var device = new FakeAxisDevice();
+        var files = new FakeFiles();
+        var a = files.Add("Q6135-LE_12_11_77.bin", Fixture.Image());
+        var b = files.Add("M3215-LVE_12_11_147.bin", Fixture.Image());
+        var ctx = new RecordingContext(device, files);
+        var payload = new FirmwarePayload { FileId = a.Id, FileName = a.Name, Files = [new FirmwareFile(a.Id, a.Name), new FirmwareFile(b.Id, b.Name)] };
+
+        await Run(ctx, payload.ToJson(), new FakeDevice(), Plugin(), CancellationToken.None);
+
+        Assert.Equal(0, device.Commits);
+        Assert.Equal("No file for this model. Nothing was installed.", StepRun.Detail(ctx.Steps, "Validate file"));
+        Assert.Equal("Upgrade firmware", payload.TaskName()); // two versions: no version in the name
+    }
+
+    [Fact]
     public async Task Commit_waits_while_the_device_has_not_finished_booting()
     {
         var (ctx, device, payload, _) = Setup();

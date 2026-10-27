@@ -6,7 +6,8 @@ restart, verifies the new version and commits it.
 
 Task names (`GetTaskName`, from the payload): "Upgrade firmware to 12.11.77"; "Downgrade firmware to 10.12.236" (every
 installing device downgrades, payload `direction` from the dialog preview); "Install firmware 12.11.77" (mixed);
-"Install firmware" (no version in the file name). A soft or hard factory default adds " (factory default)".
+"Install firmware" (no version in the file name); several files of different versions: "Upgrade firmware" /
+"Downgrade firmware". A soft or hard factory default adds " (factory default)".
 
 | Part | Project | Assembly |
 |---|---|---|
@@ -146,13 +147,18 @@ Unsupported devices return `{"supported":false,...}` without calling fwmgr.
 
 ## Dialog
 
-Choose a local `.bin`; the dialog shows name, size and, when recognized, product and AXIS OS version. Table of the
+Choose one local `.bin` or several (one per model); the dialog shows name, size and, when recognized, product and AXIS OS
+version (several: "3 files" and each product with its version). With several files each device gets the file for its
+product (`FirmwareCompatibility.Choose`, else a file whose product the name does not tell); a device without one shows
+"No file" ("No file for this model."), and on the server its Validate file step warns and the later steps are Skipped.
+Two files for one product are refused at the file row ("Two files are for P3265-V. Choose one file per model."). Table of the
 selected devices: address, model, firmware, result with tooltip, details, rollback state from the status query (read
 for the first 50 devices when the dialog opens, for other rows when the grid shows them, at most 4 queries at a time;
 a row shows the running chip "Reading" in that column until its query answered).
 Options: factory default none (default) / soft / hard with warnings, "Allow downgrade". **Upgrade** is enabled when at
 least one device would be upgraded; it uploads the file with `ITaskDialogContext.UploadAsync` (progress bar,
-cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`.
+cancellable; several files: only those a device installs, one after the other, one progress bar) and returns
+`{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`, with several files also `"files":[{"fileId","fileName"}]`.
 
 ## Recorded on hardware (read-only)
 

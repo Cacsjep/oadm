@@ -26,6 +26,9 @@ public enum FirmwareVerdict
 
     /// <summary>Unknown version combined with a factory default but without "allow downgrade": refused, a downgrade cannot be ruled out.</summary>
     UnknownVersionRefused = 7,
+
+    /// <summary>Several files were chosen and none is for this product: the device is skipped.</summary>
+    NoFileForModel = 8,
 }
 
 public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
@@ -99,6 +102,47 @@ public static class FirmwareCompatibility
         }
 
         return new(FirmwareVerdict.Downgrade, $"Downgrade {current} → {target}{across} with {mode.ToString().ToLowerInvariant()} factory default.");
+    }
+
+    /// <summary>Message of <see cref="FirmwareVerdict.NoFileForModel"/>.</summary>
+    public const string NoFileForModel = "No file for this model.";
+
+    /// <summary>
+    /// The file of several for one device: the file for its product, else a file whose product is not known from its name
+    /// (the device checks it). One file is always that file. Index -1: none of the files is for this device.
+    /// </summary>
+    public static (int Index, FirmwareCheck Check) Choose(string? deviceModel, string? deviceVersion, IReadOnlyList<FirmwareImageInfo> images, FactoryDefaultMode mode, bool allowDowngrade)
+    {
+        ArgumentNullException.ThrowIfNull(images);
+        if (images.Count == 1)
+        {
+            return (0, Evaluate(deviceModel, deviceVersion, images[0], mode, allowDowngrade));
+        }
+
+        var unnamed = -1;
+        for (var i = 0; i < images.Count; i++)
+        {
+            if (images[i].IsRejected)
+            {
+                continue;
+            }
+
+            if (images[i].Product is { } product)
+            {
+                if (!string.IsNullOrWhiteSpace(deviceModel) && ProductMatches(product, deviceModel))
+                {
+                    return (i, Evaluate(deviceModel, deviceVersion, images[i], mode, allowDowngrade));
+                }
+            }
+            else if (unnamed < 0)
+            {
+                unnamed = i;
+            }
+        }
+
+        return unnamed >= 0
+            ? (unnamed, Evaluate(deviceModel, deviceVersion, images[unnamed], mode, allowDowngrade))
+            : (-1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
     }
 
     /// <summary>"AXIS P3265-V" and "p3265-v" match "P3265-V".</summary>

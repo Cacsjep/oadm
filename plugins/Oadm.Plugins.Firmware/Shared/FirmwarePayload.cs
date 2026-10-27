@@ -25,14 +25,23 @@ public enum FirmwareDirection
     Downgrade = 2,
 }
 
+/// <summary>One uploaded firmware file of the payload.</summary>
+public sealed record FirmwareFile(string FileId, string? FileName);
+
 /// <summary>Payload of the "Upgrade firmware" task, written by the dialog.</summary>
 public sealed record FirmwarePayload
 {
-    /// <summary>Id of the uploaded firmware file (<c>ITaskDialogContext.UploadAsync</c>).</summary>
-    public required string FileId { get; init; }
+    /// <summary>Id of the uploaded firmware file (<c>ITaskDialogContext.UploadAsync</c>); the first one of <see cref="Files"/>.</summary>
+    public string? FileId { get; init; }
 
     /// <summary>Original file name, used to read product and version.</summary>
     public string? FileName { get; init; }
+
+    /// <summary>Several files (one per model): each device installs the file for its product. Null with one file.</summary>
+    public IReadOnlyList<FirmwareFile>? Files { get; init; }
+
+    /// <summary><see cref="Files"/>, or the one file.</summary>
+    public IReadOnlyList<FirmwareFile> AllFiles() => Files is { Count: > 0 } files ? files : [new FirmwareFile(FileId ?? string.Empty, FileName)];
 
     public FactoryDefaultMode FactoryDefaultMode { get; init; } = FactoryDefaultMode.None;
 
@@ -49,8 +58,11 @@ public sealed record FirmwarePayload
     /// </summary>
     public string TaskName()
     {
-        var version = FirmwareImageInspector.ParseFileName(FileName).Version?.Text;
-        var name = version is null
+        var versions = AllFiles().Select(f => FirmwareImageInspector.ParseFileName(f.FileName).Version?.Text).Distinct().ToList();
+        var version = versions.Count == 1 ? versions[0] : null;
+        var name = versions.Count > 1
+            ? Direction == FirmwareDirection.Downgrade ? "Downgrade firmware" : "Upgrade firmware"
+            : version is null
             ? "Install firmware"
             : Direction switch
             {
@@ -90,7 +102,7 @@ public sealed record FirmwarePayload
             throw new ArgumentException("The task payload is not valid. Nothing was changed.", nameof(json), ex);
         }
 
-        if (payload is null || string.IsNullOrWhiteSpace(payload.FileId))
+        if (payload is null || payload.AllFiles().Any(f => string.IsNullOrWhiteSpace(f.FileId)))
         {
             throw new ArgumentException("No firmware file was selected. Nothing was changed.", nameof(json));
         }

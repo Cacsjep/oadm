@@ -42,19 +42,19 @@ public sealed class FirmwareTaskDialog : ITaskPluginDialog
 /// <summary>File picker and size reader backed by the window's storage provider and the local file system.</summary>
 public sealed class StorageFirmwareFileSource(TopLevel topLevel) : IFirmwareFileSource
 {
-    public async Task<string?> PickAsync()
+    public async Task<IReadOnlyList<string>> PickAsync()
     {
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = "Choose AXIS OS firmware",
-            AllowMultiple = false,
+            AllowMultiple = true,
             FileTypeFilter =
             [
                 new FilePickerFileType("AXIS OS firmware (*.bin)") { Patterns = ["*.bin"] },
                 FilePickerFileTypes.All,
             ],
         }).ConfigureAwait(true);
-        return files.Count == 0 ? null : files[0].TryGetLocalPath();
+        return [.. files.Select(f => f.TryGetLocalPath()).OfType<string>()];
     }
 
     public Task<long> GetSizeAsync(string path, CancellationToken ct)

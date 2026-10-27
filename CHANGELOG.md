@@ -6,6 +6,15 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ## [Unreleased]
 
+### Added
+
+- Upgrade firmware takes several files at once, one per model: each device installs the file for its model.
+
+### Fixed
+
+- Upgrade firmware commits AXIS OS 12.11 again: it waits while the camera has not finished starting, instead of
+  failing and letting the camera roll back after 30 minutes.
+
 ## [4.5.0] - 2026-10-26
 
 ### Added

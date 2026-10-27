@@ -12,8 +12,8 @@ namespace Oadm.Plugins.Firmware.Client;
 /// <summary>Local file access for the dialog, replaceable in tests.</summary>
 public interface IFirmwareFileSource
 {
-    /// <summary>Lets the user choose a .bin file; null when cancelled.</summary>
-    Task<string?> PickAsync();
+    /// <summary>Lets the user choose .bin files (one per model); empty when cancelled.</summary>
+    Task<IReadOnlyList<string>> PickAsync();
 
     /// <summary>Size of the file in bytes. The content is never inspected (see <see cref="FirmwareImageInspector"/>).</summary>
     Task<long> GetSizeAsync(string path, CancellationToken ct);
@@ -32,6 +32,9 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     public string Address => Device.Address;
 
     public string Model => Device.Model ?? string.Empty;
+
+    /// <summary>The chosen file this device installs (index into the dialog's files); -1 when none fits.</summary>
+    internal int FileIndex { get; set; } = -1;
 
     [ObservableProperty]
     public partial string? CurrentVersion { get; set; } = device.FirmwareVersion;
@@ -63,6 +66,7 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
         FirmwareVerdict.WrongProduct => "Wrong product",
         FirmwareVerdict.InvalidFile => "Invalid file",
         FirmwareVerdict.UnknownVersionRefused => "Refused",
+        FirmwareVerdict.NoFileForModel => "No file",
         _ => "Not supported",
     };
 
@@ -94,7 +98,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     // Never disposed: status reads still in flight release it after the dialog closed (it has no wait handle).
     private readonly SemaphoreSlim _statusSlots = new(MaxParallelStatusQueries);
     private CancellationTokenSource? _uploadCts;
-    private FirmwareImageInfo? _image;
+    private readonly List<(string Path, FirmwareImageInfo Image)> _chosen = [];
 
     public FirmwareDialogViewModel(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, IFirmwareFileSource files)
     {
@@ -177,8 +181,8 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>Why Upgrade is disabled (its tooltip); null when it is enabled or an upload runs.</summary>
     public string? StartBlockedReason =>
         IsUploading ? null
-        : _image is null || FilePath is null ? FileError ?? "Choose an AXIS OS .bin file."
-        : _image.IsRejected ? FileError
+        : _chosen.Count == 0 || FilePath is null ? FileError ?? "Choose an AXIS OS .bin file."
+        : FileError is not null ? FileError
         : !Devices.Any(d => d.WillInstall) ? "None of the selected devices can install this file (see Result)."
         : null;
 
@@ -325,48 +329,65 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     }
 
     /// <summary>Uses a file without the picker (tests, drag and drop).</summary>
-    public async Task SelectFileAsync(string path, CancellationToken ct)
+    public Task SelectFileAsync(string path, CancellationToken ct) => SelectFilesAsync([path], ct);
+
+    /// <summary>Uses these files (one per model): each device installs the file for its product.</summary>
+    public async Task SelectFilesAsync(IReadOnlyList<string> paths, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        Error = null;
-        try
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0)
         {
-            var size = await _files.GetSizeAsync(path, ct).ConfigureAwait(true);
-            _image = FirmwareImageInspector.Inspect(path, size);
-            FilePath = path;
-            FileName = _image.FileName;
-            FileError = _image.RejectReason;
-            FileDetails = FileSizeText.Format(size) + (_image.IsIdentified
-                ? $"  ·  for {_image.Product}, AXIS OS {_image.Version}"
-                : "  ·  product and version not recognized from the file name; each device checks the image itself");
-        }
-        catch (IOException ex)
-        {
-            _image = null;
-            FilePath = null;
-            FileName = FirmwareImageInspector.FileNameOf(path);
-            FileDetails = null;
-            FileError = "The file could not be read: " + ex.Message;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            _image = null;
-            FilePath = null;
-            FileName = FirmwareImageInspector.FileNameOf(path);
-            FileDetails = null;
-            FileError = "The file could not be read: " + ex.Message;
+            return;
         }
 
+        Error = null;
+        _chosen.Clear();
+        FilePath = null;
+        FileDetails = null;
+        FileError = null;
+        FileName = paths.Count == 1 ? FirmwareImageInspector.FileNameOf(paths[0]) : string.Create(CultureInfo.InvariantCulture, $"{paths.Count} files");
+        long total = 0;
+        foreach (var path in paths)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            try
+            {
+                var size = await _files.GetSizeAsync(path, ct).ConfigureAwait(true);
+                total += size;
+                _chosen.Add((path, FirmwareImageInspector.Inspect(path, size)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _chosen.Clear();
+                FileError = (paths.Count == 1 ? string.Empty : FirmwareImageInspector.FileNameOf(path) + ": ") + "The file could not be read: " + ex.Message;
+                Evaluate();
+                return;
+            }
+        }
+
+        FilePath = paths[0];
+        var rejected = _chosen.FirstOrDefault(c => c.Image.IsRejected);
+        var duplicate = _chosen.Where(c => c.Image.Product is not null)
+            .GroupBy(c => FirmwareCompatibility.NormalizeProduct(c.Image.Product!))
+            .FirstOrDefault(g => g.Count() > 1)?.Key;
+        FileError = rejected.Image is { } bad ? (paths.Count == 1 ? string.Empty : bad.FileName + ": ") + bad.RejectReason
+            : duplicate is not null ? $"Two files are for {duplicate}. Choose one file per model."
+            : null;
+        FileDetails = FileSizeText.Format(total) + (_chosen.Count == 1
+            ? _chosen[0].Image.IsIdentified
+                ? $"  ·  for {_chosen[0].Image.Product}, AXIS OS {_chosen[0].Image.Version}"
+                : "  ·  product and version not recognized from the file name; each device checks the image itself"
+            : "  ·  " + string.Join(", ", _chosen.Select(c => c.Image.IsIdentified ? $"{c.Image.Product} {c.Image.Version}" : c.Image.FileName)));
         Evaluate();
     }
 
     [RelayCommand(CanExecute = nameof(CanBrowse))]
     private async Task BrowseAsync()
     {
-        var path = await _files.PickAsync().ConfigureAwait(true);
-        if (!string.IsNullOrEmpty(path))
+        var paths = await _files.PickAsync().ConfigureAwait(true);
+        if (paths.Count > 0)
         {
-            await SelectFileAsync(path, CancellationToken.None).ConfigureAwait(true);
+            await SelectFilesAsync(paths, CancellationToken.None).ConfigureAwait(true);
         }
     }
 
@@ -375,10 +396,13 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     [RelayCommand(CanExecute = nameof(CanStart))]
     private async Task StartAsync()
     {
-        if (_image is null || FilePath is null)
+        if (_chosen.Count == 0 || FilePath is null)
         {
             return;
         }
+
+        // Only the files a device installs, in the order chosen.
+        var used = Devices.Where(d => d.WillInstall).Select(d => d.FileIndex).Distinct().Order().ToList();
 
         Error = null;
         IsUploading = true;
@@ -389,6 +413,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         try
         {
             var finished = false;
+            var current = 0;
             var progress = new Progress<double>(p =>
             {
                 if (finished)
@@ -396,16 +421,24 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                     return;
                 }
 
-                // The SDK does not specify the unit: accept a fraction (0..1) or a percentage.
-                var percent = p <= 1.0 ? p * 100 : p;
-                UploadProgress = Math.Clamp(percent, 0, 100);
+                // The SDK does not specify the unit: accept a fraction (0..1) or a percentage. Several files: one bar.
+                var percent = Math.Clamp(p <= 1.0 ? p * 100 : p, 0, 100);
+                UploadProgress = Math.Clamp(((current * 100) + percent) / used.Count, 0, 100);
                 UploadText = string.Create(CultureInfo.InvariantCulture, $"Uploading firmware to the server ({UploadProgress:0} %)");
             });
-            var uploaded = await _ctx.UploadAsync(FilePath, progress, uploadCts.Token).ConfigureAwait(true);
+            var uploaded = new List<FirmwareFile>(used.Count);
+            for (current = 0; current < used.Count; current++)
+            {
+                var (path, image) = _chosen[used[current]];
+                var file = await _ctx.UploadAsync(path, progress, uploadCts.Token).ConfigureAwait(true);
+                uploaded.Add(new FirmwareFile(file.Id, image.FileName));
+            }
+
             Result = new FirmwarePayload
             {
-                FileId = uploaded.Id,
-                FileName = _image.FileName,
+                FileId = uploaded[0].FileId,
+                FileName = uploaded[0].FileName,
+                Files = uploaded.Count > 1 ? uploaded : null,
                 FactoryDefaultMode = SelectedMode.Mode,
                 AllowDowngrade = AllowDowngrade,
                 Direction = Direction(),
@@ -446,7 +479,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         };
     }
 
-    public bool CanStart() => !IsUploading && _image is { IsRejected: false } && FilePath is not null && Devices.Any(d => d.WillInstall);
+    public bool CanStart() => !IsUploading && _chosen.Count > 0 && FileError is null && FilePath is not null && Devices.Any(d => d.WillInstall);
 
     [RelayCommand]
     private void Cancel()
@@ -482,9 +515,12 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         _lifetime.Dispose();
     }
 
+    private FirmwareImageInfo[] _images = [];
+
     /// <summary>One pass over all rows (thousands of devices: no nested loops, one summary).</summary>
     private void Evaluate()
     {
+        _images = [.. _chosen.Select(c => c.Image)];
         foreach (var row in Devices)
         {
             EvaluateRow(row);
@@ -495,9 +531,10 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     private void EvaluateRow(FirmwareDeviceRow row)
     {
-        if (_image is null)
+        if (_chosen.Count == 0)
         {
             row.Check = null;
+            row.FileIndex = -1;
         }
         else if (!row.Supported)
         {
@@ -505,7 +542,9 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
         else
         {
-            row.Check = FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, _image, SelectedMode.Mode, AllowDowngrade);
+            var (index, check) = FirmwareCompatibility.Choose(row.Model, row.CurrentVersion, _images, SelectedMode.Mode, AllowDowngrade);
+            row.FileIndex = index;
+            row.Check = check;
         }
     }
 
@@ -513,7 +552,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     {
         OnPropertyChanged(nameof(PathWarning));
         OnPropertyChanged(nameof(HasPathWarning));
-        if (_image is null)
+        if (_chosen.Count == 0)
         {
             Summary = "Choose an AXIS OS .bin file.";
         }

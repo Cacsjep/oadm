@@ -83,7 +83,7 @@ internal sealed class FakeFileSource(long size = 87 * 1024 * 1024) : FileSource
 {
     public string? Picked { get; set; }
 
-    public Task<string?> PickAsync() => Task.FromResult(Picked);
+    public Task<IReadOnlyList<string>> PickAsync() => Task.FromResult<IReadOnlyList<string>>(Picked is null ? [] : [Picked]);
 
     public Task<long> GetSizeAsync(string path, CancellationToken ct)
     {
@@ -182,6 +182,52 @@ public sealed class FirmwareDialogViewModelTests
         await vm.SelectFileAsync("C:\\missing\\a.bin", CancellationToken.None);
         Assert.Contains("could not be read", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.Equal(vm.FileError, vm.StartBlockedReason);
+    }
+
+    [Fact]
+    public async Task Several_files_give_each_device_the_file_of_its_model_and_upload_only_used_files()
+    {
+        var ctx = new FakeDialogContext();
+        using var vm = Create(ctx);
+
+        await vm.SelectFilesAsync(["C:\\fw\\P3265-V_12_11_77.bin", "C:\\fw\\M3215-LVE_12_11_147.bin", "C:\\fw\\Q6135-LE_12_11_77.bin"], CancellationToken.None);
+
+        Assert.Equal("3 files", vm.FileName);
+        Assert.Contains("P3265-V 12.11.77, M3215-LVE 12.11.147, Q6135-LE 12.11.77", vm.FileDetails, StringComparison.Ordinal);
+        Assert.Null(vm.FileError);
+        Assert.True(vm.Devices[2].WillInstall); // Q6135-LE gets its own file
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal(["C:\\fw\\P3265-V_12_11_77.bin", "C:\\fw\\Q6135-LE_12_11_77.bin"], ctx.Uploads); // no M3215-LVE selected
+        var payload = ClientPayload.Parse(vm.Result);
+        Assert.Equal(2, payload.Files!.Count);
+        Assert.Equal("Upgrade firmware to 12.11.77", payload.TaskName());
+    }
+
+    [Fact]
+    public async Task A_device_without_a_file_for_its_model_says_so()
+    {
+        using var vm = Create();
+
+        await vm.SelectFilesAsync(["P3265-V_12_11_77.bin", "M3215-LVE_12_11_147.bin"], CancellationToken.None);
+
+        Assert.Equal("No file", vm.Devices[2].VerdictText);
+        Assert.Equal("No file for this model.", vm.Devices[2].Message);
+        Assert.True(vm.Devices[2].IsError);
+        Assert.True(vm.CanStart()); // the P3265-V devices still upgrade
+    }
+
+    [Fact]
+    public async Task Two_files_for_one_model_are_refused()
+    {
+        using var vm = Create();
+
+        await vm.SelectFilesAsync(["P3265-V_12_11_77.bin", "P3265-V_12_11_147.bin"], CancellationToken.None);
+
+        Assert.Equal("Two files are for P3265-V. Choose one file per model.", vm.FileError);
+        Assert.False(vm.CanStart());
         Assert.Equal(vm.FileError, vm.StartBlockedReason);
     }
 
@@ -384,6 +430,12 @@ public sealed class FirmwareDialogHeadlessTests
             vm.UploadText = "Uploading firmware to the server (42 %)";
             await PumpAsync();
             Capture(window, outDir, "firmware-dialog-uploading.png");
+
+            // Several files, one per model: the Q6135-LE gets its own file.
+            vm.IsUploading = false;
+            await vm.SelectFilesAsync(["C:\\Downloads\\P3265-V_12_11_77.bin", "C:\\Downloads\\M3215-LVE_12_11_147.bin"], CancellationToken.None);
+            await PumpAsync();
+            Capture(window, outDir, "firmware-dialog-files.png");
             window.Close();
             return vm.Devices.Count;
         }, CancellationToken.None);
