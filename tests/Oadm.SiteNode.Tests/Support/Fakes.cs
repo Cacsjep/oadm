@@ -211,7 +211,7 @@ internal sealed class EchoServer : IAsyncDisposable
             {
                 socket = await _listener.AcceptSocketAsync(_stop.Token);
             }
-            catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException)
+            catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
             {
                 return;
             }
@@ -236,7 +236,7 @@ internal sealed class EchoServer : IAsyncDisposable
                             await socket.SendAsync(buffer.AsMemory(0, read), SocketFlags.None, _stop.Token);
                         }
                     }
-                    catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException)
+                    catch (Exception e) when (e is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
                     {
                     }
                 }

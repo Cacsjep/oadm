@@ -64,7 +64,7 @@ internal sealed class PausableProxy : IAsyncDisposable
             {
                 node = await _listener.AcceptTcpClientAsync(_stop.Token);
             }
-            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException or SocketException)
+            catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException or SocketException or InvalidOperationException)
             {
                 return;
             }
@@ -74,7 +74,7 @@ internal sealed class PausableProxy : IAsyncDisposable
             {
                 await server.ConnectAsync(_target, _stop.Token);
             }
-            catch (Exception e) when (e is OperationCanceledException or SocketException)
+            catch (Exception e) when (e is OperationCanceledException or SocketException or InvalidOperationException)
             {
                 node.Dispose();
                 server.Dispose();
@@ -115,7 +115,7 @@ internal sealed class PausableProxy : IAsyncDisposable
                 await to.WriteAsync(buffer.AsMemory(0, read), _stop.Token);
             }
         }
-        catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException or SocketException)
+        catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException or SocketException or InvalidOperationException)
         {
         }
 

@@ -67,7 +67,7 @@ internal sealed class LoopbackDevice : IAsyncDisposable
         {
             await _accept;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
+        catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
         {
         }
 

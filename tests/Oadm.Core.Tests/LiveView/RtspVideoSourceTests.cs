@@ -148,7 +148,7 @@ public sealed class RtspVideoSourceTests
             {
                 await _run;
             }
-            catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+            catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
             {
             }
 

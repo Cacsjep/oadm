@@ -119,7 +119,7 @@ internal sealed class MiniHttpServer : IAsyncDisposable
             {
                 client = await _listener.AcceptTcpClientAsync(_stop.Token);
             }
-            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
             {
                 return;
             }
@@ -234,7 +234,7 @@ internal sealed class MiniSmtpServer : IAsyncDisposable
             {
                 client = await _listener.AcceptTcpClientAsync(_stop.Token);
             }
-            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException)
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or ObjectDisposedException or InvalidOperationException)
             {
                 return;
             }

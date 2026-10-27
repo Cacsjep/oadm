@@ -185,7 +185,7 @@ internal sealed class MiniTcpServer : IAsyncDisposable
             {
                 client = await _listener.AcceptTcpClientAsync(_stop.Token);
             }
-            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException)
+            catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException or SocketException or InvalidOperationException)
             {
                 return;
             }

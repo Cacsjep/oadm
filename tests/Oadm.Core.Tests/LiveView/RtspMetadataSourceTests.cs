@@ -225,7 +225,7 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
         {
             await _run;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException)
+        catch (Exception ex) when (ex is OperationCanceledException or IOException or SocketException or ObjectDisposedException or InvalidOperationException)
         {
         }
 
@@ -241,7 +241,7 @@ internal sealed class FakeEventRtspServer : IAsyncDisposable
             {
                 await ServeAsync(tcp);
             }
-            catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException)
+            catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or InvalidOperationException)
             {
             }
         }
