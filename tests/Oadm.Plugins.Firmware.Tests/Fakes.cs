@@ -141,6 +141,9 @@ internal sealed class FakeAxisDevice : IVapixClient
     public int? UpgradeErrorCode { get; set; }
     public bool DropConnectionAfterUpload { get; set; }
     public int CommitFailures { get; set; }
+
+    /// <summary>Commits refused with AXIS OS 12's "not finished booting" answer before the device accepts one.</summary>
+    public int CommitsWhileBooting { get; set; }
     public AfterUpgrade After { get; set; } = AfterUpgrade.Restart;
     public int DownProbes { get; set; } = 3;
 
@@ -207,6 +210,12 @@ internal sealed class FakeAxisDevice : IVapixClient
     private HttpResponseMessage Commit()
     {
         Commits++;
+        if (CommitsWhileBooting > 0)
+        {
+            CommitsWhileBooting--;
+            return Json("""{"apiVersion":"1.10","method":"commit","error":{"code":500,"message":"The system hasn't finished booting yet."}}""");
+        }
+
         if (CommitFailures > 0)
         {
             CommitFailures--;

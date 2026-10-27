@@ -417,6 +417,19 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    public async Task Commit_waits_while_the_device_has_not_finished_booting()
+    {
+        var (ctx, device, payload, _) = Setup();
+        device.CommitsWhileBooting = 5; // more than the commit attempts: waiting for the boot is not an attempt
+
+        await Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None);
+
+        Assert.Equal(6, device.Commits);
+        Assert.True(device.Committed);
+        Assert.Equal(["Read commit state: Done", "Commit firmware: Done", "Completed: Done"], StepRun.Lines(ctx.Steps)[^3..]);
+    }
+
+    [Fact]
     public async Task Commit_succeeds_on_retry()
     {
         var (ctx, device, payload, _) = Setup();

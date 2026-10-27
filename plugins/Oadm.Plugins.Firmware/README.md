@@ -125,7 +125,7 @@ Pending); task progress comes from the steps.
 | Install firmware | poll anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
 | Wait for the device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back -> Failed |
-| Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts, "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password / check the address) |
+| Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts, "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." (AXIS OS 12, minutes after the restart) Commit firmware waits and asks again every 10 s for up to **10 min**, not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password / check the address) |
 
 Failure messages say what the device runs now and what happens next: upload refused or interrupted ("still runs X"),
 did not restart, did not come back (with the auto-rollback time or the hard-reset IP hint), rolled back, not committed

@@ -30,6 +30,12 @@ public sealed record FirmwareTaskTimings
     public int CommitAttempts { get; init; } = 3;
 
     /// <summary>
+    /// How long a commit keeps waiting while the device says it has not finished booting (AXIS OS 12 refuses the commit
+    /// for minutes after the restart). Well below <see cref="AutoRollbackMinutes"/>.
+    /// </summary>
+    public TimeSpan BootWait { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
     /// autoRollback for upgrades that keep the settings: the device reverts by itself if OADM never
     /// verifies and commits (OADM crashed, network lost). Longer than <see cref="RestartTimeout"/>.
     /// </summary>
@@ -531,7 +537,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 commitBegun = true;
                 var committed = await ctx.StepAsync(commitName, async step =>
                 {
-                    var version = await fwmgr.CommitAsync(ct).ConfigureAwait(false);
+                    var version = await CommitWhenBootedAsync(ctx, fwmgr, ct).ConfigureAwait(false);
                     step.Complete($"AXIS OS {version ?? actual.Text}");
                     return version;
                 }).ConfigureAwait(false);
@@ -554,6 +560,28 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             Invariant($"Firmware {actual} is running but could not be committed ({last?.Message}). The device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting unless the firmware is committed."),
             last);
     }
+
+    /// <summary>Commits; while the device answers that it has not finished booting, waits and asks again (not an attempt).</summary>
+    private async Task<string?> CommitWhenBootedAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, CancellationToken ct)
+    {
+        var until = _time.GetUtcNow() + _timings.BootWait;
+        while (true)
+        {
+            try
+            {
+                return await fwmgr.CommitAsync(ct).ConfigureAwait(false);
+            }
+            catch (FwmgrException ex) when (IsStillBooting(ex) && _time.GetUtcNow() < until)
+            {
+                ctx.Log(TaskLogLevel.Info, "The device has not finished starting yet, the commit waits.");
+                await Task.Delay(_timings.CommitRetryDelay, _time, ct).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>AXIS OS 12: <c>"The system hasn't finished booting yet."</c></summary>
+    private static bool IsStillBooting(FwmgrException ex) =>
+        ex.DeviceMessage?.Contains("finished booting", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string Invariant(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
 }
