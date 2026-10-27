@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - Load test: puts the chosen cameras under load and shows whether the network and the cameras carry it.
+- Help: the user docs open from the title bar, also without internet.
 - Plugin SDK 0.6.0.
 
 ### Changed
