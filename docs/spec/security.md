@@ -23,18 +23,24 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   replacement) creates a new certificate and logs that clients must use Forget server. On Windows the key name follows the
   data folder's path: a moved or copied data folder gets a new certificate, with the same warning in the log ("belongs to
   another data folder"; clients show "The server certificate changed"). `--Oadm:RegenerateTlsCertificate` makes a new one.
-- Kestrel serves HTTP/2 over TLS on the listen URL (default `https://0.0.0.0:5080`; an `http://` URL is accepted for tests
-  and logs a warning; a stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the https default). The
-  server binds to all interfaces so clients on other machines can connect.
-- The client pins the certificate's SHA-256 per "host:port" on first connect (`Oadm.Contracts.Security.ServerCertificatePinning`,
-  `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). The first
-  connection asks "Trust this server?" (`TrustServerWindow`: "First connection to <server>", trust it only if it is your
-  OADM server; the fingerprint, two lines of 16 pairs, one click away behind **Fingerprint**, the server writes it to its log
-  at startup; decision 2026-10-27). It asks only when an OADM server answers with that certificate: the client reads the
-  status (no login, nothing sent) with the certificate pinned for that request and removes the pin again when nothing answers
-  (another TLS service on the port, e.g. 5081 of the site nodes: "Cannot reach the server", no question) or the user does
-  not trust it. The login window is hidden while the question is open. Not trusted: "The server is not trusted" below the server field. A changed certificate is
-  refused with "The server certificate changed" below the server field and its **Forget server** re-pins. An address without scheme means https.
+  The server writes the fingerprint to its log at startup.
+- Kestrel serves HTTP/2 over TLS on the listen URL (default `https://0.0.0.0:5080`, all interfaces so clients on other
+  machines can connect). An `http://` URL is accepted for tests and logs a warning; a stored listen URL
+  `http://0.0.0.0:5080` reads as the https default.
+- The client pins the certificate's SHA-256 per "host:port" (`Oadm.Contracts.Security.ServerCertificatePinning`,
+  `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). An address without
+  scheme means https.
+- **First connection** (`LoginViewModel.TrustNewServerAsync`): the client asks only when an OADM server answers with the
+  new certificate. It pins the certificate for one `AuthService.Status` call (no login, nothing sent). When nothing
+  answers (another TLS service on the port, e.g. 5081 of the site nodes) it forgets the pin and shows "Cannot reach the
+  server", without a question. When an OADM server answers, the login window is hidden and `TrustServerWindow`
+  (`TrustServerViewModel`) asks **Trust this server?**: "First connection to <server>", "Trust it only if this is your OADM
+  server. OADM then remembers it and warns when its certificate changes.", the disclosure **Fingerprint** (two lines of 16
+  pairs, "The server writes it to its log at startup."), **Trust server** and Cancel. Cancel or the X forget the pin
+  again: "The server is not trusted" / "Log in again to trust it." below the server field.
+- **Changed certificate**: refused with "The server certificate changed" / "If the server was reinstalled or got a new
+  certificate, forget it and compare the new fingerprint." below the server field; its **Forget server** removes the pin
+  and connects again, which asks like a first connection.
 
 ## Users, roles and sessions
 
@@ -88,7 +94,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
   task runs are checked in the call (`InCall`). The operator default withholds the risky rights:
   Web View, remove users on devices, firmware factory default and downgrade, application downgrade and removal, connection
-  settings import; event rules, tag management and Delete all stay off as before. `RolesUpgradeNotice` records what
+  settings import, event rules, tag management and Delete all. `RolesUpgradeNotice` records what
   operators lost at the first start of an installation that had users; administrators see it as a banner with "Check
   roles" until they dismiss it (per client).
 - **Device groups** (`docs/spec/device-scope.md`): every user has "All devices" or a device group (`Users.AllDevices`,
@@ -134,18 +140,22 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 ## Client: login and users
 
 - `Shell/AppShell` shows `LoginWindow` (`LoginViewModel`) before the main window, again after Log out and when a call
-  answers UNAUTHENTICATED ("Your session has ended. Log in again."). Fields: Server (editable select with the recent
-  servers, default `localhost:5080`; `--server` preselects it), User name, Password (`ui:PasswordBox`), Remember me (keeps
-  {user, token} per server in `RememberedLogins`, never the password; resumed with `AuthService.Me` at start), Log in;
-  first-administrator mode adds Confirm password and, for remote servers, the setup code. Errors below the fields,
-  connection problems below the server field; a narrow label column (`StackPanel.compactForm`), no product mark, **Quit**
-  on the left; a refresh icon right of the server field ("Connect again") repeats the start without restarting the client.
-  Fake mode signs in as "admin" without the window.
+  answers UNAUTHENTICATED ("Your session has ended. Log in again." in an info box on top). The logo band (its X quits), the
+  title "Log in to OADM" (first administrator: "Create the first administrator", "This server has no users yet."), labels
+  above the inputs: Server (editable select with the recent servers, default `localhost:5080`; `--server` preselects
+  it), User name, Password (`ui:PasswordBox`), Remember me (keeps {user, token} per server in `RememberedLogins`, never the
+  password; resumed with `AuthService.Me` at start); first-administrator mode adds Confirm password and, for remote
+  servers, the setup code. Footer: **Quit** and **Log in** (**Create administrator**), "Connecting to <server>" while busy.
+  Field errors below their fields. A problem that stops the login is a box with a heading (`tc:Callout`) directly below
+  its field: below the server "Cannot reach the server" ("Check the address and that the OADM server is running on
+  <server>.", **Try again** repeats the start without restarting the client), the two certificate boxes of "TLS" (amber;
+  the changed one with **Forget server**); below the password "Login locked" with the server's text. Fake mode signs in
+  as "admin" without the window.
 - The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
-  roles sends none and counts as before (Administrator everything, others everything but the Administrator-only parts).
+  roles sends none: Administrator everything, others everything but the Administrator-only parts.
   `UserSession.IsAdmin` (the Administrator role) hides the Users, Credentials and Plugins pages and the Audit tab and
   shows the server settings as plain text ("Only administrators can change server settings."). Everything else follows
   the permissions live: toolbar entries (`IToolbarPlugin.RequiredPermission`, `DeviceToolbar.ApplyPermissions`), the
@@ -162,7 +172,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `UserSession.ApplyDevices`): a group without "This server" and without a site gets the Add entries disabled with
   "Your device group has no site, so you cannot add devices." as tooltip. The shared group texts live in
   `Oadm.Sdk.Devices.DeviceGroupMessages` (Core `DeviceGroupTexts` and client `DeviceGroupWords` name them).
-- **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what each role may do.";
+- **Permissions page** (rail item **Permissions**, Admin only, subtitle "Who can log in, which devices they reach and what
+  each role may do.";
   `Settings/UsersPageView` = the users card and the device groups card side by side from a page width of 1,640 (`TwoColumnWidth`;
   narrower: the device groups card below the users card), at the height they need, the roles card
   below across the full width filling the rest, with a splitter): **New user** (a flat `ui:ToolbarButton` in the card's title row) above the list, then users

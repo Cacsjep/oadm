@@ -15,33 +15,35 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown
-  yet), LastSeenUtc, WarrantyExpiry (nullable, later), ReplacementModel (nullable, later), Tags (JSON array of tag
+  yet), LastSeenUtc, WarrantyExpiry, ReplacementModel (nullable, not filled yet), Tags (JSON array of tag
   names, distinct case-insensitive and sorted, with the spelling of the definition; written only by `DeviceTagStore`;
   proto `repeated string tags = 19`; SDK `IDeviceInfo.Tags`),
   Apis (JSON column `[{id, version, name, status}]` from `apidiscovery.cgi getApiList`, written on
   every full refresh incl. the first one after add; proto `repeated DeviceApi apis = 28`),
   CredentialUserName (not stored: user name of the DeviceCredential, filled by repository reads
-  for plugins; never the password),
+  for plugins; never the password), SiteId (the site the device is reached through, null = the server's own network,
+  migration `Sites`; changes only with its address), SiteName, StoredStatus and SiteRemoved (not stored, filled by reads:
+  see `SiteOffline` below),
   AddedByAllDevices (a user with all devices or the system added it; migration `DeviceGroups`: true for existing rows;
   no database default since `DeviceGroupFlagsWithoutDefault`)
   and AddedByGroupId (the adding user's device group, no foreign key): the serial rule of device groups and the host
-  names of PKI and EST read them (`docs/spec/device-scope.md`; SDK `IDeviceInfo.AddedByAllDevices`).
+  names of PKI and EST read them ([device-scope.md](device-scope.md); SDK `IDeviceInfo.AddedByAllDevices`).
 - `DeviceGroup` (table DeviceGroups, migration `DeviceGroups`): Id, Name (1..64, unique case-insensitive via
   NormalizedName), Description (0..200), ThisServer, SiteIds, TagIds (JSON arrays of Guids), Serials, ExceptSerials (JSON
   arrays of normalized serials), Revision (from 1, concurrency token), CreatedUtc, ChangedUtc; at most 200. Referenced
   (delete restricted) by `Users.DeviceGroupId` and `ComplianceChecks.OwnerGroupId`;
-  `DeviceGroupStore.DeleteAsync` clears them in the same transaction. See `docs/spec/device-scope.md`.
-- `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see Security).
+  `DeviceGroupStore.DeleteAsync` clears them in the same transaction.
+- `DeviceCredential`: DeviceId, UserName, EncryptedPassword (AES-GCM, see [security.md](security.md#secrets)).
 - `TagDefinition` (table TagDefinitions, migration `DeviceTags`): Id (Guid), Name (1..64, trimmed, no ";" or control
   characters), NormalizedName (upper invariant, unique: names are unique case-insensitive), Color (Blue, Green, Teal,
   Amber, Orange, Red, Pink, Violet; stored as string), CreatedUtc. At most 500 definitions; a device has at most 20 tags.
   `Oadm.Core.Devices.DeviceTagStore` owns both (serialized writes, one transaction per call, rewrites read only the Tags
   column and load just the changed rows), `TagNames` the rules.
 - Plugin licenses: no table; settings `Server.Id` (the server ID, a random GUID made at the first start, in backups),
-  `Plugins.Licenses` (package id -> license text) and `Plugins.TrialStarted` (package id -> first day), see "Plugin licenses".
+  `Plugins.Licenses` (package id -> license text) and `Plugins.TrialStarted` (package id -> first day), see [plugins.md](plugins.md#plugin-licenses).
   OADM PRO: `License.Pro` (the key text) and `License.ProTrial` (the trial: server ID, install ID, first day; with the
-  data folder's `install.json`, which no backup holds), see `docs/spec/licensing.md`.
-- `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see "Waiting list";
+  data folder's `install.json`, which no backup holds), see [licensing.md](licensing.md).
+- `WaitingDevice` (table WaitingDevices, migration `WaitingDevices`): the import's waiting list, see [add-devices.md](add-devices.md);
   QueuedByUserId (migration `DeviceGroups`): the user who queued it (a try checks that user's current devices).
 - `CredentialListEntry` (table CredentialListEntries, migration `CredentialList`): Id (Guid),
   UserName (max 64), EncryptedPassword (AES-GCM with the entry id as associated data), CreatedUtc.
@@ -64,22 +66,26 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   (nullable = task level), TimeUtc, Level (Info, Warning, Error), Message (max 2000 chars).
   At most 1000 entries per task; the 1000th says that later entries were dropped.
 - `ComplianceCheckEntity` / `ComplianceResultEntity` (tables ComplianceChecks, ComplianceResults, migration
-  `ComplianceChecks`): the compliance checks and the latest result per check and device, see "Compliance". Compliance
+  `ComplianceChecks`): the compliance checks and the latest result per check and device, see [compliance.md](compliance.md). Compliance
   checks have an owner, OwnerAllDevices + OwnerGroupId (migration `DeviceGroups`: all devices for existing rows, no
-  database default since `DeviceGroupFlagsWithoutDefault`; no owner = off, `docs/spec/device-scope.md`). Event rules have none (migration `EventRulesWithoutOwner` drops the columns
+  database default since `DeviceGroupFlagsWithoutDefault`; no owner = off). Event rules have none (migration `EventRulesWithoutOwner` drops the columns
   `DeviceGroups` had added).
 - `Setting`: Key, ValueJson.
 - `PluginRecord` (table PluginRecords, migration `PluginRecords`): key (PluginId max 128, Collection max 64, Key max 255),
   ValueJson (valid JSON). A plugin's records (`IPluginRecords`, `DbPluginRecords`): one row per record, a plugin sees
   only its own; batch writes are one transaction (existing rows read 500 keys at a time). 60,000 rows written in about
-  4 s, one changed in about 10 ms (`PluginRecordsTests`, Perf). First user: the EST server's certificates.
+  4 s, one changed in about 10 ms (`PluginRecordsTests`, Perf). Used by PKI (with the EST and 802.1X servers).
+- Other tables live with their feature: `Users`, `Roles`, `AuthTokens`, `AuditEntries` ([security.md](security.md)),
+  `Sites`, `RemovedSites` ([sites.md](sites.md)), `EventRules`, `EventRuleStates`, `EventLogEntries`
+  ([event-rules.md](event-rules.md)).
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
 (factory default), `CertificateChanged`, `Unknown`, and `SiteOffline` (computed, never stored:
 the site node of `Device.SiteId` is not online in `ISiteStates`; `DeviceRepository` reads and `DeviceChangeFeed` show it,
 writes keep the stored status; `Oadm.Core.Sites.SiteDeviceStatus`, `NoSiteStates` without sites; `SiteStatusPublisher`
 publishes a site's devices in one batch when it goes offline or online (a device with a newer change published meanwhile keeps it: `IDeviceChangeFeed.PublishUnlessNewer`) and queues a full refresh after more than 5
-minutes offline). Every status switch refuses it before any request with "Site offline: <site>"
+minutes offline). A device whose site was removed with Keep devices shows Site offline with "<site> (removed)" and its
+status events are off. Every status switch refuses it before any request with "Site offline: <site>"
 (`DeviceMessages.Refusal(IDeviceInfo)`, `TaskSupportReasons.ForStatus(IDeviceInfo)`); a `SiteException` never changes a
 status, fails a poll, counts towards the outage share or fails a compliance check (Not checked). Event rules:
 `SiteEventSource` (group Sites): "Site offline: <site>" per site ({site}, {address}) and "Any site offline" ({count},

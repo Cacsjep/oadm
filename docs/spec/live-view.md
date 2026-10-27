@@ -13,7 +13,8 @@ web UI.
   Below it the shared live video. `LiveView/LiveViewViewModel` only opens, switches and closes it and remembers the chosen
   channel per device for the client session.
 - **Live video component** (`LiveView/LiveVideoViewModel` + `LiveVideoView`, the one live picture of the client: side
-  panel, fullscreen, later the camera grid of 16, which must stay smooth). Parts on or off per place through
+  panel, fullscreen, the tiles of the Live View and Dashboards plugins through `ILiveVideoAccess`, which must stay smooth
+  with 16 at once). Parts on or off per place through
   `LiveVideoOptions` (channel switch, fullscreen, quality switch, controls button, each PTZ part, zoom, focus; `MaxFps`
   25; the start quality; delays); client-wide `LiveVideoSettings` (Settings > Client: "Show video details over the
   picture", off; "Frame rate (adaptive quality)", 20, 1..30; `ClientSettings.ShowVideoDetails` / `AdaptiveFps`; plus
@@ -87,8 +88,8 @@ web UI.
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
   cell has a hover state and the tooltip "Live preview"; devices without video are disabled
-  (`LiveViewSupport.IsSupported`, a model heuristic until the device category from the server is
-  available: C audio, A1/A9 door and I/O controllers, D3 sensors and T accessories have no video).
+  (`LiveViewSupport.IsSupported`: the device's `HasVideo` from its category, see [data-model.md](data-model.md); a device
+  whose category is still Unknown is allowed and the stream tells).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
   cameras, inputs on encoders), each with every resolution it lists (all aspects; the client picks, see above). With more than one source the live
@@ -103,8 +104,7 @@ web UI.
   setting off a camera that offers only Basic fails with `DeviceMessages.BasicOnlyOverHttp` and no password is sent;
   credentials never reach the client), `Blocksize: 64000`, a keyframe every second
   (`videokeyframeinterval=fps`). Own RTSP client and depacketizers (H.264 RFC 6184, H.265 RFC 7798)
-  in `Oadm.Core/LiveView`. Video itself is not encrypted on the camera link (RTSP over HTTPS is a
-  later option). Devices with status `CertificateChanged` are refused.
+  in `Oadm.Core/LiveView`. Video itself is not encrypted on the camera link (no RTSP over HTTPS). Devices with status `CertificateChanged` are refused.
 - Negotiation: H.265 > H.264 among the codecs the camera lists in `Properties.Image.Format` and
   the client can decode; when opening a codec fails the next is tried. No MJPEG. Resolution: a size the source lists is
   taken as asked (the client asks for one of the list, see the live video component); otherwise the largest of the
@@ -117,7 +117,7 @@ web UI.
 - gRPC: each `LiveViewFrame` carries one Annex B access unit, the keyframe flag, parameter sets
   on keyframes, RTP timestamp, resolution and camera. Client channel max message size 32 MB. A user with a device group
   watches only devices of the group; the video ends ("1 device is no longer available.") when the device leaves it
-  (`DeviceViewWatcher`, `docs/spec/device-scope.md`).
+  (`DeviceViewWatcher`, [device-scope.md](device-scope.md)).
 - Client: FFmpeg decode on a background thread (low delay, slice threads), swscale to BGRA into a
   new `WriteableBitmap` (through `BgraConversion`: swscale writes into FFmpeg's own row-padded picture, then the rows are
   copied; straight into the bitmap it wrote 8 to 32 bytes past the buffer for widths not a multiple of 16, test

@@ -5,8 +5,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Built-in feature (not a plugin): which devices need attention at first glance. Core `Oadm.Core.Compliance`, server `Oadm.Server.Compliance`, gRPC `ComplianceService`, client
 `Compliance/`, SDK `Oadm.Sdk.Compliance`.
 
-- **Off by default** (server setting `Compliance.Enabled`): the page shows an empty state with **Turn on** (like the off states of PKI)
-  (then a short message about the Devices column), **Turn off compliance** in its toolbar (confirmed); off = nothing is
+- **Off by default** (server setting `Compliance.Enabled`): the page shows the shared off state (`ui:OffState`) with
+  **Turn on** (then a short message about the Devices column), **Turn off compliance** in its toolbar (confirmed); off = nothing is
   checked, no events, results removed, checks kept; the Devices column chooser greys Compliance out while it is off.
 - **Check** = a check type + its settings + its devices (always chosen with the shared picker: All devices, tags, chosen
   devices) + Problem or Warning + on / off + (types that read devices) every 15..1440 minutes (default 60). At most 50.
@@ -34,10 +34,11 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   below the field; a refusal of the server below the form), Devices, Kind of check, its settings through the shared
   `SettingsFormView` of the event rules). For users with all devices the card names a group that owns its check after the
   result ("failed · Building B", "No devices" without an owner).
-  **Devices grid**: the Compliance column (off by default) or, while it is on, one column per check (toggle, per client).
+  **Devices grid**: the Compliance column and Show each compliance check ([main-window.md](main-window.md)).
 - Roles: "See compliance" (read, Check now), "Change compliance checks" (create, change, delete; audited).
-- **Device groups** (`docs/spec/device-scope.md`, Shared objects): every check has an owner (`ComplianceCheck.Owner`,
-  columns `OwnerAllDevices` + `OwnerGroupId`; the default checks and every check from before 4.5 belong to all devices). A
+- **Device groups** ([device-scope.md](device-scope.md), Shared objects): every check has an owner (`ComplianceCheck.Owner`,
+  columns `OwnerAllDevices` + `OwnerGroupId`; the default checks and the checks the migration `DeviceGroups` found belong
+  to all devices). A
   new check belongs to the caller's devices; an edit keeps the owner; only administrators choose another one
   (`ComplianceCheckSummary.owner`, else PERMISSION_DENIED "Only administrators choose who owns it."). A check runs only on
   its owner's devices: "All devices", the chosen devices and the tags are intersected with the group in the engine
@@ -55,7 +56,8 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   order 5,000 per transaction, the client keeps ids and repeated texts once. Measured: server enable 5.4 s, results written in 19.5 s,
   1,000 device changes 0.6 s (`ComplianceScaleTests`); client 1.5 million results applied in 0.8 s, filter, tab, card and
   search 27 ms (`ComplianceTests`, Perf); read checks of 30,000 devices at 32 parallel take about 16 minutes a round.
-- Developer guide: website Developers > Compliance checks (`dev/compliance-checks.md`); `plugins/README.md`.
+- Developer guide: website Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`);
+  `plugins/README.md` "Compliance check types".
 - Tests: `tests/Oadm.Core.Tests/Compliance` (+ Perf `ComplianceScaleTests` 30,000 devices x 50 checks; `ComplianceOwnerTests`
   and Perf `ComplianceOwnerScaleTests`: 30,000 devices, a group of 15,000 with 10 checks, the group user's list 0.1 ms, the
   results snapshot filtered in 7 ms, a change of the group's rules moves 150,000 results in about 30 s),

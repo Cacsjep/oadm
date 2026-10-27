@@ -49,14 +49,14 @@ src/
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, CheckChoice, DeviceTree, PageHeader, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
-                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
+                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
   Oadm.Client/         Avalonia app: views, view models, gRPC client, plugin loader
-  Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors) and the shared
-                       TermsWindow, used by the client and the OADM Site Node app
+  Oadm.Theme/          the OADM theme (colors of both appearances, icons, OadmTheme.axaml, OadmColors), the shared
+                       TermsWindow and Controls/ (HeroBand, Callout, OadmMark), used by the client and the OADM Site Node app
   Oadm.Sites/          the link between server and site node: Kestrel over a connection the node opened,
                        TLS with pinned fingerprints, pairing code and J-PAKE binding
   Oadm.SiteNode/       OADM Site Node service and command line (README with the manual test plan)
@@ -97,9 +97,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
 tests/
-  Oadm.Core.Tests/
-  Oadm.Server.Tests/
-  Oadm.Client.Tests/
+  Oadm.<Project>.Tests/  one test project per project and per plugin (Oadm.Core.Tests, Oadm.Client.Tests,
+                       Oadm.Plugins.Pki.Tests, ...); TestPlugins/ holds the plugins the loader tests load
   Shared/              RecordingFirewall, RecordingStreams, CallWatchers (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
                        Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new", the templates),
@@ -187,10 +186,10 @@ must never break.
   Turn on on its tab of the PKI page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454, cameras enroll
   with their Axis device ID and only if OADM manages them, the OADM CA of PKI signs, cameras renew by themselves (renewals
   the OADM CA issued directly never show Certificate changed), also at sites (a relay of the site node).
-- **[Device groups](docs/spec/device-scope.md)** (OADM 4.5): a user limited to a device group (sites, tags,
+- **[Device groups](docs/spec/device-scope.md)**: a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
-- **[PKI, the certificate control center](docs/spec/pki.md)** (OADM 4.5): one package with the EST and 802.1X servers
+- **[PKI, the certificate control center](docs/spec/pki.md)**: one package with the EST and 802.1X servers
   (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates, Policies,
   802.1X server, EST server; every rule about certificates is a PKI policy (issuing, 802.1X, EST, Expiry warning;
   no overlaps; converted once from the old settings), the servers keep no rules of their own; there is no OADM CA: Create
@@ -200,7 +199,7 @@ must never break.
   one is then no longer accepted) with create, sign request, import, export and delete (no revoke: a deleted certificate
   is no longer accepted); certificates start 5 minutes early and
   the install dialogs ask when the camera's clock is behind.
-- **[802.1X server](docs/spec/radius-server.md)** (OADM 4.5, a PRO part of PKI: core plugin `oadm.radius`, off by default,
+- **[802.1X server](docs/spec/radius-server.md)** (a PRO part of PKI: core plugin `oadm.radius`, off by default,
   Turn on on its tab of the PKI page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
   manages with a certificate of a CA of an 802.1X trusted CA policy pass, fragmentation both ways, a deep session state and plain
   TLS alert texts, switches changed while it runs; its rules (its certificate, TLS, trusted CAs, VLAN, Block) are PKI's policies
@@ -325,8 +324,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   - Tests: `[Trait("Category", "Perf")]` for scale tests that take longer than about a second; they run
     with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
     budget, and write their measured times to the test output.
-  - **HARD RULE, tests that never flake** (decision 2026-10-17: the former `Timing` category and the CI retry are gone;
-    every unit test runs in CI once). A test never depends on how fast the machine is or what runs next to it:
+  - **HARD RULE, tests that never flake** (no timing category, no CI retry: every unit test runs in CI once). A test never depends on how fast the machine is or what runs next to it:
     - Waiting for another thread: `Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "what")` (checks every 10 ms, 30 s
       ceiling, returns as soon as it holds), never a fixed `Task.Delay` / `Thread.Sleep` before an assert. "Nothing else
       happens" checks wait first for a positive sign that the work ended; `Eventually.StaysTrueAsync` only when none exists.
@@ -351,7 +349,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   content (`SizeToContent="Height"`, fixed width). Cards only in dialogs with several sections or a list.
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file").
-- **HARD RULE, buttons follow Fluent** (decision 2026-10-25, like Intune), all in the theme, never per view:
+- **HARD RULE, buttons follow Fluent** (like Intune), all in the theme, never per view:
   - **Command buttons**: toolbars and the header row of a card or list (actions left, search right): the flat
     `ui:ToolbarButton` / `Button.toolbar`, icon + text, the icon in the accent colour, the text neutral, no background.
     Never a filled button there (`ToolbarButton.IsPrimary` no longer fills).
@@ -360,7 +358,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   - **Filled accent** `Button.primary`: only the one main action of a dialog or form (Save, Create in a dialog, Enable,
     Next, OK). `Button.secondary` for its other actions (Cancel, Turn off, Choose file, Import in a form).
 - One accent button per view (no exception: the device choice button is a command button in a page toolbar and a
-  `Button.secondary` in a form or dialog, with the devices icon; decision 2026-10-25): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
+  `Button.secondary` in a form or dialog, with the devices icon): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
 - **Destructive actions are red**: `Button.danger` (red fill, white text) only for the confirming button of a dialog
   whose operation deletes or removes (Remove users, Delete certificates, the confirmation's Delete);

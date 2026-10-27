@@ -9,9 +9,10 @@ with the labels in the grid, the search, the export and the import; plugins read
   color of the fixed palette of eight: Blue, Green, Teal, Amber, Orange, Red, Pink, Violet (theme brushes
   `Oadm.Tag.<Name>Brush`, readable as text on the dark cards; `Oadm.Tag.NeutralBrush` grey for names on devices without
   a definition, e.g. older data). A tag created without a color gets the next palette color (definition count modulo 8).
-  Server: `TagDefinition` / `DeviceTagStore`, gRPC `TagService` (see "gRPC services"). Roles: operators tag devices and
-  create tags; rename, recolor and delete are Admin only. Every change is audited.
-- **Device groups** (`docs/spec/device-scope.md`): `DeviceTagStore` is the only writer of device tags and holds the guard:
+  Server: `TagDefinition` / `DeviceTagStore`, gRPC `TagService` ([grpc.md](grpc.md)). Permissions: "Tag devices" (tag
+  devices and create tags, operators by default) and "Rename and delete tags" (rename, recolor, delete; not for operators by
+  default, users with all devices only). Every change is audited.
+- **Device groups** ([device-scope.md](device-scope.md)): `DeviceTagStore` is the only writer of device tags and holds the guard:
   `SetDeviceTagsAsync` takes `ViewedDevices` (the ids come from the caller's view; an unknown or outside id refuses the
   call, NOT_FOUND, for every user); for a view of a group no added or removed name may be a tag a device group uses
   (`TagInUseByGroupException`, PERMISSION_DENIED "A device group uses the tag X. Only users with all devices can add or
@@ -25,38 +26,38 @@ with the labels in the grid, the search, the export and the import; plugins read
   `DeviceGroupMembership` (`CaptureAsync` before the write, so a deleted tag still resolves for the devices that left;
   `ChangesAsync` with the devices before and after; `WriteAsync`). The waiting list tags an added device through the queuing
   user's view, so the guard applies to file imports too.
-- **Protected tags** (decision 2026-10-24, 802.1X review round 2): a core plugin whose settings act on devices by tag
-  protects those tag names (`ctx.ProtectedTags.Protect(names, refusal)`, SDK 0.4.0, docs/spec/plugins.md; today the tags of
-  PKI's policies, docs/spec/pki.md "Code (stage 3)"; until OADM 4.5 the 802.1X server's VLAN rules). Only users with all devices add them to or remove them from devices; for a view of a
-  group `SetDeviceTagsAsync` refuses an added or removed protected name (by name, case-insensitive, with or without a
-  definition) in the same transaction as the group guard (`ProtectedTagException`, PERMISSION_DENIED with the plugin's
-  text: "The tag Floor 3 is used by a PKI policy. Only users with all devices can add or remove it. Nothing was changed."; a plugin
-  text that fails or is empty: "Only users with all devices can add or remove the tag Floor 3. Nothing was changed.").
-  Both refusals are `TagNeedsAllDevicesException` (the waiting list logs them like the group one). Rename and delete need
-  all devices anyway. Users with all devices (also an Operator with all devices and "Tag devices") add and remove protected
-  tags like any other: they manage VLAN membership (decision 2026-10-24, 802.1X round 3).
-  **While the plugin runs, rename and delete of a protected tag are refused for every user, administrators too** (decision
-  2026-10-24, 802.1X round 3: the plugin's rules keep tags by name and would silently stop matching): `UpdateAsync` with a
-  new name (a change of case only is no rename: `TagNames.Comparer`) and `DeleteAsync` throw `ProtectedTagChangeException` (FAILED_PRECONDITION) with the plugin's text
-  (`Protect(names, refusal, changeRefusal)`: "The tag Floor 3 is used by a PKI policy. Change the policy first.
-  Nothing was changed.") or the host's "A plugin's settings use the tag Floor 3. Change them first. Nothing was changed."; a recolor
-  is allowed. The client shows the text below the tag list. **While the plugin is stopped, off or faulted** (also a lapsed
-  PRO license, which turns a PRO package off) **the rename or delete is allowed** (decision 2026-10-24, final review:
-  nobody could change the plugin's settings): only a running plugin's set (`Live`) refuses it, the add and remove refusal
-  for group users stays. The plugin's rules match by name, so a renamed or deleted tag matches nothing (fail closed) and a
-  tag made again under the name is protected again. A new protected set waits for tag writes in flight
-  (`BeginTagWrite` in the group user's tagging, rename and delete; `Protect` returns once the writes that started before
-  it ended), so no write checked against the older names commits after the new set is in force.
-  `ProtectedTagRegistry` (server, `Oadm.Core.Devices`) holds one set per plugin (name -> {refusal, change}: the add or
-  remove text and the rename or delete text). **A set is kept while
-  the plugin is installed** (decision 2026-10-24, 802.1X round 3): a stop, a fault, a package turned off or a lapsed PRO
-  license only closes the plugin's views (late calls change nothing; the refusal is the text the plugin gave); the sets are
-  stored in the server setting `Tags.Protected` (JSON plugin id -> name -> { "refusal", "change" }, "" = the default text; part of the
-  database, so a backup and its restore keep them) and restored at server start right after the plugins are loaded,
-  before any tag write (gRPC and the waiting list start later). A plugin's new `Protect` call replaces its set. A set is
-  forgotten only when its plugin is removed: at server start, a stored plugin id that no loaded core plugin (on or off)
-  has; while a plugin failed to load, every stored set is kept (it may still be installed). The writes run in the
-  background, one at a time (the last state wins); the server stop waits for them (`FlushAsync`).
+- **Protected tags**: a core plugin whose settings act on devices by tag protects those tag names
+  (`ctx.ProtectedTags.Protect(names, refusal, changeRefusal)`, [plugins.md](plugins.md); today the tags of PKI's policies,
+  [pki.md](pki.md) "Policies").
+  - **Add and remove**: only users with all devices add them to or remove them from devices (also an Operator with all
+    devices and "Tag devices": they manage VLAN membership). For a view of a group `SetDeviceTagsAsync` refuses an added or
+    removed protected name (by name, case-insensitive, with or without a definition) in the same transaction as the group
+    guard (`ProtectedTagException`, PERMISSION_DENIED with the plugin's text: "The tag Floor 3 is used by a PKI policy. Only
+    users with all devices can add or remove it. Nothing was changed."; a plugin text that fails or is empty: "Only users
+    with all devices can add or remove the tag Floor 3. Nothing was changed."). Both refusals are
+    `TagNeedsAllDevicesException` (the waiting list logs them like the group one).
+  - **Rename and delete while the plugin runs**: refused for every user, administrators too (the plugin's rules keep tags
+    by name and would silently stop matching): `UpdateAsync` with a new name (a change of case only is no rename:
+    `TagNames.Comparer`) and `DeleteAsync` throw `ProtectedTagChangeException` (FAILED_PRECONDITION) with the plugin's text
+    ("The tag Floor 3 is used by a PKI policy. Change the policy first. Nothing was changed.") or the host's "A plugin's
+    settings use the tag Floor 3. Change them first. Nothing was changed."; a recolor is allowed. The client shows the text
+    below the tag list.
+  - **While the plugin is stopped, off or faulted** (also a lapsed PRO license, which turns a PRO package off) the rename
+    or delete is allowed (nobody could change the plugin's settings): only a running plugin's set (`Live`) refuses it; the
+    add and remove refusal for group users stays. The plugin's rules match by name, so a renamed or deleted tag matches
+    nothing (fail closed) and a tag made again under the name is protected again.
+  - A new protected set waits for tag writes in flight (`BeginTagWrite` in the group user's tagging, rename and delete;
+    `Protect` returns once the writes that started before it ended), so no write checked against the older names commits
+    after the new set is in force.
+  - `ProtectedTagRegistry` (server, `Oadm.Core.Devices`) holds one set per plugin (name -> {refusal, change}). **A set is
+    kept while the plugin is installed**: a stop, a fault, a package turned off or a lapsed PRO license only closes the
+    plugin's views (late calls change nothing). The sets are stored in the server setting `Tags.Protected` (JSON plugin id
+    -> name -> { "refusal", "change" }, "" = the default text; part of the database, so a backup and its restore keep them)
+    and restored at server start right after the plugins are loaded, before any tag write (gRPC and the waiting list start
+    later). A plugin's new `Protect` call replaces its set. A set is forgotten only when its plugin is removed: at server
+    start, a stored plugin id that no loaded core plugin (on or off) has; while a plugin failed to load, every stored set is
+    kept (it may still be installed). The writes run in the background, one at a time (the last state wins); the server
+    stop waits for them (`FlushAsync`).
 - **Client store**: `Tags/TagStore` (fed by `TagService.Watch` in `ServerConnection`, owned by `DeviceStore.Tags`) keeps
   one shared `TagInfo` per name (case-insensitive); device rows hold `TagChips` of those shared objects, so a recolor
   updates every chip and group header without touching 5,000 rows. `DeviceRowViewModel.Tags` / `TagsText`
@@ -66,7 +67,7 @@ with the labels in the grid, the search, the export and the import; plugins read
   error below the field, Color with `c:TagColorPicker` = eight round swatches, Create tag / Cancel; created at once on the
   server and checked), the virtualized tag list (three-state check box: all / some / none of the selected devices, a
   click makes some or none all and all none; color dot, name in the tag color, "42 devices" = all devices with the tag;
-  administrators also get Rename or recolor (inline editor below the list, saved at once) and Delete tag (confirmation in
+  users with "Rename and delete tags" and all devices also get Rename or recolor (inline editor below the list, saved at once) and Delete tag (confirmation in
   `ui:MessageWindow`: "Remove tag X from 42 devices?", plus "Used by device group Building B." from `TagInfo.GroupNames` =
   `DeviceTag.group_names`), a failed server call directly below the list (OK shows the server's own refusal, e.g. the
   device-group guard for a group user), footer Cancel /

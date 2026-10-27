@@ -8,7 +8,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
   `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
   kept until the user deletes it or the retention removes it (finished tasks older than
-  `Tasks.RetentionDays` = 90 or beyond the newest `Tasks.MaxHistory` = 50,000; hourly, see Settings).
+  `Tasks.RetentionDays` = 90 or beyond the newest `Tasks.MaxHistory` = 50,000; hourly, see
+  [settings-backup.md](settings-backup.md)).
 - **Steps: a task always tells the user exactly what it is doing.** Every device request and every
   wait of a task plugin is its own short, imperative, named step ("Read users", "Upload firmware",
   "Wait for the device to come back"); five requests = five steps. Plugins plan their steps up front
@@ -25,7 +26,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   unless the plugin calls `ReportProgress` (then that value wins). Step changes go to the change feed
   immediately and are persisted with the throttled writes (max 1/s per device) plus every state
   transition. Recovery after a server restart marks a Running step Failed ("Server stopped while the
-  task was running.") and Pending ones Skipped.
+  task was running.") and Pending ones Skipped ("Not run: the server stopped.").
 - **Task names: the task list says exactly what a task does** ("Add user joe", "Set static IP
   10.0.0.60", "Upgrade firmware to 12.11.77 (factory default)"), never the plugin's menu name: the engine
   names each task with `ITaskPlugin.GetTaskName(payloadJson)` once per Run (trimmed, trailing "..."
@@ -39,8 +40,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   The engine reads the setting live (`TaskParallelismSetting` -> `TaskEngineOptions.MaxParallelTasksPerPluginSource`)
   each time a queued task could start: a change applies without a server restart to tasks that start
   afterwards (a raised limit starts queued tasks at once via `TaskEngine.RescheduleQueued`; a lowered one
-  never interrupts running tasks, new ones start when fewer run). The former configuration value
-  `Oadm:MaxParallelTasksPerPlugin` is no longer read. Example: a Restart on 5,000 devices at about 90 s
+  never interrupts running tasks, new ones start when fewer run). Example: a Restart on 5,000 devices at about 90 s
   each takes about 8 hours at 16, about 1 hour at 128. Cancellation via
   `CancellationToken`, exceptions become `Failed` with message (also logged as an Error entry),
   never crash the server. A Run on N devices publishes N Added changes and writes all N tasks in
@@ -51,7 +51,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (the message survives as the device result). Payloads are never persisted or logged.
 - Task log: `ctx.Log(level, message)`, warnings, failures, precondition errors and credential
   changes; live from memory while the task runs (`GetLog`), from TaskLogEntries afterwards.
-- **Device groups** (`docs/spec/device-scope.md`): a user's Run takes its devices from the user's view
+- **Device groups** ([device-scope.md](device-scope.md)): a user's Run takes its devices from the user's view
   (`TaskEngine.RunAsync(pluginId, ViewedDevices, payload, TaskCaller)`; `TaskEngine.ForView` for `call.Tasks`). The task
   keeps its owner (`TaskCaller`: user id, name, session, permissions) in memory only. When it leaves the queue it reads
   the owner's view as it is now (`DeviceViewFactory.ForUserAsync`, the user's row by id): a device that left it, a user without the group or a

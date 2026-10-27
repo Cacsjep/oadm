@@ -15,8 +15,8 @@ parts of PKI read it (PKI's own parts, CAs, issuing and Certificates, never need
 - `<content>`: the UTF-8 bytes of a JSON object, signed exactly as sent (no canonical form needed):
   `{"plugin":"oadm.pro","server":"<server ID>","customer":"ACME GmbH","issued":"2026-10-22","expires":"2028-10-22"|null,
   "plan":"Up to 500 devices","features":["trial"],"limits":{"devices":500}}`. `plugin` is always `oadm.pro`
-  (`ProLicenseFile.ProductId`); `features` is only present for a trial key (`["trial"]`; the license service issued such
-  keys until OADM started the trial itself, they stay valid); `limits.devices` only when the plan
+  (`ProLicenseFile.ProductId`); `features` is only present for a trial key (`["trial"]`; such keys stay valid, the
+  license service no longer issues them); `limits.devices` only when the plan
   has a device count (none = no limit); `plan` is shown as written. Dates are `yyyy-MM-dd`; `expires` is the last valid
   day (server local date), null = never.
 - `<signature>`: ECDSA P-256 with SHA-256 over the content bytes, in IEEE P1363 form (r and s, 32 bytes each, 64 bytes;
@@ -34,10 +34,10 @@ parts of PKI read it (PKI's own parts, CAs, issuing and Certificates, never need
 - The signature with any known key, `plugin` = `oadm.pro`, `server` = this server's ID (case-insensitive), `expires` not
   before today. The server ID is the one of plugin licenses (`Server.Id`, a GUID made at the first start, kept in the
   database, so it moves with a backup restore).
-- States (`ProLicenseStatus`, texts in `ProLicenseTexts`): None "No license", Active ("Up to 500 devices, until 2028-10-22"
-  next to the label OADM PRO, a trial "Trial, until 2026-11-21"; the result of Import and Remove sits next to the buttons), Expired "Expired on 2028-10-22." (the trial:
-  "Trial ended on 2026-11-21."), WrongServer "This license is for another server.", Invalid "This is not a valid OADM PRO
-  license." (unknown key, changed content, another product).
+- States (`ProLicenseStatus`, texts in `ProLicenseTexts`): None "No license", Active ("Up to 500 devices, until
+  2028-10-22" next to the label OADM PRO, a trial "Trial, until 2026-11-21"), Expired "Expired on 2028-10-22." (the
+  trial: "Trial ended on 2026-11-21."), WrongServer "This license is for another server.", Invalid "This is not a valid
+  OADM PRO license." (unknown key, changed content, another product).
 - Stored in the setting `License.Pro` (the key text; not secret), read at start step 4a after the plugin licenses, checked
   again hourly (`PluginLicenseRefreshHostedService`); only an Active key is accepted on import.
 - Plugins: `ICorePluginContext.Pro` and `ITaskExecutionContext.Pro` (`IProLicense`: `Current` (`ProLicenseInfo`),
@@ -50,8 +50,8 @@ parts of PKI read it (PKI's own parts, CAs, issuing and Certificates, never need
 ## Trial
 
 OADM PRO can be tried for 30 days without going online: **Start 30-day trial** in the app, once per server
-(`ProLicense.StartTrialAsync`, decision 2026-10-25; the license service no longer issues trials). A server whose trial key
-from the former online trial (OADM 4.1) ended can still start the in-app 30-day trial once (decision 2026-10-25).
+(`ProLicense.StartTrialAsync`). An imported trial key that ended does not count as a used trial: the server can still
+start the trial in the app once.
 
 - Administrator only, audited "Started trial". The first day (server local date) is recorded; the trial is Active
   (`IsTrial`, "Trial, until <day>") through `ProLicenseTexts.TrialDays` (30) days including the first, then Expired "Trial
@@ -73,7 +73,8 @@ from the former online trial (OADM 4.1) ended can still start the in-app 30-day 
   one as `install.json.unreadable`. The trial follows the server ID like a license, so a new server (new ID) can try PRO once.
 - Starting raises `IProLicense.Changed` at once (PRO plugins turn on with the host's `PluginActivation.FollowPro`, the
   EST and 802.1X servers start when turned on and publish their switch state), and the hourly check ends it the same day.
-- Where: Settings > License (the button, secondary, with "Try OADM PRO free for 30 days. Once per server."; others see
+- Where: Settings > License (the button, secondary, with "Try OADM PRO free for 30 days. Once per server."
+  (`ProLicenseTexts.TrialOffer`); others see
   "An administrator can start the trial.") and the off state of the EST and 802.1X servers while they need OADM PRO (the
   button primary, the one main action there; `ServerSwitchState.TrialAvailable`). Plugin pages start it through
   `ICorePluginClientContext.StartProTrialAsync` and check `IsAdministrator` (SDK 0.4.0 default members; older hosts:
@@ -90,7 +91,8 @@ from the former online trial (OADM 4.1) ended can still start the in-app 30-day 
   Server ID with copy, "OADM PRO" with the state (status chip: ok active, warning trial, error expired / trial ended /
   other server / not valid; "Licensed to ..." below), **Start 30-day trial** (see "Trial"), **Import license** (file
   picker `.oadmlicense`) and **Remove license** (red, confirmed, only while a key is imported) for administrators, the
-  link **Activate license** (unless a bought license is active) that opens `https://oadm.app/activate/?server=<id>`.
+  link **Activate license** (unless a bought license is active) that opens `https://oadm.app/activate/?server=<id>`. The
+  result of Import and Remove sits next to the buttons.
 - Issuing: the page `oadm.app/activate/` (`docs/spec/packaging.md` "Activation page") sends the server ID with a bought
   license code, and the support forum returns the signed key as a `.oadmlicense` file (a code works for one server; the
   same server can fetch it again). The forum's own rules are documented in its repository; it issues no trials.

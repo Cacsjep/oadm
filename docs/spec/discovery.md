@@ -1,8 +1,10 @@
-# Device discovery and the add page
+# Device discovery
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-## Zero-conf: mDNS / Bonjour only
+The add page that shows the results: [add-devices.md](add-devices.md).
+
+## Zero-conf: mDNS only
 
 Browse `_axis-video._tcp.local`. Verified on AXIS OS 12.11: the TXT record has exactly one
 key `macaddress=<SERIAL>`, the instance name is `<Bonjour.FriendlyName> - <SERIAL>`, SRV
@@ -28,7 +30,7 @@ OADM keeps a device managed when its address changes (`Oadm.Core.Devices.DeviceA
   there the same way and moved (`TryRelocateAsync`). This covers DHCP changes, where the new address is unknown.
 - **By a DHCP lease**: when the DHCP server plugin ACKs a lease to the MAC (= serial) of a
   managed device and the address differs from the record, the plugin calls `IDeviceAutoAdd.FollowAsync`
-  (`ICorePluginContext.AutoAdd`, see "DHCP server"): the server verifies the device at the leased address the same
+  (`ICorePluginContext.AutoAdd`, see [bundled-plugins.md](bundled-plugins.md#dhcp-server-core-plugin)): the server verifies the device at the leased address the same
   way and moves it right away, also while the device still counts as reachable (`TryRelocateAsync(..., requireUnreachable:
   false)`; a lease proves the change). Not verified yet (the device is still starting): one retry after 30 s. Logged
   and audited ("Device moved", user "system", "DHCP server: from A to B"). Works whether or not the automatic add is on.

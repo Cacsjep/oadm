@@ -6,24 +6,24 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `/config/rest/virtualhost/v1` and the 401 headers). The client offers Digest only over
   HTTP and Basic or Digest over HTTPS. Basic is never sent over plain HTTP, with two exceptions
   (`VapixConnectionOptions.AllowBasicOverHttp`): the add page's automatic login to a device that passed the anonymous
-  Axis check (server network only, see `docs/spec/security.md`), and every device connection while the server setting
+  Axis check (server network only, see [security.md](security.md#automatic-login-on-the-add-page)), and every device connection while the server setting
   `Devices.AllowBasicOverHttp` is on (Settings > Security "Allow Basic login over HTTP", default off, every route, a site
   too; `BasicOverHttpSetting` read live, a change drops every cached client of `VapixClientFactory`). Digest stays
   preferred when the device offers it. Plugins read the setting from `IVapixClient.AllowsBasicOverHttp` (default member,
   false for other hosts): PKI's Disable HTTPS runs on a device that accepts only Basic over HTTP only while it is on
-  (`docs/spec/pki.md` "Web server restart and Basic login").
+  ([pki.md](pki.md) "Web server restart and Basic login").
 - A 401 over HTTP whose challenge offers only Basic (`WWW-Authenticate: Basic realm="AXIS_<serial>"`, a device set to
   Basic login) while Basic was not allowed sets `VapixAuthenticationException.BasicOnlyOverHttp`: Log in and the add
   page say `DeviceMessages.BasicOnlyOverHttp` ("The device accepts only Basic login over HTTP. Turn on HTTPS on the
   device, or allow Basic login over HTTP in Settings.") instead of "The user name or password is wrong."; the device
-  status stays Credentials required, with that text as the Status column's tooltip (`docs/spec/main-window.md`). Live
-  view and event streams: the same rule on RTSP (`docs/spec/live-view.md`).
+  status stays Credentials required, with that text as the Status column's tooltip ([main-window.md](main-window.md)). Live
+  view and event streams: the same rule on RTSP ([live-view.md](live-view.md)).
 - Factory-default check without credentials: `systemready.cgi` returns `needsetup` (yes =
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
   status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
-  Exception, renewals by a CA of PKI (`docs/spec/est-server.md`): a new server certificate issued directly by a CA of PKI with its key
+  Exception, renewals by a CA of PKI ([est-server.md](est-server.md)): a new server certificate issued directly by a CA of PKI with its key
   (the PKI's renewal issuers only, not the roots above them, not the OS store), valid now and naming the device
   and no other camera (exactly one `axis-<12 hex>.local`: `axis-<serial>.local`, `Device.Serial` through
   `VapixConnectionOptions.DeviceSerial` and `CertificatePinning.DeviceSerial`) is accepted
@@ -41,7 +41,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - **Old AXIS OS** (verified read-only on an AXIS Q6154-E with 8.40.104;
   `tests/Oadm.Server.Tests/Hardware/OldFirmwareHardwareTests`, opt-in with `OADM_OLD_CAMERA_URL` / `_USER` / `_PASSWORD`):
   no `apidiscovery.cgi` (404, it came with 8.50), no anonymous `getAllUnrestrictedProperties` (401: the Axis check uses the
-  realm, see "Security and access" 2), no `systemready.cgi`, `time.cgi`, `ntp.cgi`, `/config`; `network_settings.cgi`
+  realm, see [add-devices.md](add-devices.md)), no `systemready.cgi`, `time.cgi`, `ntp.cgi`, `/config`; `network_settings.cgi`
   without `getNetworkInfo`. Authenticated `basicdeviceinfo` (incl. Soc), `param.cgi`, `firmwaremanagement.cgi` (1.0),
   `pwdgrp.cgi`, `applications/list.cgi` work. `VapixClient.GetApiListAsync` answers a 404 with `LegacyApiList` from the
   `param.cgi` group `Properties` (param-cgi 1.0 always, fwmgr from `Properties.FirmwareManagement.Version`, application
@@ -50,7 +50,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   of `Properties` (VAPIX identifies these by parameters, not by the API list; an AXIS OS 11.9 camera did not list
   "application"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
   and time run; Device configuration (12.5) stays greyed with its reason. PKI runs from 6.53 through the SOAP certificate
-  service (docs/spec/pki.md "Older AXIS OS"). Other writes on such firmware are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
+  service ([pki.md](pki.md) "Older AXIS OS"). Other writes on such firmware are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).
 - Endpoints of the core:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
@@ -64,10 +64,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   - `param.cgi?action=list&group=Properties.Image,Image` -> live view codecs
     (`Properties.Image.Format`, e.g. `jpeg,mjpeg,h264,h265`), resolutions and video sources
   - RTSP `rtsp://<host>/axis-media/media.amp?videocodec=h264|h265&camera=<n>&resolution=WxH&fps=N&videokeyframeinterval=N&audio=0`
-    on port 554 -> live view (see "Live view")
+    on port 554 -> live view ([live-view.md](live-view.md))
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
-- **Routing** (see "# Sites"): every device connection opens through
+- **Routing** ([sites.md](sites.md)): every device connection opens through
   `Oadm.Core.Sites.DeviceRouter` on the device's `DeviceRoute` (`Device.SiteId`, `DiscoveredDevice.Route`): the server's
   own network = a normal socket connect, a site = a new `ISiteTransport.OpenStreamAsync` stream per connection.
   `VapixClient` runs on `SocketsHttpHandler` (router connect callback, pinning via `CertificatePinning.ValidateSslCallback`;
@@ -76,10 +76,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
   discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
   holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
-  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; Basic over plain HTTP only with the setting **Allow Basic login over
-  HTTP** (`Devices.AllowBasicOverHttp`), as on the server's own network; a `SiteException`
-  passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial. Names resolve on the route
-  (`RoutedDns`; through a site in stream 5). With no site everything connects as before.
+  device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; Basic over plain HTTP as on the server's own network (first
+  bullet); a `SiteException` passes through unchanged; a WebSocket upgrade on a new connection counts as a permanent dial.
+  Names resolve on the route (`RoutedDns`; through a site in stream 5).
 - **Banned APIs**: `Microsoft.CodeAnalysis.BannedApiAnalyzers` with `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`
   (Socket, TcpClient, UdpClient, Ping, Dns, HttpClientHandler, SocketsHttpHandler, ClientWebSocket.ConnectAsync, `new
   HttpClient()`, WebRequest, HttpWebRequest): errors in
@@ -87,5 +86,5 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (`OadmBannedApis=warning`, `none` turns it off; version `OadmBannedApiAnalyzersVersion` in Oadm.Plugin.Versions.props);
   tools/ and tests/ outside. Exceptions carry a SuppressMessage with a justification and are listed in
   `RoutingRulesTests.AllowedBannedApiUsers` (the router, routed DNS, `LocalNetwork` behind `IDeviceNetwork` and
-  `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay`, and the
-  sockets of the DHCP and NTP servers and the Notifications actions).
+  `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay` and its new version check
+  (GitHub, never a device), and the sockets of the DHCP and NTP servers and the Notifications actions).

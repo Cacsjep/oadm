@@ -9,7 +9,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling). Each has an **Any device** twin for the server (group "Any device", `BuiltInEvents.AnyOf`): on while at least one device has it, value `count` (how many), recomputed by the engine with every device change. **Certificate expires soon** and **Certificate expired** with their Any device twins are PKI's events since OADM 4.5 (group "Certificates", the days of each device's Expiry warning policy, docs/spec/pki.md "Policies"): the ids stay (`oadm.device.certificate-expires-soon`, `oadm.device.certificate-expired`, `oadm.device.any-certificate-…`), so stored rules keep working. Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see "Device triggers"; also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, group "Device status", stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling). Each has an **Any device** twin for the server (group "Any device", `BuiltInEvents.AnyOf`): on while at least one device has it, value `count` (how many), recomputed by the engine with every device change. **Certificate expires soon** and **Certificate expired** with their Any device twins are PKI's events (group "Certificates", the days of each device's Expiry warning policy, [pki.md](pki.md#policies)); their ids keep the `oadm.device.` prefix (`oadm.device.certificate-expires-soon`, `oadm.device.certificate-expired`, `oadm.device.any-certificate-…`), so stored rules keep working. Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see [bundled-plugins.md](bundled-plugins.md#device-triggers-core-plugin); also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
@@ -18,15 +18,14 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Loops | Actions never fire events themselves; a device an action changes may send an event later, which the dead time keeps bounded. |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions; one-shot events missed while the server was down are not replayed. |
-| Roles | Administrators create, change, copy, turn on / off and delete rules (audited "Created / Changed / Deleted / Turned ... event rule"); operators read rules and the log. |
+| Roles | Permissions "See event rules" (rules and the log; operators by default), "Change event rules" (create, change, copy, turn on / off, delete, test an action; audited "Created / Changed / Deleted / Turned ... event rule") and "Delete the event log". |
 | Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
 
-- **Device groups** (`docs/spec/device-scope.md`, decision 2026-10-23): event rules are for users with all devices.
+- **Device groups** ([device-scope.md](device-scope.md)): event rules are for users with all devices.
   Every `EventService` method (rules, the event log, the catalog, Test) is `AccessRule.AllDevices`: users with a device
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
-  them. Rules have no owner and run on all devices as before device groups (migration `EventRulesWithoutOwner` drops the
-  owner columns of the unreleased migration `DeviceGroups`); a deleted group changes no rule. Send HTTP request and Send
-  TCP message send to any address, as in 4.1.0.
+  them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
+  `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
   `ICorePluginContext.EventSubscriptions` (`IEventSubscriptions.Subscribe(handler)`, `Core.Events.EventSubscription`):
@@ -36,7 +35,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   while any subscription exists; the host ends a plugin's subscriptions when it stops, fails or is turned off
   (`PluginEventSubscriptions`). `IEventSubscriptions.Types` (`SubscribedEventType`: the type with its fields, source, available)
   and `TypesChanged` (a source changed its types, a plugin turned on or off; unhooked when the plugin stops). Tests
-  `EventSubscriptionTests`. First user: Dashboards (see "Dashboards").
+  `EventSubscriptionTests`. First user: Dashboards ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
   `EventTypeInfo.DeviceIds`: the devices that can send the event (Device triggers: each trigger's devices now, types changed
   again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
   only (placeholder, no filter box in the rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every
@@ -73,11 +72,10 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   (`IDynamicEventSource.EventTypesChanged`, device triggers): the registry reads them again, a new stateful type waits for
   its first report, a removed type counts as off ("Not available: an event of this rule no longer exists"), and a type a
   stored rule uses that no source declares yet waits like a source after a start (2 minutes), then counts as off.
-  Placeholders also fill every value of the event by its name (`{port}`, `{total}`) after the fixed ones.
 - **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
   500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
-  `ListActionChoices` (the last five Admin), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
-  `TestAction` (Admin, audited "Tested event rule action": runs an action without devices once now, outside rule states and
+  `ListActionChoices` (the last five need "Change event rules"), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
+  `TestAction` (audited "Tested event rule action": runs an action without devices once now, outside rule states and
   limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
   the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; reply ok +
   message).
@@ -102,13 +100,13 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   device safety like a rollout (cached API list, fresh one before a write). The event's values reach the command: a text field of the saved command whose value holds placeholders ("{carID}", "{port}", "{device}")
   is filled before the field checks and the send (`RunCommandAction.FillEventValues`; passwords never). Event type
   descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
-- **Client**: rail page **Event rules** (only for users with all devices: `MainWindowViewModel.SyncEventRulesItem` hides it
-  for users with a device group, with the event log; key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
+- **Client**: rail page **Event rules** (only with "See event rules" and all devices: `MainWindowViewModel.SyncEventRulesItem`
+  hides it, with the event log, for users with a device group; key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
   that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
   page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
-  Delete (red, confirmed); search on the right; grid On check box (administrators), Name, When, Then, State chip (On ok, waiting accent, problem
-  warning), Last run; double click edits; search; status "3 rules · 2 turned on · 1 active now"; live through
-  `WatchRules`) and **Event log** (title, Refresh, **Delete all** (administrators, red, confirmed; gRPC `ClearLog`, audited
+  Delete (red, confirmed); search on the right; grid On check box (with "Change event rules"), Name, When, Then, State chip (On ok, waiting accent, problem
+  warning), Last run; double click edits; status "3 rules · 2 turned on · 1 active now"; live through
+  `WatchRules`) and **Event log** (title, Refresh, **Delete all** (with "Delete the event log", red, confirmed; gRPC `ClearLog`, audited
   "Cleared event log"), search, virtualized grid Time, Type, What, Device, Rule, Result chip + message (events and rule edges
   the blue info icon, Done ok, Failed error, Skipped warning; a skip message does not repeat "Skipped");
   newest 10,000, live through `WatchLog`, read and watched again after a drop with the rules' backoff (1, 2, 4 ... 15 s);

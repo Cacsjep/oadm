@@ -2,13 +2,14 @@
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-Reference for content: the Manage devices page of ADM. Same information density, styled as described in Visual Style.
+Reference for content: the Manage devices page of ADM. Same information density, styled as described in
+[visual-style.md](visual-style.md).
 
-**New version** (client, decision 2026-10-27): once per client start, after the main window opened, the client asks GitHub
+**New version** (client): once per client start, after the main window opened, the client asks GitHub
 for the latest release (`GitHubReleaseCheck`: `api.github.com/repos/Cacsjep/oadm/releases/latest`, never a draft or a
 pre-release, a 2 s limit; no answer, an error or a rate limit shows nothing; the client log says once per start why nothing
 was shown). A newer version
-than this client opens the new version dialog (`Updates/UpdateWindow`, look in `docs/spec/visual-style.md` "Login and new
+than this client opens the new version dialog (`Updates/UpdateWindow`, look in [visual-style.md](visual-style.md) "Login and new
 version"): "OADM V4.6.0 is available", "You have V4.5.0", What's new with the release notes of the release page (the
 CHANGELOG section; `ReleaseNotes.Parse`: `###` groups, `-` entries, plain text), **Later** (asks again next start),
 **Open download page** (https://oadm.app/start/install/) and "Don't tell me about new versions" (client setting
@@ -17,19 +18,19 @@ CHANGELOG section; `ReleaseNotes.Parse`: `###` groups, `-` entries, plain text),
 environment variable `OADM_CLIENT_VERSION=4.4.0`).
 
 Layout, top to bottom:
-1. Title "Devices". Left navigation rail as described in Visual Style.
+1. Title "Devices". Left navigation rail as described in [visual-style.md](visual-style.md).
 2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
    then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
    `groupBy`, class `active` while on), **Show each compliance check** icon button (icon `squareActivity`, class `active`
    while on, only while the Compliance column is on), Columns icon button (tooltip "Choose columns") and search box (host parts);
-   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One main **Add** button (`IsPrimary`: class `main`, flat like every toolbar button) with a menu Discovery (zero-conf scan), Network range,
-   Manual, Import from file, Import from ADM instead of five buttons; every toolbar entry is a button with text (only Columns, Group by tag
+   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One main **Add** button (`IsPrimary`: class `main`, flat like every toolbar button) with a menu Discovery, Network range,
+   Add manually, Import from file, Import from ADM instead of five buttons ([add-devices.md](add-devices.md)); every toolbar entry is a button with text (only Columns, Group by tag, Show each compliance check
    and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
    menu.
 3. Status line: "N devices, M selected". A user with a device group sees only the devices of the group; a device that
-   leaves or enters it leaves or enters the grid (`docs/spec/device-scope.md`).
+   leaves or enters it leaves or enters the grid ([device-scope.md](device-scope.md)).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
    interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
@@ -43,7 +44,7 @@ Layout, top to bottom:
    devices (+1 other reason)", `TaskPluginCatalog.NotRunnableReason`, O(selection)); a group whose entries are all
    disabled is still shown. **Remove** comes last, after its own separator (away from the everyday entries); the entry
    of an open submenu stays highlighted. Entries never end with "..." (the host appends none and strips "..." / "…" defensively,
-   `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (240) wide (theme).
+   `TaskPluginNames.Normalize`). Menus and submenus are at least `Oadm.MenuMinWidth` (160) wide (theme).
    The toolbar task buttons have no groups; one the selection cannot run is disabled with the same reason as tooltip
    (`IToolbarContext.CannotRunTaskReason`; no tooltip without a selection).
    **Log in** (icon `key`) is shown only while the selection holds a device with status
@@ -77,9 +78,9 @@ Layout, top to bottom:
    stands below the password ("1 of 3 devices failed: 10.0.0.41 (The device already has a password. Nothing was
    changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
    `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests`.
-   **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see "Device tags".
+   **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see [tags.md](tags.md).
    **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
-   rarely needed; today **RTSP port** (video devices, "Optics Control"), see "Live view".
+   rarely needed; today **RTSP port** (video devices, "Optics Control"), see [live-view.md](live-view.md).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Start time, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
@@ -96,8 +97,8 @@ Layout, top to bottom:
    name, detail, duration, progress bar + percent only for the running step; rows updated in place) and a
    Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
    step or the task state changes, new entries appended), built from the shared grid and chip styles; **Cancel task**
-   in its footer while the task runs. Pane buttons: details, cancel, delete, a separator, **delete all** (red, with
-   confirmation; running tasks are cancelled first; hidden for users with a device group); all work per task.
+   in its footer while the task runs. Pane buttons: Details, Cancel, Delete, a separator, **Delete all** (red, with
+   confirmation; running tasks are cancelled first; only with "Delete all tasks" and all devices); all work per task.
 
 **Logs page** (rail, bottom; `Logging/LogsViewModel` + `LogsView`): the segmented switch **Server** | **Client** | **Audit**
 on top of each card. **Server** (first when the role may see it, permission `logs.server` "See the server log", group "Logs", and only for users
@@ -110,7 +111,7 @@ lines (exceptions) belong to the entry before, read shared while the logger writ
 chip, Source (the class without namespace), Message (tooltip: source, message, exception), read again when the page
 opens. **Client**: this client's log of the session (`LogStore`, newest 10,000, live), level filter and search, 200 a page.
 Both page with the shared `Logging/LogPager` ("Entries 201 to 400", Newest, Newer, Older); a live client entry never moves an
-older page. **Audit** (administrators): as before. Every failed event rule action is also a server log Warning ("Event rule
+older page. **Audit** (administrators): the audit log ([security.md](security.md)). Every failed event rule action is also a server log Warning ("Event rule
 X: action Y on 10.0.0.48 failed: <reason>", with the exception when it was unexpected), a skipped one and a rule held back by
 its limits Information (`ActionRunner.Write`, `RuleEngine.LogRule`). Fake mode: 650 sample entries
 (`FakeOadmApi.ServerLog.cs`). Tests: `tests/Oadm.Server.Tests/ServerLogTests`, `tests/Oadm.Client.Tests/LogsPageTests`,
@@ -125,7 +126,7 @@ and the saved per-client order cover other preferences):
 | Address | IP or host name, hyperlink opens device web UI in default browser |
 | Model | ProdNbr |
 | Status | computed, see enum |
-| Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See "Compliance" |
+| Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See [compliance.md](compliance.md) |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
 | SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |

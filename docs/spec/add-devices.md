@@ -5,12 +5,13 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Goal: maximum technician satisfaction. Adding devices is one page, no steps; the server
 logs in to every device it finds with the credentials the technician already has.
 
-Toolbar (toolbar plugins, see "Toolbar plugins"): the **Add** menu entries Discovery, Network range, Add manually and
-Import from file open the same dialog window (header = the entry name) (`Discovery/AddDevicesWindow`, shared dialog
-controls: title bar, one card, footer) in four modes:
-- **Scan**: zero-conf (mDNS) discovery starts immediately; devices appear live. The scan ends after
-  `Discovery.ZeroConfSeconds` (Settings page, default 30 s, 5..300).
-- **Scan IP range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
+Toolbar (toolbar plugins, see [plugins.md](plugins.md#toolbar-plugins)): the **Add** menu entries Discovery, Network
+range, Add manually, Import from file and Import from ADM open the same dialog window (header = the entry name)
+(`Discovery/AddDevicesWindow`, shared dialog controls: title bar, one card, footer) in its modes. How OADM finds devices:
+[discovery.md](discovery.md).
+- **Discovery**: zero-conf discovery starts immediately; devices appear live. The scan ends after
+  `Discovery.ZeroConfSeconds` (Settings page "Discovery duration (s)", default 30, 5..300).
+- **Network range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
   the same list).
 - One info line above the list (`ui:ProgressRow`, indeterminate for zero-conf, percent for ranges): the scan status and the
   counts in one text (`AddDevicesViewModel.StatusLine`: "Import finished, 5 devices found · 4 ready to add · 1 need a login
@@ -26,13 +27,13 @@ controls: title bar, one card, footer) in four modes:
   `https://camera.example.com:8443`); Enter or Find probes that address (`ProbeAddress`); every
   address adds a row; "No Axis device answered at X." when nothing answers. The entered address
   (host[:port]) becomes the device address on add, as typed.
-- **Import devices** (built-in icon button after Add manually, icon download): first the dialog "Import from file"
+- **Import from file**: first the dialog "Import from file"
   (`Discovery/ImportHelpWindow` + `ImportHelpViewModel`, single operation: the columns, the example
   `DeviceImportFile.Example` in a `ui:CodeView` (the user docs show the same, test `DeviceImportFileTests`), the limits;
   Cancel / **Choose file**), then the client asks for a CSV file (open picker through `IDialogService.OpenFileAsync`) and reads it with
   `Discovery/DeviceImportFile` (O(n)): the Export devices CSV or any CSV with an address column (header names
-  case-insensitive: Address, IP address, IP, Host name; optional **User name** and **Password**; other columns
-  ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
+  case-insensitive: Address, IP address, IP, Host name; optional **User name**, **Password**, **Tags** ([tags.md](tags.md))
+  and **Site** ([sites.md](sites.md)); other columns ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
   else Latin-1; a formula guard `'` of the export is removed. A password without a user name is for `root`; a user
   name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import from file") when it is larger
   than 64 MB (a guard only: the lines are the limit), has more than 30,000 addresses (`DeviceLimits.MaxDevices`; the
@@ -111,13 +112,14 @@ else `http://a:8080`), the login, the tags, and the MAC address as `ImportLine.E
 no device list ("not a device export of AXIS Device Manager"), `encrypted: true` ("Export the devices again ... without
 encryption"), a major format version other than 1 or 2, no devices. An export
 naming several ADM servers asks first (`DevicesViewModel.MultiServerText`: devices only the other servers reach show Not
-found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>)"; a row whose device answers with
+found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>). Logins in the export are tried
+first."; a row whose device answers with
 another MAC address is "Not added: Another device answers at this address (X). The file lists Y." and the server sent that
 device no password. Model, firmware, host name, product type, apiMode and securityMode of the export are not used (read
 from the device). Tests `AdmDeviceExportTests`, `AddDevicesPageTests`, `FastAddTests`.
 
-**DNS names**: Discovery and Network range have the check box **Use DNS names instead of IP addresses** (in the scan
-progress row, left of Stop / Scan again; remembered per client, `ClientSettings.AddByDnsName`). The server looks up the DNS name of every found IP
+**DNS names**: Discovery and Network range have the check box **Use DNS names instead of IP addresses** (below the info
+row; remembered per client, `ClientSettings.AddByDnsName`). The server looks up the DNS name of every found IP
 (`Oadm.Core.Discovery.IDnsNameLookup`, `SystemDnsNameLookup`: reverse lookup, a full name with a domain, not ".local" or
 ".arpa", that resolves back to the same IP; 3 s, 16 at a time, once per device and address, never for typed addresses;
 `DiscoveredDevice.DnsName`, dropped when the address changes). Checked, the Address column shows the DNS name (tooltip
@@ -127,7 +129,7 @@ address (no switching later, the grid shows it). Add manually and Import from fi
 `DiscoveryServiceTests` (fake lookup), `AddDevicesServiceTests`, `AddDevicesPageTests`.
 
 List: checkbox (40 px; shown only for rows that can be added), category icon (36 px), Address (200), MAC address (150),
-Model (160), Login (status, star: takes the rest so status and detail sit right after Model; rows grow so the reason
+Model (160), Site (130, shown once a device answers through a site), Login (status, star: takes the rest so status and detail sit right after Model; rows grow so the reason
 shows on up to two lines, grid class `wrapRows`), Action (auto, at the right edge). An empty list says what to do first ("Enter a range and press Scan.", "Enter an address and press Find."). Scan
 and Find are filled secondary buttons. A page error (Add or discovery failed) stands directly below the list. The scan
 progress bar disappears once a scan or import ended; its text stays. Problems of file lines ("Not added") use the
@@ -137,8 +139,8 @@ search box; Discovery and Network range add the DNS name check box below it. Log
 Login failed (error, reason as tooltip), Unreachable (error), Added (ok, row greyed; already managed devices are not
 listed, see above).
 Only addable devices can be checked: authenticated ones, and factory-default ones
-once a first password is entered. A device is checked by itself the first time it can be added (forum: the button was
-easy to miss and Add did nothing); one the user unchecks stays unchecked. The check box column's header is a three-state
+once a first password is entered. A device is checked by itself the first time it can be added; one the user unchecks stays
+unchecked. The check box column's header is a three-state
 check box (`AllSelected`: all, some = dash, none of the devices that can be added; O(1) from the counters; disabled while
 none can be added): a click checks every addable row the search shows, or unchecks them when all were checked. **Add** (footer, "Add 3 devices") commits the checked devices
 in one click and the page always closes (no "Keep open" option).
@@ -156,7 +158,7 @@ Every password field (login editor, first password + confirm) is `ui:PasswordBox
   hint with the systemready passphrase policy: none = 1-64 printable ASCII, length = at least 15,
   complex = at least 12 with upper, lower, digit and special character; checked client side, the
   device checks again), "Use for all factory-default devices". The password stays in client memory
-  until Add; the server sets it as today (pwdgrp.cgi, HTTPS when offered, POST body only) and
+  until Add; the server sets it (pwdgrp.cgi, HTTPS when offered, POST body only) and
   stores it as the device credential. The row shows "Password ready · Change".
 
 Server: `DiscoveryAuthenticator` (Oadm.Server/AddDevices). For every device event of a watched
@@ -180,13 +182,13 @@ a site; with it off a site device that offers only Basic over HTTP ends LOGIN FA
 no further credential tried). At most 32 devices log
 in at the same time (`DiscoveryAuthenticator.Parallelism`; each device still gets one login after another). Results live per (session, serial) as long as the session (below) together with
 the credential that worked (server memory); `Commit` stores that credential for the new device
-(explicit `credentials` in the request still win, legacy). Passwords never leave the server once
+(explicit `credentials` in the request win). Passwords never leave the server once
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
-background as before.
+background.
 
-**Device groups** (docs/spec/device-scope.md, Decisions "New devices"): the server builds an `AddReach` from the caller
-(`Oadm.Server.AddDevices.AddReach`): a user with all devices adds everywhere as before; a user with a device group
+**Device groups** ([device-scope.md](device-scope.md), Decisions "New devices"): the server builds an `AddReach` from the caller
+(`Oadm.Server.AddDevices.AddReach`): a user with all devices adds everywhere; a user with a device group
 discovers and adds only at the sites of the group (`DiscoveryRoutes`: zero-conf, the range scan and address probes on the
 server's own network only with "This server", sites outside the group are never asked) and only devices that land inside
 the group (an excepted serial is not added); a group of tags or single devices only cannot add ("Your device group has no
@@ -213,7 +215,7 @@ read; a change during a try ends it before the probe, the credential list and th
 round tries again; routes,
 no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any
 more is not tried and nothing is sent ("Not added: the user who kept it cannot add devices here.", held until Try now);
-an entry kept before device groups (no user id) is tried as before. Tests `AddDevicesScopeTests`, `CanaryTests`,
+an entry without a user id (kept before device groups existed) is tried as a user with all devices. Tests `AddDevicesScopeTests`, `CanaryTests`,
 `WaitingDeviceStoreTests` (+ Perf 30,000 entries per scope), `DeviceGroupMembershipTests` (+ Perf 30,000 devices x 200
 groups), `DiscoverySitesTests`.
 
@@ -237,7 +239,7 @@ address = the IP, pin from the probe, the credential that worked, verified) with
 credential fits; the context menu's "Log in" fixes it) or Password not set (the context menu's "Set password"), queues the
 first full refresh and writes the audit entry "Device added automatically" (user "system", target "<ip> (<serial>)",
 detail "<source>: <result>"). Not added (not Axis, other serial, unreachable): logged only. `FollowAsync(serial, address,
-source)` follows managed devices (see "Following moved devices"). Passwords never reach the plugin.
+source)` follows managed devices ([discovery.md](discovery.md#following-moved-devices)). Passwords never reach the plugin.
 
 Follow-up logins: per (session, serial) the authenticator keeps the device as last observed, the
 number of rejected automatic attempts and which credentials (SHA-256 of user + password) the device
@@ -246,7 +248,7 @@ attempts left and has not rejected it: (a) a successful `RetryAuth` adds it ("en
 entry when saved) to the session and its `related_session_ids` and starts those logins before the reply
 returns (the devices show PENDING); (b) a credential added to the credential list (Credentials page or
 "Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
-loop: one login at a time per device, at most 8 devices at once, at most 10 rejected credentials per
+loop: one login at a time per device, at most 32 devices at once (`DiscoveryAuthenticator.Parallelism`), at most 10 rejected credentials per
 device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
 credentials first, then the list; credentials added while it runs are
 tried in the same run. Unreachable attempts count neither as attempt nor as rejected.

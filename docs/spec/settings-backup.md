@@ -2,51 +2,74 @@
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-Server-side in `Setting`. Keys: `Polling.IntervalSeconds` (60, 5..86400),
-`Polling.FullRefreshMinutes` (10, 1..1440, Settings page "Read device details every (min)"), `Events.LogRetentionDays` (30, 0..3650) and `Events.LogMaxEntries` (100000, 0 or
-100..1000000): event log retention (server-only), `Scan.Parallelism` (32, Settings page "Addresses scanned at once"), `Scan.TimeoutMs` (1500,
-Settings page "Scan timeout (ms)": range scans and the first contact of imported lines), `Devices.WaitingRetryMinutes` (15,
-1..1440, Settings page "Try waiting devices every (min)", proto `optional int32 waiting_retry_minutes = 10`; see "Waiting
-list"), `Devices.AllowBasicOverHttp` (false; Settings page card **Security**, label "Device login", check box "Allow Basic
-login over HTTP", hint "Sends passwords unencrypted. Only for devices without HTTPS.", operators read On / Off; proto
-`optional bool allow_basic_over_http = 11`; read live by every device connection, see `docs/spec/vapix.md`),
-`Discovery.ZeroConfSeconds` (30, 5..300: a zero-conf scan of the add page ends after this time; Settings
-page "Discovery duration (s)"), `Server.Name` (hostname),
-`Server.ListenUrl`, `Uploads.MaxMegabytes` (2048, 1..65536), `Uploads.RetentionHours` (24,
-1..8760; both server-only, not on the settings page yet), `Tasks.RetentionDays` (90, 0..3650, 0 = no age
-limit) and `Tasks.MaxHistory` (50000, 0 or 100..1000000, 0 = no limit): task history retention, applied
-one minute after start and then hourly by `TaskRetentionHostedService` (finished tasks only, one bulk
-delete, one Removed change per task; server-only, not on the settings page yet),
-`Tasks.MaxParallelPerPlugin` (16, 1..256: how many tasks (= devices) of one task plugin run at the same
-time, read live by the task engine, plugin `MaxParallelDevices` can only lower it; proto
-`optional int32 max_parallel_tasks_per_plugin = 9` so a partial `Set` keeps it; Settings page "Parallel
-tasks per plugin" with the hint "How many devices a task runs on at the same time, e.g. restarts or
-firmware updates."). The former `Devices.UseHostName` is gone: the add page chooses DNS names or IP addresses
-per add (see "Add Devices Page"); proto `use_host_name = 7` is kept unused for its field number. Settings page in the client exposes them (five cards Polling, Discovery, Tasks, Security, Server, saved
-together by Save and Reload in a row of their own below the five cards; operators see the values as plain text without Save and Reload). Every card of the Settings page
-folds and starts closed (`Controls/CollapsibleCard`, `docs/spec/visual-style.md`); a card opens by itself when an input in
-it shows a validation error. Rail page **Credentials** (Admin only, subtitle "Passwords OADM
-tries when it adds devices.", `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password masked as 8 bullets, eye icon button "Show password" /
-"Hide password" that loads it with `RevealCredential` and masks (and forgets) it on the second click, copy icon
-button "Copy password" (clipboard of the window, loaded on demand, not shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential" (user
-name, password, "Add credential"); stored encrypted on the server (`CredentialListStore`, table
-CredentialListEntries), tried on every discovered device (see "Add Devices Page"). Rail page **Plugins** (Admin only)
-turns plugin packages on and off (see "Plugins on and off"). Rail page **About** (everyone,
-subtitle "Version and licenses.", `Settings/AboutPageView` around the card `Settings/AboutView`, `AboutViewModel`):
-terms of use (card title, a scrollable block with wider line spacing), client version, server version (`ServerSettings.server_version`), the
-sentence on the Apache-2.0 license, "Show licenses" shows `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's
-`Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a checkout) in a read-only `ui:CodeView` (Plain). The Settings page
-starts with the card **Client** (every user, saved at once in the client settings file): "Decode video on the
-graphics card" with the test's result as hint, "Show video details over the picture" and "Frame rate (adaptive quality)"
-(see "Live view"), "Appearance" (Dark, Light; see "Visual Style"). The page has two columns (each up to 760 px, left-aligned): Client and the server settings left,
-the card **Backup and restore** right (administrators, see "Backup and restore") with the card **License** below it (every
-user, `docs/spec/licensing.md`) and the card **Support** below that (administrators, see "Support report"); narrower than 1100 px the right column
-moves below the server settings. The server
-address is set with `--server` or in the
-client settings file. Client-side (local JSON in LocalApplicationData): server address, device grid column layout and group
-mode (`GroupDevicesByTag`), bottom pane state, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`, `Appearance`.
+## Server settings
 
-# Backup and restore
+Stored in the table `Setting` (`Oadm.Core.Settings.ServerSettings`), read and written with `SettingsService.Get` / `Set`
+(`ServerSettings` in `settings.proto`; an optional field left out of a partial `Set` keeps the stored value, 0 keeps it
+for `zero_conf_seconds`). Settings page labels in quotes.
+
+| Key | Default, range | Settings page, proto |
+|---|---|---|
+| `Polling.IntervalSeconds` | 60, 5..86400 | Polling "Status polling interval (s)", `polling_interval_seconds = 1` |
+| `Polling.FullRefreshMinutes` | 10, 1..1440 | Polling "Read device details every (min)", `full_refresh_minutes = 6` |
+| `Scan.Parallelism` | 32 | Discovery "Addresses scanned at once", `scan_parallelism = 2` |
+| `Scan.TimeoutMs` | 1500 | Discovery "Scan timeout (ms)" (range scans and the first contact of imported lines), `scan_timeout_ms = 3` |
+| `Discovery.ZeroConfSeconds` | 30, 5..300 | Discovery "Discovery duration (s)": Discovery on the add page ends after this time, `zero_conf_seconds = 8` |
+| `Devices.WaitingRetryMinutes` | 15, 1..1440 | Discovery "Try waiting devices every (min)", `optional waiting_retry_minutes = 10`; `docs/spec/add-devices.md` "Waiting list" |
+| `Tasks.MaxParallelPerPlugin` | 16, 1..256 | Tasks "Parallel tasks per plugin" ("How many devices a task runs on at the same time, e.g. restarts or firmware updates."), `optional max_parallel_tasks_per_plugin = 9` |
+| `Devices.AllowBasicOverHttp` | false | Security "Device login", check box "Allow Basic login over HTTP" ("Sends passwords unencrypted. Only for devices without HTTPS."), `optional allow_basic_over_http = 11` |
+| `Server.Name` | the host name | Server "Server name", `server_name = 4` |
+| `Server.ListenUrl` | `https://0.0.0.0:5080` | Server "Listen URL" ("Takes effect after the server restarts"), `listen_url = 5` |
+| `Uploads.MaxMegabytes` | 2048, 1..65536 | server only |
+| `Uploads.RetentionHours` | 24, 1..8760 | server only |
+| `Tasks.RetentionDays` | 90, 0..3650 (0 = no age limit) | server only |
+| `Tasks.MaxHistory` | 50000, 0 or 100..1000000 (0 = no limit) | server only |
+| `Events.LogRetentionDays` | 30, 0..3650 | server only |
+| `Events.LogMaxEntries` | 100000, 0 or 100..1000000 | server only |
+
+- `Tasks.MaxParallelPerPlugin` is read live by the task engine; a plugin's `MaxParallelDevices` can only lower it.
+- `Devices.AllowBasicOverHttp` is read live by every device connection (`docs/spec/vapix.md`); operators read On / Off.
+- Task history retention runs one minute after start and then hourly (`TaskRetentionHostedService`: finished tasks only,
+  one bulk delete, one Removed change per task).
+- `use_host_name = 7` is unused and kept for its field number (the add page chooses DNS names or IP addresses per add,
+  `docs/spec/add-devices.md`); 12 is reserved. Read only in both replies: `key_replaced = 20`, `server_version = 21`,
+  `roles_notice = 22`, `server_id = 23`.
+
+## Settings page
+
+- Two columns (each up to 760 px, left-aligned). Left: the card **Client**, then the five server cards Polling,
+  Discovery, Tasks, Security, Server, saved together by **Save** and **Reload** in a row of their own below them ("Saves
+  Polling, Discovery, Tasks, Security and Server"); operators see the values as plain text without Save and Reload
+  ("Only administrators can change server settings."). Right: **Backup and restore** (administrators), **License** (every
+  user, `docs/spec/licensing.md`), **Support** (administrators). Narrower than 1,100 px (`SettingsView.TwoColumnWidth`) the
+  right column moves below the server settings.
+- Every card folds and starts closed (`Controls/CollapsibleCard`, `docs/spec/visual-style.md`); a card opens by itself
+  when an input in it shows a validation error.
+- **Client** (every user, saved at once in the client settings file): Live view "Decode video on the graphics card" with
+  the test's result as hint and "Show video details over the picture", "Frame rate (adaptive quality)"
+  (`docs/spec/live-view.md`), "Appearance" (Dark, Light; `docs/spec/visual-style.md`), New versions "Tell me about new
+  versions".
+- Client settings (`client-settings.json` in LocalApplicationData): server address (also `--server`), recent servers,
+  pinned servers, remembered logins, device grid column layout and group mode (`GroupDevicesByTag`), bottom pane state,
+  `TellAboutNewVersions`, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`, `Appearance`, `AcceptedTerms`.
+
+## Credentials, Plugins and About pages
+
+- Rail page **Credentials** (Admin only, subtitle "Passwords OADM tries when it adds devices.",
+  `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password
+  masked as 8 bullets, eye icon button "Show password" / "Hide password" that loads it with `RevealCredential` and masks
+  and forgets it on the second click, copy icon button "Copy password" (clipboard of the window, loaded on demand, not
+  shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential"
+  (user name, password, "Add credential"). Stored encrypted on the server (`CredentialListStore`, table
+  `CredentialListEntries`), tried on every discovered device (`docs/spec/add-devices.md`).
+- Rail page **Plugins** (Admin only) turns plugin packages on and off (`docs/spec/plugins.md` "Plugins on and off").
+- Rail page **About** (everyone, subtitle "Version and licenses.", `Settings/AboutPageView` around the card
+  `Settings/AboutView`, `AboutViewModel`): terms of use (card title, a scrollable block with wider line spacing), client
+  version, server version (`ServerSettings.server_version`), the sentence on the Apache-2.0 license, "Show licenses" shows
+  `THIRD-PARTY-NOTICES.txt` (next to the exe, the macOS app's `Contents/Resources`, or `THIRD-PARTY-NOTICES.md` in a
+  checkout) in a read-only `ui:CodeView` (Plain).
+
+## Backup and restore
 
 Settings page card **Backup and restore** (Administrator only, never grantable).
 Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Backup` (`BackupManager`, `BackupGrpcService`,
@@ -88,13 +111,13 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
   automatic backups, Started restore, Restored backup.
 - **Client**: Back up now (password + confirm, then the save picker; the file streams to disk with the progress row), Restore
   from file (uploaded first) or a server backup's Restore (dialog: password, Check shows the counts, Restore after a
-  confirmation naming the running tasks), Automatic backups (Save is secondary: one accent button per page), the list with
+  confirmation naming the running tasks), Automatic backups (Save is secondary: one accent button per view), the list with
   Download, Restore, Delete (red, confirmed), the last automatic backup and the last restore report.
 - **Tests**: `tests/Oadm.Core.Tests/Backup/BackupTests` (format, another server, an older OADM upgraded, rollback, entries
   outside the folder), `tests/Oadm.Server.Tests/BackupServiceTests` (create, check, restore with a restart, automatic,
   schedule), `tests/Oadm.Client.Tests/BackupCardTests` (+ screenshots).
 
-# Support report
+## Support report
 
 Settings page card **Support** (right column below License, Administrator only, hidden for other roles): "Logs and server
 details for a support request. No passwords are included." and **Create support report** (save dialog, suggested
