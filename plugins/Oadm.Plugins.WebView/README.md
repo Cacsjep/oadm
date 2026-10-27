@@ -1,7 +1,9 @@
 # Web View (`oadm.web-view`)
 
-Core plugin (+ `.Client`), rail page **Web View** (group Utilities, icon `globe`), on by default, switchable. Opens the web
-interface of the managed devices in browser tabs inside OADM, logged in with the login OADM stores for the device.
+Core plugin (+ `.Client`) with the rail page **Web View** (group Utilities, icon `globe`), on by default. Opens the web
+interface of the managed devices in browser tabs inside OADM, logged in with the login OADM stores for the device. Spec:
+[Bundled plugins](../../docs/spec/bundled-plugins.md#web-view-core-plugin); the host parts are in `Oadm.Server/DeviceWeb`
+and `Oadm.Client/DeviceWeb`.
 
 ## Decisions
 
@@ -12,7 +14,6 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 | Tree | Left card, below the page select and the search: devices grouped by tag like the grid's Group by tag ("No tag" last; a device with several tags under each; no counts), devices by IPv4 address with the shared `ui:DeviceIcon` (category icon, amber or red by status, the status message on hover) and the address only (no model). Search over address, model, MAC, host name and tags. |
 | Tabs | One tab per device: a click on an open device brings its tab to the front. One row above the page: Close all tabs, Reload, Back (the browser's own history), then the tabs (the height of a select field), scrolling sideways when they do not fit. The page fills the card from edge to edge. |
 | Page select | Above the search: Web interface (`/`), Apps (`/camera/index.html#/apps`), Overlays (`/camera/index.html#/video/overlays`), Privacy masks (`/camera/index.html#/video/privacymasks`), Recordings (`/camera/index.html#/recordings`), Security (`/camera/index.html#/system/security`), Image Health Analytics (`/local/AXISImageHealthAnalytics/index.html`), Object Analytics (`/local/objectanalytics/index.html#/`), License Plate Verifier (`/local/fflprapp/setup.html#/home`), Custom (a path field below the select, opened with Enter or when the field is left; error below the field when it does not start with "/" or leaves the device). The select shows the active tab's page; changing it opens the page in the active tab; new tabs use the page chosen last. |
-| Roles | Operators and administrators (operators may already open a device's web interface from the grid). Every open is in the audit log ("Opened web interface", the device). |
 | Refused | Certificate changed, Credentials required and Password not set are refused with the shared status text (the tab shows it); the device's own login prompt never appears. |
 
 ## How it works
@@ -27,12 +28,11 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
   because `login.cgi` hands out a session cookie with every 401 and accepts only the login together with that cookie; a
   refused try is sent once more with the device's new cookies (which the page gets too). Request bodies are buffered so
   they can be sent again (in memory up to 16 MB, beyond that in `<datafolder>/web-relay/`, deleted on close; at most
-  4 GB). A device that does not answer gives a small error page
-  (502) with the shared device text. WebSockets: `VapixClient.ConnectRelayWebSocketAsync` (the page brings its own session
+  4 GB). A device that does not answer gives a small error page (502) with the shared device text. WebSockets: `VapixClient.ConnectRelayWebSocketAsync` (the page brings its own session
   token; a 401 of the upgrade is answered with the stored login, `WebSocketLogin`: Digest, Basic only over HTTPS), messages both ways, close handshake passed through.
 - **Client** (host, `Oadm.Client/DeviceWeb/`): `DeviceWebRelay` is a small HTTP/1.1 server, one per tab, each on its own
   loopback address `127.1.x.y:<random port>`: browsers keep cookies per host, not per port, and every Axis device uses
-  the same login cookie names, so tabs on one host overwrote each other's login (only the first tab worked). macOS answers
+  the same login cookie names, so tabs on one host would overwrite each other's login. macOS answers
   only on 127.0.0.1, which is the fallback there; the session cookie carries the port in its name
   (`oadm_relay_<port>`) on every system. Only `StartAddress` (one-time token) hands out the session
   cookie (HttpOnly, SameSite=Strict); requests without it get 403 (page title `DeviceWebPages.SessionLostTitle`: the tab
@@ -55,9 +55,16 @@ interface of the managed devices in browser tabs inside OADM, logged in with the
 - **Fake mode** (`FakeOadmApi.DeviceWeb.cs`): every device answers with a small page naming it and the path; WebSockets
   echo.
 
+## Permissions
+
+`oadm.web-view:show` (the page) and `:open` "Open devices" (`DeviceWebService.Open` and `Exchange`, full device control:
+the relay logs in with the stored login). Both are off for the built-in Operator by default (the plugin declares "show"
+to change its default). Every open is in the audit log ("Opened web interface", the device). Without "open" a click on a device does nothing and the page says "Your role does not allow
+opening devices."
+
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion`). The plugin has no page methods. The tree shows the user's devices (the host's device list),
+[Device groups](../../docs/spec/device-scope.md). The plugin has no page methods. The tree shows the user's devices (the host's device list),
 and `DeviceWebService` takes every device from the user's view: when a device leaves the view, its relay requests end
 with "1 device is no longer available." and its tab closes like the tab of a removed device.
 
@@ -74,10 +81,3 @@ with "1 device is no longer available." and its tab closes like the tab of a rem
 - `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, missing
   runtime, 5,000 devices, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
   (the native browser needs a real window: a stand-in shows where the page goes).
-
-## Permissions
-
-`oadm.web-view:show` (the page) and `:open` "Open devices" (`DeviceWebService.Open` and `Exchange`, full device control:
-the relay logs in with the stored login). Both are off for the built-in Operator by default (the plugin declares "show"
-to change its default). Without "open" a click on a device does nothing and the page says "Your role does not allow
-opening devices."

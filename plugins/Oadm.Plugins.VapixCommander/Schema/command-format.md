@@ -1,78 +1,85 @@
 # VAPIX Commander command format (v1)
 
-Shared contract between the VAPIX Commander core plugin (`plugins/Oadm.Plugins.VapixCommander*`)
-and the bundled command library (`plugins/Oadm.Plugins.VapixCommander/Library/*.json`).
-JSON Schema: `command.schema.json` next to this file. Decisions by the user (2026-10-07):
+The contract between the VAPIX Commander ([README](../README.md)) and the command library
+([Library/README.md](../Library/README.md)): bundled `Library/*.json`, saved commands and their exports. JSON Schema:
+`command.schema.json` next to this file. The library loader reads strict JSON (unknown properties are errors) and checks
+every command with `CommandValidator`.
 
-- A technician picks one or more commands, fills their fields and rolls them out to any number
-  of devices. One task per device; every command is a named task step.
-- "Stop on first error" stops the WHOLE rollout: the failing device skips its remaining commands,
-  devices not started yet are cancelled, running devices stop after their current command.
-- Saved commands (e.g. "Day Night Level 50") are stored on the server and shared by all clients;
-  export/import as JSON files.
-- A raw editor (method, path, query, body), like Postman. Values can become `{{field}}`
-  placeholders and the request can be saved as a new command. Raw commands follow the same safety rules.
-- On failure the user must see the device's own error text (VAPIX error message / code), or for
-  transport problems a readable text such as "Timeout after 15 s" or "Bad Request - HTTP 400".
-
-## One command = one JSON object
+## Command
 
 ```json
 {
-  "id": "video.daynight.shiftlevel",
+  "id": "image.daynight.shiftlevel.set",
   "version": 1,
   "name": "Set day/night shift level",
-  "category": "Video",
-  "description": "Light level at which the camera switches between day and night mode.",
-  "docs": "https://developer.axis.com/vapix/...",
-  "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],   // or "minVersion": "any" for a CGI listed under changing majors
+  "category": "Image",
+  "description": "Light level at which the camera switches between day and night mode (IR cut filter on auto).",
+  "docs": "https://developer.axis.com/vapix/network-video/imaging-api/",
+  "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
   "writes": true,
+  "hasVideoOnly": true,
   "fields": [
-    { "name": "channel", "label": "Image channel", "type": "integer", "default": 0, "min": 0, "max": 7 },
+    { "name": "source", "label": "Image source", "type": "integer", "default": 0, "min": 0, "max": 7 },
     { "name": "level", "label": "Shift level", "type": "integer", "default": 50, "min": 0, "max": 100, "unit": "%" }
   ],
   "request": {
     "method": "GET",
     "path": "/axis-cgi/param.cgi",
-    "query": { "action": "update", "ImageSource.I{{channel}}.DayNight.ShiftLevel": "{{level}}" },
+    "query": { "action": "update", "ImageSource.I{{source}}.DayNight.ShiftLevel": "{{level}}" },
     "headers": {},
-    "body": null,
     "bodyType": "none",
+    "body": null,
     "timeoutSeconds": 15
   },
-  "response": {
-    "kind": "param-cgi",
-    "success": "OK"
-  }
+  "response": { "kind": "param-cgi", "success": "OK" }
 }
 ```
 
-### Fields
+Required: `id`, `version`, `name`, `category`, `requires`, `writes`, `fields`, `request`, `response`. Optional:
+`description`, `docs`, `dangerous`, `hasVideoOnly` (only devices with video).
+
+## Requires
+
+`requires` is mandatory: a list of `{ "api", "minVersion" }` from the device's API list. A requirement means the same
+major version and at least the minor one. `"minVersion": "any"` accepts the API in any version, for CGIs whose interface
+does not follow the listed major (PTZ `ptz-control` 1.x / 2.x, `privacy-mask` 2.x / 3.x).
+
+## Fields
 
 | Property | Meaning |
 |---|---|
 | `name` | Placeholder name, `[a-zA-Z][a-zA-Z0-9_]*`, used as `{{name}}` anywhere in `request` |
-| `label`, `description` | Shown in the editor |
-| `type` | `string`, `integer`, `number`, `boolean`, `enum`, `password` (never logged, never saved in plain text in saved commands unless the user opts in; stored encrypted on the server), `file` (a file the user chooses, see Multipart below) |
+| `label`, `description` | Shown in the field form |
+| `type` | `string`, `integer`, `number`, `boolean`, `enum`, `password` (never logged; in saved commands stored encrypted on the server, never listed or exported), `file` (see [Multipart and file fields](#multipart-and-file-fields)) |
 | `default` | Default value |
 | `min`, `max`, `pattern`, `options` (`[{ "value": "...", "label": "..." }]` for enum), `unit`, `required` (default true) | Validation, checked before any request is sent |
+| `trueValue`, `falseValue` | The text of a boolean (default `yes` / `no` for the `param-cgi` kind, `true` / `false` elsewhere) |
 
-`boolean` placeholders render as `yes`/`no` for param.cgi kinds and `true`/`false` for JSON bodies
-unless the field sets `"trueValue"`/`"falseValue"`.
+## Placeholders
 
-### Request
+`CommandRenderer` fills `{{field}}`:
+
+- path: URL-escaped; the filled path must stay on the device (`CommandValidator.IsDevicePath`);
+- query: escaped, "," and ":" kept readable;
+- headers: as they are; `Authorization`, `Proxy-Authorization`, `Cookie`, `Host` and `Content-Length` are refused (OADM
+  logs in);
+- body: `json` (a value that is exactly `"{{field}}"` gets the typed value: numbers and booleans stay unquoted), `form`,
+  `text`, `xml` (XML-escaped; a SOAP envelope gets the SOAP content type), `multipart`;
+- `response.extract` paths.
+
+## Request
 
 | Property | Meaning |
 |---|---|
 | `method` | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
 | `path` | Relative to the device base address, starts with `/` |
 | `query` | Map of query parameters (keys and values may contain placeholders) |
-| `headers` | Extra headers (no `Authorization`; auth is handled by OADM) |
+| `headers` | Extra headers |
 | `bodyType` | `none`, `json`, `form`, `text`, `xml`, `multipart` |
-| `body` | JSON value for `json`, map for `form`, string for `text`/`xml`, array of parts for `multipart`; placeholders allowed in strings. In JSON, a value that is exactly `"{{field}}"` is replaced with the typed value (number/bool stay unquoted) |
-| `timeoutSeconds` | Default 15, max 600 |
+| `body` | JSON value for `json`, map for `form`, string for `text` / `xml`, array of parts for `multipart` |
+| `timeoutSeconds` | Default 15, at most 600 |
 
-### Multipart and file fields (decision 2026-10-21)
+## Multipart and file fields
 
 A `multipart` body is sent as `multipart/form-data` (quoted part names and file names, unquoted boundary, like the
 firmware upload). It is an array of 1 to 10 parts; each part has a `name` and exactly one of:
@@ -84,10 +91,8 @@ firmware upload). It is an array of 1 to 10 parts; each part has a `name` and ex
 | `file` | Exactly `"{{field}}"` of a `file` field: the file's bytes; `fileName` is the name sent (default the chosen file's name), content type `application/octet-stream` unless `contentType` says otherwise |
 
 A `file` field's value is `{"name", "data"}` with the content in base64 (the SDK's `ActionFile`), at most 1 MB
-(`CommandLimits.MaxFileBytes`): the client reads the file and sends it with the command, so a send, a rollout and a saved
-command (the file as the field's default, "Save with values") carry it; nothing is uploaded to the server's file store.
-A file field may only be the `file` of a part (never in the path, query, headers or another body), the name must not hold
-folders, quotes or control characters. The request line shows a file part as `file "profiles", 2 KB`, never its content.
+(`CommandLimits.MaxFileBytes`). It may only be the `file` of a part (never in the path, query, headers or another body);
+the name must not hold folders, quotes or control characters.
 
 ```json
 "bodyType": "multipart",
@@ -97,55 +102,50 @@ folders, quotes or control characters. The request line shows a file part as `fi
 ]
 ```
 
-### Response interpretation (`response.kind`)
+## Response
+
+`response.kind` decides how success, errors and values are read (`ResponseInterpreter`):
 
 | Kind | Success rule | Error text shown to the user |
 |---|---|---|
-| `param-cgi` | HTTP 2xx and body does not start with `# Error` / contain `Error:` ; for `action=list` the parsed key=value pairs are shown | the `# Error: ...` line |
-| `json-rpc` | HTTP 2xx and no `error` object (Axis JSON APIs: `{"apiVersion","method","data"}` / `{"error":{"code","message"}}`) | `error.message (code error.code)` |
-| `rest` | HTTP 2xx (`/config/rest/...`); body `status`=`error` is a failure | `error.message` or `title`/`detail` (problem+json) |
-| `text` | HTTP 2xx and, if `success` is set, body contains it | first line of the body |
+| `param-cgi` | HTTP 2xx and the body does not start with `# Error` / contain `Error:`; for `action=list` the parsed key=value pairs are shown | the `# Error: ...` line |
+| `json-rpc` | HTTP 2xx and no `error` object (`{"apiVersion","method","data"}` / `{"error":{"code","message"}}`) | `error.message (code error.code)` |
+| `rest` | HTTP 2xx (`/config/rest/...`); body `status` = `error` is a failure | `error.message` or `title` / `detail` (problem+json) |
+| `text` | HTTP 2xx and, if `success` is set, the body contains it | first line of the body |
 | `xml` | HTTP 2xx and no SOAP fault / `<GeneralError>` | fault string |
-| `raw` | HTTP 2xx | body excerpt (first 300 chars) |
+| `raw` | HTTP 2xx | body excerpt (first 300 characters) |
 
-- Response bodies are decoded as UTF-8 by the plugin (Axis devices send `charset=utf8`). Binary answers
-  (`image/*`, `video/*`, `audio/*`, `application/octet-stream`, zip, pdf) show content type and size
-  ("image/jpeg, 123.4 KB") instead of text.
-- HTTP 204 or an empty body with 2xx is a success ("OK") for every kind.
-- Optional `response.errorPattern` (regex, multi-line): a body that matches is a device error even with
-  HTTP 2xx (e.g. ptz.cgi answers `Error: ...` with 200); the matching line is the error text.
-- Non-2xx answers show the status text plus the device's body text (JSON `error`, `# Error:` line,
-  SOAP fault, first text line), e.g. daynight.cgi HTTP 500 bodies.
-- An answer `apiVersion` that differs from the request is never an error (devices answer with their
-  highest minor version).
+- HTTP 204 or an empty 2xx body is a success ("OK") for every kind.
+- Binary answers (`image/*`, `video/*`, `audio/*`, `application/octet-stream`, zip, pdf) show content type and size
+  ("image/jpeg, 123.4 KB").
+- `response.errorPattern` (regex, multi-line): a body that matches is a device error even with HTTP 2xx (ptz.cgi answers
+  `Error: ...` with 200); the matching line is the error text.
+- Non-2xx answers show the shared HTTP text of `DeviceMessages` plus the device's body text when it has one ("Bad Request
+  - HTTP 400: <device text>", "Server error - HTTP 500: <device text>"). Transport errors: "Timeout after N s",
+  "Unreachable - Connection refused", "Unreachable - no route to the device", "TLS/certificate error: ...".
+- An answer `apiVersion` that differs from the request is never an error (devices answer with their highest minor
+  version).
+- `response.extract`: a list of `{ "label": "...", "path": "data.x.y" | "param": "Key.Name" }` values shown in the step
+  detail after success (arrays and objects as compact JSON). Paths support array indices (`data.devices.0.name` or `data.devices[0].name`) and placeholders;
+  `param` keys may carry a leading `root.` and quotes (both ignored). `"optional": true` marks a value only some devices
+  have (WDR, an audio output, a zoom lens, a value of a newer AXIS OS): it is left out when missing instead of "(not
+  found)", and a param.cgi `action=list` answer whose `# Error: ... getting param in group 'X'` lines are only for groups
+  with all extracted values optional is a success.
 
-Transport errors always map to readable text: `Timeout after N s`, `Connection refused`,
-`Host unreachable`, `TLS/certificate error: ...`, `Unauthorized - HTTP 401 (check credentials)`,
-`Forbidden - HTTP 403 (user lacks permission)`, `Not Found - HTTP 404 (API not available on this
-firmware)`, `Bad Request - HTTP 400`, `Server error - HTTP 5xx`, plus the device's body text when
-it has one.
+## Categories and files
 
-Optional `response.extract`: list of `{ "label": "...", "path": "data.x.y" | "param": "Key.Name" }`
-values shown in the step detail after success (e.g. the current shift level for read commands). `"optional": true` marks a
-value only some devices have (WDR, an audio output, a zoom lens, a value of a newer AXIS OS): it is left out when the
-answer lacks it instead of showing "(not found)", and a param.cgi `action=list` answer that has values plus
-`# Error: ... getting param in group 'X'` lines only for groups whose extracted values are all optional is a success.
-Paths support array indices (`data.devices.0.name` or `data.devices[0].name`) and `{{placeholders}}`;
-`param` keys may carry a leading `root.` and surrounding quotes (both ignored).
+`Common`, `System`, `Network`, `Security`, `Users`, `Time`, `Video`, `Image`, `PTZ`, `Audio`, `I/O`, `Siren and light`,
+`Events`, `Storage`, `Applications`, `Maintenance`, plus `Custom` for saved commands and their exports. One file per
+category: `Library/<category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`, the file name is
+the category in PascalCase without spaces and "/" (`IO.json`, `SirenAndLight.json`).
 
-### Categories
+## Safety rules
 
-`Common`, `System`, `Network`, `Security`, `Users`, `Time`, `Video`, `Image`, `PTZ`, `Audio`,
-`I/O`, `Siren and light`, `Events`, `Storage`, `Applications`, `Maintenance`, plus `Custom` for saved (user-made)
-commands and exports. Each library file holds one category:
-`Library/<category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`; the file name is the
-category in PascalCase without spaces and "/" (`IO.json`, `SirenAndLight.json`).
+From the [device safety rule](../../../CLAUDE.md#hard-rule-device-safety-for-task-plugins):
 
-### Safety rules (CLAUDE.md "device safety")
-
-- `requires` is mandatory; the plugin checks it against the cached API list (menu/selection) and a
-  fresh API list before the first write on each device.
-- `writes: false` commands are read-only and may run without confirmation; `writes: true` needs a
-  confirmation summary before rollout. Commands that restart, factory-default, change network or
-  users set `"dangerous": true` and need an explicit extra confirmation.
+- `requires` is checked against the cached API list (page) and a fresh API list before the first write on each device.
+- `writes: false` commands are read-only and may run without confirmation; `writes: true` needs a confirmation before
+  it runs. Commands that restart, factory-default, change network or users set `"dangerous": true` and need a second
+  confirmation.
 - Secrets (`password` fields) never appear in logs, task steps or exports.
+- Commands made in the request builder follow the same rules.

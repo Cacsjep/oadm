@@ -1,6 +1,6 @@
 # Action catalog
 
-`action-catalog.json` describes every action template and recipient template the devices offer in their action rules:
+Part of the [Action Rule Editor](../README.md). `action-catalog.json` (embedded, read by `ActionCatalog`) describes every action template and recipient template the devices offer in their action rules:
 a plain label per template and, per parameter, how to show and check it. The Action Rule Editor uses it to draw the
 settings form of an action or recipient. Values are written exactly as the device stores them; OADM never converts them.
 
@@ -34,7 +34,7 @@ An action template with a recipient template lists only its own parameters; the 
 - Tokens and parameter names: the union of `GetActionTemplates` and `GetRecipientTemplates` of AXIS OS 10, 11 and 12
   (`tests/Oadm.Plugins.ActionRules.Tests/Fixtures/os1x-Get*Templates.xml`). Nothing outside these is listed.
 - Labels, field kinds, choices, defaults, ranges and units: the AXIS OS 12.11 web interface (its JavaScript bundles and
-  English texts), reworded for OADM (see "Wording" in CLAUDE.md).
+  English texts), reworded for OADM ("Wording" in [CLAUDE.md](../../../CLAUDE.md#wording)).
 - Where the web interface picks values from the device (I/O ports, lights, audio clips, storage, stream profiles,
   network shares, SIP accounts), the field is `text` with a hint.
 
@@ -43,5 +43,6 @@ An action template with a recipient template lists only its own parameters; the 
 1. Add the new device's `GetActionTemplates` / `GetRecipientTemplates` answer to the fixtures.
 2. Add each new token and parameter here. Look up the web interface definition for kind, default and unit; without
    one, use a plain label and `text` (or `hidden` for internal values).
-3. Check: the file parses, every fixture token and parameter is present, no other parameter is listed, every
-   `choice` default is one of its choices and every `bool` default is its `true` or `false` value.
+3. Run `CatalogTests`: the file parses, every fixture token and parameter is present, no other parameter is listed,
+   every `choice` default is one of its choices, every `bool` default is its `true` or `false` value, and secrets are
+   `password` fields.

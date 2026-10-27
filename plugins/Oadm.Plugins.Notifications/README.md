@@ -1,8 +1,10 @@
-# Notifications
+# Notifications (`oadm.notifications`)
 
-Plugin id `oadm.notifications`, server only, always on. Three event rule actions without devices: they run once each
-time the rule turns on or fires, and, when "Also send when the rule turns off" is checked, also when a stateful rule
-turns off (`RunsOn`).
+Event rule actions, server only, always on. Three actions without devices: they run once each time the rule turns on
+or fires, and, when "Also send when the rule turns off" is checked, also when a stateful rule turns off (`RunsOn`).
+Spec: [Event rules](../../docs/spec/event-rules.md).
+
+## Decisions
 
 | Topic | Decision |
 |---|---|
@@ -11,12 +13,7 @@ turns off (`RunsOn`).
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
 | Certificates | "Allow untrusted certificates" per action, off by default. |
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |
-| Sites | `siteSupport: full`: the actions need no device, so rules about devices at a site use them like any other. They send on the server's own network (the user's own servers); a "Send through site" option can come later. Their sockets are the reviewed exceptions of the banned-API analyzer. |
-
-## Device groups
-
-Event rules are for users with all devices (`docs/spec/device-scope.md`), so the actions send to any address, as in
-4.1.0. `minSdkVersion` 0.4.0 (no methods, no devices).
+| Sockets | The reviewed exceptions of the banned-API analyzer. |
 
 ## Send HTTP request (`oadm.notifications.http`)
 
@@ -50,9 +47,20 @@ Event rules are for users with all devices (`docs/spec/device-scope.md`), so the
 ## Placeholders
 
 Every text takes the placeholders of `Oadm.Sdk.Actions.ActionPlaceholders` ({rule}, {event}, {state}, {time}, {date},
-{timeUtc}, {device}, {address}, {hostName}, {model}, {serial}, {mac}, {firmware}, {category}, {tags}, {status}, {webUrl})
+{timeUtc}, {device}, {address}, {hostName}, {model}, {serial}, {mac}, {firmware}, {category}, {tags}, {status}, {site},
+{webUrl})
 and every value of the event by its name ({objectId}, {port}). The device is the device of the event. The rule dialog
 lists them next to the actions with a copy button.
+
+## Device groups
+
+Event rules are for users with all devices ([device groups](../../docs/spec/device-scope.md)), so the actions send to
+any address. No methods, no devices.
+
+## Sites
+
+`siteSupport: full`: the actions need no device, so rules about devices at a site use them like any other. They send on
+the server's own network (the user's own servers).
 
 ## Tests
 

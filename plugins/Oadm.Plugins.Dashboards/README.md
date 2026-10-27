@@ -1,8 +1,8 @@
 # Dashboards (`oadm.dashboards`)
 
-Core plugin (+ `.Client`), rail page **Dashboards** (group Monitoring, icon `gauge`), **off by default**, switchable. Live
-values of OADM's events (mostly device triggers) and live video on saved dashboards, like a small Grafana: a dashboard is a
-grid of widgets, each showing one value of one device.
+Core plugin (+ `.Client`) with the rail page **Dashboards** (group Monitoring, icon `gauge`), off by default. Live values of
+OADM's events (mostly device triggers) and live video on saved dashboards: a dashboard is a grid of widgets, each showing one
+value of one device. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#dashboards-core-plugin).
 
 ## Decisions
 
@@ -29,15 +29,12 @@ first value appears in place, the number shows the new value at once. A Number w
 settings; one in the text color starts in the accent color). A new threshold of a Number or Gauge widget takes the first
 color of Amber, Red, Orange, Green, Blue, Teal, Pink, Violet, Status OK / warning / error that no other threshold and not the
 widget itself uses (`WidgetEditorViewModel.NextThresholdColor`; all taken: the one used least), **Live video** (the host's live video component like a Live View tile: controls closed, fullscreen with a double-click, the channel buttons; the channel chosen while editing is saved). Value widgets are transparent on the card (frame class `valueTile`); video keeps the video background. Every value widget has **Show name** (a Yes / No select, Yes by default; off, the value takes the room, the edit frame still names it). `WidgetDisplay` (no UI) decides what a widget shows; `WidgetView` draws it (`FitText`, `FitBox`). |
-| Device groups | SDK 0.4.0 (`minSdkVersion` 0.4.0). Every dashboard belongs to the device scope of the user who made it (`Dashboard.owner`: a group's id, none = all devices, also every dashboard from before device groups; set by the server only). Users of a group list, change and delete only their group's dashboards, and `list` and the `dashboards` event show only the widgets of devices the group has now (and of server events); another group's dashboard answers like a deleted one. An edit keeps the owner (also an administrator's); a save refuses widget devices outside the owner's devices (NOT_FOUND "1 device is no longer available.", nothing stored; dashboards of all devices keep removed devices as before); names are unique per owner. The catalog (`catalog`, the `catalog` event per group) and `devices` of a group user hold only device events that can come from the group's devices (an event with a device list needs one of them, e.g. the group's own device triggers) and the site events of the group's sites, no other server events. `watch` belongs to the caller's session (the same watch id in two sessions is two watches); a group user's keys must name devices of the group (else NOT_FOUND) and server events the user sees (others are left out); values reach users with all devices as before, each session of a group user only the values its pages watch (`PluginEventAudience.Session`). A deleted group's dashboards are seen only by users with all devices; an administrator's save gives such a dashboard to all devices. A group user sees an event only when it can come from the group's devices: an event with a device list needs one of them, an event of the device without a list only when OADM sends it (the device status events), never one of another source such as the compliance checks (their names belong to their owners; they carry no owner), and of the server only the site events of the group's sites; watch keys of events the user does not see are left out, also with a device of the group. Values stop at once when a device leaves the group: every push checks the group's devices now, and a renewal that names a device that left is refused (NOT_FOUND) and ends the old watch. A user with all devices who saves a group's dashboard whose devices left the group gets the save: those widgets are dropped and the answer says how many (`Dashboard.dropped`, never stored; the page shows "Saved without 1 widget of a device that is no longer in the device group." below its toolbar as plain text, not as an error); a device the save adds outside the group, and every outside id of a group user, is still NOT_FOUND. Device triggers of other owners (all devices or another group) are hidden from a group user even on the group's devices (`EventTypeInfo.OwnerScopeKey`). The watches of a group user's session are bound to one job (`ctx.Jobs`, kind `watch`) that the host ends when the user's devices, role or session change: the session's watches go with it, before the page renews them; the session's last unwatch ends the job. A watch for another group in the same session (the user was moved) replaces the job and drops the session's watches of the old group at once. What a group sees (`Reach`: its devices and sites) is kept per group (`ViewerScopes.ViewAsync`) and read again only on `IDeviceScopes.Changed` for the group or after 5 minutes; the pushes check a device with `IDeviceScopes.Contains(key, id)`, never by reading the device table. At most 1,000 watches, 8 per session (a new one replaces the session's oldest). |
-| Roles | "show" (automatic, Operator and Viewer), **Change dashboards** (`manage`: save, delete; Operator yes, Viewer no; both audited). Video needs "Live view"; without it the widget says "Your role does not allow live view.". |
-| Page | Left card (Collapse / Expand like Live View): **Dashboards** (+ New dashboard; Edit and Delete in each row), **Events** (the available events grouped, device triggers first, each with its fields and their kind; search). Right card: Close all tabs, while editing Name / Save / Cancel / **Add cameras** (the shared picker for several devices, cameras only, those on the dashboard greyed; at most 16 live videos, the rest named below the toolbar), the tabs (`ui:PageTab`); the grid; while editing the panel of the selected widget right of the grid (a new `WidgetEditorView` per widget, a `GroupEditorView` for several). Empty states: Device triggers off ("Turn on Device triggers on the Plugins page", `ICorePluginClientContext.IsPluginOn`), no trigger yet ("Create a device trigger first." + **Open Device triggers**), no dashboard yet. |
+| Page | Left card (Collapse / Expand like Live View): **Dashboards** (+ New dashboard; Edit and Delete in each row), **Events** (the available events grouped, device triggers first, each with its fields and their kind; search). Right card: Close all tabs, while editing Name / Save / Cancel / **Add cameras** (the shared picker for several devices, cameras only, those on the dashboard greyed; at most 16 live videos, the rest named below the toolbar), the tabs (`ui:PageTab`); the grid; while editing the panel of the selected widget right of the grid (a new `WidgetEditorView` per widget, a `GroupEditorView` for several). Empty states: Device triggers off ("Turn on Device triggers on the Plugins page", `ICorePluginClientContext.IsPluginOn`), no trigger yet ("Create a device trigger first." + **Open Device triggers**), no dashboard yet. No **Open Plugins** button: a page cannot tell an administrator. |
 | Editing | New dashboard opens a tab in edit mode ("Dashboard N"). An event dropped or clicked becomes a widget of its first field with the widget that fits (Number for a number, On / Off for yes / no, else Text) and opens its panel: Device (the shared picker for one device, the devices of the event; not for a server event), Value, Type (Automatic (X), Yes / no, Number, Text), Widget (only those that fit the type: a number offers Number, Gauge
 and Text), Name (default "<value> · <device address>", follows the value and device until the user changes it), then the widget's settings. Every change shows in the grid at once. **Several widgets** (`DashboardTab.Selection`): a drag over empty cells draws a selection rectangle (`TileGrid.ShowSelectionArea`) and selects every widget it touches, Ctrl+click adds or removes one (no move), Ctrl+A selects all, a click on empty cells selects none. A selected widget dragged moves the whole selection by whole cells (it stops at the grid's edge and never moves onto another widget); dragging an edge or a corner of one resizes every selected widget by the same cells, selected widgets side by side making room for each other (`TryResizeSelection`; all or nothing: nothing changes when one would leave the grid, get smaller than 2 x 2 or hit another widget). The group panel (`GroupEditorViewModel`): copy and remove for all; Width and Height in cells (each widget that has room); Show name; the On / Off settings when all are On / Off, font size when all are Text or Number, color when all are Text, Number or
 Gauge, decimals and unit when all are Number or Gauge, Min and Max when all are Gauge (an empty field keeps each widget's
 own; a range that would be invalid for a widget leaves it unchanged); a setting where they differ shows "Mixed" (an empty select or field) until changed, a change goes to all of them and nothing else changes. **Copy for other devices** (the copy icon left of a widget's X while editing, `ITileGridItem.CopyCommand`, or the group panel's icon; widgets with a device): the shared picker for several devices (the widget's own device greyed, devices without video for a video widget), one copy per device with the same settings and size in the first free place of that size (`TileLayout.PlaceSized`), the device's address replacing the source's in the name (else " · address" added); as many as fit, the rest named below the toolbar ("12 of 20 copies added. ..."). Save checks the rules and that every widget of a device event has a device. |
 | Devices | The pickers (Device, Copy for other devices) offer only the devices of the event: `EventTypeInfo.DeviceIds`, a device trigger's devices now (chosen, tagged, all), asked with `devices` when the picker opens (the catalog only says `hasDeviceList`); events without a list (OADM's own) offer every device. |
-| Deviations from the spec | No "trigger the event once": the declared values are offered at once (the spec asked for a received event before `EventField.Kind` existed). No Cameras tree: **Add cameras** picks cameras in the device picker (a tree of thousands of cameras was too long). No **Open Plugins** button for administrators (a page cannot tell an administrator). The channel of a video widget is chosen with the picture's channel buttons, not in the panel. Added after the spec: Copy for other devices, several widgets selected and changed together, Show name, the Any device events. |
 
 ## Methods (`InvokeAsync`)
 
@@ -52,6 +49,44 @@ own; a range that would be invalid for a widget leaves it unchanged); a setting 
 | `unwatch` | `UnwatchRequest` {watchId} | none | show |
 
 Events: `dashboards` (`DashboardList`), `catalog` (`CatalogReply`), `values` (`ValuesReply` with the changed watched values).
+
+## Permissions
+
+"show" (automatic, Operator and Viewer), **Change dashboards** (`manage`: save, delete; Operator yes, Viewer no; both
+audited). Video needs "Live view"; without it the widget says "Your role does not allow live view.".
+
+## Device groups
+
+[Device groups](../../docs/spec/device-scope.md):
+
+- Every dashboard belongs to the device scope of the user who made it (`Dashboard.owner`: a group's id; none = all
+  devices, also for every older dashboard; set by the server only). Users of a group list, change and delete only their
+  group's dashboards, and `list` and the `dashboards` event show only the widgets of devices the group has now (and of
+  server events); another group's dashboard answers like a deleted one. Names are unique per owner.
+- An edit keeps the owner (also an administrator's). A save refuses widget devices outside the owner's devices (NOT_FOUND
+  "1 device is no longer available.", nothing stored); dashboards of all devices keep removed devices. A deleted group's
+  dashboards are seen only by users with all devices; an administrator's save gives such a dashboard to all devices.
+- A user with all devices who saves a group's dashboard whose devices left the group gets the save: those widgets are
+  dropped and the answer says how many (`Dashboard.dropped`, never stored; the page shows "Saved without 1 widget of a
+  device that is no longer in the device group." below its toolbar as plain text, not as an error). A device the save adds
+  outside the group, and every outside id of a group user, is still NOT_FOUND.
+- A group user sees an event only when it can come from the group's devices: an event with a device list needs one of
+  them (e.g. the group's own device triggers), an event of the device without a list only when OADM sends it (the device
+  status events), never one of another source such as the compliance checks; of the server only the site events of the
+  group's sites. Device triggers of other owners are hidden even on the group's devices (`EventTypeInfo.OwnerScopeKey`).
+  This holds for `catalog`, the `catalog` event per group, `devices` and the watch keys (keys of events the user does not
+  see are left out).
+- `watch` belongs to the caller's session (the same watch id in two sessions is two watches); a group user's keys must
+  name devices of the group (else NOT_FOUND). Values reach users with all devices as before, each session of a group user
+  only the values its pages watch (`PluginEventAudience.Session`). Values stop at once when a device leaves the group: every
+  push checks the group's devices now, and a renewal that names a device that left is refused (NOT_FOUND) and ends the old
+  watch.
+- The watches of a group user's session are bound to one job (`ctx.Jobs`, kind `watch`) that the host ends when the user's
+  devices, role or session change; the session's last unwatch ends the job. A watch for another group in the same session
+  (the user was moved) replaces the job and drops the session's watches of the old group at once.
+- What a group sees (`Reach`: its devices and sites) is kept per group (`ViewerScopes.ViewAsync`) and read again only on
+  `IDeviceScopes.Changed` for the group or after 5 minutes; the pushes check a device with `IDeviceScopes.Contains(key,
+  id)`, never by reading the device table. At most 1,000 watches, 8 per session (a new one replaces the session's oldest).
 
 ## Tests
 

@@ -1,6 +1,7 @@
-# Oadm.Plugins.Network
+# Network settings (`oadm.network`)
 
-Two task plugins in one package (`artifacts/plugins/oadm.network/`):
+Two task plugins with dialogs (`.Client`) in one package, always on. Spec:
+[Bundled plugins](../../docs/spec/bundled-plugins.md#network-settings-and-assign-ip-address).
 
 - `oadm.network`, **Network settings** (context menu group Network, no toolbar button): IPv4, IPv6, DNS and host name.
 - `oadm.network.assign-ip`, **Assign IP address** (context menu group Network and toolbar): a clone of ADM's "Assign IP
@@ -12,25 +13,55 @@ new static address.
 | Part | Assembly | Content |
 |---|---|---|
 | `plugins/Oadm.Plugins.Network` | `Oadm.Plugins.Network.Server.dll` | `NetworkSettingsTaskPlugin`, `AssignIpTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `NetworkTaskRunner`, `AddressCheck` (query), `IAddressProbe` / `NetworkAddressProbe` (ping + TCP 80/443 on the device's route, `IDeviceNetwork`), `NetworkTaskNames`, payload model, validation, IP range syntax (`IpRangeExpression`), address suggestion and conflicts (`AddressAssigner`, `AddressConflicts`), VAPIX requests |
-| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings`, `FieldErrors` (INotifyDataErrorInfo) |
-| `tests/Oadm.Plugins.Network.Tests` | | unit, fixture, view model and headless dialog tests |
+| `plugins/Oadm.Plugins.Network.Client` | `Oadm.Plugins.Network.Client.dll` | `NetworkSettingsDialog`/`ViewModel`/`Window`, `AssignIpDialog`/`ViewModel`/`Window`, the shared address table `AddressAssignmentGrid` + `AddressAssignmentViewModel` + `AddressRowViewModel`, `NetworkWarnings`, `FieldErrorText` |
 
-The client references the server assembly for the payload model, validator, range parser and assignment. Both sit in
-the same plugin folder, so the client load context resolves it. The SDKs, Avalonia and CommunityToolkit.Mvvm come from
-the host and are never copied.
+The client references the server assembly for the payload model, validator, range parser and assignment (same plugin
+folder).
 
-## Sites
+## Device API
 
-`siteSupport: full`. The address checks run on the device's route (`ITaskQueryContext.Network`,
-`ITaskExecutionContext.Network`: the site node pings and probes in the site network); the plugin opens no socket. A new
-address outside the networks the site reaches (`IDeviceNetwork.Reaches`) is refused in the dialog (row status "The
-address is outside the networks the site reaches", not suggested) and again by the task before the first write
-("10.0.0.60: The address is outside the networks the site reaches. Nothing was changed."). The address check of the
-dialog probes on the route of the query's device (the first selected).
+`network-settings` = `axis-cgi/network_settings.cgi` (JSON, AXIS OS 8.50+); `param-cgi` = `axis-cgi/param.cgi` (POST
+form body, never URL parameters). The JSON API is used whenever `network-settings` 1.x is listed; `param-cgi` only for
+what the JSON API cannot do or when it is missing. Requests send the `network-settings` version from
+`apidiscovery.cgi` as `apiVersion`.
 
-## ADM reference: "Assign IP address"
+| Setting | Method | API, min version | Source of the minimum |
+|---|---|---|---|
+| Read current settings | `getNetworkInfo` | network-settings 1.0 | doc examples use 1.0 |
+| Read IPv6 mode, static address, gateway | `param.cgi action=list` `Network.IPv6`, `Network.eth0.IPv6`, `Network.Routing.IPv6` | param-cgi 1.0 | getNetworkInfo has no IPv6 mode when IPv6 is off (verified) |
+| Host name | `setHostnameConfiguration` (`useDhcpHostname`, `staticHostname`) | network-settings 1.0 | doc examples use 1.0 |
+| DNS | `setResolverConfiguration` (`useDhcpResolverInfo`, `staticNameServers`, `staticDomainName`, `staticSearchDomains`) | network-settings 1.0 | doc examples use 1.0 |
+| IPv4 DHCP / static, gateway | `setIPv4AddressConfiguration` (`deviceName`, `configurationMode`, `staticAddressConfigurations[{address,prefixLength}]`, `staticDefaultRouter`) | network-settings 1.0 | doc example "Assign a static IPv4 address" uses 1.0 |
+| (not used) link-local mode, DHCP with static fallback | `setIPv4AddressConfiguration` `linkLocalMode`, `useStaticDHCPFallback` | network-settings 1.21 | doc examples use 1.21 |
+| (not used) DHCP classless static routes | `setIPv4AddressConfiguration` `useDHCPStaticRoutes` | network-settings 1.29 | doc example uses 1.29 |
+| IPv6 on/off | `setIPv6AddressConfiguration` (`deviceName`, `enabled`) | network-settings 1.6 | doc example uses 1.6; below 1.6: `Network.IPv6.Enabled` |
+| IPv6 automatic / DHCPv6 / static, IPv6 gateway | `param.cgi action=update` `Network.IPv6.AcceptRA`, `.DHCPv6` (`auto`/`stateful`/`off`), `.IPAddress` (`addr/prefix`), `.DefaultRouter` | param-cgi 1.0 | `setIPv6AddressConfiguration` only has `enabled` |
+| Legacy host name | `Network.HostName`, `Network.VolatileHostName.ObtainFromDHCP` | param-cgi 1.0 | Network settings parameter docs (AXIS OS 5.00+) |
+| Legacy DNS | `Network.Resolver.ObtainFromDHCP`, `Network.DNSServer1/2`, `Network.DomainName` (no search domains: fails as not compatible) | param-cgi 1.0 | same |
+| Legacy IPv4 | `Network.IPAddress`, `.SubnetMask`, `.Broadcast`, `.DefaultRouter`, `.BootProto` (`dhcp`/`none`), one request | param-cgi 1.0 | same |
+| (not used) proxies, VLAN, 802.1X, WLAN | `setGlobalProxyConfiguration`, `addVlan`, `setWired8021XConfiguration`, ... | | out of scope |
 
-Researched October 2026. Sources:
+There is no `setDefaultRouter` method: the IPv4 router is `staticDefaultRouter` of `setIPv4AddressConfiguration`. The
+documentation has no per-method version history; each minimum is the earliest `apiVersion` the official examples use.
+
+### Verified on AXIS P3265-V, AXIS OS 12.11.77 (read-only)
+
+- `apidiscovery.cgi`: `network-settings 1.37`, `param-cgi 1.0`.
+- `getSupportedVersions` answers `{"data":{"apiVersions":["1.38"]}}`: 1.38 although apidiscovery lists 1.37, and the
+  field is `apiVersions`, not the documented `supportedVersions`.
+- `getNetworkInfo` accepts `apiVersion` 1.0 and 1.37 (answers with 1.38); 1.99 and 2.0 return error 4001.
+- One interface `eth0`, `maxSupportedStaticAddressConfigurations` 1, `maxSupportedStaticNameServers` 3,
+  `maxSupportedStaticSearchDomains` 6. With IPv6 disabled the `IPv6` object has only `enabled` and `addresses`. The
+  response spells the resolver flag `useDhcpResolverInfo`.
+- `param.cgi` still has the full `Network.IPv6.*` (AcceptRA, DHCPv6, IPAddress, DefaultRouter, Enabled),
+  `Network.Resolver.*` and `Network.VolatileHostName.*` groups.
+
+
+## Dialog
+
+### Assign IP address: ADM reference
+
+Sources:
 - ADM user manual, https://help.axis.com/en-us/axis-device-manager: only says that ADM can "assign IP addresses".
 - "How to assign an IP address and access your device", https://help.axis.com/en-us/access-your-device: the ADM
   procedure. Several devices: *Device manager > Manage devices*, select the devices, **Assign IP address to selected
@@ -44,7 +75,7 @@ Researched October 2026. Sources:
   "Review the current IP addresses and the new IP addresses", **Edit IP** per device, **Finish**. Inaccessible devices
   are skipped.
 - Not documented: more devices than addresses, addresses in use, and whether ADM follows a device to its new address.
-  OADM's decisions are below.
+  OADM's decisions follow.
 
 How OADM clones it:
 
@@ -71,7 +102,7 @@ the current values. Next and Finish stay disabled while an error exists; their t
 shared `ui:MessageWindow` ("The devices get new IP addresses" / "The devices get their addresses from DHCP"; Cancel /
 Finish).
 
-## Network settings dialog
+### Network settings
 
 - Sections **IPv4**, **IPv6**, **DNS**, **Host name**, each starting at **Keep unchanged**. Only changed sections go into
   the payload and are written.
@@ -88,7 +119,7 @@ Finish).
   duplicate, managed device, in use); prefix length and router are shared. The address check probes IPv6 too.
 - DNS: from DHCP, or static primary/secondary server, domain name, search domains.
 - Host name: from DHCP, or static. Several devices use a template with `{n}` (position) or `{serial}`.
-- Errors: a field's error below the field (`INotifyDataErrorInfo` through `FieldErrors`: mask, router, IP/IPv6 address
+- Errors: a field's error below the field (`INotifyDataErrorInfo`: mask, router, IP/IPv6 address
   of one device, prefix length, DNS server, domain name, search domains, host name); device problems only in the
   table's Status column ("IPv6: ..." for the IPv6 column). Apply stays disabled while an error exists; its tooltip says
   why.
@@ -99,7 +130,7 @@ Finish).
   address; no loopback/multicast/link-local; no duplicates in the batch (the router included); IPv6 syntax and prefix;
   DNS servers, domain and host name syntax; duplicate host names. Plus the table's conflicts.
 
-## Payload
+### Payload and task names
 
 Both plugins send a `NetworkPayload`. Assign IP address sends only `ipv4` and optionally `dns`; anything else is refused
 before the first request.
@@ -117,16 +148,7 @@ before the first request.
 Static IPv6 (`"ipv6": {"mode":"static","prefixLength":64,"gateway":null}`) takes each device's `ipv6Address`
 (`Ipv6Change.AddressFor`; `ipv6.address` is the fallback).
 
-Query `checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100","2001:db8::100"],"probe":true}`
-(IPv4 and IPv6, at most 256 per call: the dialog asks only its rows' new addresses, one query per route and round), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse","answersPing"}]}`.
-
-Task names (`GetTaskName`, once per run): Network settings "Set static IP 10.0.0.60" (one device) / "Set static IP
-addresses" (several), "Switch to DHCP", "Set DNS servers" / "Use DNS from DHCP", "Set host name cam-1" / "Set host
-names" / "Use host name from DHCP", "Change IPv6 settings" when only IPv6 changes, else "Change network settings".
-Assign IP address: "Assign IP 10.0.0.60" / "Assign IP addresses" / "Assign IP via DHCP". An unreadable payload gives
-the display name.
-
-## Task (per device)
+## Task steps
 
 Steps of **Network settings**: **Check compatibility** ("network-settings 1.37" or "param.cgi"), **Read current
 settings** (getNetworkInfo, or the param.cgi Network group on legacy devices), **Read IPv6 address mode** (param.cgi;
@@ -154,7 +176,7 @@ not even DNS. Skipped "DHCP: no static address is set" / "No static address is s
 
 1. Parse and validate the payload for the whole batch. Invalid: fails with "... Nothing was changed."
 2. Fresh `GetApiListAsync`; read the current settings (getNetworkInfo, or param.cgi on legacy devices).
-3. Build the plan: method per section from the decision table below, `Require(...)` per method, device limits
+3. Build the plan: method per section from the table in "Device API", `Require(...)` per method, device limits
    (`maxSupportedStaticNameServers`, interface with IPv4/IPv6). Anything unsupported fails with
    `DeviceNotCompatibleException` before the first write.
 4. Write in order **host name, DNS, IPv6, IPv4**: the address family OADM connects with is always last (over IPv6:
@@ -173,53 +195,42 @@ not even DNS. Skipped "DHCP: no static address is set" / "No static address is s
 | Same address | watches A; Done, or **Warning** "check the subnet mask and default router" | Skipped "The address does not change." | Skipped | Skipped |
 | Change does not affect OADM's connection | Skipped | Skipped | Skipped | Skipped |
 
-Re-finding moved devices (server, `DeviceRelocationHostedService`): every 5 minutes (first run 30 s after start), while
-at least one device addressed by IP is **Unreachable**, the server runs a 15 s mDNS discovery. A managed device announced
-at another address is verified there (authenticated basicdeviceinfo, same serial) and its record moves
-(`DeviceAddressService.TryRelocateAsync`: logged, published, full refresh queued, status Unknown until the refresh).
-Devices addressed by host name never move.
+After DHCP the server's periodic re-find moves the record; devices addressed by host name never move
+([Device discovery](../../docs/spec/discovery.md#following-moved-devices)).
 
-## VAPIX decision table
+## Query
 
-`network-settings` = `axis-cgi/network_settings.cgi` (JSON, AXIS OS 8.50+); `param-cgi` = `axis-cgi/param.cgi` (POST
-form body, never URL parameters). The JSON API is used whenever `network-settings` 1.x is listed; `param-cgi` only for
-what the JSON API cannot do or when it is missing. Requests send the `network-settings` version from
-`apidiscovery.cgi` as `apiVersion`.
+`checkAddresses` (both plugins, read-only): request `{"addresses":["10.0.0.100","2001:db8::100"],"probe":true}`
+(IPv4 and IPv6, at most 256 per call: the dialog asks only its rows' new addresses, one query per route and round), answer `{"managed":[{"address","deviceId","device"}],"probed":[{"address","inUse","answersPing"}]}`.
 
-| Setting | Method | API, min version | Source of the minimum |
-|---|---|---|---|
-| Read current settings | `getNetworkInfo` | network-settings 1.0 | doc examples use 1.0 |
-| Read IPv6 mode, static address, gateway | `param.cgi action=list` `Network.IPv6`, `Network.eth0.IPv6`, `Network.Routing.IPv6` | param-cgi 1.0 | getNetworkInfo has no IPv6 mode when IPv6 is off (verified) |
-| Host name | `setHostnameConfiguration` (`useDhcpHostname`, `staticHostname`) | network-settings 1.0 | doc examples use 1.0 |
-| DNS | `setResolverConfiguration` (`useDhcpResolverInfo`, `staticNameServers`, `staticDomainName`, `staticSearchDomains`) | network-settings 1.0 | doc examples use 1.0 |
-| IPv4 DHCP / static, gateway | `setIPv4AddressConfiguration` (`deviceName`, `configurationMode`, `staticAddressConfigurations[{address,prefixLength}]`, `staticDefaultRouter`) | network-settings 1.0 | doc example "Assign a static IPv4 address" uses 1.0 |
-| (not used) link-local mode, DHCP with static fallback | `setIPv4AddressConfiguration` `linkLocalMode`, `useStaticDHCPFallback` | network-settings 1.21 | doc examples use 1.21 |
-| (not used) DHCP classless static routes | `setIPv4AddressConfiguration` `useDHCPStaticRoutes` | network-settings 1.29 | doc example uses 1.29 |
-| IPv6 on/off | `setIPv6AddressConfiguration` (`deviceName`, `enabled`) | network-settings 1.6 | doc example uses 1.6; below 1.6: `Network.IPv6.Enabled` |
-| IPv6 automatic / DHCPv6 / static, IPv6 gateway | `param.cgi action=update` `Network.IPv6.AcceptRA`, `.DHCPv6` (`auto`/`stateful`/`off`), `.IPAddress` (`addr/prefix`), `.DefaultRouter` | param-cgi 1.0 | `setIPv6AddressConfiguration` only has `enabled` |
-| Legacy host name | `Network.HostName`, `Network.VolatileHostName.ObtainFromDHCP` | param-cgi 1.0 | Network settings parameter docs (AXIS OS 5.00+) |
-| Legacy DNS | `Network.Resolver.ObtainFromDHCP`, `Network.DNSServer1/2`, `Network.DomainName` (no search domains: fails as not compatible) | param-cgi 1.0 | same |
-| Legacy IPv4 | `Network.IPAddress`, `.SubnetMask`, `.Broadcast`, `.DefaultRouter`, `.BootProto` (`dhcp`/`none`), one request | param-cgi 1.0 | same |
-| (not used) proxies, VLAN, 802.1X, WLAN | `setGlobalProxyConfiguration`, `addVlan`, `setWired8021XConfiguration`, ... | | out of scope |
-
-There is no `setDefaultRouter` method: the IPv4 router is `staticDefaultRouter` of `setIPv4AddressConfiguration`. The
-documentation has no per-method version history; each minimum is the earliest `apiVersion` the official examples use.
-
-## Verified on AXIS P3265-V, AXIS OS 12.11.77 (read-only)
-
-- `apidiscovery.cgi`: `network-settings 1.37`, `param-cgi 1.0`.
-- `getSupportedVersions` answers `{"data":{"apiVersions":["1.38"]}}`: 1.38 although apidiscovery lists 1.37, and the
-  field is `apiVersions`, not the documented `supportedVersions`.
-- `getNetworkInfo` accepts `apiVersion` 1.0 and 1.37 (answers with 1.38); 1.99 and 2.0 return error 4001.
-- One interface `eth0`, `maxSupportedStaticAddressConfigurations` 1, `maxSupportedStaticNameServers` 3,
-  `maxSupportedStaticSearchDomains` 6. With IPv6 disabled the `IPv6` object has only `enabled` and `addresses`. The
-  response spells the resolver flag `useDhcpResolverInfo`.
-- `param.cgi` still has the full `Network.IPv6.*` (AcceptRA, DHCPv6, IPAddress, DefaultRouter, Enabled),
-  `Network.Resolver.*` and `Network.VolatileHostName.*` groups.
-
-Recorded responses (MAC/serial anonymized): `tests/Oadm.Plugins.Network.Tests/Fixtures`. No write was ever sent to a
-real device; write paths are tested against fakes only.
+Task names (`GetTaskName`, once per run): Network settings "Set static IP 10.0.0.60" (one device) / "Set static IP
+addresses" (several), "Switch to DHCP", "Set DNS servers" / "Use DNS from DHCP", "Set host name cam-1" / "Set host
+names" / "Use host name from DHCP", "Change IPv6 settings" when only IPv6 changes, else "Change network settings".
+Assign IP address: "Assign IP 10.0.0.60" / "Assign IP addresses" / "Assign IP via DHCP". An unreadable payload gives
+the display name.
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device. `checkAddresses` of a user with a device group lists only the group's devices by name; a candidate address that another managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from `ITaskQueryContext.ManagedAddressesAsync`), without its name or id. It probes only on a route the group names (`ICallContext.CoversRoute`: the group's sites, the server's network only with "This server"); on another route it answers from the managed devices only, as with `"probe":false`. Users with all devices: unchanged. Tests: `DeviceGroupTests` (the address check of a group user and of a user with all devices, probes per route).
+The tasks run only on devices of the user's view and touch only their own device
+([device groups](../../docs/spec/device-scope.md)). `checkAddresses` of a user with a device group lists only the
+group's devices by name; a candidate address that another managed device on the route has comes back "In use"
+(`AddressStatus.UsedByDevice`, from `ITaskQueryContext.ManagedAddressesAsync`), without its name or id. It probes only on
+a route the group names (`ICallContext.CoversRoute`: the group's sites, the server's network only with "This server");
+on another route it answers from the managed devices only, as with `"probe":false`. Users with all devices get every
+name and probe on every route. Tests: `DeviceGroupTests` (the address check of a group user and of a user with all
+devices, probes per route).
+
+## Sites
+
+`siteSupport: full`. The address checks run on the device's route (`ITaskQueryContext.Network`,
+`ITaskExecutionContext.Network`: the site node pings and probes in the site network); the plugin opens no socket. A new
+address outside the networks the site reaches (`IDeviceNetwork.Reaches`) is refused in the dialog (row status "The
+address is outside the networks the site reaches", not suggested) and again by the task before the first write
+("10.0.0.60: The address is outside the networks the site reaches. Nothing was changed."). The address check of the
+dialog probes on the route of the query's device (the first selected).
+
+## Tests
+
+`tests/Oadm.Plugins.Network.Tests`: parsers from recorded answers (`Fixtures/`, MAC and serial anonymized), request
+building, validation, address assignment, following the device (`FollowAddressTests`), the task with fakes, the dialog
+view models, device groups, Perf scale tests and headless dialog screenshots. No write was ever sent to a real device.

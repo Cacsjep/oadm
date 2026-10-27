@@ -107,14 +107,7 @@ and actions before any plugin call.
   device". At most `TaskPluginNames.MaxTaskNameLength` (48) characters; the engine shortens longer names with "…" and
   logs a warning. An empty name or an exception falls back to `DisplayName`. It is called once per Run, so all devices
   of a run share the name: put what the name needs (app name, upgrade or downgrade) into the payload. **No secrets**:
-  names are stored and shown to everyone. Bundled names:
-  - Users: "Add user joe", "Change password joe", "Change role joe", "Change user joe", "Remove user joe", "Remove
-    users joe, ann".
-  - Firmware: "Upgrade firmware to X", "Downgrade firmware to X", "Install firmware X" (mixed), "Install firmware"
-    (version unknown), each + " (factory default)" when it applies.
-  - ACAP: "Install <app> <version>", "Upgrade <app> to <version>", "Remove|Start|Stop <app>".
-  - Restart: "Restart device". VAPIX Commander rollout: the command name or "<first command> +N more". Network: see its
-    README.
+  names are stored and shown to everyone. Each bundled plugin's README lists its names.
 - `CanRun(device)`: cheap and synchronous; check `device.Apis.Supports(apiId, minVersion)`.
 - `NotSupportedReason(device)` (optional, default null): why `CanRun` is false. Called only then, on cached data only.
   The context menu always lists the task; when it cannot run on the selection it is greyed out with this text as
@@ -127,9 +120,7 @@ and actions before any plugin call.
   `ForSiteSupport(support, device)` ("Not available for devices at a site"),
   `NeedsFirmware("11.11", device)`, `NeedsApi("the network settings API", device)` (says "refresh the device" while
   the API list was not read yet). Null, empty or an exception = "Not supported on this device" (the host logs the
-  exception once). Bundled: Restart (status); Users, Applications, Firmware, Date and time, Network settings, Assign IP
-  address (status, then the API); "Use OADM as NTP server" (NTP API); PKI tasks (AXIS OS 11.11; 802.1X also the
-  network settings API).
+  exception once).
 - `device.Tags`: the device's tag names, sorted ("Building A", "PTZ"; empty when none), set in the Tags dialog of the
   Devices page. Use them to filter or label, e.g. per building; compare case-insensitive. Colors are not in the SDK.
   Filled on the server and in the client.
@@ -183,13 +174,13 @@ and actions before any plugin call.
 ## Client side
 
 `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` shows a window and returns the payload JSON (null = cancelled). A
-dialog that knows the task would change nothing on some selected devices (up to date, wrong file) also implements
-`ShowForDevicesAsync` and returns `new TaskDialogResult(payload, deviceIds)`: the host starts tasks only for those
-devices (SDK 0.5.0; the default runs on every selected device). A
-dialog that should stay open while its task runs checks `ctx.CanRunTasks`, starts the run with
+dialog that knows the task would change nothing on some selected devices (up to date, no file for the model) also
+implements `ShowForDevicesAsync` and returns `new TaskDialogResult(payload, deviceIds)`: the host starts tasks only for
+those devices and ignores ids that were not selected (SDK 0.5.0; the default runs on every selected device; sample:
+`FirmwareTaskDialog`). A dialog that should stay open while its task runs checks `ctx.CanRunTasks`, starts the run with
 `ctx.RunTaskAsync(deviceIds, payload, progress, ct)` (progress: every task's `TaskRunState`; the result once all ended),
 shows the result in the dialog and returns null (nothing runs twice); without `CanRunTasks` (older hosts) it returns the
-payload as before.
+payload.
 `ctx.QueryAsync(deviceId, method, payload, ct)` calls the plugin's query; `ctx.UploadAsync(path, progress, ct)`
 uploads a file (progress 0.0 to 1.0) and returns its id for the payload. Failures are `Grpc.Core.RpcException`; show
 `Status.Detail` to the user.
@@ -212,7 +203,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:ToolbarSeparator` | vertical line between toolbar groups |
   | `ui:ToolbarOverflowPanel Spacing` | every row of toolbar buttons on a page: entries that do not fit (small or scaled screens) go behind its own More button; keep the device choice button and the search box outside it |
   | `ui:SearchBox Text` | every search field |
-  | `ui:FormField Label Hint Error` | **every labeled form row**: label left, level with the input; below the input its validation error, else the `Hint` (small, secondary). Widths from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input). Class `wide`: the input fills the row; class `inline`: the label sizes to its text (fields in one line, e.g. From / To). No label: the label column stays empty, so a check box or button row lines up with the inputs. `Error` only for content without data validation (a group of check boxes, a text value) |
+  | `ui:FormField Label Hint Error` | **every labeled form row**: label left, level with the input; below the input its validation error, else the `Hint` (small, secondary). Widths from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input). Class `wide`: the input fills the row; class `inline`: the label sizes to its text (fields in one line, e.g. From / To). `LabelAbove` (SDK 0.5.0): the label above the input, full width (the login window). No label: the label column stays empty, so a check box or button row lines up with the inputs. `Error` only for content without data validation (a group of check boxes, a text value) |
   | `ui:PasswordBox Text` | **every password field**: bullet mask and an eye button ("Show password" / "Hide password"); never a `TextBox` with `PasswordChar` |
   | `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` / `ShowMessageAsync` | **every confirmation or message popup** (the host uses the same window); e.g. the Network dialogs confirm risky changes on Apply / Finish, no inline warning with a check box |
   | `ui:StatusChip Text IsOk IsWarning IsError IsAccent` | every status value (colored icon + text), in grid cells with `Margin="10,0"` |
@@ -235,6 +226,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | every tab of a page with tabs; without `CloseCommand` a fixed tab without an X; `Count` above 0 shows a badge |
   | `ui:CodeView Text Language ContentType IsFormatted` | **every read-only code or response display** (bodies, headers, JSON/XML previews): monospace, selectable (Ctrl+C and context menu copy), no wrapping, horizontal scroll. `Language`: `Auto` (default: from `ContentType`, then from the text), `Json`, `Xml` (also SOAP), `KeyValue` (param.cgi `key=value`, `# Error` lines red) or `Plain`. JSON and XML are pretty-printed with 2 spaces, also when minified; `IsFormatted="False"` shows the exact text, still highlighted (for a Pretty / Raw switch). Text that does not parse, or is longer than `HighlightLimit` (512 K characters), shows without colors. Colors: theme brushes `Oadm.Code.KeyBrush`, `StringBrush`, `NumberBrush`, `LiteralBrush`, `PunctuationBrush`, `TagBrush`, `AttributeBrush`, `CommentBrush`, `ErrorBrush`. `CodeText` (`Detect`, `Prepare`, `FormatJson`, `FormatXml`, `Tokenize`) works without UI. Editable code is `ui:CodeEditor` |
   | `ui:IssuedCertificateList Toolbar Banner` | every list of certificates (the PKI page's CA list and certificate list) (DataContext an `IssuedCertificateListViewModel` with an `IIssuedCertificateSource`): filters, search, pages of 500, several rows chosen, View certificate, one ⋯ menu per row (the view model's `MenuOf`, the same as the right click); a derived list sets `WorkText` while its own write runs (the progress row shows it, `IsWorking`, `OnWorkChanged` for its commands) |
+  | `CertificateWindow.ShowAsync(certificate, owner)` | every certificate details window (EST enrollments, PKI's certificate list, the 802.1X log): validity, issued to and by, key and signature, uses, names; values can be copied. `certificate` is a `CertificateDetails` |
   | `GridGroup(Name, IconKey)` | the group key of a grouped grid (`DataGrid.groups`) whose header shows an icon between the chevron and the name (PKI's policy groups); a plain string key shows the name only |
   | `ui:OffState Icon Title Text` | the state of a page or tab whose feature is off (Sites, Compliance, PKI's 802.1X and EST servers): a large icon, the title ("Site nodes are off"), one or two sentences, and the host's controls below (the Turn on button, the line for users who may not, the error), all centered |
   | `RowActions.Show(anchor, actions)` | the ⋯ menu of a table row (`Button.toolbar.iconOnly` with `Icon.more`, tooltip `RowActions.Tip`): the everyday entries, a separator, the red ones last |
@@ -319,7 +311,8 @@ resolve them at compile time, so use `DynamicResource` (`Icon="{DynamicResource 
 `Icon.command`, `Icon.download`, `Icon.maximize`, `Icon.minimize`, `Icon.save`, `Icon.send`, `Icon.sliders`, `Icon.text`,
 `Icon.device.camera`, `Icon.device.encoder`,
 `Icon.device.speaker`, `Icon.device.audio`, `Icon.device.intercom`, `Icon.device.radar`,
-`Icon.device.io`, `Icon.device.door`, `Icon.device.generic`.
+`Icon.device.io`, `Icon.device.door`, `Icon.device.generic`,
+`Icon.status.ok`, `Icon.status.warning`, `Icon.status.error`, `Icon.status.info`, `Icon.status.neutral`, `Icon.status.running`.
 
 A plugin's `IconKey` (context menu, toolbar) is the key without `Icon.`, e.g. `restart`. A new icon goes into
 `src/Oadm.Theme/Icons.axaml` (24x24 Lucide stroke geometry) and into this list.
@@ -354,6 +347,7 @@ public interface IToolbarContext           // UI thread only; events are raised 
                                                           // ExportDevices / Devices / Compliance / Sites / EventRules / Logs / Settings /
                                                           // Users / Credentials / Plugins / About
     bool Has(string permission);                          // the user's role allows it ("devices.refresh")
+    bool HasAllDevices { get; }                           // false for a user limited to a device group
     event EventHandler? PermissionsChanged;               // the role or its permissions changed
     Task RemoveDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct);
     Task RefreshDevicesAsync(IReadOnlyCollection<Guid> ids, CancellationToken ct); // full refresh now (server), read-only
@@ -409,7 +403,8 @@ public sealed class SampleToolbarPlugin : IToolbarPlugin
 A core plugin runs inside the server for the server's lifetime and may have a page in the client's navigation rail.
 
 - **Server part**: a public class implementing `ICorePlugin` (`Id`, `DisplayName`, `IconKey` = rail icon,
-  `TaskPlugins` it contributes, `StartAsync(ctx)`, `StopAsync`, `InvokeAsync(method, payloadJson, ct)`). `StartAsync`
+  `TaskPlugins` it contributes, `StartAsync(ctx)`, `StopAsync`, `InvokeAsync(caller, method, payloadJson, ct)`, see
+  "Call context"). `StartAsync`
   gets `ICorePluginContext`: `Devices` (all managed devices as `IDeviceInfo`, incl. `CertNotAfterUtc`,
   `CertTrustName`, `Tags`), `Vapix.CreateAsync(deviceId)` (authenticated client with the stored credentials; the
   factory caches it, never dispose it), `Tasks`, `Settings` (key/value per plugin), `Logger`. A plugin that throws on
@@ -464,7 +459,7 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   attached and stop it when it is detached (the windows close on logout, with the main window and when the plugin is
   turned off), and keep server-side state per caller: a stream or job the page starts gets its own id (a "start" method
   returns it, events carry it, the page ignores events of other ids), like the Metadata Monitor and the I/O Monitor.
-- **Pages shown as tabs** (SDK 0.4.0): a page with `TabOf => "<host plugin id>"` gets no rail entry; the host creates its
+- **Pages shown as tabs**: a page with `TabOf => "<host plugin id>"` gets no rail entry; the host creates its
   view with its own context and hands it to the host page, whose context lists it in `Tabs` (`CorePluginTab` {PluginId,
   Title, View}, only pages the role may show) with `TabsChanged`. The host page shows the tabs (`ui:PageTab`, fixed) and
   puts the chosen tab's `View` into its content (one parent at a time). `OpenAsync("plugin:" + tab id)` opens the host
@@ -514,12 +509,12 @@ lacks.
   `PermissionKeys.Of(pluginId, key)` and `PermissionKeys.Task(taskId, key)`; host keys are `HostPermissionKeys`.
   Hide actions the role lacks and lock inputs that only lead to them (the NTP server page: inputs read-only, no Save).
 
-### Call context (SDK 0.4.0, device groups)
+### Call context (device groups)
 
-A user can be limited to a device group (docs/spec/device-scope.md). Every page method then gets the user's call,
-`ICallContext`, and reaches devices only through it. Set `minSdkVersion` 0.4.0 in plugin.json: users with a device
-group are refused every package below it ("Only users with all devices can use this plugin."), its pages are left out
-for them, and it keeps working unchanged for users with all devices.
+A user can be limited to a device group (`docs/spec/device-scope.md`). Every page method then gets the user's call,
+`ICallContext`, and reaches devices only through it. `minSdkVersion` must be at least 0.4.0 (the project SDK writes
+0.5.0): users with a device group are refused every package below it ("Only users with all devices can use this
+plugin."), its pages are left out for them, and it keeps working unchanged for users with all devices.
 
 - **Implement the overloads with the call**: `InvokeAsync(ICallContext caller, method, payload, ct)`,
   `ICorePluginDownloads.OpenDownloadAsync(caller, ...)`, `ITaskPluginQuery.QueryAsync(ctx, caller, device, ...)`. The
@@ -647,8 +642,8 @@ compare another user's job id with an unknown one. Any use of `ctx.*` in a group
 
 ### Samples
 
-Each plugin has a short entry in `docs/spec/bundled-plugins.md` and its own `README.md` with the details (decisions, page and dialog, steps
-and task names, device API and verified behavior, settings, tests). A new plugin adds both.
+The developer tutorials' plugins are in `samples/`. The bundled plugins below show more; each has a short entry in
+`docs/spec/bundled-plugins.md` and its own `README.md` (`docs/spec/plugins.md` "Plugin documentation").
 
 | Plugin | Id | Shows how to |
 |---|---|---|
@@ -656,7 +651,7 @@ and task names, device API and verified behavior, settings, tests). A new plugin
 | VAPIX Commander (`Oadm.Plugins.VapixCommander`) | `oadm.vapix-commander` | a command library from data files, saved commands with encrypted secrets, a three-card page, rollouts as a hidden contributed task plugin with one named step per command |
 | NTP server (`Oadm.Plugins.NtpServer`) | `oadm.ntp-server` | a network service (UDP responder, background upstream loop), saved settings, a live request log on the page, a contributed task that configures devices |
 | DHCP server (`Oadm.Plugins.DhcpServer`) | `oadm.dhcp-server` | an injectable socket layer (`IDhcpSocketFactory`, in-memory network in the tests), a lease table in plugin settings, live lease changes with versions, a virtualized lease grid and a dialog; manual test plan in its `README.md` |
-| PKI (`Oadm.Plugins.Pki`) | `oadm.pki` | a CA key kept with `ctx.Secrets`, trust anchors for the server's certificate rating, OS tools behind `IProcessRunner` (a fake in the tests), a page with several cards and three dialogs. Contributes nine Security task plugins that share the CA through a `Func<PkiService?>`: keys created on the device, CSRs signed by the CA, `UpdateDeviceTlsAsync` to follow the new web server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog` whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`) |
+| PKI (`Oadm.Plugins.Pki`) | `oadm.pki` | CA keys kept with `ctx.Secrets`, trust anchors for the server's certificate rating, OS tools behind `IProcessRunner` (a fake in the tests), several core plugins in one package with pages shown as tabs. Contributes nine Security task plugins that share the CAs through a `Func<PkiService?>`: keys created on the device, CSRs signed by the CA, `UpdateDeviceTlsAsync` to follow the new web server certificate, read-only queries for a grouped certificate list, confirmation-only dialogs (an `ITaskPluginDialog` whose `ShowAsync` shows `MessageWindow.ConfirmAsync` and returns "{}"), and a stateful fake camera (`tests/Oadm.Plugins.Pki.Tests/FakeCamera.cs`) |
 | Metadata Monitor (`Oadm.Plugins.MetadataMonitor`) | `oadm.metadata-monitor` | a read-only live view of one camera's event stream: opened through `ctx.EventStreams`, XML parsed on the server, batched messages; the page keeps the newest 10,000 in a `RangeObservableCollection` (one change per batch), filters live and shows the selected message in `ui:CodeView`. Per-page streams end on Stop, on a page change and, for a closed client, when the page's keep-alives stop (a lease pattern for any per-page server resource) |
 | System report (`Oadm.Plugins.SystemReport`) | `oadm.system-report` | no page, a toolbar button; background jobs with status deltas by version, files in `ctx.DataDirectory`, streamed device downloads, a ZIP read in chunks |
 | Hardening scan (`Oadm.Plugins.HardeningScan`) | `oadm.hardening-scan` | spec in its `README.md`: a read-only scan job over thousands of devices with bounded parallelism, results as events and kept in a plugin setting, request code of other plugins compiled in as linked sources, grid columns built from a catalog (icon-only status cells bound to one byte per row, tooltips built when they open) |
@@ -914,8 +909,8 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
   server database): `ListAsync(collection)` on start, `SetManyAsync(collection, changes)` with only what changed (null
   deletes), `ClearAsync`. Never a list that grows with the devices in one settings value: it is rewritten whole on every
   change. Tests: `MemoryPluginRecords` (`FakeCoreContext.PluginRecords`).
-- **Live events to the page**: `ctx.Events?.Publish(topic, payloadJson)` (SDK `IPluginEvents`, null on hosts without
-  it). Fire and forget, never blocks; every watching page has its own queue of 256 events (oldest dropped). Batch
+- **Live events to the page**: `ctx.Events?.Publish(topic, payloadJson, audience)` (SDK `IPluginEvents`, null on hosts
+  without it; the audiences in "Call context", without one only users with all devices get the event). Fire and forget, never blocks; every watching page has its own queue of 256 events (oldest dropped). Batch
   high-rate sources (the NTP request log publishes at most every 500 ms) and keep payloads small (max 1 M characters).
   On the page: `await foreach (var e in ctx.WatchEventsAsync(ct))` (gRPC `PluginService.Watch`) while the view is
   attached. The sequence ends or throws when the connection drops, and is empty on older hosts and in fake mode. So
@@ -944,11 +939,11 @@ recipients and schedules over SOAP are `plugins/Shared/ActionEngine/*.cs` (`Soap
   replaces the plugin's set of CA certificates (public DER only) the server trusts, besides the OS store, when it rates
   device certificates (Certificate column). A device certificate that chains to one of them is Trusted; a self-signed
   one stays Self-signed; pinning is never affected. The host keeps one set per plugin (the union counts) and removes it
-  when the plugin stops. Devices show the new rating after their next full refresh. The PKI plugin sets its active CA,
-  its chain and the previous CAs on start and on every change.
+  when the plugin stops. Devices show the new rating after their next full refresh. The PKI plugin sets every CA with its key
+  and the previous CAs, each with its chain, on start and on every change.
 - **Device event streams**: `ctx.EventStreams?.OpenAsync(deviceId, ct)` (SDK `IDeviceEventStreams`, null on hosts
   without it) opens the device's RTSP event stream (`rtsp://<device>/axis-media/media.amp?video=0&audio=0&event=on`,
-  port 554, Digest with the stored credentials, which never reach the plugin) and returns an `IDeviceEventSource`.
+  the device's RTSP port, 554 unless set with **OADM > RTSP port**, Digest with the stored credentials, which never reach the plugin) and returns an `IDeviceEventSource`.
   `ReadAsync(ct)` yields one complete `tt:MetadataStream` XML document per RTP marker (`DeviceMetadataDocument` with
   the server receive time); `LostDocuments` counts documents dropped for packet loss or size (over 1 MB); dispose =
   TEARDOWN. Failures are `DeviceStreamException` with `Error` (Unreachable: retry with backoff; Unauthorized,

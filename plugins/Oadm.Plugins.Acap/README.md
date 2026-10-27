@@ -1,22 +1,49 @@
-# Oadm.Plugins.Acap
+# Applications (ACAP) (`oadm.acap`)
 
-Task plugin `oadm.acap`: **Applications (ACAP)** in the context menu group Applications (dialog, no toolbar entry).
+Task plugin with a dialog (`.Client`), always on: **Applications (ACAP)** in the context menu group Applications, no
+toolbar entry. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#applications-acap).
+
 The dialog lists the applications on the first selected device (device picker for several devices). The user starts,
-stops or removes one, or installs / upgrades an `.eap` package. Each action runs on all selected devices, one task per
-device. The package preview reads at most 25 devices (first the first device of every model and firmware, 4 queries at
+stops or removes one, installs / upgrades an `.eap` package or installs license keys. Each action runs on all selected
+devices, one task per device. The package preview reads at most 25 devices (first the first device of every model and firmware, 4 queries at
 a time); the other rows say "Checked at install", and the task checks every device before it writes.
 
 | Part | Assembly | Contents |
 |---|---|---|
 | `plugins/Oadm.Plugins.Acap` | `Oadm.Plugins.Acap.Server` | `AcapTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `ApplicationApiClient` (VAPIX), `Shared/` (`.eap` reader, compatibility rules, payload and query models) |
 | `plugins/Oadm.Plugins.Acap.Client` | `Oadm.Plugins.Acap.Client` | `AcapTaskDialog` (`ITaskPluginDialog`), `AcapWindow` + `AcapDialogViewModel` |
-| `tests/Oadm.Plugins.Acap.Tests` | | unit tests, fake device, headless screenshot |
 
-Both build into `artifacts/plugins/oadm.acap/`. The client part references the server assembly only for the shared
-models (same plugin folder) and never talks to devices. The SDK, Avalonia, DataGrid and CommunityToolkit.Mvvm are
-compile-only references, shared from the host.
+The client part references the server assembly only for the shared models (same plugin folder) and never talks to
+devices.
 
-## VAPIX research
+## Decisions
+
+| Topic | Decision |
+|---|---|
+| API used | Classic Application API (`application 1.x`). `packagemanager` is undocumented and is not used. |
+| `CanRun` | Status Ok/Unknown **and** cached `device.Apis.Supports("application", "1.0")`. Empty API list = not offered. VAPIX identifies the Application API by `Properties.EmbeddedDevelopment.Version`, not by the API list: AXIS OS 11.x devices with applications may not list it, so `VapixClient.GetApiListAsync` adds "application" 1.0 (status "from parameters") when that property exists (seen on an AXIS OS 11.9 camera). |
+| Before any write | Fresh `GetApiListAsync().Require("application", "1.0")`; payload validated first (no device access on bad payload). |
+| Package source | Uploaded by the dialog (`ITaskDialogContext.UploadAsync`), read in the task from `ctx.Files`; SHA-256 and app name must match what the dialog checked. |
+| Package parsing | `manifest.json` wins, `package.conf` fills gaps; top-level entries only; metadata max 1 MB; app name `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`; version required. Not an `.eap` -> Failed, nothing changed. |
+| Architecture | Package arch (`architecture` / `APPTYPE`) must equal basicdeviceinfo `Architecture` (`arm64`=`aarch64`, `armhf`=`armv7hf`). Missing / `all` / `noarch` = independent. Device arch unknown + native package -> refuse. |
+| Firmware | AXIS OS must be inside one `compatibleOsVersions` range (bounds inclusive at their own precision: max `12` = any 12.x) **and** at least the schema's minimum OS. Newer unknown schema -> highest known minimum + warning. Legacy `package.conf` only: `REQEMBDEVVERSION` <= `Properties.EmbeddedDevelopment.Version`. Unknown firmware with requirements -> refuse. |
+| Root apps | Package user `root`: refuse on AXIS OS >= 12.0; warning (AllowRoot needed) on 11.8-11.x. |
+| Signing | Signature cannot be checked locally. `AllowUnsigned=false` -> warning in the dialog; device error 2 becomes "The package signature is missing or invalid; the device accepts only signed applications.". |
+| Install kind | Not installed -> Install; lower -> Upgrade; equal -> Reinstall (allowed); higher -> Downgrade, refused unless the dialog's "Allow downgrade" is set. Vendor change -> warning (device refuses with error 27). |
+| Upload | Streams the file from `ctx.Files` as multipart `file`; step progress in bytes. `upload.cgi` answers only after the installation, so the upload waits up to 10 minutes (`ApplicationApiClient.UploadTimeout`). |
+| Lost upload answer | Timeout / connection error while waiting for `upload.cgi` -> poll `list.cgi` up to 5 min for the expected version; found -> Done with warning, else Failed. |
+| Verify | After install: listed with the expected version, else Failed. Optional start: control start, then status must be Running, else Done with warning. |
+| Device errors | Every code VAPIX lists is translated with what to do (`UploadErrors` incl. developer mode 51-54, `ControlErrors`, `LicenseErrors` 21-31); unknown codes "The device refused it. (error N)". Code 15 (outcome unknown) is handled like a lost answer: the result is read from `list.cgi`. Code 2 says "the device accepts only signed applications" only when the device accepts only signed ones, else "The package signature is not valid. Download the package again. (error 2)". A failed upgrade that removed the application (VAPIX: both versions are removed) says so. HTTP 401 / 403 / other statuses use the shared `DeviceMessages` texts. A name that differs only in upper and lower case from an installed application is refused before the upload (code 14). A license key for other application versions (code 26) is refused before sending. A start that does not reach Running within 15 s names a missing or invalid license. |
+| Control timeout | `control.cgi` (start, stop, remove) waits up to 2 minutes (`ApplicationApiClient.ControlTimeout`): a remove was seen to take about 60 s. A remove whose answer is lost is verified by polling `list.cgi` for up to 5 minutes (Done with warnings when the application is gone). |
+| Remove | Confirmation in the dialog. Bundled (`Bundled=Yes`) apps are refused. Not installed -> Done with warning. Verified gone afterwards. |
+| Start / Stop | Already in the requested state -> Done, no write. Errors 6/7 treated as success. Not installed -> Done with warning (multi-device selections). Status verified afterwards. |
+| Query | `listApplications` (read-only): API check, basicdeviceinfo, `EmbeddedDevelopment.Version`, `config.cgi get AllowUnsigned`, `list.cgi`. Returns `{device: facts, applications: [...]}`. |
+| Payload | `{action: install|remove|start|stop, application, fileId, sha256, version, allowDowngrade, startAfterInstall}`; no secrets. |
+| License keys | Key files only (`.key`, `.xml`, or a ZIP of them; `LicenseKeySet`): several at once, at most 10,000 keys, 8 KB each, a ZIP at most 64 MB unpacked (entries read with a bound, never by their declared size); the same device and application twice keeps the latest end date. Matched by `DeviceID` = the device's MAC address; the dialog shows per device Key found, No key, Key expired, Other application. Optional with an install (installed right after Verify installation, before the start) and on its own (toolbar **Install license** for the selected application). The payload carries one key per selected device (memory only, like every payload). |
+| License column | `list.cgi` `License`: "Valid until <date>" / "Valid", "Not required" (`None`: the application needs no license, e.g. AXIS Object Analytics; **Install license** is disabled for it), "Missing", "Invalid", other values as sent (`InstalledApplication.LicenseText`). |
+| License checks | Before anything is sent: the key parses, names this device's MAC address, the installed application's `ApplicationID` (when the device lists one) and has not expired; a device without a key is Done with warnings, nothing sent. Install license on its own: any other problem fails "Nothing was changed". With an install: a key problem or a refused key is a warning (the application is installed). Verify license: `list.cgi` License = Valid, else a warning with the device's value. |
+
+## Device API
 
 Device used (read-only): AXIS P3265-V, AXIS OS 12.11.77, `aarch64`, Artpec-8.
 
@@ -46,8 +73,8 @@ Application API (developer.axis.com/vapix/applications/application-api):
   read-only research). The page treats every answer without "Error" as accepted; OADM does the same.
 - Automatic activation with a license code is not a device API: the device's web page loads
   `https://www.axis.com/app/acap/sdk.js` in the browser, which asks an Axis gateway for the key (with a token of its own)
-  and then uploads it with `uploadlicensekey`. OADM does not call Axis' service (decision 2026-10-13); users activate codes
-  on the device's Apps page.
+  and then uploads it with `uploadlicensekey`. OADM does not call Axis' service; users activate codes on the device's
+  Apps page.
 
 License key file (seen in a real key of AXIS Missing Features): XML `<LicenseKey>` with `FormatVersion` 1, `ApplicationID`
 (= `list.cgi` `ApplicationID`, = manifest `appId` / package.conf `APPID`), `Minimum/MaximumMajor/MinorVersion` (-1),
@@ -63,39 +90,11 @@ Manifest schema -> minimum AXIS OS: 1.0-1.2 10.7, 1.3 10.9, 1.3.1 11.0, 1.4.0 11
 1.6.0 11.9, 1.7.0 11.10, 1.7.1 12.0, 1.7.2 12.1, 1.7.3 12.2, 1.7.4 12.4, 1.8.0 12.6, 1.9.0 12.8,
 1.10.0 12.10, 1.11.0 12.11, 2.0.0 12.10, 2.1.0/2.2.0 12.11.
 
-## Decision table
-
-| Topic | Decision |
-|---|---|
-| API used | Classic Application API (`application 1.x`). `packagemanager` is undocumented and is not used. |
-| `CanRun` | Status Ok/Unknown **and** cached `device.Apis.Supports("application", "1.0")`. Empty API list = not offered. VAPIX identifies the Application API by `Properties.EmbeddedDevelopment.Version`, not by the API list: AXIS OS 11.x devices with applications may not list it, so `VapixClient.GetApiListAsync` adds "application" 1.0 (status "from parameters") when that property exists (seen on an AXIS OS 11.9 camera, fixed 2026-10-13). |
-| Before any write | Fresh `GetApiListAsync().Require("application", "1.0")`; payload validated first (no device access on bad payload). |
-| Package source | Uploaded by the dialog (`ITaskDialogContext.UploadAsync`), read in the task from `ctx.Files`; SHA-256 and app name must match what the dialog checked. |
-| Package parsing | `manifest.json` wins, `package.conf` fills gaps; top-level entries only; metadata max 1 MB; app name `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`; version required. Not an `.eap` -> Failed, nothing changed. |
-| Architecture | Package arch (`architecture` / `APPTYPE`) must equal basicdeviceinfo `Architecture` (`arm64`=`aarch64`, `armhf`=`armv7hf`). Missing / `all` / `noarch` = independent. Device arch unknown + native package -> refuse. |
-| Firmware | AXIS OS must be inside one `compatibleOsVersions` range (bounds inclusive at their own precision: max `12` = any 12.x) **and** at least the schema's minimum OS. Newer unknown schema -> highest known minimum + warning. Legacy `package.conf` only: `REQEMBDEVVERSION` <= `Properties.EmbeddedDevelopment.Version`. Unknown firmware with requirements -> refuse. |
-| Root apps | Package user `root`: refuse on AXIS OS >= 12.0; warning (AllowRoot needed) on 11.8-11.x. |
-| Signing | Signature cannot be checked locally. `AllowUnsigned=false` -> warning in the dialog; device error 2 becomes "The package signature is missing or invalid; the device accepts only signed applications.". |
-| Install kind | Not installed -> Install; lower -> Upgrade; equal -> Reinstall (allowed); higher -> Downgrade, refused unless the dialog's "Allow downgrade" is set. Vendor change -> warning (device refuses with error 27). |
-| Upload | Streams the file from `ctx.Files` as multipart `file`; step progress in bytes. |
-| Lost upload answer | Timeout / connection error while waiting for `upload.cgi` -> poll `list.cgi` up to 5 min for the expected version; found -> Done with warning, else Failed. |
-| Verify | After install: listed with the expected version, else Failed. Optional start: control start, then status must be Running, else Done with warning. |
-| Device errors | Every code VAPIX lists is translated with what to do (`UploadErrors` incl. developer mode 51-54, `ControlErrors`, `LicenseErrors` 21-31); unknown codes "The device refused it. (error N)". Code 15 (outcome unknown) is handled like a lost answer: the result is read from `list.cgi`. Code 2 says "the device accepts only signed applications" only when the device accepts only signed ones, else "The package signature is not valid. Download the package again. (error 2)". A failed upgrade that removed the application (VAPIX: both versions are removed) says so. HTTP 401 / 403 / other statuses use the shared `DeviceMessages` texts. A name that differs only in upper and lower case from an installed application is refused before the upload (code 14). A license key for other application versions (code 26) is refused before sending. A start that does not reach Running within 15 s names a missing or invalid license. |
-| Control timeout | `control.cgi` (start, stop, remove) waits up to 2 minutes (`ApplicationApiClient.ControlTimeout`): a remove was seen to take about 60 s. A remove whose answer is lost is verified by polling `list.cgi` for up to 5 minutes (Done with warnings when the application is gone). |
-| Remove | Confirmation in the dialog. Bundled (`Bundled=Yes`) apps are refused. Not installed -> Done with warning. Verified gone afterwards. |
-| Start / Stop | Already in the requested state -> Done, no write. Errors 6/7 treated as success. Not installed -> Done with warning (multi-device selections). Status verified afterwards. |
-| Query | `listApplications` (read-only): API check, basicdeviceinfo, `EmbeddedDevelopment.Version`, `config.cgi get AllowUnsigned`, `list.cgi`. Returns `{device: facts, applications: [...]}`. |
-| Payload | `{action: install|remove|start|stop, application, fileId, sha256, version, allowDowngrade, startAfterInstall}`; no secrets. |
-| License keys | Key files only (`.key`, `.xml`, or a ZIP of them; `LicenseKeySet`): several at once, at most 10,000 keys, 8 KB each, a ZIP at most 64 MB unpacked (entries read with a bound, never by their declared size); the same device and application twice keeps the latest end date. Matched by `DeviceID` = the device's MAC address; the dialog shows per device Key found, No key, Key expired, Other application. Optional with an install (installed right after Verify installation, before the start) and on its own (toolbar **Install license** for the selected application). The payload carries one key per selected device (memory only, like every payload). |
-| License column | `list.cgi` `License`: "Valid until <date>" / "Valid", "Not required" (`None`: the application needs no license, e.g. AXIS Object Analytics; **Install license** is disabled for it), "Missing", "Invalid", other values as sent (`InstalledApplication.LicenseText`). |
-| License checks | Before anything is sent: the key parses, names this device's MAC address, the installed application's `ApplicationID` (when the device lists one) and has not expired; a device without a key is Done with warnings, nothing sent. Install license on its own: any other problem fails "Nothing was changed". With an install: a key problem or a refused key is a warning (the application is installed). Verify license: `list.cgi` License = Valid, else a warning with the device's value. |
-| Hardware tests | None for writes. Only read-only calls were made against the development camera. |
-
 ## Task steps
 
 Every device request and every wait is a named step (`AcapTaskPlugin.Steps`, planned up front); task progress comes
 from the steps. Steps that do not apply end Skipped with the reason. Task names: "Install <app> <version>", "Upgrade
-<app> to <version>" (+ " with license"), "Install license of <app>", "Remove <app>", "Start <app>", "Stop <app>".
+<app> to <version>" (both + " with license"), "Install license of <app>", "Remove <app>", "Start <app>", "Stop <app>".
 
 | Action | Steps |
 |---|---|
@@ -104,15 +103,14 @@ from the steps. Steps that do not apply end Skipped with the reason. Task names:
 | Remove | Check compatibility, Read installed applications (Warning when not installed, Failed for bundled apps), Remove application, Verify removal |
 | Start / Stop | Check compatibility, Read installed applications (Warning when not installed), Start application / Stop application, Verify application state (both Skipped when already in the requested state) |
 
-## Known SDK gaps
+## Compliance check "Application running"
 
-- Resolved: `upload.cgi` answers only after the installation, so the upload sets `VapixRequestOptions.Timeout` to 10
-  minutes (`ApplicationApiClient.UploadTimeout`). A lost answer is still recovered through `list.cgi`.
-- `ITaskDialogContext.UploadAsync` does not document the unit of `IProgress<double>`; the dialog accepts 0..1 and 0..100.
-- `CanRun` depends on `IDeviceInfo.Apis`: without a stored API list the menu entry does not appear.
-- Dialogs cannot use the shared controls (`IconLabel`, `SearchBox`) yet; they use plain controls with the theme classes
-  until these move to `Oadm.Sdk.Client.Controls`.
-- The dialog cannot learn the server-side task result or refresh after the task.
+`ApplicationRunningCheck` (type `oadm.acap.running`, group Applications; see [Compliance](../../docs/spec/compliance.md)): the chosen application
+is installed, by default also running, optionally at least a version (leading numbers, "1.4") and with a valid license
+(Valid and not past its expiration date, or None / Custom). The application is chosen from the list of one device ("Read
+from device"). Read only: one `applications/list.cgi` per device and run (shared key `oadm.acap:list`). Detail texts:
+"AXIS Object Analytics is stopped", "parking is not installed", "AXIS Object Analytics 1.26.205, needs 1.30",
+"AXIS License Plate Verifier: license missing".
 
 ## Permissions
 
@@ -120,15 +118,14 @@ Keys `task:oadm.acap:install`, `:downgrade` (install with "Allow downgrade"), `:
 (install license keys, also with an install). The dialog hides the buttons and the option the role lacks. Operator default:
 install, start / stop and license keys.
 
-## Compliance check "Application running"
-
-`ApplicationRunningCheck` (type `oadm.acap.running`, group Applications; see `docs/spec/compliance.md`): the chosen application
-is installed, by default also running, optionally at least a version (leading numbers, "1.4") and with a valid license
-(Valid and not past its expiration date, or None / Custom). The application is chosen from the list of one device ("Read
-from device"). Read only: one `applications/list.cgi` per device and run (shared key `oadm.acap:list`). Detail texts:
-"AXIS Object Analytics is stopped", "parking is not installed", "AXIS Object Analytics 1.26.205, needs 1.30",
-"AXIS License Plate Verifier: license missing". Tests `ApplicationRunningCheckTests`.
-
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the queries read only the queried device, which the host checks. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).
+The tasks run only on devices of the user's view and touch only their own device; the query reads only the queried
+device ([device groups](../../docs/spec/device-scope.md)). Tests: server `DeviceGroups/CanaryTests`, TaskService cases.
+
+## Tests
+
+`tests/Oadm.Plugins.Acap.Tests`: package reader and compatibility rules, license keys, the API client from recorded
+answers (`Fixtures/`), the task with a fake device, the compliance check (`ApplicationRunningCheckTests`), the dialog
+view model, Perf scale tests and a headless screenshot. No hardware tests for writes: only read-only calls were made
+against the development camera.

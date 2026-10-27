@@ -1,7 +1,11 @@
 # NTP server (`oadm.ntp-server`)
 
-Core plugin (+ `.Client`), rail page **NTP server** (group Servers, icon `metronome`). Own RFC 5905 server-mode
-implementation (SNTPv4 compatible), no library.
+Core plugin (+ `.Client`) with the rail page **NTP server** (group Servers, icon `metronome`), on by default; the server
+itself starts disabled. Own RFC 5905 server-mode implementation (SNTPv4 compatible), no library. Contributes the task
+**Use OADM as NTP server**. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#ntp-server-core-plugin), host
+support for service plugins: [plugins/README.md](../README.md#host-support-for-service-plugins-ntp-dhcp-).
+
+## How it works
 
 - Time source: without an upstream OADM is a fully valid NTP server on its own clock, like chrony's
   `local stratum 10`: LI 0, stratum 10, reference id `LOCL`, reference timestamp = now, root delay 0, root dispersion
@@ -26,12 +30,25 @@ implementation (SNTPv4 compatible), no library.
 - Abuse protection (`NtpRateLimiter`): token bucket per client IP, burst 8, refill 1 per 2 s; over it: drop, one
   Kiss-o'-Death RATE per client per minute, one "Rate limited" log entry per client per minute. Global cap 2,000
   requests/s (dropped, status "Too many requests, dropping" for 10 s). Client table LRU, at most 10,000 entries, idle
-  entries expire after 10 min. No allow list, no NTS in v1.
+  entries expire after 10 min. No allow list, no NTS.
 - Settings (plugin setting `config`: enabled, interfaceId, interfaceName, upstream) stored server side and restored on
   server start. Interfaces from the SDK `IServerNetworkInterfaces` (every up, non-loopback interface with an address;
   "All interfaces" binds 0.0.0.0 and [::]; an interface binds all its addresses except IPv6 link-local). A failed bind
   (port in use, interface gone) is retried every 30 s while enabled.
-- Status line (one at a time, `ui:StatusChip`, detail as tooltip): `Running on 10.0.0.17:123` / `Running on all
+- Per OS: Windows needs nothing but a free port 123 (W32Time holds it on many machines: stop it, then OADM serves; the
+  firewall must allow inbound UDP 123); Linux needs root or `cap_net_bind_service` (chronyd/ntpd must not hold 123);
+  macOS needs sudo for a single interface (wildcard binds below 1024 are allowed without root since 10.14).
+
+## Page
+
+- Layout (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
+  Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
+  the field, "Checking <host>" accent chip while Save runs, "Answered: 3 ms off, 12 ms round trip" after
+  it, a line while the server is on and has an upstream: "Synchronized with <host>" / "<host> does not answer, the cameras
+  get this computer's time" / "Checking <host>, the cameras get this computer's time meanwhile"); Save (primary); "Last requests" DataGrid
+  (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
+  stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
+- Status (one at a time, `ui:StatusChip`, detail as tooltip): `Running on 10.0.0.17:123` / `Running on all
   interfaces, port 123` (ok), `Stopped` (neutral), `Port 123 is in use by another program` (error; Windows +
   " (Windows Time service)" when `sc query W32Time` says RUNNING, tooltip: net stop w32time; Windows has no privileged
   ports, so AccessDenied there also means in use), `Insufficient permission to use port 123` (error; Linux tooltip: run
@@ -43,37 +60,44 @@ implementation (SNTPv4 compatible), no library.
   transmit minus server receive; "-" beyond one day, e.g. clients that randomize the transmit timestamp), result Answered
   / Rate limited. Pushed live (see `ICorePluginContext.Events`, batched every 500 ms); the page resolves the device column
   ("P3265-V (10.0.0.48)") from the client's device list (O(n) per device change).
-- Page methods (`NtpServerMethods`): `getState` -> `NtpState` (config, status, interfaces, requests, upstream, stratum,
-  port); `save` ({enabled, interfaceId, upstream}) validates the upstream with one query (same timeouts; the running
-  server keeps serving) and replies {saved, upstreamError, upstreamResult, state}; an upstream that does not answer is
-  not saved (error under the field). Events: `state` (status/upstream changed), `requests` (new entries).
-- Page (one card in the host card, subtitle in the host page header, status chip left of the Save button); Enable NTP server;
-  Listen on (select, refreshed when the page opens); Upstream server (optional, checked while typing, field errors under
-  the field, "Checking <host>" accent chip while Save runs, "Answered: 3 ms off, 12 ms round trip" after
-  it, a line while the server is on and has an upstream: "Synchronized with <host>" / "<host> does not answer, the cameras
-  get this computer's time" / "Checking <host>, the cameras get this computer's time meanwhile"); Save (primary); "Last requests" DataGrid
-  (Time, Client, Device, Offset, Result chip). The view model watches the events while the view is attached; when the
-  stream ends or fails (or the host has none: fake mode) it re-reads the state every 2 s.
-- Task "Use OADM as NTP server" (contributed, id `oadm.ntp-server.use`, group Maintenance, no dialog, `CanRun`: ntp 1.x
-  or param.cgi): the address is the selected interface's address of the device's family, with "All interfaces" the
-  local address the server routes to the device with (UDP connect, no packet). Steps: Check compatibility (fails "The
-  OADM NTP server is not running ... Nothing was changed." when it is off), Read NTP settings, Set NTP server <addr>
-  (Skipped "Already uses <addr>"), Verify NTP settings (Warning on a mismatch). Name "Use OADM NTP server 10.0.0.17"
-  ("Use OADM NTP server" with All interfaces). The VAPIX requests are the Date and time plugin's (`TimePlanner`,
-  `TimeClient`; its `Model/` and `Vapix/` sources are compiled into the NTP assembly, because a project reference would
-  put `Oadm.Plugins.DateTime.Server.dll` into this plugin folder, where the loader would register Date and time twice).
-- Per OS: Windows needs nothing but a free port 123 (W32Time holds it on many machines: stop it, then OADM serves; the
-  firewall must allow inbound UDP 123); Linux needs root or `cap_net_bind_service` (chronyd/ntpd must not hold 123);
-  macOS needs sudo for a single interface (wildcard binds below 1024 are allowed without root since 10.14).
-- Tests: `tests/Oadm.Plugins.NtpServer.Tests` (codec round trip, era wrap, invalid input; responses incl. local mode and
-  ignored modes; rate limiter burst/refill/LRU/global; status per SocketError and OS; interface listing; upstream
-  client against `FakeUpstream`: timeout, slow and late answers, wrong origin, other port, KoD RATE/DENY,
-  unsynchronized, DNS failure/hang/cache; monitor fallback and recovery; in-process loopback integration: valid mode 4
-  answer a client accepts, rate limiting with one KoD, answers within 100 ms while the upstream hangs, upstream
-  validation on Save, persistence across restart, port in use retried, missing interface; the task against the Date and
-  time fake camera; page view model; headless screenshots `ntp-server-page.png`, `-errors.png`,
-  `-upstream-warning.png`, `-checking.png`). A hardware test where the development camera queries OADM is a device write and is not
-  written/run without explicit user approval.
+
+## Task steps
+
+Task "Use OADM as NTP server" (contributed, id `oadm.ntp-server.use`, group Maintenance, no dialog, `CanRun`: ntp 1.x
+or param.cgi): the address is the selected interface's address of the device's family, with "All interfaces" the
+local address the server routes to the device with (UDP connect, no packet). Steps: Check compatibility (fails "The
+OADM NTP server is not running ... Nothing was changed." when it is off), Read NTP settings, Set NTP server <addr>
+(Skipped "Already uses <addr>"), Verify NTP settings (Warning on a mismatch). Name "Use OADM NTP server 10.0.0.17"
+("Use OADM NTP server" with All interfaces). The VAPIX requests are the Date and time plugin's (`TimePlanner`,
+`TimeClient`; its `Model/` and `Vapix/` sources are compiled into the NTP assembly, because a project reference would
+put `Oadm.Plugins.DateTime.Server.dll` into this plugin folder, where the loader would register Date and time twice).
+
+## Methods
+
+`NtpServerMethods`: `getState` -> `NtpState` (config, status, interfaces, requests, upstream, stratum,
+port); `save` ({enabled, interfaceId, upstream, serveAtSites, serveSites}) validates the upstream with one query (same timeouts; the running
+server keeps serving) and replies {saved, upstreamError, upstreamResult, state}; an upstream that does not answer is
+not saved (error under the field). Events: `state` (status/upstream changed), `requests` (new entries).
+
+## Permissions
+
+`oadm.ntp-server:show` (the page, `getState`) and `:manage` "Change the NTP server" (`save`). Without "manage" the form
+is read-only and Save is hidden. Operator default: show only. The task "Use OADM as NTP server" is
+`task:oadm.ntp-server.use`.
+
+## Device groups
+
+[Device groups](../../docs/spec/device-scope.md). The NTP server serves every device, so `save` is for users with all
+devices (`RequiresAllDevices`; the page shows the form read-only without Save for the others, `MayManage`). Users with a device group see the page with the
+requests of their devices (by address on their route: the server's network or their site, `Serving/NtpGroupView`) and the
+sites of their devices only (site relays, the "Serve at sites" choices). Their pages get live state and requests through
+`PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page (`plugins/Shared/ViewerScopes.cs`,
+filtered from the group's devices in the background loop); users with all devices get the full state. A publish
+round never reads the device table: each group's `NtpGroupView` is kept (`ViewerScopes.ViewAsync`) and built again on
+`IDeviceScopes.Changed` for the group or after 5 minutes (an address change moves no device between groups). A group's
+`getState` answers `Renew`: its page reads the state again every 5 minutes while shown (`NtpServerViewModel.RenewInterval`),
+and a group not read for 15 minutes is forgotten. Chosen sites ("Serve at sites") none of which is a site of the group show
+as not served at sites (never as "every site").
 
 ## Sites
 
@@ -95,32 +119,23 @@ implementation (SNTPv4 compatible), no library.
   (`IDeviceNetwork.LocalAddressTowardsAsync` on the device's route); without Serve at sites it fails "The OADM NTP server
   does not serve at sites. Turn on Serve at sites on the NTP server page. Nothing was changed.", at a site that is not
   chosen "The OADM NTP server does not serve at this site. Choose it under Serve at sites on the NTP server page. Nothing
-  was changed.", while the site's relay
-  does not run with the relay's state. A device addressed by a host name is resolved on its route
+  was changed.", and while the site's relay does not run with the relay's state. A device addressed by a host name is resolved on its route
   (`IDeviceNetwork.ResolveAsync`: the site node's DNS). On the server's own network "All interfaces" asks
   `LocalAddressTowardsAsync` too (the host's code, no socket in the plugin).
-- Tests: `SiteServingTests` (relays per site with the in-memory relays of `Oadm.Sdk.Testing`, answers, the log, new and
+
+## Tests
+
+- `tests/Oadm.Plugins.NtpServer.Tests` (codec round trip, era wrap, invalid input; responses incl. local mode and
+  ignored modes; rate limiter burst/refill/LRU/global; status per SocketError and OS; interface listing; upstream
+  client against `FakeUpstream`: timeout, slow and late answers, wrong origin, other port, KoD RATE/DENY,
+  unsynchronized, DNS failure/hang/cache; monitor fallback and recovery; in-process loopback integration: valid mode 4
+  answer a client accepts, rate limiting with one KoD, answers within 100 ms while the upstream hangs, upstream
+  validation on Save, persistence across restart, port in use retried, missing interface; the task against the Date and
+  time fake camera; page view model; headless screenshots `ntp-server-page.png`, `-errors.png`,
+  `-upstream-warning.png`, `-checking.png`). A hardware test where the development camera queries OADM is a device write:
+  never written or run without the developer explicitly asking.
+- Device groups: `CanaryTests` (the canary, filtered state and live requests), `PageViewModelTests` (read-only form for a
+  group), `GroupScaleTests` (5 groups at 30,000 devices: no read per round, + Perf; the view cache, forgotten groups, `Renew`, the page's renewal, the sites of the group).
+- Sites: `SiteServingTests` (relays per site with the in-memory relays of `Oadm.Sdk.Testing`, answers, the log, new and
   removed sites, rate limits per site, the task's address at a site), `PageViewModelTests` (sites on the page), headless
   `ntp-server-page-sites.png`.
-
-## Device groups
-
-SDK 0.4.0. The NTP server serves every device, so `save` is for users with all devices (`RequiresAllDevices`; the page
-shows the form read-only without Save for the others, `MayManage`). Users with a device group see the page with the
-requests of their devices (by address on their route: the server's network or their site, `Serving/NtpGroupView`) and the
-sites of their devices only (site relays, the "Serve at sites" choices). Their pages get live state and requests through
-`PluginEventAudience.DeviceScope(key)` for the groups whose users opened the page (`plugins/Shared/ViewerScopes.cs`,
-filtered from the group's devices in the background loop); users with all devices get the full state as before. A publish
-round never reads the device table: each group's `NtpGroupView` is kept (`ViewerScopes.ViewAsync`) and built again on
-`IDeviceScopes.Changed` for the group or after 5 minutes (an address change moves no device between groups). A group's
-`getState` answers `Renew`: its page reads the state again every 5 minutes while shown (`NtpServerViewModel.RenewInterval`),
-and a group not read for 15 minutes is forgotten. Chosen sites ("Serve at sites") none of which is a site of the group show
-as not served at sites (never as "every site"). Tests: `CanaryTests` (the canary, filtered state and live requests),
-`PageViewModelTests` (read-only form for a group), `GroupScaleTests` (5 groups at 30,000 devices: no read per round, + Perf;
-the view cache, forgotten groups, `Renew`, the page's renewal, the sites of the group).
-
-## Permissions
-
-`oadm.ntp-server:show` (the page, `getState`) and `:manage` "Change the NTP server" (`save`). Without "manage" the form
-is read-only and Save is hidden. Operator default: show only. The task "Use OADM as NTP server" is
-`task:oadm.ntp-server.use`.

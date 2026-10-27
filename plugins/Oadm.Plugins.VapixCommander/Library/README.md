@@ -1,11 +1,10 @@
 # VAPIX Commander command library
 
-The bundled commands of the VAPIX Commander plugin. One file per category,
-`<Category>.json` = `{ "formatVersion": 1, "category": "...", "commands": [ ... ] }`, in the format
-of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated against `plugins/Oadm.Plugins.VapixCommander/Schema/command.schema.json`.
-`I/O` lives in `IO.json` because `/` cannot be part of a file name, `Siren and light` in `SirenAndLight.json`.
+The bundled commands of the [VAPIX Commander](../README.md), in the format of
+[command-format.md](../Schema/command-format.md) (one file per category, see
+[Categories and files](../Schema/command-format.md#categories-and-files)).
 
-176 commands: 62 readers (`writes: false`) and 114 setters/actions (`writes: true`, 17 of them `dangerous`).
+176 commands: 62 readers (`writes: false`) and 114 setters and actions (`writes: true`, 17 of them `dangerous`).
 
 | Category | Commands | File |
 |---|---|---|
@@ -37,7 +36,7 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 - **Setters** are named "Set ..." or say what they do ("Restart device"). Restart, factory default,
   firmware rollback, capture mode (restarts), network addressing/DNS/host name, HTTP security policies
   and all user changes are `dangerous: true`. Formatting a disk and removing an application are too.
-- **Video**: every Video, Image and PTZ command sets `hasVideoOnly: true` (plus tampering and snapshot).
+- **Video**: every Video, Image and PTZ command sets `hasVideoOnly: true`, and so do the tampering commands.
 - **Indexes**: `source` = `ImageSource.I#` (0-based sensor), `channel` = `Image.I#` (0-based video
   channel), `camera` = VAPIX camera number (1-based, ptz.cgi, overlays, Zipstream).
 - **JSON APIs** send `"apiVersion": "1.0"` (`"2.0"` for supervised I/O) and `"context": "oadm"`.
@@ -47,7 +46,8 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
   Legacy CGIs without an own id (`systemlog.cgi`, `serverreport.cgi`, `geolocation/*.cgi`,
   `io/port.cgi`, `virtualinput/*.cgi`, `/vapix/services` SOAP) require `param-cgi 1.0` as the
   always-present baseline. Mapping of the other CGIs: `pwdgrp.cgi` = `user-management`,
-  `applications/*.cgi` = `packagemanager`, `ptz.cgi`/`ptzconfig.cgi` = `ptz-control`,
+  `applications/*.cgi` = `application` (identified by a parameter and added to the API list when the device does not
+  name it, `LegacyApiList`), `ptz.cgi`/`ptzconfig.cgi` = `ptz-control`,
   `jpg/image.cgi` = `media-cgi`, `privacymask.cgi` = `privacy-mask`, `disks/*.cgi` = `disk-management`,
   `disks/networkshare/*` = `disk-network-share`, `record/list.cgi` = `recording`,
   `mediaclip.cgi` = `mediaclip`, `firmwaremanagement.cgi` = `fwmgr`.
@@ -59,6 +59,7 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 - **Booleans** in param.cgi render `yes`/`no`; parameters with other spellings set `trueValue`/`falseValue`
   (`System.AccessLog` On/Off, `System.BoaProtViewer` anonymous/password, WS-Discovery Yes/No,
   `PTZ.ImageSource.I#.PTZEnabled` true/false).
+- **Enum fields** are only used in strings; JSON numbers use integer fields (MQTT QoS).
 - **Passwords** (`users.add`, `users.password.set`, `events.mqtt.client.configure`) only travel in POST
   bodies (form or JSON), never in the URL; a test enforces this.
 - **Siren and light** (`siren_and_light.cgi`, API `siren-and-light` 1.0; AXIS D4100-E, D4200-VE and other strobes and
@@ -76,9 +77,11 @@ of `plugins/Oadm.Plugins.VapixCommander/Schema/command-format.md`, validated aga
 Every parameter, method and response path was checked against developer.axis.com and, where possible
 without writing, against the development camera (AXIS P3265-V Dome Camera, AXIS OS 12.11.77):
 
-- **Readers**: all 59 were executed on the development camera by the hardware test (HTTP 2xx, no VAPIX error, every
-  `response.extract` resolved). `image.light.info` reached the device, which answers with its documented
-  error 1005 "No light hardware found" (the model lists `light-control` but has no IR light).
+- **Readers**: the 58 readers outside Siren and light were executed on the development camera by the hardware test
+  (HTTP 2xx, no VAPIX error, every `response.extract` resolved), and on every dev camera (AXIS OS 10.12, 11.9 and 12.11:
+  P3265-V, M3215-LVE, M3206-LVE, P12 Mk III). `image.light.info` answers its documented error 1005 "No light hardware
+  found" on a camera that lists `light-control` without lights; the I/O port readers are skipped on a camera without
+  ports.
 - **param.cgi setters**: every parameter name and every enum/boolean value the command can send was
   checked against `param.cgi?action=listdefinitions&listformat=xmlschema` read on the development camera (the
   device's own type definitions). They were never sent.
@@ -90,7 +93,7 @@ Recorded responses of 20 readers are in
 `tests/Oadm.Plugins.VapixCommander.Library.Tests/Fixtures/<command id>.txt`; a test checks that every
 extract of those commands resolves on them.
 
-### Tests
+## Tests
 
 `tests/Oadm.Plugins.VapixCommander.Library.Tests` (no reference to the plugin projects):
 
@@ -103,7 +106,8 @@ extract of those commands resolves on them.
   `dangerous` implies `writes`, restart/factory default/network/user changes are dangerous;
 - docs links point to developer.axis.com, no `Authorization` header, passwords never in the URL;
 - default rendering leaves no placeholder behind; JSON numbers/booleans stay typed;
-- **Hardware** (`Category=Hardware`, needs `dev-cameras.yaml` or `OADM_DEV_CAMERAS`): runs every reader
+- every requirement matches the major versions a real AXIS OS 12.11 camera lists (`Fixtures/apilist-p3265v-12.11.json`);
+- **Hardware** `ReaderHardwareTests` (`Category=Hardware`, needs `dev-cameras.yaml` or `OADM_DEV_CAMERAS`): runs every reader
   whose `requires` are met on each dev camera with a minimal standalone HTTP client (Digest, Basic over
   HTTPS only, any certificate). `OADM_RECORD_FIXTURES=<folder>` saves the responses.
 
@@ -112,7 +116,7 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category!=H
 dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Hardware
 ```
 
-### Notes from the development camera
+## Notes from the development camera
 
 - JSON CGIs answer `Content-Type: application/json; charset=utf8`; .NET `ReadAsStringAsync` throws on
   `utf8`, so clients must decode the bytes as UTF-8 themselves.
@@ -131,31 +135,13 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Ha
 - `usermanagement.cgi` does not exist although `user-management 1.2` is listed; users are managed via
   `pwdgrp.cgi`.
 
-## What the engine must support (format notes)
+## Limits of format v1
 
-The library relies on these readings of command-format.md, which the engine must implement:
-
-1. `response.extract` `param`/`path` may contain `{{placeholders}}` (e.g. `Image.I{{channel}}.Stream.FPS`)
-   and `path` segments may be array indices (`data.devices.0.IPv4.addresses.0.address`). Arrays and
-   objects are shown as compact JSON. `param` keys are matched without the `root.` prefix and with
-   surrounding quotes removed (`pwdgrp.cgi action=get` answers `admin="root,joe"`).
-2. Query keys and values are URL-encoded by the engine (`io.output.pulse` sends `action=1:/1000\`).
-3. A JSON body string that is exactly `"{{field}}"` keeps the type of integer, number and boolean fields;
-   enum fields are only used in strings (JSON numbers use integer fields, e.g. MQTT QoS).
-4. `raw` for `jpg/image.cgi` returns JPEG bytes; the step detail should show size and content type, not
-   a text excerpt.
-
-Gaps in format v1 found while writing the library:
-
-- `requires` only knows `getApiList` ids. REST APIs (`/config/discover`) and legacy CGIs without an id
-  cannot be expressed; legacy CGIs use `param-cgi 1.0`, REST APIs were left out.
-- `text` has no failure rule, so a legacy CGI that reports `Error: ...` with HTTP 200 would count as
-  success; such commands use `param-cgi`. A `response.errorPattern` would be cleaner.
-- `extract` has no XML form (disk list, Zipstream status, geolocation, SOAP lists show the raw body);
-  an XPath-like `xpath` would let them show values.
-- No list field type: a server list needs one fixed field per entry, so `network.dns.set` and
-  `time.ntp.static.set` set exactly one server.
-- Placeholders in JSON object keys are unspecified, so custom HTTP header *set* was left out.
+- `requires` only knows API list ids: REST-only APIs were left out (see above).
+- `extract` has no XML form (disk list, Zipstream status, geolocation, SOAP lists show the raw body).
+- No list field type: a server list needs one fixed field per entry, so `network.dns.set` and `time.ntp.static.set` set
+  exactly one server.
+- Placeholders in JSON object keys are not defined, so setting a custom HTTP header was left out.
 
 ## All commands
 

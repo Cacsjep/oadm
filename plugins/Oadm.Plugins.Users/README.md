@@ -1,6 +1,7 @@
-# Oadm.Plugins.Users
+# Users (`oadm.users`)
 
-Task plugin `oadm.users`: **Users** in the device context menu, group Users, no toolbar button. One dialog
+Task plugin with a dialog (`.Client`), always on: **Users** in the device context menu, group Users, no toolbar
+button. One dialog
 to **Add** a user, **Change** a password or role, or **Remove** users on every selected device (one task
 per device). Task names: "Add user joe", "Change password joe" (password only), "Change role joe" (role or
 PTZ only), "Change user joe" (both), "Remove user joe", "Remove users joe, ann". Never the password.
@@ -11,12 +12,10 @@ PTZ only), "Change user joe" (both), "Remove user joe", "Remove users joe, ann".
 | Client (Avalonia dialog) | `plugins/Oadm.Plugins.Users.Client` | `Oadm.Plugins.Users.Client.dll` |
 | Tests | `tests/Oadm.Plugins.Users.Tests` | |
 
-Both parts deploy to `artifacts/plugins/oadm.users/`. The client references the server project for
-the shared payload, roles and validation rules (`UsersContract.cs`, `CredentialRules.cs`,
-`UserChangePlanner.ValidatePayload`). The SDKs, Avalonia and CommunityToolkit.Mvvm come from the host
-and are never copied.
+The client references the server project for the shared payload, roles and validation rules (`UsersContract.cs`,
+`CredentialRules.cs`, `UserChangePlanner.ValidatePayload`).
 
-## VAPIX research
+## Device API
 
 - **API discovery id `user-management` is pwdgrp.cgi** (VAPIX "System settings > User
   management", `/axis-cgi/pwdgrp.cgi`, AXIS OS 5.00+). AXIS P3265-V on AXIS OS 12.11.77 lists it
@@ -34,7 +33,7 @@ and are never copied.
 - Roles (as in ADM and the device web UI): Administrator = `admin:operator:viewer`,
   Operator = `operator:viewer`, Viewer = `viewer`; PTZ control appends `:ptz`.
 - AXIS OS before 11.5: the first account must be `root` (Administrator with PTZ), cannot be
-  deleted and is created only once. Since 11.5 the first administrator may have any name; the only
+  deleted and is created only once. From 11.5 the first administrator may have any name; the only
   rule is "Administrator with PTZ".
 - AXIS OS 12: passphrase policy (systemready `passphrasepolicy`: none, length = at least 15
   characters, complex = at least 12 with upper, lower, digit, special). SSH accounts are a separate
@@ -42,7 +41,7 @@ and are never copied.
 - `usergroup.cgi` returns the name and groups of the authenticated account (`root` /
   `admin operator viewer ptz`); the plugin uses it to know which account OADM itself uses.
 
-## Decision table (per device, decided again in `ExecuteAsync` from a fresh API list)
+### Per device (decided again in `ExecuteAsync` from a fresh API list)
 
 | Fresh `getApiList` contains | Used API | Result |
 |---|---|---|
@@ -55,7 +54,32 @@ and are never copied.
 `CanRun` applies the same `user-management` 1.0 check to the cached `device.Apis`, so the menu entry
 is hidden for devices whose API list is unknown or incompatible.
 
-## Per-device steps
+## Lock-out protection
+
+Refused with "Nothing was changed" (device fails, other devices continue):
+- removing, demoting, or changing the password of the account OADM is authenticated as
+  (from usergroup.cgi, case-insensitive);
+- removing or demoting the last administrator;
+- removing `root` on AXIS OS older than 11.5 (or unknown firmware);
+- changing or removing any user when the OADM account cannot be determined.
+Remove payloads: `userNames` (list, at most 50, duplicates dropped; `userName` alone when the list is empty).
+The dialog shows no general warning text; in Change mode it warns when the user name is the OADM
+account of the first selected device. In Remove mode protected rows (the OADM account, the last
+administrator) are greyed and cannot be selected; their tooltip says why.
+
+## Dialog
+
+Mode (Add / Change / Remove), user name (Add and Change only), password + confirm with the policy hint,
+role (Administrator, Operator, Viewer) and PTZ, the existing users of the first selected device (read-only
+query `listUsers`, with a note when several devices are selected; a `ui:LoadingOverlay` "Reading the users" over the
+list until it answers, the left card stays usable), and a summary for N devices. Clicking a
+user in Add or Change fills the user name (still editable) and switches Add to Change. In Remove mode the
+users are picked in the Existing users list (click, Ctrl/Shift for several; the window forwards the grid
+selection to `SetSelectedUsers`); there is no user name field, the left card lists the chosen users ("Users to remove")
+with a one-line note on the protected accounts, and **Remove user** / **Remove users** is the red danger button. Users missing on other
+selected devices are skipped there with a warning. Returns the payload JSON; the password lives only in memory.
+
+## Task steps
 
 1. Validate the payload (user name, password against the base rule, mode). Bad input fails the
    device with "Nothing was changed" before any request.
@@ -79,33 +103,6 @@ exist. The write and Verify users are then Skipped; with several users to remove
 are Skipped. Passwords never appear in step names or details, logs, warnings, exception messages or
 URLs (tested).
 
-## Lock-out protection
-
-Refused with "Nothing was changed" (device fails, other devices continue):
-- removing, demoting, or changing the password of the account OADM is authenticated as
-  (from usergroup.cgi, case-insensitive);
-- removing or demoting the last administrator;
-- removing `root` on AXIS OS older than 11.5 (or unknown firmware);
-- changing or removing any user when the OADM account cannot be determined.
-Remove payloads: `userNames` (list, at most 50, duplicates dropped; `userName` alone still works).
-The dialog shows no general warning text; in Change mode it warns when the user name is the OADM
-account of the first selected device. In Remove mode protected rows (the OADM account, the last
-administrator) are greyed and cannot be selected; their tooltip says why.
-
-## Dialog
-
-Mode (Add / Change / Remove), user name (Add and Change only), password + confirm with the policy hint,
-role (Administrator, Operator, Viewer) and PTZ, the existing users of the first selected device (read-only
-query `listUsers`, with a note when several devices are selected; a `ui:LoadingOverlay` "Reading the users" over the
-list until it answers, the left card stays usable), and a summary for N devices. Clicking a
-user in Add or Change fills the user name (still editable) and switches Add to Change. In Remove mode the
-users are picked in the Existing users list (click, Ctrl/Shift for several; the window forwards the grid
-selection to `SetSelectedUsers`); there is no user name field, the left card lists the chosen users ("Users to remove")
-with a one-line note on the protected accounts, and **Remove users** is the red danger button. Users missing on other
-selected devices are skipped there with a warning. Plain Avalonia controls with the host theme
-classes (`primary`, `secondary`, `fieldLabel`, `card`, ...), no colors or font sizes of its own.
-Returns the payload JSON; the password lives only in memory.
-
 ## Permissions
 
 Keys `task:oadm.users:add`, `:update`, `:remove` (all three full device control). `RequiredPermissions` names the
@@ -114,4 +111,12 @@ default: add and update, not remove.
 
 ## Device groups
 
-SDK 0.4.0 (`minSdkVersion` 0.4.0, docs/spec/device-scope.md): the tasks run only on devices of the user's view (the host refuses the whole run otherwise) and touch only their own device; the query `listUsers` reads only the queried device, which the host checks. Tests: the host scopes the run and the queried device (server `DeviceGroups/CanaryTests`, TaskService cases).
+The tasks run only on devices of the user's view and touch only their own device; the query `listUsers` reads only the
+queried device ([device groups](../../docs/spec/device-scope.md)). Tests: server `DeviceGroups/CanaryTests`, TaskService
+cases.
+
+## Tests
+
+`tests/Oadm.Plugins.Users.Tests`: credential rules, `pwdgrp.cgi` parsing from recorded answers (`Fixtures/`), the
+planner and its lock-out rules, the task with a fake device (no password in any text), the dialog view model, Perf
+scale tests and a headless screenshot.

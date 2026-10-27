@@ -1,8 +1,9 @@
-# Edge storage (core plugin)
+# Edge storage (`oadm.edge-storage`)
 
-Id `oadm.edge-storage`, rail page **Edge storage** (group Maintenance, icon `hardDrive`), **off by default**, switchable.
-The SD card of the chosen cameras in one table, and the tools of the camera's web interface for many cameras at once: check,
-repair, format, encryption on or off, retention. SD cards only (network shares are not listed or changed).
+Core plugin with a rail page in group Maintenance (icon `hardDrive`), with `.Client`, off by default. The SD cards of the
+chosen cameras in one table, and the tools of the camera's web interface for many cameras at once: check, repair, format,
+encryption on or off, retention. SD cards only (network shares are not listed or changed). Spec:
+[Bundled plugins](../../docs/spec/bundled-plugins.md#edge-storage-core-plugin).
 
 ## Decisions
 
@@ -13,35 +14,16 @@ repair, format, encryption on or off, retention. SD cards only (network shares a
 | Reads per camera | `disks/list.cgi?diskid=all`, `disks/gethealth.cgi`, `disks/properties/getdiskalertlevels.cgi` (the last two optional: a failure leaves the wear empty). Certificate changed, Credentials required, Password not set and Unreachable devices are not contacted. |
 | Row states (the page's count cards) | OK; Worn (wear at or past the camera's wear alert level, default 90 %); Problems (failed, not in use, read-only, locked, encrypted and cannot be opened, the shared `EdgeDisk.ProblemText`); No SD card; Not read (with the reason). In the code: `CardStates.Ok`, `Warning`, `Problem`, `NoCard`, `Error`. |
 | Tools | Started only from the page, on the selected rows that have a card; one task per camera (`oadm.edge-storage.task`, `ShowInMenus` false), progress in the tasks pane below the page. The table reads the camera again when its task ends. |
-| Rights | "show" (Operator, Viewer); "Change storage settings" (`manage`: check, retention; Operator yes); "Format and encrypt storage" (`format`: format, repair, encryption on / off; deletes recordings, full device control, Operator no). The page hides the tools the role lacks; the server checks the method's right, and an action sent through the other method is refused. Both methods are audited. |
 | Confirmation | Check: "Recording stops until the check is finished." Format and Turn off encryption: "Every recording ... is deleted." (red confirm "Format"). Repair: "Damaged recordings can be lost." Encrypt: a dialog with the passphrase twice and a red "Encrypt and format". Format is the only red toolbar button, last after a separator. |
 | Passphrase | 1 to 512 bytes, no control characters (checked on the page, in the plugin method and in the task). Kept in memory only: the payload of the run and the POST body to the camera; never stored, logged or in a URL (`TaskPayload.ToString` leaves it out). |
 | Retention | 0 to 7,000 days; 0 = no age limit ("No age limit, keep them until the card is full"). The task skips a camera that has the value already. |
 | Cancel | Before the card is unmounted the task stops; from the unmount on it finishes its steps (a card is never left unmounted, the camera finishes its job anyway). |
 | Failures | The card is mounted again after any failure, also when the unmount answer was lost (the mount step reads the card first); the first failure stays the task's error, a failed mount after it is logged. Up to 5 lost job status answers in a row are asked again. Encrypt on an encrypted card: "The SD card is encrypted already. Nothing was changed." |
-| Device groups | SDK 0.4.0 (`minSdkVersion` 0.4.0). One table per device scope (`DeviceSweeps<StorageRow>`): the users of a device group share the table of their group's cameras, `rows` and `state` reach only them (`PluginEventAudience.DeviceScope`). `read` with ids from a user limited to a device group and the runs (`change`, `format`) refuse the whole request when any camera is outside the caller's devices (NOT_FOUND "1 device is no longer available.", like an unknown id; nothing read, no task); a user with all devices gets the cameras that still exist (`CallDevices.KnownAsync`: removed ones are skipped); `read` without ids = the caller's cameras; runs start through the caller's task runner. After a task the camera is read again in every table that has its row. A deleted group has no table. `read` and `getState` answer only rows of cameras the caller sees now (`DeviceSweep.SnapshotAsync`): a camera that left the group (tag or site change, before the group's rows are pruned) drops out of the table at once and its removal goes out with the next batch; reading a camera again after a task removes the row of a camera no longer in the scope. When the caller's cameras cannot be listed the state comes without rows. |
 | Page | The read's end comes as an event; the page also asks for the state every second while a read runs (an event sent before the watch connected is lost). |
 
-## Task steps
+## Device API
 
-| Action | Steps |
-|---|---|
-| Check | Check compatibility, Read the SD card, Unmount the SD card, Check the SD card, Mount the SD card |
-| Repair | ... Unmount the SD card, Repair the SD card, Mount the SD card |
-| Format | ... Unmount the SD card, Format the SD card, Mount the SD card |
-| Encrypt | ... Unmount the SD card, Turn on encryption, Format the SD card, Mount the SD card |
-| Turn off encryption | ... Unmount the SD card, Turn off encryption, Format the SD card, Mount the SD card |
-| Retention | Check compatibility, Read the SD card, Set the retention (read again to verify; Skipped "Already 7 days.") |
-
-Task names: "Check SD card", "Repair SD card", "Format SD card", "Encrypt SD card", "Turn off SD card encryption", "Set SD
-card retention to 30 days", "Remove SD card retention limit". A failed step fails the task; "Mount the SD card" still runs
-when the card was unmounted. Without a card: "No SD card. Nothing was changed."; turning off encryption on a card that is
-not encrypted: "The SD card is not encrypted. Nothing was changed." Before the first write the task reads a fresh API list
-and requires `disk-management` 1.x (and `disk-properties` 1.x for retention and encryption).
-
-## Device API (VAPIX Edge storage)
-
-Verified on an AXIS Q1615 Mk III (AXIS OS 12.11.118, 64 GB card, loan camera) on 2026-10-13, read-only on an AXIS P3265-V
+VAPIX Edge storage, verified on an AXIS Q1615 Mk III (AXIS OS 12.11.118, 64 GB card), read-only on an AXIS P3265-V
 (12.11.77) and an AXIS M3215-LVE (12.11.77, no card):
 
 - `disks/list.cgi?diskid=all`: sizes in kB of 1,024 bytes (57,922,892 kB = 59.3 GB), `cleanupmaxage`, `status` (OK =
@@ -62,7 +44,40 @@ Verified on an AXIS Q1615 Mk III (AXIS OS 12.11.118, 64 GB card, loan camera) on
   use"); disk properties errors are `GeneralError` codes (100 no encryption, 110 passphrase, 140 already encrypted, 150 not
   mounted, 160 mounted, 170 max age) with plain texts in `StorageTexts`.
 
-Research answers: `tests/Oadm.Plugins.EdgeStorage.Tests/Fixtures/`.
+Recorded answers: `tests/Oadm.Plugins.EdgeStorage.Tests/Fixtures/`.
+
+## Task steps
+
+| Action | Steps |
+|---|---|
+| Check | Check compatibility, Read the SD card, Unmount the SD card, Check the SD card, Mount the SD card |
+| Repair | ... Unmount the SD card, Repair the SD card, Mount the SD card |
+| Format | ... Unmount the SD card, Format the SD card, Mount the SD card |
+| Encrypt | ... Unmount the SD card, Turn on encryption, Format the SD card, Mount the SD card |
+| Turn off encryption | ... Unmount the SD card, Turn off encryption, Format the SD card, Mount the SD card |
+| Retention | Check compatibility, Read the SD card, Set the retention (read again to verify; Skipped "Already 7 days.") |
+
+Task names: "Check SD card", "Repair SD card", "Format SD card", "Encrypt SD card", "Turn off SD card encryption", "Set SD
+card retention to 30 days", "Remove SD card retention limit". A failed step fails the task; "Mount the SD card" still runs
+when the card was unmounted. Without a card: "No SD card. Nothing was changed."; turning off encryption on a card that is
+not encrypted: "The SD card is not encrypted. Nothing was changed." Before the first write the task reads a fresh API list
+and requires `disk-management` 1.x (and `disk-properties` 1.x for retention and encryption).
+
+## Compliance check "SD card"
+
+`SdCardCheck` (type `oadm.edge-storage.sd-card`, group Storage; see [Compliance](../../docs/spec/compliance.md)): the device has an SD card
+that works (`EdgeDisk.ProblemText` is none), optionally at least N GB and / or N % free. A device without a card fails
+"No SD card": the user chose the devices the check is for. Read only: one `disks/list.cgi` per device and run (shared
+key `oadm.edge-storage:disks`). Available while Edge storage is on. Tests `SdCardCheckTests` (recorded
+disk lists).
+
+## Permissions
+
+"show" (Operator, Viewer); "Change storage settings" (`manage`: check, retention; Operator yes); "Format and encrypt storage" (`format`: format, repair, encryption on / off; deletes recordings, full device control, Operator no). The page hides the tools the role lacks; the server checks the method's right, and an action sent through the other method is refused. Both methods are audited.
+
+## Device groups
+
+One table per device scope (`DeviceSweeps<StorageRow>`): the users of a device group share the table of their group's cameras, `rows` and `state` reach only them (`PluginEventAudience.DeviceScope`). `read` with ids from a user limited to a device group and the runs (`change`, `format`) refuse the whole request when any camera is outside the caller's devices (NOT_FOUND "1 device is no longer available.", like an unknown id; nothing read, no task); a user with all devices gets the cameras that still exist (`CallDevices.KnownAsync`: removed ones are skipped); `read` without ids = the caller's cameras; runs start through the caller's task runner. After a task the camera is read again in every table that has its row. A deleted group has no table. `read` and `getState` answer only rows of cameras the caller sees now (`DeviceSweep.SnapshotAsync`): a camera that left the group (tag or site change, before the group's rows are pruned) drops out of the table at once and its removal goes out with the next batch; reading a camera again after a task removes the row of a camera no longer in the scope. When the caller's cameras cannot be listed the state comes without rows. See [Device groups](../../docs/spec/device-scope.md).
 
 ## Shared code
 
@@ -70,8 +85,7 @@ Research answers: `tests/Oadm.Plugins.EdgeStorage.Tests/Fixtures/`.
   Export and Hardening scan link it as source.
 - `plugins/Shared/DeviceSweep.cs` (server) and `plugins/Shared/SweepRows.cs` (page): the on-request table, shared with the
   Image Health Dashboard (one sweep at a time, ordered events, a late read never overwrites a newer row, a failed sweep is
-  logged). `DeviceMessages.Refusal` (SDK) and `PluginEventWatch.RunAsync` (client SDK) are used by Edge storage and Image
-  Health; older plugins still have private copies.
+  logged). Also used: `DeviceMessages.Refusal` (SDK) and `PluginEventWatch.RunAsync` (client SDK).
 
 ## Tests
 
@@ -81,11 +95,3 @@ that answers like the Q1615 Mk III, 403 while mounted), the plugin's table and r
 plugin in process, the dialogs, headless screenshots (`edge-storage-*.png`), Perf (5,000 cameras read, searched and
 selected). Opt-in `StorageHardwareWriteTests` (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`; **formats the card**):
 every tool on one camera, the card ends as it started; passed on the Q1615 Mk III (1 min 34 s).
-
-## Compliance check "SD card"
-
-`SdCardCheck` (type `oadm.edge-storage.sd-card`, group Storage; see `docs/spec/compliance.md`): the device has an SD card
-that works (`EdgeDisk.ProblemText` is none), optionally at least N GB and / or N % free. A device without a card fails
-"No SD card": the user chose the devices the check is for. Read only: one `disks/list.cgi` per device and run (shared
-key `oadm.edge-storage:disks`). Available while Edge storage is on (off by default). Tests `SdCardCheckTests` (recorded
-disk lists).

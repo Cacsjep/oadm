@@ -1,34 +1,26 @@
-# Hardening scan (core plugin)
+# Hardening scan (`oadm.hardening-scan`)
 
-Plugin id `oadm.hardening-scan`, rail page **Hardening scan** (icon `clipboardCheck`; `shield` already draws Lucide
-shield-check for the PKI). Server part `Oadm.Plugins.HardeningScan.Server.dll`, page `Oadm.Plugins.HardeningScan.Client.dll`.
-
-Scans the chosen devices against the **AXIS OS Hardening Guide**
-(https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels, **Basic hardening** and **Extended hardening**.
-The grid has one column per check and a pass / warn / fail icon per device. Read-only: `param.cgi action=list`, VAPIX
-`get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. Never a write.
+Core plugin with a rail page in group Security (icon `clipboardCheck`), with `.Client`, off by default. Scans the chosen
+devices against the [AXIS OS Hardening Guide](https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels,
+Basic hardening and Extended hardening; one column per check, a pass / warn / fail icon per device. Read only: never a
+write. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#hardening-scan-core-plugin).
 
 ## Decisions
 
-1. **Latest AXIS OS (B2)** is information only: the column shows the version, no rating (OADM has no source for the current
-   AXIS OS versions yet).
-2. The extras **X1-X6** (HTTPS only, IEEE 802.1X, brute-force protection, access log, signed video, NTS) are columns of
-   **Extended only**; Basic is exactly the guide's Basic list.
-3. **SSH on = fail**; web interface, discovery protocols and DHCP = warn.
-4. **Bonjour on = warn** like the guide; the tooltip says that OADM's Discovery and the re-find of moved devices use it.
-5. **No audit entry** for a scan (read-only, like the Snapshot report).
-6. **SDK change**: `IDeviceInfo` has `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` (DIM null), filled from the server's
-   device table and the client's device rows. The scan reads the parameters only when they are null.
-7. **The last results are kept** per device and level on the server (plugin setting `results`) and shown with their scan
-   time after a restart.
-8. **Scheduled scans later** (with the general scheduling goal); v1 scans on demand.
-9. **Device choice**: the page shows and scans only the devices of its choice (the shared
-   `PageDeviceChoice`: All devices, tags, chosen devices; every managed device fits). It starts with the Devices page
-   selection, else the last choice on this computer (`GetLocalSetting` / `SetLocalSetting`), else nothing. Choosing does
-   not start a scan. The server keeps the results of every scanned device; the page filters them to its choice.
+| Topic | Decision |
+|---|---|
+| Reads only | `param.cgi action=list`, VAPIX `get*` / `list` methods, `config/rest` GETs and the SOAP `Get*` read. |
+| Latest AXIS OS (B2) | Information only: the column shows the version, no rating (OADM has no source for the current AXIS OS versions). |
+| Extras X1-X6 | HTTPS only, IEEE 802.1X, brute-force protection, access log, signed video, NTS: columns of Extended only; Basic is exactly the guide's Basic list. |
+| Severity | SSH on = fail; web interface, discovery protocols and DHCP = warn. Bonjour on = warn like the guide; the tooltip says that OADM's Discovery and the re-find of moved devices use it. |
+| Audit | No audit entry for a scan (read only, like the Snapshot report). |
+| Device facts | `IDeviceInfo.DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` come from the server's device table; the scan reads the parameters only when they are null. |
+| Results | The last result per device and level is kept on the server (plugin setting `results`) and shown with its scan time after a restart. Scans run on demand. |
+| Device choice | The page shows and scans only the devices of its choice (`PageDeviceChoice`: All devices, tags, chosen devices). It starts with the Devices page selection, else the last choice on this computer, else nothing. Choosing does not start a scan. The server keeps the results of every scanned device; the page filters them to its choice. |
 
-## Evidence (AXIS P3265-V, AXIS OS 12.11.77, read-only)
+## Device API
 
+Recorded read-only on an AXIS P3265-V (AXIS OS 12.11.77).
 All reads answered 200 over HTTP Digest. Recorded answers (secrets blanked: SNMP communities, OAuth verify field; LLDP
 neighbors trimmed) in `tests/Oadm.Plugins.HardeningScan.Tests/Fixtures/` (`config/discover` is linked from the PKI tests):
 
@@ -104,47 +96,31 @@ feature or API. Info rows are not shown on the page.
 Score = passed / rated checks (Pass, Warn, Fail, Error count; n/a and info do not). A device **passes** when no checked column
 of the level is Warn or Fail.
 
-## Server
+## How it works
 
 - `HardeningScanPlugin : ICorePlugin`, no task plugins. `RequiredRole` = Operator for every method, `IsAudited` false.
+- Checks without a device: `CacheOnly` for devices that are not contacted (B2, B15, E3 from the cache, the rest Error with
+  the reason).
 - `Checks/HardeningCatalog.cs` (id, level, section, title, header, rule, recommendation, info, rated, note) and
-  `Checks/HardeningChecks.cs` (`Evaluate(DeviceFacts)`: pure functions). `CacheOnly` for devices that are not contacted (B2,
-  B15, E3 from the cache, the rest Error with the reason).
+  `Checks/HardeningChecks.cs` (`Evaluate(DeviceFacts)`: pure functions).
 - `Device/DeviceFactsReader.cs`: param.cgi (one call, all groups of both levels), pwdgrp get, `config/discover` once, then the
   REST GETs it lists (user-management v2, firewall v1, lldp v1; Extended: snmp v1, oidcsetup v1), `getNTPInfo` (ntp API) or
   the Time parameters, `disks/list.cgi` (disk-management API or an SD slot), applications list + AllowUnsigned (application
-  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device, 16 devices at once (plugin
-  setting `config.parallelism`, 1..64). A failed read sets only its
+  API), Extended: the SOAP web server read. 15 s per request, no retries, 2 min per device. A failed read sets only its
   checks to Error ("Timeout after 15 s", "Unauthorized - HTTP 401 (check the credentials)": the shared SDK `DeviceMessages` texts). When param.cgi gets no
   answer or is refused, the other reads are skipped with the same text (row status). Readers compiled in from other plugins
   (`<Compile Include ... Link>`, never a project reference): Users `PwdgrpApi`, Date and time `Model/` + `Vapix/`, ACAP
-  `ApplicationApiClient` + `Shared/`, PKI `WebServerTls` + `DeviceHttp`, Snapshot report `SnapshotRequests` (error texts and
+  `ApplicationApiClient` + `Shared/`, PKI `WebServerTls` + `DeviceHttp` + `DeviceSoap`, Edge storage `Disks/`, Snapshot report `SnapshotRequests` (error texts and
   refused statuses). Every device XML through `DeviceXml`.
 - Not contacted: CertificateChanged, CredentialsRequired, PasswordNotSet (the snapshot report's texts) and Unreachable
   ("Unreachable - the device did not answer the last status check").
 - `Scanning/HardeningScanService.cs`: one scan at a time (`startScan` while one runs returns it), at most 16 devices at once
-  for the plugin, the scans of every device scope together (one `SemaphoreSlim`; plugin setting `config`
-  `{"parallelism": 1..64}`), progress and changed rows as events every 500 ms (`results` split at
+  for the plugin, the scans of every device scope together (one `SemaphoreSlim`; plugin setting `config.parallelism`,
+  1..64), progress and changed rows as events every 500 ms (`results` split at
   1,000 rows and below the 1 M character event limit), `cancelScan` keeps what was scanned.
 - `Scanning/ResultStore.cs`: the last result per device and level, written to the plugin setting `results` at most every
   2 s and at the end of a scan; at most 30,000 devices per level (the device limit `DeviceLimits.MaxDevices`, oldest dropped), values cut at 160 and details at 600
   characters; results of removed devices are dropped on `getState`.
-- Methods (`HardeningMethods`, camelCase JSON, `Shared/HardeningModels.cs`): `getState` -> catalog, column ids, compact results
-  (one state character per column `p w f n e i -` plus the short values) and the job; `startScan {level, deviceIds}` -> job;
-  `cancelScan {jobId}` -> job; `getDetail {deviceIds}` -> the stored results with details. Events `progress`, `results`.
-- Device groups (SDK 0.4.0): every method works on the user's view. One scan at a time per device scope (all devices, or
-  one device group); a scan is a job of its user (`ctx.Jobs`) and reads through the user's view. The scope's users share
-  it: `startScan` of a second user returns the running scan, and every user of the scope may stop it (decision
-  2026-10-23); the running scan is found by the caller's scope key. A scan of another scope, an ended one of another user
-  and an unknown id answer "The scan has ended or was started by another user.". For a user with a device
-  group a device outside the group answers like an unknown one (NOT_FOUND, the whole request is refused), an empty list
-  means the user's view, `getState` returns only the results of the user's devices (removed devices are dropped only by a
-  view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a
-  group's scan also to users with all devices). A device that leaves a group user's devices during the scan gets no row:
-  its result (also the error of the refused read) is neither stored nor published. The overload without a call
-  (in-process callers) uses the plugin's context. A user without devices (`OwnerScope.HasNoDevices`) gets no scan:
-  `startScan` refuses ("Your account has no devices."), `cancelScan` answers like an unknown id, `getState` has no scan.
-  A finished scan's token source is disposed only after its run ended (its stop registration may still fire).
 
 ## Page
 
@@ -175,14 +151,27 @@ of the level is Warn or Fail.
 
 CSV (UTF-8 with BOM, RFC 4180 quoting, CRLF) of the shown rows: Address, MAC address, Model, AXIS OS, Last scan (UTC), Score,
 Status, then per check of the level two columns: the result (`pass`, `warn`, `fail`, `n/a`, `error`, `info`, empty = not
-scanned) and the value found. Built on the client from the loaded results (the short values; details are not exported). A PDF
-report like the snapshot report is a later option.
+scanned) and the value found. Built on the client from the loaded results (the short values; details are not exported).
 
-## Fake mode
+## Methods
 
-`src/Oadm.Client/Api/FakeOadmApi.HardeningScan.cs`: deterministic results per fake device (most pass, some warn on SSH,
-discovery and DHCP, some fail on ciphers / SNMP v2c, error rows for devices with a bad status), a Basic scan of the day before
-at start, and a scan simulated over 3 s with progress and result events.
+`HardeningMethods` (camelCase JSON, `Shared/HardeningModels.cs`); events `progress`, `results`.
+
+| Method | Payload | Answer | Permission |
+|---|---|---|---|
+| `getState` | none | catalog, column ids, compact results (one state character per column `p w f n e i -` plus the short values) and the job | show |
+| `startScan` | {level, deviceIds} | the job | scan |
+| `cancelScan` | {jobId} | the job | scan |
+| `getDetail` | {deviceIds} | the stored results with details | show |
+
+## Permissions
+
+`oadm.hardening-scan:show` (results, details, export) and `:scan` "Run scans" (`startScan`, `cancelScan`). Without
+"scan" the scan buttons are hidden. Operator default: both.
+
+## Device groups
+
+Every method works on the user's view. One scan at a time per device scope (all devices, or one device group); a scan is a job of its user (`ctx.Jobs`) and reads through the user's view. The scope's users share it: `startScan` of a second user returns the running scan, and every user of the scope may stop it; the running scan is found by the caller's scope key. A scan of another scope, an ended one of another user and an unknown id answer "The scan has ended or was started by another user.". For a user with a device group a device outside the group answers like an unknown one (NOT_FOUND, the whole request is refused), an empty list means the user's view, `getState` returns only the results of the user's devices (removed devices are dropped only by a view of every device). `progress` and `results` go to the pages of the scan's scope (`DeviceScope`; the rows of a group's scan also to users with all devices). A device that leaves a group user's devices during the scan gets no row: its result (also the error of the refused read) is neither stored nor published. The overload without a call (in-process callers) uses the plugin's context. A user without devices (`OwnerScope.HasNoDevices`) gets no scan: `startScan` refuses ("Your account has no devices."), `cancelScan` answers like an unknown id, `getState` has no scan. A finished scan's token source is disposed only after its run ended (its stop registration may still fire). See [Device groups](../../docs/spec/device-scope.md).
 
 ## Tests
 
@@ -194,18 +183,6 @@ any request that is not a read), `PageViewModelTests` (5,000 devices: state, fil
 levels merged by scan time; CSV; tooltips; the device choice: nothing before a choice, a tag, the scan request, the
 remembered choice, the loading ring and the progress row from the click on), `MethodRoleTests`, `FakeModeTests`, `HeadlessPageTests` (`hardening-scan-basic.png`,
 `hardening-scan-extended.png`), and `HardeningHardwareTests` (`Category=Hardware`, one Extended scan of the development camera through the
-in-process server, read-only).
-
-## Outlook (not v1): Fix
-
-Later: contributed task plugins (group Security) under the device-safety HARD RULE: "Disable SSH", "Disable discovery
-protocols" (warns: OADM's re-find uses Bonjour), "Disable web interface", "Set recommended HTTPS ciphers", "Set password
-policy", "Enable remote syslog over TLS", "Disable SNMP v1/v2c", "Enable RTSPS". Existing tasks already fix some: PKI
-"Enable HTTPS" (E3, X1) and "Enable IEEE 802.1X" (X2), Date and time / "Use OADM as NTP server" (B6), Network settings static
-IP (B5), Upgrade firmware (B2), Applications remove / stop (B8). A "Fix" action on a column would open the matching task
-for the failing devices.
-
-## Permissions
-
-`oadm.hardening-scan:show` (results, details, export) and `:scan` "Run scans" (`startScan`, `cancelScan`). Without
-"scan" the scan buttons are hidden. Operator default: both. Off by default as a package.
+in-process server, read-only). Fake mode: `src/Oadm.Client/Api/FakeOadmApi.HardeningScan.cs`, deterministic results per fake device (most pass, some warn on SSH,
+discovery and DHCP, some fail on ciphers / SNMP v2c, error rows for devices with a bad status), a Basic scan of the day before
+at start, and a scan simulated over 3 s with progress and result events.
