@@ -225,7 +225,7 @@ every way in is covered; `Commit` checks the whole add first and answers RESOURC
 and Commit read the managed serials once for "managed already" and the limit, and look the session's devices up in one
 step, `IDiscoveryBackend.FindDiscovered(session, ids)`: linear at 30,000, Perf test `AddCommitScaleTests`); the add page
 shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
-warning at most once an hour. Plugin runs are sized by the same limit (System report 50, Device triggers 10,000 watched
+warning at most once an hour. Plugins keep their own caps below it (System report: 50 devices per report, Device triggers: 10,000 watched
 devices). Tests `DeviceLimitTests`.
 
 Automatic add by core plugins (the DHCP server's "Automatically add Axis devices that get an

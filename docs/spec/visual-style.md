@@ -78,16 +78,20 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   for the confirming button of a destructive dialog, flat red text elsewhere.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
-- Status is never a chip: everywhere a status or result is shown (device certificate columns,
-  tasks, task steps, logs, add page, plugin dialogs) use `ui:StatusChip` = a small icon colored
-  by the status (check ok green, warning amber, error red, running violet and spinning, information blue "i" (`IsInfo`,
-  something happened, nothing to check), neutral grey) with plain text in the normal text color to its right, plus optional detail text
-  (e.g. the error message). Colour marks exceptions: the device grid's first-column
-  device icon is neutral for OK and colored only for warning and error statuses, the Status column is plain text, and
-  certificates that are fine (outside their warning days, Trusted) are plain text without an icon. Tasks pane: the Status column shows only the
-  colored icon, with the error or warning message right of it when there is one; finished tasks
-  show no progress bar. Count badges stay a small solid violet pill. What a row is (the PKI list's Type and the CA list's Used in: Root
-  CA, Intermediate CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill, normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text) stays in the theme.
+- **Status**: everywhere a status or result is shown (device certificate columns, tasks, task steps, logs, add page,
+  plugin dialogs) it is a `ui:StatusChip`: a small icon colored by the status (check ok green, warning amber, error red,
+  running violet and spinning, information blue "i" (`IsInfo`, something happened, nothing to check), neutral grey) with
+  plain text in the normal text color to its right, plus optional detail text (e.g. the error message). Never a filled
+  pill. A "warn chip" or "error chip" in the specs is a `StatusChip` of that kind.
+- **Colour marks exceptions**: the device grid's first-column device icon is neutral for OK and colored only for warning
+  and error statuses, the Status column is plain text, and certificates that are fine (outside their warning days,
+  Trusted) are plain text without an icon. Tasks pane: the Status column shows only the colored icon, with the error or
+  warning message right of it when there is one; finished tasks show no progress bar.
+- **Badges**: count badges are a small solid violet pill. What a row is (the PKI list's Type and the CA list's Used in:
+  Root CA, Intermediate CA, HTTPS, Imported, 802.1X) is a neutral badge (`Border.badge.neutral`: the device tags' pill,
+  normal text), never a status. A built-in PKI policy has the badge `Border.badge.system` (violet text: Built-in), in the
+  look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text)
+  stays in the theme.
   Menu entries that delete or remove are red (`MenuItem.danger`), last after a separator.
 - Grouped grids (`DataGrid.groups`): a collapsible header per group, chevron and name; a `ui:GridGroup` key adds its icon
   between them (PKI's policy groups). Rows a link points to are tinted with the accent for a few seconds and fade back
@@ -128,8 +132,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
-- Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome
-  `#CFCFCF`, 16 px. Toolbar uses icon + text buttons, not ADM's icon-only bar.
+- Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome in the text colour (`#CFCFCF` dark),
+  16 px. Exception: command buttons (toolbars, card header rows) show their icon in the accent colour; icon-only buttons
+  take the accent only on hover (CLAUDE.md "buttons follow Fluent"). Toolbar uses icon + text buttons, not ADM's icon-only bar.
 - All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
   (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
   hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
@@ -149,7 +154,7 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.
-- `StatusChip`: every status (see "Status is never a chip" above).
+- `StatusChip`: every status (see "Status" above).
 - `FileRow`: every file chooser. One wide button that shows "Choose file" until a file is chosen, then its name, the
   details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the row with the button on
   the right.

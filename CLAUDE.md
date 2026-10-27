@@ -204,6 +204,9 @@ must never break.
   manages with a certificate of a CA of an 802.1X trusted CA policy pass, fragmentation both ways, a deep session state and plain
   TLS alert texts, switches changed while it runs; its rules (its certificate, TLS, trusted CAs, VLAN, Block) are PKI's policies
   (docs/spec/pki.md), never settings of its own.
+- **[MCP server](docs/spec/mcp.md)** (spec, not built): AI agents do what a user can in the client, through the server's
+  gRPC services with an access key (the user's role and device group); off by default, own port with a PKI certificate;
+  every change is preview then run; never all devices in a result; no secrets over MCP; rights and settings GUI only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
@@ -240,7 +243,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Short and plain. Intros and subtitles: one short sentence, or none. Never explain what a visible control already shows.
 - Tooltips only when they add something, at most about 8 words. Never repeat the label.
 - No protocol, API or internal names in UI text (mDNS, Bonjour, zero-conf, fwmgr 1.x, stratum, ASCII, passphrase
-  policy, full refresh, device record, ports, internal limits). Say what the user can do instead.
+  policy, full refresh, device record, ports, internal limits). Say what the user can do instead. Exception: facts an
+  installer acts on keep their names (ports and protocols for a firewall, hardening checks named as in the AXIS hardening
+  guide, "ONVIF" and "VAPIX" where users ask which one OADM uses).
 - One phrase per concept, everywhere, kept as a shared constant: statuses, refusal and HTTP error texts, the removed
   device, "Default router", "Discovery".
 - Only point to actions that exist, by their real name.
@@ -271,9 +276,10 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `docs/spec/visual-style.md` "Shared controls". Before
   writing new XAML, check both `Controls/` folders and reuse; if a second place needs something
   that exists only inline, extract it into a control first.
-- Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. A running
-  client or server keeps those files open; build or test with `-p:OadmSkipPluginDeploy=true` (e.g.
-  together with `--artifacts-path`) to skip the copy while the apps run.
+- Plugin projects copy their output to `artifacts/plugins/<id>/` after every build. While a client or server runs, build
+  or test with `-p:OadmSkipPluginDeploy=true` (e.g. together with `--artifacts-path`) to skip the copy: the plugins' own
+  dependency DLLs stay locked (the plugin assemblies load from memory), and a running app must never see a half-copied
+  plugin.
 - **HARD RULE, validation errors directly below the field.** On every input of the client and of every plugin, a
   validation error appears directly below that input, like Vuetify: small red text (`Oadm.StatusErrorBrush`,
   `Oadm.FontSizeSmall`) aligned with the input's left edge plus a red input border, no space reserved without an
