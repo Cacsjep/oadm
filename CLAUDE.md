@@ -215,6 +215,10 @@ must never break.
 - **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client (build flag `OADM_DOCS_OFFLINE`,
   without developer docs, Get started and video) and shown in a Help window (title bar button) with the embedded browser,
   served on 127.0.0.1 only; never loads oadm.app; client only.
+- **[Zero-touch provisioning](docs/spec/provisioning.md)** (spec, not built; OADM PRO plugin `oadm.provisioning`): a
+  profile (staging DHCP range, password, configuration files, applications, name and tags, certificate and 802.1X, fixed
+  address range) runs by itself on factory-new cameras only; the fixed IP is written only on Apply network and checked;
+  the DHCP server's settings are saved and always restored; Administrator only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
