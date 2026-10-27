@@ -12,6 +12,12 @@ public interface IDialogService
 
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 
+    /// <summary>The new version dialog; returns when it closed (the view model holds the choices).</summary>
+    Task ShowUpdateAsync(Updates.UpdateViewModel update);
+
+    /// <summary>"Trust this server?" on the first connection to a server; true when the user trusts it.</summary>
+    Task<bool> ConfirmServerTrustAsync(string address, string fingerprint);
+
     /// <summary>Shows the add devices page; true when devices were added.</summary>
     Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page);
 

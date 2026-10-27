@@ -8,6 +8,15 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Added
 
+- The client tells you when a new OADM version is available, with its release notes and a link to the download page.
+  "Don't tell me about new versions" turns it off; Settings, Client card turns it on again.
+
+### Changed
+
+- New login window: the OADM logo on top, the labels above the fields, and problems such as a server that cannot be
+  reached, a changed server certificate or a locked login shown as a box below their field. "Trust this server?" shows
+  the fingerprint only when you open it.
+
 - Upgrade firmware takes several files at once, one per model: each device installs the file for its model.
 - Upgrade firmware starts tasks only for the devices that install a file, not for those already up to date or with a
   file of another model. Plugin dialogs can do the same (SDK 0.5.0 `ShowForDevicesAsync`).

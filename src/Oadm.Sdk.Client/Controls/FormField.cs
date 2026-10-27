@@ -21,7 +21,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// <c>wide</c> lets the input fill the row, class <c>inline</c> sizes the label to its text (fields in one
 /// line, e.g. IP range From / To). An empty label keeps the label column, so a check box lines up with the inputs.
 /// <see cref="Info"/> adds an <see cref="InfoIcon"/> right of the input: the explanation on hover and click, so the row
-/// needs no long hint.
+/// needs no long hint. <see cref="LabelAbove"/> puts the label above the input, full width (the login window; SDK 0.5.0).
 /// </summary>
 public sealed class FormField : Grid
 {
@@ -52,6 +52,10 @@ public sealed class FormField : Grid
     public static readonly StyledProperty<double> LabelHeightProperty =
         AvaloniaProperty.Register<FormField, double>(nameof(LabelHeight), 32);
 
+    /// <summary>The label above the input instead of left of it; the input fills the row.</summary>
+    public static readonly StyledProperty<bool> LabelAboveProperty =
+        AvaloniaProperty.Register<FormField, bool>(nameof(LabelAbove));
+
     public static readonly DirectProperty<FormField, bool> HasErrorProperty =
         AvaloniaProperty.RegisterDirect<FormField, bool>(nameof(HasError), o => o.HasError);
 
@@ -73,9 +77,6 @@ public sealed class FormField : Grid
         _label.Classes.Add("fieldLabel");
         _labelHost.Children.Add(_label);
         _message.Classes.Add("fieldMessage");
-        SetColumn(_message, 1);
-        SetRow(_message, 1);
-        SetColumn(_info, 2);
         _info.IsVisible = false;
         Children.Add(_labelHost);
         Children.Add(_message);
@@ -175,6 +176,13 @@ public sealed class FormField : Grid
         set => SetValue(LabelHeightProperty, value);
     }
 
+    /// <summary>The label above the input (full width) instead of left of it.</summary>
+    public bool LabelAbove
+    {
+        get => GetValue(LabelAboveProperty);
+        set => SetValue(LabelAboveProperty, value);
+    }
+
     /// <summary>The field shows an error (its input's validation error or <see cref="Error"/>).</summary>
     public bool HasError
     {
@@ -198,9 +206,8 @@ public sealed class FormField : Grid
 
             if (change.NewValue is Control input)
             {
-                SetColumn(input, 1);
-                SetRow(input, 0);
                 Children.Add(input);
+                PlaceChildren();
                 if (DataValidationErrors.GetHasErrors(input))
                 {
                     _inputErrors.Add(input);
@@ -209,7 +216,7 @@ public sealed class FormField : Grid
 
             UpdateMessage();
         }
-        else if (change.Property == LabelWidthProperty || change.Property == InputWidthProperty)
+        else if (change.Property == LabelWidthProperty || change.Property == InputWidthProperty || change.Property == LabelAboveProperty)
         {
             UpdateColumns();
             UpdateLabel();
@@ -250,6 +257,14 @@ public sealed class FormField : Grid
 
     private void UpdateColumns()
     {
+        PlaceChildren();
+        if (LabelAbove)
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto");
+            HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
+        }
+
         bool autoLabel = double.IsNaN(LabelWidth);
         var label = autoLabel ? GridLength.Auto : new GridLength(LabelWidth);
         var input = double.IsNaN(InputWidth) ? new GridLength(1, GridUnitType.Star) : new GridLength(InputWidth);
@@ -257,10 +272,32 @@ public sealed class FormField : Grid
         HorizontalAlignment = double.IsNaN(InputWidth) ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
     }
 
+    /// <summary>Label left: label, input and info in one row, the message below the input. Label above: three rows.</summary>
+    private void PlaceChildren()
+    {
+        bool above = LabelAbove;
+        RowDefinitions = new RowDefinitions(above ? "Auto,Auto,Auto" : "Auto,Auto");
+        SetRow(_labelHost, 0);
+        SetColumnSpan(_labelHost, above ? 2 : 1);
+        int inputRow = above ? 1 : 0;
+        int inputColumn = above ? 0 : 1;
+        if (Input is { } input)
+        {
+            SetRow(input, inputRow);
+            SetColumn(input, inputColumn);
+        }
+
+        SetRow(_message, inputRow + 1);
+        SetColumn(_message, inputColumn);
+        SetRow(_info, inputRow);
+        SetColumn(_info, inputColumn + 1);
+        PseudoClasses.Set(":labelAbove", above);
+    }
+
     /// <summary>A row narrower than label + input (e.g. a half-width card) shrinks the input, never clips it.</summary>
     protected override Size MeasureOverride(Size constraint)
     {
-        if (!double.IsNaN(InputWidth) && ColumnDefinitions.Count == 3)
+        if (!LabelAbove && !double.IsNaN(InputWidth) && ColumnDefinitions.Count == 3)
         {
             double width = InputWidth;
             if (!double.IsInfinity(constraint.Width) && !double.IsNaN(LabelWidth))
@@ -282,6 +319,14 @@ public sealed class FormField : Grid
     private void UpdateLabel()
     {
         _label.Text = Label;
+        if (LabelAbove)
+        {
+            _labelHost.Height = double.NaN;
+            _labelHost.IsVisible = !string.IsNullOrEmpty(Label);
+            _labelHost.Margin = new Thickness(0, 0, 0, 4);
+            return;
+        }
+
         _labelHost.Height = LabelHeight;
         bool autoLabel = double.IsNaN(LabelWidth);
         _labelHost.IsVisible = !autoLabel || !string.IsNullOrEmpty(Label);

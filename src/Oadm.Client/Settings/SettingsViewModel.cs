@@ -25,6 +25,21 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private readonly UserSession? _session;
 
     private bool _gpuDecoding;
+    private bool _tellAboutNewVersions;
+
+    /// <summary>"Tell me about new versions" (this computer, saved at once): the new version dialog at client start.</summary>
+    public bool TellAboutNewVersions
+    {
+        get => _tellAboutNewVersions;
+        set
+        {
+            if (SetProperty(ref _tellAboutNewVersions, value) && _clientSettings is not null)
+            {
+                _clientSettings.Current.TellAboutNewVersions = value;
+                _clientSettings.Save();
+            }
+        }
+    }
 
     /// <summary>
     /// "Decode video on the graphics card" (this computer, saved at once, every user): the live view decodes on the graphics
@@ -136,6 +151,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         _gpu = gpu;
         _ui = ui;
         _gpuDecoding = clientSettings?.Current.GpuDecoding ?? true;
+        _tellAboutNewVersions = clientSettings?.Current.TellAboutNewVersions ?? true;
         _appearance = clientSettings?.Current.Appearance ?? Oadm.Theme.OadmColors.Current;
         if (gpu is not null)
         {

@@ -4,7 +4,8 @@
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:collections="using:Avalonia.Collections"
         xmlns:dgp="using:Avalonia.Controls.Primitives"
-        xmlns:themes="using:Oadm.Theme">
+        xmlns:themes="using:Oadm.Theme"
+        xmlns:tc="using:Oadm.Theme.Controls">
   <!--
     OADM visual style (see docs/spec/visual-style.md). Dark (default) or light, MultiDrive look. Shared by the client
     (Oadm.Client/Themes/OadmTheme.axaml adds the client-only styles) and the OADM Site Node app.
@@ -116,6 +117,10 @@
       <SolidColorBrush x:Key="Oadm.StatusErrorBackgroundBrush" Color="{StaticResource Oadm.StatusErrorBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.StatusNeutralBackgroundBrush" Color="{StaticResource Oadm.StatusNeutralBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.StatusAccentBackgroundBrush" Color="{StaticResource Oadm.StatusAccentBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusInfoBackgroundBrush" Color="{StaticResource Oadm.StatusInfoBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusErrorBorderBrush" Color="{StaticResource Oadm.StatusErrorBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusWarningBorderBrush" Color="{StaticResource Oadm.StatusWarningBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.StatusInfoBorderBrush" Color="{StaticResource Oadm.StatusInfoBorderColor}" />
       <SolidColorBrush x:Key="Oadm.GridRowHoverBrush" Color="{StaticResource Oadm.GridRowHoverColor}" />
       <SolidColorBrush x:Key="Oadm.SplitterGripBrush" Color="{StaticResource Oadm.SplitterGripColor}" />
       <SolidColorBrush x:Key="Oadm.ChipOkBrush" Color="{StaticResource Oadm.ChipOkColor}" />
@@ -2259,5 +2264,177 @@
   </Style>
   <Style Selector="StackPanel.inputHeight > :is(Control)">
     <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- Windows without a title bar (login, Trust this server?, new version): tc:HeroBand on top, a centered title,
+       the form, and a footer band. docs/spec/visual-style.md "Login and new version" -->
+  <Style Selector="tc|HeroBand">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Height" Value="140" />
+  </Style>
+  <Style Selector="tc|HeroBand.tall">
+    <Setter Property="Height" Value="176" />
+  </Style>
+  <!-- A picture in tc:HeroBand other than the logo (the shield of Trust this server?) -->
+  <Style Selector="tc|HeroBand ui|OadmIcon.heroIcon">
+    <Setter Property="Width" Value="64" />
+    <Setter Property="Height" Value="64" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <Style Selector="TextBlock.heroTitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeCardTitle}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Center" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="TextBlock.heroSubtitle">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,5,0,0" />
+  </Style>
+  <Style Selector="Border.heroBody">
+    <Setter Property="Padding" Value="24,18,24,16" />
+  </Style>
+  <Style Selector="Border.heroFooter">
+    <Setter Property="Background" Value="{StaticResource Oadm.WindowBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="16,12" />
+  </Style>
+  <Style Selector="Border.heroFooter ui|DialogFooter">
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <!-- An icon inside an input, left of the text (login: server, user name, password) -->
+  <Style Selector="ui|OadmIcon.fieldIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Left" />
+    <Setter Property="Margin" Value="11,0,0,0" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+  <Style Selector="ui|OadmIcon.fieldIcon.inner">
+    <Setter Property="Margin" Value="3,0,0,0" />
+  </Style>
+  <!-- Labels above the inputs (ui:FormField LabelAbove) -->
+  <Style Selector="ui|FormField:labelAbove TextBlock.fieldLabel">
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <!-- A box that opens below its header row (What's new, Fingerprint): Border.disclosure with a
+       ToggleButton.disclosureHeader (accent chevron, text) and a Border.disclosureContent shown while it is checked -->
+  <Style Selector="Border.disclosure">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Name="PART_Row" Background="{StaticResource Oadm.SurfaceHoverBrush}" Padding="12,0" MinHeight="{StaticResource Oadm.ControlHeight}">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <ui:OadmIcon Name="PART_Chevron" Data="{StaticResource Icon.chevronRight}" Width="14" Height="14"
+                         Foreground="{StaticResource Oadm.AccentBrush}" VerticalAlignment="Center" />
+            <ContentPresenter Grid.Column="1" Content="{TemplateBinding Content}" VerticalAlignment="Center"
+                              HorizontalContentAlignment="Stretch" />
+          </Grid>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader:pointerover /template/ Border#PART_Row">
+    <Setter Property="Background" Value="{StaticResource Oadm.GridRowHoverBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.disclosureHeader:checked /template/ ui|OadmIcon#PART_Chevron">
+    <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
+  </Style>
+  <Style Selector="Border.disclosureContent">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="12,10" />
+  </Style>
+
+  <!-- Release notes of the new version dialog: the group heading in its color (Added green, Fixed amber, others accent) -->
+  <Style Selector="TextBlock.noteHeading">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="LetterSpacing" Value="0.6" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <Style Selector="TextBlock.noteHeading.ok">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="TextBlock.noteHeading.warning">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+
+  <!-- tc:Callout: a problem that stops the form, below the field it belongs to -->
+  <Style Selector="tc|Callout">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="16,14" />
+    <Setter Property="Margin" Value="0,6,0,0" />
+  </Style>
+  <Style Selector="tc|Callout.error">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusErrorBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBorderBrush}" />
+  </Style>
+  <Style Selector="tc|Callout.warning">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusWarningBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusWarningBorderBrush}" />
+  </Style>
+  <Style Selector="tc|Callout.info">
+    <Setter Property="Background" Value="{StaticResource Oadm.StatusInfoBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusInfoBorderBrush}" />
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="tc|Callout > StackPanel">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="tc|Callout.info > StackPanel">
+    <Setter Property="Spacing" Value="10" />
+  </Style>
+  <Style Selector="tc|Callout > StackPanel > ui|OadmIcon">
+    <Setter Property="Width" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="tc|Callout.info > StackPanel > ui|OadmIcon">
+    <Setter Property="Width" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.IconSize}" />
+    <Setter Property="Margin" Value="0" />
+  </Style>
+  <Style Selector="tc|Callout.error > StackPanel > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <Style Selector="tc|Callout.warning > StackPanel > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
+  </Style>
+  <Style Selector="tc|Callout.info > StackPanel > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusInfoBrush}" />
+  </Style>
+  <Style Selector="tc|Callout TextBlock.calloutTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="TextAlignment" Value="Center" />
+  </Style>
+  <Style Selector="tc|Callout TextBlock.calloutText">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="tc|Callout ContentControl.calloutAction">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="Margin" Value="0,8,0,0" />
   </Style>
 </Styles>

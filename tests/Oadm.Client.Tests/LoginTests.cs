@@ -75,6 +75,9 @@ public sealed class LoginTests
         public IDialogService Dialogs { get; } = Substitute.For<IDialogService>();
         public List<(string Title, string Message, string Confirm)> Confirmations { get; } = [];
 
+        /// <summary>The address and fingerprint of each "Trust this server?".</summary>
+        public List<(string Address, string Fingerprint)> TrustQuestions { get; } = [];
+
         public Fixture()
         {
             Api.ServerAddress.Returns("https://localhost:5080");
@@ -82,6 +85,11 @@ public sealed class LoginTests
             Dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(ci =>
             {
                 Confirmations.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1), ci.ArgAt<string>(2)));
+                return true;
+            });
+            Dialogs.ConfirmServerTrustAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(ci =>
+            {
+                TrustQuestions.Add((ci.ArgAt<string>(0), ci.ArgAt<string>(1)));
                 return true;
             });
         }
@@ -185,7 +193,9 @@ public sealed class LoginTests
         LoginViewModel vm = f.Create("nvr01:5080");
 
         await vm.InitializeAsync();
-        Assert.StartsWith("Cannot reach the OADM server at nvr01:5080", vm.ServerProblem, StringComparison.Ordinal);
+        Assert.Equal(LoginViewModel.UnreachableTitle, vm.ServerProblemTitle);
+        Assert.Equal("Check the address and that the OADM server is running on nvr01:5080.", vm.ServerProblem);
+        Assert.Equal(Oadm.Theme.Controls.CalloutKind.Error, vm.ServerProblemKind);
         Assert.True(vm.TryAgainCommand.CanExecute(null));
         Assert.False(vm.IsFirstAdminMode);
 
@@ -214,10 +224,8 @@ public sealed class LoginTests
 
         await vm.SubmitCommand.ExecuteAsync(null);
 
-        var (title, message, confirm) = Assert.Single(f.Confirmations);
-        Assert.Equal("Trust this server?", title);
-        Assert.Equal("Trust server", confirm);
-        Assert.Contains(LoginViewModel.InTwoLines(Fingerprint), message, StringComparison.Ordinal);
+        Assert.Equal(("localhost:5080", Fingerprint), Assert.Single(f.TrustQuestions));
+        Assert.Empty(f.Confirmations);
         Assert.Equal(Fingerprint, LoginViewModel.InTwoLines(Fingerprint).Replace("\n", "", StringComparison.Ordinal));
         f.Trust.Received(1).Trust(Fingerprint);
         Assert.Equal("anna", f.Session.UserName);
@@ -231,24 +239,25 @@ public sealed class LoginTests
             .Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "ssl")));
         f.Trust.PresentedFingerprint.Returns(Fingerprint);
         f.Trust.LastCheck.Returns(PinCheck.Unknown);
-        f.Dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(false);
+        f.Dialogs.ConfirmServerTrustAsync(Arg.Any<string>(), Arg.Any<string>()).Returns(false);
         LoginViewModel vm = f.Create();
         vm.UserName = "anna";
         vm.Password = "Secret-pass-1";
         await vm.SubmitCommand.ExecuteAsync(null);
-        Assert.StartsWith("The server certificate was not trusted.", vm.ServerProblem, StringComparison.Ordinal);
+        Assert.Equal((LoginViewModel.NotTrustedTitle, LoginViewModel.NotTrustedMessage), (vm.ServerProblemTitle, vm.ServerProblem));
+        Assert.Equal(Oadm.Theme.Controls.CalloutKind.Warning, vm.ServerProblemKind);
         f.Trust.DidNotReceive().Trust(Arg.Any<string>());
 
         f.Trust.LastCheck.Returns(PinCheck.Changed);
         await vm.SubmitCommand.ExecuteAsync(null);
-        Assert.Equal(LoginViewModel.CertificateChangedMessage, vm.ServerProblem);
+        Assert.Equal((LoginViewModel.CertificateChangedTitle, LoginViewModel.CertificateChangedMessage), (vm.ServerProblemTitle, vm.ServerProblem));
         Assert.True(vm.CanForgetServer);
         await f.Api.DidNotReceive().LoginAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
 
         f.Trust.LastCheck.Returns(PinCheck.None);
         await vm.ForgetServerCommand.ExecuteAsync(null);
         f.Trust.Received(1).Forget();
-        Assert.Equal("Cannot reach the OADM server at localhost:5080. Check the address and that the server is running.", vm.ServerProblem);
+        Assert.Equal("Check the address and that the OADM server is running on localhost:5080.", vm.ServerProblem);
         Assert.False(vm.CanForgetServer);
     }
 
@@ -459,8 +468,67 @@ public sealed class LoginTests
             Assert.Contains("The user name or password is wrong.", texts);
             Assert.Contains("Log in to OADM", texts);
             Assert.DoesNotContain(texts, t => t.EndsWith("...", StringComparison.Ordinal));
+            Assert.Single(login.GetVisualDescendants().OfType<Oadm.Theme.Controls.HeroBand>());
+            Assert.DoesNotContain(login.GetVisualDescendants().OfType<DialogTitleBar>(), _ => true); // the band replaces the title bar
             Capture(login, outDir, "login-window.png");
             login.Close();
+
+            // Server not reachable, login locked, certificate changed, session ended, connecting.
+            async Task<LoginWindow> StateAsync(string file, Action<Fixture> arrange, Func<LoginViewModel, Task> act)
+            {
+                var s = new Fixture();
+                arrange(s);
+                LoginViewModel model = s.Create();
+                var window = new LoginWindow { DataContext = model };
+                window.Show();
+                model.UserName = "anna";
+                model.Password = "Secret-pass-1";
+                await act(model);
+                Dispatcher.UIThread.RunJobs();
+                Capture(window, outDir, file);
+                return window;
+            }
+
+            var unreachable = await StateAsync("login-unreachable.png",
+                s => s.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "refused"))),
+                m => m.SubmitCommand.ExecuteAsync(null));
+            List<string> unreachableTexts = unreachable.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text ?? "").ToList();
+            Assert.Contains(LoginViewModel.UnreachableTitle, unreachableTexts);
+            Assert.Contains("Try again", unreachableTexts);
+            unreachable.Close();
+
+            (await StateAsync("login-locked.png",
+                s => s.Api.LoginAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                    .Returns<Task<LoginReply>>(_ => throw new RpcException(new Status(StatusCode.ResourceExhausted, "Too many failed logins for anna. Try again in 15 minutes."))),
+                m => m.SubmitCommand.ExecuteAsync(null))).Close();
+
+            var changed = await StateAsync("login-certificate-changed.png",
+                s =>
+                {
+                    s.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns<Task<AuthStatus>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "ssl")));
+                    s.Trust.LastCheck.Returns(PinCheck.Changed);
+                },
+                m => m.SubmitCommand.ExecuteAsync(null));
+            Assert.Contains(changed.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Forget server"));
+            changed.Close();
+
+            (await StateAsync("login-session-ended.png", _ => { }, m =>
+            {
+                m.Notice = "Your session has ended. Log in again.";
+                return Task.CompletedTask;
+            })).Close();
+
+            var gate = new TaskCompletionSource<AuthStatus>();
+            var connecting = await StateAsync("login-connecting.png",
+                s => s.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns(gate.Task),
+                m =>
+                {
+                    _ = m.SubmitCommand.ExecuteAsync(null);
+                    return Task.CompletedTask;
+                });
+            Assert.DoesNotContain(connecting.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Log in"));
+            gate.SetResult(new AuthStatus());
+            connecting.Close();
 
             // First administrator from another computer (setup code).
             var g = new Fixture();
@@ -477,23 +545,20 @@ public sealed class LoginTests
             Capture(firstWindow, outDir, "login-first-admin.png");
             firstWindow.Close();
 
-            // Fingerprint confirmation: the shared confirmation window with the text the login asks with.
-            var h = new Fixture();
-            int calls = 0;
-            h.Api.GetAuthStatusAsync(Arg.Any<CancellationToken>()).Returns(_ => ++calls == 1
-                ? throw new RpcException(new Status(StatusCode.Unavailable, "ssl"))
-                : Task.FromResult(new AuthStatus()));
-            h.Trust.LastCheck.Returns(PinCheck.Unknown);
-            h.Trust.PresentedFingerprint.Returns(Fingerprint);
-            await h.Create().InitializeAsync();
-            var (title, message, confirm) = Assert.Single(h.Confirmations);
+            // Trust this server?: the fingerprint behind Fingerprint, closed and open.
             var owner = new Window { Width = 600, Height = 400 };
             owner.Show();
-            var confirmWindow = new MessageWindow { Heading = title, Message = message, ConfirmText = confirm, CancelText = "Cancel" };
-            confirmWindow.Show(owner);
+            var trust = new TrustServerViewModel("nvr01.example.com:5080", Fingerprint);
+            var trustWindow = new TrustServerWindow { DataContext = trust };
+            trustWindow.Show(owner);
             Dispatcher.UIThread.RunJobs();
-            Capture(confirmWindow, outDir, "login-fingerprint-confirm.png");
-            confirmWindow.Close();
+            Assert.DoesNotContain(trustWindow.GetVisualDescendants().OfType<SelectableTextBlock>(), t => t.IsEffectivelyVisible && t.Text == trust.FingerprintLines);
+            Capture(trustWindow, outDir, "login-fingerprint-confirm.png");
+            trust.IsFingerprintOpen = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Contains(trustWindow.GetVisualDescendants().OfType<SelectableTextBlock>(), t => t.IsEffectivelyVisible && t.Text == trust.FingerprintLines);
+            Capture(trustWindow, outDir, "login-fingerprint-open.png");
+            trustWindow.Close();
             owner.Close();
 
             // Users page (Admin only): page header, the users card, the roles card (permission matrix) below.

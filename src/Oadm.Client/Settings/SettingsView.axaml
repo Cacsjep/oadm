@@ -39,6 +39,9 @@
             <ui:FormField Label="Appearance" Hint="{Binding AppearanceHint}">
               <ComboBox ItemsSource="{Binding Appearances}" SelectedItem="{Binding Appearance}" />
             </ui:FormField>
+            <ui:FormField Classes="wide" Label="New versions">
+              <CheckBox IsChecked="{Binding TellAboutNewVersions}" Content="Tell me about new versions" />
+            </ui:FormField>
           </StackPanel>
         </c:CollapsibleCard>
         <!-- Server settings in five cards; administrators edit them (saved together, Save below the last card), operators read

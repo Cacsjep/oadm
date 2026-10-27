@@ -1,60 +1,89 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:tc="using:Oadm.Theme.Controls"
         xmlns:shell="using:Oadm.Client.Shell"
         x:Class="Oadm.Client.Shell.LoginWindow"
         x:DataType="shell:LoginViewModel"
         Title="{Binding Title}"
-        Width="580" SizeToContent="Height" CanResize="False"
+        Width="440" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterScreen"
         WindowDecorations="BorderOnly">
-  <!-- Title bar, one form, footer: shared controls and theme classes only. Errors appear below their fields. -->
-  <Grid RowDefinitions="Auto,Auto,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+  <!-- The logo band (its X quits), a centered title, one form with the labels above the inputs, the footer band.
+       Problems that stop the login are tc:Callout boxes directly below the field they belong to. -->
+  <StackPanel>
+    <tc:HeroBand ShowsDots="True" CloseTip="Quit" />
 
-    <Border Grid.Row="1" Classes="dialogBody">
-      <StackPanel Classes="form compactForm">
-        <ui:StatusChip IsWarning="True" Text="{Binding Notice}"
-                       IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding Intro}"
-                   IsVisible="{Binding Intro, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <Border Classes="heroBody">
+      <StackPanel Classes="form">
+        <StackPanel>
+          <TextBlock Classes="heroTitle" Text="{Binding Title}" />
+          <TextBlock Classes="heroSubtitle" Text="This server has no users yet." IsVisible="{Binding IsFirstAdminMode}" />
+        </StackPanel>
 
-        <ui:FormField Label="Server" Error="{Binding ServerProblem}">
-          <!-- The refresh icon connects again (the server was not running yet, or another address) without a restart -->
-          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
-            <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
-                      PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
-            <Button Grid.Column="1" Classes="toolbar iconOnly" Command="{Binding TryAgainCommand}" ToolTip.Tip="Connect again">
-              <ui:OadmIcon Data="{DynamicResource Icon.refresh}" />
-            </Button>
-          </Grid>
+        <tc:Callout Kind="Info" Text="{Binding Notice}"
+                    IsVisible="{Binding Notice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+        <ui:FormField Label="Server" LabelAbove="True">
+          <StackPanel>
+            <Panel>
+              <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
+                        PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" Padding="34,0,0,0" />
+              <ui:OadmIcon Classes="fieldIcon" Data="{DynamicResource Icon.server}" />
+            </Panel>
+            <tc:Callout Kind="{Binding ServerProblemKind}" Title="{Binding ServerProblemTitle}" Text="{Binding ServerProblem}"
+                        IsVisible="{Binding ServerProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+              <tc:Callout.Action>
+                <Panel>
+                  <Button Classes="secondary" Command="{Binding TryAgainCommand}" IsVisible="{Binding !CanForgetServer}">
+                    <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Try again" />
+                  </Button>
+                  <Button Classes="secondary" Content="Forget server" Command="{Binding ForgetServerCommand}" IsVisible="{Binding CanForgetServer}" />
+                </Panel>
+              </tc:Callout.Action>
+            </tc:Callout>
+          </StackPanel>
         </ui:FormField>
-        <ui:FormField Label="User name">
-          <TextBox x:Name="UserNameBox" Text="{Binding UserName}" IsEnabled="{Binding !IsBusy}" />
+        <ui:FormField Label="User name" LabelAbove="True">
+          <TextBox x:Name="UserNameBox" Text="{Binding UserName}" IsEnabled="{Binding !IsBusy}">
+            <TextBox.InnerLeftContent>
+              <ui:OadmIcon Classes="fieldIcon inner" Data="{DynamicResource Icon.user}" />
+            </TextBox.InnerLeftContent>
+          </TextBox>
         </ui:FormField>
-        <ui:FormField Label="Password">
-          <ui:PasswordBox Text="{Binding Password}" IsEnabled="{Binding !IsBusy}" />
+        <ui:FormField Label="Password" LabelAbove="True">
+          <StackPanel>
+            <ui:PasswordBox Text="{Binding Password}" IsEnabled="{Binding !IsBusy}">
+              <ui:PasswordBox.InnerLeftContent>
+                <ui:OadmIcon Classes="fieldIcon inner" Data="{DynamicResource Icon.lock}" />
+              </ui:PasswordBox.InnerLeftContent>
+            </ui:PasswordBox>
+            <tc:Callout Kind="Error" Title="Login locked" Text="{Binding LockedMessage}"
+                        IsVisible="{Binding LockedMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
         </ui:FormField>
-        <ui:FormField Label="Confirm password" IsVisible="{Binding IsFirstAdminMode}">
-          <ui:PasswordBox Text="{Binding ConfirmPassword}" IsEnabled="{Binding !IsBusy}" />
+        <ui:FormField Label="Confirm password" LabelAbove="True" IsVisible="{Binding IsFirstAdminMode}">
+          <ui:PasswordBox Text="{Binding ConfirmPassword}" IsEnabled="{Binding !IsBusy}">
+            <ui:PasswordBox.InnerLeftContent>
+              <ui:OadmIcon Classes="fieldIcon inner" Data="{DynamicResource Icon.lock}" />
+            </ui:PasswordBox.InnerLeftContent>
+          </ui:PasswordBox>
         </ui:FormField>
-        <ui:FormField Label="Setup code" Hint="Shown by the server at startup; also in setup-code.txt in its data folder."
+        <ui:FormField Label="Setup code" LabelAbove="True" Hint="Shown by the server at startup; also in setup-code.txt in its data folder."
                       IsVisible="{Binding SetupCodeRequired}">
           <TextBox Text="{Binding SetupCode}" PlaceholderText="ABCD-EFGH-JKLM" IsEnabled="{Binding !IsBusy}" />
         </ui:FormField>
-        <ui:FormField>
-          <CheckBox Content="Remember me" IsChecked="{Binding RememberMe}" IsEnabled="{Binding !IsBusy}"
-                    ToolTip.Tip="Stay logged in on this computer for 30 days. The password is never stored." />
-        </ui:FormField>
-        <ui:ProgressRow IsActive="{Binding IsBusy}" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
+        <CheckBox Content="Remember me" IsChecked="{Binding RememberMe}" IsEnabled="{Binding !IsBusy}"
+                  ToolTip.Tip="Stay logged in on this computer for 30 days. The password is never stored." />
       </StackPanel>
     </Border>
 
-    <ui:DialogFooter Grid.Row="2" x:Name="Footer" CancelText="Quit">
-      <Button Classes="secondary" Content="Forget server" Command="{Binding ForgetServerCommand}" IsVisible="{Binding CanForgetServer}"
-              ToolTip.Tip="Forget this server's certificate" />
-      <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}"
-              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
-    </ui:DialogFooter>
-  </Grid>
+    <Border Classes="heroFooter">
+      <ui:DialogFooter x:Name="Footer" CancelText="Quit">
+        <TextBlock Classes="secondary" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
+        <Button Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding SubmitCommand}"
+                IsVisible="{Binding !IsBusy}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+      </ui:DialogFooter>
+    </Border>
+  </StackPanel>
 </Window>

@@ -36,6 +36,27 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await MessageWindow.ConfirmAsync(owner, title, message, confirmText).ConfigureAwait(true);
     }
 
+    public async Task ShowUpdateAsync(Updates.UpdateViewModel update)
+    {
+        if (CurrentOwner() is not { } owner)
+        {
+            return;
+        }
+
+        await new Updates.UpdateWindow { DataContext = update }.ShowDialog(owner).ConfigureAwait(true);
+    }
+
+    public async Task<bool> ConfirmServerTrustAsync(string address, string fingerprint)
+    {
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Shell.TrustServerWindow { DataContext = new Shell.TrustServerViewModel(address, fingerprint) };
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public Window? Owner => CurrentOwner();
 
     public async Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page)

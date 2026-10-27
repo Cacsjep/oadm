@@ -23,7 +23,8 @@ public sealed partial class AppShell(
     Func<LoginViewModel> loginFactory,
     MainWindowViewModel main,
     ILogger<AppShell> logger,
-    LiveView.GpuDecodingService? gpu = null)
+    LiveView.GpuDecodingService? gpu = null,
+    Updates.UpdateNotifier? updates = null)
 {
     public const string SessionEndedMessage = "Your session has ended. Log in again.";
 
@@ -193,6 +194,12 @@ public sealed partial class AppShell(
         if (!started)
         {
             main.Start();
+        }
+
+        // Once per start, over the main window: a newer OADM release (2 s at most, silent without an answer).
+        if (updates is not null)
+        {
+            _ = updates.ShowIfNewerAsync(CancellationToken.None);
         }
 
         return window;

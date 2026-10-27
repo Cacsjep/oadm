@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:tc="using:Oadm.Theme.Controls"
+        xmlns:shell="using:Oadm.Client.Shell"
+        x:Class="Oadm.Client.Shell.TrustServerWindow"
+        x:DataType="shell:TrustServerViewModel"
+        Title="Trust this server?"
+        Width="440" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- First connection to a server (trust on first use). The fingerprint is one click away (Fingerprint). -->
+  <StackPanel>
+    <tc:HeroBand>
+      <tc:HeroBand.Art>
+        <ui:OadmIcon Classes="heroIcon" Data="{StaticResource Icon.shield}" />
+      </tc:HeroBand.Art>
+    </tc:HeroBand>
+
+    <Border Classes="heroBody">
+      <StackPanel Classes="form">
+        <StackPanel>
+          <TextBlock Classes="heroTitle" Text="Trust this server?" />
+          <TextBlock Classes="heroSubtitle" Text="{Binding Subtitle}" />
+        </StackPanel>
+        <TextBlock TextWrapping="Wrap" TextAlignment="Center" Text="{x:Static shell:TrustServerViewModel.Explanation}" />
+        <Border Classes="disclosure">
+          <StackPanel>
+            <ToggleButton Classes="disclosureHeader" IsChecked="{Binding IsFingerprintOpen}" Content="Fingerprint" />
+            <Border Classes="disclosureContent" IsVisible="{Binding IsFingerprintOpen}">
+              <StackPanel Spacing="6">
+                <SelectableTextBlock Classes="mono" Text="{Binding FingerprintLines}" />
+                <TextBlock Classes="secondary" Text="The server writes it to its log at startup." />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <Border Classes="heroFooter">
+      <ui:DialogFooter x:Name="Footer">
+        <Button x:Name="TrustButton" Classes="primary" IsDefault="True" Content="Trust server" />
+      </ui:DialogFooter>
+    </Border>
+  </StackPanel>
+</Window>

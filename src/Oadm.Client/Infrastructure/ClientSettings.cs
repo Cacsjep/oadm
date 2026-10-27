@@ -55,6 +55,9 @@ public sealed class ClientSettings
     /// <summary>Compliance page: the columns the user turned off (Model, Tags, Result, "check:id").</summary>
     public List<string> ComplianceHiddenColumns { get; set; } = [];
 
+    /// <summary>Settings "Tell me about new versions": the new version dialog at client start; off with its "Don't tell me".</summary>
+    public bool TellAboutNewVersions { get; set; } = true;
+
     /// <summary>Settings "Decode video on the graphics card" (live view); on by default, tested at every start.</summary>
     public bool GpuDecoding { get; set; } = true;
 

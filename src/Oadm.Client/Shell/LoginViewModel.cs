@@ -13,6 +13,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Contracts.Security;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Theme.Controls;
 
 namespace Oadm.Client.Shell;
 
@@ -20,12 +21,21 @@ namespace Oadm.Client.Shell;
 /// The login window: server (remembered, recent servers), user name, password, "Remember me". On the first connection
 /// to a server it asks to confirm the server certificate's fingerprint (trust on first use); a changed certificate is
 /// refused until Forget server. While the server has no user it creates the first administrator (with the setup code
-/// when this computer is not the server). Errors appear below their fields.
+/// when this computer is not the server). Errors appear below their fields; a problem that stops the login (server not reachable,
+/// certificate changed, login locked) is a box with a heading below the server or password field.
 /// </summary>
 public sealed partial class LoginViewModel : ValidatingViewModel
 {
+    public const string CertificateChangedTitle = "The server certificate changed";
+
     public const string CertificateChangedMessage =
-        "The server certificate changed. If the server was reinstalled or got a new certificate, use Forget server and confirm the new fingerprint.";
+        "If the server was reinstalled or got a new certificate, forget it and compare the new fingerprint.";
+
+    public const string UnreachableTitle = "Cannot reach the server";
+
+    public const string NotTrustedTitle = "The server is not trusted";
+
+    public const string NotTrustedMessage = "Log in again to trust it.";
 
     private readonly IOadmApi _api;
     private readonly IServerTrust _trust;
@@ -93,12 +103,11 @@ public sealed partial class LoginViewModel : ValidatingViewModel
 
     /// <summary>No user exists on the server: the form creates the first administrator.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Title), nameof(SubmitText), nameof(Intro))]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(SubmitText))]
     public partial bool IsFirstAdminMode { get; private set; }
 
     /// <summary>This computer is not the server: creating the first administrator needs the setup code.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Intro))]
     public partial bool SetupCodeRequired { get; private set; }
 
     [ObservableProperty]
@@ -109,9 +118,21 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string? BusyText { get; private set; }
 
-    /// <summary>The server cannot be used (unreachable, changed certificate): shown below the server field.</summary>
+    /// <summary>The server cannot be used (unreachable, changed certificate): the text of the box below the server field.</summary>
     [ObservableProperty]
     public partial string? ServerProblem { get; private set; }
+
+    /// <summary>The heading of that box ("Cannot reach the server").</summary>
+    [ObservableProperty]
+    public partial string? ServerProblemTitle { get; private set; }
+
+    /// <summary>Error (red) or warning (amber: the certificate changed or was not trusted).</summary>
+    [ObservableProperty]
+    public partial CalloutKind ServerProblemKind { get; private set; }
+
+    /// <summary>Too many failed logins: the server's text in a box below the password.</summary>
+    [ObservableProperty]
+    public partial string? LockedMessage { get; private set; }
 
     /// <summary>The server certificate changed: Forget server is offered.</summary>
     [ObservableProperty]
@@ -125,10 +146,6 @@ public sealed partial class LoginViewModel : ValidatingViewModel
 
     public string SubmitText => IsFirstAdminMode ? "Create administrator" : "Log in";
 
-    public string? Intro => !IsFirstAdminMode ? null
-        : SetupCodeRequired
-            ? "This server has no users yet. Create the first administrator. As this computer is not the server, the setup code is needed too."
-            : "This server has no users yet. Create the first administrator; it can add more users on the Users page.";
 
     private string[] Fields => IsFirstAdminMode
         ? [nameof(ServerAddress), nameof(UserName), nameof(Password), nameof(ConfirmPassword), nameof(SetupCode)]
@@ -154,9 +171,19 @@ public sealed partial class LoginViewModel : ValidatingViewModel
 
     protected override void OnValidationChanged() => SubmitCommand.NotifyCanExecuteChanged();
 
-    partial void OnServerAddressChanged(string value)
+    partial void OnServerAddressChanged(string value) => ClearServerProblem();
+
+    private void SetServerProblem(string title, string text, CalloutKind kind = CalloutKind.Error)
+    {
+        ServerProblemTitle = title;
+        ServerProblemKind = kind;
+        ServerProblem = text;
+    }
+
+    private void ClearServerProblem()
     {
         ServerProblem = null;
+        ServerProblemTitle = null;
         CanForgetServer = false;
     }
 
@@ -183,7 +210,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
     [RelayCommand(CanExecute = nameof(CanTryAgain))]
     private Task TryAgainAsync()
     {
-        ServerProblem = null;
+        ClearServerProblem();
         return ConnectToServerAsync();
     }
 
@@ -268,8 +295,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         string address = ServerAddress.Trim();
         PointApiAt(address);
         _trust.Forget();
-        CanForgetServer = false;
-        ServerProblem = null;
+        ClearServerProblem();
         await RunBusyAsync("Connecting to " + address, async () =>
         {
             if (await ConnectAsync(address).ConfigureAwait(true) is { } status)
@@ -316,7 +342,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
             }
             catch (RpcException ex)
             {
-                ServerProblem = Unreachable(address);
+                Unreachable(address);
                 LogConnectFailed(_logger, address, ex.Status.Detail);
             }
         }).ConfigureAwait(true);
@@ -343,37 +369,28 @@ public sealed partial class LoginViewModel : ValidatingViewModel
                 switch (_trust.LastCheck)
                 {
                     case PinCheck.Unknown when attempt == 0 && _trust.PresentedFingerprint is { } fingerprint:
-                        if (!await ConfirmFingerprintAsync(address, fingerprint).ConfigureAwait(true))
+                        if (!await _dialogs.ConfirmServerTrustAsync(address, fingerprint).ConfigureAwait(true))
                         {
-                            ServerProblem = "The server certificate was not trusted. Log in to trust it after comparing the fingerprint.";
+                            SetServerProblem(NotTrustedTitle, NotTrustedMessage, CalloutKind.Warning);
                             return null;
                         }
 
                         _trust.Trust(fingerprint);
                         continue;
                     case PinCheck.Changed:
-                        ServerProblem = CertificateChangedMessage;
+                        SetServerProblem(CertificateChangedTitle, CertificateChangedMessage, CalloutKind.Warning);
                         CanForgetServer = true;
                         return null;
                     default:
-                        ServerProblem = Unreachable(address);
+                        Unreachable(address);
                         return null;
                 }
             }
         }
 
-        ServerProblem = Unreachable(address);
+        Unreachable(address);
         return null;
     }
-
-    /// <summary>The fingerprint confirmation (shared confirmation window).</summary>
-    private Task<bool> ConfirmFingerprintAsync(string address, string fingerprint) =>
-        _dialogs.ConfirmAsync(
-            "Trust this server?",
-            $"This is the first connection to {address}. Compare the fingerprint below with the one the OADM server writes to "
-            + "its log at startup (\"Server TLS certificate fingerprint\"). Trust the server only if they are the same.\n\n"
-            + "SHA-256 fingerprint:\n" + InTwoLines(fingerprint),
-            "Trust server");
 
     /// <summary>"AA:BB:...:PP\nQQ:..." (16 pairs per line) so the window never breaks inside a pair.</summary>
     internal static string InTwoLines(string fingerprint)
@@ -396,8 +413,10 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         switch (ex.StatusCode)
         {
             case StatusCode.Unauthenticated:
-            case StatusCode.ResourceExhausted:
                 Validation.SetServerError(nameof(Password), message);
+                break;
+            case StatusCode.ResourceExhausted:
+                LockedMessage = message;
                 break;
             case StatusCode.PermissionDenied:
                 Validation.SetServerError(IsFirstAdminMode && SetupCodeRequired ? nameof(SetupCode) : nameof(UserName), message);
@@ -410,7 +429,7 @@ public sealed partial class LoginViewModel : ValidatingViewModel
                 Validation.SetServerError(nameof(UserName), message);
                 break;
             default:
-                ServerProblem = Unreachable(ServerAddress.Trim());
+                Unreachable(ServerAddress.Trim());
                 LogConnectFailed(_logger, ServerAddress, message);
                 break;
         }
@@ -464,18 +483,18 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         }
     }
 
-    private string Unreachable(string address)
+    private void Unreachable(string address)
     {
         _connectionFailed = true;
-        return UnreachableText(address);
+        SetServerProblem(UnreachableTitle, UnreachableText(address));
     }
 
     private async Task RunBusyAsync(string text, Func<Task> work, TimeSpan minimum = default)
     {
         IsBusy = true;
         BusyText = text;
-        ServerProblem = null;
-        CanForgetServer = false;
+        ClearServerProblem();
+        LockedMessage = null;
         try
         {
             await Task.WhenAll(work(), minimum > TimeSpan.Zero ? Task.Delay(minimum) : Task.CompletedTask).ConfigureAwait(true);
@@ -487,8 +506,8 @@ public sealed partial class LoginViewModel : ValidatingViewModel
         }
     }
 
-    private static string UnreachableText(string address) =>
-        $"Cannot reach the OADM server at {address}. Check the address and that the server is running.";
+    internal static string UnreachableText(string address) =>
+        $"Check the address and that the OADM server is running on {address}.";
 
     /// <summary>Key of a server in the client settings (pins, remembered logins): "host:port".</summary>
     internal static string KeyOf(string address) => ServerCertificatePinning.KeyOf(OadmChannel.NormalizeAddress(address));

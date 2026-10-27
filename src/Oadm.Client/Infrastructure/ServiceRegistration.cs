@@ -84,6 +84,8 @@ public static class ServiceRegistration
         services.AddTransient<LoginViewModel>();
         services.AddSingleton<Func<LoginViewModel>>(sp => () => sp.GetRequiredService<LoginViewModel>());
         services.AddSingleton<AppShell>();
+        services.AddSingleton<Updates.IReleaseCheck>(_ => Updates.GitHubReleaseCheck.Create());
+        services.AddSingleton<Updates.UpdateNotifier>();
 
         services.AddSingleton<Tags.TagStore>();
         services.AddSingleton<DeviceStore>();

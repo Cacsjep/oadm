@@ -54,6 +54,11 @@
   <Color x:Key="Oadm.StatusErrorBackgroundColor">#26E5534B</Color>
   <Color x:Key="Oadm.StatusNeutralBackgroundColor">#268A8A8A</Color>
   <Color x:Key="Oadm.StatusAccentBackgroundColor">#336C5CE7</Color>
+  <!-- Callouts (login problems): a faint fill of the status color and a stronger border -->
+  <Color x:Key="Oadm.StatusInfoBackgroundColor">#1F2F80C8</Color>
+  <Color x:Key="Oadm.StatusErrorBorderColor">#99E5534B</Color>
+  <Color x:Key="Oadm.StatusWarningBorderColor">#99E0A43A</Color>
+  <Color x:Key="Oadm.StatusInfoBorderColor">#802F80C8</Color>
   <!-- Status chip fills: solid, slightly darker than the status colors so white text stays readable -->
   <Color x:Key="Oadm.ChipOkColor">#2B8A5E</Color>
   <Color x:Key="Oadm.ChipWarningColor">#A86F0E</Color>

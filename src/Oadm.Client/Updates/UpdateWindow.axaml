@@ -1,0 +1,85 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:tc="using:Oadm.Theme.Controls"
+        xmlns:up="using:Oadm.Client.Updates"
+        x:Class="Oadm.Client.Updates.UpdateWindow"
+        x:DataType="up:UpdateViewModel"
+        Title="{Binding Title}"
+        Width="480" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- A new OADM version: the logo band with the update badge, the release notes behind What's new, Later and
+       Open download page. docs/spec/main-window.md "New version" -->
+  <StackPanel>
+    <tc:HeroBand Classes="tall" ShowsDots="True" ShowsUpdate="True" CloseCommand="{Binding LaterCommand}">
+      <tc:HeroBand.Art>
+        <tc:OadmMark Width="146" Height="146" />
+      </tc:HeroBand.Art>
+    </tc:HeroBand>
+
+    <Border Classes="heroBody">
+      <StackPanel Classes="form">
+        <StackPanel>
+          <TextBlock Classes="heroTitle" Text="{Binding Title}" />
+          <TextBlock Classes="heroSubtitle" Text="{Binding Current}" />
+        </StackPanel>
+
+        <Border Classes="disclosure" IsVisible="{Binding HasNotes}">
+          <StackPanel>
+            <ToggleButton Classes="disclosureHeader" IsChecked="{Binding IsNotesOpen}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="What's new" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding ChangeCount}" />
+              </Grid>
+            </ToggleButton>
+            <Border Classes="disclosureContent" IsVisible="{Binding IsNotesOpen}">
+              <ScrollViewer MaxHeight="230">
+                <ItemsControl ItemsSource="{Binding Sections}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="12" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="up:ReleaseNoteSection">
+                      <StackPanel Spacing="6">
+                        <TextBlock Classes="noteHeading" Classes.ok="{Binding IsOk}" Classes.warning="{Binding IsWarning}" Text="{Binding Heading}" />
+                        <ItemsControl ItemsSource="{Binding Items}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <StackPanel Spacing="6" />
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <TextBlock Classes="secondary" Text="•" />
+                                <TextBlock Grid.Column="1" TextWrapping="Wrap" Text="{Binding}" />
+                              </Grid>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Border>
+          </StackPanel>
+        </Border>
+
+        <CheckBox Content="Don't tell me about new versions" IsChecked="{Binding DontTellAgain}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="heroFooter">
+      <ui:DialogFooter CancelText="Later" CancelCommand="{Binding LaterCommand}">
+        <Button Classes="primary" IsDefault="True" Command="{Binding OpenDownloadCommand}">
+          <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Open download page" />
+        </Button>
+      </ui:DialogFooter>
+    </Border>
+  </StackPanel>
+</Window>

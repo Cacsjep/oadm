@@ -103,11 +103,26 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   button), input rows that must not leave the card wrap (`WrapPanel.inputRow`), grid columns keep readable minimum
   widths and the grid scrolls sideways. Check a new page with the layout survey (`LayoutSurveyTests`,
   `OADM_LAYOUT_SURVEY=1`, `OADM_LAYOUT_SURVEY_SIZE=1280x672`, screenshots and a list of controls that leave the window).
-- Dialogs (every dialog window incl. `ui:MessageWindow`, the device picker and the login
-  window): no system title bar (`WindowDecorations="BorderOnly"`); the first row is `ui:DialogTitleBar`, the title as a
+- Dialogs (every dialog window incl. `ui:MessageWindow` and the device picker): no system title bar
+  (`WindowDecorations="BorderOnly"`); the first row is `ui:DialogTitleBar`, the title as a
   heading and an X top right that closes the window, aligned with the content. Modal, not movable and fixed size
   (`CanResize="False"`: a resizable border-only window shows a white resize strip on top on Windows), like a dialog on a
   web page. The main window and plugin windows keep the custom title bar.
+- **Login and new version** (decision 2026-10-27, design canvas "OADM Update Dialog"): the login window, "Trust this server?"
+  and the new version dialog have no `DialogTitleBar` but a `tc:HeroBand` on top (the OADM logo in the middle, 120 px; its
+  X quits the login, closes the others), the title centered below it (`TextBlock.heroTitle`, a `heroSubtitle` line under it
+  5 px down: "This server has no users yet.", "First connection to <server>", "You have V4.5.0"), the form in
+  `Border.heroBody` with the labels above the inputs (`ui:FormField LabelAbove`, 4 px gap), and the buttons in
+  `Border.heroFooter` (`ui:DialogFooter`). Login: dots on both sides of the logo (none above or below), an icon inside
+  the server, user name and password fields (`ui:OadmIcon.fieldIcon`), no refresh button (Try again sits in the server
+  problem, Log in connects first anyway); while it connects only the text "Logging in to <server>" shows right in the
+  footer, Log in is hidden. A problem that stops the login is a `tc:Callout` directly below its field: server not
+  reachable (error, Try again), certificate changed or not trusted (warning, Forget server), login locked (error, below
+  the password); the session ended is an info line above the server. A wrong password stays the usual field error.
+  Trust this server?: the shield icon instead of the logo, one line on what trusting means, the fingerprint behind
+  **Fingerprint** (`Border.disclosure`). New version: the taller band (`tall`, logo 146 px) with dots and the update badge
+  (`ShowsUpdate`), What's new (`Border.disclosure`, "4 changes" right, the release notes grouped, Added green, Fixed
+  amber), "Don't tell me about new versions", Later and the primary **Open download page**.
 - Text fields, number fields and select fields: text vertically centered (measured; select
   fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never
@@ -161,7 +176,11 @@ Auto from the content type then the text, `IsFormatted` false = exact text; unpa
 typing, caret, selection and undo with the same text drawn colored on top, aligned and scrolled with it; `Language`
 Json / Xml / KeyValue / Plain; never re-indented; the coloring of `CodeView` through `CodeHighlight`, also for JSON and
 XML that do not parse yet (`CodeText.Prepare(colorUnparsed: true)`: typing, an HTML body with several elements)), `FormField` (every labeled form row: label,
-input, error or hint below the input; classes `wide` and `inline`), `StatCard` (every monitoring count card: status icon +
+input, error or hint below the input; classes `wide` and `inline`; `LabelAbove` puts the label above a full-width input, the
+login), `tc:HeroBand` (Oadm.Theme: the logo band of the windows without a title bar, see "Login and new version"),
+`tc:Callout` (Oadm.Theme: a problem that stops a form, error / warning centered with the icon on top, title, text and an
+action button, info as one line; below the field it belongs to), `Border.disclosure` + `ToggleButton.disclosureHeader`
+(a box that opens below its header row: What's new, Fingerprint), `StatCard` (every monitoring count card: status icon +
 title, large count, small detail line; `IsOk` / `IsWarning` / `IsError` color icon and count, set only while the count
 needs attention; a card that filters a list sits in `Button.statCardButton`, the chosen one with `selected`), `DevicePickerWindow` + `DevicePickerViewModel` (every "choose devices" dialog, every managed device in address order, search over address, model, MAC and host name, Select all / Select none for what the
 search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be used greyed

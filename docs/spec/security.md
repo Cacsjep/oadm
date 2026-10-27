@@ -27,9 +27,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   and logs a warning; a stored listen URL equal to the old default `http://0.0.0.0:5080` reads as the https default). The
   server binds to all interfaces so clients on other machines can connect.
 - The client pins the certificate's SHA-256 per "host:port" on first connect (`Oadm.Contracts.Security.ServerCertificatePinning`,
-  `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). The fingerprint
-  is confirmed in the shared confirmation window ("Trust this server?", two lines of 16 pairs); a changed certificate is
-  refused with "The server certificate changed ..." and **Forget server** re-pins. An address without scheme means https.
+  `client-settings.json` `PinnedServers`; `OadmChannel` creates the pinned channel and adds the token). The first
+  connection asks "Trust this server?" (`TrustServerWindow`: "First connection to <server>", trust it only if it is your
+  OADM server; the fingerprint, two lines of 16 pairs, one click away behind **Fingerprint**, the server writes it to its log
+  at startup; decision 2026-10-27). Not trusted: "The server is not trusted" below the server field. A changed certificate is
+  refused with "The server certificate changed" below the server field and its **Forget server** re-pins. An address without scheme means https.
 
 ## Users, roles and sessions
 
