@@ -46,6 +46,7 @@ public sealed class ServerTests : IAsyncLifetime
         _service = new EstService(new EstHost(_settings, _devices, _network, () => _ca, () => _pro)
         {
             DeviceIds = new AxisDeviceId([X509CertificateLoader.LoadCertificate(_root.RawData)]),
+            HandshakeTimeout = RealHandshake, // real TLS on the system clock: never the 10 s of production on a busy runner
             LocalAddresses = () => ["10.0.0.17"],
             HostName = "oadm-server",
             Publisher = _publisher,
@@ -793,12 +794,16 @@ public sealed class ServerTests : IAsyncLifetime
         await tls.CopyToAsync(answer);
         var text = Encoding.ASCII.GetString(answer.ToArray());
         var split = text.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        Assert.True(split >= 0, $"The server closed the connection without an answer ({text.Length} bytes)");
         var lines = text[..split].Split("\r\n");
         var headers = lines.Skip(1).Select(l => l.Split(": ", 2)).ToDictionary(p => p[0], p => p[1], StringComparer.OrdinalIgnoreCase);
         return new Response(int.Parse(lines[0].Split(' ')[1], CultureInfo.InvariantCulture), headers, text[(split + 4)..]);
     }
 
     private sealed record Response(int Status, Dictionary<string, string> Headers, string Body);
+
+    /// <summary>The handshake limit of the tests that run real TLS on the system clock (CLAUDE.md: real timeouts 30 s).</summary>
+    internal static readonly TimeSpan RealHandshake = TimeSpan.FromSeconds(30);
 
     internal sealed class Devices : IDeviceRepository
     {

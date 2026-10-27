@@ -93,9 +93,9 @@ public sealed class ConnectionLimitTests
         var read = device.ReadAsync(new byte[1]).AsTask();
 
         // The server waits for the handshake with its own, shorter time.
-        await Eventually.TrueAsync(() => clock.Due.Contains(EstService.HandshakeTimeout), "the handshake waits");
+        await Eventually.TrueAsync(() => clock.Due.Contains(EstService.DefaultHandshakeTimeout), "the handshake waits");
         Assert.False(read.IsCompleted);
-        clock.Fake.Advance(EstService.HandshakeTimeout);
+        clock.Fake.Advance(EstService.DefaultHandshakeTimeout);
 
         Assert.Equal(0, await read.WaitAsync(TimeSpan.FromSeconds(30)));
         ca.Dispose();

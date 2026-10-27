@@ -43,6 +43,15 @@ public sealed record EstHost(
 
     public TimeProvider Time { get; init; } = TimeProvider.System;
 
+    /// <summary>
+    /// The TLS handshake, and the one request of a connection without a client certificate (default 10 s). Tests that run
+    /// a real handshake on <see cref="TimeProvider.System"/> set a generous 30 s: a busy test machine is slower.
+    /// </summary>
+    public TimeSpan HandshakeTimeout { get; init; } = EstService.DefaultHandshakeTimeout;
+
+    /// <summary>How long a camera with a certificate may stay silent between requests (default 30 s).</summary>
+    public TimeSpan IdleTimeout { get; init; } = EstService.DefaultIdleTimeout;
+
     /// <summary>The Axis device ID CAs; the embedded ones by default.</summary>
     public AxisDeviceId? DeviceIds { get; init; }
 
@@ -70,11 +79,11 @@ public sealed partial class EstService : IAsyncDisposable
     private static readonly TimeSpan MaxConnectionTime = TimeSpan.FromMinutes(2);
     private const int MaxRequestsPerConnection = 20;
 
-    /// <summary>How long a camera with a certificate may stay silent between requests.</summary>
-    internal static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>The default of <see cref="EstHost.IdleTimeout"/>.</summary>
+    internal static readonly TimeSpan DefaultIdleTimeout = TimeSpan.FromSeconds(30);
 
-    /// <summary>The TLS handshake, and the one request of a connection without a client certificate.</summary>
-    internal static readonly TimeSpan HandshakeTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>The default of <see cref="EstHost.HandshakeTimeout"/>.</summary>
+    internal static readonly TimeSpan DefaultHandshakeTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DeviceIndexAge = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RenewalCheckDelay = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan RenewalCheckInterval = TimeSpan.FromHours(1);
@@ -827,7 +836,7 @@ public sealed partial class EstService : IAsyncDisposable
 
         try
         {
-            using (var handshakeLimit = new CancellationTokenSource(HandshakeTimeout, _host.Time))
+            using (var handshakeLimit = new CancellationTokenSource(_host.HandshakeTimeout, _host.Time))
             using (var handshake = CancellationTokenSource.CreateLinkedTokenSource(ct, handshakeLimit.Token))
             {
                 await tls.AuthenticateAsServerAsync(options, handshake.Token).ConfigureAwait(false);
@@ -848,7 +857,7 @@ public sealed partial class EstService : IAsyncDisposable
             var reader = EstHttp.Reader(tls);
             for (var count = 1; count <= MaxRequestsPerConnection; count++)
             {
-                using var idleLimit = new CancellationTokenSource(client is null ? HandshakeTimeout : IdleTimeout, _host.Time);
+                using var idleLimit = new CancellationTokenSource(client is null ? _host.HandshakeTimeout : _host.IdleTimeout, _host.Time);
                 using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct, idleLimit.Token);
                 HttpRequest? request;
                 try

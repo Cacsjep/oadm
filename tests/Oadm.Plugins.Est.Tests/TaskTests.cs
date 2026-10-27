@@ -36,7 +36,7 @@ public sealed class TaskTests : IAsyncLifetime
     {
         _policies = await TestPolicies.EstStoreAsync();
         // No device group covers the device: the host name the camera reports goes into its profile.
-        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Scopes = new FakeCoreContext().FakeScopes, Policies = () => _policies });
+        _est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(), () => _ca, () => true) { Scopes = new FakeCoreContext().FakeScopes, Policies = () => _policies, HandshakeTimeout = ServerTests.RealHandshake });
         await _est.StartAsync(CancellationToken.None);
         _camera.Server = _est;
         _camera.Device = _device;
@@ -273,7 +273,7 @@ public sealed class TaskTests : IAsyncLifetime
         var sites = new FakeSites();
         var site = sites.Add("Building B");
         site.AllowedPorts.Add((Sdk.Sites.SiteProtocol.Tcp, EstPluginInfo.DefaultPort));
-        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(sites), () => _ca, () => true) { Sites = sites, Policies = () => _policies });
+        await using var est = new EstService(new EstHost(new FakeSettings(), new NoDevices(), new FakePluginNetwork(sites), () => _ca, () => true) { Sites = sites, Policies = () => _policies, HandshakeTimeout = ServerTests.RealHandshake });
         await est.StartAsync(CancellationToken.None);
         await est.SaveAsync(Named(new EstConfig { Profiles = [new EstProfile("https", ProfileUse.Https)] }), CancellationToken.None);
         var device = _device with { Address = "192.168.5.20", SiteId = site.Id };
