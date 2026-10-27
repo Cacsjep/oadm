@@ -33,7 +33,7 @@ public sealed record FirmwareTaskTimings
     /// How long a commit keeps waiting while the device says it has not finished booting (AXIS OS 12 refuses the commit
     /// for minutes after the restart). Well below <see cref="AutoRollbackMinutes"/>.
     /// </summary>
-    public TimeSpan BootWait { get; init; } = TimeSpan.FromMinutes(10);
+    public TimeSpan BootWait { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// autoRollback for upgrades that keep the settings: the device reverts by itself if OADM never
