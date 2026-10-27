@@ -127,13 +127,18 @@ public sealed class MyDialog : ITaskPluginDialog
 }
 ```
 
+A dialog that leaves out some of the selected devices (already up to date, no file for them) implements
+`ShowForDevicesAsync` instead and returns a `TaskDialogResult` with the payload and the ids of the devices the task runs
+on. The host calls `ShowForDevicesAsync`; its default runs `ShowAsync` on every selected device. The firmware dialog
+works this way. It needs SDK 0.5.0.
+
 `ITaskDialogContext` gives the dialog:
 
 | Member | Use |
 |---|---|
 | `QueryAsync(deviceId, method, payload, ct)` | Read the device's current state through your `ITaskPluginQuery` on the server |
 | `UploadAsync(path, progress, ct)` | Upload a local file (firmware, a package); put the returned id into the payload |
-| `Has(permission)` | Hide choices the user's role does not allow |
+| `Has(permission)`, `HasAllDevices` | Hide choices the user's role does not allow, or that only users with all devices may make |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
 | `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there; then return null from `ShowAsync` |
 
@@ -151,7 +156,7 @@ public sealed class MyTask : ITaskPlugin, ITaskPluginQuery
             _ => throw new ArgumentException("Unknown query " + method),
         };
 
-    // The host calls the overload above; keep the old one.
+    // The host calls the overload above; the interface still needs this one.
     public Task<string?> QueryAsync(ITaskQueryContext ctx, IDeviceInfo device, string method, string? payloadJson, CancellationToken ct) =>
         throw new NotSupportedException();
 }

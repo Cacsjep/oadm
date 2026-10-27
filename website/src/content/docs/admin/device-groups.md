@@ -56,8 +56,8 @@ The user sees the group and its rules under **Your role** (click the name in the
 - **Plugin pages**: only their own devices, reports and live updates. Device triggers, Live View views and dashboards
   belong to the group of the user who made them; others do not see them. Image Health Dashboard, Edge storage and the
   Action Rule Editor show each group its own table.
-- **Server-wide services**: the NTP server, DHCP server, PKI and EST server pages and the VAPIX Commander library are
-  read only for them, with the rows of their own devices. They run saved VAPIX commands only with the passwords they
+- **Server-wide services**: the NTP server, DHCP server and PKI pages and the VAPIX Commander library are read only for
+  them, with the rows of their own devices. They run saved VAPIX commands only with the passwords they
   enter.
 - **Not for them**: event rules and the event log (the **Event rules** page is hidden), the server log, the system
   report, backups, the audit log and server settings. Plugins not yet built for device groups are hidden for them too.
@@ -71,7 +71,7 @@ device triggers, views and dashboards of the group stop.
 Deleting a tag or removing a site that a group uses asks first: "Used by device group Building B". The tag or site then
 drops out of the group.
 
-## After the update
+## Existing users
 
 Every existing user keeps all devices, also after restoring a backup of an older OADM. Nothing changes until you create
 a group and give it to a user.

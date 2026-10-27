@@ -11,9 +11,8 @@ import ptz from '../../../assets/screens/client-liveview-ptz.png';
 import panel from '../../../assets/screens/client-liveview-panel.png';
 
 <Aside type="caution" title="Camera behind a port forward? Set its RTSP port">
-OADM reaches the video and the events of a camera on port 554. Cameras behind a router that forwards another port, for
-example a camera of the **AXIS Virtual Loan Tool**, need their port in OADM: right-click the camera in the device list,
-**OADM** > **RTSP port**. See [RTSP port of a camera](#rtsp-port-of-a-camera).
+Cameras behind a router that forwards another port, for example a camera of the **AXIS Virtual Loan Tool**, need their
+port in OADM. See [RTSP port of a camera](#rtsp-port-of-a-camera).
 </Aside>
 
 <Image src={live} alt="Live preview next to the device list, with zoom and focus over the picture" class="screen" />
@@ -35,7 +34,8 @@ Point at the picture to see its buttons:
   has. Adaptive uses the frame rate set in **Settings** > **Client** (20 by default).
 - **1**, **2**, ... (top right) on cameras with several sensors or view areas switch the source. OADM remembers the
   choice per device until you close the client.
-- **Controls** (bottom right) shows or hides zoom and focus, or the PTZ controls. They are shown when the live preview opens.
+- **Camera controls** (bottom right) shows or hides zoom and focus, or the PTZ controls. They are shown when the live
+  preview opens.
 
 The video uses 16:9 whenever the camera offers it, so it fills a wide screen.
 
@@ -44,8 +44,8 @@ resolution, frame rate, bit rate and whether the graphics card or the processor 
 
 ## Zoom and focus
 
-Cameras with a remote zoom or focus lens show a bar over the bottom of the picture, with the **Controls** button at its
-right end to hide and show it. Cameras without a remote lens have no button.
+Cameras with a remote zoom or focus lens show a bar over the bottom of the picture. **Camera controls** hides and shows
+it. Cameras without a remote lens have no button.
 
 - **Zoom** goes from wide to tele, **Focus** from near to far. The camera moves once you let go of the slider.
 - **Autofocus** (focus icon) lets the camera focus by itself.
@@ -61,8 +61,8 @@ You need the permission **Optics Control** (Operator has it). Every change is in
 
 <Image src={ptz} alt="PTZ camera in the live preview with the circle in the middle" class="screen" />
 
-PTZ cameras show a circle in the middle of the picture and a bar with **Home**, the presets and a zoom slider. The
-**Controls** button hides and shows them.
+PTZ cameras show a circle in the middle of the picture and a bar with **Home**, the presets and a zoom slider.
+**Camera controls** hides and shows them.
 
 - **Move**: drag from the circle. The further you drag, the faster the camera turns. Let go to stop.
 - **Zoom**: the mouse wheel over the picture, or the zoom slider.
@@ -74,9 +74,8 @@ itself after a second.
 
 ## RTSP port of a camera
 
-OADM gets the video and the events of a camera over RTSP, port 554. When a camera sits behind a router that forwards
-another port to its port 554, tell OADM that port. Typical cases: cameras of the **AXIS Virtual Loan Tool**, a remote site
-behind one public address, a lab with port forwards.
+When a camera sits behind a router that forwards another port to its port 554, tell OADM that port. Typical cases:
+cameras of the **AXIS Virtual Loan Tool**, a remote site behind one public address, a lab with port forwards.
 
 <Steps>
 

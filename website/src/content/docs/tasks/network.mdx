@@ -22,8 +22,8 @@ managed.
 2. Each section (**IPv4**, **IPv6**, **DNS**, **Host name**) starts at **Keep unchanged**. Change only what you need.
    The fields are filled from the first device.
 3. One device: enter the **IP address**. Several devices: set each address in the **New IP address** column of the
-   device table. OADM suggests addresses from the first device's address and subnet. Subnet mask and default router
-   are shared.
+   device table. OADM suggests addresses from the first device's address and subnet. **Subnet mask** and **Default
+   router** are the same for all.
 4. Several devices can get host names from a template with `{n}` (position) or `{serial}`.
 5. Click **Apply**. A change that can make devices unreachable asks for confirmation first.
 
@@ -61,16 +61,16 @@ Also in the toolbar. It works like "Assign IP address to selected devices" in AD
 | `192.168.0.10` | start address: the next addresses up to the end of the subnet |
 
 OADM suggests the first free addresses in the order of the device list. It skips network and broadcast addresses, the
-default router, addresses of other managed devices and addresses that answer. With too few addresses the page says
+Default router, addresses of other managed devices and addresses that answer. With too few addresses the page says
 "Not enough addresses" and **Finish** stays disabled.
 
 ## What OADM checks first
 
-- Address, subnet mask and router are in one subnet. No duplicate addresses in the batch.
+- Address, subnet mask and Default router are in one subnet. No address is used twice.
 - **Check address is free**: right before the first change, every new static address gets a ping and a web connection
   attempt. If it answers, the task fails with "10.0.0.60 is already in use (answers ping). Nothing
   was changed."
-- The device supports the change. Devices without the network settings function use the older parameter interface.
+- The device supports the change. Devices with older AXIS OS are changed through their parameters.
 
 ## After the change
 
@@ -79,5 +79,5 @@ moves the device in the list. If the device does not answer there, the task ends
 address. With DHCP the new address is unknown. OADM finds the device again on its own within a few minutes.
 
 <Aside type="caution">
-Check subnet mask and default router before you apply. Wrong values can make a device unreachable from OADM.
+Check **Subnet mask** and **Default router** before you apply. Wrong values can make a device unreachable from OADM.
 </Aside>

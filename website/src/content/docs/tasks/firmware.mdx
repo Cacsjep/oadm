@@ -1,14 +1,14 @@
 ---
 title: Upgrade firmware
-description: Install an AXIS OS file on many devices at once.
+description: Install AXIS OS on many devices at once.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/firmware-dialog.png';
 
-**Upgrade firmware** installs an AXIS OS file on the selected devices. OADM uploads the file, waits for the restart,
-checks the new version and commits it. It is in the context menu under **Maintenance** and in the toolbar.
+**Upgrade firmware** installs AXIS OS on the selected devices. OADM uploads the file, waits for the restart, checks
+the new version and commits it. It is in the context menu under **Maintenance** and in the toolbar.
 
 <Image src={shot} alt="The Upgrade firmware dialog with the file, the options and the device table" class="screen" />
 
@@ -16,17 +16,20 @@ checks the new version and commits it. It is in the context menu under **Mainten
 
 <Steps>
 
-1. Download the AXIS OS file for your model from axis.com. Keep the original file name, for example
+1. Download the AXIS OS file for each model from axis.com. Keep the original file name, for example
    `P3265-V_12_11_77.bin`: OADM reads the product and version from it.
 2. Select the devices, right-click and choose **Maintenance** > **Upgrade firmware**.
-3. Choose the file. The dialog shows its size, product and AXIS OS version.
-4. Check the device table. The **Result** column says per device what will happen: upgrade, already up to date, wrong
-   product, downgrade not allowed.
+3. Choose the file, or several files, one per model. The dialog shows the size, product and AXIS OS version. Each
+   device gets the file for its model.
+4. Check the device table. The **Result** column says per device what will happen, for example **Upgrade**,
+   **Up to date**, **No file**, **Wrong product** or **Downgrade blocked**.
 5. Choose the **Factory default** option and, if needed, **Allow downgrade to an older AXIS OS version (requires a
    factory default)**.
-6. Click **Upgrade**. The file is uploaded to the OADM server once, then a task starts per device.
+6. Click **Upgrade**. The files are uploaded to the OADM server once, then a task starts per device.
 
 </Steps>
+
+Devices that are already up to date, have no file for their model or are refused get no task.
 
 ## Options
 
@@ -41,10 +44,10 @@ A downgrade always needs a factory default. The device decides itself if it acce
 ## What OADM checks first
 
 - The device status is OK and the device supports firmware management.
-- The file ends in `.bin` and is between 1 MB and 2 GB. OADM never judges the content: the device checks product and
-  signature itself and refuses a wrong file before it installs anything.
+- The file ends in `.bin` and is between 1 MB and 2 GB. The device checks product and signature itself and refuses a
+  wrong file before it installs anything.
 - The product in the file name matches the device.
-- The same version is not installed again. Such a device ends with the warning "Already up to date".
+- The same version is not installed again.
 - No earlier upgrade is waiting to be committed.
 
 A refused device fails with "Nothing was changed". The other devices continue.
@@ -74,4 +77,5 @@ wait in **Queued**.
 ## Task names
 
 The **Tasks** pane names each task by what it does: "Upgrade firmware to 12.11.77", "Downgrade firmware to 10.12.236",
-"Install firmware 12.11.77", plus " (factory default)" when the device is reset.
+"Install firmware 12.11.77", plus " (factory default)" when the device is reset. With files of different versions:
+"Upgrade firmware" or "Downgrade firmware".

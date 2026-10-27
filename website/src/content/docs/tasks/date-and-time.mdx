@@ -24,7 +24,7 @@ devices. It is in the context menu under **Maintenance**.
    - **Synchronize with server computer time**: the devices get the time and time zone of the OADM server. NTP is
      turned off.
    - **Synchronize with NTP server**: **Obtain from DHCP**, or up to 5 servers separated by commas. **Use NTS (Network
-     Time Security)** appears when a selected device supports it.
+     Time Security)** appears only when a selected device supports it.
    - **Set manually**: date and time in the device's time zone, or **Use this computer's time**. NTP is turned off.
 5. Click **OK**.
 
@@ -38,13 +38,11 @@ field is valid. Hover it to see why.
 
 ## Requirements
 
-- Setting the date and time needs AXIS OS 9.30 or later. Older devices fail that step with "Nothing was
-  changed".
+- Setting the date and time needs AXIS OS 9.30 or later. Older devices fail with "Nothing was changed".
 - Time zone and NTP also work on older firmware, with one NTP server only.
-- NTS needs a device whose AXIS OS supports it. The check box is shown only then.
 
-The dialog notes below the chosen mode how many devices cannot do it, for example "500 of the selected devices have no
-Time API (AXIS OS 9.30 or later): their tasks fail without changes."
+The dialog notes below the chosen mode how many devices cannot do it, for example "500 of the selected devices lack the
+date and time settings of AXIS OS 9.30 or later: their tasks fail without changes."
 
 ## Steps
 

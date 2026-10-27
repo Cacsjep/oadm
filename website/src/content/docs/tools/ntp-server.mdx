@@ -35,9 +35,10 @@ passes on that server's time.
 
 ## Devices at sites
 
-While OADM has [sites](../../sites/overview/), the page shows **Sites**: choose **All sites** (also sites added later) or the
-sites whose devices get the time from OADM. Each site's node asks to allow UDP 123 in the OADM Site Node app; the state of
-each site shows below the field. A site you no longer choose gets its port removed in the node app again.
+While OADM has [sites](../../sites/overview/), the page shows **Sites**: choose **All sites** (also sites added later) or
+the sites whose devices get the time from OADM. On each chosen site, **Allow** the port the node marks as **Requested**
+in the [OADM Site Node app](../../sites/node-app/#ports); the state of each site shows below the field. A site you no
+longer choose gets its port removed again.
 
 <Image src={sitesShot} alt="The Sites field of the NTP server page with All sites and the single sites" class="screen" />
 
@@ -50,12 +51,11 @@ each site shows below the field. A site you no longer choose gets its port remov
 
 </Steps>
 
-Each device becomes a task that sets OADM's address as NTP server and checks the result. The NTP server must be running.
+Each device gets a task that sets OADM's address as NTP server and checks the result. The NTP server must be running.
 
 ## When the port is in use
 
-The NTP server needs UDP port 123. If the status says "Port 123 is in use by another program" or "Insufficient
-permission to use port 123", see your system:
+If the status says "Port 123 is in use by another program" or "Insufficient permission to use port 123":
 
 <Tabs>
 <TabItem label="Windows">
@@ -79,7 +79,8 @@ as root.
   computer's clock.
 - Clients that ask too often are slowed down.
 - The settings are kept when the server restarts.
-- Changing the settings needs the permission **Change the NTP server** (administrators have it). Operators can run **Use OADM as NTP server**.
+- Changing the settings needs the permission **Change the NTP server** (administrators have it). Operators can run
+  **Use OADM as NTP server**.
 
 <Aside>
 Related: [DHCP server](../dhcp-server/).

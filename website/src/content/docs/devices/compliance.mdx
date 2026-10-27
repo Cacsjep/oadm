@@ -9,18 +9,18 @@ import page from '../../../assets/screens/compliance-page.png';
 import check from '../../../assets/screens/compliance-check.png';
 import grid from '../../../assets/screens/devices-compliance.png';
 
-**Compliance** in the navigation, right below Devices, shows which devices need attention. It is off until an administrator
-clicks **Turn on** on the page. Then it lists the devices OADM cannot reach or log in to and expiring certificates. Add your own checks,
-for example "Object Analytics must run on the parking cameras" or "every device matches our base configuration".
-**Turn off compliance** stops the checks and removes their results; your checks stay.
+**Compliance** in the navigation, right below Devices, shows which devices need attention. It is off until an
+administrator clicks **Turn on** on the page. Then it lists the devices OADM cannot reach or log in to and expiring
+certificates. Add your own checks, for example "Object Analytics must run on the parking cameras" or "every device
+matches our base configuration". **Turn off compliance** stops the checks and removes their results; your checks stay.
 
 <Image src={page} alt="Compliance page" class="screen" />
 
 - **Cards**: one per check with the number of devices that fail it. Click a card to see those devices; **Show all
-  devices** goes back. The pen and the bin on a card change or delete the check.
+  devices** goes back. **Edit** and **Delete** on a card change or delete the check.
 - **All**, **Problems**, **Warnings**: the devices by their worst result.
-- **Columns**: one per check, with the result next to the icon. The text button in the toolbar shows only the icons;
-  hover an icon to see the result, since when it holds and when it was checked. **Choose columns** turns columns off,
+- **Columns**: one per check, with the result next to the icon. **Show the result text** in the toolbar turns the text
+  off; hover an icon to see the result, since when it holds and when it was checked. **Choose columns** turns columns off,
   **Group by tag** shows a group per tag.
 - **Check now** checks the selected devices again, or all devices. They show **Checking...** until the result is in.
 - **Export** saves the list as a CSV file.

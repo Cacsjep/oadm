@@ -61,38 +61,9 @@ what OADM loads and what you ship.
 
 ## The project files
 
-Both parts use the project SDK `Oadm.Plugin.Sdk`. It sets the assembly names (`<project>.Server.dll`, `<project>.Client.dll`
-for a project ending in `.Client`), references the SDK without copying it (OADM brings its own), and writes `plugin.json`:
-
-```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.5.0">
-  <PropertyGroup>
-    <OadmPluginId>acme.door-bell</OadmPluginId>
-    <Version>1.0.0</Version>
-    <OadmDisplayName>Door bell</OadmDisplayName>
-    <OadmDescription>Rings the door bell of the chosen intercoms.</OadmDescription>
-  </PropertyGroup>
-</Project>
-```
-
-| Property | plugin.json | Meaning |
-|---|---|---|
-| `OadmPluginId` | `id` | Unique and stable: the folder, the settings, the permissions. Never change it. Both parts name it |
-| `Version` | `version` | Your plugin's version |
-| `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page |
-| `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on |
-| `OadmLicensePublicKey`, `OadmLicenseFeatures`, `OadmLicenseTrialDays` | `license` | A plugin you sell, see [Sell a plugin with a license](../licenses/) |
-| `OadmSiteSupport` | `siteSupport` | `full` (default): works with devices at a site; `none`: not for them, see [Sites](../sites/) |
-| `OadmSitePorts` | `sitePorts` | Ports your plugin listens on at sites: `udp:514:Syslog;tcp:8080:Reports` |
-| `OadmBannedApis` | (none) | `warning` (default): the banned-API analyzer warns (RS0030) when your code opens its own socket, HTTP handler or DNS lookup; `none` turns it off. Inside the OADM repository plugins build with `error`, see [Sites](../sites/) |
-| (from the SDK) | `minSdkVersion` | The SDK version you build against, see [SDK versions](../compatibility/) |
-
-A `plugin.json` of your own in the server project is copied as it is instead.
-
-The client part references the server part to share its payload types. Avalonia, the MVVM toolkit and
-`Avalonia.Controls.DataGrid` come from the OADM client and are never copied: the SDK references Avalonia and the MVVM
-toolkit itself, and `Avalonia.Controls.DataGrid` without a version gets the host's. Other NuGet packages are copied into
-the plugin folder with your plugin.
+Both parts use the project SDK `Oadm.Plugin.Sdk`, in the version of the other packages (`Sdk="Oadm.Plugin.Sdk/4.5.2"`).
+It names the assemblies, references the OADM SDK without copying it and writes `plugin.json` from the server project's
+properties. The properties, and what OADM provides at runtime: [Plugin basics](../plugins/#the-project-files).
 
 ## The development server
 
@@ -111,22 +82,9 @@ installed one. A page or a dialog also opens without devices.
 
 ## Debug
 
-**On the development server.** Start it with `dotnet oadm dev start`, then attach the debugger of Visual Studio, Rider or
-VS Code (C# Dev Kit) to the process `Oadm.Server` for the server part, or to `Oadm.Client` for a dialog or page.
-OADM loads your plugin with its symbols, so breakpoints work. The loaded files are not locked: build while it runs.
-
-**On the installed OADM.** To try a plugin with the devices, data and settings of the OADM installed on your computer:
-
-```sh
-dotnet build
-dotnet oadm debug --installed
-```
-
-This stops the installed service and runs the installed server in your terminal with the service's data and your
-plugin from `.oadm/plugins/`. It prints the process to attach to. Ctrl+C ends it and starts the service again. It asks
-for administrator rights once (Windows UAC, or `sudo`).
-
-More about logs and a plugin that does not show up: [Debug a plugin](../debugging/).
+Attach the debugger of Visual Studio, Rider or VS Code to `Oadm.Server` (the server part) or `Oadm.Client` (a dialog or
+page) of the development server. `dotnet oadm debug --installed` runs the OADM installed on your computer with your
+build instead. Both in detail, the logs and a plugin that does not show up: [Debug a plugin](../debugging/).
 
 ## Try it in the installed OADM
 
@@ -157,10 +115,8 @@ rights: they install only plugins they trust.
 
 ## Tests
 
-The tests reference `Oadm.Sdk.Testing`: a camera that answers parameter reads and writes, basic device information and
-the API list (`FakeCamera`, with `Respond` for anything else), a device (`FakeDevice`), the server's contexts of a task,
-an action and a core plugin (`FakeTaskContext`, `FakeActionContext`, `FakeCoreContext`) and `StepRun`, which ends a task
-exactly like the server. See [Testing](../testing/).
+The tests reference `Oadm.Sdk.Testing`: a fake camera and device, the server's contexts of a task, an action and a core
+plugin, and `StepRun`, which ends a task exactly like the server. See [Testing](../testing/).
 
 ## All commands
 

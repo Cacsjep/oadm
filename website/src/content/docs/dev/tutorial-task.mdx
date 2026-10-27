@@ -91,7 +91,7 @@ changes, the display name and description are its row on the **Plugins** page.
 
 <Code code={template(serverProject)} lang="xml" title="MyCoolPlugin.csproj" />
 
-`<OadmEnabledByDefault>false</OadmEnabledByDefault>` keeps the plugin off until an administrator turns it on.
+Add `<OadmEnabledByDefault>false</OadmEnabledByDefault>` to keep the plugin off until an administrator turns it on.
 
 The client project names the same plugin id, and references the server project to share its payload record. The SDK
 adds the client SDK and Avalonia (the UI framework).

@@ -11,14 +11,15 @@ import picker from '../../../assets/screens/device-picker.png';
 
 A device trigger makes an event of your devices available to the [event rules](../event-rules/): a digital input, a
 virtual input, an Object Analytics scenario, a blur detected by AXIS Image Health Analytics, a storage alert, a
-temperature warning or the event of another app. OADM
-reads which events each device offers and keeps a live connection to every device a trigger uses.
+temperature warning or the event of another app. OADM reads which events each device offers and keeps a live connection
+to every device a trigger uses.
 
 <Image src={page} alt="The Device triggers page with three triggers and the devices of one" class="screen" />
 
 <Aside>
 Device triggers are off by default. An administrator turns them on on the **Plugins** page. Creating, changing and
-deleting triggers needs the permission **Change triggers** (administrators have it).
+deleting triggers needs the permission **Change triggers** on the [Permissions page](../../admin/users/#permissions-page)
+(administrators have it).
 </Aside>
 
 ## Create a trigger
@@ -70,8 +71,8 @@ into actions, for example `{port}` in a VAPIX command. The rule dialog lists the
 
 ## Good to know
 
-- OADM reads the events from the devices each time you create or edit a trigger, and again every 5 minutes while
-  connected. Apps add their events only while they run.
+- Besides each create and edit, OADM reads the events again every 5 minutes while connected. Apps add their events only
+  while they run.
 - During a short outage the trigger keeps its last state. After the device is back, it reports its current state and
   only real changes run actions.
 - The devices table below the triggers shows the connection, the state and the last event of each device.

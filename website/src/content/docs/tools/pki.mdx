@@ -10,8 +10,8 @@ import policiesShot from '../../../assets/screens/pki-policies.png';
 import dot1xPolicyShot from '../../../assets/screens/pki-policy-dot1x.png';
 import serverPolicyShot from '../../../assets/screens/pki-policy-server.png';
 
-The PKI page is the one place for certificates in OADM. OADM runs its own certificate authority (CA) and uses it to give
-your devices certificates for HTTPS and IEEE 802.1X. Devices with such a certificate show **Trusted** in the device list.
+The PKI page is the one place for certificates in OADM. Its certificate authorities (CA) give your devices certificates
+for HTTPS and IEEE 802.1X. Devices with such a certificate show **Trusted** in the device list.
 
 Open **PKI** in the navigation (group Security). The page has four tabs:
 
@@ -198,11 +198,9 @@ And these, which you can delete:
 | Axis device ID | EST sign-in CA | for new certificates |
 | OADM Root CA and the server's name | EST sign-in CA | for renewals |
 
-After an update from OADM 4.1, HTTPS and IEEE 802.1X keep the values of the former cards and an RSA key, and the IEEE
-802.1X policy keeps its EAPOL version and EAP identity, so cameras get what they got before. EAPOL version 3 needs AXIS OS
-10.1 or later and ECC keys need AXIS OS 12: for older cameras, add a policy with RSA and EAPOL version 1 or 2 (see
-[Supported AXIS OS](../../tasks/certificates/#supported-axis-os)). A CA replaced in an older OADM stays in the CA list
-as an ordinary CA and gets its own 802.1X trusted CA policy, so its cameras keep getting onto the network.
+A server updated from OADM 4.1 keeps what its cameras got before: HTTPS and IEEE 802.1X keep an RSA key, IEEE 802.1X
+keeps its EAPOL version and EAP identity, and each CA it replaced stays as an ordinary CA with its own 802.1X trusted CA
+policy. For cameras before AXIS OS 12 or 10.1, see [Supported AXIS OS](../../tasks/certificates/#supported-axis-os).
 
 ### When a device is in two policies
 
@@ -307,13 +305,11 @@ The old CA stays in the list until you delete it, so cameras keep working until 
 
 ## Use the certificates on devices
 
-Right-click devices on the Devices page and open the **Security** group: Enable HTTPS, Disable HTTPS, Enable IEEE 802.1X,
-Disable IEEE 802.1X, Renew certificates, View certificates, Delete certificates, Install certificates, Install CA
-certificates and, with OADM PRO, EST - Certificate Enrollment. They need AXIS OS 6.53 or later. See
-[Certificates](../../tasks/certificates/) for each task and the supported AXIS OS versions.
+The certificate tasks are in the **Security** group of the Devices page's context menu: see
+[Certificates](../../tasks/certificates/).
 
-A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when a CA of the
-PKI page that can issue issued it directly for the same camera.
+A camera's new HTTPS certificate does not show **Certificate changed** when a CA of the PKI page issued it directly for the
+same camera. Any other new certificate still does.
 
 ## Good to know
 

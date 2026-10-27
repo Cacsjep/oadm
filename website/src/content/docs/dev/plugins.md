@@ -48,40 +48,20 @@ flowchart TB
 
 ## Start from a working plugin
 
-```sh
-dotnet new install Oadm.Plugin.Templates
-dotnet new oadm-task -n MyPlugin      # or oadm-page, oadm-action
-```
+`dotnet new oadm-task -n MyPlugin` (or `oadm-page`, `oadm-action`) creates the plugin of the matching tutorial under your
+name, with its tests: it builds, its tests pass, and it runs on the development server. The folder it creates and the
+tools around it: [Develop with the .NET SDK](../plugin-sdk/). The tutorials explain every file:
+[task plugin](../tutorial-task/), [plugin page](../tutorial-page/), [event rule action](../tutorial-action/).
 
-This creates the plugin of the matching tutorial under your name, with its tests: it builds, its tests pass, and it runs
-on the development server (`dotnet oadm dev start`). The tutorials explain every file:
-[task plugin](../tutorial-task/), [plugin page](../tutorial-page/), [event rule action](../tutorial-action/). The tools
-around it: [Develop with the .NET SDK](../plugin-sdk/).
+## The project files
 
-## Project layout
-
-```text
-MyPlugin/
-  MyPlugin.slnx
-  Directory.Build.props          .NET 10, the plugin folder .oadm/plugins/
-  MyPlugin/                      server part: MyPlugin.Server.dll
-    MyPlugin.csproj
-    MyPluginTaskPlugin.cs
-  MyPlugin.Client/               client part (optional): MyPlugin.Client.dll
-    MyPlugin.Client.csproj
-    MyPluginDialog.cs
-  MyPlugin.Tests/
-```
-
-### The project files
-
-Both parts use the project SDK `Oadm.Plugin.Sdk`. It names the assemblies after the project (`.Server.dll`, and
-`.Client.dll` for a project ending in `.Client`), references the OADM SDK without copying it (the host has it), writes
-`plugin.json` from the server project's properties and copies the plugin folder to `.oadm/plugins/<id>/` after every
-build:
+Both parts use the project SDK `Oadm.Plugin.Sdk`, in the version of the OADM release you build for. It names the
+assemblies after the project (`<project>.Server.dll`, and `<project>.Client.dll` for a project ending in `.Client`),
+references the OADM SDK without copying it (the host has it), writes `plugin.json` from the server project's properties
+and copies the plugin folder to `.oadm/plugins/<id>/` after every build:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.5.0">
+<Project Sdk="Oadm.Plugin.Sdk/4.5.2">
   <PropertyGroup>
     <OadmPluginId>acme.hello</OadmPluginId>
     <Version>1.0.0</Version>
@@ -93,18 +73,18 @@ build:
 
 The client project names the same `OadmPluginId` and references the server project to share the payload types. Avalonia,
 the MVVM toolkit and `Avalonia.Controls.DataGrid` (without a version) come from the OADM client and are never copied;
-other packages go into the plugin folder with your plugin.
+other packages go into the plugin folder with your plugin. What OADM provides: [SDK versions](../compatibility/#what-is-shared-and-what-your-plugin-brings).
 
 ### plugin.json
 
 | Property | Field | Meaning |
 |---|---|---|
-| `OadmPluginId` | `id` | Unique and stable. It names the folder, the settings and the permissions. Never change it |
+| `OadmPluginId` | `id` | Unique and stable. It names the folder, the settings and the permissions. Never change it. Both parts name it |
 | `Version` | `version` | Your plugin's version |
 | (the SDK's) | `minSdkVersion` | The SDK your plugin is built with (`SdkInfo.Version`). An older host skips the plugin and logs why. Below 0.4.0 users with a device group cannot use it, see [SDK versions](../compatibility/#plugins-built-before-040) |
 | `OadmDisplayName`, `OadmDescription` | `displayName`, `description` | The row on the **Plugins** page: the name and one short sentence |
 | `OadmEnabledByDefault` | `enabledByDefault` | `false`: off until an administrator turns it on. Use it for anything that runs in the background |
-| `OadmLicense...` | `license` | A plugin you sell: [Sell a plugin with a license](../licenses/) |
+| `OadmLicensePublicKey`, `OadmLicenseFeatures`, `OadmLicenseTrialDays` | `license` | A plugin you sell: [Sell a plugin with a license](../licenses/) |
 | `OadmSiteSupport` | `siteSupport` | `full` (default): works with devices at a site; `none`: the host keeps it away from them, see [Sites](../sites/) |
 | `OadmSitePorts` | `sitePorts` | Ports your plugin listens on at sites: `udp:514:Syslog;tcp:8080:Reports` |
 | `OadmBannedApis` | (none) | `warning` (default): the banned-API analyzer warns (RS0030) when your code opens its own socket, HTTP handler or DNS lookup; `none` turns it off. Inside the OADM repository plugins build with `error`, see [Sites](../sites/) |
@@ -116,6 +96,8 @@ reserved for the plugins of OADM.
 
 - The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout of OADM, in
   `artifacts/plugins/<id>/`. The client looks in the same three places.
+- `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
+  before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
 - Each plugin folder loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into
   the plugin folder with it.
 - The loader finds every public class that implements a plugin interface and has a public parameterless constructor.
@@ -123,13 +105,6 @@ reserved for the plugins of OADM.
 - A plugin that fails to load or throws is logged and skipped. It never stops the server or the client.
 - Administrators turn plugins on and off on the **Plugins** page. A plugin that is off has no page, menu entry or toolbar
   button, and its core plugins are stopped. Tasks already running finish.
-
-- `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
-  before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
-
-To try a plugin, build it and start the development server in its folder (`dotnet oadm dev start`, then
-`dotnet oadm dev client`). To install it in the OADM on your computer, run `dotnet oadm deploy --installed`; for others,
-`dotnet oadm pack` writes the `.oadmplugin` file. See [Develop with the .NET SDK](../plugin-sdk/).
 
 ## Rules every plugin follows
 

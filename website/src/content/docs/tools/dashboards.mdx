@@ -3,6 +3,7 @@ title: Dashboards
 description: Live values of your device triggers and live video, in saved dashboards.
 ---
 
+import { Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import page from '../../../assets/screens/dashboards-page.png';
 import edit from '../../../assets/screens/dashboards-edit.png';
@@ -14,12 +15,15 @@ The values come from [Device triggers](../device-triggers/) and from OADM's own 
 
 <Image src={page} alt="The dashboard Building A: two temperatures, a gate as an open lock, the last number plate and a camera" class="screen" />
 
+<Aside>
+Dashboards is off by default. An administrator turns it on on the **Plugins** page, together with **Device triggers**.
+Then create a trigger for each event whose values you want to see.
+</Aside>
+
 ## Open a dashboard
 
-1. Dashboards is off when OADM is installed: an administrator turns it on under **Plugins**. Turn on
-   **Device triggers** too and create a trigger for the event whose values you want to see.
-2. Open **Dashboards** in the navigation rail.
-3. Click a dashboard under **Dashboards**. It opens in a tab; open more and switch between the tabs.
+1. Open **Dashboards** in the navigation rail.
+2. Click a dashboard under **Dashboards**. It opens in a tab; open more and switch between the tabs.
 
 A value that may be old is dimmed, with the reason below it: **Connection lost**, **Unreachable**. Point at a value to
 see when it arrived.
@@ -50,9 +54,10 @@ see when it arrived.
 4. **Add cameras** chooses one or several cameras for live video (up to 16 per dashboard); they share the free space.
    Choose a camera's channel with the buttons on the picture.
 5. Drag a widget to move it, drag one of its edges or corners to resize it, and click its X to remove it. Click a widget
-   to change its settings. Sizes of icons and text are a share of the widget, so they grow with it.
+   to change its settings. Icons and text grow with the widget.
 6. To change several widgets at once, drag over empty cells to select every widget the frame touches, Ctrl+click to add
-   or remove one, or press Ctrl+A for all. Drag one of them to move them together, or drag its edge or corner to resize them all; widgets side by side make room for each other. The settings show what they share:
+   or remove one, or press Ctrl+A for all. Drag one of them to move them together, or drag its edge or corner to resize
+   them all; widgets side by side make room for each other. The settings show what they share:
    change **Width** and **Height**, the icons, colors, texts, sizes or unit for all of them; a setting where they differ
    shows **Mixed** until you change it. The icons at the top copy or remove them all.
 7. Enter a name and click **Save**. **Cancel** throws your changes away.
@@ -70,8 +75,8 @@ anything needs attention, a Number widget how many devices. Event rules can use 
 
 - Dashboards are stored on the OADM server and shared by every user. When someone else saves a dashboard you have open,
   your tab follows.
-- Who may create, change and delete dashboards is the right **Change dashboards** on the Permissions page. Viewers only open
-  dashboards. Seeing video needs **Live view**.
+- Creating, changing and deleting dashboards needs the permission **Change dashboards** on the
+  [Permissions page](../../admin/users/#permissions-page). Viewers only open dashboards. Seeing video needs **Live view**.
 - OADM keeps the values in memory only. After a server restart, on / off values come back at once; other values show
   **No value yet** until the device sends the event again.
 - A device that was removed from OADM keeps its widget and says so.

@@ -14,8 +14,8 @@ description: Network ports, the data folder and what to back up.
 | TCP 9454 | [EST server](../../tools/est-server/): cameras get their certificates, only while it runs (the port can be changed) |
 | UDP 1812 | [802.1X server](../../tools/radius-server/): switches check the cameras, only while it runs (the port can be changed) |
 
-The Windows installer opens TCP 5080 for Domain and Private networks. The server opens TCP 5081 while **Accept site
-nodes** is on, the NTP and DHCP servers their port while enabled, the EST and 802.1X servers their port while they run. The server runs as Local System / root because the NTP and DHCP servers need privileged ports.
+The Windows installer opens TCP 5080 for Domain and Private networks. The server opens each other port only while it is
+in use, as in the table. The server runs as Local System / root because the NTP and DHCP servers need privileged ports.
 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
@@ -28,7 +28,7 @@ Metadata Monitor.
 | Linux | `/var/lib/oadm` |
 | macOS | `/Library/Application Support/OADM` |
 
-It holds the database (devices, tasks, users), the plugin settings including the PKI's certificate authority, and
+It holds the database (devices, tasks, users), the plugin settings including the PKI's certificate authorities, and
 `master.key`, which encrypts every stored password. Only administrators / root can read it. Uninstalling keeps it.
 
 ## Backup
@@ -44,4 +44,4 @@ If `master.key` is lost or replaced, the server starts with a new key, removes t
 sets those devices to **Credentials required**. The client shows a banner with the number of devices. Use **Log in**
 in the device context menu to enter their password again.
 
-The [PKI](../../tools/pki/) page can also back up the certificate authority to a password-protected file.
+The [PKI](../../tools/pki/) page can also back up a certificate authority to a password-protected file.

@@ -10,7 +10,6 @@ import shot from '../../../assets/screens/hardening-scan-basic.png';
 The Hardening scan checks your devices against the
 [AXIS OS Hardening Guide](https://help.axis.com/en-us/axis-os-hardening-guide) in its two levels, Basic and Extended.
 You see one column per check and a result per device: pass, warning, fail, could not be read, or does not apply.
-The scan only reads. It never changes a device.
 
 <Image src={shot} alt="The Hardening scan page with one column per check" class="screen" />
 
@@ -47,8 +46,8 @@ protection, access log, signed video and Network Time Security.
 Some rules to know:
 
 - SSH turned on fails the check.
-- The web interface, discovery protocols and DHCP turned on are warnings.
-- Bonjour turned on is a warning. OADM's **Discovery** and the re-find of moved devices use it.
+- The web interface, network discovery protocols and DHCP turned on are warnings. OADM's **Discovery** and the re-find
+  of moved devices need Bonjour on.
 - The AXIS OS version is shown for information only and is not rated.
 - Checks the guide lists but that cannot be checked over the network are not shown.
 
@@ -57,11 +56,12 @@ a failure.
 
 ## Good to know
 
+- The scan only reads. It never changes a device.
 - OADM scans 16 devices at a time.
 - Devices that are unreachable, need a login, have no password yet or have a changed certificate are not contacted.
 - The last result of every device is kept on the server and shown with its scan time, also after a restart.
 - A scan writes no audit entry.
 
 <Aside>
-Operators can run the Hardening scan. No administrator rights are needed.
+Operators can run the Hardening scan (permission **Run scans**). No administrator rights are needed.
 </Aside>

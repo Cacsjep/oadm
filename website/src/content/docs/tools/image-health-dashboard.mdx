@@ -42,17 +42,15 @@ The dashboard is off by default. An administrator turns it on on the **Plugins**
 </Steps>
 
 The **App** column shows **Running**, **Not running** (the app is installed but stopped), or why OADM could not read
-the camera. **Last change** shows when a detection changed between two checks. The line above the table counts the
-cameras without the app. The cards always count every camera, also while you search.
+the camera. **Last change** shows when a detection changed between two checks. Cameras without the app are not listed;
+the line above the table counts them. The cards always count every camera, also while you search.
 
 ## Good to know
 
-- OADM asks the cameras only when you open the page, click **Refresh** or turn on **Auto refresh**. Nothing runs in
-  the background, and nothing runs after you leave the page.
+- Nothing runs in the background, and nothing runs after you leave the page.
 - To react to blur and the other detections in [event rules](../event-rules/), create a
   [device trigger](../device-triggers/) on an event of the app, for example **Image Health Analytics - Blur** or
   **Image Health Analytics - Any-Active-Events**.
-- Cameras without the app are counted but not listed.
 - OADM asks 24 cameras at a time and waits at most 3 seconds for each.
 - The dashboard only reads. It never changes a camera or the app settings.
 - Devices that need a login, have no password yet, have a changed certificate or do not answer show the reason.

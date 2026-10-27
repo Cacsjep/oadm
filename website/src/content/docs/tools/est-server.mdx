@@ -10,10 +10,7 @@ import dialogShot from '../../../assets/screens/est-setup-dialog.png';
 
 The EST server gives your Axis cameras their certificates for HTTPS, IEEE 802.1X, MQTT and RTSPS, and the cameras
 **renew them by themselves** before they expire. You set up each camera once; after that no task has to run again when a
-certificate gets old. The certificates come from the CAs of the [PKI](../pki/) page, so everything stays in one place.
-
-EST (Enrollment over Secure Transport) is the standard the cameras' own certificate client speaks. OADM runs the server
-side, the cameras ask it for certificates.
+certificate gets old. The certificates come from the CAs of the [PKI](../pki/) page.
 
 <Aside type="note" title="OADM PRO">
 The EST server is part of PKI and needs OADM PRO. It runs while you have turned it on and an OADM PRO license or 30-day
@@ -46,10 +43,9 @@ else in OADM works the same with or without a license.
 
 </Steps>
 
-**Turn off** next to **Save** stops the server; your settings and the enrollments stay. OADM 4.1 had the EST server on the
-**Plugins** page: if it was on there, it is on after the update. After the update from 4.1, EST certificates follow the
-built-in HTTPS and IEEE 802.1X policies (their days and key), not the 4.1 profile values. A profile that was off in 4.1
-stays off.
+**Turn off** next to **Save** stops the server; your settings and the enrollments stay. A server updated from OADM 4.1
+keeps the EST server on if it was on there, and its profiles as they were; their certificates follow the built-in
+issuing policies.
 
 ## The tab
 
@@ -112,15 +108,11 @@ details show them.
 
 ## The server's certificate
 
-The cameras check the EST server with its certificate. The **EST server** policy of the [PKI](../pki/) page names it: by
-default the shared certificate **802.1X and EST server** that OADM makes when OADM PRO becomes active. It holds this
-computer's addresses and, while the EST server runs, the addresses of your site nodes. It is the same certificate for the
-server and every site.
-
-When you add a site, the server gets another address or you choose another interface in **Listen on**, the tab warns that the address is not in the certificate.
-Create a certificate with every address on the Certificates tab and choose it in the EST server policy (see
-[Server certificates](../pki/#server-certificates)). Then set up the cameras again, so they trust the CA of the new
-certificate.
+The cameras check the EST server with the certificate its **EST server** policy names, one certificate for the server and
+every site (see [Server certificates](../pki/#server-certificates)). When you add a site, the server gets another
+address or you choose another interface in **Listen on**, the tab warns that the address is not in the certificate.
+Choose a certificate with every address in the EST server policy, then set up the cameras again, so they trust the CA of
+the new certificate.
 
 ## Set up cameras
 
@@ -202,11 +194,8 @@ Cameras at a site cannot reach the server. They talk to their site node instead,
 
 The camera renews each certificate by itself halfway through its validity (a certificate of 1 year after about six
 months), without OADM running a task. When that fails, it tries again every day. It signs in with its
-current certificate or its device ID and gets a new certificate with the same names.
-
-A camera's new HTTPS certificate does not show **Certificate changed**: OADM accepts a new certificate when a CA of the
-PKI page that can issue issued it directly for this camera, and remembers it. Any other new certificate still shows
-Certificate changed.
+current certificate or its device ID and gets a new certificate with the same names. A renewed HTTPS certificate does not
+show **Certificate changed** (see [Use the certificates on devices](../pki/#use-the-certificates-on-devices)).
 
 ## Who gets a certificate
 

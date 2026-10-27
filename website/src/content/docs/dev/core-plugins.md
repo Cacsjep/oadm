@@ -18,7 +18,7 @@ the devices of that group. A core plugin can also contribute task plugins, actio
 | `TaskPlugins` | Task plugins it contributes; they reach the owner through `ctx.Owner` |
 | `StartAsync(ctx, ct)`, `StopAsync(ct)` | When the server starts or stops, and when an administrator turns the plugin on or off |
 | `InvokeAsync(caller, method, payloadJson, ct)` | The backend of the page: JSON in, JSON out. `caller` is the user's call with the devices that user may reach, see [Device groups](../device-groups/) |
-| `Permissions`, `RequiredPermission(method)` | Named rights for the role matrix, see [Permissions](#permissions) |
+| `Permissions`, `RequiredPermission(method)`, `RequiredRole(method)` | Named rights for the role matrix, see [Permissions](#permissions) |
 | `IsAudited(method)` | Write the call to the audit log |
 | `RequiresAllDevices(method)` | Only users with all devices may call it (saves of server-wide settings) |
 | `SystemAccessReason(method)` | Why the method needs every device during a group user's call; null for most |
@@ -35,6 +35,7 @@ plugin that throws on start is marked as failed; the others keep running.
 | `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running). In a method: `caller.Tasks` |
 | `Settings` | `GetAsync` / `SetAsync(key, json)`: the plugin's own settings in the server database |
 | `Logger` | The server log |
+| `Records` | `IPluginRecords`: the plugin's own records in the server database, one row per record, for data that grows with the devices |
 | `Secrets` | `Protect` / `Unprotect`: encrypt what you store in the settings with the server's key |
 | `Events` | `Publish(topic, json, audience)`: live events to the pages the audience covers (`PluginEventAudience`); `Publish(topic, json)` reaches users with all devices |
 | `DataDirectory` | A private folder for working files, inside the protected data folder |
@@ -48,9 +49,12 @@ plugin that throws on start is marked as failed; the others keep running.
 | `Network` | `IPluginNetwork`: network checks on a device's route (`ForDevice(device)`, `ForSite(siteId)`) and listeners on the server's own network (`ListenUdpAsync`, `ListenTcpAsync`), see [Sites](../sites/) |
 | `Sites` | `ISites`: the bound sites and relays that listen at a site (`OpenUdpRelayAsync`, `OpenTcpRelayAsync`), see [Sites](../sites/) |
 | `License` | `IPluginLicense`: the package's license, live (`IsValid`, `Has(feature)`, `Limit(name)`, `Changed`), see [Licenses](../licenses/) |
+| `Pro` | `IProLicense`: the server's OADM PRO license, live. OADM only checks; a PRO plugin decides what runs without it |
+| `Services` | `IPluginServices`: services core plugins offer each other (`Offer`, `Withdraw`, `Find`), e.g. the CA of PKI |
 | `System` | `ISystemAccess`: every device, for background work and methods with a `SystemAccessReason` |
 | `Jobs` | `IPluginJobs`: work a method starts for its user (reports, scans, monitors), owned by that user |
 | `DeviceScopes` | `IDeviceScopes`: the devices of a device group, for objects kept per group (dashboards, views) |
+| `ProtectedTags` | `IProtectedTags`: tags only users with all devices may add to or remove from devices; null on older hosts, then treat no tag as safe |
 
 Every member after `Logger` except `System` may be null on an older host or where it does not apply. Check before you
 use it.
@@ -92,7 +96,7 @@ The page's context, `ICorePluginClientContext`:
 | `WatchEventsAsync(ct)` | The live events of the server part |
 | `OpenDownloadAsync(method, payload, ct)` | A file from the server part, see [Downloads](#downloads) |
 | `Devices`, `SelectedDevices`, `DevicesChanged` | The client's copy of the device table and the Devices page selection |
-| `Has(permission)`, `PermissionsChanged` | Hide or lock what the user's role does not allow |
+| `Has(permission)`, `HasAllDevices`, `PermissionsChanged` | Hide or lock what the user's role does not allow, or what only users with all devices may do |
 | `ShowMessageAsync`, `ConfirmAsync`, `Owner` | The host's message window and the owner for your own dialogs |
 | `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices`, or another plugin's page: `"plugin:" + its id` |
 | `OwnerName` | "user@machine", the owner of tasks the page starts |

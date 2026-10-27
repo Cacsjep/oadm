@@ -13,10 +13,19 @@ attaching the debugger to the process that runs the part you want to stop in.
 3. Attach the debugger of Visual Studio, Rider or VS Code (C# Dev Kit) to **`Oadm.Server`** (tasks, queries, core
    plugins, actions) or **`Oadm.Client`** (dialogs, pages, toolbar entries), then trigger your code.
 
-A build restarts the development server when the server part changed; attach again after it. To stop in your code with
-the data and devices of the OADM installed on your computer, `dotnet oadm debug --installed` runs the installed server in
-your terminal with your build (the service starts again afterwards). The development server's log: `dotnet oadm dev logs`,
-or `.oadm/server-data/logs/`. More: [Develop with the .NET SDK](../plugin-sdk/#debug).
+The loaded files are not locked: build while it runs. A build restarts the development server when the server part
+changed; attach again after it. The development server's log: `dotnet oadm dev logs`, or `.oadm/server-data/logs/`.
+
+To stop in your code with the devices, data and settings of the OADM installed on your computer:
+
+```sh
+dotnet build
+dotnet oadm debug --installed
+```
+
+This stops the installed service and runs the installed server in your terminal with the service's data and your
+plugin from `.oadm/plugins/`. It prints the process to attach to. Ctrl+C ends it and starts the service again. It asks
+for administrator rights once (Windows UAC, or `sudo`).
 
 ## In a checkout of OADM
 

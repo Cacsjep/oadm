@@ -37,7 +37,7 @@ The page has three cards:
 
 </Steps>
 
-Each device becomes one task in the Tasks pane below the page. Each command is one step with its result, for example
+Each device gets one task in the tasks pane below the page. Each command is one step with its result, for example
 "Product: P3265-V". A value the camera does not have (WDR, an audio output, a zoom lens) is left out of the result. A
 command the device does not support fails with "Nothing was sent".
 
@@ -141,8 +141,8 @@ variant, use **+** and start from the saved command instead.
 ### Use it in event rules
 
 The event rule action **Run VAPIX command** runs a saved command. A text field of the command can take a value of the
-event: type `{carID}`, `{port}` or `{device}` (single braces) as the field's value, and OADM fills it in when the rule
-runs. The info icon next to an event in the rule lists the values it has.
+event: type `{carID}`, `{port}` or `{device}` (single braces) as the field's value. See
+[Placeholders](../event-rules/#placeholders).
 
 ## Good to know
 
@@ -152,9 +152,8 @@ runs. The info icon next to an event in the rule lists the values it has.
 - The compatibility check uses the device information OADM already has. Before a command changes a device, the server
   checks again with fresh data.
 - Commands that send and rollouts are written to the audit log.
-- **Changes the device** and **Dangerous** are two different marks. A command that changes the device asks for a confirmation
-  before a rollout. Dangerous commands (restart, factory default, firmware roll back, network settings) need a second
-  confirmation and, in event rules, **Allow dangerous commands**.
+- **Changes the device** and **Dangerous** are two different marks. Dangerous commands (restart, factory default,
+  firmware roll back, network settings) need a second confirmation and, in event rules, **Allow dangerous commands**.
 
 <Aside>
 Operators can use VAPIX Commander. No administrator rights are needed.

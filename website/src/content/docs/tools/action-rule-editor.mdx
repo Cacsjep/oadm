@@ -9,11 +9,11 @@ import page from '../../../assets/screens/action-rules-page.png';
 import edit from '../../../assets/screens/action-rules-edit-form.png';
 import newRule from '../../../assets/screens/action-rules-new-rule.png';
 
-The Action Rule Editor shows the action rules of your cameras (Events > Rules in the camera's web interface) in one page
-and changes them on many cameras at once. Example: 500 cameras "Send notification through TCP" should "Send notification
-through TCP while the rule is active". One edit changes them all, and each camera keeps its own message.
+The Action Rule Editor shows the action rules of your cameras (Events > Rules in the camera's web interface) on one page
+and changes them on many cameras at once. Example: on 500 cameras, "Send notification through TCP" should become "Send
+notification through TCP while the rule is active". One edit changes them all, and each camera keeps its own message.
 
-These are the rules that run on the cameras themselves, not OADM's [event rules](../event-rules/).
+These rules run on the cameras themselves. OADM's own rules are the [event rules](../event-rules/).
 
 <Image src={page} alt="The Action Rule Editor with rules grouped by what they do and the rules of one group" class="screen" />
 
@@ -23,20 +23,19 @@ permission **Change action rules**, deleting **Delete action rules** (operators 
 </Aside>
 
 <Aside type="caution" title="Try a change on a few cameras first">
-A change goes to every camera you selected at once. Before you change, copy or create rules on 200 cameras, apply it to
-two or three of them, check on those cameras that the rule does what you want (for example, trigger the event and see
-the notification arrive), and only then apply it to the rest. A camera that refuses the change is left as it was, but a
-change the cameras accept and that does something else than you meant reaches all of them.
+A change goes to every selected camera at once. Apply it to two or three cameras first, check that the rule does what
+you want (for example, trigger the event and see the notification arrive), then apply it to the rest. A camera that
+refuses a change stays as it was; a change the cameras accept reaches all of them, also when it does something else than
+you meant.
 </Aside>
 
 ## Find the rules
 
 Choose the cameras with **Choose devices**: all devices, tags, or single cameras. The page starts with the devices
 selected on the Devices page, else with your last choice. OADM reads the rules of those cameras, and again with
-**Refresh**. Rules that do the same (the same
-event and the same action) are one row, even when their names or settings differ. **What it does** can also group by
-name, action or event. Select a row to see its rules on the right, one per camera; select some of them to change only
-those.
+**Refresh**. Rules with the same event and the same action are one row, even when their names or settings differ.
+**What it does** can also group by name, action or event. Select a row to see its rules on the right, one per camera;
+select some of them to change only those.
 
 ## Change rules
 

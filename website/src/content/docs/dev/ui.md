@@ -17,9 +17,9 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | Control | Use for |
 |---|---|
 | `ui:DialogTitleBar` | The first row of every dialog: the title and an X that closes it |
-| `ui:DialogFooter` | The last row: Cancel on the left, your buttons on the right |
+| `ui:DialogFooter` | The last row: Cancel on the left, your buttons on the right; a lone Close or Cancel sits on the right |
 | `ui:CardHeader` | The heading of a card, with optional controls right of the title |
-| `ui:FormField` | Every labeled input: label, input, and the error or hint below it. Classes `wide`, `inline`; `Info` adds an info icon |
+| `ui:FormField` | Every labeled input: label, input, and the error or hint below it. Classes `wide`, `inline`; `Info` adds an info icon; `LabelAbove` puts the label above the input (SDK 0.5.0) |
 | `ui:PasswordBox` | Every password field, with the eye button |
 | `ui:SearchBox` | Every search field |
 | `ui:ToolbarButton`, `ui:ToolbarSeparator` | Toolbar buttons (icon and text) and the line between groups |

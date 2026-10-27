@@ -84,7 +84,8 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
    under your name, ready to build and run.
 4. [Build from source](../build/): OADM itself from a checkout.
 5. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
-   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [Sites](../sites/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
+   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [Sites](../sites/),
+   [Device groups](../device-groups/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
    [SDK versions](../compatibility/), [Sell a plugin with a license](../licenses/).
 6. [Build a plugin with AI](../ai-plugins/): write a plugin together with an AI coding assistant.
 

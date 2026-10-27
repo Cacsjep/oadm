@@ -17,7 +17,8 @@ hours, switch on the warning lamp on the I/O box and show an overlay on the came
 <Image src={page} alt="The Event rules page with three rules" class="screen" />
 
 <Aside>
-Administrators create and change rules. Operators see the rules and the event log.
+Creating and changing rules needs the permission **Change event rules** (administrators have it). Operators see the rules
+and the event log.
 </Aside>
 
 ## Create a rule
@@ -52,7 +53,7 @@ Administrators create and change rules. Operators see the rules and the event lo
 |---|---|
 | Device unreachable, Credentials required, Certificate changed | The device status OADM sees |
 | Any device: unreachable, credentials required, certificate changed | On while at least one device has the status; the value `{count}` says how many. No device |
-| Certificate expires soon, Certificate expired, and their Any device events | The HTTPS certificate of the device, with the days of its expiry warning on the [PKI](../pki/) page (group Certificates) |
+| Certificate expires soon, Certificate expired, and their Any device events (group Certificates) | The HTTPS certificate of the device, with the days of the **Expiry warning** policy on the [PKI](../pki/) page |
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
@@ -65,11 +66,9 @@ hold, and some actions can undo themselves when the rule turns **off**.
   they say.
 - **Run VAPIX command**: sends a saved command of the [VAPIX Commander](../vapix-commander/), with its values and
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
-  dangerous need **Allow dangerous commands**.
-  Text fields of the saved command can use the event's values: type `{carID}`, `{port}` or `{device}` as the field's
-  value and OADM fills it in when the rule runs. The info icon next to an event lists its values.
-- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Method, URL,
-  query parameters, headers, a login (Basic, Digest or a token) and a body as JSON, XML, text or form.
+  dangerous need **Allow dangerous commands**. Text fields of the command take [placeholders](#placeholders).
+- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Method,
+  URL, query parameters, headers, a **Login** (Basic, Digest or Bearer token) and a body as JSON, XML, text or form.
   **Allow untrusted certificates** accepts a self-signed certificate on the receiving side.
 - **Send email**: sends a mail through your mail server, as text or HTML. The mail server is part of the action.
 - **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
@@ -88,8 +87,8 @@ event, for example `{objectId}`. The **Placeholders** card next to the actions l
 In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each value, so `"objectID": "{objectId}"`
 stays valid whatever the event sends. Text sends the values as they are.
 
-**Send test** sends the email, the request or the message once right away. The event's values are filled in with sample values, the
-device is the first one the trigger uses.
+**Send test** sends the email, the request or the message once right away, with sample values for the event and the
+first device of the trigger.
 
 <Image src={httpAction} alt="Send HTTP request with a JSON body, headers and the placeholders" class="screen" />
 

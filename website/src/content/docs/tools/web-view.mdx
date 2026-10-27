@@ -16,9 +16,10 @@ device. Go through many cameras one after another without typing a password once
 
 1. Open **Web View** in the navigation rail.
 2. Click a device on the left. Its web interface opens in a tab. Click it again later to go back to its tab.
-3. The select above the search chooses the page: the web interface, its Apps, Overlays, Privacy masks, Recordings or Security page, AXIS Image Health Analytics, AXIS Object Analytics or
-   AXIS License Plate Verifier. Choose **Custom** and enter a path on the device, for example `/local/myapp/index.html`,
-   then press Enter. New tabs open the page you chose, so you can check the same app on camera after camera.
+3. The list above the search chooses the page: **Web interface**, **Apps**, **Overlays**, **Privacy masks**,
+   **Recordings**, **Security**, **Image Health Analytics**, **Object Analytics** or **License Plate Verifier**. Choose
+   **Custom** and enter a path on the device, for example `/local/myapp/index.html`, then press Enter. New tabs open the
+   page you chose, so you can check the same app on camera after camera.
 4. Above the page: close all tabs, reload, and go back to the previous page of the tab.
 
 The list groups the devices by tag, like **Group by tag** on the Devices page. A device with several tags is listed under
@@ -30,8 +31,8 @@ address, model, MAC address, host name and tags.
 - The login never leaves the OADM server: the server opens every page for you. It also works when your computer cannot
   reach the cameras directly, as long as the server can.
 - Opening a device's web interface is written to the audit log.
-- A user needs the Web View permissions "Show the page" and "Open devices". Both are off for the built-in Operator
-  role by default.
+- A user needs the Web View permissions **Show the page** and **Open devices** on the
+  [Permissions page](../../admin/users/#permissions-page). Both are off for the built-in Operator role by default.
 - Devices that need a login, have no password yet or have a changed certificate show the reason instead of the page.
   Fix them on the Devices page first (**Log in**, **Set password**).
 

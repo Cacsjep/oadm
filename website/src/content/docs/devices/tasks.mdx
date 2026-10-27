@@ -7,8 +7,7 @@ import { Image } from 'astro:assets';
 import pane from '../../../assets/screens/client-tasks-pane-names.png';
 import details from '../../../assets/screens/client-task-details-steps.png';
 
-Every action on a device runs as a task. Running it on 20 devices creates 20 tasks, so one failing device never marks
-the others as failed.
+Every action on a device runs as a task, one per device. How to start them: [Device tasks](../../tasks/overview/).
 
 <Image src={pane} alt="Tasks pane" class="screen" />
 
@@ -24,8 +23,8 @@ Below the device list. Drag the divider to resize it, or collapse it.
 | Current step | "Step 3/6 · Upload firmware · 45 %" while it runs, "Completed" at the end. |
 | Start time, Owner, Progress | Owner is the user and computer that started it. |
 
-Buttons: **Details**, **Cancel**, **Delete** and **Delete all** (needs the permission "Delete all tasks", off for operators by default; running tasks are cancelled
-first).
+Buttons: **Details**, **Cancel**, **Delete** and **Delete all**. **Delete all** cancels running tasks first and needs the
+permission "Delete all tasks", off for operators by default.
 
 ## Details
 
@@ -35,6 +34,6 @@ first).
 
 ## Good to know
 
-- Up to 16 devices per task run at the same time; more wait as Queued. Change it in [Settings](../../admin/settings/).
+- Up to 16 devices per task run at the same time; more wait as Queued. Change it with **Parallel tasks per plugin** in
+  [Settings](../../admin/settings/).
 - Finished tasks are kept 90 days, at most 50,000.
-- A task that changes a device checks first that the device supports it. If not, it fails with "Nothing was changed".
