@@ -12,6 +12,8 @@ name: release
 #   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (a tag with a pre-release
 #                 part, v1.2.0-rc.1, is a pre-release and never the latest; installers are not signed;
 #                 the checksums are published instead)
+#   docs          (with the tests) the offline docs of the client's Help (website, npm run build:offline), put into the
+#                 client of every installer as docs/ (docs/spec/help.md)
 #   nuget-pack    (with the installers) the plugin SDK packages, every template built and tested with them
 #   4. nuget      the plugin SDK packages on nuget.org (Trusted Publishing), after the release; skipped without the
 #                 repository variable NUGET_USER and for a pre-release tag (v1.2.0-rc.1)
@@ -58,9 +60,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The offline docs of the client's Help, built once (like pages.yml) and checked by the build script (no developer docs,
+  # no SDK reference, no intro video, no broken local link); every installer job puts them next to the client.
+  docs:
+    name: offline docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+        working-directory: website
+      - run: npm run build:offline
+        working-directory: website
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-offline
+          path: website/dist-offline/
+          if-no-files-found: error
+
   installers:
     name: installer ${{ matrix.target }} ${{ matrix.rid }}
-    needs: tests
+    needs: [tests, docs]
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +116,13 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "OADM version $v"
+
+      # "manage publish" copies them into the client as docs/ (docs/spec/help.md).
+      - name: Download the offline docs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-offline
+          path: artifacts/docs-offline
 
       - name: Build package (Windows)
         if: matrix.target == 'windows'
@@ -120,6 +155,9 @@ jobs:
           done
           grep -q "GNU LESSER GENERAL PUBLIC LICENSE" "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
           grep -q "^Avalonia " "artifacts/publish/client/${{ matrix.rid }}/THIRD-PARTY-NOTICES.txt"
+          # Help: the offline docs next to the client only.
+          test -f "artifacts/publish/client/${{ matrix.rid }}/docs/index.html"
+          test ! -e "artifacts/publish/server/${{ matrix.rid }}/docs"
           if [ "${{ matrix.target }}" != macos ]; then
             # The site node has no LGPL part: no LGPL-2.1.txt.
             for app in site-node site-node-app; do
@@ -185,6 +223,7 @@ jobs:
           $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
           if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }
           if (@(@(Query 'SELECT FileName FROM File') -match 'TERMS\.md').Count -ne 2) { throw 'TERMS.md in both folders expected' }
+          if (@(@(Query 'SELECT DefaultDir FROM Directory') -match '(^|\|)docs$').Count -ne 1) { throw 'one docs folder (client Help) expected' }
           Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
 
       - name: Validate site node MSI
@@ -232,6 +271,8 @@ jobs:
           dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'usr/share/doc/oadm-client/LGPL-2.1.txt'
           for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_${{ matrix.deb }}.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'oadm-server.service'
+          dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/client/docs/index.html$'
+          ! dpkg-deb --contents artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/server/docs/'
           # The site node: service + command line, and the app (Depends oadm-site-node); no LGPL text.
           node=$(ls artifacts/packages/oadm-site-node_*_${{ matrix.deb }}.deb)
           app=$(ls artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb)
@@ -265,6 +306,8 @@ jobs:
           test -f expanded/oadm-server.pkg/Payload/THIRD-PARTY-NOTICES.txt
           test -x expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/uninstall-oadm.sh
           test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/TERMS.md
+          test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/docs/index.html
+          test ! -e expanded/oadm-client.pkg/Payload/OADM.app/Contents/MacOS/docs
           # No license page: the client asks for the terms of use on its first start.
           ! grep -q '<license' expanded/Distribution
 
@@ -286,6 +329,7 @@ jobs:
           test -L /usr/bin/oadm-client
           test -d /opt/oadm/server/plugins/oadm.restart && test -d /opt/oadm/client/plugins/oadm.restart
           test -s /opt/oadm/server/THIRD-PARTY-NOTICES.txt && test -s /usr/share/doc/oadm-client/THIRD-PARTY-NOTICES.txt
+          test -f /opt/oadm/client/docs/index.html && test ! -e /opt/oadm/server/docs
           ! sudo journalctl -u oadm-server --no-pager | grep -q 'could not be fixed'
           oadm-client --check-decoder
           sudo apt-get remove -y oadm-server oadm-client
@@ -299,6 +343,7 @@ jobs:
           sudo apt-get install -y ./artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb
           ! systemctl cat oadm-server >/dev/null 2>&1
           test ! -e /opt/oadm/server/Oadm.Server
+          test -f /opt/oadm/client/docs/index.html
           oadm-client --check-decoder
           sudo apt-get remove -y oadm-client
           test ! -e /usr/bin/oadm-client

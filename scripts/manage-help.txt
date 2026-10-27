@@ -10,7 +10,7 @@ OADM developer commands. One entry point per shell, same verbs and options:
 The help below writes "manage" for either one.
 
 Verbs:
-  build     Build all, server, client, plugins or docs        (default target: all)
+  build     Build all, server, client, plugins, docs or docs-offline (default target: all)
   run       Run server, client, or dev (server + client)
   test      Run unit, perf, hardware or all tests              (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
@@ -44,7 +44,7 @@ Examples:
   manage package windows --version 1.2.0
 
 ## build
-Usage: manage build [all|server|client|plugins|docs] [--release] [-- dotnet build args]
+Usage: manage build [all|server|client|plugins|docs|docs-offline] [--release] [-- dotnet build args]
 
 Targets:
   all       Whole solution: server, client, plugins, tests, tools (default)
@@ -53,6 +53,8 @@ Targets:
   plugins   Bundled plugins only (plugins/*/*.csproj, built in parallel, deployed to artifacts/plugins/<id>)
   docs      SDK reference of the website from the SDK doc comments (tools/Oadm.ApiDocs) into
             website/src/content/docs/api (git-ignored); "npm run dev" in website/ then shows it
+  docs-offline  Offline docs of the client's Help (npm run build:offline in website/, needs Node.js) into
+            artifacts/docs-offline and next to the built client; publish and package add them as docs/
 
 Options:
   --release   Build Release instead of {CONFIGURATION}
@@ -62,6 +64,7 @@ Examples:
   manage build server --release
   manage build client -- -v detailed
   manage build docs
+  manage build docs-offline
 
 ## run
 Usage: manage run <server|client|dev|node|node-app> [options] [-- app args]

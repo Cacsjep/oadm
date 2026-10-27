@@ -181,6 +181,12 @@ public static class ServiceRegistration
         services.AddSingleton<LiveViewViewModel>();
         services.AddSingleton<Oadm.Sdk.Client.ILiveVideoAccess, LiveVideoAccess>();
         services.AddSingleton<DevicesViewModel>();
+        // Help: a new window view model each time the Help window opens (its docs server runs while it is open).
+        services.AddSingleton<Func<HelpWindowViewModel>>(sp => () => new HelpWindowViewModel(
+            Help.HelpDocs.FindRoot(),
+            Help.EmbeddedBrowser.Check,
+            sp.GetRequiredService<IUrlLauncher>(),
+            sp.GetRequiredService<ILogger<HelpWindowViewModel>>()));
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();
     }

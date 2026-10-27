@@ -151,7 +151,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
     switch ($Verb) {
         'build' {
             if (-not $script:Target) { $script:Target = 'all' }
-            if ($script:Target -cnotin 'all', 'server', 'client', 'plugins', 'docs') { Exit-Usage build "unknown target '$($script:Target)' for build" }
+            if ($script:Target -cnotin 'all', 'server', 'client', 'plugins', 'docs', 'docs-offline') { Exit-Usage build "unknown target '$($script:Target)' for build" }
         }
         'run' {
             if (-not $script:Target) { Exit-Usage run 'missing target for run (server, client, dev, node or node-app)' }
@@ -352,6 +352,7 @@ function Invoke-Build {
         'client' { Build-Project $ClientProject; Build-Plugins }
         'plugins' { Build-Plugins }
         'docs' { Build-Docs }
+        'docs-offline' { Build-DocsOffline }
     }
 }
 
@@ -359,6 +360,32 @@ function Invoke-Build {
 function Build-Docs {
     Invoke-Dotnet (@('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.ApiDocs/Oadm.ApiDocs.csproj'), '-c', $script:Configuration) +
         $script:Extra + @('--', '--repo', $RepoRoot))
+}
+
+# The offline docs of the client's Help (docs/spec/help.md): "npm run build:offline" in website/, copied to
+# artifacts/docs-offline (publish and package put them into the client as docs/) and next to every built client
+# (src/Oadm.Client/bin/<configuration>/<tfm>/docs, for manage run client).
+$DocsOffline = Join-Path $RepoRoot 'artifacts/docs-offline'
+function Build-DocsOffline {
+    if (-not (Test-Command 'npm')) { Exit-Environment 'build docs-offline needs Node.js (npm)' }
+    $site = Join-Path $RepoRoot 'website'
+    Push-Location $site
+    try {
+        if (-not (Test-Path -LiteralPath (Join-Path $site 'node_modules'))) { & npm ci; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } }
+        & npm run build:offline
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally { Pop-Location }
+    if (Test-Path -LiteralPath $DocsOffline) { Remove-Item -LiteralPath $DocsOffline -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $DocsOffline) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $site 'dist-offline') -Destination $DocsOffline -Recurse
+    foreach ($bin in @(Get-ChildItem -Path (Join-Path $RepoRoot 'src/Oadm.Client/bin/*/*') -Directory -ErrorAction SilentlyContinue)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $bin.FullName 'Oadm.Client.dll'))) { continue }
+        $docs = Join-Path $bin.FullName 'docs'
+        if (Test-Path -LiteralPath $docs) { Remove-Item -LiteralPath $docs -Recurse -Force }
+        Copy-Item -LiteralPath $DocsOffline -Destination $docs -Recurse
+        Write-Host "copied to $docs"
+    }
+    Write-Host "offline docs written to $DocsOffline"
 }
 
 # Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
@@ -484,6 +511,12 @@ function Invoke-Publish {
         $out = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
         Publish-App $ClientProject $out
         Copy-Plugins $out
+        # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
+        if (Test-Path -LiteralPath (Join-Path $DocsOffline 'index.html')) {
+            Copy-Item -LiteralPath $DocsOffline -Destination (Join-Path $out 'docs') -Recurse
+        } else {
+            Write-Warning 'no offline docs in artifacts/docs-offline, the client has no Help (manage build docs-offline)'
+        }
         $apps += Split-Path -Parent $ClientProject; $outs += $out
         Write-Host "client published to $out"
     }

@@ -43,6 +43,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly NavItemViewModel _logsItem;
     private readonly NavItemViewModel _settingsItem;
     private readonly NavItemViewModel _aboutItem;
+    private readonly Func<HelpWindowViewModel>? _help;
 
     public MainWindowViewModel(
         ServerConnection connection,
@@ -64,9 +65,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         ILiveVideoAccess? liveVideo = null,
         Compliance.ComplianceViewModel? compliance = null,
         Sites.SitesViewModel? sites = null,
-        IUiDispatcher? ui = null)
+        IUiDispatcher? ui = null,
+        Func<HelpWindowViewModel>? help = null)
     {
         _liveVideo = liveVideo;
+        _help = help;
         _ui = ui;
         ArgumentNullException.ThrowIfNull(connection);
         ArgumentNullException.ThrowIfNull(clientSettings);
@@ -372,12 +375,63 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Logout: stops the streams, closes the live view and the plugin windows.</summary>
+    /// <summary>Logout: stops the streams, closes the live view, the plugin windows and Help.</summary>
     public void Stop()
     {
         Connection.Stop();
         Devices.LiveView.CloseCommand.Execute(null);
         ClosePluginWindowsRequested?.Invoke(this, null);
+        CloseHelp();
+    }
+
+    /// <summary>The Help window that is open, null when none is.</summary>
+    public HelpWindowViewModel? Help { get; private set; }
+
+    /// <summary>
+    /// Show Help: a new window, or the open one again (the view brings it to the front). One at a time.
+    /// </summary>
+    public event EventHandler<HelpWindowViewModel>? HelpWindowRequested;
+
+    /// <summary>Close the Help window (logout).</summary>
+    public event EventHandler<HelpWindowViewModel>? CloseHelpRequested;
+
+    /// <summary>The Help button of the title bar.</summary>
+    [RelayCommand]
+    private void OpenHelp()
+    {
+        if (Help is null)
+        {
+            if (_help is null)
+            {
+                return;
+            }
+
+            Help = _help();
+            Help.Start();
+        }
+
+        HelpWindowRequested?.Invoke(this, Help);
+    }
+
+    /// <summary>The Help window closed (by the user, with the main window or on logout): its docs server stops.</summary>
+    internal void HelpClosed(HelpWindowViewModel help)
+    {
+        ArgumentNullException.ThrowIfNull(help);
+        if (ReferenceEquals(Help, help))
+        {
+            Help = null;
+        }
+
+        help.Dispose();
+    }
+
+    private void CloseHelp()
+    {
+        if (Help is { } help)
+        {
+            CloseHelpRequested?.Invoke(this, help);
+            HelpClosed(help); // also when no window listens (the view already gone)
+        }
     }
 
     /// <summary>A plugin page to show in a window of its own (the view opens it).</summary>

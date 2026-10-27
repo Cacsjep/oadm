@@ -28,46 +28,35 @@ public sealed class WebViewPage : ICorePluginPage
 
 /// <summary>
 /// The embedded browser of the operating system: WebView2 on Windows, WKWebView on macOS, WPE WebKit or WebKitGTK on
-/// Linux. When it is missing the page says what to install.
+/// Linux. When it is missing the page says what to install (<see cref="EmbeddedBrowserTexts"/>, shared with the Help window).
 /// </summary>
 public static class WebRuntime
 {
-    public const string WindowsMissing =
-        "The Microsoft Edge WebView2 Runtime is not installed. Install it from https://go.microsoft.com/fwlink/p/?LinkId=2124703, then open this page again.";
-
-    public const string LinuxMissing =
-        "WebKitGTK is not installed. Install it, then restart OADM. Debian and Ubuntu: sudo apt install libwebkit2gtk-4.1-0. "
-        + "Fedora: sudo dnf install webkit2gtk4.1. Arch: sudo pacman -S webkit2gtk-4.1.";
-
-    public const string MacMissing = "The web view of macOS is not available. It needs macOS 10.15 or later.";
-
-    public const string OtherMissing = "This operating system has no web view OADM can use.";
-
     public static WebRuntimeState Check()
     {
         try
         {
             if (OperatingSystem.IsWindows())
             {
-                return Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebView2), WindowsMissing);
+                return Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebView2), EmbeddedBrowserTexts.WindowsMissing);
             }
 
             if (OperatingSystem.IsMacOS())
             {
-                return Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WkWebView), MacMissing);
+                return Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WkWebView), EmbeddedBrowserTexts.MacMissing);
             }
 
             if (OperatingSystem.IsLinux())
             {
                 var wpe = WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WpeWebKit);
-                return wpe.IsInstalled ? WebRuntimeState.Available : Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebKitGtk), LinuxMissing);
+                return wpe.IsInstalled ? WebRuntimeState.Available : Of(WebViewAdapterInfo.GetAdapterInfo(WebViewAdapterType.WebKitGtk), EmbeddedBrowserTexts.LinuxMissing);
             }
 
-            return new WebRuntimeState(false, OtherMissing);
+            return new WebRuntimeState(false, EmbeddedBrowserTexts.OtherMissing);
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or TypeLoadException or InvalidOperationException or PlatformNotSupportedException)
         {
-            return new WebRuntimeState(false, (OperatingSystem.IsWindows() ? WindowsMissing : OperatingSystem.IsMacOS() ? MacMissing : LinuxMissing) + " (" + ex.Message + ")");
+            return new WebRuntimeState(false, EmbeddedBrowserTexts.ForThisSystem + " (" + ex.Message + ")");
         }
     }
 

@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:chrome="using:Avalonia.Controls.Chrome"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:shell="using:Oadm.Client.Shell"
+        x:Class="Oadm.Client.Shell.HelpWindow"
+        x:DataType="shell:HelpWindowViewModel"
+        Title="{x:Static shell:HelpWindowViewModel.WindowTitle}"
+        Width="1200" Height="800" MinWidth="640" MinHeight="400"
+        WindowStartupLocation="CenterScreen"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="{StaticResource Oadm.TitleBarHeight}">
+  <!-- Help: the offline docs in the embedded browser (the code-behind creates it), below an empty title bar like the
+       plugin windows (the docs name their pages). Without docs or without a browser one line says why. -->
+  <Grid RowDefinitions="Auto,*">
+    <Border Grid.Row="0" Classes="titleBar"
+            chrome:WindowDecorationProperties.ElementRole="TitleBar" />
+    <Panel Grid.Row="1">
+      <Panel x:Name="BrowserHost" />
+      <TextBlock x:Name="MissingDocs" Classes="secondary" Text="{Binding MissingDocsText}" IsVisible="{Binding HasMissingDocs}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <ui:StatusChip x:Name="MissingBrowser" IsError="True" Text="{Binding MissingBrowserText}" IsVisible="{Binding HasMissingBrowser}"
+                     MaxLines="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
+    </Panel>
+  </Grid>
+</Window>

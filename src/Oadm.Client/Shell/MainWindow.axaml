@@ -60,7 +60,7 @@
   </Window.DataTemplates>
 
   <Grid RowDefinitions="Auto,*">
-    <!-- Title bar: app name left, the logged-in user and Log out right, next to the system window buttons
+    <!-- Title bar: app name left, Help, the logged-in user and Log out right, next to the system window buttons
          (TitleBarLayout keeps clear of them: right on Windows and Linux, left on macOS). No connection indicator
          (see banner). -->
     <Border Grid.Row="0" Classes="titleBar"
@@ -70,6 +70,8 @@
         <!-- "User": clicks reach these buttons instead of moving the window. -->
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,0,0"
                     chrome:WindowDecorationProperties.ElementRole="User">
+          <!-- Help: the offline docs in a window of their own -->
+          <ui:ToolbarButton x:Name="TitleHelp" Text="Help" IconKey="help" IsIconOnly="True" Command="{Binding OpenHelpCommand}" />
           <!-- Initial avatar + name: the account; a click shows what the user's role allows -->
           <Button x:Name="TitleUser" Classes="titleUser" Command="{Binding ShowMyRoleCommand}"
                   ToolTip.Tip="{Binding UserTooltip}">

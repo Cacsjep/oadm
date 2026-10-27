@@ -7,7 +7,7 @@
 # Components (installed in this order), offered as two choices in "Customize" (installer choice "Server and client" =
 # both, the default; "Client only" = the server choice unchecked, or installer -applyChoiceChangesXML):
 #   choice com.oadm.choice.client (always)
-#     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, OADM.icns,
+#     com.oadm.pkg.client   /Applications/OADM.app (Contents/MacOS/Oadm.Client, Resources/plugins/, Resources/docs/, OADM.icns,
 #                           TERMS.md, LICENSE.txt, NOTICE.txt, THIRD-PARTY-NOTICES.txt, LGPL-2.1.txt, uninstall-oadm.sh)
 # No license page: the client asks for the terms of use on its first start (also after a command-line install).
 #   choice com.oadm.choice.server
@@ -58,6 +58,10 @@ cp -R "$CLIENT_DIR"/. "$APP/Contents/MacOS/"
 # codesign treats a folder with a dot in Contents/MacOS ("oadm.network") as a nested bundle and refuses the app.
 if [ -d "$APP/Contents/MacOS/plugins" ]; then
   mv "$APP/Contents/MacOS/plugins" "$APP/Contents/Resources/plugins"
+fi
+# The offline docs of Help too (docs/spec/help.md): no code in Contents/MacOS.
+if [ -d "$APP/Contents/MacOS/docs" ]; then
+  mv "$APP/Contents/MacOS/docs" "$APP/Contents/Resources/docs"
 fi
 # License texts are resources, not code (the client's About page also looks in Contents/Resources).
 for f in LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md; do

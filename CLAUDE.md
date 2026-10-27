@@ -212,6 +212,9 @@ must never break.
   default): a load test of the chosen cameras and the network to the server (RTP over UDP, TCP at sites), at most 1,000
   camera streams per check in batches of at most 200, ramp, normal and low-light phases, the result as graphs on the page; the exposure is the only
   write and always goes back.
+- **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client (build flag `OADM_DOCS_OFFLINE`,
+  without developer docs, Get started and video) and shown in a Help window (title bar button) with the embedded browser,
+  served on 127.0.0.1 only; never loads oadm.app; client only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

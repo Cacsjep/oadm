@@ -161,7 +161,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
     {
         var a = new TestDevice("10.0.0.48", "P3265-V");
         var ctx = new TestContext([a]);
-        var vm = new WebViewPageViewModel(ctx, new WebRuntimeState(false, Client.WebRuntime.WindowsMissing));
+        var vm = new WebViewPageViewModel(ctx, new WebRuntimeState(false, Oadm.Sdk.Client.EmbeddedBrowserTexts.WindowsMissing));
         vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().Single());
         Assert.True(vm.IsRuntimeMissing);
         Assert.Empty(vm.Tabs);
@@ -282,7 +282,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
                 Headless.Capture(window, "web-view-custom-error.png");
                 window.Close();
 
-                var missing = new WebViewPageViewModel(new TestContext([a, b]), new WebRuntimeState(false, Client.WebRuntime.LinuxMissing));
+                var missing = new WebViewPageViewModel(new TestContext([a, b]), new WebRuntimeState(false, Oadm.Sdk.Client.EmbeddedBrowserTexts.LinuxMissing));
                 var missingWindow = Headless.Host(new WebViewPageView { DataContext = missing });
                 missingWindow.Show();
                 Headless.Pump();

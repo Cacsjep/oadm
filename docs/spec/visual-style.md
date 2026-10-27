@@ -29,7 +29,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `OADM_STARTUP_PLUGINS=<folder>` also loads client plugins).
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
-  top-left, the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
+  top-left, the Help button (icon only, [help.md](help.md)), the user and Log out top-right before the window buttons, background near-black `#141414`. Caption button hover
   is a neutral grey slightly lighter than the title bar (never the system blue/accent); the
   close button hovers red like Windows. No connection indicator in the title bar; a banner
   appears only while the server is unreachable.

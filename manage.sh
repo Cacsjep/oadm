@@ -149,7 +149,7 @@ parse_args() {
   done
 
   case "$verb" in
-    build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
+    build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs|docs-offline) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
@@ -333,12 +333,33 @@ cmd_build() {
     client) build_project "$CLIENT_PROJECT"; build_plugins ;;
     plugins) build_plugins ;;
     docs) build_docs ;;
+    docs-offline) build_docs_offline ;;
   esac
 }
 
 # The SDK reference of the website (tools/Oadm.ApiDocs): website/src/content/docs/api/ and website/src/generated/.
 build_docs() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.ApiDocs/Oadm.ApiDocs.csproj" -c "$CONFIGURATION" ${EXTRA[@]+"${EXTRA[@]}"} -- --repo "$REPO_ROOT"
+}
+
+# The offline docs of the client's Help (docs/spec/help.md): "npm run build:offline" in website/, copied to
+# artifacts/docs-offline (publish and package put them into the client as docs/) and next to every built client
+# (src/Oadm.Client/bin/<configuration>/<tfm>/docs, for manage run client).
+DOCS_OFFLINE="$REPO_ROOT/artifacts/docs-offline"
+build_docs_offline() {
+  command -v npm >/dev/null 2>&1 || { echo "error: build docs-offline needs Node.js (npm)" >&2; exit 1; }
+  (cd "$REPO_ROOT/website" && { [ -d node_modules ] || npm ci; } && npm run build:offline) || exit 1
+  rm -rf "$DOCS_OFFLINE"
+  mkdir -p "$(dirname "$DOCS_OFFLINE")"
+  cp -R "$REPO_ROOT/website/dist-offline" "$DOCS_OFFLINE"
+  local bin
+  for bin in "$REPO_ROOT/src/Oadm.Client/bin"/*/*/; do
+    [ -f "$bin/Oadm.Client.dll" ] || continue
+    rm -rf "$bin/docs"
+    cp -R "$DOCS_OFFLINE" "$bin/docs"
+    echo "copied to ${bin}docs"
+  done
+  echo "offline docs written to $DOCS_OFFLINE"
 }
 
 # Builds the plugins, or with --no-plugin-build uses those already deployed in artifacts/plugins (warns when none are).
@@ -452,6 +473,8 @@ cmd_publish() {
     out="$REPO_ROOT/artifacts/publish/client/$RID"
     publish_app "$CLIENT_PROJECT" "$out"
     copy_plugins "$out"
+    # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
+    if [ -f "$DOCS_OFFLINE/index.html" ]; then cp -R "$DOCS_OFFLINE" "$out/docs"; else echo "warning: no offline docs in artifacts/docs-offline, the client has no Help (manage build docs-offline)" >&2; fi
     notices+=(--app "$(dirname "$CLIENT_PROJECT")" --out "$out")
     echo "client published to $out"
   fi

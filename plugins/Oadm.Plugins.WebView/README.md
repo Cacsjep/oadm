@@ -49,7 +49,7 @@ and `Oadm.Client/DeviceWeb`.
   (`invokeCSharpAction`), and Back is checked then. No limit of our own: the browser keeps about 50 entries per tab.
 - **Browser runtime** (`WebRuntime.Check`, `WebViewAdapterInfo`): WebView2 on Windows, WKWebView on macOS, WPE WebKit or
   WebKitGTK on Linux. Missing: the page says what to install ("The Microsoft Edge WebView2 Runtime is not installed ...",
-  the apt / dnf / pacman package of WebKitGTK 4.1). The `oadm-client` .deb recommends `libwebkit2gtk-4.1-0`. WebView2
+  the apt / dnf / pacman package of WebKitGTK 4.1; `Oadm.Sdk.Client.EmbeddedBrowserTexts`, shared with the Help window). The `oadm-client` .deb recommends `libwebkit2gtk-4.1-0`. WebView2
   keeps its data in `%LOCALAPPDATA%\Oadm\WebView2`: its default, a folder next to the exe, is not writable in Program
   Files (access denied in the installed client).
 - **Fake mode** (`FakeOadmApi.DeviceWeb.cs`): every device answers with a small page naming it and the path; WebSockets

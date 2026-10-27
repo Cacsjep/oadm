@@ -10,6 +10,10 @@ The file layout of every installer and the user-facing install notes are in `pac
   `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see `manage publish`. Every plugin project is published
   once into `artifacts/publish/plugins/<plugin id>/` (`<OadmPluginId>`, server and client part together) and copied next
   to both exes in `plugins/<plugin id>/`, so a new plugin project is packaged without further changes.
+- The client gets the offline docs of Help (`docs/spec/help.md`) as `docs/` next to its exe: `manage publish` copies
+  `artifacts/docs-offline/` (`manage build docs-offline`; in CI the job `docs`) when it exists, else it warns. The MSI and
+  the .deb carry it in the client folder, the .pkg in `OADM.app/Contents/Resources/docs`. The server and the OADM Site
+  Node carry no docs.
 - `--version` (default `0.1.0-dev`, a leading `v` is removed) goes to every assembly (`-p:Version`). In CI the version
   comes from the tag (`v1.2.0` -> `1.2.0`); MSI and .pkg use the numeric part.
 - Native AOT and trimming are never used for the host apps: AOT cannot load managed plugin assemblies at runtime and
@@ -119,11 +123,12 @@ when the jobs it needs passed:
   `Category!=Hardware&Category!=Perf&Category!=HardwareWrite`, one run without a retry, `--blame-hang-timeout 5m
   --blame-crash`: a crashed test host leaves a dump and its test sequence, uploaded as the artifact `test-results-<os>`
   when the step fails.
-- `installers` (needs tests, 60 min): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg, the OADM
-  Site Node MSI and .deb packages, and the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` (their own artifact
-  `portable-<version>-<rid>`). Checks the license texts next to the published exes; installs, checks and removes the
-  .deb packages as "Server and client", as "Client only" and the site node; checks the .pkg's choices and payload without
-  installing.
+- `installers` (needs tests and docs, 60 min): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg,
+  the OADM Site Node MSI and .deb packages, and the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` (their own
+  artifact `portable-<version>-<rid>`). Takes the offline docs of the job `docs` into the client. Checks the license
+  texts and the client's `docs/index.html` next to the published exes; installs, checks and removes the .deb packages as
+  "Server and client", as "Client only" and the site node; checks the .pkg's choices and payload without installing.
+- `docs` (15 min, next to the tests): `npm run build:offline` in `website/` once, uploaded as the artifact `docs-offline`.
 - `smoke-windows` (needs installers, 30 min): the MSI installed, checked and removed both ways by
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest
   processes while a program runs. Its own job because the Windows runner sometimes stops answering there, so a re-run
@@ -172,7 +177,8 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 
 - **Deploy:** `pages.yml` on pushes to main that change `website/`, `CHANGELOG.md`, `samples/`, the SDK or the API docs
   generator, and after every successful `release` run (`workflow_run`, so the static download links match the new
-  release; the browser also re-reads the latest release with `cache: 'no-store'`).
+  release; the browser also re-reads the latest release with `cache: 'no-store'`). The same job builds and checks the
+  offline docs (`npm run build:offline`, not published).
 - **Screenshots** in `website/src/assets/screens/` come from the headless tests: the tests write them to
   `OADM_SCREENSHOT_DIR`, `npm run screens -- <folder>` (`website/scripts/screens.mjs`) copies them by the map
   `website/scripts/screens.json` (website name to test output name; every image of the folder must be in it); they are

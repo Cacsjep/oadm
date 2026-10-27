@@ -3,7 +3,8 @@
 `manage package <windows|linux|macos> [--rid RID] [--version V]` runs `manage publish all` for the RID and builds the
 installer into `artifacts/packages/`. The publish step writes self-contained single-file exes, every plugin project in
 `plugins/<plugin id>/` next to each exe, and `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt`
-next to each exe.
+next to each exe. The client also gets the offline docs of Help as `docs/` when `artifacts/docs-offline/` exists
+(`manage build docs-offline`, needs Node.js; in CI the job `docs`).
 
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
 when the jobs it needs passed (details in `docs/spec/packaging.md` "CI"):
@@ -47,6 +48,7 @@ to the installers: MSI ProductVersion and the .pkg use the numeric part (`1.2.0`
 | Data folder | `%ProgramData%\OADM` (`--Oadm:DataDir`), SYSTEM + Administrators only | `/var/lib/oadm` (`OADM_DATA_DIR`, StateDirectory 0700) | `/Library/Application Support/OADM` (`OADM_DATA_DIR`, 0700) |
 | Native lib extraction | `%ProgramData%\OADM\runtime` | `/var/cache/oadm` | `/Library/Application Support/OADM/runtime` |
 | Firewall | TCP 5080 for `Oadm.Server.exe`, profiles Domain and Private (MSI); the NTP / DHCP plugins add UDP 123 / 67 (Domain, Private) while enabled and remove it when disabled or stopped | not touched | not touched (the application firewall asks) |
+| Help (offline docs) | `Client\docs` | `/opt/oadm/client/docs` | `OADM.app/Contents/Resources/docs` |
 | License texts | `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt`, `LGPL-2.1.txt` in `Server` and `Client`; no license page | same in `/opt/oadm/server`, `/opt/oadm/client` and `/usr/share/doc/<package>/` (no acceptance in the package) | same in the server folder and `OADM.app/Contents/Resources`; no license page |
 | Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-server oadm-client` (data kept, also on purge) | `sudo "/Library/Application Support/OADM/server/uninstall-oadm.sh"` (client only: `OADM.app/Contents/Resources/uninstall-oadm.sh`); data kept |
 

@@ -89,5 +89,5 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (`OadmBannedApis=warning`, `none` turns it off; version `OadmBannedApiAnalyzersVersion` in Oadm.Plugin.Versions.props);
   tools/ and tests/ outside. Exceptions carry a SuppressMessage with a justification and are listed in
   `RoutingRulesTests.AllowedBannedApiUsers` (the router, routed DNS, `LocalNetwork` behind `IDeviceNetwork` and
-  `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay` and its new version check
+  `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay`, its Help docs server (`DocsServer`, local files on 127.0.0.1) and its new version check
   (GitHub, never a device), and the sockets of the DHCP and NTP servers and the Notifications actions).

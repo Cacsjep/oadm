@@ -9,6 +9,7 @@
     "start": "astro dev",
     "prebuild": "node scripts/changelog.mjs",
     "build": "astro build",
+    "build:offline": "node scripts/build-offline.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },

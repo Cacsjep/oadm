@@ -1,5 +1,6 @@
-# build output
+# build output (dist-offline: the offline docs of the client's Help, npm run build:offline)
 dist/
+dist-offline/
 # generated types
 .astro/
 

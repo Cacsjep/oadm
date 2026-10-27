@@ -47,6 +47,10 @@ jobs:
         working-directory: website
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # The offline docs of the client's Help (docs/spec/help.md): built and checked (no developer docs, SDK reference or intro
+      # video, search names none of them, no broken local link), not published; release.yml puts them into the installers.
+      - run: npm run build:offline
+        working-directory: website
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/dist

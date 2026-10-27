@@ -146,6 +146,7 @@ if ($Mode -eq 'ClientOnly') {
     if (Test-Path 'C:\Program Files\OADM\Server') { throw 'client only must not install the server' }
     if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
     if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
+    if (-not (Test-Path 'C:\Program Files\OADM\Client\docs\index.html')) { throw 'client Help (docs) missing' }
     Test-Decoder
     Uninstall uninstall-client.log
     if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
@@ -190,6 +191,9 @@ foreach ($app in 'Server', 'Client') {
         if (-not (Test-Path "C:\Program Files\OADM\$app\$f")) { throw "$app $f missing" }
     }
 }
+# Help: the offline docs only next to the client (docs/spec/help.md).
+if (-not (Test-Path 'C:\Program Files\OADM\Client\docs\index.html')) { throw 'client Help (docs) missing' }
+if (Test-Path 'C:\Program Files\OADM\Server\docs') { throw 'the server has no Help (docs)' }
 (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
 # TCP 5080 (clients) for Domain and Private; the server adds TCP 5081 only while Accept site nodes is on (off by default),
 # the NTP and DHCP plugins their UDP rules only while enabled.
