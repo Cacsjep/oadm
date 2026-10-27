@@ -6,7 +6,8 @@ Reference for content: the Manage devices page of ADM. Same information density,
 
 **New version** (client, decision 2026-10-27): once per client start, after the main window opened, the client asks GitHub
 for the latest release (`GitHubReleaseCheck`: `api.github.com/repos/Cacsjep/oadm/releases/latest`, never a draft or a
-pre-release, a 2 s limit; no answer, an error or a rate limit shows nothing and is only a debug log line). A newer version
+pre-release, a 2 s limit; no answer, an error or a rate limit shows nothing; the client log says once per start why nothing
+was shown). A newer version
 than this client opens the new version dialog (`Updates/UpdateWindow`, look in `docs/spec/visual-style.md` "Login and new
 version"): "OADM V4.6.0 is available", "You have V4.5.0", What's new with the release notes of the release page (the
 CHANGELOG section; `ReleaseNotes.Parse`: `###` groups, `-` entries, plain text), **Later** (asks again next start),

@@ -38,7 +38,10 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
 
     public async Task ShowUpdateAsync(Updates.UpdateViewModel update)
     {
-        if (CurrentOwner() is not { } owner)
+        // Over the main window: the login window may still be open for a moment after the login and would take the dialog
+        // with it when it closes.
+        Window? owner = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow ?? CurrentOwner();
+        if (owner is null)
         {
             return;
         }
