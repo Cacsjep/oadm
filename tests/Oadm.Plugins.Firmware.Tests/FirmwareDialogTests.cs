@@ -203,6 +203,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal(["C:\\fw\\P3265-V_12_11_77.bin", "C:\\fw\\Q6135-LE_12_11_77.bin"], ctx.Uploads); // no M3215-LVE selected
         var payload = ClientPayload.Parse(vm.Result);
         Assert.Equal(2, payload.Files!.Count);
+        Assert.Equal([Devices[0].Id, Devices[2].Id], vm.RunDevices); // not the one up to date, not the blocked downgrade
         Assert.Equal("Upgrade firmware to 12.11.77", payload.TaskName());
     }
 

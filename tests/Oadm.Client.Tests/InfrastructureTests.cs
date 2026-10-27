@@ -11,6 +11,7 @@ using Oadm.Client.Plugins;
 using Oadm.Client.Shell;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Client.Collections;
 
@@ -26,13 +27,31 @@ public sealed class TaskPluginRunnerTests
         registry.FindDialog("oadm.password").Returns(dialog);
         using var f = new DevicesFixture(registry: registry);
         f.SeedDevices(TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"));
-        f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns("{\"password\":\"x\"}");
+        f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns(new TaskDialogResult("{\"password\":\"x\"}", [((IDeviceInfo)f.Store.Find("1")!).Id]));
         f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["t1"]);
 
         IReadOnlyList<string>? ids = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
 
         Assert.Equal(["t1"], ids);
         await f.Api.Received(1).RunTaskAsync("oadm.password", Arg.Any<IReadOnlyCollection<string>>(), "{\"password\":\"x\"}",
+            TaskPluginRunner.OwnerName, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_dialog_can_leave_out_devices_where_the_task_would_change_nothing()
+    {
+        var dialog = new FakeDialog("oadm.firmware", "{}");
+        IClientPluginRegistry registry = Substitute.For<IClientPluginRegistry>();
+        registry.FindDialog("oadm.firmware").Returns(dialog);
+        using var f = new DevicesFixture(registry: registry);
+        string a = Guid.NewGuid().ToString(), b = Guid.NewGuid().ToString();
+        f.SeedDevices(TestSupport.Device(a, "B8A44F631339", "10.0.0.48", "AXIS P3265-V"), TestSupport.Device(b, "B8A44F63133A", "10.0.0.49", "AXIS P3265-V"));
+        f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns(new TaskDialogResult("{}", [Guid.Parse(b)]));
+        f.Api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["t1"]);
+
+        await f.Runner.RunAsync(TestSupport.Plugin("oadm.firmware", "Upgrade firmware", false, true, a, b), [f.Store.Find(a)!, f.Store.Find(b)!], CancellationToken.None);
+
+        await f.Api.Received(1).RunTaskAsync("oadm.firmware", Arg.Is<IReadOnlyCollection<string>>(ids => ids.SequenceEqual(new[] { b })), "{}",
             TaskPluginRunner.OwnerName, Arg.Any<CancellationToken>());
     }
 
@@ -44,7 +63,7 @@ public sealed class TaskPluginRunnerTests
         registry.FindDialog("oadm.password").Returns(dialog);
         using var f = new DevicesFixture(registry: registry);
         f.SeedDevices(TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"));
-        f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns((string?)null);
+        f.Dialogs.ShowTaskPluginDialogAsync(dialog, Arg.Any<IReadOnlyList<IDeviceInfo>>()).Returns((TaskDialogResult?)null);
 
         IReadOnlyList<string>? id = await f.Runner.RunAsync(TestSupport.Plugin("oadm.password", "Change password", false, true, "1"), [f.Store.Find("1")!], CancellationToken.None);
 

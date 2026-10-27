@@ -53,8 +53,8 @@ public interface IDialogService
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 
-    /// <summary>Shows a client plugin dialog; returns the payload JSON, or null when cancelled.</summary>
-    Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices);
+    /// <summary>Shows a client plugin dialog; returns the payload JSON and the devices to run on, or null when cancelled.</summary>
+    Task<TaskDialogResult?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices);
 
     Task ShowTaskDetailsAsync(TaskDetailsViewModel details);
 

@@ -211,6 +211,9 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>Set after a successful start.</summary>
     public string? Result { get; private set; }
 
+    /// <summary>The devices the task runs on, set with <see cref="Result"/>: only those that install a file.</summary>
+    public IReadOnlyList<Guid> RunDevices { get; private set; } = [];
+
     /// <summary>Rows whose status is read when the dialog opens; the others are read when the grid shows them.</summary>
     public const int StatusPreloadCount = 50;
 
@@ -411,6 +414,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                 uploaded.Add(new FirmwareFile(file.Id, image.FileName));
             }
 
+            RunDevices = [.. Devices.Where(d => d.WillInstall).Select(d => d.Device.Id)];
             Result = new FirmwarePayload
             {
                 FileId = uploaded[0].FileId,

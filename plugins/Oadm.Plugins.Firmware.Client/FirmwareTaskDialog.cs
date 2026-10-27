@@ -11,7 +11,11 @@ public sealed class FirmwareTaskDialog : ITaskPluginDialog
 {
     public string PluginId => FirmwareTaskPluginIds.PluginId;
 
-    public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
+    public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner) =>
+        (await ShowForDevicesAsync(ctx, devices, owner).ConfigureAwait(true))?.PayloadJson;
+
+    /// <summary>Runs only on the devices that install a file (not the ones up to date or without a file for them).</summary>
+    public async Task<TaskDialogResult?> ShowForDevicesAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(devices);
@@ -23,7 +27,8 @@ public sealed class FirmwareTaskDialog : ITaskPluginDialog
         using var cts = new CancellationTokenSource();
         window.Closed += (_, _) => cts.Cancel();
         _ = LoadStatusSafeAsync(vm, cts.Token);
-        return await window.ShowDialog<string?>(owner).ConfigureAwait(true);
+        var payload = await window.ShowDialog<string?>(owner).ConfigureAwait(true);
+        return payload is null ? null : new TaskDialogResult(payload, vm.RunDevices);
     }
 
     private static async Task LoadStatusSafeAsync(FirmwareDialogViewModel vm, CancellationToken ct)

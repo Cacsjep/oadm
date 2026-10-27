@@ -182,7 +182,11 @@ Applications (ACAP) (Applications), Users (Users), Network settings and Assign I
 The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`; usage in `plugins/README.md`. Everything runs on
 the UI thread.
 
-- `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel); `ITaskDialogContext` gives
+- `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel). SDK 0.5.0 default member
+  `ShowForDevicesAsync` returns a `TaskDialogResult` (payload and the selected devices the task runs on); the host calls it
+  and starts tasks only for those devices (ids not selected are ignored, none left: nothing runs). Its default runs on every
+  selected device. Upgrade firmware leaves out devices that are up to date or cannot install (no task that changes
+  nothing). `ITaskDialogContext` gives
   `QueryAsync` (TaskService.Query), `UploadAsync` (FileService.Upload with progress), `Has(permission)` (the dialog
   hides the choices the role lacks: Users modes, firmware factory default and downgrade, application actions, the
   connection settings area, dangerous parameters), `AllDevices` (every device of the client, e.g. a source device that is

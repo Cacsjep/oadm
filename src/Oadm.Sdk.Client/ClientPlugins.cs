@@ -11,7 +11,20 @@ public interface ITaskPluginDialog
     string PluginId { get; }
     /// <summary>Returns the payload JSON sent to the server, or null when the user cancelled.</summary>
     Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner);
+
+    /// <summary>
+    /// Like <see cref="ShowAsync"/>, and names the selected devices the task runs on: a dialog leaves out devices where the
+    /// task would change nothing or fail anyway (already up to date, no file for them). Null when the user cancelled.
+    /// Default: <see cref="ShowAsync"/> on every selected device (SDK 0.5.0).
+    /// </summary>
+    async Task<TaskDialogResult?> ShowForDevicesAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner) =>
+        await ShowAsync(ctx, devices, owner).ConfigureAwait(true) is { } payload ? new TaskDialogResult(payload, [.. devices.Select(d => d.Id)]) : null;
 }
+
+/// <summary>What a task plugin dialog returns: the payload and the devices the task runs on (a subset of the selection).</summary>
+/// <param name="PayloadJson">The payload JSON sent to the server.</param>
+/// <param name="DeviceIds">The selected devices the task runs on; the host ignores ids that were not selected.</param>
+public sealed record TaskDialogResult(string PayloadJson, IReadOnlyList<Guid> DeviceIds);
 
 /// <summary>Server access for a task plugin dialog. Build dialogs from the shared OADM controls and theme.</summary>
 public interface ITaskDialogContext

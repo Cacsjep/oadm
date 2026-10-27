@@ -4,6 +4,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Plugins;
 
@@ -40,7 +41,14 @@ public sealed partial class TaskPluginRunner(
 
             try
             {
-                payload = await dialogs.ShowTaskPluginDialogAsync(dialog, devices).ConfigureAwait(true);
+                var result = await dialogs.ShowTaskPluginDialogAsync(dialog, devices).ConfigureAwait(true);
+                payload = result?.PayloadJson;
+                if (result is not null)
+                {
+                    // Only devices of the selection; the dialog left out those where the task would change nothing.
+                    var chosen = result.DeviceIds.ToHashSet();
+                    devices = [.. devices.Where(d => chosen.Contains(((IDeviceInfo)d).Id))];
+                }
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
@@ -50,7 +58,7 @@ public sealed partial class TaskPluginRunner(
                 return null;
             }
 
-            if (payload is null)
+            if (payload is null || devices.Count == 0)
             {
                 return null;
             }

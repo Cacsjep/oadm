@@ -183,6 +183,9 @@ and actions before any plugin call.
 ## Client side
 
 `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` shows a window and returns the payload JSON (null = cancelled). A
+dialog that knows the task would change nothing on some selected devices (up to date, wrong file) also implements
+`ShowForDevicesAsync` and returns `new TaskDialogResult(payload, deviceIds)`: the host starts tasks only for those
+devices (SDK 0.5.0; the default runs on every selected device). A
 dialog that should stay open while its task runs checks `ctx.CanRunTasks`, starts the run with
 `ctx.RunTaskAsync(deviceIds, payload, progress, ct)` (progress: every task's `TaskRunState`; the result once all ended),
 shows the result in the dialog and returns null (nothing runs twice); without `CanRunTasks` (older hosts) it returns the

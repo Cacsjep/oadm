@@ -219,7 +219,7 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
-    public async Task<string?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
+    public async Task<TaskDialogResult?> ShowTaskPluginDialogAsync(ITaskPluginDialog dialog, IReadOnlyList<IDeviceInfo> devices)
     {
         ArgumentNullException.ThrowIfNull(dialog);
         if (CurrentOwner() is not { } owner)
@@ -229,7 +229,7 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
 
         var context = new TaskDialogContext(api, dialog.PluginId, session is null ? null : session.Has, store is null ? null : () => [.. store.Devices], tasks,
             session is null ? null : () => session.HasAllDevices);
-        return await dialog.ShowAsync(context, devices, owner).ConfigureAwait(true);
+        return await dialog.ShowForDevicesAsync(context, devices, owner).ConfigureAwait(true);
     }
 
     public async Task ShowTaskDetailsAsync(TaskDetailsViewModel details)

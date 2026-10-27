@@ -156,7 +156,8 @@ selected devices: address, model, firmware (refreshed by the status query, read
 for the first 50 devices when the dialog opens, for other rows when the grid shows them, at most 4 queries at a time;
 a row shows the running chip "Reading" in the Firmware column until its query answered), result with tooltip, details.
 Options: factory default none (default) / soft / hard with warnings, "Allow downgrade". **Upgrade** is enabled when at
-least one device would be upgraded; it uploads the file with `ITaskDialogContext.UploadAsync` (progress bar,
+least one device would be upgraded; tasks start only for the devices that install a file (`ShowForDevicesAsync`: none for
+devices already up to date, without a file for their model or refused, e.g. Wrong product, Downgrade blocked); it uploads the file with `ITaskDialogContext.UploadAsync` (progress bar,
 cancellable; several files: only those a device installs, one after the other, one progress bar) and returns
 `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`, with several files also `"files":[{"fileId","fileName"}]`.
 
