@@ -22,7 +22,7 @@ installed version.
   changes nothing without the flag (oadm.app stays as it is):
   - `src/content.config.ts`: Astro's glob loader with Starlight's pattern and the exclusions `dev/**`, `api/**`,
     `start/**` (Get started: install and first start, read before OADM runs), `index.mdx` (the splash page with the intro video) and `activate.mdx` instead of `docsLoader()`.
-  - `astro.config.mjs` `offlineSidebar`: "Get started" is left out and the group "Developers" (with the SDK reference) becomes one link "Developers" to
+  - `astro.config.mjs` `offlineSidebar`: the social links (top right), the "Edit page" links and "Get started" are left out, and the group "Developers" (with the SDK reference) becomes one link "Developers" to
     `https://oadm.app/dev/plugin-sdk/`.
   - `offlineRedirects`: `/` is a plain redirect page (meta refresh, no script) to the first page of "Devices",
     `/devices/add/`.
