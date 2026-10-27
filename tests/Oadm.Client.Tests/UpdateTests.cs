@@ -33,6 +33,7 @@ public sealed class UpdateTests
 
         - Enable IEEE 802.1X makes **AXIS OS 12.11** cameras log in at the switch again.
         - See [the docs](https://oadm.app) for the commit.
+          - A nested entry of older notes.
         """;
 
     private static JsonElement Release(string tag, bool prerelease = false, bool draft = false) =>
@@ -63,7 +64,8 @@ public sealed class UpdateTests
         Assert.EndsWith("with a file of another model. Plugin dialogs can do the same (SDK 0.5.0 ShowForDevicesAsync).", sections[0].Items[1], StringComparison.Ordinal);
         Assert.Equal("Enable IEEE 802.1X makes AXIS OS 12.11 cameras log in at the switch again.", sections[1].Items[0]);
         Assert.Equal("See the docs for the commit.", sections[1].Items[1]);
-        Assert.Equal("4 changes", new UpdateViewModel(new ReleaseInfo(new Version(4, 6, 0), "V4.6.0", Notes), "4.5.0").ChangeCount);
+        Assert.Equal("A nested entry of older notes.", sections[1].Items[2]); // its own line, not glued to the one above
+        Assert.Equal("5 changes", new UpdateViewModel(new ReleaseInfo(new Version(4, 6, 0), "V4.6.0", Notes), "4.5.0").ChangeCount);
     }
 
     private sealed class Fixture

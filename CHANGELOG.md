@@ -2,80 +2,53 @@
 
 Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions:
 [Semantic Versioning](https://semver.org/). New changes go under **Unreleased**; a release renames that section to its
-version and date, and the release workflow copies it into the GitHub release.
+version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
+Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
 ## [Unreleased]
 
 ### Added
 
-- The client tells you when a new OADM version is available, with its release notes and a link to the download page.
-  "Don't tell me about new versions" turns it off; Settings, Client card turns it on again.
+- A notice at client start when a new OADM version is available, with its release notes.
+- Upgrade firmware takes one file per model at once.
 
 ### Changed
 
-- New login window: the OADM logo on top, the labels above the fields, and problems such as a server that cannot be
-  reached, a changed server certificate or a locked login shown as a box below their field. "Trust this server?" shows
-  the fingerprint only when you open it.
-
-- Upgrade firmware takes several files at once, one per model: each device installs the file for its model.
-- Upgrade firmware starts tasks only for the devices that install a file, not for those already up to date or with a
-  file of another model. Plugin dialogs can do the same (SDK 0.5.0 `ShowForDevicesAsync`).
+- New login window, with clearer messages when the server cannot be reached.
+- Upgrade firmware skips devices that are up to date or have no file for their model.
 
 ### Fixed
 
-- Enable IEEE 802.1X and the EST setup make AXIS OS 12.11 cameras log in at the switch again: before, they did only after
-  turning IEEE 802.1X off and on by hand.
-- Upgrade firmware commits AXIS OS 12.11 again: it waits while the camera has not finished starting, instead of
-  failing and letting the camera roll back after 30 minutes.
+- AXIS OS 12.11 cameras log in at the switch after Enable IEEE 802.1X.
+- Upgrade firmware commits the new firmware on AXIS OS 12.11.
 
 ## [4.5.0] - 2026-10-26
 
 ### Added
 
-- **PKI**: one page for every certificate, with the tabs **Certificates**, **Policies**, **802.1X server** and
-  **EST server**.
-  - **Certificates**: every CA and every certificate OADM uses. **Create CA** makes a root or an intermediate CA (RSA 4096
-    preset, ECC P-256, RSA 2048 or 3072); certificates of an intermediate CA go to the cameras with their chain. Create,
-    sign a request, import, export and delete certificates; every CA no policy uses can be deleted.
-  - **Policies**: every rule about certificates in one table: how HTTPS and IEEE 802.1X certificates are issued, the
-    servers' certificates, who gets onto the network, EST enrollment and expiry warnings. The settings of OADM 4.1
-    become policies on the first start.
-  - Enable HTTPS and Enable IEEE 802.1X pick a policy. Renew certificates and Install certificates ask for the IEEE
-    802.1X policy. The camera's clock is checked first.
-- Certificates, HTTPS and IEEE 802.1X work from **AXIS OS 6.53** (before: 11.11). Cameras before AXIS OS 12 need an RSA
-  policy; EAPOL version 3 needs AXIS OS 10.1.
-- **802.1X server** (OADM PRO): OADM answers your switches and lets only the cameras it manages onto the network, also
-  at sites. VLAN and Block policies per site, tag or device.
-- **Start 30-day trial** of OADM PRO in OADM itself (Settings > License), without an account or internet.
-- **Device groups**: limit a user to the devices of a group (sites, tags, single devices). After the update every user
-  keeps all devices.
-- Device list: an **Architecture** column (off by default).
-- Web View: **Apps**, **Recordings** and **Security** pages.
-- Plugin SDK 0.4.0: plugins get the user's devices with each call; plugins built for 4.1 work for users with all
-  devices. New plugin folders include an `AGENTS.md` for AI coding assistants.
+- PKI page: certificates, policies, 802.1X server and EST server in one place.
+- Create root and intermediate CAs.
+- Certificates, HTTPS and IEEE 802.1X from AXIS OS 6.53.
+- 802.1X server (OADM PRO): only the cameras OADM manages get onto the network.
+- 30-day OADM PRO trial in Settings > License.
+- Device groups: limit a user to some devices.
+- Architecture column in the device list.
+- Web View: Apps, Recordings and Security pages.
+- Plugin SDK 0.4.0.
 
 ### Changed
 
-- The **EST server** and the **802.1X server** are tabs of the PKI page now; a server that was on stays on. The EST task
-  is called **EST - Certificate Enrollment**.
-- There is no special OADM CA any more: the CA of the first start is an ordinary root CA, and a CA replaced in an older
-  OADM gets its own 802.1X trusted CA policy, so its cameras keep their network access.
-- **Delete** replaces Revoke: the 802.1X and EST servers no longer accept a deleted certificate.
-- A new IEEE 802.1X policy uses EAPOL version 2 and the camera's IP address as identity.
-- HTTPS tasks wait for the camera's web server to restart. Disable HTTPS runs on cameras with Basic login only when
-  **Allow Basic login over HTTP** is on.
-- **Sites**: no Devices and Response time columns, so Bind stays in view.
-- The **Users** page is now **Permissions**. Settings cards fold; **This computer** is now **Client**.
-- Buttons look the same everywhere: flat toolbar buttons, one filled button for a dialog's main action.
+- The EST and 802.1X servers are tabs of the PKI page.
+- Delete replaces Revoke for certificates.
+- The Users page is now Permissions.
+- Flat toolbar buttons everywhere.
 
 ### Fixed
 
-- The built-in Enrollment and Expiry warning policies can change their devices, so a second policy of their kind fits.
-- Starting the OADM PRO trial shows its policies at once.
-- EST server: the update removes the profiles that were off in 4.1, and the certificate warning follows a newly chosen
-  interface at once.
-- Settings: a card with a wrong value opens so the error shows; polling intervals up to 86,400 s are accepted.
-- Metadata Monitor: a stream the server no longer has shows Stopped instead of Live.
+- The built-in Enrollment and Expiry warning policies can change their devices.
+- The OADM PRO trial shows its policies at once.
+- Settings opens a card with a wrong value.
+- Metadata Monitor shows Stopped for a stream that is gone.
 
 ## [4.5.0-rc.1] - 2026-10-25
 

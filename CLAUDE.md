@@ -248,6 +248,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - "Optional" once per field. No "(s)" plurals: write the count or rephrase.
 - Step names follow one pattern: imperative, with the article ("Wait for the device to come back").
 - No filler: no "easily", "seamlessly", "simply", "this allows you to", "please note", em-dash asides, "not X but Y".
+- CHANGELOG: one short line per entry, what the user gets in plain words; never nested lists, bold or code (the client's
+  new version notice shows it as plain lines).
 - Docs use the same style. README and user docs are for users. Developer docs (CONTRIBUTING, plugins/README, plugin
   READMEs, specs) keep the technical detail developers need, in short sentences, without repetition. TERMS.md is fixed
   by the user and is never edited.

@@ -16,7 +16,8 @@ public sealed record ReleaseNoteSection(string Title, IReadOnlyList<string> Item
 
 /// <summary>
 /// The notes of a release page (the CHANGELOG section the release workflow copies there): <c>### Added</c> headings with
-/// <c>- </c> entries, an entry continuing on indented lines. Markdown emphasis, code and links become plain text.
+/// <c>- </c> entries (nested ones too, as entries of their own), an entry continuing on indented lines. Markdown emphasis, code
+/// and links become plain text.
 /// </summary>
 public static partial class ReleaseNotes
 {
@@ -53,9 +54,9 @@ public static partial class ReleaseNotes
                 Flush();
                 title = null; // another level: not a group of entries
             }
-            else if (title is not null && (line.StartsWith("- ", StringComparison.Ordinal) || line.StartsWith("* ", StringComparison.Ordinal)))
+            else if (title is not null && (line.TrimStart().StartsWith("- ", StringComparison.Ordinal) || line.TrimStart().StartsWith("* ", StringComparison.Ordinal)))
             {
-                items.Add(Plain(line[2..]));
+                items.Add(Plain(line.TrimStart()[2..])); // a nested entry (older notes) is an entry of its own
             }
             else if (title is not null && items.Count > 0 && line.Length > 0 && char.IsWhiteSpace(line[0]))
             {
