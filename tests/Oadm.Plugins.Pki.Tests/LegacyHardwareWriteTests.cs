@@ -67,6 +67,53 @@ public sealed class LegacyHardwareWriteTests(ITestOutputHelper output)
     [HardwareWriteFact]
     public Task Chain_Local_12_119() => LocalChainAsync("10.0.0.12");
 
+    /// <summary>
+    /// AXIS OS 12.11: Enable IEEE 802.1X writes the settings off and then on, so the camera starts a new login at the switch.
+    /// Writes the camera's own 802.1X settings again (same certificates) and watches its status; nothing else changes.
+    /// </summary>
+    [HardwareWriteFact]
+    public async Task Dot1x_relogin_48_1211()
+    {
+        var camera = Camera("10.0.0.48");
+        using var real = HttpClient(camera.Address, 80, new NetworkCredential(camera.User, camera.Password), allowBasic: false);
+        var guard = new GuardedVapix(real, allowDot1xOn: true, Say);
+        var apis = await guard.GetApiListAsync(CancellationToken.None);
+        var before = (await Dot1xSettings.ReadAsync(guard, apis, CancellationToken.None)).Dot1x;
+        Say($"Before: on {before?.Enabled} · status {before?.Status} · {before?.EapolVersion} · identity {before?.Identity} · client {before?.CertClient} · CAs {string.Join(", ", before?.CertsCa ?? [])}");
+        Assert.True(before is { Enabled: true, CertClient: not null }, "802.1X must be on with a client certificate; nothing was written");
+
+        var eapol = int.Parse(before.EapolVersion!["EAPoLv".Length..], System.Globalization.CultureInfo.InvariantCulture);
+        var start = DateTime.UtcNow;
+        await NetworkInfoApi.EnableEapTlsAsync(guard, apis, before.DeviceName, before.Identity!, eapol, before.CertClient, before.CertsCa, CancellationToken.None);
+        Say("Written off, then on");
+
+        string? last = null;
+        Wired8021X? after = null;
+        while (DateTime.UtcNow - start < TimeSpan.FromSeconds(90))
+        {
+            try
+            {
+                after = (await Dot1xSettings.ReadAsync(guard, apis, CancellationToken.None)).Dot1x;
+                if (after?.Status != last)
+                {
+                    last = after?.Status;
+                    Say($"{(DateTime.UtcNow - start).TotalSeconds:0} s: status {last}");
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or PkiDeviceException)
+            {
+                Say($"{(DateTime.UtcNow - start).TotalSeconds:0} s: not reachable ({ex.GetType().Name})");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        Assert.NotNull(after);
+        Assert.True(after.Enabled);
+        Assert.Equal(before.CertClient, after.CertClient);
+        Assert.Equal(before.CertsCa, after.CertsCa);
+    }
+
     private void Say(string text) => output.WriteLine(text);
 
     private Task WaitForDeviceAsync(IVapixClient vapix) => WaitForDeviceAsync(vapix, Say);

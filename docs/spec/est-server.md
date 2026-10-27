@@ -306,7 +306,8 @@ bundles), valid to 9999; the camera starts with no EST profiles.
    the check step, only with IEEE 802.1X on (missing from the CA list: nothing is
    changed; with IEEE 802.1X off it is not needed). Run before the HTTPS profile is written (its certificate restarts the
    web server), else after the profiles. Only the CA list of the camera's EAP-TLS settings is written
-   (`setWired8021XConfiguration` with on/off, identity, EAPOL version and client certificate as the camera has them,
+   (`setWired8021XConfiguration` with identity, EAPOL version and client certificate as the camera has them, off and then on
+   again so the camera logs in anew (docs/spec/pki.md "802.1X off, then on"),
    `NetworkInfoApi.SetCaCertificatesAsync`; network settings before 1.38, also on 12.10, do not bind certificates: there
    the CA certificates of the SOAP certificate set `EAPTLS_WIRED` change and the client certificate stays,
    `Dot1xSettings.SetCaCertificatesAsync`, docs/spec/pki.md "Older AXIS OS"); skipped without the network settings API, with IEEE 802.1X off or without a

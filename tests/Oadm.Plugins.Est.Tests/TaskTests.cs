@@ -618,8 +618,11 @@ public sealed class TaskTests : IAsyncLifetime
 
         await StepRun.RunAsync(ctx.Steps, () => task.ExecuteAsync(ctx, _device, payload, CancellationToken.None));
 
-        var written = Assert.Single(_camera.Dot1xCaWrites);
-        var alias = Assert.Single(written);
+        // Off, then on with the same CA: the camera starts a new login at the switch.
+        Assert.Equal([false, true], _camera.Dot1xEnabledWrites);
+        Assert.Equal(2, _camera.Dot1xCaWrites.Count);
+        Assert.Equal(_camera.Dot1xCaWrites[0], _camera.Dot1xCaWrites[1]);
+        var alias = Assert.Single(_camera.Dot1xCaWrites[1]);
         Assert.Equal(_ca.Chain[0], System.Security.Cryptography.X509Certificates.X509Certificate2.CreateFromPem(_camera.CaCertificates[alias]).RawData);
         var lines = StepRun.Lines(ctx.Steps).ToList();
         Assert.Contains(EstTaskIds.RadiusCaStep + ": Done", lines);
@@ -629,7 +632,7 @@ public sealed class TaskTests : IAsyncLifetime
         var again = Context();
         await StepRun.RunAsync(again.Steps, () => task.ExecuteAsync(again, _device, payload, CancellationToken.None));
         Assert.StartsWith("Already set: ", StepRun.Detail(again.Steps, EstTaskIds.RadiusCaStep), StringComparison.Ordinal);
-        Assert.Single(_camera.Dot1xCaWrites);
+        Assert.Equal(2, _camera.Dot1xCaWrites.Count);
     }
 
     [Fact]
@@ -750,6 +753,9 @@ public sealed class TaskTests : IAsyncLifetime
         /// <summary>The CA lists <c>setWired8021XConfiguration</c> wrote, in order.</summary>
         public List<string[]> Dot1xCaWrites { get; } = [];
 
+        /// <summary>The <c>enabled</c> value of each <c>setWired8021XConfiguration</c>, in order.</summary>
+        public List<bool> Dot1xEnabledWrites { get; } = [];
+
         /// <summary>A camera with IEEE 802.1X on with certificates (client certificate oadm_dot1x) checking the RADIUS server with <paramref name="certsCa"/>.</summary>
         public void Dot1xOn(params string[] certsCa)
         {
@@ -795,6 +801,7 @@ public sealed class TaskTests : IAsyncLifetime
             {
                 var cas = request["params"]!["certsCA"]!.AsArray().Select(n => n!.GetValue<string>()).ToArray();
                 Dot1xCaWrites.Add(cas);
+                Dot1xEnabledWrites.Add(request["params"]!["enabled"]!.GetValue<bool>());
                 NetworkInfo["devices"]![0]!["wired"]!["8021X"]!["configurations"]![0]!["params"]!["certsCA"] = new JsonArray([.. cas.Select(c => (JsonNode)c)]);
                 return Json("""{"apiVersion":"1.0","method":"setWired8021XConfiguration","data":{}}""");
             }

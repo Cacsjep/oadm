@@ -1068,6 +1068,11 @@ made fresh in Check compatibility before the first write; the menus use the cach
   settings takes them from `GetCertSet` (`Device/Dot1xSettings`). Also for Disable IEEE 802.1X (certificates stay bound),
   Renew, Install certificates for 802.1X, View / Delete certificates (in use by 802.1X) and the EST step "Set the RADIUS
   server CA" (only the CA certificates of the set change).
+- **802.1X off, then on**: with network settings, Enable IEEE 802.1X writes the whole configuration with `enabled` false and
+  then the same with true (`NetworkInfoApi.EnableEapTlsAsync`); the EST step "Set the RADIUS server CA" does the same when
+  802.1X is on. AXIS OS 12.11 starts a new login at the switch only on the change from off to on, not when certificates
+  change while it is on (seen 2026-10-27 on 10.0.0.48: Stopped, Connecting, then the switch's answer). The parameter way
+  (no network settings) writes on once.
 - **Without network settings** (no API list before 8.50, or no `network-settings` in it): on/off, identity and EAPOL
   version through `param.cgi action=update` `Network.Interface.I0.dot1x.Enabled`, `.EAPOLVersion`, `.EAPTLS.Identity`
   (form body), read with `param.cgi list`; the certificates through the certificate set as above. Host names for the

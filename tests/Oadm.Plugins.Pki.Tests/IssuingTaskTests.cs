@@ -131,6 +131,23 @@ public sealed class IssuingTaskTests
         Assert.Equal(["RSA-2048"], h.Camera.KeyTypesCreated);
     }
 
+    [Fact]
+    public async Task Enable_8021x_writes_the_settings_off_and_then_turns_it_on()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        var policy = h.Pki.Service.Policies.FirstOf(PolicyKinds.Dot1xCertificate)!;
+
+        Assert.Null(await h.RunAsync(PkiTaskIds.Dot1xEnable, PkiJson.Serialize(new IssuePayload { PolicyId = policy.Id })));
+
+        // AXIS OS 12.11 starts a new login at the switch only on the change from off to on.
+        var writes = h.Camera.Requests.Where(r => r.Body.Contains("setWired8021XConfiguration", StringComparison.Ordinal))
+            .Select(r => System.Text.Json.Nodes.JsonNode.Parse(r.Body)!["params"]!)
+            .ToList();
+        Assert.Equal([false, true], writes.Select(p => p["enabled"]!.GetValue<bool>()));
+        Assert.Equal(writes[0]["certClient"]!.GetValue<string>(), writes[1]["certClient"]!.GetValue<string>());
+        Assert.True(h.Camera.Dot1x["enabled"]!.GetValue<bool>());
+    }
+
     [Theory]
     [InlineData(Dot1xIdentity.IpAddress, 3, "10.0.0.48", "EAPoLv3")]
     [InlineData(Dot1xIdentity.IpLastOctet, 1, "48", "EAPoLv1")]

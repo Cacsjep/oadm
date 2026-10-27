@@ -12,6 +12,8 @@ version and date, and the release workflow copies it into the GitHub release.
 
 ### Fixed
 
+- Enable IEEE 802.1X and the EST setup make AXIS OS 12.11 cameras log in at the switch again: before, they did only after
+  turning IEEE 802.1X off and on by hand.
 - Upgrade firmware commits AXIS OS 12.11 again: it waits while the camera has not finished starting, instead of
   failing and letting the camera roll back after 30 minutes.
 

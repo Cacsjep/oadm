@@ -53,14 +53,15 @@ public static class NetworkInfoApi
 
     /// <summary>
     /// Enables EAP-TLS with the identity and EAPOL version and, when given, the client certificate and CA certificates (null:
-    /// left out, the device's certificate set holds them).
+    /// left out, the device's certificate set holds them). Written off first, then on: AXIS OS 12.11 starts a new login at
+    /// the switch only when 802.1X goes from off to on, not when the certificates change while it is on.
     /// </summary>
-    public static Task EnableEapTlsAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, string deviceName, string identity, int eapolVersion, string? certClient, IReadOnlyList<string>? certsCa, CancellationToken ct)
+    public static async Task EnableEapTlsAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, string deviceName, string identity, int eapolVersion, string? certClient, IReadOnlyList<string>? certsCa, CancellationToken ct)
     {
         var parameters = new JsonObject
         {
             ["deviceName"] = deviceName,
-            ["enabled"] = true,
+            ["enabled"] = false,
             ["mode"] = EapTlsMode,
             ["identity"] = identity,
             ["eapolVersion"] = EapolName(eapolVersion),
@@ -75,20 +76,20 @@ public static class NetworkInfoApi
             parameters["certsCA"] = new JsonArray([.. certsCa.Select(c => (JsonNode)JsonValue.Create(c)!)]);
         }
 
-        return SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters, "Set 802.1X configuration", ct);
+        await SetOffThenOnAsync(vapix, apis, parameters, "Set 802.1X configuration", ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Sets only the CA certificates the device checks the RADIUS server with; everything else of the EAP-TLS configuration
     /// (on or off, identity, EAPOL version, client certificate) is written back as <paramref name="current"/> has it.
     /// </summary>
-    public static Task SetCaCertificatesAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, Wired8021X current, IReadOnlyList<string> certsCa, CancellationToken ct)
+    public static async Task SetCaCertificatesAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, Wired8021X current, IReadOnlyList<string> certsCa, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(current);
         var parameters = new JsonObject
         {
             ["deviceName"] = current.DeviceName,
-            ["enabled"] = current.Enabled,
+            ["enabled"] = false,
             ["mode"] = EapTlsMode,
             ["certClient"] = current.CertClient,
             ["certsCA"] = new JsonArray([.. certsCa.Select(c => (JsonNode)JsonValue.Create(c)!)]),
@@ -103,7 +104,23 @@ public static class NetworkInfoApi
             parameters["eapolVersion"] = eapol;
         }
 
-        return SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters, "Set the RADIUS server CA", ct);
+        if (current.Enabled)
+        {
+            await SetOffThenOnAsync(vapix, apis, parameters, "Set the RADIUS server CA", ct).ConfigureAwait(false); // see EnableEapTlsAsync
+        }
+        else
+        {
+            await SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters, "Set the RADIUS server CA", ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>The whole configuration with 802.1X off, then the same with it on (the device starts a new login).</summary>
+    private static async Task SetOffThenOnAsync(IVapixClient vapix, IReadOnlyList<DeviceApi> apis, JsonObject parameters, string action, CancellationToken ct)
+    {
+        parameters["enabled"] = false;
+        await SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters.DeepClone().AsObject(), action, ct).ConfigureAwait(false);
+        parameters["enabled"] = true;
+        await SendAsync(vapix, Version(apis), "setWired8021XConfiguration", parameters, action, ct).ConfigureAwait(false);
     }
 
     /// <summary>Turns 802.1X off; certificates and the rest of the configuration stay.</summary>
