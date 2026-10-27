@@ -292,7 +292,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `FirewallRuleKeeper` (the first sync always applies, so a rule left by a crash is removed at start; errors logged,
   retried on the next change; `FirewallRule.ForService("NTP", Udp, 123)`); server `NetshFirewallRules` (`netsh
   advfirewall`: `delete rule name=...`, which ignores "No rules match", then `add rule ... dir=in action=allow
-  protocol=UDP localport=<port> program=<exe> profile=domain,private`) through `ICommandRunner`.
+  protocol=UDP localport=<port> program=<exe> profile=domain,private`) through `ICommandRunner`. A rule can cover a port
+  range (SDK 0.6.0 `FirewallRule.LastPort`, `ForServiceRange`, netsh `localport=<first>-<last>`): the Load test
+  opens "OADM Server (Load test, UDP 50000-50799)" for the RTP over UDP of its stream probes only while a check
+  runs ([live-view.md](live-view.md) "Stream probes").
 - **Folders** (the service runs as SYSTEM / root): at start (step 0 of `OadmServerHost.StartAsync`, service mode only)
   the data folder, the runtime extraction folder and every plugin folder must be writable only by administrators / root
   (`Oadm.Server.Hosting.FolderGuard` over `IFolderPermissions`: `WindowsFolderPermissions`, `UnixFolderPermissions`). Windows: owner and every entry SYSTEM / Administrators / TrustedInstaller, no

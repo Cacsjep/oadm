@@ -282,6 +282,23 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
 - Device groups: one table per device scope; a group user checks and sees only the group's cameras, chosen ids outside it
   are refused whole (NOT_FOUND).
 
+## Load test (core plugin)
+
+`plugins/Oadm.Plugins.LoadTest` (+ `.Client`), id `oadm.load-test`, rail page **Load test**
+(group Monitoring, icon `gauge`), **off by default**. A load test of the chosen cameras and the network to the server:
+batch after batch 25, 50, 75 and 100 % of the streams at once, then all in low light, with graphs, a verdict per run and
+one row per camera stream. Details: [Load test](load-test.md) and the plugin's README.
+
+- Devices: the "Selected cameras" command button (`PageDeviceChoice`); nothing streams before **Start**.
+- Rules that must hold: the exposure value in Low light is the only write, read and kept in memory before it and always
+  written back (after the phase, on Cancel, when a stream drops out, on the plugin's stop; a failed restore is a run
+  warning); one check at a time per server (a second Start names the running check's user and progress); at most 1,000
+  camera streams per check and 200 at once; RTP over UDP on 50000-50799 with the firewall rule open only while a check runs; the last 5 runs kept
+  (the 6th deletes the oldest), a run that was running at a server stop kept as Failed. Methods `plan`, `listRuns`,
+  `getRun`, `getStream` need "show" (Viewer), `start`, `cancel`, `deleteRun` the plugin's "run" permission (Operator).
+- Device groups: a group user checks only the group's cameras (chosen ids outside it refused whole, NOT_FOUND); runs
+  belong to the device scope that ran them.
+
 ## I/O Monitor (core plugin)
 
 `plugins/Oadm.Plugins.IoMonitor` (+ `.Client`), id `oadm.io-monitor`, rail page **I/O Monitor** (group Monitoring, icon

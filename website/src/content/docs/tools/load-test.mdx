@@ -1,0 +1,52 @@
+---
+title: Load test
+description: Whether your network and cameras carry the load of all their streams at once.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The Load test streams the highest quality video of the chosen cameras to the OADM server, more and more cameras
+at once, and measures lost packets, lost and late frames, the rate and the jitter of every camera. Like AXIS Installation
+Verifier, without recording.
+
+<Aside>
+The Load test is off by default. An administrator turns it on on the **Plugins** page.
+</Aside>
+
+## Check your cameras
+
+<Steps>
+
+1. Open **Load test** in the navigation rail and choose the cameras with **Choose cameras**: all devices, tags,
+   or single cameras. The page shows how many cameras, how long the check takes and the expected rate.
+2. Click **Start** and confirm. Up to 50 cameras stream at once; more cameras run one group after the other. One check
+   takes at most 1,000 cameras.
+3. Each group runs five steps of 2 minutes: 25 %, 50 %, 75 % and all of its cameras, then all of them in **Low light**.
+   The graphs grow every second.
+4. Read the result: the cards show the cameras checked, the peak rate, the worst loss and the headroom (the last step
+   without a problem), the table one row per camera with the result of each step, worst first. Click a row for that
+   camera's own graphs.
+
+</Steps>
+
+A camera passes a step when it loses less than 1 % of its packets and frames and less than 1 % of its frames come late.
+A camera that does not start within 10 seconds or stops sending for 5 seconds is **Interrupted** for that step.
+
+## Good to know
+
+- In **Low light** OADM sets the exposure of each camera to its maximum, like the dark of night: the image gets
+  brighter and noisier, and the rate goes up. Your VMS records this image during the step. OADM writes the exposure back
+  after the step, when you cancel, when a camera drops out and when the plugin stops. If a camera does not take its value
+  back, the result says which camera and which value to set by hand.
+- Nothing else on the cameras changes.
+- Only one check runs at a time on the server. **Cancel** stops it and keeps what was measured.
+- The last 5 checks are kept. Open one from the run list, or delete it.
+- For cameras OADM reaches directly, the video comes over UDP: open UDP ports 50000 to 50799 towards the OADM server if
+  a firewall sits in between. The Windows service opens them in its own firewall while a check runs. If UDP is blocked,
+  the camera streams over TCP and its row says that packet loss is not measured.
+- Cameras at sites stream over TCP through the site node: packet loss is not measured there, missing and late frames are.
+
+<Aside>
+Viewers can see the checks. Starting, cancelling and deleting a check needs the permission **Run load tests**,
+which operators have.
+</Aside>

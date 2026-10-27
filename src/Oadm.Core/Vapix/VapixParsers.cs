@@ -203,6 +203,69 @@ public static partial class VapixParsers
     [GeneratedRegex(@"^Image\.I(\d+)\.(Enabled|Name|Source)$", RegexOptions.CultureInvariant)]
     private static partial Regex ImageIndexRegex();
 
+    /// <summary>
+    /// The highest frame rate per sensor (channel, 0-based) of a capturemode.cgi getCaptureModes answer: the
+    /// <c>maxFPS</c> of the enabled capture mode, or the highest one when none says enabled. Sensors without a rate are
+    /// left out.
+    /// </summary>
+    public static IReadOnlyDictionary<int, int> ParseCaptureModeMaxFps(string json)
+    {
+        using var doc = ParseJson(json, "capturemode.cgi");
+        var root = doc.RootElement;
+        ThrowIfJsonError(root, "capturemode.cgi");
+        var result = new Dictionary<int, int>();
+        if (!root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+        {
+            return result;
+        }
+
+        foreach (var channel in data.EnumerateArray())
+        {
+            if (channel.ValueKind != JsonValueKind.Object
+                || !channel.TryGetProperty("channel", out var c) || !c.TryGetInt32(out var sensor)
+                || !channel.TryGetProperty("captureMode", out var modes) || modes.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            int? enabled = null;
+            int? highest = null;
+            foreach (var mode in modes.EnumerateArray())
+            {
+                if (mode.ValueKind != JsonValueKind.Object || MaxFps(mode) is not { } fps)
+                {
+                    continue;
+                }
+
+                highest = Math.Max(highest ?? 0, fps);
+                if (mode.TryGetProperty("enabled", out var e) && e.ValueKind == JsonValueKind.True)
+                {
+                    enabled = fps;
+                }
+            }
+
+            if ((enabled ?? highest) is { } rate)
+            {
+                result[sensor] = rate;
+            }
+        }
+
+        return result;
+
+        static int? MaxFps(JsonElement mode)
+        {
+            foreach (var property in mode.EnumerateObject())
+            {
+                if (property.Name.Equals("maxFPS", StringComparison.OrdinalIgnoreCase) && property.Value.TryGetDouble(out var fps) && fps >= 1)
+                {
+                    return (int)Math.Round(fps);
+                }
+            }
+
+            return null;
+        }
+    }
+
     /// <summary>Parses a systemready.cgi response.</summary>
     public static SystemReadyInfo ParseSystemReady(string json)
     {

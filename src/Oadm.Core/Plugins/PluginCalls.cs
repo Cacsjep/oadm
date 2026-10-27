@@ -347,6 +347,57 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
 
     public IDeviceAutoAdd? AutoAdd(IDeviceAutoAdd? inner) => inner is null ? null : new GuardedAutoAdd(this, inner);
 
+    /// <summary>
+    /// <c>ctx.StreamProbes</c> (no member of the call): in a group user's call and its jobs only for devices of the caller's
+    /// own scope (<paramref name="scopes"/>), every other id like an unknown one (<see cref="KeyNotFoundException"/>, the
+    /// device is never contacted); without <paramref name="scopes"/> a group user gets none (fail closed).
+    /// </summary>
+    public IDeviceStreamProbes? StreamProbes(IDeviceStreamProbes? inner, IDeviceScopes? scopes) =>
+        inner is null ? null : new GuardedStreamProbes(this, inner, scopes);
+
+    /// <summary>Throws <see cref="KeyNotFoundException"/> in a group user's call for a device outside every group identity on the call.</summary>
+    public void CheckDevice(Guid deviceId, IDeviceScopes? scopes)
+    {
+        if (!InGroupCall)
+        {
+            return;
+        }
+
+        var mark = CallerContext.PluginCall;
+        var current = CallerContext.Current;
+        var inScope = scopes is not null
+            && (mark is not { HasAllDevices: false } || (mark.ScopeKey is { } key && scopes.Contains(key, deviceId)))
+            && (current is not { HasAllDevices: false } || (current.DeviceGroupId is { } group && scopes.Contains(group.ToString(), deviceId)));
+        if (!inScope)
+        {
+            var method = mark?.Method ?? "?";
+            if (_logged.TryAdd((method, "StreamProbes"), 0))
+            {
+                LogOutsideGroup(PluginId, method);
+            }
+
+            throw new KeyNotFoundException($"Device {deviceId} not found.");
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} asked ctx.StreamProbes in {Method} for a device outside the user's device group: refused")]
+    private partial void LogOutsideGroup(string pluginId, string method);
+
+    private sealed class GuardedStreamProbes(PluginCallGuard guard, IDeviceStreamProbes inner, IDeviceScopes? scopes) : IDeviceStreamProbes
+    {
+        public Task<IReadOnlyList<StreamProbeSource>> ListSourcesAsync(Guid deviceId, CancellationToken ct)
+        {
+            guard.CheckDevice(deviceId, scopes);
+            return inner.ListSourcesAsync(deviceId, ct);
+        }
+
+        public Task<IDeviceStreamProbe> OpenAsync(Guid deviceId, StreamProbeRequest request, CancellationToken ct)
+        {
+            guard.CheckDevice(deviceId, scopes);
+            return inner.OpenAsync(deviceId, request, ct);
+        }
+    }
+
     private sealed class GuardedAutoAdd(PluginCallGuard guard, IDeviceAutoAdd inner) : IDeviceAutoAdd
     {
         public Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct)

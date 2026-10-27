@@ -16,6 +16,19 @@ public sealed class FirewallRuleKeeperTests
     }
 
     [Fact]
+    public void ARangeRuleNamesItsRangeAndOnePortStaysOnePort()
+    {
+        var range = FirewallRule.ForServiceRange("Load test", FirewallProtocol.Udp, 50000, 50799);
+
+        Assert.Equal("OADM Server (Load test, UDP 50000-50799)", range.Name);
+        Assert.Equal((50000, 50799), (range.Port, range.LastPort));
+        Assert.Equal("50000-50799", range.PortText);
+        Assert.Equal(FirewallRule.ForService("NTP", FirewallProtocol.Udp, 123), FirewallRule.ForServiceRange("NTP", FirewallProtocol.Udp, 123, 123));
+        Assert.Equal("123", Rule.PortText);
+        Assert.Throws<ArgumentOutOfRangeException>(() => FirewallRule.ForServiceRange("x", FirewallProtocol.Udp, 50001, 50000));
+    }
+
+    [Fact]
     public async Task FirstSyncAlwaysAppliesLaterOnlyChanges()
     {
         var firewall = new RecordingFirewall();

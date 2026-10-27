@@ -15,18 +15,40 @@ public enum FirewallProtocol
 }
 
 /// <summary>
-/// An inbound allow rule for the server executable on one local port (profiles Domain and Private).
+/// An inbound allow rule for the server executable on one local port or a range of ports (profiles Domain and Private).
 /// <paramref name="Name"/> identifies the rule ("OADM Server (NTP, UDP 123)"): opening replaces a rule of that name,
 /// closing removes it.
 /// </summary>
 /// <param name="Name">The rule name, which identifies it.</param>
 /// <param name="Protocol">TCP or UDP.</param>
-/// <param name="Port">The local port.</param>
+/// <param name="Port">The local port; the first port of a range.</param>
 public sealed record FirewallRule(string Name, FirewallProtocol Protocol, int Port)
 {
+    /// <summary>The last port of a range (<see cref="Port"/> to this one); null for one port. SDK 0.6.0.</summary>
+    public int? LastPort { get; init; }
+
+    /// <summary>The ports as a firewall writes them: "123" or "50000-50799".</summary>
+    public string PortText => LastPort is { } last && last != Port
+        ? string.Create(CultureInfo.InvariantCulture, $"{Port}-{last}")
+        : Port.ToString(CultureInfo.InvariantCulture);
+
     /// <summary>"OADM Server (NTP, UDP 123)".</summary>
     public static FirewallRule ForService(string service, FirewallProtocol protocol, int port) =>
-        new(string.Create(CultureInfo.InvariantCulture, $"OADM Server ({service}, {(protocol == FirewallProtocol.Udp ? "UDP" : "TCP")} {port})"), protocol, port);
+        new(string.Create(CultureInfo.InvariantCulture, $"OADM Server ({service}, {ProtocolName(protocol)} {port})"), protocol, port);
+
+    /// <summary>
+    /// "OADM Server (Load test, UDP 50000-50799)": the ports <paramref name="first"/> to <paramref name="last"/>
+    /// (one port when they are equal). SDK 0.6.0.
+    /// </summary>
+    public static FirewallRule ForServiceRange(string service, FirewallProtocol protocol, int first, int last)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(last, first);
+        return first == last
+            ? ForService(service, protocol, first)
+            : new(string.Create(CultureInfo.InvariantCulture, $"OADM Server ({service}, {ProtocolName(protocol)} {first}-{last})"), protocol, first) { LastPort = last };
+    }
+
+    private static string ProtocolName(FirewallProtocol protocol) => protocol == FirewallProtocol.Udp ? "UDP" : "TCP";
 }
 
 /// <summary>

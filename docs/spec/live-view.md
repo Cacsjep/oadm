@@ -114,6 +114,29 @@ web UI.
   the cached GOP first (picture within one frame time). Slow viewers never buffer: a full queue
   (60 frames) is dropped and the viewer resumes at the next keyframe. Packet loss drops access
   units until the next keyframe.
+- **Stream probes** (SDK 0.6.0 `ICorePluginContext.StreamProbes`, `Core/LiveView/Probes`; for the Load test,
+  [load-test.md](load-test.md)): measuring streams on the server, never shared with the live view, nothing
+  decoded or passed on. `ListSourcesAsync`: the sources of `ListSources` above with their largest resolution (pixel
+  count), the frame rate of the sensor's enabled capture mode (`capturemode.cgi` getCaptureModes `maxFPS`, else 30) and
+  H.265 > H.264 (no MJPEG). `OpenAsync` (`RtspStreamProbe`): the stored credentials and Basic rules, port and route as
+  above, `CertificateChanged` refused before any connection, `videokeyframeinterval=fps`, the camera's own compression
+  and Zipstream; a lower `a=framerate` in the SDP becomes the probe's frame rate.
+  - RTP over **UDP** only here (live view and event streams stay TCP): `Transport: RTP/AVP;unicast;client_port=a-b`
+    (`RtspTransport`), a pair from `RtpUdpPorts` UDP 50000-50799 (even RTP, odd RTCP, 400 pairs; a pair another
+    program holds is skipped), bound through `DeviceRouter.BindUdp` (the server's own network only). Only datagrams from
+    the camera's address of the RTSP connection count. One RTP and one RTCP packet right after PLAY open a stateful
+    firewall on the way; an RTCP receiver report every 5 s (RFC 3550 6.4.2, LSR / DLSR from the camera's sender
+    reports) and OPTIONS within the session timeout keep the stream. TCP interleaved instead for devices at a site, a
+    461 answer, no free pair or `PreferUdp` false. UDP that plays but brings no packet in 3 s
+    (`RtspStreamProbe.UdpStartTime`, on the probe's `TimeProvider`) is dropped on the way: TEARDOWN, the same request
+    over TCP, and `IDeviceStreamProbe.UdpBlocked` true (a 461 or a site is not blocked).
+  - Counters (`RtpStreamCounter`): loss from sequence gaps once 50 newer packets arrived (16-bit wrap; reorders inside
+    the window and duplicates are not lost; a far backward jump confirmed by the next packet restarts the sequence),
+    frames by RTP marker, expected frames from RTP time and the frame rate, late frames (the marker more than 2 frame
+    times after the quickest frame's transit), payload bytes, RFC 3550 6.4.1 jitter.
+  - The probe ends (`Completion` faulted with `DeviceStreamException`) when the camera closes the session or nothing
+    arrives for 30 s; dispose sends TEARDOWN and frees the pair. A group user's call opens probes only for devices of
+    the group (`KeyNotFoundException` otherwise, `PluginCallGuard`).
 - gRPC: each `LiveViewFrame` carries one Annex B access unit, the keyframe flag, parameter sets
   on keyframes, RTP timestamp, resolution and camera. Client channel max message size 32 MB. A user with a device group
   watches only devices of the group; the video ends ("1 device is no longer available.") when the device leaves it

@@ -165,7 +165,7 @@ public sealed class FakeCallContext : ICallContext
     {
         public async Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) =>
             call._core is { } core
-                ? [.. core.DeviceList.Where(call.Contains)]
+                ? [.. core.DeviceList.Where(d => call._group is null || call._group.Contains(d.Id))] // every listed device exists
                 : [.. (await call._devices!.ListAsync(ct).ConfigureAwait(false)).Where(call.Contains)];
 
         public async Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)

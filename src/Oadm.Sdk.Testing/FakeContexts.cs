@@ -181,7 +181,7 @@ public sealed record FakePublishedEvent(string Topic, string? PayloadJson, Plugi
 
 /// <summary>
 /// The server's context of a core plugin: the devices (<see cref="DeviceList"/>), a camera per device
-/// (<see cref="Cameras"/>), the events the plugin publishes to its page (<see cref="Published"/>, with their audience in
+/// (<see cref="Cameras"/>), the measuring video streams (<see cref="FakeStreamProbes"/>), the events the plugin publishes to its page (<see cref="Published"/>, with their audience in
 /// <see cref="PublishedEvents"/>), its settings, the tasks it starts (<see cref="TaskRuns"/>) and an optional data folder.
 /// Call methods like the host does with <see cref="InvokeAsync"/> / <see cref="OpenDownloadAsync"/> / <see cref="QueryAsync"/>:
 /// during the call of a user with a device group (<see cref="CallAsGroup"/>) the context's own <see cref="Devices"/>,
@@ -260,6 +260,9 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public string? DataDirectory { get; init; }
 
+    /// <summary>The host firewall the plugin opens its ports in; null (the default) = none, like Linux, macOS and console runs.</summary>
+    public Oadm.Sdk.Network.IFirewallRules? Firewall { get; init; }
+
     /// <inheritdoc />
     public ISecretProtector? Secrets { get; init; }
 
@@ -286,6 +289,16 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
     /// <inheritdoc />
     public Sites.ISites? Sites => FakeSites;
+
+    /// <summary>
+    /// The measuring video streams (<see cref="Testing.FakeStreamProbes"/>): sources and scriptable probes per device. Set it
+    /// with the test's <c>FakeTimeProvider</c> (<c>new FakeCoreContext { FakeStreamProbes = new(time) }</c>); the default
+    /// counts on the system clock.
+    /// </summary>
+    public FakeStreamProbes FakeStreamProbes { get; init; } = new();
+
+    /// <summary>The <see cref="FakeStreamProbes"/>, refused in a group user's call like <see cref="Vapix"/> (use them from background work).</summary>
+    public IDeviceStreamProbes? StreamProbes => field ??= new GuardedStreamProbes(this);
 
     /// <summary>The plugin's jobs (<see cref="FakePluginJobs"/>): owned by the user who started them.</summary>
     public FakePluginJobs FakeJobs { get; } = new();
@@ -491,6 +504,21 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         {
             RefusedAccesses.Enqueue(member);
             throw new DeviceAccessRefusedException();
+        }
+    }
+
+    private sealed class GuardedStreamProbes(FakeCoreContext core) : IDeviceStreamProbes
+    {
+        public Task<IReadOnlyList<StreamProbeSource>> ListSourcesAsync(Guid deviceId, CancellationToken ct)
+        {
+            core.Check("StreamProbes");
+            return core.FakeStreamProbes.ListSourcesAsync(deviceId, ct);
+        }
+
+        public Task<IDeviceStreamProbe> OpenAsync(Guid deviceId, StreamProbeRequest request, CancellationToken ct)
+        {
+            core.Check("StreamProbes");
+            return core.FakeStreamProbes.OpenAsync(deviceId, request, ct);
         }
     }
 

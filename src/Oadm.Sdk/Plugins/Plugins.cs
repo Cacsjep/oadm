@@ -418,6 +418,14 @@ public interface ICorePluginContext
     IDeviceEventStreams? EventStreams => null;
 
     /// <summary>
+    /// Measuring video streams of managed devices (packets, frames, bytes; opened by the server with the stored
+    /// credentials, nothing decoded). Null when the host does not offer them. In the call of a user with a device group
+    /// (and that user's jobs) only devices of the group: any other id throws <see cref="KeyNotFoundException"/>. SDK 0.6.0:
+    /// a plugin that uses it sets <c>minSdkVersion</c> 0.6.0.
+    /// </summary>
+    IDeviceStreamProbes? StreamProbes => null;
+
+    /// <summary>
     /// The host firewall for the ports the plugin serves (NTP UDP 123, DHCP UDP 67): open the rule while the service is
     /// enabled, close it when disabled or stopped (<see cref="FirewallRuleKeeper"/>). Only offered by the Windows server
     /// running as the installed service; null elsewhere (Linux, macOS, console runs, tests).
@@ -675,7 +683,7 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.5.0";
+    public const string Version = "0.6.0";
 
     /// <summary>
     /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.5). Users with a device group may call only

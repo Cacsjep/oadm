@@ -6,9 +6,9 @@ namespace Oadm.Server.Hosting;
 
 /// <summary>
 /// Windows Defender Firewall rules through <c>netsh advfirewall firewall</c> (the service runs as SYSTEM). A rule is an
-/// inbound allow rule for the server executable on one local port, profiles Domain and Private (never Public). Opening
-/// deletes a rule of the same name first, so restarts never pile up duplicates. Only used when the server runs as the
-/// installed Windows service (<see cref="ServiceHosting"/>); tests and development runs never touch the firewall.
+/// inbound allow rule for the server executable on one local port or a port range (<c>localport=50000-50799</c>),
+/// profiles Domain and Private (never Public). Opening deletes a rule of the same name first, so restarts never pile up
+/// duplicates. Only used when the server runs as the installed Windows service (<see cref="ServiceHosting"/>); tests and development runs never touch the firewall.
 /// </summary>
 public sealed class NetshFirewallRules(ICommandRunner runner, string programPath) : IFirewallRules
 {
@@ -42,7 +42,7 @@ public sealed class NetshFirewallRules(ICommandRunner runner, string programPath
         "dir=in",
         "action=allow",
         "protocol=" + (rule.Protocol == FirewallProtocol.Udp ? "UDP" : "TCP"),
-        "localport=" + rule.Port.ToString(CultureInfo.InvariantCulture),
+        "localport=" + rule.PortText,
         "program=" + ProgramPath,
         "profile=" + Profiles,
         "enable=yes",
@@ -61,5 +61,10 @@ public sealed class NetshFirewallRules(ICommandRunner runner, string programPath
 
         ArgumentOutOfRangeException.ThrowIfLessThan(rule.Port, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(rule.Port, 65535);
+        if (rule.LastPort is { } last)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(last, rule.Port);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(last, 65535);
+        }
     }
 }

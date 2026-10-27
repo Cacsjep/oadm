@@ -1,0 +1,54 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LoadTest.Client"
+        x:Class="Oadm.Plugins.LoadTest.Client.RunListWindow"
+        x:DataType="vm:RunListViewModel"
+        Title="{x:Static vm:RunListViewModel.Title}"
+        Width="900" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A list in a card: the kept runs, newest first; Delete in the card's header row, Open the dialog's main action. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:RunListViewModel.Title}" />
+    <Border Grid.Row="1" Classes="card" Margin="20,0,20,0">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+          <Button Classes="toolbar danger" Command="{Binding DeleteCommand}" ToolTip.Tip="{Binding DeleteTip}" ToolTip.ShowOnDisabled="True">
+            <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+          </Button>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Bottom" Classes="error" Margin="0,6,0,0" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+        <Panel>
+          <DataGrid x:Name="RunGrid" Classes="wrapRows" ItemsSource="{Binding Runs}" SelectedItem="{Binding Selected}" IsReadOnly="True" SelectionMode="Single"
+                    CanUserSortColumns="True" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Date" Width="140" Binding="{Binding DateText}" SortMemberPath="StartedUtc" x:DataType="vm:RunRowViewModel" />
+              <DataGridTextColumn Header="Started by" Width="140" Binding="{Binding StartedBy}" x:DataType="vm:RunRowViewModel" />
+              <DataGridTextColumn Width="115" MinWidth="115" Binding="{Binding CamerasText}" SortMemberPath="Cameras" CellStyleClasses="number" x:DataType="vm:RunRowViewModel">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Cameras" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+              <DataGridTextColumn Header="Settings" Width="150" Binding="{Binding SettingsText}" x:DataType="vm:RunRowViewModel" />
+              <DataGridTemplateColumn Header="Result" Width="*" MinWidth="240">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:RunRowViewModel">
+                    <ui:StatusChip Text="{Binding VerdictText}" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsAccent="{Binding IsAccent}" MaxLines="2" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:RunListViewModel.EmptyText}"
+                     IsVisible="{Binding ShowEmpty}" />
+        </Panel>
+      </DockPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Open" Command="{Binding OpenCommand}" ToolTip.Tip="Show this run on the page" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

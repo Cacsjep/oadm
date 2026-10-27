@@ -62,7 +62,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `Secrets` (AES-256-GCM with the master key), `Events` (live events to the plugin's page), `TrustAnchors` (CAs the
   server trusts when rating device certificates; `SetExpiryWarning(daysFor, defaultDays)`: the days of "expires soon" per
   device for the device grid and a new Compliance check, only PKI's count, `docs/spec/pki.md`), `EventStreams` (a device's
-  RTSP event stream with the stored credentials; the RTSP port per device), `Firewall` (UDP rules, Windows service only;
+  RTSP event stream with the stored credentials; the RTSP port per device), `StreamProbes` (SDK 0.6.0,
+  `IDeviceStreamProbes`: a device's video sources and measuring video streams with the stored credentials, RTP over UDP
+  or TCP, counters only, nothing decoded; `docs/spec/live-view.md` "Stream probes"), `Firewall` (UDP rules, one port or a
+  range with `FirewallRule.ForServiceRange`, Windows service only;
   `FirewallRuleKeeper`), `DataDirectory` (`<datafolder>/plugin-data/<id>`: working files, never a shared temp folder; the
   plugin cleans up), `EventPublisher` (event rules), `EventSubscriptions` (every event the server handles, see
   `docs/spec/event-rules.md`), `AutoAdd` (add or follow an Axis device like the add page), `Network` (`IPluginNetwork`:
@@ -123,7 +126,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     `ctx.DeviceScopes` is wrapped the same way: in a group user's call (and its jobs) every member refuses a key other
     than the caller's own (`PluginCallMark.ScopeKey`; a repository from `Devices(key)` checks again when read); methods
     with a `SystemAccessReason` reach only `Exists` and `Contains` of every scope (yes or no about devices they have from
-    `ctx.System`), never another scope's `Devices` or `NameOf`. `CorePluginHost.InvokeAsync(pluginId, ...)` without a
+    `ctx.System`), never another scope's `Devices` or `NameOf`. `ctx.StreamProbes` (no call member) answers in a group
+    user's call and its jobs only for devices of the caller's own scope (every group identity on the call, through
+    `ctx.DeviceScopes`' host); any other id is `KeyNotFoundException` like an unknown device, before any connection.
+    `CorePluginHost.InvokeAsync(pluginId, ...)` without a
     caller stays for in-process host work and tests (no user, background).
   - Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query context's
     `Devices` = the view, the 0.4.0 rule). `ITaskQueryContext.ManagedAddressesAsync(addresses)`: which candidates a
@@ -282,11 +288,11 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.5.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.6.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.5.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.5.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.6.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.6.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
@@ -353,7 +359,7 @@ restart. Own rail page (not a Settings card); core functionality is always on.
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Action Rule Editor, Dashboards, Device triggers, Edge Recording Export, Edge storage, Hardening scan,
-  Image Health Dashboard, I/O Monitor, Live View and Metadata Monitor**, and inside PKI the EST and 802.1X servers (their
+  Image Health Dashboard, Load test, I/O Monitor, Live View and Metadata Monitor**, and inside PKI the EST and 802.1X servers (their
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).

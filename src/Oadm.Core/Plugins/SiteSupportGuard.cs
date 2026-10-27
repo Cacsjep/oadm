@@ -22,6 +22,10 @@ public static class SiteSupportGuard
     public static IDeviceEventStreams? Guard(IDeviceEventStreams? inner, IDeviceRepository devices, SiteSupport support) =>
         inner is null || support == SiteSupport.Full ? inner : new GuardedEventStreams(inner, devices);
 
+    /// <summary>The stream probes a plugin of a package with <paramref name="support"/> gets.</summary>
+    public static IDeviceStreamProbes? Guard(IDeviceStreamProbes? inner, IDeviceRepository devices, SiteSupport support) =>
+        inner is null || support == SiteSupport.Full ? inner : new GuardedStreamProbes(inner, devices);
+
     /// <summary>
     /// The network a plugin of a package with <paramref name="support"/> gets: listeners on the server's own network
     /// only; the network of a device or site at a site is refused.
@@ -80,6 +84,21 @@ public static class SiteSupportGuard
 
         public Task SetRtspPortsAsync(IReadOnlyCollection<Guid> deviceIds, int? port, IReadOnlyCollection<Guid>? managed, CancellationToken ct) =>
             inner.SetRtspPortsAsync(deviceIds, port, managed, ct);
+    }
+
+    private sealed class GuardedStreamProbes(IDeviceStreamProbes inner, IDeviceRepository devices) : IDeviceStreamProbes
+    {
+        public async Task<IReadOnlyList<StreamProbeSource>> ListSourcesAsync(Guid deviceId, CancellationToken ct)
+        {
+            await RefuseSiteDeviceAsync(devices, deviceId, ct).ConfigureAwait(false);
+            return await inner.ListSourcesAsync(deviceId, ct).ConfigureAwait(false);
+        }
+
+        public async Task<IDeviceStreamProbe> OpenAsync(Guid deviceId, StreamProbeRequest request, CancellationToken ct)
+        {
+            await RefuseSiteDeviceAsync(devices, deviceId, ct).ConfigureAwait(false);
+            return await inner.OpenAsync(deviceId, request, ct).ConfigureAwait(false);
+        }
     }
 
     private sealed class LocalOnlyNetwork(IPluginNetwork inner) : IPluginNetwork

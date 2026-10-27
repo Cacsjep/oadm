@@ -1,0 +1,215 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LoadTest.Client"
+             x:Class="Oadm.Plugins.LoadTest.Client.LoadTestView"
+             x:DataType="vm:LoadTestViewModel"
+             ui:PageHeader.Subtitle="Checks whether the network and the cameras carry the load.">
+  <!-- Own cards (ICorePluginPage.HasOwnCards): one card like the Snapshot report page, the toolbar always its first row
+       (progress, refusals and restore warnings below it), then the plan's or run's numbers and the run's graphs, then the
+       camera table, the devices left out before a run, or what to do first; the selected stream's graphs in the side
+       panel. Shared controls and theme classes only. -->
+  <Grid>
+    <Grid ColumnDefinitions="*,Auto">
+      <Border Classes="card">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <ui:ToolbarButton IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}" IsEnabled="{Binding CanEditInputs}" Margin="0,0,6,0"
+                                  VerticalAlignment="Top" ToolTip.Tip="Cameras by address or tag" />
+                <ui:ToolbarButton IconKey="start" Text="Start" Command="{Binding StartCommand}" VerticalAlignment="Top"
+                                  ToolTip.Tip="{Binding StartTip}" ToolTip.ShowOnDisabled="True" />
+                <ui:ToolbarButton IconKey="stop" Text="Cancel" Command="{Binding CancelCommand}" IsVisible="{Binding IsRunning}" VerticalAlignment="Top"
+                                  ToolTip.Tip="{Binding CancelTip}" ToolTip.ShowOnDisabled="True" />
+                <!-- Hidden for now (maintainer 2026-10-27): the check runs with the defaults, 50 cameras at once, 2 min per phase. -->
+                <ui:FormField Classes="inline" Label="Cameras at once" InputWidth="80" IsVisible="False">
+                  <TextBox Text="{Binding BatchSizeText}" IsEnabled="{Binding CanEditInputs}" />
+                </ui:FormField>
+                <ui:FormField Classes="inline" Label="Each phase" InputWidth="100" IsVisible="False">
+                  <ComboBox ItemsSource="{x:Static vm:LoadTestViewModel.Durations}" SelectedItem="{Binding SelectedDuration}"
+                            IsEnabled="{Binding CanEditInputs}" HorizontalAlignment="Stretch" />
+                </ui:FormField>
+              </StackPanel>
+              <ui:ToolbarButton Grid.Column="1" IconKey="clock" Text="Runs" Command="{Binding ShowRunsCommand}" VerticalAlignment="Top"
+                                ToolTip.Tip="Open or delete a kept run" />
+            </Grid>
+
+            <ui:ProgressRow Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding ShowProgress}" IsVisible="{Binding ShowProgress}" />
+            <ui:ProgressRow Value="{Binding RunLoadValue}" Text="{Binding RunLoadText}" IsActive="{Binding IsRunLoading}" IsVisible="{Binding IsRunLoading}" />
+
+            <!-- At most four lines: three cameras by name, then a count. -->
+            <ItemsControl ItemsSource="{Binding RestoreWarnings}" IsVisible="{Binding HasRestoreWarnings}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <ui:StatusChip Text="{Binding}" IsWarning="True" MaxLines="2" Margin="0,2" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+          </StackPanel>
+
+          <!-- The plan's or the run's numbers and the run's graphs, below the toolbar so it never moves. -->
+          <StackPanel DockPanel.Dock="Top" Spacing="{DynamicResource Oadm.Gap}" Margin="0,16,0,0" IsVisible="{Binding ShowCards}">
+            <!-- The plan's numbers before a run, the run's after it. -->
+            <UniformGrid Rows="1" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding ShowCards}">
+              <ui:StatCard Title="{Binding Card1.Title}" Value="{Binding Card1.Value}" Detail="{Binding Card1.Detail}"
+                           IsOk="{Binding Card1.IsOk}" IsWarning="{Binding Card1.IsWarning}" IsError="{Binding Card1.IsError}" />
+              <ui:StatCard Title="{Binding Card2.Title}" Value="{Binding Card2.Value}" Detail="{Binding Card2.Detail}"
+                           IsOk="{Binding Card2.IsOk}" IsWarning="{Binding Card2.IsWarning}" IsError="{Binding Card2.IsError}" />
+              <ui:StatCard Title="{Binding Card3.Title}" Value="{Binding Card3.Value}" Detail="{Binding Card3.Detail}"
+                           IsOk="{Binding Card3.IsOk}" IsWarning="{Binding Card3.IsWarning}" IsError="{Binding Card3.IsError}" />
+              <ui:StatCard Title="{Binding Card4.Title}" Value="{Binding Card4.Value}" Detail="{Binding Card4.Detail}"
+                           IsOk="{Binding Card4.IsOk}" IsWarning="{Binding Card4.IsWarning}" IsError="{Binding Card4.IsError}" />
+            </UniformGrid>
+            <!-- The graphs over the whole run (batches one after the other), live while it runs. -->
+            <UniformGrid Rows="1" ColumnSpacing="{DynamicResource Oadm.Gap}" IsVisible="{Binding ShowRun}">
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Received rate" />
+                    <ui:LineChart Height="150" Bands="{Binding PhaseBands}" Series="{Binding RateSeries}" Unit="Mbit/s" EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Loss" />
+                    <ui:LineChart Height="150" Bands="{Binding PhaseBands}" Series="{Binding LossSeries}" Unit="%" Threshold="{x:Static vm:LoadTestViewModel.LossThreshold}"
+                                  EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Jitter" />
+                    <ui:LineChart Height="150" Bands="{Binding PhaseBands}" Series="{Binding JitterSeries}" Unit="ms" Threshold="{x:Static vm:LoadTestViewModel.JitterThreshold}" EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Loss per step" />
+                    <ui:BarChart Height="150" Bars="{Binding StepBars}" Unit="%" Threshold="{x:Static vm:LoadTestViewModel.LossThreshold}"
+                                 EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                </StackPanel>
+            </UniformGrid>
+          </StackPanel>
+
+          <Panel Margin="0,12,0,0">
+            <!-- Thousands of camera streams: virtualized, rows updated in place, worst first. -->
+            <DataGrid x:Name="StreamGrid" Classes="wrapRows" IsVisible="{Binding ShowRun}" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
+                      IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Width="190" MinWidth="120" Binding="{Binding Name}" x:DataType="vm:StreamRowViewModel" />
+                <DataGridTextColumn Header="Address" Width="120" MinWidth="100" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:StreamRowViewModel" />
+                <DataGridTextColumn Header="Model" Width="140" MinWidth="90" Binding="{Binding Model}" x:DataType="vm:StreamRowViewModel" />
+                <DataGridTemplateColumn Header="Ramp" Width="125" MinWidth="125" CanUserSort="True" SortMemberPath="Ramp.SortKey">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:StreamRowViewModel">
+                      <ui:StatusChip Text="{Binding Ramp.Text}" IsOk="{Binding Ramp.IsOk}" IsError="{Binding Ramp.IsError}" IsAccent="{Binding Ramp.IsAccent}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Normal" Width="125" MinWidth="125" CanUserSort="True" SortMemberPath="Normal.SortKey">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:StreamRowViewModel">
+                      <ui:StatusChip Text="{Binding Normal.Text}" IsOk="{Binding Normal.IsOk}" IsError="{Binding Normal.IsError}" IsAccent="{Binding Normal.IsAccent}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Low light" Width="125" MinWidth="125" CanUserSort="True" SortMemberPath="LowLight.SortKey">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:StreamRowViewModel">
+                      <ui:StatusChip Text="{Binding LowLight.Text}" IsOk="{Binding LowLight.IsOk}" IsError="{Binding LowLight.IsError}" IsAccent="{Binding LowLight.IsAccent}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="125" MinWidth="125" Binding="{Binding PacketLossText}" SortMemberPath="PacketLossSortKey" CellStyleClasses="number" x:DataType="vm:StreamRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Packet loss" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTextColumn Width="120" MinWidth="120" Binding="{Binding FrameLossText}" SortMemberPath="FrameLossSortKey" CellStyleClasses="number" x:DataType="vm:StreamRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Frame loss" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTextColumn Width="110" MinWidth="110" Binding="{Binding MbpsText}" SortMemberPath="MbpsSortKey" CellStyleClasses="number" x:DataType="vm:StreamRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Rate" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTextColumn Width="90" MinWidth="90" Binding="{Binding JitterText}" SortMemberPath="JitterSortKey" CellStyleClasses="number" x:DataType="vm:StreamRowViewModel">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Jitter" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="Problem" Width="*" MinWidth="220" CanUserSort="True" SortMemberPath="ProblemText">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:StreamRowViewModel">
+                      <TextBlock Text="{Binding ProblemText}" TextWrapping="Wrap" VerticalAlignment="Center" Classes.secondary="{Binding !HasProblem}" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- Before a run: the chosen devices the check leaves out, with the reason. -->
+            <DockPanel IsVisible="{Binding ShowPlan}">
+              <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="sectionTitle" Text="{Binding LeftOutTitle}" IsVisible="{Binding HasLeftOut}" />
+              <Panel>
+              <DataGrid Classes="wrapRows" Margin="0,8,0,0" ItemsSource="{Binding LeftOut}" IsVisible="{Binding HasLeftOut}" IsReadOnly="True"
+                        CanUserSortColumns="True" CanUserResizeColumns="True" SelectionMode="Single">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Device" Width="300" Binding="{Binding Name}" x:DataType="vm:LeftOutRow" />
+                  <DataGridTextColumn Header="Reason" Width="*" Binding="{Binding Reason}" x:DataType="vm:LeftOutRow" />
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Classes="secondary" Text="{x:Static vm:LoadTestViewModel.NoneLeftOut}" IsVisible="{Binding ShowNoneLeftOut}" />
+              <ui:LoadingOverlay MinHeight="80" Text="{x:Static vm:LoadTestViewModel.ReadingCameras}" IsVisible="{Binding IsPlanLoading}" />
+              </Panel>
+              </DockPanel>
+            </DockPanel>
+
+            <!-- Nothing chosen: one line what to do first. -->
+            <TextBlock Classes="secondary" Text="{x:Static vm:LoadTestViewModel.ChooseFirst}" IsVisible="{Binding ShowChooseFirst}" />
+          </Panel>
+        </DockPanel>
+      </Border>
+
+      <!-- The selected camera stream's own graphs over its batch. -->
+      <Border Grid.Column="1" Classes="sidePanel" Classes.open="{Binding Detail, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Border Classes="sidePanelContent">
+          <DockPanel>
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,0,0,12">
+              <StackPanel Spacing="2">
+                <TextBlock Classes="cardTitle" Text="{Binding Detail.Title, FallbackValue=''}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Classes="secondary" Text="{Binding Detail.InfoText, FallbackValue=''}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button Grid.Column="1" Classes="toolbar iconOnly" VerticalAlignment="Top" Command="{Binding CloseDetailCommand}" ToolTip.Tip="Close">
+                <ui:OadmIcon Data="{StaticResource Icon.close}" />
+              </Button>
+            </Grid>
+            <Panel>
+              <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="16">
+                  <ui:StatusChip Text="{Binding Detail.ProblemText, FallbackValue=''}" IsError="True" MaxLines="2"
+                                 IsVisible="{Binding Detail.HasProblem, FallbackValue=False}" />
+                  <TextBlock Classes="secondary" Text="{Binding Detail.NoteText, FallbackValue=''}" TextWrapping="Wrap"
+                             IsVisible="{Binding Detail.HasNote, FallbackValue=False}" />
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Received rate" />
+                    <ui:LineChart Height="140" Bands="{Binding Detail.PhaseBands, FallbackValue={x:Null}}" Series="{Binding Detail.RateSeries, FallbackValue={x:Null}}" Unit="Mbit/s" EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                  </StackPanel>
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="{Binding Detail.LossName, FallbackValue=''}" />
+                    <ui:LineChart Height="140" Bands="{Binding Detail.PhaseBands, FallbackValue={x:Null}}" Series="{Binding Detail.LossSeries, FallbackValue={x:Null}}" Unit="%" Threshold="{x:Static vm:LoadTestViewModel.LossThreshold}"
+                                  EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                  </StackPanel>
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="sectionTitle" Text="Jitter" />
+                    <ui:LineChart Height="140" Bands="{Binding Detail.PhaseBands, FallbackValue={x:Null}}" Series="{Binding Detail.JitterSeries, FallbackValue={x:Null}}" Unit="ms" Threshold="{x:Static vm:LoadTestViewModel.JitterThreshold}" EmptyText="{x:Static vm:LoadTestViewModel.NoValues}" />
+                  </StackPanel>
+                  <TextBlock Classes="error" Text="{Binding Detail.ErrorText, FallbackValue=''}" IsVisible="{Binding Detail.HasError, FallbackValue=False}" TextWrapping="Wrap" />
+                </StackPanel>
+              </ScrollViewer>
+              <ui:LoadingOverlay Text="Reading the stream" IsVisible="{Binding Detail.IsLoading, FallbackValue=False}" />
+            </Panel>
+          </DockPanel>
+        </Border>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

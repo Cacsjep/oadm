@@ -58,6 +58,25 @@ public sealed class ServiceSecurityTests : IDisposable
     }
 
     [Fact]
+    public async Task NetshOpensAPortRangeAsOneRule()
+    {
+        var runner = new FakeRunner();
+        var firewall = new NetshFirewallRules(runner, "Oadm.Server.exe");
+
+        await firewall.OpenAsync(FirewallRule.ForServiceRange("Load test", FirewallProtocol.Udp, 50000, 50799), CancellationToken.None);
+
+        Assert.Equal(
+            [
+                "netsh advfirewall|firewall|delete|rule|name=OADM Server (Load test, UDP 50000-50799)",
+                "netsh advfirewall|firewall|add|rule|name=OADM Server (Load test, UDP 50000-50799)|dir=in|action=allow|protocol=UDP|localport=50000-50799|" +
+                "program=Oadm.Server.exe|profile=domain,private|enable=yes",
+            ],
+            runner.Calls);
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => firewall.OpenAsync(
+            new FirewallRule("OADM", FirewallProtocol.Udp, 50000) { LastPort = 70000 }, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task NetshCloseIgnoresAMissingRuleButOpenReportsFailures()
     {
         var runner = new FakeRunner { Result = new CommandResult(1, "No rules match the specified criteria.") };

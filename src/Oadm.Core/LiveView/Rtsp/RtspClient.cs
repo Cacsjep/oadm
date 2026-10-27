@@ -66,7 +66,8 @@ public enum LiveViewError
 /// <summary>
 /// Minimal RTSP 1.0 client for one TCP connection: requests with Digest authentication and
 /// reception of RTP interleaved on the same connection (RTP/AVP/TCP), so the stream needs only
-/// port 554 and works through NAT and firewalls that allow it. Not thread-safe for reads;
+/// port 554 and works through NAT and firewalls that allow it. The stream probes may instead ask for RTP over UDP in their
+/// SETUP (<see cref="RtspTransport.Udp"/>); the connection then carries only RTSP. Not thread-safe for reads;
 /// writes are serialized so keep-alives and TEARDOWN may come from another task.
 /// </summary>
 public sealed class RtspClient : IAsyncDisposable
@@ -113,6 +114,12 @@ public sealed class RtspClient : IAsyncDisposable
     /// <summary>Session id from the SETUP response (without the timeout parameter).</summary>
     public string? Session { get; private set; }
 
+    /// <summary>
+    /// The camera's address of the connection on the server's own network (IPv4 as IPv4), the only sender RTP over UDP is
+    /// taken from; null through a site or on a test stream.
+    /// </summary>
+    public IPAddress? RemoteAddress { get; private init; }
+
     /// <summary>Time since the last interleaved packet or RTSP response arrived (liveness of quiet streams).</summary>
     public TimeSpan SinceLastReceive => _time.GetElapsedTime(Interlocked.Read(ref _lastReceive));
 
@@ -144,7 +151,13 @@ public sealed class RtspClient : IAsyncDisposable
             throw new LiveViewException(LiveViewError.Unreachable, $"RTSP port {port} on {host} is not reachable.", ex);
         }
 
-        return new RtspClient(stream, credentials, stream, time) { AllowBasic = allowBasic, BasicAllowed = basicAllowed };
+        var remote = DeviceRouter.RemoteAddressOf(stream);
+        return new RtspClient(stream, credentials, stream, time)
+        {
+            AllowBasic = allowBasic,
+            BasicAllowed = basicAllowed,
+            RemoteAddress = remote is { IsIPv4MappedToIPv6: true } ? remote.MapToIPv4() : remote,
+        };
     }
 
     /// <summary>Receive buffer of the RTSP socket on the server's own network (video bursts at keyframes).</summary>

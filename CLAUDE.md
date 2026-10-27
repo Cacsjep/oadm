@@ -40,7 +40,7 @@ src/
   Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice, FakeSettings,
                        FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext,
                        FakeDeviceScopes, FakeSites, FakeHostRules, FakePluginJobs, FakePluginServices, FakeProtectedTags,
-                       PluginCanary, TaskPluginCanaryHost
+                       FakeStreamProbes, PluginCanary, TaskPluginCanaryHost
   Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK
                        references without copies, plugin.json from properties, the plugin folder; Oadm.Plugin.Repo.* for
                        plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
@@ -49,7 +49,7 @@ src/
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, CheckChoice, DeviceTree, PageHeader, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
-                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
+                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup, LineChart, BarChart), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
@@ -80,6 +80,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
+  Oadm.Plugins.LoadTest(.Client)/ core plugin: Load test, a load test of the chosen cameras and the network (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request" and "Send TCP message"
@@ -207,6 +208,10 @@ must never break.
 - **[MCP server](docs/spec/mcp.md)** (spec, not built): AI agents do what a user can in the client, through the server's
   gRPC services with an access key (the user's role and device group); off by default, own port with a PKI certificate;
   every change is preview then run; never all devices in a result; no secrets over MCP; rights and settings GUI only.
+- **[Load test](docs/spec/load-test.md)** (core plugin `oadm.load-test`, off by
+  default): a load test of the chosen cameras and the network to the server (RTP over UDP, TCP at sites), at most 1,000
+  camera streams per check in batches of at most 200, ramp, normal and low-light phases, the result as graphs on the page; the exposure is the only
+  write and always goes back.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

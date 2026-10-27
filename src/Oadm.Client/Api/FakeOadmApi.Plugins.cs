@@ -29,6 +29,7 @@ public sealed partial class FakeOadmApi
         Package("oadm.ntp-server", "NTP server", "Serves the time to devices from this server.", "Servers", hasPage: true, tasks: 1),
         Package("oadm.dhcp-server", "DHCP server", "Hands out IP addresses and can add new Axis devices automatically.", "Servers", hasPage: true, tasks: 0),
         Package("oadm.image-health", "Image Health Dashboard", "Shows blur, blocked and redirected views from AXIS Image Health Analytics.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
+        Package("oadm.load-test", "Load test", "Puts the chosen cameras under load and shows whether the network and the cameras carry it.", "Monitoring", hasPage: true, tasks: 0, enabledByDefault: false),
         Package(SystemReportPluginId, "System report", "Downloads the system reports of devices for Axis support.", "Reporting", hasPage: false, tasks: 0, alwaysOn: true),
         Package(RestartPluginId, "Restart", "Restarts devices.", "Extensions", hasPage: false, tasks: 1, alwaysOn: true),
         Package(SampleLicensedPluginId, "Site reports", "A sample commercial plugin: monthly reports per site.", "Extensions", hasPage: false, tasks: 0),

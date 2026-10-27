@@ -7,6 +7,11 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Added
+
+- Load test: puts the chosen cameras under load and shows whether the network and the cameras carry it.
+- Plugin SDK 0.6.0.
+
 ### Changed
 
 - On a new server the 802.1X trusted CA policy of the first CA carries the CA's real name.

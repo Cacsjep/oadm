@@ -64,7 +64,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   - `param.cgi?action=list&group=Properties.Image,Image` -> live view codecs
     (`Properties.Image.Format`, e.g. `jpeg,mjpeg,h264,h265`), resolutions and video sources
   - RTSP `rtsp://<host>/axis-media/media.amp?videocodec=h264|h265&camera=<n>&resolution=WxH&fps=N&videokeyframeinterval=N&audio=0`
-    on port 554 -> live view ([live-view.md](live-view.md))
+    on port 554 -> live view ([live-view.md](live-view.md)); the same URL with RTP over UDP or TCP -> stream probes
+  - `capturemode.cgi` getCaptureModes -> the highest frame rate per sensor of the stream probes (read only; without the
+    API 30 fps)
 - All VAPIX access lives in `Oadm.Core.Vapix.VapixClient`, one method per endpoint,
   unit-tested against recorded responses in `tests/.../Fixtures`.
 - **Routing** ([sites.md](sites.md)): every device connection opens through
@@ -73,7 +75,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `VapixClient` runs on `SocketsHttpHandler` (router connect callback, pinning via `CertificatePinning.ValidateSslCallback`;
   WebSockets through the same handler); `VapixDeviceProbe` keeps one handler per route (a pool keyed by host and port only
   would share a connection between two sites with the same IP) and reads the route from `DeviceRouter.RouteOption`;
-  `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. `DeviceConnections.For(device |
+  `RtspClient.ConnectAsync(..., route, router)` keeps the per-device RTSP port. The UDP ports of the stream probes'
+  RTP over UDP open through `DeviceRouter.BindUdp` (null on a site route: the node relays TCP only). `DeviceConnections.For(device |
   discovered)` is the only place that builds `VapixConnectionOptions` (test `RoutingRulesTests`). The factory's cache key
   holds the route; a change of route or address drops the cached client. Through a site: at most 2 connections per
   device plus 2 for the status reads (basicdeviceinfo: the poll never waits behind an upload or a page), 30 s idle; every request timeout + 4 x the site's round trip; Basic over plain HTTP as on the server's own network (first

@@ -10,7 +10,7 @@ namespace Oadm.Sdk.Testing;
 /// The canary test of a core plugin (SDK 0.4.0, docs/spec/device-scope.md, Tests): a user limited to a device group that
 /// holds <c>inside</c> calls every method of the plugin with the device outside the group in each id field. Each case must
 /// answer exactly like for an unknown id (<see cref="DevicesNotAvailableException"/> with the same text: the host answers
-/// NOT_FOUND "1 device is no longer available."), hand out no VAPIX client for the outside device, send it no request,
+/// NOT_FOUND "1 device is no longer available."), hand out no VAPIX client for the outside device, send it no request, open no measuring stream of it,
 /// start no task on it and change no setting or record; the same call with the inside device must not be refused. Methods
 /// must never use the context's full accesses in a group user's call (<c>ctx.Devices</c>, <c>ctx.Vapix</c>, ...).
 /// </summary>
@@ -289,6 +289,9 @@ public sealed class PluginCanary
         {
             text.Append(CultureInfo.InvariantCulture, $", requests {camera.Requests.Count}");
         }
+
+        var streams = _ctx.FakeStreamProbes;
+        text.Append(CultureInfo.InvariantCulture, $", stream sources {streams.ListCallsFor(Outside.Id)}, streams {streams.OpensFor(Outside.Id)}");
 
         int tasks;
         lock (_ctx.TaskRuns)

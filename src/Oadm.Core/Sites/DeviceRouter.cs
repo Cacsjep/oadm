@@ -198,4 +198,75 @@ public sealed class DeviceRouter
 
     private TimeSpan ConnectTimeout(SocketsHttpConnectionContext context, TimeSpan defaultTimeout, DeviceRoute route) =>
         Timeout(route, context.InitialRequestMessage.Options.TryGetValue(ConnectTimeoutOption, out var requested) ? requested : defaultTimeout);
+
+    /// <summary>
+    /// A local UDP port for a device's RTP over UDP (the stream probes), bound on every address of
+    /// <paramref name="family"/>. Null on a site route: the node relays TCP only. A port another program uses throws
+    /// <see cref="SocketException"/> (<see cref="SocketError.AddressAlreadyInUse"/>).
+    /// </summary>
+    public static IUdpPort? BindUdp(DeviceRoute route, AddressFamily family, int port, int receiveBufferSize = 0)
+    {
+        if (!route.IsLocal)
+        {
+            return null;
+        }
+
+        var socket = new Socket(family, SocketType.Dgram, ProtocolType.Udp);
+        try
+        {
+            if (family == AddressFamily.InterNetworkV6)
+            {
+                socket.DualMode = true;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                // SIO_UDP_CONNRESET off: an ICMP port unreachable after a receiver report must not end the receive.
+                socket.IOControl(unchecked((int)0x9800000C), [0, 0, 0, 0], null);
+            }
+
+            if (receiveBufferSize > 0)
+            {
+                socket.ReceiveBufferSize = receiveBufferSize;
+            }
+
+            socket.Bind(new IPEndPoint(family == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, port));
+            return new LocalUdpPort(socket);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>The device's address of a connection <see cref="ConnectAsync"/> opened on the server's own network; null through a site.</summary>
+    public static IPAddress? RemoteAddressOf(Stream stream) =>
+        stream is NetworkStream { Socket.RemoteEndPoint: IPEndPoint remote } ? remote.Address : null;
+
+    private sealed class LocalUdpPort(Socket socket) : IUdpPort
+    {
+        private readonly IPEndPoint _any = new(socket.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
+
+        public int Port { get; } = ((IPEndPoint)socket.LocalEndPoint!).Port;
+
+        public async ValueTask<UdpReceived> ReceiveAsync(Memory<byte> buffer, CancellationToken ct)
+        {
+            var result = await socket.ReceiveFromAsync(buffer, SocketFlags.None, _any, ct).ConfigureAwait(false);
+            return new UdpReceived(result.ReceivedBytes, (IPEndPoint)result.RemoteEndPoint);
+        }
+
+        public async ValueTask SendAsync(ReadOnlyMemory<byte> data, IPEndPoint remote, CancellationToken ct)
+        {
+            ArgumentNullException.ThrowIfNull(remote);
+            if (socket.AddressFamily == AddressFamily.InterNetworkV6 && remote.AddressFamily == AddressFamily.InterNetwork)
+            {
+                remote = new IPEndPoint(remote.Address.MapToIPv6(), remote.Port);
+            }
+
+            await socket.SendToAsync(data, SocketFlags.None, remote, ct).ConfigureAwait(false);
+        }
+
+        public void Dispose() => socket.Dispose();
+    }
 }

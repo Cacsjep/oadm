@@ -79,6 +79,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     internal const string PwdgrpPath = "axis-cgi/pwdgrp.cgi";
     internal const string ApiDiscoveryPath = "axis-cgi/apidiscovery.cgi";
     internal const string RestartPath = "axis-cgi/restart.cgi";
+    internal const string CaptureModePath = "axis-cgi/capturemode.cgi";
 
     /// <summary>Largest answer accepted from a device (16 MB); uploads are limited on the request side only.</summary>
     public const long MaxResponseBytes = 16L * 1024 * 1024;
@@ -408,6 +409,16 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     {
         var parameters = await ListParametersAsync(["Properties.Image", "Image"], ct).ConfigureAwait(false);
         return VapixParsers.ParseImageCapabilities(parameters);
+    }
+
+    /// <summary>
+    /// The highest frame rate per sensor (0-based channel) from capturemode.cgi getCaptureModes (the enabled capture
+    /// mode). Read-only. Throws <see cref="VapixException"/> when the device has no capture mode API.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, int>> GetCaptureModeMaxFpsAsync(CancellationToken ct)
+    {
+        var json = await PostJsonAsync(CaptureModePath, """{"apiVersion":"1.0","method":"getCaptureModes"}""", ct).ConfigureAwait(false);
+        return VapixParsers.ParseCaptureModeMaxFps(json);
     }
 
     /// <inheritdoc />

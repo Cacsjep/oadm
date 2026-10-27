@@ -439,6 +439,29 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task StreamProbesInAGroupUsersCallReachOnlyTheGroupsDevicesAndAnOutsideOneAnswersLikeAnUnknownOne()
+    {
+        await using var rig = await RigAsync();
+        Assert.Equal("1", await rig.InvokeAsync(rig.Anna, "ctx.probes", rig.Inside.Id));
+        Assert.Equal([rig.Inside.Id, rig.Inside.Id], rig.Probes.Asked);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "ctx.probes", rig.Outside.Id));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.InvokeAsync(rig.Anna, "ctx.probes", Guid.NewGuid()));
+        Assert.Equal(2, rig.Probes.Asked.Count); // the outside device was never asked for
+
+        // The user's job: the same rule.
+        await rig.InvokeAsync(rig.Anna, "job.probes", rig.Outside.Id);
+        Assert.IsType<KeyNotFoundException>(await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+        rig.Plugin.JobResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await rig.InvokeAsync(rig.Anna, "job.probes", rig.Inside.Id);
+        Assert.Equal(1, await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+
+        // A user with all devices and background work reach every device.
+        Assert.Equal("1", await rig.InvokeAsync(rig.Admin, "ctx.probes", rig.Outside.Id));
+        Assert.Single(await rig.Plugin.Context!.StreamProbes!.ListSourcesAsync(rig.Outside.Id, Ct));
+    }
+
+    [Fact]
     public async Task TasksOfACallAndOfAJobBelongToTheCallerWhateverOwnerThePluginNames()
     {
         await using var rig = await RigAsync(engine: true);
@@ -563,9 +586,10 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             taskEngine = new TaskEngine(Db.Get<EfTaskStore>(), registry, Devices, new FakeVapixClientFactory()) { Views = Views };
         }
 
-        var host = new CorePluginHost(registry, Devices, vapix, (ITaskRunner?)taskEngine ?? tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes, viewWatcher: Db.Get<DeviceViewWatcher>());
+        var probes = new RecordingProbes();
+        var host = new CorePluginHost(registry, Devices, vapix, (ITaskRunner?)taskEngine ?? tasks, new InMemoryPluginSettingsProvider(), eventStreams: streams, deviceScopes: scopes, viewWatcher: Db.Get<DeviceViewWatcher>(), streamProbes: probes);
         await host.StartAllAsync(Ct);
-        var rig = new Rig(this, host, scopes, plugin, vapix, tasks, streams, inside, outside, group.Id) { Engine = taskEngine };
+        var rig = new Rig(this, host, scopes, plugin, vapix, tasks, streams, inside, outside, group.Id) { Engine = taskEngine, Probes = probes };
         rig.Anna = await rig.CallerAsync("anna", DeviceScope.Group(group.Id));
         rig.Admin = await rig.CallerAsync("root", DeviceScope.All);
         return rig;
@@ -594,6 +618,8 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         public PluginCaller Admin { get; set; } = null!;
 
         public TaskEngine? Engine { get; init; }
+
+        public RecordingProbes Probes { get; init; } = null!;
 
         public async Task<PluginCaller> CallerAsync(string name, DeviceScope scope)
         {
@@ -700,6 +726,26 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                     {
                         return null;
                     }
+
+                case "ctx.probes":
+                    await using (await ctx.StreamProbes!.OpenAsync(Id(), new StreamProbeRequest(1), ct))
+                    {
+                        return (await ctx.StreamProbes.ListSourcesAsync(Id(), ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    }
+
+                case "job.probes":
+                    var probed = Id();
+                    return ctx.Jobs!.Start(caller, method, async (job, token) =>
+                    {
+                        try
+                        {
+                            JobResult.TrySetResult((await ctx.StreamProbes!.ListSourcesAsync(probed, token)).Count);
+                        }
+                        catch (Exception ex)
+                        {
+                            JobResult.TrySetResult(ex);
+                        }
+                    }).Id;
 
                 case "ctx.system":
                 case "system.count":
@@ -833,6 +879,45 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                 default:
                     throw new ArgumentException("Unknown method " + method);
             }
+        }
+    }
+
+    /// <summary>Stream probes that record the devices asked for and open a probe that measures nothing.</summary>
+    private sealed class RecordingProbes : IDeviceStreamProbes
+    {
+        public ConcurrentQueue<Guid> Asked { get; } = new();
+
+        public Task<IReadOnlyList<StreamProbeSource>> ListSourcesAsync(Guid deviceId, CancellationToken ct)
+        {
+            Asked.Enqueue(deviceId);
+            return Task.FromResult<IReadOnlyList<StreamProbeSource>>([new StreamProbeSource(1, "View Area 1", 1920, 1080, 30, ["h264"])]);
+        }
+
+        public Task<IDeviceStreamProbe> OpenAsync(Guid deviceId, StreamProbeRequest request, CancellationToken ct)
+        {
+            Asked.Enqueue(deviceId);
+            return Task.FromResult<IDeviceStreamProbe>(new SilentProbe());
+        }
+
+        private sealed class SilentProbe : IDeviceStreamProbe
+        {
+            public StreamProbeTransport Transport => StreamProbeTransport.Udp;
+
+            public string Codec => "h264";
+
+            public int Width => 1920;
+
+            public int Height => 1080;
+
+            public int Fps => 30;
+
+            public DateTimeOffset StartedUtc => DateTimeOffset.UnixEpoch;
+
+            public Task Completion => Task.CompletedTask;
+
+            public StreamProbeCounters Read() => default;
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
     }
 

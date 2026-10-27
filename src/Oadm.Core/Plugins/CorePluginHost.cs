@@ -49,6 +49,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     private readonly ISecretProtector? _secrets;
     private readonly TrustAnchorRegistry? _trustAnchors;
     private readonly IDeviceEventStreams? _eventStreams;
+    private readonly IDeviceStreamProbes? _streamProbes;
     private readonly IFirewallRules? _firewall;
     private readonly string? _pluginDataRoot;
     private readonly IDeviceAutoAdd? _autoAdd;
@@ -87,7 +88,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         PluginJobRegistry? jobs = null,
         HostDeviceScopes? deviceScopes = null,
         DeviceGroups.DeviceViewWatcher? viewWatcher = null,
-        Devices.ProtectedTagRegistry? protectedTags = null)
+        Devices.ProtectedTagRegistry? protectedTags = null,
+        IDeviceStreamProbes? streamProbes = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(devices);
@@ -112,6 +114,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         _deviceScopes = deviceScopes;
         _viewWatcher = viewWatcher;
         _protectedTags = protectedTags;
+        _streamProbes = streamProbes;
         Jobs = jobs ?? new PluginJobRegistry();
         Events = events ?? new PluginEventHub();
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
@@ -205,6 +208,8 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Jobs = Jobs.For(registered.Id),
                     DeviceScopes = guard.DeviceScopes(_deviceScopes), // only the caller's own scope in a group user's call
                     ProtectedTags = _protectedTags?.For(registered.Id),
+                    // Devices of the caller's own group only in a group user's call (no call member: the plugin uses the context).
+                    StreamProbes = guard.StreamProbes(SiteSupportGuard.Guard(_streamProbes, _devices, siteSupport), _deviceScopes),
                 };
                 try
                 {
@@ -695,6 +700,8 @@ internal sealed class CorePluginContext(
     public IDeviceScopes? DeviceScopes { get; init; }
 
     public IProtectedTags? ProtectedTags { get; init; }
+
+    public IDeviceStreamProbes? StreamProbes { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

@@ -287,6 +287,8 @@ public static partial class OadmServerHost
         services.AddSingleton<LiveViewAccess>(); // LiveViewService: only devices of the caller's view
         // Device event streams (RTSP metadata) for core plugins such as the Metadata Monitor
         services.AddSingleton<Sdk.Devices.IDeviceEventStreams, DeviceEventStreams>();
+        // Measuring video streams (RTP over UDP 50000-50799 or TCP) for core plugins such as the Load test
+        services.AddSingleton<Sdk.Devices.IDeviceStreamProbes, Core.LiveView.Probes.DeviceStreamProbes>();
 
         // Plugins and tasks
         services.AddSingleton<PluginRegistry>();
@@ -375,7 +377,8 @@ public static partial class OadmServerHost
             jobs: sp.GetRequiredService<PluginJobRegistry>(),
             deviceScopes: sp.GetRequiredService<HostDeviceScopes>(),
             viewWatcher: sp.GetRequiredService<Core.DeviceGroups.DeviceViewWatcher>(),
-            protectedTags: sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>()));
+            protectedTags: sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>(),
+            streamProbes: sp.GetRequiredService<Sdk.Devices.IDeviceStreamProbes>()));
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
         services.AddSingleton<Core.Auth.AccessEpochs>(); // the interceptor captures it, the job registry records changes in it

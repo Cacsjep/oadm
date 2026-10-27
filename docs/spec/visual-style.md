@@ -47,7 +47,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   compliance), **Sites** (built in, below Compliance; while the role may see sites), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
   Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
-  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard), Reporting (Snapshot report; System report
+  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Reporting (Snapshot report; System report
   has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,
   third-party)): only groups with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Permissions,
@@ -207,6 +207,17 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `StatCard`: every monitoring count card. Status icon + title, large count, small detail line; `IsOk` / `IsWarning` /
   `IsError` color icon and count, set only while the count needs attention; a card that filters a list sits in
   `Button.statCardButton`, the chosen one with `selected`.
+- `LineChart` and `BarChart`: every graph (Load test page), drawn without a chart library.
+  - `LineChart`: values over time (`ChartSeries`, NaN = gap), value axis with round steps and `Unit`, time axis from
+    `Step` (0:00, 2:30), optional dashed red `Threshold`, `Bands` name the phases above the plot with a thin line at
+    every phase start (labels left to right, one that would touch the one before left out), a legend for 2 to 8 lines. Hover: a vertical line, dots and a popup with the time and each value (the 8 highest
+    and "N more" when there are more lines). Points are reduced to the pixel columns (lowest and highest per column), so
+    200 lines of 300 values or one line of an hour stay fast.
+  - `BarChart`: a few named values (`ChartBar`, the ramp steps), labels under the bars (thinned out when they would
+    touch), value axis and `Threshold`; hover shows the bar's value.
+  - Colours by role (`ChartColor`: accent, teal, ok, warning, error, neutral) from the theme brushes, grid lines the faint
+    border, labels secondary text, `EmptyText` in the middle without values; a screen reader hears the automation name or
+    a summary of the last values.
 - `DevicePickerWindow` + `DevicePickerViewModel`: every "choose devices" dialog.
   - Every managed device in address order, search over address, model, MAC and host name, Select all / Select none for
     what the search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be

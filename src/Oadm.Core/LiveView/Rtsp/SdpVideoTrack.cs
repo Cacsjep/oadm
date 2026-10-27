@@ -20,6 +20,7 @@ public sealed record SdpVideoTrack(
         var clockRate = 90000;
         string? control = null;
         var fmtp = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        double? framerate = null;
 
         foreach (var raw in sdp.Split('\n'))
         {
@@ -52,6 +53,14 @@ public sealed record SdpVideoTrack(
             if (line.StartsWith("a=control:", StringComparison.Ordinal))
             {
                 control = line["a=control:".Length..].Trim();
+            }
+            else if (line.StartsWith("a=framerate:", StringComparison.Ordinal))
+            {
+                // a=framerate:25.000000 (RFC 4566 6)
+                if (double.TryParse(line["a=framerate:".Length..].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var rate) && rate > 0)
+                {
+                    framerate = rate;
+                }
             }
             else if (line.StartsWith("a=rtpmap:", StringComparison.Ordinal))
             {
@@ -91,8 +100,11 @@ public sealed record SdpVideoTrack(
             return null;
         }
 
-        return new SdpVideoTrack(payloadType.Value, encoding, clockRate, control, fmtp);
+        return new SdpVideoTrack(payloadType.Value, encoding, clockRate, control, fmtp) { Framerate = framerate };
     }
+
+    /// <summary>The frame rate the camera announces (<c>a=framerate</c>); null when the SDP has none.</summary>
+    public double? Framerate { get; init; }
 
     /// <summary>Codec of the track, or null when the live view cannot handle it.</summary>
     public VideoCodecKind? Codec => EncodingName.ToUpperInvariant() switch

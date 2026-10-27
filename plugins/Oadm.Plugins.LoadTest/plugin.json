@@ -1,0 +1,9 @@
+{
+  "id": "oadm.load-test",
+  "version": "0.1.0",
+  "minSdkVersion": "0.6.0",
+  "displayName": "Load test",
+  "enabledByDefault": false,
+  "description": "Puts the chosen cameras under load and shows whether the network and the cameras carry it.",
+  "siteSupport": "full"
+}
