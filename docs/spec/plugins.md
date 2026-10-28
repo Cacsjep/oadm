@@ -28,6 +28,9 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
   `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted), `Tags`, `SiteId` / `SiteName`,
   `AddedByAllDevices`, `Soc` / `Architecture` (SDK 0.7.0, DIM null: basicdeviceinfo as reported, filled by the server).
+- `ClockTexts` (SDK 0.7.0, `Oadm.Sdk.Devices`): the clock texts of the Clock column and the Clock compliance check, one
+  implementation for host and plugins: `OffsetText` ("OK" below 1 s, "50 s ahead", "2 min behind"), `NtpNotSynced`,
+  `NtpOff`.
 - `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
