@@ -13,7 +13,7 @@
 
     <!-- Compliance is off (the server's default): what it does and Turn on. -->
     <ui:OffState Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowOffState}" Icon="{StaticResource Icon.squareActivity}" Title="Compliance checks are off"
-                 Text="See at first glance which devices need attention: devices OADM cannot reach or log in to, expiring certificates, and your own checks.">
+                 Text="See at a glance which devices need attention: devices that do not follow the base configuration, have expiring certificates, or fail your custom checks.">
         <Button Classes="primary" HorizontalAlignment="Center" Command="{Binding EnableCommand}" IsVisible="{Binding MayTurnOnOff}">
           <ui:IconLabel Icon="{StaticResource Icon.squareActivity}" Text="Turn on" />
         </Button>

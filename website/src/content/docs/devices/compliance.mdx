@@ -1,6 +1,6 @@
 ---
 title: Compliance
-description: See at first glance which devices need attention, and check your own rules on many devices.
+description: "See at a glance which devices need attention: devices that do not follow the base configuration, have expiring certificates, or fail your custom checks."
 ---
 
 import { Steps } from '@astrojs/starlight/components';
@@ -9,8 +9,7 @@ import page from '../../../assets/screens/compliance-page.png';
 import check from '../../../assets/screens/compliance-check.png';
 import grid from '../../../assets/screens/devices-compliance.png';
 
-**Compliance** in the navigation, right below Devices, shows which devices need attention. It is off until an
-administrator clicks **Turn on** on the page. Then it lists the devices OADM cannot reach or log in to and expiring
+It is off until an administrator clicks **Turn on** on the page. Then it lists the devices OADM cannot reach or log in to and expiring
 certificates. Add your own checks, for example "Object Analytics must run on the parking cameras" or "every device
 matches our base configuration". **Turn off compliance** stops the checks and removes their results; your checks stay.
 
