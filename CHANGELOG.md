@@ -15,6 +15,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Applications: install one package per processor type at once.
 - Applications: change the settings an application registers, on many devices at once.
 - Applications page: the applications of many devices with versions, status and licenses, and start, stop, install or remove them.
+- Applications page: install applications and licenses on many devices, with a check per device before anything is written.
+- Applications page: the log of an application, and its settings or its own page.
 
 ### Changed
 

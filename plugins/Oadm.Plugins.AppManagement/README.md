@@ -1,7 +1,7 @@
 # Application management (`oadm.app-management`)
 
 Core plugin with the rail page **Applications** (group Maintenance, icon `app`): the applications (ACAP) of the chosen
-devices (devices above, the selected devices' applications below), the Applications plugin's actions for many rows at once, and per application its
+devices (the cards Devices left and Apps right), the Applications plugin's actions for many rows at once, and per application its
 log and settings. Free, off by default. Spec: `docs/spec/app-management.md`.
 
 ## Parts

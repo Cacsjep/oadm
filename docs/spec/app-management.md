@@ -49,15 +49,17 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 ## Page
 
 - Split view side by side (chosen 2026-10-28 over tabs By application / By device, a grouped grid, a matrix and a split
-  above and below): the devices left, the applications of the selected devices right, a vertical splitter between them
-  (5:4). No toolbar above them: each side has one header row, level with the other (decision 2026-10-28, "all in one
-  row"):
-  - left: device choice, **Refresh**, **Install**; right of them the status filter (All, Not running, License missing,
-    License expires soon (5 days), Read failed) and **Search devices** (app, vendor, address, model, MAC address, AXIS
-    OS, SoC, architecture, version); the read's progress and error below it only while they apply;
-  - right: **Install licenses**, **Start**, **Stop**, **Remove** (what does not fit goes into the More menu); **Hide AXIS
-    apps** (on by default, one box: hides `Bundled=Yes`, the apps that come with AXIS OS, and every app with the word
-    "AXIS" in its name, any case) and **Search applications**.
+  above and below): two cards, **Devices** left and **Apps** right (the card title like the Permissions page's, "Apps"
+  so the page title is not repeated and everything fits at full HD), a vertical splitter between them (11:9; each card
+  keeps at least 20 % of the width). No toolbar above them: each card has one header row with its title first, level
+  with the other (decision 2026-10-28, "all in one row"):
+  - left: device choice, **Refresh**, **Install**; right of them **Hide AXIS apps** (on by default, one box: hides
+    `Bundled=Yes`, the apps that come with AXIS OS, and every app with the word "AXIS" in its name, any case; it changes
+    the device counts too), the status filter (All, Not running, License missing, License expires soon (5 days), Read
+    failed) and **Search devices** (app, vendor, address, model, MAC address, AXIS OS, SoC, architecture, version); the
+    read's progress and error below it only while they apply;
+  - right: **Install licenses**, **Start**, **Stop**, **Remove** (what does not fit goes into the More menu) and
+    **Search applications**.
   - **Devices** (left): one row per device with shown rows after the filters, in address order: address, model, MAC
     address, AXIS OS, SoC (the SoC column's text, `DeviceTexts.Soc`), architecture (`IDeviceInfo.Soc` / `Architecture`,
     SDK 0.7.0), Applications (the shown count, right-aligned), Status: a running task ("Stopping"), the read error (Not
@@ -76,7 +78,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
   - The selected devices and application rows stay selected when rows change (a task's end reads the device again,
     pushed rows, a filter); rows no longer shown leave the selection. The grid reset of a rebuild is not a user choice.
   - The device columns share the width (star sizes, Status the widest), so a wide window has no empty space at the right.
-- Selection: Install acts on the devices selected above (application rows below never narrow it); Install
+- Selection: Install acts on the devices selected in Devices (application rows in Apps never narrow it); Install
   licenses, Start, Stop and Remove on the selected application rows.
 - Actions (command buttons, each with its texts and confirmations):
   - **Install** opens the page's own dialog **Install applications** (chosen 2026-10-28 over the Applications plugin's

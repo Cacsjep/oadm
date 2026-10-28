@@ -18,6 +18,9 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
     private ApplicationsViewModel? _viewModel;
     private bool _reselecting;
 
+    /// <summary>The smallest share of the page width each card keeps when the splitter moves.</summary>
+    public const double MinPaneShare = 0.2;
+
     public ApplicationsView()
     {
         InitializeComponent();
@@ -27,6 +30,13 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
             {
                 _viewModel?.SetSelectedDevices(DevicesGrid.SelectedItems.OfType<AppDeviceRow>());
             }
+        };
+        // Each card keeps at least a fifth of the width; the splitter moves the line between them.
+        Panes.SizeChanged += (_, e) =>
+        {
+            var min = e.NewSize.Width * MinPaneShare;
+            Panes.ColumnDefinitions[0].MinWidth = min;
+            Panes.ColumnDefinitions[2].MinWidth = min;
         };
         AppsGrid.SelectionChanged += (_, _) =>
         {

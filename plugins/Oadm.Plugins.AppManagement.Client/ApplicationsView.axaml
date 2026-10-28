@@ -5,29 +5,33 @@
              x:Class="Oadm.Plugins.AppManagement.Client.ApplicationsView"
              x:DataType="vm:ApplicationsViewModel"
              ui:PageHeader.Subtitle="The applications of the chosen devices.">
-  <!-- Own card (ICorePluginPage.HasOwnCards), docs/spec/app-management.md "Page": one card, two panes side by side with
-       one header row each, level with each other. Left: device choice, Refresh, Install; right of them the status filter
-       and Search devices; then the read's progress and error (only while they apply) and the devices. Right: Install
-       licenses, Start, Stop, Remove; Hide AXIS apps and Search applications; then the applications of the selected
+  <!-- Own cards (ICorePluginPage.HasOwnCards), docs/spec/app-management.md "Page": two cards side by side ("Devices",
+       "Apps"), a splitter between them (each at least 20 % of the width, code-behind), one header row
+       each with the card title first, level with each other. Left: device choice, Refresh, Install; right of them Hide AXIS apps, the
+       status filter and Search devices; then the read's progress and error (only while they apply) and the devices. Right: Install
+       licenses, Start, Stop, Remove; Search applications; then the applications of the selected
        devices. The tasks pane below the page shows the started tasks. Shared controls and theme classes only. -->
-  <Border Classes="card">
-    <Grid ColumnDefinitions="5*,Auto,4*">
+    <Grid x:Name="Panes" ColumnDefinitions="11*,Auto,9*">
       <!-- Left: the devices. -->
-      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
-          <ui:ToolbarButton Grid.Column="0" IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}"
+      <Border Grid.Column="0" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
+          <TextBlock Grid.Column="0" Classes="cardTitle" Text="Devices" VerticalAlignment="Center" Margin="0,0,2,0" />
+          <ui:ToolbarButton Grid.Column="1" IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}"
                             IsEnabled="{Binding !IsReading}" ToolTip.Tip="Devices by address or tag" />
           <!-- Tools that do not fit move into the More menu. -->
-          <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">
+          <ui:ToolbarOverflowPanel Grid.Column="2" Spacing="4">
             <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the applications again" />
             <ui:ToolbarSeparator IsVisible="{Binding MayInstall}" />
             <ui:ToolbarButton IconKey="upload" Text="Install" Command="{Binding InstallCommand}" IsVisible="{Binding MayInstall}"
                               ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
           </ui:ToolbarOverflowPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-            <ComboBox VerticalAlignment="Center" Width="170" ItemsSource="{x:Static vm:ApplicationsViewModel.StatusChoices}"
+          <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="10">
+            <CheckBox VerticalAlignment="Center" Content="Hide AXIS apps" IsChecked="{Binding HideAxisApps}"
+                      ToolTip.Tip="Preinstalled apps and apps named AXIS" />
+            <ComboBox VerticalAlignment="Center" Width="150" ItemsSource="{x:Static vm:ApplicationsViewModel.StatusChoices}"
                       SelectedItem="{Binding SelectedStatus}" />
-            <ui:SearchBox Width="200" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
+            <ui:SearchBox Width="180" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
           </StackPanel>
         </Grid>
 
@@ -63,13 +67,16 @@
           <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
         </Panel>
       </Grid>
+      </Border>
 
       <GridSplitter Grid.Column="1" Classes="paneSplitter vertical" Margin="4,0" />
 
       <!-- Right: the applications of the selected devices; the actions on the selected ones left, the filter and search right. -->
-      <Grid Grid.Column="2" RowDefinitions="Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
-        <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+      <Border Grid.Column="2" Classes="card">
+      <Grid RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
+        <TextBlock Grid.Column="0" Classes="cardTitle" Text="Apps" VerticalAlignment="Center" Margin="0,0,2,0" />
+        <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">
           <ui:ToolbarButton IconKey="key" Text="Install licenses" Command="{Binding InstallLicensesCommand}" IsVisible="{Binding MayLicense}"
                             ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
           <ui:ToolbarSeparator IsVisible="{Binding MayLicense}" />
@@ -81,10 +88,8 @@
           <ui:ToolbarButton Classes="danger" IconKey="remove" Text="Remove" Command="{Binding RemoveCommand}" IsVisible="{Binding MayRemove}"
                             ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
         </ui:ToolbarOverflowPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
-          <CheckBox VerticalAlignment="Center" Content="Hide AXIS apps" IsChecked="{Binding HideAxisApps}"
-                    ToolTip.Tip="Preinstalled apps and apps named AXIS" />
-          <ui:SearchBox Width="200" VerticalAlignment="Center" Text="{Binding AppsSearchText}" Placeholder="Search applications" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+          <ui:SearchBox Width="180" VerticalAlignment="Center" Text="{Binding AppsSearchText}" Placeholder="Search applications" />
         </StackPanel>
         </Grid>
 
@@ -128,6 +133,6 @@
         </DataGrid>
         <TextBlock Grid.Row="1" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding AppsEmptyText}" IsVisible="{Binding ShowAppsEmpty}" />
       </Grid>
+      </Border>
     </Grid>
-  </Border>
 </UserControl>

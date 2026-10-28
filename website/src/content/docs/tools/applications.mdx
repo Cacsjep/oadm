@@ -4,6 +4,12 @@ description: The applications of many devices at once, with their versions, lice
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import pageShot from '../../../assets/screens/app-management-page.png';
+import installShot from '../../../assets/screens/app-management-install.png';
+import licensesShot from '../../../assets/screens/app-management-licenses.png';
+import logShot from '../../../assets/screens/app-management-log.png';
+import settingsShot from '../../../assets/screens/app-management-settings.png';
 
 The **Applications** page shows the applications (ACAP) of the chosen devices: which application runs where, in which
 version and with which license. Install, start, stop or remove them and install their licenses on many devices at once.
@@ -12,52 +18,83 @@ version and with which license. Install, start, stop or remove them and install 
 The Applications page is off by default. An administrator turns it on on the **Plugins** page.
 </Aside>
 
+<Image src={pageShot} alt="The Applications page with the Devices card left and the Apps card right" class="screen" />
+
 ## See your applications
 
 <Steps>
 
 1. Open **Applications** in the navigation rail and choose the devices with **Choose devices**: all devices, tags or
    single devices. OADM reads their applications. **Refresh** reads them again.
-2. The left table shows one row per device: address, model, MAC address, AXIS OS, SoC, architecture, how many
-   applications it has and what needs attention ("1 license problem, 2 not running").
-3. Select devices to see their applications in the right table, with the status and the license: the end date of a
-   valid license, **Valid**, **Not required**, **Missing** or **Invalid**. A license that ends within 5 days is marked.
+2. The **Devices** card on the left shows one row per device: address, model, MAC address, AXIS OS, SoC, architecture,
+   how many applications it has and what needs attention ("1 license problem, 2 not running").
+3. Select devices to see their applications in the **Apps** card on the right, with the status and the license: the
+   end date of a valid license, **Valid**, **Not required**, **Missing** or **Invalid**. A license that ends within 5
+   days is marked. With several devices selected, the applications are grouped by device.
 
 </Steps>
 
+Drag the line between the two cards to give one of them more room.
+
 **Hide AXIS apps** (on by default) hides the applications that come with AXIS OS and every application with AXIS in its
-name. The filter next to it shows only applications that do not run, with a missing license, with a license that ends
-soon, or the devices that could not be read. The search finds applications, vendors, devices, models and versions.
+name. The filter next to it shows only devices with applications that do not run, with a missing license, with a
+license that ends soon, or the devices that could not be read. **Search devices** finds devices by address, model, MAC
+address, AXIS OS, SoC or architecture, and by their applications. **Search applications** in the **Apps** card finds
+applications, vendors and versions of the selected devices.
 
-## Change applications
+## Install applications
 
-- **Install** opens **Install applications** for the selected devices (or the devices of the selected applications).
-  **Choose files**: one `.eap` file, or one per architecture of the same application. Each row then says whether the
-  device can install it and why not; devices that cannot are skipped. **Install** starts the tasks.
-- **Install licenses** opens **Install licenses** for the selected applications. **Choose files**: key files or a ZIP of
-  them. Each row says whether a key fits that device and application; **Install licenses** starts the tasks for those
-  with a key.
-- **Start**, **Stop** and **Remove** above the right table act on the selected applications. They ask first, then run
-  as tasks.
-- The tasks pane below the page shows the tasks, and OADM reads each device again when its task ends.
+<Steps>
+
+1. Select the devices in the **Devices** card and click **Install**.
+2. Click **Choose files** and choose one `.eap` file, or one per architecture of the same application.
+3. Each row says whether the device can install it: a new install, an upgrade, or why not, for example "No package for
+   mips." or a device that accepts only signed applications. Devices that cannot install it are skipped.
+4. Keep **Start after install** on if the application should run right away. Turn on **Allow downgrade** to install an
+   older version.
+5. Click **Install**. The tasks pane below the page shows the tasks.
+
+</Steps>
+
+<Image src={installShot} alt="Install applications with two packages and the result per device" class="screen" />
+
+## Install licenses
+
+<Steps>
+
+1. Select the applications in the **Apps** card and click **Install licenses**.
+2. Click **Choose files** and choose the license key files, or a ZIP of them.
+3. Each row says whether a key fits that device and application.
+4. Click **Install licenses**. Only rows with a key get one.
+
+</Steps>
+
+<Image src={licensesShot} alt="Install licenses with the key found per device and application" class="screen" />
+
+## Start, stop and remove
+
+- **Start**, **Stop** and **Remove** in the **Apps** card act on the selected applications. They ask first, then run
+  as tasks. Only the rows of those applications show **Starting** or **Stopping** meanwhile.
+- OADM reads each device again when its task ends. Your selection stays.
 - When a task fails or ends with warnings, the row's **Status** shows the new state followed by the task's message, for
   example "Stopped. The application did not start." It stays until you click **Refresh** or choose devices again.
 
 ## Log and settings
 
-The ⋯ menu of a row offers:
-
-The menu shows **Settings** or **Open app page**, whichever the application has, and always **Show log**. With several
-devices selected, the right table groups their applications by device.
+The ⋯ menu of an application shows **Settings** or **Open app page**, whichever the application has, and always
+**Show log**.
 
 - **Show log**: the log lines of that application on the device, newest last, with search and Copy. **Level** shows an
   icon for errors, warnings and information; point at it to see the level.
 - **Settings**: the settings the application offers on that device, or on all selected devices with it when the row is
-  selected.
-  Where the devices differ, the field says on how many. Passwords are never shown: leave the field empty to keep them.
-  **Save** changes only what you changed, as a task.
+  selected. Where the devices differ, the field says on how many. Passwords are never shown: leave the field empty to
+  keep them. **Save** changes only what you changed, as a task.
 - **Open app page**, for an application without settings here that has its own page: opens that page in **Web View**
   (when Web View is turned on).
+
+<Image src={logShot} alt="The log of an application with the level as an icon" class="screen" />
+
+<Image src={settingsShot} alt="The settings of an application on four devices" class="screen" />
 
 ## Good to know
 
