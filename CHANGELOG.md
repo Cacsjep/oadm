@@ -7,6 +7,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-10-28
+
 ### Added
 
 - Load test: puts the chosen cameras under load and shows whether the network and the cameras carry it.
