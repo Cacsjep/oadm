@@ -1,0 +1,5 @@
+
+----- Contents of SYSTEM_LOG for 'eva' -----
+
+
+2026-10-27T07:45:40.900+01:00 axis-b8a44f631339 [ CRIT    ] eva[8617]: Failed to unregister events on shutdown: error unregistering event Object Count In Area: No declarations have been registered, AxEventError: AXEventErrorUndeclare

@@ -429,6 +429,9 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
     or running; null when the host cannot tell): a task cancelled while queued never runs, so ask instead of waiting for it.
     In a user's call ask `caller.Tasks`: `IsActive` answers a group user only for the user's own tasks (another user's active task: null; ended: false),
     `AnyActiveAsync(ids)` for the tasks of the user's devices whoever started them (a run shared by a group).
+    `GetOutcomeAsync(id)` (SDK 0.7.0) tells how an ended task ended (`TaskOutcome`: device, `TaskEndState`, the message
+    of the tasks pane; null while it runs, unknown, or outside a group user's devices); in tests
+    `FakeCoreContext.EndTask(id, TaskEndState.Failed, "message")`.
   - `ctx.AutoAdd` (`IDeviceAutoAdd`, null when the host has none). `AddAsync(ipAddress, expectedSerial, source, ct)`
     adds an Axis device the plugin saw on the network, through the add page's pipeline (anonymous Axis check, factory
     default check, login with the credential list; passwords never reach the plugin). It returns a
@@ -452,7 +455,10 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   (or another plugin's page: `OpenAsync("plugin:" + id)`, while it is on), `IsPluginOn(packageId)` (whether a plugin is
   turned on; null when the host cannot tell), `LicenseOf(packageId)`, `IsAdministrator` and `StartProTrialAsync` (Start
   30-day trial of OADM PRO on a page that needs it, once per server), `OpenDeviceRequested` (the host asks the page to
-  open a device; Web View opens devices at a site this way) and `Owner`.
+  open a device; Web View opens devices at a site this way), `RunTaskAsync(pluginId, deviceIds, [startView,] ct)` (a
+  task plugin with its dialog; SDK 0.7.0 `startView` opens a part of the dialog, `ITaskDialogContext.StartView`),
+  `OpenDevicePage(deviceId, path)` (SDK 0.7.0: a page of a device in Web View, which gets `OpenDevicePageRequested`) and
+  `Owner`.
 - **Several views at once**: the rail entry's context menu **Open in new window** shows another copy of the page in a
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
   the view model of that view (never in static or shared fields of the page class), start server work when the view is

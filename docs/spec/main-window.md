@@ -129,11 +129,12 @@ and the saved per-client order cover other preferences):
 | Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See [compliance.md](compliance.md) |
 | MAC address | SerialNumber from basicdeviceinfo |
 | Firmware | Version |
-| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceSocText`); empty until read; in the search and the export |
+| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceTexts.Soc` of the client SDK); empty until read; in the search and the export |
 | Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export |
+| Clock | on by default: the device clock against the server's (see "Clock" below): "OK", "50 s ahead", "2 min behind", "3 h ahead", "NTP not synced" (offset within the tolerance but NTP not synced); seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check; devices that are not Ok show their last measured value as plain text; empty until measured; the warning colour while off; sorted by the absolute offset; in the search and the export |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
-| DHCP | Network.BootProto == dhcp -> Yes/No |
+| DHCP | off by default (column chooser): Network.BootProto == dhcp -> Yes/No |
 | HTTPS | HTTPS enabled -> Enabled/Disabled |
 | Certificate expires | CertNotAfterUtc as days left: "245 days", "1 day", "Today", "Expired 3 days ago", "Never" for NotAfter 9999-12-31 (RFC 5280, e.g. the Axis device ID certificate). More than the device's days of PKI's Expiry warning policy (`Device.cert_warning_days`, 30 without PKI or without a policy for the device): plain text, warn chip within them, error chip expired; right-aligned (numeric column). Over HTTP read through VAPIX; empty when HTTPS is off or unreadable |
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
@@ -155,3 +156,29 @@ warning "Most devices do not answer (F of P). Check the server's network.", and 
 failed polls are Debug only. After a server start the first scheduled full refresh is staggered: the n-th of N devices
 is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is written but not published to watchers (no
 30,000 identical updates per minute to every client). Tests `DevicePollingRoundTests`, `DevicePollingScheduleTests`.
+
+**Clock.** OADM watches every device's clock with the polling it does anyway, no extra request per minute:
+
+- Offset: every status poll takes the HTTP `Date` header of the basicdeviceinfo answer (whole seconds, UTC) and stores
+  `device + 0.5 s - (sent + received) / 2` in milliseconds (`Device.ClockOffsetMs`; the half second: the header cuts the
+  fraction off). Only Ok answers count; no header or an unreadable one keeps the last value. A reading less than 1 s from
+  the stored one keeps the stored one, nothing is written or published (`ClockHealth.MinChangeMs`: the whole-second header
+  jitters by up to a second, 30,000 devices would publish every poll). Clamped to about 24.8 days either way (an int of
+  ms). Through a site the relay's time is part of the round trip, nothing else changes.
+- NTP: the full refresh asks `getNTPInfo` (`ntp.cgi`, API `ntp` in the device's API list, any 1.x) for `enabled` and
+  `synced` (`Device.NtpState`: Unknown, Synced, NotSynced, Off). Without the API, or when the read fails, Unknown; a failed
+  read never fails the refresh.
+- Off (`Device.ClockOff`, computed on the server, never stored): status Ok and (|offset| > `Polling.ClockToleranceSeconds`
+  (Settings > Polling "Allowed clock difference (s)", default 2, 1..3600) or NtpState NotSynced). Devices that are not Ok
+  are never off (their values are kept and shown as last measured). A changed tolerance applies to every device at once
+  (`ClockTolerance`: the devices whose `clock_off` or `clock_beyond_tolerance` changes are published in one batch, nothing
+  written).
+- The offset is against the OADM server's clock: the server should take its time from NTP itself.
+- Event: **Any device: clock off** (built-in, group "Any device", `oadm.device.any-clock-off`, value `count`), on while at
+  least one device is off. No per-device twin.
+- Compliance: host check type **Clock** (cached values only): fails when |offset| > its own **Allowed difference (s)**
+  (default 2, 1..3600) or, with **NTP must be synced** (default on), NtpState NotSynced or Off; "Not measured yet" while the
+  offset is unknown; not checked while the device is not Ok (`oadm.compliance.clock`, settings `allowedSeconds`, `ntpSynced`).
+- Tests: the offset from recorded `Date` headers with a fake clock (ahead, behind, the half second, missing header);
+  getNTPInfo parsing from fixtures; the event count follows device changes; 30,000 devices: sort and the count stay
+  O(n).

@@ -250,6 +250,50 @@ public sealed class MappersTests
     }
 
     [Fact]
+    public void TheAllowedClockDifferenceIsOptionalInASet()
+    {
+        var current = new ServerSettings(60, 32, 1500, "srv", "https://0.0.0.0:5080");
+        Assert.Equal(2, current.ClockToleranceSeconds);
+        Assert.True(Mappers.ToProto(current).HasClockToleranceSeconds);
+        Assert.Equal(2, Mappers.ToProto(current).ClockToleranceSeconds);
+        var wide = current with { ClockToleranceSeconds = 30 };
+        Assert.Equal(wide, Mappers.FromProto(new Proto.ServerSettings { ClockToleranceSeconds = 30 }, current));
+        Assert.Equal(wide, Mappers.FromProto(new Proto.ServerSettings { ServerName = "srv" }, wide)); // unset keeps it
+    }
+
+    [Fact]
+    public void TheClockFieldsFollowTheTolerance()
+    {
+        var device = new Device { Serial = "B8A44F631339", Address = "10.0.0.48", Status = SdkDeviceStatus.Ok, ClockOffsetMs = -5_000, NtpState = NtpState.Synced };
+
+        var strict = Mappers.ToProto(device, hasCredentials: true, clockToleranceSeconds: 2);
+        Assert.True(strict.HasClockOffsetMs);
+        Assert.Equal(-5_000, strict.ClockOffsetMs);
+        Assert.Equal(Proto.NtpState.Synced, strict.NtpState);
+        Assert.True(strict.ClockOff);
+        Assert.True(strict.ClockBeyondTolerance);
+
+        var wide = Mappers.ToProto(device, hasCredentials: true, clockToleranceSeconds: 10);
+        Assert.False(wide.ClockOff);
+        Assert.False(wide.ClockBeyondTolerance);
+
+        // Not Ok: never off, but the last offset still lies beyond the tolerance.
+        device.Status = SdkDeviceStatus.Unreachable;
+        var unreachable = Mappers.ToProto(device, hasCredentials: true, clockToleranceSeconds: 2);
+        Assert.False(unreachable.ClockOff);
+        Assert.True(unreachable.ClockBeyondTolerance);
+
+        // NTP not synced is off within the tolerance; unmeasured leaves the offset unset.
+        var notSynced = Mappers.ToProto(new Device { Status = SdkDeviceStatus.Ok, NtpState = NtpState.NotSynced }, hasCredentials: true);
+        Assert.False(notSynced.HasClockOffsetMs);
+        Assert.Equal(Proto.NtpState.NotSynced, notSynced.NtpState);
+        Assert.True(notSynced.ClockOff);
+        Assert.False(notSynced.ClockBeyondTolerance);
+        Assert.Equal(Proto.NtpState.Off, Mappers.ToProto(NtpState.Off));
+        Assert.Equal(Proto.NtpState.Unknown, Mappers.ToProto(NtpState.Unknown));
+    }
+
+    [Fact]
     public void DiscoveredDeviceMapsStatusSourceAndProgress()
     {
         var device = new DiscoveredDevice(

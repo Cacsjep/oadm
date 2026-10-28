@@ -284,12 +284,15 @@ public sealed class ColumnLayoutTests
         var layout = new ColumnLayoutViewModel(new InMemoryClientSettingsStore());
 
         Assert.Equal(
-            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "soc", "architecture", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
+            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "soc", "architecture", "clock", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
             layout.Columns.Select(c => c.Key).ToArray());
         Assert.DoesNotContain(layout.Choosable, c => c.Key == "icon");
         Assert.Equal("IEEE 802.1X", layout.Find("dot1x")!.Header);
         Assert.False(layout.Find("architecture")!.IsVisible); // off until chosen, like Compliance
         Assert.True(layout.Find("soc")!.IsVisible);
+        Assert.False(layout.Find("dhcp")!.IsVisible); // off until chosen
+        Assert.True(layout.Find("clock")!.IsVisible);
+        Assert.Equal("Clock", layout.Find("clock")!.Header);
     }
 
     [Fact]
@@ -317,6 +320,7 @@ public sealed class ColumnLayoutTests
 
         Assert.False(layout.Find("architecture")!.IsVisible);
         Assert.True(layout.Find("soc")!.IsVisible);
+        Assert.True(layout.Find("clock")!.IsVisible); // a new column that is on by default shows in an old layout too
     }
 }
 

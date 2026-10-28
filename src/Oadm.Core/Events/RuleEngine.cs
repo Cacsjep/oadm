@@ -57,6 +57,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private readonly DeviceRepository? _deviceRepository;
     private readonly IDeviceChangeFeed? _deviceFeed;
     private readonly TimeProvider _time;
+    private readonly ClockTolerance? _clock;
     private readonly RuleEngineOptions _options;
     private readonly ILogger _logger;
     private readonly Channel<Command> _commands;
@@ -71,6 +72,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private int _subscriptionCount;
     private readonly HashSet<string> _knownTypes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<Guid, DeviceRef> _devices = [];
+
+    // Devices whose clock is off (Any device: clock off counts them; no per-device event).
+    private readonly HashSet<Guid> _clockOff = [];
 
     // Devices whose status events were set from a real status (not Site offline) at least once.
     private readonly HashSet<Guid> _statusKnown = [];
@@ -96,8 +100,10 @@ public sealed partial class RuleEngine : IAsyncDisposable
         IDeviceChangeFeed? deviceFeed = null,
         TimeProvider? time = null,
         RuleEngineOptions? options = null,
-        ILogger<RuleEngine>? logger = null)
+        ILogger<RuleEngine>? logger = null,
+        ClockTolerance? clock = null)
     {
+        _clock = clock;
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _log = log ?? throw new ArgumentNullException(nameof(log));
@@ -962,6 +968,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
         if (change.Kind == DeviceChangeKind.Removed || change.Device is null)
         {
             _statusKnown.Remove(change.DeviceId);
+            _clockOff.Remove(change.DeviceId);
             if (!_devices.Remove(change.DeviceId))
             {
                 return;
@@ -1011,6 +1018,15 @@ public sealed partial class RuleEngine : IAsyncDisposable
             // Site offline says nothing about the device: its status events keep their state until the site is back, so an
             // offline site never fires "Device unreachable" and never turns the others off. A device first seen while its
             // site is offline or starting (after a server start) starts from its stored, last real status: no edges.
+            if (ClockHealth.IsOff(device.Status, device.ClockOffsetMs, device.NtpState, ClockToleranceSeconds))
+            {
+                _clockOff.Add(id);
+            }
+            else
+            {
+                _clockOff.Remove(id);
+            }
+
             var status = device.Status;
             if (status == DeviceStatus.SiteOffline && !_statusKnown.Contains(id) && device.StoredStatus is { } stored)
             {
@@ -1037,23 +1053,31 @@ public sealed partial class RuleEngine : IAsyncDisposable
         RecomputeAny();
     }
 
+    private int ClockToleranceSeconds => _clock?.Seconds ?? Settings.ServerSettings.DefaultClockToleranceSeconds;
+
     /// <summary>The "Any device" events: on for the server while any device has the condition, with how many.</summary>
     private void RecomputeAny()
     {
         foreach (var (deviceType, anyType) in BuiltInEvents.AnyOf)
         {
-            var count = _on.TryGetValue(deviceType, out var set) ? set.Count : 0;
-            var type = _catalog.FindEventType(anyType)!;
-            var isOn = OnSet(anyType).TryGetValue(Guid.Empty, out var data);
-            var text = count.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            if (count > 0 && (!isOn || !string.Equals(data!.GetValueOrDefault(BuiltInEvents.CountField), text, StringComparison.Ordinal)))
-            {
-                SetState(type, Guid.Empty, true, new Dictionary<string, string> { [BuiltInEvents.CountField] = text });
-            }
-            else if (count == 0 && isOn)
-            {
-                SetState(type, Guid.Empty, false, null);
-            }
+            SetAny(anyType, _on.TryGetValue(deviceType, out var set) ? set.Count : 0);
+        }
+
+        SetAny(BuiltInEvents.AnyClockOff, _clockOff.Count);
+    }
+
+    private void SetAny(string anyType, int count)
+    {
+        var type = _catalog.FindEventType(anyType)!;
+        var isOn = OnSet(anyType).TryGetValue(Guid.Empty, out var data);
+        var text = count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (count > 0 && (!isOn || !string.Equals(data!.GetValueOrDefault(BuiltInEvents.CountField), text, StringComparison.Ordinal)))
+        {
+            SetState(type, Guid.Empty, true, new Dictionary<string, string> { [BuiltInEvents.CountField] = text });
+        }
+        else if (count == 0 && isOn)
+        {
+            SetState(type, Guid.Empty, false, null);
         }
     }
 
@@ -1355,6 +1379,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
 /// <summary>What the engine knows of a managed device.</summary>
 public sealed record DeviceRef(string Address, string? Model, string Serial, DeviceStatus Status, DateTime? CertNotAfterUtc, HashSet<string> Tags)
 {
+    /// <summary>The clock offset of the status poll (ms), null until measured.</summary>
+    public int? ClockOffsetMs { get; init; }
+
+    public NtpState NtpState { get; init; }
+
     /// <summary>The stored status while <see cref="Status"/> is the computed Site offline.</summary>
     public DeviceStatus? StoredStatus { get; init; }
 
@@ -1369,6 +1398,8 @@ public sealed record DeviceRef(string Address, string? Model, string Serial, Dev
         {
             StoredStatus = device.StoredStatus,
             SiteRemoved = device.SiteRemoved,
+            ClockOffsetMs = device.ClockOffsetMs,
+            NtpState = device.NtpState,
         };
     }
 

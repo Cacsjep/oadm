@@ -868,7 +868,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             isAdmin: () => Session.IsAdmin,
             startTrial: _license is { } license
                 ? license.StartTrialFromPageAsync
-                : async ct => Licensing.LicenseViewModel.ToInfo(await _api.StartTrialAsync(ct).ConfigureAwait(true)));
+                : async ct => Licensing.LicenseViewModel.ToInfo(await _api.StartTrialAsync(ct).ConfigureAwait(true)),
+            openDevicePage: OpenDevicePageInWebView);
 
     /// <summary>The page of a plugin shown as a tab: its view with its own context, or the error in its place.</summary>
     private (CorePluginPageViewModel Page, CorePluginTab Tab) CreateTabPage(string pluginId, string title)
@@ -992,6 +993,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
         page.PluginContext?.RequestOpenDevice(deviceId);
     }
 
+    /// <summary>
+    /// A page of a device's web interface in Web View (<see cref="ICorePluginClientContext.OpenDevicePage"/> of a plugin page):
+    /// only while the Web View page is in the rail, the role may open devices and the device is in the client's list.
+    /// </summary>
+    internal bool OpenDevicePageInWebView(Guid deviceId, string path)
+    {
+        if (!DevicePageRequest.IsDevicePath(path) || !Session.Has(WebViewOpenPermission) || !Devices.ToolbarContext.Knows(deviceId)
+            || NavItems.FirstOrDefault(n => n.Key == WebViewPageKey) is not { Page: CorePluginPageViewModel page } item)
+        {
+            return false;
+        }
+
+        Navigate(item);
+        page.PluginContext?.RequestOpenDevicePage(new DevicePageRequest(deviceId, path));
+        return true;
+    }
+
     /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
     private void OrderCorePluginPages()
     {
@@ -1084,8 +1102,10 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
 
     public CorePluginClientContext(IOadmApi api, string pluginId, IToolbarContext host, ILiveVideoAccess? liveVideo = null, IClientSettingsStore? settings = null,
         Func<string, bool?>? pluginOn = null, Func<string, Oadm.Sdk.Licensing.PluginLicenseInfo?>? licenseOf = null,
-        Func<bool>? isAdmin = null, Func<CancellationToken, Task<Oadm.Sdk.Licensing.ProLicenseInfo>>? startTrial = null)
+        Func<bool>? isAdmin = null, Func<CancellationToken, Task<Oadm.Sdk.Licensing.ProLicenseInfo>>? startTrial = null,
+        Func<Guid, string, bool>? openDevicePage = null)
     {
+        _openDevicePage = openDevicePage;
         _licenseOf = licenseOf;
         _isAdmin = isAdmin;
         _startTrial = startTrial;
@@ -1098,6 +1118,7 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     }
 
     private readonly Func<string, bool?>? _pluginOn;
+    private readonly Func<Guid, string, bool>? _openDevicePage;
 
     public bool? IsPluginOn(string packageId) => _pluginOn?.Invoke(packageId);
 
@@ -1302,6 +1323,37 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _host.ConfirmAsync(title, message, confirmText);
 
     public Task OpenAsync(string hostPage) => _host.OpenAsync(hostPage);
+
+    /// <summary>The Devices page's run of a task plugin (<see cref="Oadm.Client.Devices.Toolbar.ToolbarContext.RunTaskAsync(string, IReadOnlyList{Guid}, CancellationToken)"/>); a closed page starts nothing.</summary>
+    public Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, CancellationToken ct) =>
+        RunTaskAsync(pluginId, deviceIds, null, ct);
+
+    /// <summary>The run with the dialog opened on <paramref name="startView"/> (<see cref="ITaskDialogContext.StartView"/>).</summary>
+    public Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? startView, CancellationToken ct) =>
+        !_disposed && _host is Oadm.Client.Devices.Toolbar.ToolbarContext toolbar
+            ? toolbar.RunTaskAsync(pluginId, deviceIds, startView, ct)
+            : Task.FromResult<IReadOnlyList<string>?>(null);
+
+    /// <summary>The Devices page's upload (<see cref="IToolbarContext.UploadAsync"/>); a closed page uploads nothing.</summary>
+    public Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) =>
+        _disposed
+            ? Task.FromException<Oadm.Sdk.Plugins.UploadedFile>(new ObjectDisposedException(nameof(CorePluginClientContext)))
+            : _host.UploadAsync(localPath, progress, ct);
+
+    /// <summary>A page of a device's web interface in the Web View page (the host checks Web View, the role, the device and the path).</summary>
+    public bool OpenDevicePage(Guid deviceId, string path) =>
+        !_disposed && _openDevicePage is { } open && DevicePageRequest.IsDevicePath(path) && open(deviceId, path);
+
+    public event EventHandler<DevicePageRequest>? OpenDevicePageRequested;
+
+    /// <summary>The host asks the page (Web View) to open a page of a device.</summary>
+    internal void RequestOpenDevicePage(DevicePageRequest request)
+    {
+        if (!_disposed)
+        {
+            OpenDevicePageRequested?.Invoke(this, request);
+        }
+    }
 
     /// <summary>The page's relays of device web interfaces; stopped when the page closes.</summary>
     public IDeviceWebAccess? DeviceWeb =>

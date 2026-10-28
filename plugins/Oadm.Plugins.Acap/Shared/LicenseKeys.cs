@@ -301,6 +301,40 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
         return new LicenseKeySet(keys, problems);
     }
 
+    /// <summary>At most this many files are read at once (a ZIP counts as one).</summary>
+    public const int MaxFiles = 10_000;
+
+    /// <summary>The files that are not usable keys, at most five named; null when every file was a key.</summary>
+    public string? ProblemText => Problems.Count == 0
+        ? null
+        : string.Join(" ", Problems.Take(5).Select(p => $"{p.FileName}: {p.Reason}"))
+          + (Problems.Count > 5 ? string.Create(CultureInfo.InvariantCulture, $" +{Problems.Count - 5:N0} more") : string.Empty);
+
+    /// <summary>
+    /// Reads local key files and ZIPs (the first <see cref="MaxFiles"/>) like <see cref="Read(IEnumerable{ValueTuple{string, byte[]}})"/>;
+    /// a file that cannot be read or is larger than a ZIP of keys may be counts as not a key. Blocking: call it off the UI thread.
+    /// </summary>
+    public static LicenseKeySet ReadFiles(IEnumerable<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        return Read(paths.Take(MaxFiles).Select(ReadFile));
+    }
+
+    private static (string Name, byte[] Content) ReadFile(string path)
+    {
+        var name = Path.GetFileName(path);
+        try
+        {
+            var info = new FileInfo(path);
+            // Larger than a ZIP of keys may be: not read (Read reports it as not a key).
+            return info.Length > MaxZipBytes ? (name, new byte[LicenseKey.MaxBytes + 1]) : (name, File.ReadAllBytes(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return (name, []);
+        }
+    }
+
     private static bool Later(LicenseKey key, LicenseKey other) =>
         other.ExpirationDate is { } end && (key.ExpirationDate is null || key.ExpirationDate > end);
 
@@ -354,5 +388,127 @@ public sealed record LicenseKeySet(IReadOnlyList<LicenseKey> Keys, IReadOnlyList
         {
             problems.Add(new(name, "The ZIP file cannot be read."));
         }
+    }
+}
+
+/// <summary>What the chosen key files have for one device and application (<see cref="LicenseKeyMatcher.Match"/>).</summary>
+public enum LicenseKeyVerdict
+{
+    /// <summary>A key of the device for the application that has not expired.</summary>
+    Found = 0,
+
+    Expired = 1,
+
+    /// <summary>The device has keys, but of another application.</summary>
+    OtherApplication = 2,
+
+    /// <summary>The application id is not known and the files have keys of several applications for the device.</summary>
+    SeveralApplications = 3,
+
+    NoKey = 4,
+}
+
+/// <summary>One device's key: the verdict, its short text and the details (the Applications dialog's and page's row).</summary>
+public sealed record LicenseKeyMatch(LicenseKeyVerdict Verdict, string Text, string Details)
+{
+    public bool IsUsable => Verdict == LicenseKeyVerdict.Found;
+
+    public bool IsWarning => Verdict == LicenseKeyVerdict.NoKey;
+
+    public bool IsError => !IsUsable && !IsWarning;
+}
+
+/// <summary>
+/// Matches the keys of the chosen files to devices by MAC address (the device's serial) and application id, one dictionary
+/// lookup per device: the Applications dialog, the Applications page and the payload they build use the same rules. An
+/// unknown application id (null) takes any key of the device, unless the files have keys of several applications for it.
+/// </summary>
+public sealed class LicenseKeyMatcher
+{
+    /// <summary>The row and the task step of a device without a key.</summary>
+    public const string NoKeyText = "No license key for this device.";
+
+    private readonly LicenseKeySet _keys;
+    private readonly Dictionary<string, LicenseKey> _any;
+    private readonly Dictionary<string, Dictionary<string, LicenseKey>> _usable = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Dictionary<string, List<LicenseKey>>> _all = new(StringComparer.Ordinal);
+    private HashSet<string>? _several;
+
+    public LicenseKeyMatcher(LicenseKeySet keys)
+    {
+        _keys = keys ?? throw new ArgumentNullException(nameof(keys));
+        _any = keys.ByDevice(null);
+    }
+
+    /// <summary>The application id the keys must have: null for none, "" or "0" (the device reports no id).</summary>
+    public static string? ApplicationIdOf(string? id) => id is { Length: > 0 } and not "0" ? id : null;
+
+    /// <summary>The verdict of the device with MAC address <paramref name="mac"/> for <paramref name="applicationId"/>.</summary>
+    public LicenseKeyMatch Match(string? mac, string? applicationId, DateOnly today)
+    {
+        var device = LicenseKey.NormalizeMac(mac) ?? string.Empty;
+        var appId = ApplicationIdOf(applicationId);
+        if (appId is null && Several().Contains(device))
+        {
+            return new(LicenseKeyVerdict.SeveralApplications, "Several keys", "The files have keys of several applications for this device. Choose the keys of one application.");
+        }
+
+        if (Usable(appId).TryGetValue(device, out var key))
+        {
+            return key.IsExpired(today)
+                ? new(LicenseKeyVerdict.Expired, "Key expired", $"The key expired on {key.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.")
+                : new(LicenseKeyVerdict.Found, "Key found", "Key " + key.ValidityText + ".");
+        }
+
+        return _any.TryGetValue(device, out var other)
+            ? new(LicenseKeyVerdict.OtherApplication, "Other application", $"The key is for application ID {other.ApplicationId}.")
+            : new(LicenseKeyVerdict.NoKey, "No key", NoKeyText);
+    }
+
+    /// <summary>
+    /// The keys of the payload for the device: every key of the device for the application that has not expired, one per
+    /// version range (the task installs the one that fits the installed version); empty when <see cref="Match"/> finds none.
+    /// </summary>
+    public IReadOnlyList<LicenseKeyEntry> PayloadKeys(string? mac, string? applicationId, DateOnly today)
+    {
+        var appId = ApplicationIdOf(applicationId);
+        if (LicenseKey.NormalizeMac(mac) is not { } device || !Usable(appId).ContainsKey(device) || !All(appId).TryGetValue(device, out var keys))
+        {
+            return [];
+        }
+
+        return [.. keys.Where(k => !k.IsExpired(today)).Select(k => new LicenseKeyEntry(device, k.Xml))];
+    }
+
+    private HashSet<string> Several() => _several ??= _keys.DevicesWithSeveralApplications();
+
+    /// <summary>The first key of each device for the application (any application when the id is unknown: then only devices with one).</summary>
+    private Dictionary<string, LicenseKey> Usable(string? appId)
+    {
+        if (!_usable.TryGetValue(appId ?? string.Empty, out var keys))
+        {
+            keys = _keys.ByDevice(appId);
+            if (appId is null)
+            {
+                foreach (var device in Several())
+                {
+                    keys.Remove(device);
+                }
+            }
+
+            _usable[appId ?? string.Empty] = keys;
+        }
+
+        return keys;
+    }
+
+    private Dictionary<string, List<LicenseKey>> All(string? appId)
+    {
+        if (!_all.TryGetValue(appId ?? string.Empty, out var keys))
+        {
+            _all[appId ?? string.Empty] = keys = _keys.AllByDevice(appId);
+        }
+
+        return keys;
     }
 }

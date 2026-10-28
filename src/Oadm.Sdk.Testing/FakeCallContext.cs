@@ -18,7 +18,8 @@ namespace Oadm.Sdk.Testing;
 /// tests of a plugin. The call's <see cref="Tasks"/> answer like the host, also over a test's own runner: unknown and ended
 /// tasks are not active (false); a group user cancels only the tasks that user started and gets null from
 /// <see cref="ITaskRunner.IsActive"/> for another user's active task; <see cref="ITaskRunner.AnyActiveAsync"/> answers for the
-/// tasks of the group's devices, whoever started them (null for an active task outside the group). Unlike the host, a
+/// tasks of the group's devices, whoever started them (null for an active task outside the group), and so does
+/// <see cref="ITaskRunner.GetOutcomeAsync"/> (null outside the group). Unlike the host, a
 /// cancelled task of a <see cref="FakeCoreContext"/> ends at once; on the server it stays active until its run stops.
 /// </summary>
 public sealed class FakeCallContext : ICallContext
@@ -213,7 +214,7 @@ public sealed class FakeCallContext : ICallContext
         // Like the host (TaskEngine.Cancel / CancelOwn): users with all devices cancel every task, a group user only its own.
         public bool Cancel(Guid taskId) =>
             call._core is { } core
-                ? Own(taskId) && core.EndTask(taskId)
+                ? Own(taskId) && core.EndTask(taskId, TaskEndState.Cancelled)
                 : Own(taskId) && Runner.Cancel(taskId);
 
         // Like the host (TaskEngine.IsActive / IsActiveOwn): unknown and ended tasks are not active (false); a group user
@@ -252,6 +253,18 @@ public sealed class FakeCallContext : ICallContext
             }
 
             return Task.FromResult<bool?>(outside ? null : false);
+        }
+
+        // Like the host (SDK 0.7.0): users with all devices every task; a group user the tasks of the group's devices
+        // (whoever started them), null for the others.
+        public Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct)
+        {
+            if (!call.HasAllDevices && (DeviceOf(taskId) is not { } device || !call.Contains(device)))
+            {
+                return Task.FromResult<TaskOutcome?>(null);
+            }
+
+            return call._core is { } core ? Task.FromResult(core.OutcomeOf(taskId)) : Runner.GetOutcomeAsync(taskId, ct);
         }
 
         private ITaskRunner Runner => call._tasks ?? throw Missing("task runner");

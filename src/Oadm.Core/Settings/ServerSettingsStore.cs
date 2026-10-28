@@ -74,7 +74,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.DiscoveryZeroConfSeconds, defaults.ZeroConfSeconds),
             Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin),
             Read(rows, SettingKeys.DevicesWaitingRetryMinutes, defaults.WaitingRetryMinutes),
-            Read(rows, SettingKeys.DevicesAllowBasicOverHttp, defaults.AllowBasicOverHttp));
+            Read(rows, SettingKeys.DevicesAllowBasicOverHttp, defaults.AllowBasicOverHttp),
+            Read(rows, SettingKeys.PollingClockToleranceSeconds, defaults.ClockToleranceSeconds));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -93,6 +94,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(settings.MaxParallelTasksPerPlugin),
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(settings.WaitingRetryMinutes),
             [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(settings.AllowBasicOverHttp),
+            [SettingKeys.PollingClockToleranceSeconds] = JsonSerializer.Serialize(settings.ClockToleranceSeconds),
         };
         foreach (var (key, json) in values)
         {
@@ -159,6 +161,9 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
                 break;
             case SettingKeys.PollingFullRefreshMinutes:
                 RequireInt(key, value, ServerSettings.MinFullRefreshMinutes, ServerSettings.MaxFullRefreshMinutes);
+                break;
+            case SettingKeys.PollingClockToleranceSeconds:
+                RequireInt(key, value, ServerSettings.MinClockToleranceSeconds, ServerSettings.MaxClockToleranceSeconds);
                 break;
             case SettingKeys.UploadsMaxMegabytes:
                 RequireInt(key, value, 1, ServerSettings.MaxUploadsMaxMegabytes);
@@ -264,6 +269,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.TasksMaxParallelPerPlugin] = JsonSerializer.Serialize(d.MaxParallelTasksPerPlugin),
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(d.WaitingRetryMinutes),
             [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(d.AllowBasicOverHttp),
+            [SettingKeys.PollingClockToleranceSeconds] = JsonSerializer.Serialize(d.ClockToleranceSeconds),
         };
     }
 }

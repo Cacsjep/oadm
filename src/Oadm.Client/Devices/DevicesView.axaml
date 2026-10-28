@@ -157,6 +157,17 @@
               <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="96" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="soc" Header="SoC" Width="100*" MinWidth="100" Binding="{Binding Row.Soc}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="architecture" Header="Architecture" Width="100*" MinWidth="100" Binding="{Binding Row.Architecture}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="clock" Header="Clock" Width="140*" MinWidth="140" SortMemberPath="Row.ClockSortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <!-- Colour only while off: Ok is plain text, an off clock gets the warning chip -->
+                    <Panel>
+                      <TextBlock Text="{Binding Row.Clock.Text}" IsVisible="{Binding Row.Clock.IsOk}" ToolTip.Tip="{Binding Row.ClockTooltip}" />
+                      <ui:StatusChip Text="{Binding Row.Clock.Text}" IsVisible="{Binding Row.Clock.IsChip}" ToolTip.Tip="{Binding Row.ClockTooltip}" IsWarning="{Binding Row.Clock.IsWarning}" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTemplateColumn Tag="tags" Header="Tags" Width="150*" MinWidth="90" SortMemberPath="Row.TagsText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">

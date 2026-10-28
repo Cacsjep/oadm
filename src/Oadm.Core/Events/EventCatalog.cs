@@ -40,6 +40,12 @@ public static class BuiltInEvents
     /// <summary>The Any device twin of <see cref="CertificateExpired"/> (PKI's since OADM 4.5, the id stays).</summary>
     public const string AnyCertificateExpired = "oadm.device.any-certificate-expired";
 
+    /// <summary>
+    /// On while at least one device's clock is off (<see cref="Devices.ClockHealth.IsOff(Devices.Device, int)"/>), value
+    /// <see cref="CountField"/>. No per-device twin.
+    /// </summary>
+    public const string AnyClockOff = "oadm.device.any-clock-off";
+
     /// <summary>The value of an "Any device" event: how many devices have the condition.</summary>
     public const string CountField = "count";
 
@@ -59,6 +65,7 @@ public static class BuiltInEvents
         Any(AnyUnreachable, "Any device: unreachable", "At least one device does not answer."),
         Any(AnyCredentialsRequired, "Any device: credentials required", "At least one device rejects the stored login."),
         Any(AnyCertificateChanged, "Any device: certificate changed", "At least one device presents another HTTPS certificate."),
+        Any(AnyClockOff, "Any device: clock off", "The clock of at least one device differs from the server's or is not synced."),
     ];
 
     private static EventTypeInfo Any(string id, string name, string description) =>

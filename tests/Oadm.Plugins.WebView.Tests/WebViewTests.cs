@@ -85,6 +85,36 @@ public sealed class WebViewTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task A_page_of_a_device_another_page_asks_for_opens_in_its_tab()
+    {
+        var (ctx, vm, a, b, _) = Page();
+
+        // An application's own page (Applications): a new tab on that path, the select on Custom with it.
+        ctx.RaiseOpenDevicePage(a.Id, "/local/ax_msf/redirect.html");
+        await Task.Yield();
+        var tab = Assert.Single(vm.Tabs);
+        Assert.Same(tab, vm.ActiveTab);
+        Assert.Equal("/local/ax_msf/redirect.html", tab.Path);
+        Assert.True(vm.SelectedPreset.IsCustom);
+        Assert.Equal("/local/ax_msf/redirect.html", vm.CustomPath);
+        Assert.Equal(ctx.Web.Sessions[0].StartAddress("/local/ax_msf/redirect.html"), tab.Address);
+
+        // A path of a preset takes the preset; the device's open tab is reused.
+        ctx.RaiseOpenDevicePage(a.Id, "/local/objectanalytics/index.html#/");
+        await Task.Yield();
+        Assert.Single(vm.Tabs);
+        Assert.Equal("Object Analytics", vm.SelectedPreset.Name);
+
+        // Paths that leave the device and unknown devices open nothing.
+        ctx.RaiseOpenDevicePage(b.Id, "//evil.example/x");
+        ctx.RaiseOpenDevicePage(b.Id, "/local/../../etc");
+        ctx.RaiseOpenDevicePage(Guid.NewGuid(), "/local/x.html");
+        Assert.Single(vm.Tabs);
+        Assert.False(Oadm.Sdk.Client.DevicePageRequest.IsDevicePath("local/x.html"));
+        Assert.True(Oadm.Sdk.Client.DevicePageRequest.IsDevicePath("/local/x/index.html#/a?b=c"));
+    }
+
+    [Fact]
     public async Task Close_all_closes_every_tab_and_Back_asks_the_active_browser()
     {
         var (ctx, vm, a, b, _) = Page();

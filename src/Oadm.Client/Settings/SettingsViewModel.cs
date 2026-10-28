@@ -190,6 +190,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         Validation
             .Rule(nameof(PollingIntervalSeconds), () => RangeError(PollingIntervalSeconds, 5, 86400))
             .Rule(nameof(FullRefreshMinutes), () => RangeError(FullRefreshMinutes, 1, 1440))
+            .Rule(nameof(ClockToleranceSeconds), () => RangeError(ClockToleranceSeconds, MinClockTolerance, MaxClockTolerance))
             .Rule(nameof(ScanParallelism), () => RangeError(ScanParallelism, 1, 256))
             .Rule(nameof(ScanTimeoutMs), () => RangeError(ScanTimeoutMs, 100, 30000))
             .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, 5, 300))
@@ -203,7 +204,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
 
     private static readonly string[] ServerFields =
     [
-        nameof(PollingIntervalSeconds), nameof(FullRefreshMinutes), nameof(ScanParallelism), nameof(ScanTimeoutMs),
+        nameof(PollingIntervalSeconds), nameof(FullRefreshMinutes), nameof(ClockToleranceSeconds), nameof(ScanParallelism), nameof(ScanTimeoutMs),
         nameof(ZeroConfSeconds), nameof(WaitingRetryMinutes), nameof(MaxParallelTasksPerPlugin), nameof(ServerName), nameof(ListenUrl),
     ];
 
@@ -211,6 +212,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public const int MinParallelTasks = 1;
     public const int MaxParallelTasks = 256;
     public const int DefaultParallelTasks = 16;
+
+    /// <summary>Range and default of Polling.ClockToleranceSeconds (same as the server).</summary>
+    public const int MinClockTolerance = 1;
+    public const int MaxClockTolerance = 3600;
+    public const int DefaultClockTolerance = 2;
 
     /// <summary>Why Save is disabled (tooltip).</summary>
     public string? SaveBlockedReason => Validation.FirstErrorOf(ServerFields);
@@ -245,6 +251,9 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     // server side
     [ObservableProperty] public partial decimal? PollingIntervalSeconds { get; set; } = 60;
     [ObservableProperty] public partial decimal? FullRefreshMinutes { get; set; } = 10;
+
+    /// <summary>Polling.ClockToleranceSeconds: a device clock further from the server's counts as off (1..3600, default 2).</summary>
+    [ObservableProperty] public partial decimal? ClockToleranceSeconds { get; set; } = DefaultClockTolerance;
     [ObservableProperty] public partial decimal? ScanParallelism { get; set; } = 32;
     [ObservableProperty] public partial decimal? ScanTimeoutMs { get; set; } = 1500;
 
@@ -336,6 +345,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         {
             PollingIntervalSeconds = (int)(PollingIntervalSeconds ?? 60),
             FullRefreshMinutes = (int)(FullRefreshMinutes ?? 10),
+            ClockToleranceSeconds = (int)(ClockToleranceSeconds ?? DefaultClockTolerance),
             ScanParallelism = (int)(ScanParallelism ?? 32),
             ScanTimeoutMs = (int)(ScanTimeoutMs ?? 1500),
             ZeroConfSeconds = (int)(ZeroConfSeconds ?? 30),
@@ -369,6 +379,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     {
         PollingIntervalSeconds = settings.PollingIntervalSeconds;
         FullRefreshMinutes = settings.FullRefreshMinutes;
+        ClockToleranceSeconds = settings.HasClockToleranceSeconds ? settings.ClockToleranceSeconds : DefaultClockTolerance; // unset = older server
         ScanParallelism = settings.ScanParallelism;
         ScanTimeoutMs = settings.ScanTimeoutMs;
         ZeroConfSeconds = settings.ZeroConfSeconds > 0 ? settings.ZeroConfSeconds : 30; // 0 = older server without the setting

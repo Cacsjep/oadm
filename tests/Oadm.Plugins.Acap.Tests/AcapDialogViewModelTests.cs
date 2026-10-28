@@ -14,6 +14,9 @@ internal sealed class FakeDialogContext : ITaskDialogContext
     public List<string> Uploads { get; } = [];
     public Exception? UploadFailure { get; set; }
 
+    /// <summary>The start view a page asked for (SDK 0.7.0); null: the usual start.</summary>
+    public string? StartView { get; set; }
+
     public static ListApplicationsResult State(string arch = "aarch64", string fw = "12.11.77", params InstalledApplication[] apps) =>
         new() { Device = new AcapDeviceFacts { Architecture = arch, FirmwareVersion = fw, AllowUnsigned = true }, Applications = apps };
 
@@ -38,13 +41,21 @@ internal sealed class FakeDialogContext : ITaskDialogContext
 
         progress?.Report(0.5);
         progress?.Report(1.0);
-        return Task.FromResult(new UploadedFile("file-1", Path.GetFileName(localPath), new FileInfo(localPath).Length, "ABCDEF"));
+        return Task.FromResult(new UploadedFile("file-" + Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Path.GetFileName(localPath), new FileInfo(localPath).Length, "ABCDEF"));
     }
 }
 
 internal sealed class FakePicker(string? path) : IEapFilePicker
 {
     public Task<string?> PickEapAsync() => Task.FromResult(path);
+}
+
+/// <summary>Picks several .eap files at once (one per architecture).</summary>
+internal sealed class FakeMultiPicker(params string[] paths) : IEapFilePicker
+{
+    public Task<string?> PickEapAsync() => Task.FromResult<string?>(paths.FirstOrDefault());
+
+    public Task<IReadOnlyList<string>> PickEapFilesAsync() => Task.FromResult<IReadOnlyList<string>>(paths);
 }
 
 public sealed class AcapDialogViewModelTests : IDisposable
@@ -264,6 +275,45 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.Equal(InstallKind.Upgrade, payload.Kind);
         Assert.Equal("Upgrade " + payload.AppDisplayName + " to 1.2.0", new AcapTaskPlugin().GetTaskName(closed));
     }
+
+    [Theory]
+    [InlineData("1.3")]
+    [InlineData("2.1")]
+    public async Task The_package_facts_show_the_manifest_schema_version(string schema)
+    {
+        var d1 = new FakeDevice();
+        var ctx = new FakeDialogContext();
+        ctx.Devices[d1.Id] = FakeDialogContext.State();
+        var vm = new AcapDialogViewModel(ctx, [d1], new FakePicker(WriteEap(EapBuilder.Manifest(schema: schema))));
+        await vm.InitializeAsync();
+
+        await vm.PickPackageCommand.ExecuteAsync(null);
+
+        Assert.Equal(schema, AcapDialogViewModel.ManifestOf(vm.Package!));
+        Assert.Contains("Manifest " + schema, vm.PackageDetails, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_package_without_manifest_json_shows_package_conf_as_its_manifest()
+    {
+        var d1 = new FakeDevice();
+        var ctx = new FakeDialogContext();
+        ctx.Devices[d1.Id] = FakeDialogContext.State(arch: "armv7hf");
+        var path = Path.Combine(_dir, Guid.NewGuid().ToString("N") + ".eap");
+        File.WriteAllBytes(path, EapBuilder.Build(("./package.conf", EapBuilder.PackageConf())));
+        var vm = new AcapDialogViewModel(ctx, [d1], new FakePicker(path));
+        await vm.InitializeAsync();
+
+        await vm.PickPackageCommand.ExecuteAsync(null);
+
+        Assert.Equal("package.conf", AcapDialogViewModel.ManifestOf(vm.Package!));
+        Assert.Contains("Manifest package.conf", vm.PackageDetails, StringComparison.Ordinal);
+        Assert.DoesNotContain("AXIS OS", vm.PackageDetails, StringComparison.Ordinal); // no range: no fact, no new warning
+    }
+
+    [Fact]
+    public void A_manifest_json_without_a_schema_version_shows_no_manifest_value() =>
+        Assert.Null(AcapDialogViewModel.ManifestOf(new EapManifest { AppName = "hello", Version = "1.0.0", Source = "manifest.json" }));
 
     [Fact]
     public async Task Downgrade_option_rechecks_compatibility()

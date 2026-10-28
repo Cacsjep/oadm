@@ -66,7 +66,7 @@
     <Border DockPanel.Dock="Right" Width="560" Classes="card" Margin="0,0,16,0" IsVisible="{Binding IsLicenseMode}">
       <Grid RowDefinitions="Auto,*,Auto">
         <ui:CardHeader Grid.Row="0" Title="{Binding LicenseTitle}" Description="{Binding LicenseFilesText}">
-          <ui:ToolbarButton Text="Choose other keys" IconKey="key" Command="{Binding PickLicenseKeysCommand}" />
+          <ui:ToolbarButton Text="{Binding ChooseKeysText}" IconKey="key" Command="{Binding PickLicenseKeysCommand}" />
         </ui:CardHeader>
         <DataGrid Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding LicenseRows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
@@ -89,6 +89,7 @@
         </DataGrid>
         <StackPanel Grid.Row="2" Classes="form" Margin="0,10,0,0">
           <ui:StatusChip IsWarning="True" Text="{Binding LicenseProblemText}" MaxLines="3" IsVisible="{Binding HasLicenseProblems}" />
+          <TextBlock Classes="secondary" Text="{Binding LicenseHint}" IsVisible="{Binding HasLicenseHint}" />
           <TextBlock Classes="secondary" Text="{Binding LicenseSummary}" />
         </StackPanel>
       </Grid>
@@ -122,7 +123,7 @@
           <Button Classes="toolbar" Command="{Binding RefreshCommand}">
             <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
           </Button>
-          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="Choose an ACAP package (.eap) to install on the selected devices" IsVisible="{Binding MayInstall}">
+          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="One .eap file per architecture" IsVisible="{Binding MayInstall}">
             <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade" />
           </Button>
           <Button Classes="toolbar" Command="{Binding LicenseSelectionCommand}" ToolTip.Tip="{Binding LicenseSelectionBlockedReason}" ToolTip.ShowOnDisabled="True" IsVisible="{Binding MayLicense}">

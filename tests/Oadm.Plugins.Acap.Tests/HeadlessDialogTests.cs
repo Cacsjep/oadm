@@ -35,7 +35,9 @@ public sealed class HeadlessDialogTests
     public async Task Dialog_renders_installed_apps_and_package_check()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var eapPath = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N") + ".eap");
+        var dir = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var eapPath = Path.Combine(dir, "Missing_Features_3_9_0_aarch64.eap");
         // Synchronous on purpose: awaiting before StartNew moves the test to a pool thread and the
         // session's Dispose then deadlocks.
         File.WriteAllBytes(eapPath,EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.0", schema: "1.8.0", osMin: "11.11", osMax: "99")));
@@ -46,6 +48,10 @@ public sealed class HeadlessDialogTests
         var recorded = ApplicationApiClient.ParseList(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "list-p3265v-12.11.xml")));
         ctx.Devices[d1.Id] = new ListApplicationsResult { Device = new AcapDeviceFacts { Architecture = "aarch64", FirmwareVersion = "12.11.77", AllowUnsigned = true }, Applications = recorded };
         ctx.Devices[d2.Id] = FakeDialogContext.State(arch: "armv7hf", fw: "11.11.124");
+        var arm64Path = Path.Combine(dir, "Missing_Features_3_9_1_aarch64.eap");
+        var armv7Path = Path.Combine(dir, "Missing_Features_3_9_1_armv7hf.eap");
+        File.WriteAllBytes(arm64Path, EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.1", schema: "1.3", architecture: "aarch64")));
+        File.WriteAllBytes(armv7Path, EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.1", schema: "1.3", architecture: "armv7hf")));
         var keyPath = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N") + ".key");
         File.WriteAllText(keyPath, LicenseKeyTests.Key());
 
@@ -78,14 +84,43 @@ public sealed class HeadlessDialogTests
             vm.RemoveCommand.Execute(null);
             Pump();
             Capture(window, outDir, "acap-dialog-remove-confirm.png");
+            vm.CancelRemoveCommand.Execute(null);
+
+            // One package per architecture: each device gets its build.
+            await vm.LoadPackagesAsync([arm64Path, armv7Path]);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-several.png");
+            Assert.Equal(["aarch64 build", "armv7hf build"], vm.Compatibility.Select(r => r.Details));
+
+            await vm.LoadPackagesAsync([arm64Path, eapPath]);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-refused.png");
+            Assert.NotNull(vm.PackageError);
+
+            await vm.LoadPackagesAsync([arm64Path, armv7Path]);
             var result = (vm.Applications.Count, vm.Compatibility.Count);
             window.Close();
+
+            // Install licenses of the Applications page: the dialog opens on its license part.
+            var licenseCtx = new FakeDialogContext { StartView = AcapDialogViewModel.LicenseView };
+            licenseCtx.Devices[d1.Id] = ctx.Devices[d1.Id];
+            licenseCtx.Devices[d2.Id] = ctx.Devices[d2.Id];
+            var licenseWindow = new AcapWindow();
+            var licenseVm = new AcapDialogViewModel(licenseCtx, [d1, d2], new FakePicker(eapPath)) { Today = () => new DateOnly(2026, 10, 13) };
+            licenseWindow.Attach(licenseVm);
+            licenseVm.UseKeyPicker(new KeyPicker([keyPath]));
+            licenseWindow.Show();
+            await licenseVm.InitializeAsync();
+            Pump();
+            Assert.True(licenseVm.IsLicenseMode);
+            Capture(licenseWindow, outDir, "followup-acap-license-start.png");
+            licenseWindow.Close();
             return result;
         }, CancellationToken.None);
 
         Assert.Equal(8, rows);
         Assert.Equal(2, compat);
-        File.Delete(eapPath);
+        Directory.Delete(dir, recursive: true);
         File.Delete(keyPath);
     }
 

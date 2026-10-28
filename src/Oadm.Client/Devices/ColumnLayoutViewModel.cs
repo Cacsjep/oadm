@@ -37,6 +37,9 @@ public sealed class ColumnLayoutViewModel
     /// <summary>The Architecture column ("aarch64"), off until turned on in the column chooser.</summary>
     public const string ArchitectureKey = "architecture";
 
+    /// <summary>The DHCP column (Yes / No), off until turned on in the column chooser.</summary>
+    public const string DhcpKey = "dhcp";
+
     /// <summary>Default columns in the order of the spec table.</summary>
     public static IReadOnlyList<(string Key, string Header)> DefaultColumns { get; } =
     [
@@ -49,9 +52,10 @@ public sealed class ColumnLayoutViewModel
         ("firmware", "Firmware"),
         ("soc", "SoC"),
         (ArchitectureKey, "Architecture"),
+        ("clock", "Clock"),
         ("tags", "Tags"),
         ("site", "Site"),
-        ("dhcp", "DHCP"),
+        (DhcpKey, "DHCP"),
         ("https", "HTTPS"),
         ("certExpires", "Certificate expires"),
         ("certTrust", "Certificate"),
@@ -100,8 +104,8 @@ public sealed class ColumnLayoutViewModel
         }
     }
 
-    /// <summary>Every column shows by default except Compliance and Architecture (turned on in the column chooser).</summary>
-    public static bool DefaultVisible(string key) => key is not (ComplianceKey or ArchitectureKey);
+    /// <summary>Every column shows by default except Compliance, Architecture and DHCP (turned on in the column chooser).</summary>
+    public static bool DefaultVisible(string key) => key is not (ComplianceKey or ArchitectureKey or DhcpKey);
 
     /// <summary>The device grid shows one column per compliance check, persisted per client.</summary>
     public bool ExpandCompliance

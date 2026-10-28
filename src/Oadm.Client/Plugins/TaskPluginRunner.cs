@@ -18,7 +18,12 @@ public sealed partial class TaskPluginRunner(
     public static string OwnerName => $"{Environment.UserName}@{Environment.MachineName}";
 
     /// <returns>The task ids (one per device), or null when nothing was started (cancelled dialog, missing dialog, error).</returns>
-    public async Task<IReadOnlyList<string>?> RunAsync(TaskPluginInfo plugin, IReadOnlyList<DeviceRowViewModel> devices, CancellationToken ct)
+    public Task<IReadOnlyList<string>?> RunAsync(TaskPluginInfo plugin, IReadOnlyList<DeviceRowViewModel> devices, CancellationToken ct) =>
+        RunAsync(plugin, devices, null, ct);
+
+    /// <summary>The run with the dialog opened on <paramref name="startView"/> (a core plugin page's <c>RunTaskAsync</c> with a start view).</summary>
+    /// <returns>The task ids (one per device), or null when nothing was started (cancelled dialog, missing dialog, error).</returns>
+    public async Task<IReadOnlyList<string>?> RunAsync(TaskPluginInfo plugin, IReadOnlyList<DeviceRowViewModel> devices, string? startView, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(plugin);
         ArgumentNullException.ThrowIfNull(devices);
@@ -41,7 +46,7 @@ public sealed partial class TaskPluginRunner(
 
             try
             {
-                var result = await dialogs.ShowTaskPluginDialogAsync(dialog, devices).ConfigureAwait(true);
+                var result = await dialogs.ShowTaskPluginDialogAsync(dialog, devices, startView).ConfigureAwait(true);
                 payload = result?.PayloadJson;
                 if (result is not null)
                 {

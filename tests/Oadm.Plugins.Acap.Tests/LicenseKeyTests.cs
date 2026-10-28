@@ -334,6 +334,62 @@ public sealed class LicenseKeyTests : IDisposable
         Assert.Equal("B8A44F631339", Assert.Single(payload.LicenseKeys).DeviceId);
     }
 
+    private static InstalledApplication Paid() =>
+        new() { Name = "ax_msf", NiceName = "Missing Features", Vendor = "Axis", Version = "1.0", Status = "Running", License = "Missing", ApplicationId = "415090" };
+
+    [Fact]
+    public async Task The_license_start_view_opens_the_license_part_and_waits_for_the_application()
+    {
+        var device = new FakeDevice { Serial = "B8A44F631339" };
+        var ctx = new FakeDialogContext { StartView = AcapDialogViewModel.LicenseView };
+        ctx.Devices[device.Id] = FakeDialogContext.State(apps:
+            [new InstalledApplication { Name = "objectanalytics", NiceName = "AXIS Object Analytics", Version = "1.26", License = "None" }, Paid()]);
+        var vm = new AcapDialogViewModel(ctx, [device], new FakePicker(null)) { Today = () => Today };
+        vm.UseKeyPicker(new KeyPicker([WriteKey("B8A44F631339")]));
+        await vm.InitializeAsync();
+
+        Assert.True(vm.IsLicenseMode);
+        Assert.False(vm.ShowPackageCard);
+        Assert.Null(vm.LicenseApplication);
+        Assert.Equal("Select the application in the list.", vm.LicenseHint);
+        Assert.Equal("Choose license keys", vm.ChooseKeysText);
+        Assert.Empty(vm.LicenseRows); // nothing said about keys before files are chosen
+        Assert.False(vm.InstallLicenseCommand.CanExecute(null));
+
+        vm.SelectedApplication = vm.Applications.Single(a => a.PackageName == "objectanalytics"); // needs no license: not taken
+        Assert.Null(vm.LicenseApplication);
+        vm.SelectedApplication = vm.Applications.Single(a => a.PackageName == "ax_msf");
+        Assert.Equal("License of Missing Features", vm.LicenseTitle);
+        Assert.Equal("Choose the license keys of the application.", vm.LicenseHint);
+
+        await vm.PickLicenseKeysCommand.ExecuteAsync(null);
+        Assert.Null(vm.LicenseHint);
+        Assert.Equal("Choose other keys", vm.ChooseKeysText);
+        Assert.Equal("Key found", Assert.Single(vm.LicenseRows).Verdict);
+        Assert.True(vm.InstallLicenseCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_license_start_view_with_an_application_selects_it_and_unknown_views_start_as_usual()
+    {
+        var device = new FakeDevice { Serial = "B8A44F631339" };
+        var ctx = new FakeDialogContext { StartView = AcapDialogViewModel.LicenseView + ":ax_msf" };
+        ctx.Devices[device.Id] = FakeDialogContext.State(apps: [Paid()]);
+        var vm = new AcapDialogViewModel(ctx, [device], new FakePicker(null));
+        await vm.InitializeAsync();
+        Assert.True(vm.IsLicenseMode);
+        Assert.Equal("ax_msf", vm.LicenseApplication?.PackageName);
+        Assert.Same(vm.LicenseApplication, vm.SelectedApplication);
+
+        // A view the dialog does not know, or none: the usual start.
+        foreach (var view in new[] { "packages", null })
+        {
+            var usual = new AcapDialogViewModel(new FakeDialogContext { StartView = view, Devices = { [device.Id] = FakeDialogContext.State(apps: [Paid()]) } }, [device], new FakePicker(null));
+            await usual.InitializeAsync();
+            Assert.False(usual.IsLicenseMode);
+        }
+    }
+
     [Fact]
     public async Task An_application_that_needs_no_license_says_so_and_offers_no_key()
     {

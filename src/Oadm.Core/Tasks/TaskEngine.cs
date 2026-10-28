@@ -397,6 +397,29 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// <summary>Whether the task is queued or running.</summary>
     public bool? IsActive(Guid taskId) => _active.ContainsKey(taskId);
 
+    /// <summary>How an ended task ended and its device's message; null while it is active and for an unknown task.</summary>
+    public async Task<Sdk.Tasks.TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct) =>
+        _active.ContainsKey(taskId) ? null : OutcomeOf(await _store.GetAsync(taskId, ct).ConfigureAwait(false));
+
+    /// <summary>The outcome of an ended task record; null for none or one that has not ended.</summary>
+    internal static Sdk.Tasks.TaskOutcome? OutcomeOf(TaskRecord? record)
+    {
+        if (record is null || !record.State.IsTerminal())
+        {
+            return null;
+        }
+
+        var state = record.State switch
+        {
+            TaskState.DoneWithWarnings => Sdk.Tasks.TaskEndState.DoneWithWarnings,
+            TaskState.Failed => Sdk.Tasks.TaskEndState.Failed,
+            TaskState.Cancelled => Sdk.Tasks.TaskEndState.Cancelled,
+            _ => Sdk.Tasks.TaskEndState.Done,
+        };
+        var message = record.Devices.Count > 0 ? record.Devices[0].Message : null;
+        return new Sdk.Tasks.TaskOutcome(record.DeviceId, state, string.IsNullOrWhiteSpace(message) ? null : message);
+    }
+
     /// <summary>Cancels the task only when <paramref name="userId"/> started it (<c>call.Tasks</c> of a user with a device group).</summary>
     internal bool CancelOwn(Guid taskId, Guid userId) =>
         _active.TryGetValue(taskId, out var task) && task.Caller?.UserId == userId && task.Cancel();

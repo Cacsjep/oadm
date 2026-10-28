@@ -8,4 +8,7 @@ public static class AcapPermissions
     public const string StartStop = "startStop";
     public const string Remove = "remove";
     public const string License = "license";
+
+    /// <summary>Change the settings an application registered.</summary>
+    public const string Settings = "settings";
 }

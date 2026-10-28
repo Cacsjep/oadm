@@ -24,6 +24,8 @@
          (Avalonia, DataGrid, CommunityToolkit, SDK) that the plugin projects compile against only. -->
     <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Acap\Oadm.Plugins.Acap.csproj" />
+    <!-- The real VAPIX client of the opt-in hardware write test (SettingsHardwareWriteTests). -->
+    <ProjectReference Include="..\..\src\Oadm.Core\Oadm.Core.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Acap.Client\Oadm.Plugins.Acap.Client.csproj" />
   </ItemGroup>
 

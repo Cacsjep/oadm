@@ -71,6 +71,14 @@ public interface ITaskDialogContext
     /// </summary>
     Task<IReadOnlyList<TaskRunState>> RunTaskAsync(IReadOnlyList<Guid> deviceIds, string? payloadJson, IProgress<IReadOnlyList<TaskRunState>>? progress, CancellationToken ct) =>
         throw new NotSupportedException("This OADM cannot run tasks from a dialog.");
+
+    /// <summary>
+    /// The part of the dialog to open on (SDK 0.7.0), as the page that opened it asked
+    /// (<see cref="ICorePluginClientContext.RunTaskAsync(string, IReadOnlyList{Guid}, string?, CancellationToken)"/>): a name
+    /// the dialog itself defines, e.g. "license" for the license keys of the Applications dialog. Null (the default, the
+    /// context menu, older hosts): the dialog's usual start. A dialog ignores names it does not know.
+    /// </summary>
+    string? StartView => null;
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>
@@ -199,6 +207,51 @@ public interface ICorePluginClientContext
     bool? IsPluginOn(string packageId) => null;
 
     /// <summary>
+    /// Runs a task plugin on <paramref name="deviceIds"/> like the context menu does: its dialog first when it has one
+    /// (with every check of that dialog), then one task per device. Returns the task ids, or null when nothing was started
+    /// (closed, the role lacks the task, devices outside the user's group left out). SDK 0.7.0; older hosts throw
+    /// <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, CancellationToken ct) =>
+        throw new NotSupportedException("This host cannot run tasks from a page.");
+
+    /// <summary>
+    /// <see cref="RunTaskAsync(string, IReadOnlyList{Guid}, CancellationToken)"/> with the dialog opened on
+    /// <paramref name="startView"/> (SDK 0.7.0, <see cref="ITaskDialogContext.StartView"/>), e.g. "license" for the license
+    /// keys of the Applications dialog. Default: the run without a start view (the dialog's usual start).
+    /// </summary>
+    Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? startView, CancellationToken ct) =>
+        RunTaskAsync(pluginId, deviceIds, ct);
+
+    /// <summary>
+    /// Uploads a local file to the server (256 KB chunks) like <see cref="ITaskDialogContext.UploadAsync"/>: a page that starts
+    /// tasks through its server part puts the returned id into their payload, the task reads it by id
+    /// (<c>IUploadedFiles</c>). <paramref name="progress"/> receives the fraction sent, from 0.0 to 1.0. SDK 0.7.0; older hosts
+    /// throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<Oadm.Sdk.Plugins.UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct) =>
+        throw new NotSupportedException("This host cannot upload files from a page.");
+
+    /// <summary>
+    /// Opens <paramref name="path"/> of a device's web interface ("/local/objectanalytics/index.html") in the Web View page
+    /// (SDK 0.7.0): the host shows that page and raises <see cref="OpenDevicePageRequested"/> on it. False when nothing opens:
+    /// Web View is off or not allowed for the role, the device is not in the client's device list, or the path does not
+    /// stay on the device (it must start with one "/", without "\", "..", spaces or control characters). Default (older
+    /// hosts): false.
+    /// </summary>
+    bool OpenDevicePage(Guid deviceId, string path) => false;
+
+    /// <summary>
+    /// The host asks the page to open a page of a device's web interface (SDK 0.7.0, raised on the Web View page by
+    /// <see cref="OpenDevicePage"/> of another page). Default (older hosts): never raised.
+    /// </summary>
+    event EventHandler<DevicePageRequest>? OpenDevicePageRequested
+    {
+        add { }
+        remove { }
+    }
+
+    /// <summary>
     /// The host asks the page to open a device; the argument is the device's id. Web View uses it: the address link and
     /// "Open web interface" of a device at a site open the device there (the user's computer usually cannot reach the
     /// site). Default (older hosts): never raised.
@@ -276,4 +329,19 @@ public interface ICorePluginClientContext
     void SetLocalSetting(string key, string? value)
     {
     }
+}
+
+/// <summary>A page of a device's web interface to open (<see cref="ICorePluginClientContext.OpenDevicePageRequested"/>, SDK 0.7.0).</summary>
+/// <param name="DeviceId">The device.</param>
+/// <param name="Path">The path on the device, starting with "/" (checked by the host).</param>
+public sealed record DevicePageRequest(Guid DeviceId, string Path)
+{
+    /// <summary>
+    /// Whether <paramref name="path"/> stays on the device: one leading "/", no "//", "\", ".." segment, spaces or control
+    /// characters.
+    /// </summary>
+    public static bool IsDevicePath(string? path) =>
+        path is { Length: > 0 } && path[0] == '/' && !path.StartsWith("//", StringComparison.Ordinal)
+        && !path.Contains('\\', StringComparison.Ordinal) && !path.Any(c => char.IsControl(c) || c == ' ')
+        && !path.Split('?', '#')[0].Split('/').Contains("..", StringComparer.Ordinal);
 }

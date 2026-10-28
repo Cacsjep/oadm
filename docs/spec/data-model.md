@@ -11,7 +11,10 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   Dot1xEnabled, UpnpFriendlyName, ServerName, Status (enum below), Scheme (http/https),
   ProductType (raw basicdeviceinfo ProdType, e.g. "Dome Camera"), Soc (raw basicdeviceinfo Soc, e.g. "Axis Artpec-8",
   max 64, migration `DeviceSoc`; proto `soc = 29`), Architecture (raw basicdeviceinfo Architecture, e.g. "aarch64", max 32,
-  migration `DeviceArchitecture`; proto `architecture = 33`), Category (enum below),
+  migration `DeviceArchitecture`; proto `architecture = 33`), ClockOffsetMs (nullable int, device minus server clock in ms
+  from the status poll's Date header) and NtpState (Unknown, Synced, NotSynced, Off as text, from getNTPInfo; migration
+  `DeviceClock`; proto `clock_offset_ms = 35`, `ntp_state = 36`; `clock_off = 37` and `clock_beyond_tolerance = 38` computed
+  with `Polling.ClockToleranceSeconds`, never stored; docs/spec/main-window.md "Clock"), Category (enum below),
   HasVideo (derived from Category, not stored),
   CertFingerprintSha256 (nullable), CertNotAfterUtc (nullable), CertTrust (enum below),
   CertSubject, CertIssuer, CertNameMatches (nullable bool, address in SAN; stored, not shown

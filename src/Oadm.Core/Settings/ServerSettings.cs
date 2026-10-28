@@ -5,6 +5,12 @@ public static class SettingKeys
 {
     public const string PollingIntervalSeconds = "Polling.IntervalSeconds";
     public const string PollingFullRefreshMinutes = "Polling.FullRefreshMinutes";
+
+    /// <summary>
+    /// A device clock that differs more from the server's counts as off (Clock column, the event Any device: clock off).
+    /// Int, default 2, 1..3600. Read live (<see cref="Devices.ClockTolerance"/>).
+    /// </summary>
+    public const string PollingClockToleranceSeconds = "Polling.ClockToleranceSeconds";
     public const string ScanParallelism = "Scan.Parallelism";
     public const string ScanTimeoutMs = "Scan.TimeoutMs";
     public const string ServerName = "Server.Name";
@@ -98,12 +104,16 @@ public sealed record ServerSettings(
     int ZeroConfSeconds = ServerSettings.DefaultZeroConfSeconds,
     int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin,
     int WaitingRetryMinutes = ServerSettings.DefaultWaitingRetryMinutes,
-    bool AllowBasicOverHttp = false)
+    bool AllowBasicOverHttp = false,
+    int ClockToleranceSeconds = ServerSettings.DefaultClockToleranceSeconds)
 {
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
     public const int MinFullRefreshMinutes = 1;
     public const int MaxFullRefreshMinutes = 1440;
+    public const int DefaultClockToleranceSeconds = 2;
+    public const int MinClockToleranceSeconds = 1;
+    public const int MaxClockToleranceSeconds = 3600;
     public const int DefaultScanParallelism = 32;
     public const int DefaultScanTimeoutMs = 1500;
     public const string DefaultListenUrl = "https://0.0.0.0:5080";

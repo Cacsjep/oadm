@@ -19,6 +19,13 @@ public static class BuiltInComplianceTypes
     /// <summary>The certificate check's "Days left at least" (a new check's default: PKI's Expiry warning days, else 30).</summary>
     public const string CertificateDaysField = "days";
     public const string FirmwareId = "oadm.compliance.firmware";
+    public const string ClockId = "oadm.compliance.clock";
+
+    /// <summary>The clock check's "Allowed difference (s)" (default 2, 1..3600).</summary>
+    public const string ClockAllowedSecondsField = "allowedSeconds";
+
+    /// <summary>The clock check's "NTP must be synced" (default on).</summary>
+    public const string ClockNtpSyncedField = "ntpSynced";
 
     /// <summary>Fixed ids of the default checks, created at the first start.</summary>
     public static readonly Guid ReachableCheckId = new("6d0a7c52-6f8e-4c4b-9a51-0c0a3b1f0001");
@@ -26,7 +33,7 @@ public static class BuiltInComplianceTypes
     public static readonly Guid LoginWorksCheckId = new("6d0a7c52-6f8e-4c4b-9a51-0c0a3b1f0002");
 
     public static readonly IReadOnlyList<IComplianceCheckType> All =
-        [new ReachableType(), new LoginWorksType(), new CertificateType(), new FirmwareType()];
+        [new ReachableType(), new LoginWorksType(), new CertificateType(), new FirmwareType(), new ClockType()];
 
     /// <summary>The default checks: id, name, type.</summary>
     public static readonly IReadOnlyList<(Guid Id, string Name, string TypeId)> Defaults =
@@ -274,5 +281,74 @@ public static class BuiltInComplianceTypes
                 ? ComplianceResult.Passed("AXIS OS " + device.FirmwareVersion)
                 : ComplianceResult.Failed("AXIS OS " + device.FirmwareVersion + ", needs " + invocation.Get("minimum")!.Trim());
         }
+    }
+
+    private sealed class ClockType : CachedType
+    {
+        private const int DefaultSeconds = Settings.ServerSettings.DefaultClockToleranceSeconds;
+
+        public override string Id => ClockId;
+
+        public override string DisplayName => "Clock";
+
+        public override string IconKey => "clock";
+
+        public override string? Description => "The device clock matches the server's.";
+
+        public override ComplianceSeverity DefaultSeverity => ComplianceSeverity.Warning;
+
+        public override IReadOnlyList<ActionField> Fields =>
+        [
+            ActionField.Number(ClockAllowedSecondsField, "Allowed difference (s)", Settings.ServerSettings.MinClockToleranceSeconds,
+                Settings.ServerSettings.MaxClockToleranceSeconds, DefaultSeconds),
+            ActionField.Bool(ClockNtpSyncedField, "NTP must be synced", defaultValue: true),
+        ];
+
+        public override string Describe(JsonElement settings)
+        {
+            var invocation = new ComplianceInvocation(Guid.Empty, string.Empty, settings);
+            var text = string.Create(CultureInfo.InvariantCulture, $"Clock within {Allowed(invocation)} s");
+            return NtpRequired(invocation) ? text + ", NTP synced" : text;
+        }
+
+        protected override ComplianceResult Evaluate(IDeviceInfo device, ComplianceInvocation invocation, DateTimeOffset now)
+        {
+            if (device.Status != DeviceStatus.Ok)
+            {
+                return new ComplianceResult(ComplianceOutcome.NotChecked, DeviceMessages.Refusal(device, refuseUnreachable: true) ?? device.Status.ToString());
+            }
+
+            if (device is not Devices.Device row || row.ClockOffsetMs is not { } offset)
+            {
+                return new ComplianceResult(ComplianceOutcome.NotChecked, "Not measured yet");
+            }
+
+            if (Devices.ClockHealth.IsBeyondTolerance(offset, Allowed(invocation)))
+            {
+                return ComplianceResult.Failed(Devices.ClockHealth.OffsetText(offset));
+            }
+
+            if (NtpRequired(invocation) && row.NtpState is Devices.NtpState.NotSynced)
+            {
+                return ComplianceResult.Failed("NTP not synced");
+            }
+
+            if (NtpRequired(invocation) && row.NtpState is Devices.NtpState.Off)
+            {
+                return ComplianceResult.Failed("NTP off");
+            }
+
+            return ComplianceResult.Passed(Devices.ClockHealth.OffsetText(offset));
+        }
+
+        private static int Allowed(ComplianceInvocation invocation) =>
+            invocation.GetInt(ClockAllowedSecondsField) is { } seconds
+                && seconds is >= Settings.ServerSettings.MinClockToleranceSeconds and <= Settings.ServerSettings.MaxClockToleranceSeconds
+                ? seconds
+                : DefaultSeconds;
+
+        // A check saved without the field keeps the default (on).
+        private static bool NtpRequired(ComplianceInvocation invocation) =>
+            invocation.Get(ClockNtpSyncedField) is not { } value || !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
     }
 }

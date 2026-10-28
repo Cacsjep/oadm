@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+        x:Class="Oadm.Plugins.AppManagement.Client.AppLogWindow"
+        x:DataType="vm:AppLogViewModel"
+        Title="{Binding Title}"
+        Width="1100" Height="680"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Show log: one application's lines on one device, newest last (read only). Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the log again" />
+            <ui:ToolbarButton IconKey="copy" Text="Copy" Command="{Binding CopyCommand}" ToolTip.Tip="Copy the shown lines" />
+          </StackPanel>
+          <ui:SearchBox Grid.Column="2" Width="260" Text="{Binding SearchText}" Placeholder="Search the log" />
+        </Grid>
+        <StackPanel Grid.Row="1" Spacing="4">
+          <TextBlock Classes="secondary" Margin="0,0,0,8" Text="{x:Static vm:AppLogViewModel.Truncated}" IsVisible="{Binding IsTruncated}" />
+          <TextBlock Classes="error" Margin="0,0,0,8" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+        </StackPanel>
+        <Panel Grid.Row="2">
+          <!-- Like the server log of the Logs page: one row per line, the level as the status icon only (its text as tooltip). Virtualized. -->
+          <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="False" CanUserReorderColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="vm:AppLogRow" />
+              <DataGridTemplateColumn Header="Level" Width="80" CanUserResize="False">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:AppLogRow">
+                    <ui:StatusChip IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" IsInfo="{Binding IsInfo}"
+                                   IsVisible="{Binding HasIcon}" ToolTip.Tip="{Binding Level}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Process" Width="140" Binding="{Binding Process}" x:DataType="vm:AppLogRow" />
+              <DataGridTemplateColumn Header="Message" Width="*">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:AppLogRow">
+                    <TextBlock Text="{Binding Message}" ToolTip.Tip="{Binding Message}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+          <ui:LoadingOverlay Text="Reading the log" IsVisible="{Binding IsLoading}" />
+        </Panel>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CloseCommand}" CancelText="Close" />
+  </Grid>
+</Window>

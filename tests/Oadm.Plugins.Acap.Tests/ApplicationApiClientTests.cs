@@ -35,6 +35,34 @@ public sealed class ApplicationApiClientTests
     }
 
     [Fact]
+    public void The_own_page_of_an_application_is_read_from_the_recorded_list()
+    {
+        var apps = ApplicationApiClient.ParseList(Fixture("list-p3265v-12.11.xml"));
+
+        var msf = apps.Single(a => a.Name == "ax_msf");
+        Assert.Equal("local/ax_msf/redirect.html", msf.ConfigurationPage);
+        Assert.Equal("/local/ax_msf/redirect.html", msf.ConfigurationPath);
+        Assert.Equal("/local/fflprapp/setup.html", apps.Single(a => a.Name == "fflprapp").ConfigurationPath);
+        var simulator = apps.Single(a => a.Name == "lpv_simulator"); // lists no page
+        Assert.Null(simulator.ConfigurationPage);
+        Assert.Null(simulator.ConfigurationPath);
+
+        // Carried to the page in the JSON of the query and the page's rows.
+        var copy = System.Text.Json.JsonSerializer.Deserialize<InstalledApplication>(System.Text.Json.JsonSerializer.Serialize(msf, AcapPlugin.Json), AcapPlugin.Json)!;
+        Assert.Equal("/local/ax_msf/redirect.html", copy.ConfigurationPath);
+    }
+
+    [Theory]
+    [InlineData("http://evil.example/x")]
+    [InlineData("//evil.example/x")]
+    [InlineData("local/../../axis-cgi/admin/systemlog.cgi")]
+    [InlineData("local\\x.html")]
+    [InlineData("local/a b.html")]
+    [InlineData("")]
+    public void A_page_that_would_leave_the_device_is_not_offered(string page) =>
+        Assert.Null(new InstalledApplication { Name = "x", ConfigurationPage = page }.ConfigurationPath);
+
+    [Fact]
     public void Error_reply_from_list_throws()
     {
         var ex = Assert.Throws<AcapDeviceException>(() => ApplicationApiClient.ParseList("<reply result=\"error\"><error type=\"1\" message=\"boom\" /></reply>"));

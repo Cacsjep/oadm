@@ -32,7 +32,13 @@ public enum AcapAction
 
     /// <summary>Install license keys for an installed application (key files only, matched by MAC address).</summary>
     InstallLicense = 4,
+
+    /// <summary>Change the settings an installed application registered (<see cref="AcapPayload.Values"/>).</summary>
+    Settings = 5,
 }
+
+/// <summary>One uploaded package of an install with several packages: one per architecture.</summary>
+public sealed record AcapPackageFile(string FileId, string? Sha256 = null, string? Architecture = null);
 
 /// <summary>Task payload produced by the dialog. Contains no passwords; license keys are kept in memory like every payload.</summary>
 public sealed record AcapPayload
@@ -47,6 +53,27 @@ public sealed record AcapPayload
 
     /// <summary>Install: SHA-256 of the uploaded file as reported by the upload (upper hex).</summary>
     public string? Sha256 { get; init; }
+
+    /// <summary>
+    /// Install with several packages of the same application and version, one per architecture; each device gets the one of
+    /// its architecture. Null or empty = the single <see cref="FileId"/> (older payloads).
+    /// </summary>
+    public IReadOnlyList<AcapPackageFile>? Files { get; init; }
+
+    /// <summary>
+    /// Settings: the new values by name below the application's group ("ONVIFEvents"). Kept in memory only like every
+    /// payload; never in a log, a step text or the task name.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Values { get; init; }
+
+    /// <summary>At most this many packages in one install.</summary>
+    public const int MaxFiles = 16;
+
+    /// <summary>The packages of an install: <see cref="Files"/>, else the single <see cref="FileId"/>.</summary>
+    public IReadOnlyList<AcapPackageFile> AllFiles() =>
+        Files is { Count: > 0 } files ? files
+        : string.IsNullOrWhiteSpace(FileId) ? []
+        : [new AcapPackageFile(FileId, Sha256)];
 
     /// <summary>Install: package version read in the dialog (cross-checked against the server-side read).</summary>
     public string? Version { get; init; }
@@ -90,6 +117,7 @@ public sealed record AcapPayload
             AcapAction.Install when Kind == InstallKind.Upgrade && version is not null => $"Upgrade {app} to {version}{WithLicense}",
             AcapAction.Install => (version is null ? $"Install {app}" : $"Install {app} {version}") + WithLicense,
             AcapAction.InstallLicense => $"Install license of {app}",
+            AcapAction.Settings => $"Change settings of {app}",
             AcapAction.Remove => $"Remove {app}",
             AcapAction.Start => $"Start {app}",
             _ => $"Stop {app}",
@@ -181,10 +209,7 @@ public sealed record AcapPayload
 
         if (payload.Action == AcapAction.Install)
         {
-            if (string.IsNullOrWhiteSpace(payload.FileId))
-            {
-                throw new ArgumentException("Install needs an uploaded package. Nothing was changed.", nameof(json));
-            }
+            ValidateFiles(payload, json);
         }
         else if (!EapReader.IsValidAppName(payload.Application))
         {
@@ -202,7 +227,47 @@ public sealed record AcapPayload
             throw new ArgumentException("The license keys of the task are not valid. Nothing was changed.", nameof(json));
         }
 
+        if (payload.Action == AcapAction.Settings)
+        {
+            if (payload.Values is not { Count: > 0 } values)
+            {
+                throw new ArgumentException("Choose at least one setting to change. Nothing was changed.", nameof(json));
+            }
+
+            if (values.Count > AppSettings.MaxValues
+                || values.Any(v => !AppSettings.IsValidName(v.Key) || v.Value is null || v.Value.Length > AppSettings.MaxValueLength))
+            {
+                throw new ArgumentException("The settings of the task are not valid. Nothing was changed.", nameof(json));
+            }
+        }
+
         return payload;
+    }
+
+    /// <summary>
+    /// An install names one package, or several of one architecture each (16 at most); a package for any architecture
+    /// cannot be combined with others.
+    /// </summary>
+    private static void ValidateFiles(AcapPayload payload, string json)
+    {
+        var files = payload.AllFiles();
+        if (files.Count == 0 || files.Any(f => f is null || string.IsNullOrWhiteSpace(f.FileId)))
+        {
+            throw new ArgumentException("Install needs an uploaded package. Nothing was changed.", nameof(json));
+        }
+
+        if (files.Count == 1)
+        {
+            return;
+        }
+
+        if (files.Count > MaxFiles
+            || files.Any(f => AcapCompatibility.IsArchitectureIndependent(f.Architecture))
+            || files.Select(f => AcapCompatibility.NormalizeArchitecture(f.Architecture!)).Distinct(StringComparer.Ordinal).Count() != files.Count
+            || files.Select(f => f.FileId).Distinct(StringComparer.Ordinal).Count() != files.Count)
+        {
+            throw new ArgumentException("The packages of the task are not valid: one package per architecture. Nothing was changed.", nameof(json));
+        }
     }
 }
 
@@ -248,6 +313,30 @@ public sealed record InstalledApplication
     public string? SignatureStatus { get; init; }
 
     public IReadOnlyList<OsVersionRange> CompatibleOsVersions { get; init; } = [];
+
+    /// <summary>The application's own page as list.cgi names it ("local/ax_msf/redirect.html"); null when it has none.</summary>
+    public string? ConfigurationPage { get; init; }
+
+    /// <summary>
+    /// <see cref="ConfigurationPage"/> as a path on the device ("/local/ax_msf/redirect.html"); null without one or when it
+    /// would leave the device (a scheme, "//", "\", "..", spaces or control characters).
+    /// </summary>
+    [JsonIgnore]
+    public string? ConfigurationPath
+    {
+        get
+        {
+            var page = ConfigurationPage?.Trim();
+            if (string.IsNullOrEmpty(page) || page.Contains("://", StringComparison.Ordinal) || page.Contains('\\', StringComparison.Ordinal)
+                || page.Any(c => char.IsControl(c) || c == ' '))
+            {
+                return null;
+            }
+
+            var path = "/" + page.TrimStart('/');
+            return page.StartsWith("//", StringComparison.Ordinal) || path.Split('?', '#')[0].Split('/').Contains("..", StringComparer.Ordinal) ? null : path;
+        }
+    }
 
     [JsonIgnore]
     public bool IsRunning => string.Equals(Status, "Running", StringComparison.OrdinalIgnoreCase);

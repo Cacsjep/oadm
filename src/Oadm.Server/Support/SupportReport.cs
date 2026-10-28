@@ -140,6 +140,7 @@ public sealed class SupportReport(
         Head("Settings");
         Line("Status polling interval (s)", server.PollingIntervalSeconds);
         Line("Read device details every (min)", server.FullRefreshMinutes);
+        Line("Allowed clock difference (s)", server.ClockToleranceSeconds);
         Line("Addresses scanned at once", server.ScanParallelism);
         Line("Scan timeout (ms)", server.ScanTimeoutMs);
         Line("Discovery duration (s)", server.ZeroConfSeconds);

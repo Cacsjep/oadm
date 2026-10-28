@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="iso-8859-1" ?>
+<parameterDefinitions
+xmlns="http://www.axis.com/ParameterDefinitionsSchema"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="http://www.axis.com/ParameterDefinitionsSchema http://10.0.0.48/pub/parameterdefinitions.xsd"
+version="1.0">
+  <model>AXIS P3265-V</model>
+  <firmwareVersion>12.11.118</firmwareVersion>
+  <group name="root">
+    <group name="AXISImageHealthAnalytics">
+      <parameter name="AutoRelearning" value="yes" securityLevel="7746" niceName="Auto relearning">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="BurntIn" value="no" securityLevel="7746" niceName="Burnt in">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="BurntInPositionX" value="25" securityLevel="7746" niceName="Burnt in position x">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="BurntInPositionY" value="25" securityLevel="7746" niceName="Burnt in position y">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="BurntInResolution" value="no" securityLevel="7746" niceName="Burnt in resolution">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ONVIFEvents" value="yes" securityLevel="7746" niceName="ONVIF events">
+        <type>
+          <string />
+        </type>
+      </parameter>
+      <parameter name="PauseOnPTZMovement" value="yes" securityLevel="7746" niceName="Pause onPTZ movement">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="SaveEventsImages" value="no" securityLevel="7746" niceName="Save events images">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="SaveEventsImagesNumberKept" value="10" securityLevel="7746" niceName="Save events images number kept">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ZoneBottom" value="-1" securityLevel="7746" niceName="Zone bottom">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ZoneLeft" value="-1" securityLevel="7746" niceName="Zone left">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ZoneRight" value="1" securityLevel="7746" niceName="Zone right">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ZoneRotation" value="0" securityLevel="7746" niceName="Zone rotation">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+      <parameter name="ZoneTop" value="1" securityLevel="7746" niceName="Zone top">
+        <type hidden="true">
+          <string />
+        </type>
+      </parameter>
+    </group>
+  </group>
+</parameterDefinitions>

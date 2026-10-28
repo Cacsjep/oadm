@@ -386,6 +386,9 @@ namespace Oadm.Core.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ClockOffsetMs")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool?>("DhcpEnabled")
                         .HasColumnType("INTEGER");
 
@@ -408,6 +411,11 @@ namespace Oadm.Core.Persistence.Migrations
 
                     b.Property<string>("Model")
                         .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NtpState")
+                        .IsRequired()
+                        .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProductType")

@@ -34,6 +34,18 @@ public partial class AcapWindow : Window, IEapFilePicker, ILicenseKeyPicker
         return files.Count == 0 ? null : files[0].TryGetLocalPath();
     }
 
+    /// <summary>One .eap, or one per architecture of the same application.</summary>
+    public async Task<IReadOnlyList<string>> PickEapFilesAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select ACAP packages, one per architecture",
+            AllowMultiple = true,
+            FileTypeFilter = [EapFiles, FilePickerFileTypes.All],
+        }).ConfigureAwait(true);
+        return [.. files.Select(f => f.TryGetLocalPath()).OfType<string>()];
+    }
+
     public async Task<IReadOnlyList<string>> PickLicenseKeysAsync()
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions

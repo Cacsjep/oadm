@@ -39,6 +39,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
         Validation.Rule(nameof(CustomPath), () => !SelectedPreset.IsCustom || IsDevicePath(CustomPath.Trim()) ? null : WebViewTexts.CustomPathInvalid);
         _ctx.DevicesChanged += OnDevicesChanged;
         _ctx.OpenDeviceRequested += OnOpenDeviceRequested;
+        _ctx.OpenDevicePageRequested += OnOpenDevicePageRequested;
         _ctx.PermissionsChanged += (_, _) =>
         {
             if (!MayOpen)
@@ -214,6 +215,54 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     private void OnOpenDeviceRequested(object? sender, string deviceId) => OpenDeviceById(deviceId);
 
+    /// <summary>
+    /// Another page asks for a page of a device (SDK 0.7.0, e.g. an application's own page from Applications): the device's
+    /// tab, or a new one, on that path (its preset when one has the path, else Custom).
+    /// </summary>
+    public void OpenDevicePage(DevicePageRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!DevicePageRequest.IsDevicePath(request.Path) || !Runtime.IsAvailable || !MayOpen || _life.IsCancellationRequested
+            || _ctx.Devices.FirstOrDefault(d => d.Id == request.DeviceId) is not { } device)
+        {
+            return;
+        }
+
+        var preset = WebPagePreset.All.FirstOrDefault(p => !p.IsCustom && string.Equals(p.Path, request.Path, StringComparison.Ordinal))
+            ?? WebPagePreset.All.First(p => p.IsCustom);
+        if (Tabs.FirstOrDefault(t => t.Device.Id == device.Id) is not { } tab)
+        {
+            var group = device.Tags.Count > 0 ? device.Tags.Order(StringComparer.OrdinalIgnoreCase).First() : string.Empty;
+            tab = new WebTab(this, device, group, preset, request.Path);
+            Tabs.Add(tab);
+        }
+        else
+        {
+            tab.Preset = preset;
+            tab.Path = request.Path;
+        }
+
+        ActiveTab = tab;
+        _applyingTab = true; // the select shows the page; the load below opens it once
+        try
+        {
+            if (preset.IsCustom)
+            {
+                CustomPath = request.Path;
+            }
+
+            SelectedPreset = preset;
+        }
+        finally
+        {
+            _applyingTab = false;
+        }
+
+        _ = tab.LoadAsync(device, _life.Token);
+    }
+
+    private void OnOpenDevicePageRequested(object? sender, DevicePageRequest request) => OpenDevicePage(request);
+
     [RelayCommand]
     private void ToggleGroup(DeviceTreeGroup? group)
     {
@@ -324,6 +373,7 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     {
         _ctx.DevicesChanged -= OnDevicesChanged;
         _ctx.OpenDeviceRequested -= OnOpenDeviceRequested;
+        _ctx.OpenDevicePageRequested -= OnOpenDevicePageRequested;
         _life.Cancel();
         foreach (var tab in Tabs)
         {

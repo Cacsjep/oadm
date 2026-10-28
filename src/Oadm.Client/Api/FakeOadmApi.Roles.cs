@@ -179,6 +179,8 @@ public sealed partial class FakeOadmApi
         P("task:oadm.acap:downgrade", "Downgrade applications", "Install an older version of an application.", "Tasks", icon: "app"),
         P("task:oadm.acap:startStop", "Start and stop applications", "Start and stop applications that are installed.", "Tasks", op: true, icon: "app"),
         P("task:oadm.acap:remove", "Remove applications", "Delete applications from devices; their settings are lost.", "Tasks", icon: "app"),
+        P("task:oadm.acap:license", "Install license keys", "Install license key files for applications.", "Tasks", op: true, icon: "app"),
+        P("task:oadm.acap:settings", "Change application settings", "Change the settings applications register on devices.", "Tasks", op: true, icon: "app"),
         P("task:oadm.datetime", "Date and time", "Run the task Date and time on devices.", "Tasks", op: true, icon: "clock"),
         P("task:oadm.device-config.import:import", "Import configuration", "Import settings from a configuration file, without the connection settings.", "Tasks", op: true),
         P("task:oadm.device-config.import:connection", "Import connection settings", "Also import HTTPS, ports, login method and IEEE 802.1X; devices can become unreachable.", "Tasks"),

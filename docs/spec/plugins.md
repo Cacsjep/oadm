@@ -27,7 +27,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   firmware, status, category, `HasVideo`, `Apis` (API list of the last full refresh), `CredentialUserName` (never a
   password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
   `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted), `Tags`, `SiteId` / `SiteName`,
-  `AddedByAllDevices`.
+  `AddedByAllDevices`, `Soc` / `Architecture` (SDK 0.7.0, DIM null: basicdeviceinfo as reported, filled by the server).
 - `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
@@ -55,7 +55,11 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   tasks), `Network` (`IDeviceNetwork`), `Caller`, `ManagedAddressesAsync` (below).
 - `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or
   running; `AnyActiveAsync(ids)`: whether any of them is, on `call.Tasks` of a group user for the tasks of the user's
-  devices whoever started them), `Settings` (namespaced per plugin), `Records` (`IPluginRecords`: the plugin's records in
+  devices whoever started them; `GetOutcomeAsync(id)` (SDK 0.7.0, DIM null): how an ended task ended, `TaskOutcome`
+  {DeviceId, `TaskEndState` Done / DoneWithWarnings / Failed / Cancelled, Message as the tasks pane shows it}, null while
+  it is active, for an unknown task and when the host cannot tell; on `call.Tasks` of a group user only for tasks of the
+  user's devices, like `AnyActiveAsync`; host: `TaskEngine.GetOutcomeAsync` from the stored record, `ViewTaskRunner`
+  through the view, `HostCallContext.ViewTasks` own tasks only), `Settings` (namespaced per plugin), `Records` (`IPluginRecords`: the plugin's records in
   the table PluginRecords, named collections of JSON values by key, one row per record, `SetManyAsync` writes many in one
   transaction; for data that grows with the devices, where one settings value would be rewritten whole;
   `MemoryPluginRecords` for tests and hosts without a database), `Logger`, `PluginDirectory` (never `Assembly.Location`),
@@ -102,7 +106,8 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `Refused`; `Over`, `OverGroup` over a test's own device and VAPIX fakes; task `IsActive` / `Cancel` / `AnyActiveAsync`
   like the host, also over a test's own runner: unknown and ended tasks false; a cancelled task of `FakeCoreContext` ends
   at once, the host's when its run stops), `FakePluginJobs` (`StartFailure`: a start the host refuses),
-  `FakeDeviceScopes` (also over a test's own device list), `FakeCoreContext.EndTask` (its tasks stay active until then),
+  `FakeDeviceScopes` (also over a test's own device list), `FakeCoreContext.EndTask` (its tasks stay active until then;
+  `EndTask(id, TaskEndState, message)` sets what `GetOutcomeAsync` answers, Cancel ends Cancelled),
   `FakeCoreContext.CallAsGroup` / `CallAsAllDevices`.
 - **Host side of the call context** (`src/Oadm.Core/Plugins/PluginCalls.cs`, `CorePluginHost`, `PluginGrpcService`):
   - `PluginService` makes a `PluginCaller` (authenticated caller + `DeviceView`) per call. `CorePluginHost.InvokeAsync(caller,
@@ -203,6 +208,10 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   starts its task itself (TaskService.Run, the tasks show in the tasks pane too) and follows it in the client's task
   mirror (`TaskDialogContext`, `TaskStore`: no extra stream) as `TaskRunState` {DeviceId, TaskId, `TaskRunStatus`, Step,
   Message} until every task ended; it then returns null from `ShowAsync`. First user: EST - Certificate Enrollment.
+  `StartView` (SDK 0.7.0, DIM null): the part of the dialog a page asked for with
+  `ICorePluginClientContext.RunTaskAsync(pluginId, deviceIds, startView, ct)`, a name the dialog defines (Applications:
+  "license" or "license:<package name>"); null and unknown names: the usual start. Host: `TaskPluginRunner.RunAsync(...,
+  startView, ct)` -> `IDialogService.ShowTaskPluginDialogAsync(dialog, devices, startView)` -> `TaskDialogContext`.
   Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`.
 - Records: `IPluginRecords.GetAsync(collection, key)` reads one record (DIM through `ListAsync`; the host and
   `MemoryPluginRecords` read only that row).
@@ -220,7 +229,22 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   device choice), `IsPluginOn(packageId)` (from the client's package list, null when unknown; Dashboards' empty state),
   `OpenAsync("plugin:" + id)` opens another plugin's page while it is on, `LicenseOf(packageId)`, `IsAdministrator` and
   `StartProTrialAsync(ct)` (Start 30-day trial of OADM PRO from a page, `docs/spec/licensing.md` "Trial"; older hosts
-  false / NotSupportedException), `OpenDeviceRequested`.
+  false / NotSupportedException), `OpenDeviceRequested`, `RunTaskAsync(pluginId, deviceIds, ct)` (SDK 0.7.0: a task
+  plugin on the given devices through the Devices page's `TaskPluginRunner`, dialog first, one task per device, the tasks
+  pane opens; devices outside the client's mirror or that the plugin cannot run on are left out; a plugin off or not
+  allowed for the role, or a closed page: null; older hosts NotSupportedException); its overload with `startView`
+  (SDK 0.7.0, DIM: the run without it) opens the dialog on that part (`ITaskDialogContext.StartView`).
+  `UploadAsync(localPath, progress, ct)` (SDK 0.7.0, DIM NotSupportedException): a local file to the server like
+  `ITaskDialogContext.UploadAsync` (the host: the Devices page's `IToolbarContext.UploadAsync`; a closed page throws
+  ObjectDisposedException); a page that starts tasks through its server part puts the id into their payload, the task
+  reads it by id (`IUploadedFiles`). First user: Install applications of Applications.
+  `OpenDevicePage(deviceId, path)` (SDK 0.7.0, DIM false): a page of a device's web interface in Web View; the host
+  (`MainWindowViewModel.OpenDevicePageInWebView`) opens it only while the Web View page is in the rail, the role has
+  `oadm.web-view:open`, the device is in the client's list and the path stays on the device
+  (`DevicePageRequest.IsDevicePath`: one leading "/", no "//", "\\", "..", spaces or control characters), then raises
+  `OpenDevicePageRequested` (`DevicePageRequest` {DeviceId, Path}, DIM never raised) on the Web View page's context, which
+  opens or reuses the device's tab on that path (its preset when one has the path, else Custom). First user: Open app page
+  of Applications.
 - **Pages shown as tabs**: `ICorePluginPage.TabOf` (DIM null) names the core plugin whose page shows this page as a tab.
   The host then adds no rail entry for it; it creates the view as for a rail page (its own `ICorePluginClientContext`, its
   own plugin id for `InvokeAsync` and events) and hands it to the host page: `ICorePluginClientContext.Tabs`
@@ -288,11 +312,11 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.6.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.7.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.6.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.6.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.7.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.7.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
@@ -358,15 +382,15 @@ standalone tasks and client parts together) and administrators turn each on or o
 restart. Own rail page (not a Settings card); core functionality is always on.
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
-  **Off by default: Action Rule Editor, Dashboards, Device triggers, Edge Recording Export, Edge storage, Hardening scan,
-  Image Health Dashboard, Load test, I/O Monitor, Live View and Metadata Monitor**, and inside PKI the EST and 802.1X servers (their
+  **Off by default: Action Rule Editor, Application management, Dashboards, Device triggers, Edge Recording Export, Edge
+  storage, Hardening scan, Image Health Dashboard, Load test, I/O Monitor, Live View, Metadata Monitor and Snapshot report**, and inside PKI the EST and 802.1X servers (their
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
-  FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default: Snapshot report,
+  FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:
   VAPIX Commander, NTP server, DHCP server, Web View). Third-party plugins are switchable unless their manifest says
   otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled plugin

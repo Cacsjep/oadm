@@ -44,6 +44,9 @@ message ServerSettings {
   // Default false; optional so a partial Set without it keeps the stored value.
   optional bool allow_basic_over_http = 11;
   reserved 12;                   // unreleased allowed addresses of event rules (rules have no device groups)
+  // Polling.ClockToleranceSeconds: a device clock that differs more from the server's counts as off (Clock column, the
+  // event Any device: clock off). Default 2, 1..3600; optional so a partial Set without it keeps the stored value.
+  optional int32 clock_tolerance_seconds = 13;
   // Read only (Get and Set replies), production hardening 3: set after the server had to replace its master key.
   // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
   // on purpose (other settings use the low numbers).

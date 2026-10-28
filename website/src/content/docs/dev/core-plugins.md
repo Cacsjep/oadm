@@ -32,7 +32,7 @@ plugin that throws on start is marked as failed; the others keep running.
 |---|---|
 | `Devices` | Every managed device (`ListAsync`, `FindAsync`), see [Devices and VAPIX](../devices/). Background work only: in a method use `caller.Devices` |
 | `Vapix` | `CreateAsync(deviceId, ct)`: a logged-in client. The host caches it; never dispose it. In a method: `caller.Vapix` |
-| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running). In a method: `caller.Tasks` |
+| `Tasks` | `RunAsync(pluginId, deviceIds, payload, owner, ct)` starts tasks, `Cancel(taskId)`, `IsActive(taskId)` (queued or running), `GetOutcomeAsync(taskId, ct)` (SDK 0.7.0: how an ended task ended, `TaskOutcome` with its device, `TaskEndState` and message; null while it runs). In a method: `caller.Tasks` |
 | `Settings` | `GetAsync` / `SetAsync(key, json)`: the plugin's own settings in the server database |
 | `Logger` | The server log |
 | `Records` | `IPluginRecords`: the plugin's own records in the server database, one row per record, for data that grows with the devices |
@@ -104,6 +104,8 @@ The page's context, `ICorePluginClientContext`:
 | `IsPluginOn(packageId)` | Whether another plugin is turned on (null when the host cannot tell), e.g. to say what to turn on first |
 | `GetLocalSetting(key)`, `SetLocalSetting(key, value)` | Short texts the page keeps on this computer (at most 64 KB each), e.g. the last device choice |
 | `OpenDeviceRequested` | The host asks the page to open a device (the argument is its id); Web View opens devices at a site this way |
+| `RunTaskAsync(pluginId, deviceIds, ct)`, `RunTaskAsync(pluginId, deviceIds, startView, ct)` | Run a task plugin like the context menu, its dialog first; with `startView` (SDK 0.7.0) the dialog opens on that part (`ITaskDialogContext.StartView`, a name the dialog defines, e.g. "license" for the Applications dialog) |
+| `OpenDevicePage(deviceId, path)` | SDK 0.7.0: open a page of a device's web interface in Web View ("/local/myapp/index.html"); false when nothing opens (Web View off or not allowed, unknown device, a path that leaves the device). Web View gets it as `OpenDevicePageRequested` (`DevicePageRequest`) |
 | `LicenseOf(packageId)` | The package's license as the server checked it, e.g. to say "No license" on the page; null when the host cannot tell |
 | `IsAdministrator`, `StartProTrialAsync(ct)` | Start the 30-day OADM PRO trial from a page that needs PRO (administrators, once per server); offer it while `ProLicenseInfo.TrialAvailable` |
 | `Tabs`, `TabsChanged`, `OpenTabRequested` | Pages of other core plugins shown as tabs of this page, see [Pages as tabs](#pages-as-tabs) |

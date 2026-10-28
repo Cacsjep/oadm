@@ -295,8 +295,17 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     /// <summary>basicdeviceinfo getAllProperties with its own timeout (the status poll: a device that needs longer counts as not answering).</summary>
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan timeout, CancellationToken ct) => GetBasicDeviceInfoAsync((TimeSpan?)timeout, ct);
 
-    private async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan? timeout, CancellationToken ct)
+    private async Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(TimeSpan? timeout, CancellationToken ct) =>
+        (await GetTimedBasicDeviceInfoAsync(timeout, TimeProvider.System, ct).ConfigureAwait(false)).Info;
+
+    /// <summary>
+    /// basicdeviceinfo getAllProperties with the answer's HTTP Date header and the times the request was sent and the
+    /// answer received (the polling's clock offset, <see cref="Devices.ClockHealth.Offset"/>). Core only: the SDK's
+    /// <see cref="BasicDeviceInfo"/> stays as it is.
+    /// </summary>
+    internal async Task<TimedBasicDeviceInfo> GetTimedBasicDeviceInfoAsync(TimeSpan? timeout, TimeProvider time, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(time);
         using var request = new HttpRequestMessage(HttpMethod.Post, BasicDeviceInfoPath)
         {
             Content = new StringContent("""{"apiVersion":"1.0","method":"getAllProperties"}""", Encoding.UTF8, JsonMediaType),
@@ -307,7 +316,10 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         request.Options.Set(StatusReadOption, true);
-        return VapixParsers.ParseBasicDeviceInfo(await SendForStringAsync(request, ct).ConfigureAwait(false));
+        var sent = time.GetUtcNow();
+        var (text, date) = await SendForTextAndDateAsync(request, ct).ConfigureAwait(false);
+        var received = time.GetUtcNow();
+        return new TimedBasicDeviceInfo(VapixParsers.ParseBasicDeviceInfo(text), date, sent, received);
     }
 
     /// <summary>basicdeviceinfo getAllUnrestrictedProperties: works anonymously, no SocSerialNumber/Architecture.</summary>
@@ -950,7 +962,11 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         return await SendForStringAsync(request, ct).ConfigureAwait(false);
     }
 
-    private async Task<string> SendForStringAsync(HttpRequestMessage request, CancellationToken ct)
+    private async Task<string> SendForStringAsync(HttpRequestMessage request, CancellationToken ct) =>
+        (await SendForTextAndDateAsync(request, ct).ConfigureAwait(false)).Text;
+
+    /// <summary>The answer as text and its HTTP Date header (null when missing or unreadable).</summary>
+    private async Task<(string Text, DateTimeOffset? Date)> SendForTextAndDateAsync(HttpRequestMessage request, CancellationToken ct)
     {
         using var response = await SendAsync(request, ct).ConfigureAwait(false);
         var path = request.RequestUri?.OriginalString ?? string.Empty;
@@ -975,7 +991,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             throw new VapixException($"{path}: HTTP {(int)response.StatusCode}", response.StatusCode);
         }
 
-        return await ReadStringAsync(response.Content, ct).ConfigureAwait(false);
+        return (await ReadStringAsync(response.Content, ct).ConfigureAwait(false), response.Headers.Date);
     }
 
     /// <summary>

@@ -45,4 +45,32 @@ public interface ITaskRunner
 
         return Task.FromResult<bool?>(unknown ? null : false);
     }
+
+    /// <summary>
+    /// How the task ended and its message as the tasks pane shows it (SDK 0.7.0): the error of a failed task, the warning of
+    /// one done with warnings. Null while it is queued or running, for an unknown task, and when the host cannot tell. On
+    /// <see cref="Plugins.ICallContext.Tasks"/> of a user with a device group it answers like <see cref="AnyActiveAsync"/>:
+    /// for the tasks of devices in the user's view, null for the others. Default (older hosts): null.
+    /// </summary>
+    Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct) => Task.FromResult<TaskOutcome?>(null);
 }
+
+/// <summary>How a task ended (<see cref="ITaskRunner.GetOutcomeAsync"/>, SDK 0.7.0).</summary>
+public enum TaskEndState
+{
+    Done = 0,
+
+    /// <summary>Ended, with the warning in <see cref="TaskOutcome.Message"/>.</summary>
+    DoneWithWarnings = 1,
+
+    /// <summary>Ended with the error in <see cref="TaskOutcome.Message"/>.</summary>
+    Failed = 2,
+
+    Cancelled = 3,
+}
+
+/// <summary>The end of a task (<see cref="ITaskRunner.GetOutcomeAsync"/>, SDK 0.7.0).</summary>
+/// <param name="DeviceId">The task's device.</param>
+/// <param name="State">How it ended.</param>
+/// <param name="Message">Its last message (error, warning or progress), as the tasks pane shows it; null without one.</param>
+public sealed record TaskOutcome(Guid DeviceId, TaskEndState State, string? Message);

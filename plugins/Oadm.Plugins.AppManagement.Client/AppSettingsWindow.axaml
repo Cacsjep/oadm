@@ -1,0 +1,78 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+        x:Class="Oadm.Plugins.AppManagement.Client.AppSettingsWindow"
+        x:DataType="vm:AppSettingsViewModel"
+        Title="{Binding Title}"
+        Width="680" MinWidth="560" SizeToContent="Height" MaxHeight="820"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Settings of one application on one or several devices: one row per setting with the value of most devices, errors
+       directly below each field, Save starts the Change settings task. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <Panel MinHeight="120">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="secondary" Text="{Binding Scope}" />
+            <TextBlock Classes="secondary" Text="{x:Static vm:AppSettingsViewModel.NoValueRight}" TextWrapping="Wrap" IsVisible="{Binding ShowValueNote}" />
+            <ItemsControl ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Classes="form" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AppSettingRowViewModel">
+                  <ui:FormField Label="{Binding Label}" Hint="{Binding Hint}">
+                    <Panel>
+                      <TextBox Text="{Binding Value}" IsVisible="{Binding IsText}" IsReadOnly="{Binding IsReadOnly}" />
+                      <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding Value}" IsVisible="{Binding IsChoice}"
+                                IsEnabled="{Binding IsEditable}" HorizontalAlignment="Stretch" />
+                      <CheckBox IsChecked="{Binding IsChecked}" IsVisible="{Binding IsYesNo}" IsEnabled="{Binding IsEditable}" />
+                      <ui:PasswordBox Text="{Binding Value}" PlaceholderText="{Binding Placeholder}" IsVisible="{Binding IsPassword}"
+                                      IsReadOnly="{Binding IsReadOnly}" />
+                    </Panel>
+                  </ui:FormField>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <StackPanel Spacing="8" IsVisible="{Binding ShowNoSettings}">
+              <TextBlock Text="{x:Static vm:AppSettingsViewModel.NoSettingsText}" TextWrapping="Wrap" />
+              <Button Classes="link" Content="Open app page" Command="{Binding OpenAppPageCommand}" IsVisible="{Binding CanOpenAppPage}"
+                      HorizontalAlignment="Left" />
+              <TextBlock Classes="secondary" Text="{x:Static vm:AppSettingsViewModel.OneDeviceHint}" IsVisible="{Binding ShowOneDeviceHint}" />
+            </StackPanel>
+
+            <!-- Devices whose settings could not be read: Save leaves them out. -->
+            <StackPanel Spacing="6" IsVisible="{Binding HasProblems}">
+              <TextBlock Classes="sectionTitle" Text="Not read" />
+              <ItemsControl ItemsSource="{Binding Problems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:SettingsDeviceProblem">
+                    <Grid ColumnDefinitions="160,*" ColumnSpacing="10" Margin="0,2">
+                      <TextBlock Text="{Binding Device}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      <ui:StatusChip Grid.Column="1" Text="{Binding Error}" IsError="True" MaxLines="2" />
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+
+            <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+        <ui:LoadingOverlay Text="Reading the settings" IsVisible="{Binding IsLoading}" />
+      </Panel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding MayChange}"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

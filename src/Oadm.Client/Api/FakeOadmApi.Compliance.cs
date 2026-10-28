@@ -20,6 +20,7 @@ public sealed partial class FakeOadmApi
     private const string LoginType = "oadm.compliance.login-works";
     private const string CertificateType = "oadm.compliance.certificate";
     private const string FirmwareType = "oadm.compliance.firmware";
+    private const string ClockType = "oadm.compliance.clock";
     private const string AppType = "oadm.acap.running";
     private const string ConfigType = "oadm.device-config.matches-file";
     private const string SdType = "oadm.edge-storage.sd-card";
@@ -60,6 +61,10 @@ public sealed partial class FakeOadmApi
         });
         certificate.Fields.Add(new ActionFieldEntry { Key = "notTrusted", Label = "Fail when not trusted (self-signed or unknown issuer)", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         catalog.Entries.Add(certificate);
+        var clock = Type(ClockType, "Clock", "Devices", "The device clock is close to the server's.", false, ComplianceSeverity.ComplianceWarning);
+        clock.Fields.Add(new ActionFieldEntry { Key = "allowedSeconds", Label = "Allowed difference (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 3600, DefaultValue = "2" });
+        clock.Fields.Add(new ActionFieldEntry { Key = "ntpSynced", Label = "NTP must be synced", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "true" });
+        catalog.Entries.Add(clock);
         var firmware = Type(FirmwareType, "Firmware", "Devices", "The device runs at least the AXIS OS version you set.", false);
         firmware.Fields.Add(new ActionFieldEntry { Key = "minimum", Label = "At least AXIS OS", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 32, Hint = "For example 12.5.56" });
         catalog.Entries.Add(firmware);
@@ -419,6 +424,19 @@ public sealed partial class FakeOadmApi
                 return days < 0 ? (ComplianceOutcome.ComplianceFailed, "Expired")
                     : days < minimum ? (ComplianceOutcome.ComplianceFailed, string.Create(CultureInfo.InvariantCulture, $"{days:N0} days left"))
                     : (ComplianceOutcome.CompliancePassed, string.Create(CultureInfo.InvariantCulture, $"{days:N0} days left"));
+            case ClockType:
+                if (!device.HasClockOffsetMs)
+                {
+                    return (ComplianceOutcome.ComplianceNotChecked, "Not measured yet");
+                }
+
+                var allowed = settings["allowedSeconds"]?.GetValue<int>() ?? 2;
+                var ntpSynced = settings["ntpSynced"]?.GetValue<bool>() ?? true;
+                var offsetText = Oadm.Client.Devices.DeviceClockText.OffsetText(device.ClockOffsetMs) ?? "Within 1 s";
+                return Math.Abs((long)device.ClockOffsetMs) > allowed * 1000L ? (ComplianceOutcome.ComplianceFailed, offsetText)
+                    : ntpSynced && device.NtpState is NtpState.NotSynced ? (ComplianceOutcome.ComplianceFailed, "NTP not synced")
+                    : ntpSynced && device.NtpState is NtpState.Off ? (ComplianceOutcome.ComplianceFailed, "NTP off")
+                    : (ComplianceOutcome.CompliancePassed, offsetText);
             case FirmwareType:
                 var wanted = settings["minimum"]?.GetValue<string>() ?? string.Empty;
                 return Version.TryParse(device.FirmwareVersion, out var have) && Version.TryParse(wanted, out var need) && have < need
@@ -454,6 +472,7 @@ public sealed partial class FakeOadmApi
                 ReachableType => "Reachable",
                 LoginType => "Login works",
                 CertificateType => "Certificate",
+                ClockType => "Clock",
                 FirmwareType => "Firmware",
                 AppType => "Application running",
                 ConfigType => "Matches configuration file",

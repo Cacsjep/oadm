@@ -45,6 +45,7 @@ matches our base configuration". **Turn off compliance** stops the checks and re
 | Login works | OADM cannot log in (Credentials required, Password not set, Certificate changed). |
 | Certificate | The HTTPS certificate expired, has fewer days left than you set (a new check starts with the expiry warning of the PKI page), or is not trusted. |
 | Firmware | The device runs an older AXIS OS than you set. |
+| Clock | The device clock differs from the OADM server by more than the seconds you set (2 by default), or, with **NTP must be synced**, NTP is off or not synced. |
 | Application running | The application is not installed or not running. Optional: a minimum version and a valid license. Click **Read from device** to choose the application from a device that has it. |
 | Matches configuration file | A setting of the file differs on the device. Make the file with **Create configuration file** or use one from AXIS Device Manager. Addresses, device names and passwords are not compared. |
 | SD card | The device has no SD card, the card does not work, or it has less free space than you set. Needs the Edge storage plugin turned on. |

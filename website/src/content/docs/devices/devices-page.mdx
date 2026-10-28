@@ -21,9 +21,11 @@ import login from '../../../assets/screens/client-device-login.png';
 | Status | OK, Unreachable, Credentials required, Password not set, Certificate changed, Site offline. |
 | Tags | Your [tags](../tags/). |
 | Site | The [site](../../sites/overview/) the device is at. |
-| DHCP, HTTPS, IEEE 802.1X | Whether they are on. |
+| HTTPS, IEEE 802.1X | Whether they are on. |
+| DHCP | Whether the device takes its address from DHCP. Off by default. |
 | Certificate expires | Days left for the HTTPS certificate. Amber within the days of its expiry warning on the PKI page (30 by default), red when expired. |
 | Certificate | Trusted, Self-signed, Untrusted or Expired. |
+| Clock | OK, how far the device clock is ahead or behind the OADM server, or NTP not synced. Amber when it differs by more than the allowed clock difference in **Settings** (2 s by default). |
 | Compliance | The worst result of the [compliance checks](../compliance/). Off by default. |
 | Architecture | The processor type, for example aarch64. Off by default. |
 

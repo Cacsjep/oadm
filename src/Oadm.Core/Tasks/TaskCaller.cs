@@ -169,4 +169,15 @@ internal sealed class ViewTaskRunner(TaskEngine engine, DeviceView view, TaskCal
 
         return outside ? null : false;
     }
+
+    /// <summary>For a user with a device group: the tasks of devices in the view (like <see cref="AnyActiveAsync"/>), else null.</summary>
+    public async Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct)
+    {
+        if (view.HasAllDevices)
+        {
+            return await engine.GetOutcomeAsync(taskId, ct).ConfigureAwait(false);
+        }
+
+        return engine.IsActive(taskId) == true ? null : TaskEngine.OutcomeOf(await engine.GetAsync(view, taskId, ct).ConfigureAwait(false));
+    }
 }

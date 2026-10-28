@@ -1,0 +1,133 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+             x:Class="Oadm.Plugins.AppManagement.Client.ApplicationsView"
+             x:DataType="vm:ApplicationsViewModel"
+             ui:PageHeader.Subtitle="The applications of the chosen devices.">
+  <!-- Own card (ICorePluginPage.HasOwnCards), docs/spec/app-management.md "Page": one card, two panes side by side with
+       one header row each, level with each other. Left: device choice, Refresh, Install; right of them the status filter
+       and Search devices; then the read's progress and error (only while they apply) and the devices. Right: Install
+       licenses, Start, Stop, Remove; Hide AXIS apps and Search applications; then the applications of the selected
+       devices. The tasks pane below the page shows the started tasks. Shared controls and theme classes only. -->
+  <Border Classes="card">
+    <Grid ColumnDefinitions="5*,Auto,4*">
+      <!-- Left: the devices. -->
+      <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
+          <ui:ToolbarButton Grid.Column="0" IconKey="devices" Text="{Binding DeviceChoice.ButtonText}" Command="{Binding ChooseDevicesCommand}"
+                            IsEnabled="{Binding !IsReading}" ToolTip.Tip="Devices by address or tag" />
+          <!-- Tools that do not fit move into the More menu. -->
+          <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4">
+            <ui:ToolbarButton IconKey="refresh" Text="Refresh" Command="{Binding RefreshCommand}" ToolTip.Tip="Read the applications again" />
+            <ui:ToolbarSeparator IsVisible="{Binding MayInstall}" />
+            <ui:ToolbarButton IconKey="upload" Text="Install" Command="{Binding InstallCommand}" IsVisible="{Binding MayInstall}"
+                              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          </ui:ToolbarOverflowPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+            <ComboBox VerticalAlignment="Center" Width="170" ItemsSource="{x:Static vm:ApplicationsViewModel.StatusChoices}"
+                      SelectedItem="{Binding SelectedStatus}" />
+            <ui:SearchBox Width="200" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
+          </StackPanel>
+        </Grid>
+
+        <ui:ProgressRow Grid.Row="1" Margin="0,0,0,8" Value="{Binding ProgressValue}" Text="{Binding ProgressText}" IsActive="{Binding IsReading}"
+                        IsVisible="{Binding IsReading}" />
+        <TextBlock Grid.Row="2" Margin="0,0,0,8" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+
+        <Panel Grid.Row="3">
+          <!-- One row per device: virtualized, rebuilt with one reset per change; the selection is kept over a rebuild. -->
+          <DataGrid x:Name="DevicesGrid" Classes="wrapRows" ItemsSource="{Binding Devices}"
+                    IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="1.2*" MinWidth="95" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Header="Model" Width="1.1*" MinWidth="80" Binding="{Binding Model}" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Header="MAC address" Width="1.4*" MinWidth="120" Binding="{Binding Mac}" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Header="AXIS OS" Width="1*" MinWidth="85" Binding="{Binding Firmware}" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Header="SoC" Width="1.3*" MinWidth="90" Binding="{Binding Soc}" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Header="Architecture" Width="1*" MinWidth="115" Binding="{Binding Architecture}" x:DataType="vm:AppDeviceRow" />
+              <DataGridTextColumn Width="1*" MinWidth="130" Binding="{Binding AppCount}" CellStyleClasses="number" x:DataType="vm:AppDeviceRow">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="Applications" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+              <DataGridTemplateColumn Header="Status" Width="2.5*" MinWidth="150" CanUserSort="True" SortMemberPath="SummarySortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:AppDeviceRow">
+                    <ui:StatusChip Text="{Binding SummaryText}" MaxLines="2" IsOk="{Binding IsOk}" IsError="{Binding IsError}" IsWarning="{Binding IsWarning}" IsAccent="{Binding IsAccent}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+        </Panel>
+      </Grid>
+
+      <GridSplitter Grid.Column="1" Classes="paneSplitter vertical" Margin="4,0" />
+
+      <!-- Right: the applications of the selected devices; the actions on the selected ones left, the filter and search right. -->
+      <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,0,0,8">
+        <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+          <ui:ToolbarButton IconKey="key" Text="Install licenses" Command="{Binding InstallLicensesCommand}" IsVisible="{Binding MayLicense}"
+                            ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarSeparator IsVisible="{Binding MayLicense}" />
+          <ui:ToolbarButton IconKey="start" Text="Start" Command="{Binding StartCommand}" IsVisible="{Binding MayStartStop}"
+                            ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarButton IconKey="stop" Text="Stop" Command="{Binding StopCommand}" IsVisible="{Binding MayStartStop}"
+                            ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarSeparator IsVisible="{Binding MayRemove}" />
+          <ui:ToolbarButton Classes="danger" IconKey="remove" Text="Remove" Command="{Binding RemoveCommand}" IsVisible="{Binding MayRemove}"
+                            ToolTip.Tip="{Binding ToolsBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        </ui:ToolbarOverflowPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+          <CheckBox VerticalAlignment="Center" Content="Hide AXIS apps" IsChecked="{Binding HideAxisApps}"
+                    ToolTip.Tip="Preinstalled apps and apps named AXIS" />
+          <ui:SearchBox Width="200" VerticalAlignment="Center" Text="{Binding AppsSearchText}" Placeholder="Search applications" />
+        </StackPanel>
+        </Grid>
+
+        <!-- The applications of the selected devices, one row per device and application: virtualized, one reset per change;
+             grouped by device in the code-behind while several devices are selected (the header shows the address). -->
+        <DataGrid x:Name="AppsGrid" Grid.Row="1" Classes="wrapRows"
+                  IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="True" CanUserResizeColumns="True" SelectionMode="Extended">
+          <DataGrid.Columns>
+            <DataGridTextColumn Tag="address" Header="Address" Width="120" MinWidth="100" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:AppRow" />
+            <DataGridTextColumn Header="Application" Width="3*" MinWidth="140" Binding="{Binding AppName}" x:DataType="vm:AppRow" />
+            <DataGridTextColumn Header="Version" Width="90" MinWidth="85" Binding="{Binding Version}" x:DataType="vm:AppRow" />
+            <DataGridTemplateColumn Header="Status" Width="3*" MinWidth="130" CanUserSort="True" SortMemberPath="StatusSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:AppRow">
+                  <ui:StatusChip Text="{Binding StatusText}" MaxLines="2" IsOk="{Binding IsStatusOk}" IsError="{Binding IsStatusError}"
+                                 IsWarning="{Binding IsStatusWarning}" IsAccent="{Binding IsStatusAccent}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="License" Width="110" MinWidth="100" CanUserSort="True" SortMemberPath="LicenseSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:AppRow">
+                  <Panel>
+                    <ui:StatusChip Text="{Binding LicenseText}" IsVisible="{Binding HasLicenseProblem}" IsError="{Binding IsLicenseError}" IsWarning="{Binding IsLicenseWarning}" />
+                    <TextBlock Text="{Binding LicenseText}" VerticalAlignment="Center" IsVisible="{Binding ShowPlainLicense}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Vendor" Width="2*" MinWidth="90" Binding="{Binding Vendor}" x:DataType="vm:AppRow" />
+            <DataGridTemplateColumn Width="48" CanUserResize="False" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:AppRow">
+                  <Button Classes="toolbar iconOnly" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnRowActions">
+                    <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                  </Button>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="1" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding AppsEmptyText}" IsVisible="{Binding ShowAppsEmpty}" />
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

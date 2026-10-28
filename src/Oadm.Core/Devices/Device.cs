@@ -89,6 +89,15 @@ public sealed class Device : IDeviceInfo
 
     public DateTime? LastSeenUtc { get; set; }
 
+    /// <summary>
+    /// The device clock minus the server clock in milliseconds, from the HTTP Date header of the status poll
+    /// (<see cref="ClockHealth.Offset"/>); null until measured. Only Ok answers count; no header keeps the last value.
+    /// </summary>
+    public int? ClockOffsetMs { get; set; }
+
+    /// <summary>From getNTPInfo in the full refresh; Unknown without the NTP API or when the read failed.</summary>
+    public NtpState NtpState { get; set; } = NtpState.Unknown;
+
     /// <summary>Later goal.</summary>
     public DateOnly? WarrantyExpiry { get; set; }
 

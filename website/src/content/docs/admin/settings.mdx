@@ -36,6 +36,7 @@ stand in five cards: Polling, Discovery, Tasks, Security and Server. **Save** be
 |---|---|---|
 | Status polling interval (s) | 60 | How often OADM checks that every device answers. A device that does not answer within 3 s is asked once more before it shows Unreachable. |
 | Read device details every (min) | 10 | How often OADM reads network settings and certificates of every device that answers. A new firmware is read at once. |
+| Allowed clock difference (s) | 2 | A device clock that differs more from the OADM server shows in the **Clock** column and turns on the event **Any device: clock off**. |
 | Addresses scanned at once | 32 | Speed of **Network range**. |
 | Scan timeout (ms) | 1500 | How long **Network range** and imports wait for each address. |
 | Discovery duration (s) | 30 | How long **Discovery** on the add page searches (5 to 300). |

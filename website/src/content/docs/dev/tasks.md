@@ -141,6 +141,7 @@ works this way. It needs SDK 0.5.0.
 | `Has(permission)`, `HasAllDevices` | Hide choices the user's role does not allow, or that only users with all devices may make |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
 | `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there; then return null from `ShowAsync` |
+| `StartView` | SDK 0.7.0: the part of the dialog a core plugin page asked for (`ICorePluginClientContext.RunTaskAsync(..., startView, ct)`), a name your dialog defines; null or a name you do not know: open as usual |
 
 Failed calls throw `RpcException`; show `Status.Detail`, or use `ServerErrors.Message(ex)`.
 

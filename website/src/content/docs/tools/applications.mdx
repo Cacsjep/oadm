@@ -1,0 +1,71 @@
+---
+title: Applications
+description: The applications of many devices at once, with their versions, licenses, log and settings.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The **Applications** page shows the applications (ACAP) of the chosen devices: which application runs where, in which
+version and with which license. Install, start, stop or remove them and install their licenses on many devices at once.
+
+<Aside>
+The Applications page is off by default. An administrator turns it on on the **Plugins** page.
+</Aside>
+
+## See your applications
+
+<Steps>
+
+1. Open **Applications** in the navigation rail and choose the devices with **Choose devices**: all devices, tags or
+   single devices. OADM reads their applications. **Refresh** reads them again.
+2. The left table shows one row per device: address, model, MAC address, AXIS OS, SoC, architecture, how many
+   applications it has and what needs attention ("1 license problem, 2 not running").
+3. Select devices to see their applications in the right table, with the status and the license: the end date of a
+   valid license, **Valid**, **Not required**, **Missing** or **Invalid**. A license that ends within 5 days is marked.
+
+</Steps>
+
+**Hide AXIS apps** (on by default) hides the applications that come with AXIS OS and every application with AXIS in its
+name. The filter next to it shows only applications that do not run, with a missing license, with a license that ends
+soon, or the devices that could not be read. The search finds applications, vendors, devices, models and versions.
+
+## Change applications
+
+- **Install** opens **Install applications** for the selected devices (or the devices of the selected applications).
+  **Choose files**: one `.eap` file, or one per architecture of the same application. Each row then says whether the
+  device can install it and why not; devices that cannot are skipped. **Install** starts the tasks.
+- **Install licenses** opens **Install licenses** for the selected applications. **Choose files**: key files or a ZIP of
+  them. Each row says whether a key fits that device and application; **Install licenses** starts the tasks for those
+  with a key.
+- **Start**, **Stop** and **Remove** above the right table act on the selected applications. They ask first, then run
+  as tasks.
+- The tasks pane below the page shows the tasks, and OADM reads each device again when its task ends.
+- When a task fails or ends with warnings, the row's **Status** shows the new state followed by the task's message, for
+  example "Stopped. The application did not start." It stays until you click **Refresh** or choose devices again.
+
+## Log and settings
+
+The ⋯ menu of a row offers:
+
+The menu shows **Settings** or **Open app page**, whichever the application has, and always **Show log**. With several
+devices selected, the right table groups their applications by device.
+
+- **Show log**: the log lines of that application on the device, newest last, with search and Copy. **Level** shows an
+  icon for errors, warnings and information; point at it to see the level.
+- **Settings**: the settings the application offers on that device, or on all selected devices with it when the row is
+  selected.
+  Where the devices differ, the field says on how many. Passwords are never shown: leave the field empty to keep them.
+  **Save** changes only what you changed, as a task.
+- **Open app page**, for an application without settings here that has its own page: opens that page in **Web View**
+  (when Web View is turned on).
+
+## Good to know
+
+- OADM reads the applications only when you choose devices, click **Refresh** or a task of the page ends. The list
+  stays until you log out or the server restarts.
+- Devices with a problem (for example **Credentials required**) are not read; their row says why.
+
+<Aside>
+Seeing the page needs the permission **View applications**, which operators have. Each action needs its own permission
+of **Applications (ACAP)**; setting values are shown only to roles that may **Change application settings**.
+</Aside>

@@ -141,6 +141,7 @@ public sealed partial class SettingsGrpcService(
 
         Add("Polling interval (s)", before.PollingIntervalSeconds, after.PollingIntervalSeconds);
         Add("Full refresh (min)", before.FullRefreshMinutes, after.FullRefreshMinutes);
+        Add("Allowed clock difference (s)", before.ClockToleranceSeconds, after.ClockToleranceSeconds);
         Add("Addresses scanned at once", before.ScanParallelism, after.ScanParallelism);
         Add("Scan timeout (ms)", before.ScanTimeoutMs, after.ScanTimeoutMs);
         Add("Discovery duration (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);

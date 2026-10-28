@@ -110,6 +110,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(d => d.CertTrust).HasConversion<string>().HasMaxLength(16);
             e.Property(d => d.CertSubject).HasMaxLength(1024);
             e.Property(d => d.CertIssuer).HasMaxLength(1024);
+            e.Property(d => d.NtpState).HasConversion<string>().HasMaxLength(16);
             e.Property(d => d.Tags).HasConversion(TagsConverter, TagsComparer).IsRequired();
             e.Property(d => d.Apis).HasConversion(ApisConverter, ApisComparer).IsRequired();
             e.Ignore(d => d.SiteName);

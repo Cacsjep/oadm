@@ -26,7 +26,8 @@ public sealed class DeviceGrpcService(
     AuditLog audit,
     IHostApplicationLifetime lifetime,
     DeviceViewFactory views,
-    Core.Vapix.TrustAnchorRegistry anchors) : Proto.DeviceService.DeviceServiceBase
+    Core.Vapix.TrustAnchorRegistry anchors,
+    ClockTolerance clock) : Proto.DeviceService.DeviceServiceBase
 {
     /// <summary>Devices read from the database at a time for a device list.</summary>
     public const int SnapshotPageSize = 1_000;
@@ -35,11 +36,11 @@ public sealed class DeviceGrpcService(
     private const int ChangeBatchSize = 1_000;
 
     /// <summary>The device with its status note (kept in server memory, <see cref="DeviceStatusNotes"/>).</summary>
-    private Proto.Device ToProto(Device device, bool hasCredentials) => WithNote(Mappers.ToProto(device, hasCredentials), device);
+    private Proto.Device ToProto(Device device, bool hasCredentials) => WithNote(Mappers.ToProto(device, hasCredentials, clock.Seconds), device);
 
     private Proto.DeviceChanged ToProto(DeviceChange change, bool hasCredentials)
     {
-        var proto = Mappers.ToProto(change, hasCredentials);
+        var proto = Mappers.ToProto(change, hasCredentials, clock.Seconds);
         if (change.Kind != DeviceChangeKind.Removed && change.Device is { } device)
         {
             WithNote(proto.Device, device);

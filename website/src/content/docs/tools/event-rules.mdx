@@ -53,6 +53,7 @@ and the event log.
 |---|---|
 | Device unreachable, Credentials required, Certificate changed | The device status OADM sees |
 | Any device: unreachable, credentials required, certificate changed | On while at least one device has the status; the value `{count}` says how many. No device |
+| Any device: clock off | On while at least one device clock differs from the OADM server by more than the allowed clock difference, or its NTP is not synced; `{count}` says how many. No device |
 | Certificate expires soon, Certificate expired, and their Any device events (group Certificates) | The HTTPS certificate of the device, with the days of the **Expiry warning** policy on the [PKI](../pki/) page |
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 

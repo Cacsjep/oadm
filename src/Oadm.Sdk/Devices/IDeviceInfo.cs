@@ -79,6 +79,12 @@ public interface IDeviceInfo
     /// site). False when not known (older hosts, the client).
     /// </summary>
     bool AddedByAllDevices => false;
+
+    /// <summary>The system on chip as the device reports it ("Axis Artpec-8"); null when not known. SDK 0.7.0, filled by the server.</summary>
+    string? Soc => null;
+
+    /// <summary>The CPU architecture ("aarch64"); null when not known. SDK 0.7.0, filled by the server.</summary>
+    string? Architecture => null;
 }
 
 /// <summary>Kind of Axis device. Mapped from basicdeviceinfo ProdType ("Dome Camera", "Network Speaker", ...).</summary>

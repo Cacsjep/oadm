@@ -421,6 +421,44 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task TheOutcomeOfAnEndedTaskIsToldForTheTasksOfTheView()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var outside = await AddDeviceAsync("ACCC8E000002");
+        var (_, anna, annaView) = await GroupUserAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Register(new DelegateTaskPlugin("t.fail", async (ctx, _, ct) =>
+        {
+            await gate.Task.WaitAsync(ct);
+            throw new InvalidOperationException("The application did not start.");
+        }));
+        Register(new DelegateTaskPlugin("t.warn", (ctx, _, _) =>
+        {
+            ctx.ReportWarning("No license key for this device.");
+            return Task.CompletedTask;
+        }));
+        await using var engine = Engine();
+        var annaTasks = engine.ForView(annaView, TaskCaller.Of(anna));
+        var failed = (await engine.RunAsync("t.fail", [inside.Id], null, "plugin", Ct))[0];
+        var hidden = (await engine.RunAsync("t.warn", [outside.Id], null, "plugin", Ct))[0];
+
+        Assert.Null(await engine.GetOutcomeAsync(failed, Ct)); // still active
+        gate.SetResult();
+        await engine.WaitForCompletionAsync(failed, Ct);
+        await engine.WaitForCompletionAsync(hidden, Ct);
+
+        var outcome = await annaTasks.GetOutcomeAsync(failed, Ct); // a task of the view, whoever started it
+        Assert.Equal(Oadm.Sdk.Tasks.TaskEndState.Failed, outcome?.State);
+        Assert.Equal(inside.Id, outcome!.DeviceId);
+        Assert.Contains("The application did not start.", outcome.Message, StringComparison.Ordinal);
+        Assert.Null(await annaTasks.GetOutcomeAsync(hidden, Ct)); // a device outside the view
+        Assert.Null(await annaTasks.GetOutcomeAsync(Guid.NewGuid(), Ct));
+        var warned = await engine.ForView(Views.System, TaskCaller.Of(anna)).GetOutcomeAsync(hidden, Ct);
+        Assert.Equal(Oadm.Sdk.Tasks.TaskEndState.DoneWithWarnings, warned?.State);
+        Assert.Equal("No license key for this device.", warned!.Message);
+    }
+
+    [Fact]
     public async Task TaskIdMethodsAnswerATaskOutsideTheViewLikeAnUnknownOne()
     {
         var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);

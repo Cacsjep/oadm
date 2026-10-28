@@ -7,6 +7,21 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Added
+
+- Clock column and the event Any device: clock off: devices whose clock drifts or loses NTP.
+- Compliance check Clock: the device clock matches the server's and NTP is synced.
+- Plugin SDK 0.7.0.
+- Applications: install one package per processor type at once.
+- Applications: change the settings an application registers, on many devices at once.
+- Applications page: the applications of many devices with versions, status and licenses, and start, stop, install or remove them.
+
+### Changed
+
+- Snapshot report is off by default; an administrator turns it on on the Plugins page.
+- The DHCP column is hidden by default; turn it on with the columns button.
+- Installing an application on AXIS OS 13 warns that the device accepts only signed applications.
+
 ## [4.6.0] - 2026-10-28
 
 ### Added

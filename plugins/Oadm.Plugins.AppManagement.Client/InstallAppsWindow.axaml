@@ -1,0 +1,60 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+        x:Class="Oadm.Plugins.AppManagement.Client.InstallAppsWindow"
+        x:DataType="vm:InstallAppsViewModel"
+        Title="{x:Static vm:InstallAppsViewModel.Title}"
+        Width="1100" Height="680"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Install applications of the Applications page: the files, the target devices with their check, Install. One
+       operation, no card. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallAppsViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <!-- One row: the files, then the options right of them. -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="24" Margin="0,0,0,12">
+          <ui:FileRow Grid.Column="0" ButtonText="Choose files" FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}"
+                      Command="{Binding ChooseFilesCommand}" ToolTip.Tip="One .eap file per architecture" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="24" VerticalAlignment="Top">
+            <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
+            <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding ShowDowngrade}" />
+          </StackPanel>
+        </Grid>
+        <Panel Grid.Row="2">
+          <DataGrid x:Name="DevicesGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                    CanUserSortColumns="True" CanUserReorderColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="120" MinWidth="100" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:InstallDeviceRow" />
+              <DataGridTextColumn Header="Model" Width="110" MinWidth="80" Binding="{Binding Model}" x:DataType="vm:InstallDeviceRow" />
+              <DataGridTextColumn Header="AXIS OS" Width="100" MinWidth="80" Binding="{Binding Firmware}" x:DataType="vm:InstallDeviceRow" />
+              <DataGridTextColumn Header="SoC" Width="140" MinWidth="90" Binding="{Binding Soc}" x:DataType="vm:InstallDeviceRow" />
+              <DataGridTextColumn Header="Architecture" Width="125" MinWidth="110" Binding="{Binding Architecture}" x:DataType="vm:InstallDeviceRow" />
+              <DataGridTemplateColumn Header="Result" Width="*" MinWidth="240" CanUserSort="True" SortMemberPath="ResultSortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:InstallDeviceRow">
+                    <ui:StatusChip Text="{Binding Verdict}" Detail="{Binding Details}" MaxLines="2" IsVisible="{Binding HasVerdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <ui:LoadingOverlay Text="Checking the devices" IsVisible="{Binding IsChecking}" />
+        </Panel>
+        <ui:ProgressRow Grid.Row="3" Margin="0,12,0,0" Value="{Binding UploadProgress}" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
+        <TextBlock Grid.Row="4" Classes="error" Margin="0,12,0,0" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="0,0,8,0" Text="{Binding Summary}" />
+      <Button Classes="primary" Content="Install" Command="{Binding InstallCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

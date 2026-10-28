@@ -58,6 +58,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         new(AcapPermissions.StartStop, "Start and stop applications", "Start and stop applications that are installed."),
         new(AcapPermissions.Remove, "Remove applications", "Delete applications from devices; their settings are lost.") { OperatorDefault = false },
         new(AcapPermissions.License, "Install license keys", "Install license key files for applications."),
+        new(AcapPermissions.Settings, "Change application settings", "Change the settings applications register on devices."),
     ];
 
     /// <summary>The permission of the run's action; an install with "Allow downgrade" also needs "downgrade".</summary>
@@ -72,6 +73,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             AcapAction.InstallLicense => [AcapPermissions.License],
             AcapAction.Start or AcapAction.Stop => [AcapPermissions.StartStop],
             AcapAction.Remove => [AcapPermissions.Remove],
+            AcapAction.Settings => [AcapPermissions.Settings],
             _ => null,
         };
     }
@@ -147,9 +149,12 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string CheckLicense = "Check license key";
         public const string InstallLicense = "Install license key";
         public const string VerifyLicense = "Verify license";
+        public const string ReadSettings = "Read settings";
+        public const string ChangeSettings = "Change settings";
+        public const string VerifySettings = "Verify settings";
 
         /// <summary>A device of the selection without a key in the chosen files.</summary>
-        public const string NoKey = "No license key for this device.";
+        public const string NoKey = LicenseKeyMatcher.NoKeyText;
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
@@ -159,7 +164,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var payload = AcapPayload.ParseShared(payloadJson);
         string[] license = payload.LicenseKeys.Count > 0 ? [Steps.CheckLicense, Steps.InstallLicense, Steps.VerifyLicense] : [];
         string[] install = [Steps.CheckCompatibility, Steps.ReadPackage, Steps.ReadDeviceInfo, Steps.ReadDevelopmentVersion, Steps.ReadUnsignedSetting, Steps.ReadApplications, Steps.CheckPackage, Steps.Upload, Steps.VerifyInstallation, .. license];
-        ctx.PlanSteps(payload.Action switch
+        string[] planned = payload.Action switch
         {
             AcapAction.Install when payload.StartAfterInstall => [.. install, Steps.Start, Steps.VerifyState],
             AcapAction.Install => install,
@@ -167,8 +172,10 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             AcapAction.Remove => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Remove, Steps.VerifyRemoval],
             AcapAction.Start => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Start, Steps.VerifyState],
             AcapAction.Stop => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.Stop, Steps.VerifyState],
+            AcapAction.Settings => [Steps.CheckCompatibility, Steps.ReadApplications, Steps.ReadSettings, Steps.ChangeSettings, Steps.VerifySettings],
             _ => [Steps.CheckCompatibility],
-        });
+        };
+        ctx.PlanSteps(planned);
 
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
@@ -182,7 +189,7 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
         switch (payload.Action)
         {
             case AcapAction.Install:
-                await InstallAsync(ctx, device, client, payload, ct).ConfigureAwait(false);
+                await InstallAsync(ctx, device, client, payload, planned, ct).ConfigureAwait(false);
                 break;
             case AcapAction.InstallLicense:
                 await InstallLicenseOnlyAsync(ctx, device, client, payload, ct).ConfigureAwait(false);
@@ -194,52 +201,74 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             case AcapAction.Stop:
                 await StartStopAsync(ctx, client, payload.Application!, payload.Action == AcapAction.Start, ct).ConfigureAwait(false);
                 break;
+            case AcapAction.Settings:
+                await ChangeSettingsAsync(ctx, client, payload, ct).ConfigureAwait(false);
+                break;
             default:
                 throw new ArgumentException("Unknown action. Nothing was changed.", nameof(payloadJson));
         }
     }
 
-    private async Task InstallAsync(ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
+    private async Task InstallAsync(ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, AcapPayload payload, string[] planned, CancellationToken ct)
     {
-        UploadedFile file;
-        EapManifest package;
+        // Every package of the payload is read and checked first: one application and version, one per architecture.
+        var entries = payload.AllFiles();
+        var packages = new List<(UploadedFile File, EapManifest Package)>(entries.Count);
         using (var step = ctx.BeginStep(Steps.ReadPackage))
         {
-            file = await ctx.Files.FindAsync(payload.FileId!, ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("The uploaded package is no longer available on the server. Nothing was changed.");
-            if (payload.Sha256 is { Length: > 0 } sha && !string.Equals(sha, file.Sha256, StringComparison.OrdinalIgnoreCase))
+            foreach (var entry in entries)
             {
-                throw new InvalidOperationException("The uploaded package does not match the one checked in the dialog. Nothing was changed.");
+                packages.Add(await ReadPackageAsync(ctx, entry, payload.Application, ct).ConfigureAwait(false));
             }
 
-            var read = await ctx.Files.OpenReadAsync(file.Id, ct).ConfigureAwait(false);
-            await using (read.ConfigureAwait(false))
+            var first = packages[0].Package;
+            if (packages.Count > 1)
             {
-                try
+                if (AcapCompatibility.CheckPackageSet([.. packages.Select(p => (p.File.Name, p.Package))]) is { } refused)
                 {
-                    package = await EapReader.ReadAsync(read, ct).ConfigureAwait(false);
+                    throw new InvalidOperationException(refused + " Nothing was changed.");
                 }
-                catch (InvalidEapException ex)
-                {
-                    throw new InvalidOperationException(ex.Message + " Nothing was changed.", ex);
-                }
-            }
 
-            if (payload.Application is { Length: > 0 } expectedName && !string.Equals(expectedName, package.AppName, StringComparison.Ordinal))
+                step.Complete($"{first.AppName} {first.Version}, {string.Join(" and ", packages.Select(p => p.Package.Architecture))}");
+            }
+            else
             {
-                throw new InvalidOperationException($"The package is \"{package.AppName}\", the dialog checked \"{expectedName}\". Nothing was changed.");
+                step.Complete($"{first.AppName} {first.Version}, {first.Architecture ?? "any architecture"}");
             }
-
-            ctx.Log(TaskLogLevel.Info, $"Package {package.AppName} {package.Version} ({package.Architecture ?? "any architecture"}) from {file.Name}, {file.Size} bytes, read from {package.Source}.");
-            step.Complete($"{package.AppName} {package.Version}, {package.Architecture ?? "any architecture"}");
         }
 
-        // One step per device request.
+        // One step per device request. The package is chosen again from the fresh architecture.
         BasicDeviceInfo info;
+        UploadedFile file;
+        EapManifest package;
         using (var step = ctx.BeginStep(Steps.ReadDeviceInfo))
         {
             info = await ctx.Vapix.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
-            step.Complete($"AXIS OS {info.Version}, {info.Architecture}");
+            var index = AcapCompatibility.ChoosePackage([.. packages.Select(p => p.Package.Architecture)], info.Architecture);
+            if (index < 0)
+            {
+                // Several packages, none for this device: skipped, nothing changed.
+                var reason = AcapCompatibility.NoPackageFor(info.Architecture);
+                ctx.Log(TaskLogLevel.Warning, $"{reason} The packages are for {string.Join(", ", packages.Select(p => p.Package.Architecture))}.");
+                step.Warn(reason + " Nothing was changed.");
+                foreach (var name in planned.SkipWhile(n => n != Steps.ReadDeviceInfo).Skip(1))
+                {
+                    ctx.SkipStep(name, reason);
+                }
+
+                return;
+            }
+
+            (file, package) = packages[index];
+            if (packages.Count > 1)
+            {
+                ctx.Log(TaskLogLevel.Info, $"Uses the {package.Architecture} package {file.Name}.");
+                step.Complete($"AXIS OS {info.Version}, {info.Architecture}: {package.Architecture} package");
+            }
+            else
+            {
+                step.Complete($"AXIS OS {info.Version}, {info.Architecture}");
+            }
         }
 
         string? embdev;
@@ -421,6 +450,150 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
         }
     }
+
+    /// <summary>One uploaded package: still there, the SHA-256 the dialog checked, a readable .eap of the expected application.</summary>
+    private static async Task<(UploadedFile File, EapManifest Package)> ReadPackageAsync(ITaskExecutionContext ctx, AcapPackageFile entry, string? expectedName, CancellationToken ct)
+    {
+        var file = await ctx.Files.FindAsync(entry.FileId, ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("The uploaded package is no longer available on the server. Nothing was changed.");
+        if (entry.Sha256 is { Length: > 0 } sha && !string.Equals(sha, file.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The uploaded package does not match the one checked in the dialog. Nothing was changed.");
+        }
+
+        EapManifest package;
+        var read = await ctx.Files.OpenReadAsync(file.Id, ct).ConfigureAwait(false);
+        await using (read.ConfigureAwait(false))
+        {
+            try
+            {
+                package = await EapReader.ReadAsync(read, ct).ConfigureAwait(false);
+            }
+            catch (InvalidEapException ex)
+            {
+                throw new InvalidOperationException(ex.Message + " Nothing was changed.", ex);
+            }
+        }
+
+        if (expectedName is { Length: > 0 } && !string.Equals(expectedName, package.AppName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"The package is \"{package.AppName}\", the dialog checked \"{expectedName}\". Nothing was changed.");
+        }
+
+        if (entry.Architecture is { Length: > 0 } declared && !AcapCompatibility.IsArchitectureIndependent(declared)
+            && (AcapCompatibility.IsArchitectureIndependent(package.Architecture)
+                || AcapCompatibility.NormalizeArchitecture(declared) != AcapCompatibility.NormalizeArchitecture(package.Architecture!)))
+        {
+            throw new InvalidOperationException($"{file.Name} is not the {declared} package the dialog checked. Nothing was changed.");
+        }
+
+        ctx.Log(TaskLogLevel.Info, $"Package {package.AppName} {package.Version} ({package.Architecture ?? "any architecture"}) from {file.Name}, {file.Size} bytes, read from {package.Source}.");
+        return (file, package);
+    }
+
+    /// <summary>
+    /// Change settings: the application is installed, every name is one of its settings and every value fits the type and
+    /// range, else Failed with nothing changed; only values that differ are sent, in one request; then read back (passwords are
+    /// never read back). Values never reach a log or a step text, only names.
+    /// </summary>
+    private static async Task ChangeSettingsAsync(ITaskExecutionContext ctx, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
+    {
+        var name = payload.Application!;
+        InstalledApplication app;
+        using (var step = ctx.BeginStep(Steps.ReadApplications))
+        {
+            app = await FindAsync(client, name, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"{payload.AppDisplayName ?? name} is not installed on this device. Nothing was changed.");
+            step.Complete($"{app.DisplayName} {app.Version} ({app.Status})");
+        }
+
+        var values = payload.Values!;
+        Dictionary<string, string> changed;
+        IReadOnlyList<AppSettingDefinition> definitions;
+        HashSet<string> passwordNames;
+        using (var step = ctx.BeginStep(Steps.ReadSettings))
+        {
+            definitions = await client.ReadSettingsAsync(name, ct).ConfigureAwait(false);
+            if (definitions.Count == 0)
+            {
+                throw new InvalidOperationException($"{app.DisplayName} has no settings here. Nothing was changed.");
+            }
+
+            var problems = AppSettings.Check(definitions, values, app.DisplayName, out var normalized);
+            if (problems.Count > 0)
+            {
+                foreach (var problem in problems)
+                {
+                    ctx.Log(TaskLogLevel.Error, problem);
+                }
+
+                throw new InvalidOperationException(string.Join(" ", problems) + " Nothing was changed.");
+            }
+
+            var current = new Dictionary<string, AppSettingDefinition>(StringComparer.Ordinal);
+            foreach (var definition in definitions)
+            {
+                current.TryAdd(definition.Name, definition);
+            }
+
+            passwordNames = [.. current.Values.Where(d => d.Kind == AppSettingKind.Password).Select(d => d.Name)];
+            changed = normalized
+                .Where(v => current[v.Key].Kind == AppSettingKind.Password || !string.Equals(current[v.Key].Value, v.Value, StringComparison.Ordinal))
+                .ToDictionary(v => v.Key, v => v.Value, StringComparer.Ordinal);
+            step.Complete(changed.Count == values.Count
+                ? Count(definitions.Count, "setting")
+                : string.Create(CultureInfo.InvariantCulture, $"{Count(definitions.Count, "setting")}, {values.Count - changed.Count:N0} already set"));
+        }
+
+        if (changed.Count == 0)
+        {
+            ctx.Log(TaskLogLevel.Info, $"Every setting of {app.DisplayName} already has its new value.");
+            ctx.SkipStep(Steps.ChangeSettings, "Every value is already set.");
+            ctx.SkipStep(Steps.VerifySettings, "Every value is already set.");
+            return;
+        }
+
+        var names = string.Join(", ", changed.Keys.Order(StringComparer.Ordinal));
+        using (var step = ctx.BeginStep(Steps.ChangeSettings))
+        {
+            ctx.Log(TaskLogLevel.Info, $"Changing settings of {app.DisplayName}: {names}.");
+            await client.UpdateSettingsAsync(name, changed, ct).ConfigureAwait(false);
+            step.Complete(names);
+        }
+
+        using (var step = ctx.BeginStep(Steps.VerifySettings))
+        {
+            var after = new Dictionary<string, AppSettingDefinition>(StringComparer.Ordinal);
+            foreach (var definition in await client.ReadSettingsAsync(name, ct).ConfigureAwait(false))
+            {
+                after.TryAdd(definition.Name, definition);
+            }
+
+            var passwords = changed.Keys.Count(passwordNames.Contains);
+            var differ = changed
+                .Where(v => !(after.TryGetValue(v.Key, out var d) && (d.Kind == AppSettingKind.Password || SameValue(d, v.Value))))
+                .Select(v => v.Key)
+                .Order(StringComparer.Ordinal)
+                .ToList();
+            if (differ.Count > 0)
+            {
+                throw new InvalidOperationException($"The device did not keep the new value of {string.Join(", ", differ)}.");
+            }
+
+            ctx.Log(TaskLogLevel.Info, $"Settings of {app.DisplayName} changed: {names}.");
+            step.Complete(passwords == 0
+                ? Count(changed.Count, "setting") + " changed"
+                : string.Create(CultureInfo.InvariantCulture, $"{Count(changed.Count, "setting")} changed, {Count(passwords, "password")} not read back"));
+        }
+    }
+
+    /// <summary>The device kept the value (numbers by value, yes/no and list values as the device spells them).</summary>
+    private static bool SameValue(AppSettingDefinition definition, string sent) =>
+        string.Equals(definition.Value, sent, StringComparison.Ordinal)
+        || (AppSettings.TryNormalize(definition, definition.Value, out var kept, out _) && string.Equals(kept, sent, StringComparison.Ordinal));
+
+    private static string Count(int n, string noun) =>
+        string.Create(CultureInfo.InvariantCulture, $"{n:N0} {noun}{(n == 1 ? string.Empty : "s")}");
 
     private async Task InstallLicenseOnlyAsync(ITaskExecutionContext ctx, IDeviceInfo device, ApplicationApiClient client, AcapPayload payload, CancellationToken ct)
     {

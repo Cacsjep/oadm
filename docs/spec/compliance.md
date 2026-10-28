@@ -13,7 +13,7 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   Default checks **Reachable** and **Login works**: created once per server (setting `Compliance.DefaultsCreated`), then
   ordinary checks (change, turn off, delete; New check adds them again).
 - **Types**: host (cached data, never contact a device, follow every device change): Reachable, Login works, Certificate
-  (expired, fewer than N days left (a new check starts with the longest days of PKI's Expiry warning policies, else 30; a check keeps its own), not trusted), Firmware (at least a version). Plugins: **Application
+  (expired, fewer than N days left (a new check starts with the longest days of PKI's Expiry warning policies, else 30; a check keeps its own), not trusted), Firmware (at least a version), Clock (offset within Allowed difference (s), default 2, 1..3600; NTP must be synced, default on; [main-window.md](main-window.md) "Clock"). Plugins: **Application
   running** (Applications), **Matches configuration file** (Device configuration: a `.cfg` of Create configuration file or
   ADM kept in the check; parameters, action rules and stream profiles by name; per-device values and passwords never
   compared, values the model lacks skipped), **SD card** (Edge storage: no card fails; optional free GB / %; only while Edge

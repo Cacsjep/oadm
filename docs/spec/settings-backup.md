@@ -12,6 +12,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 |---|---|---|
 | `Polling.IntervalSeconds` | 60, 5..86400 | Polling "Status polling interval (s)", `polling_interval_seconds = 1` |
 | `Polling.FullRefreshMinutes` | 10, 1..1440 | Polling "Read device details every (min)", `full_refresh_minutes = 6` |
+| `Polling.ClockToleranceSeconds` | 2, 1..3600 | Polling "Allowed clock difference (s)", `optional clock_tolerance_seconds = 13`; read live (`ClockTolerance`), see `docs/spec/main-window.md` "Clock" |
 | `Scan.Parallelism` | 32 | Discovery "Addresses scanned at once", `scan_parallelism = 2` |
 | `Scan.TimeoutMs` | 1500 | Discovery "Scan timeout (ms)" (range scans and the first contact of imported lines), `scan_timeout_ms = 3` |
 | `Discovery.ZeroConfSeconds` | 30, 5..300 | Discovery "Discovery duration (s)": Discovery on the add page ends after this time, `zero_conf_seconds = 8` |
@@ -32,7 +33,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 - Task history retention runs one minute after start and then hourly (`TaskRetentionHostedService`: finished tasks only,
   one bulk delete, one Removed change per task).
 - `use_host_name = 7` is unused and kept for its field number (the add page chooses DNS names or IP addresses per add,
-  `docs/spec/add-devices.md`); 12 is reserved. Read only in both replies: `key_replaced = 20`, `server_version = 21`,
+  `docs/spec/add-devices.md`); 12 is reserved. Backups carry every setting (the whole database), the new ones too. Read only in both replies: `key_replaced = 20`, `server_version = 21`,
   `roles_notice = 22`, `server_id = 23`.
 
 ## Settings page

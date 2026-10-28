@@ -123,6 +123,53 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     }
 
     /// <summary>
+    /// The settings <paramref name="application"/> registered (read-only): <c>param.cgi?action=listdefinitions</c> for
+    /// <c>root.&lt;application&gt;</c>, hidden ones included (marked), passwords without their value. Empty when it registered none.
+    /// </summary>
+    public async Task<IReadOnlyList<AppSettingDefinition>> ReadSettingsAsync(string application, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, AppSettings.BuildDefinitionsUri(application));
+        var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
+        return AppSettings.Parse(text, application);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="values"/> (names below <c>root.&lt;application&gt;</c>, as the device takes them) with one
+    /// <c>param.cgi?action=update</c>, values in the POST body. Errors name the setting, never its value.
+    /// </summary>
+    public async Task UpdateSettingsAsync(string application, IReadOnlyDictionary<string, string> values, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, AppSettings.ParamPath)
+        {
+            Content = new StringContent(AppSettings.BuildUpdateForm(application, values), System.Text.Encoding.UTF8, "application/x-www-form-urlencoded"),
+        };
+        var text = await SendForTextAsync(request, ct).ConfigureAwait(false);
+        AppSettings.EnsureUpdated(text, application);
+    }
+
+    /// <summary>
+    /// The device's log lines of <paramref name="application"/> (read-only): <c>GET /axis-cgi/admin/systemlog.cgi?appname=</c>,
+    /// newest last, at most <see cref="AppLogReader.MaxLines"/> lines and <see cref="AppLogReader.MaxBytes"/>.
+    /// </summary>
+    public async Task<AppLog> ReadLogAsync(string application, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, AppLogReader.BuildUri(application));
+        using var response = await _vapix.SendAsync(request, ct).ConfigureAwait(false);
+        EnsureSuccess(response);
+        var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using (stream.ConfigureAwait(false))
+        {
+            return await AppLogReader.ReadAsync(stream, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Uploads and installs an .eap with <c>upload.cgi</c> (multipart field "file"). The device answers
     /// after the installation; "OK" means installed. <paramref name="progress"/> gets the bytes sent.
     /// </summary>
@@ -271,6 +318,7 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
                 ApplicationId = (string?)a.Attribute("ApplicationID"),
                 Bundled = string.Equals((string?)a.Attribute("Bundled"), "Yes", StringComparison.OrdinalIgnoreCase),
                 SignatureStatus = (string?)a.Attribute("SignatureStatus"),
+                ConfigurationPage = (string?)a.Attribute("ConfigurationPage") is { Length: > 0 } page ? page : null,
                 CompatibleOsVersions = a.Element("CompatibleOsVersions")?.Elements("VersionRange")
                     .Select(r => new OsVersionRange((string?)r.Element("Min"), (string?)r.Element("Max")))
                     .ToList() ?? [],
@@ -362,7 +410,13 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
     private async Task<string> SendForTextAsync(HttpRequestMessage request, CancellationToken ct)
     {
         using var response = await _vapix.SendAsync(request, ct).ConfigureAwait(false);
-        var path = request.RequestUri?.OriginalString.Split('?')[0] ?? string.Empty;
+        EnsureSuccess(response);
+        return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>401, 403 and other failed statuses in the shared texts.</summary>
+    private static void EnsureSuccess(HttpResponseMessage response)
+    {
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             throw new UnauthorizedAccessException(DeviceMessages.CredentialsRequired);
@@ -381,8 +435,6 @@ public sealed class ApplicationApiClient(IVapixClient vapix)
                 HttpStatus = status,
             };
         }
-
-        return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>HTTP 403 on an application request: the stored account is not an administrator.</summary>

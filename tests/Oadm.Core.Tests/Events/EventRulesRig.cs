@@ -58,9 +58,14 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public RuleEngine Engine { get; private set; } = null!;
 
+    /// <summary>The live Polling.ClockToleranceSeconds of the engine (Any device: clock off).</summary>
+    public ClockTolerance Clock { get; private set; } = null!;
+
     public EventRulesService Rules { get; private set; } = null!;
 
     public DeviceRepository Devices => _db.Get<DeviceRepository>();
+
+    public Oadm.Core.Settings.ServerSettingsStore Settings => _db.Get<Oadm.Core.Settings.ServerSettingsStore>();
 
     public IDbContextFactory<OadmDbContext> DbFactory => _db.Get<IDbContextFactory<OadmDbContext>>();
 
@@ -112,8 +117,10 @@ internal sealed class EventRulesRig : IAsyncDisposable
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
         Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
+        Clock = new ClockTolerance(_db.Get<Oadm.Core.Settings.ServerSettingsStore>(), Devices);
+        await Clock.LoadAsync(CancellationToken.None);
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
-            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity });
+            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity }, clock: Clock);
         Rules = new EventRulesService(Catalog, Store, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
         if (SiteEvents is { } siteEvents)
@@ -142,6 +149,7 @@ internal sealed class EventRulesRig : IAsyncDisposable
             await SiteEvents.DisposeAsync();
         }
 
+        await Clock.DisposeAsync();
         await Engine.DisposeAsync();
         await Runner.DisposeAsync();
         await Log.DisposeAsync();

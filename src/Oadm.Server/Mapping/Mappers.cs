@@ -16,7 +16,8 @@ namespace Oadm.Server.Mapping;
 /// <summary>All conversions between Core types and the gRPC contracts. Pure functions.</summary>
 public static class Mappers
 {
-    public static Proto.Device ToProto(Device device, bool hasCredentials)
+    /// <param name="clockToleranceSeconds">Polling.ClockToleranceSeconds now: clock_off and clock_beyond_tolerance follow it.</param>
+    public static Proto.Device ToProto(Device device, bool hasCredentials, int clockToleranceSeconds = ServerSettings.DefaultClockToleranceSeconds)
     {
         ArgumentNullException.ThrowIfNull(device);
         var proto = new Proto.Device
@@ -45,7 +46,15 @@ public static class Mappers
             CertIssuer = device.CertIssuer ?? string.Empty,
             SiteId = device.SiteId?.ToString() ?? string.Empty,
             SiteName = device.SiteName ?? string.Empty,
+            NtpState = ToProto(device.NtpState),
+            ClockOff = ClockHealth.IsOff(device, clockToleranceSeconds),
+            ClockBeyondTolerance = ClockHealth.IsBeyondTolerance(device, clockToleranceSeconds),
         };
+
+        if (device.ClockOffsetMs is { } offset)
+        {
+            proto.ClockOffsetMs = offset;
+        }
 
         if (device.CertNotAfterUtc is { } notAfter)
         {
@@ -100,7 +109,7 @@ public static class Mappers
         };
     }
 
-    public static Proto.DeviceChanged ToProto(DeviceChange change, bool hasCredentials)
+    public static Proto.DeviceChanged ToProto(DeviceChange change, bool hasCredentials, int clockToleranceSeconds = ServerSettings.DefaultClockToleranceSeconds)
     {
         ArgumentNullException.ThrowIfNull(change);
         return new Proto.DeviceChanged
@@ -114,7 +123,7 @@ public static class Mappers
             },
             Device = change.Device is null || change.Kind == DeviceChangeKind.Removed
                 ? new Proto.Device { Id = change.DeviceId.ToString() }
-                : ToProto(change.Device, hasCredentials),
+                : ToProto(change.Device, hasCredentials, clockToleranceSeconds),
         };
     }
 
@@ -127,6 +136,14 @@ public static class Mappers
         SdkDeviceStatus.CertificateChanged => Proto.DeviceStatus.CertificateChanged,
         SdkDeviceStatus.SiteOffline => Proto.DeviceStatus.SiteOffline,
         _ => Proto.DeviceStatus.Unknown,
+    };
+
+    public static Proto.NtpState ToProto(NtpState state) => state switch
+    {
+        NtpState.Synced => Proto.NtpState.Synced,
+        NtpState.NotSynced => Proto.NtpState.NotSynced,
+        NtpState.Off => Proto.NtpState.Off,
+        _ => Proto.NtpState.Unknown,
     };
 
     public static Proto.DeviceCategory ToProto(DeviceCategory category) => category switch
@@ -399,6 +416,7 @@ public static class Mappers
             MaxParallelTasksPerPlugin = settings.MaxParallelTasksPerPlugin,
             WaitingRetryMinutes = settings.WaitingRetryMinutes,
             AllowBasicOverHttp = settings.AllowBasicOverHttp,
+            ClockToleranceSeconds = settings.ClockToleranceSeconds,
             ServerVersion = ServerVersion,
         };
     }
@@ -423,7 +441,8 @@ public static class Mappers
             proto.ZeroConfSeconds == 0 ? current.ZeroConfSeconds : proto.ZeroConfSeconds,
             proto.HasMaxParallelTasksPerPlugin ? proto.MaxParallelTasksPerPlugin : current.MaxParallelTasksPerPlugin,
             proto.HasWaitingRetryMinutes ? proto.WaitingRetryMinutes : current.WaitingRetryMinutes,
-            proto.HasAllowBasicOverHttp ? proto.AllowBasicOverHttp : current.AllowBasicOverHttp);
+            proto.HasAllowBasicOverHttp ? proto.AllowBasicOverHttp : current.AllowBasicOverHttp,
+            proto.HasClockToleranceSeconds ? proto.ClockToleranceSeconds : current.ClockToleranceSeconds);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch

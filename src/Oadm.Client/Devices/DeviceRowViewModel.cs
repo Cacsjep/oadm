@@ -105,11 +105,20 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     public partial DeviceCategory Category { get; private set; }
     [ObservableProperty] public partial string? ProductType { get; private set; }
 
-    /// <summary>SoC of the device, "ARTPEC-8" (<see cref="DeviceSocText"/>); null until the server read it.</summary>
+    /// <summary>SoC of the device, "ARTPEC-8" (<see cref="Oadm.Sdk.Client.DeviceTexts.Soc"/>); null until the server read it.</summary>
     [ObservableProperty] public partial string? Soc { get; private set; }
 
     /// <summary>CPU architecture as the device reports it ("aarch64"); null until the server read it.</summary>
     [ObservableProperty] public partial string? Architecture { get; private set; }
+
+    /// <summary>The Clock cell: "Ok", "50 s ahead", "NTP not synced", a warning chip while off, empty until measured (<see cref="DeviceClockText"/>).</summary>
+    [ObservableProperty] public partial ChipInfo Clock { get; private set; } = ChipInfo.Empty;
+
+    /// <summary>The Clock cell's tooltip: the offset and the NTP state.</summary>
+    [ObservableProperty] public partial string? ClockTooltip { get; private set; }
+
+    /// <summary>Sort key of the Clock column: the absolute offset in milliseconds; unmeasured devices last.</summary>
+    [ObservableProperty] public partial long ClockSortKey { get; private set; } = long.MaxValue;
     [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty] public partial bool HasVideo { get; private set; }
@@ -194,8 +203,12 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         Scheme = device.Scheme;
         Category = device.Category;
         ProductType = string.IsNullOrEmpty(device.ProductType) ? null : device.ProductType;
-        Soc = DeviceSocText.ToText(device.Soc);
+        Soc = Oadm.Sdk.Client.DeviceTexts.Soc(device.Soc);
         Architecture = string.IsNullOrEmpty(device.Architecture) ? null : device.Architecture;
+        int? clockOffsetMs = device.HasClockOffsetMs ? device.ClockOffsetMs : null;
+        Clock = DeviceClockText.ToChip(clockOffsetMs, device.NtpState, device.ClockOff, device.ClockBeyondTolerance);
+        ClockTooltip = DeviceClockText.Tooltip(clockOffsetMs, device.NtpState);
+        ClockSortKey = DeviceClockText.SortKey(clockOffsetMs);
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
         CategoryTooltip = DeviceCategoryInfo.ToTooltip(device.Category, ProductType);
         HasVideo = device.HasVideo;
@@ -251,7 +264,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
-            || Contains(Architecture) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
+            || Contains(Architecture) || Contains(Clock.Text) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

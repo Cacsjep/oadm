@@ -441,6 +441,11 @@ public static partial class OadmServerHost
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(SiteEventSource.EventSourceId),
             sp.GetRequiredService<ILogger<SiteEventSource>>()));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<SiteEventSource>());
+        // Polling.ClockToleranceSeconds: the Clock column's off state and Any device: clock off follow it live.
+        services.AddSingleton(sp => new ClockTolerance(
+            sp.GetRequiredService<ServerSettingsStore>(),
+            sp.GetRequiredService<DeviceRepository>(),
+            sp.GetRequiredService<ILogger<ClockTolerance>>()));
         services.AddSingleton(sp => new ExpiryWarningPublisher(
             sp.GetRequiredService<TrustAnchorRegistry>(),
             sp.GetRequiredService<DeviceRepository>(),
@@ -490,7 +495,8 @@ public static partial class OadmServerHost
             sp.GetRequiredService<IDeviceChangeFeed>(),
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<RuleEngineOptions>(),
-            sp.GetRequiredService<ILogger<RuleEngine>>()));
+            sp.GetRequiredService<ILogger<RuleEngine>>(),
+            sp.GetRequiredService<ClockTolerance>()));
         services.AddSingleton<EventRulesService>();
         services.AddHostedService<EventLogRetentionHostedService>();
 
@@ -651,6 +657,7 @@ public static partial class OadmServerHost
         await compliance.LoadAsync(ct).ConfigureAwait(false);
         var siteEvents = sp.GetRequiredService<SiteEventSource>();
         await siteEvents.LoadAsync(ct).ConfigureAwait(false);
+        await sp.GetRequiredService<ClockTolerance>().LoadAsync(ct).ConfigureAwait(false); // before the rules count clocks
         var rules = sp.GetRequiredService<RuleEngine>();
         await rules.StartAsync(ct).ConfigureAwait(false);
         registry.EnabledChanged += (_, _) => rules.SourcesChanged();
@@ -701,6 +708,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<Core.Compliance.ComplianceEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ExpiryWarningPublisher>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<ClockTolerance>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);

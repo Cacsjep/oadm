@@ -1,0 +1,9 @@
+{
+  "id": "oadm.app-management",
+  "version": "0.1.0",
+  "minSdkVersion": "0.7.0",
+  "displayName": "Application management",
+  "enabledByDefault": false,
+  "description": "Shows the applications of many devices at once and starts, stops, installs or removes them.",
+  "siteSupport": "full"
+}

@@ -73,7 +73,7 @@ behavior: plugin `README.md`.
 ## Snapshot report (core plugin)
 
 `plugins/Oadm.Plugins.SnapshotReport` (+ `.Client`), id `oadm.snapshot-report`, rail page **Snapshot report** (group
-Reporting, icon `snapshot`), on by default. The yearly maintenance check: current snapshots of every video source of the
+Reporting, icon `snapshot`), off by default. The yearly maintenance check: current snapshots of every video source of the
 chosen cameras, exported as a PDF report (PDFsharp + MigraDoc, MIT).
 
 - Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`, `plugins/README.md` "Choose
@@ -282,6 +282,22 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
 - Device groups: one table per device scope; a group user checks and sees only the group's cameras, chosen ids outside it
   are refused whole (NOT_FOUND).
 
+## Application management (core plugin)
+
+`plugins/Oadm.Plugins.AppManagement` (+ `.Client`), id `oadm.app-management`, rail page **Applications** (group
+Maintenance, icon `app`), free, **off by default**. The chosen devices and the applications (ACAP) of the selected ones,
+with the actions of the Applications plugin for many rows at once, the log and the settings of an application.
+Details: [Application management](app-management.md) and the plugin's README.
+
+- Devices: the "Selected devices" command button (`PageDeviceChoice`); nothing is read before a choice; reads only on
+  demand (choice, Refresh, after a task of the page), kept in server memory per login session.
+- Rules that must hold: the page never writes to a device; Start, Stop, Remove and Change settings are `oadm.acap` tasks
+  through the caller's runner after the same permission check as the task service, Install and Install licenses too,
+  from the page's own dialogs (the Applications plugin's `AcapCompatibility.Preview` and `LicenseKeyMatcher`); package,
+  key, list, log and settings parsing are the Applications plugin's linked source;
+  setting values only for roles with "Change application settings", never logged; permission `oadm.app-management:view`.
+- Device groups: every read and run is the caller's; ids outside the group refuse the whole request (NOT_FOUND).
+
 ## Load test (core plugin)
 
 `plugins/Oadm.Plugins.LoadTest` (+ `.Client`), id `oadm.load-test`, rail page **Load test**
@@ -413,6 +429,9 @@ Without the OS browser runtime (WebView2, WebKitGTK) the page says what to insta
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
 - Device groups: no page methods; the tree lists only the user's devices and `DeviceWebService` takes the device from the
   user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed device's).
+- Other pages open a page of a device here (SDK 0.7.0 `ICorePluginClientContext.OpenDevicePage`, e.g. Open app page of
+  Applications): the host checks the page, the role, the device and the path (`DevicePageRequest.IsDevicePath`), the
+  page opens or reuses the device's tab on that path (its preset when one has the path, else Custom).
 
 ## Live View (core plugin)
 
@@ -549,8 +568,10 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
 
 `plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, always on, context menu (Applications) **Applications
 (ACAP)**: lists the installed applications, starts, stops and removes them (remove confirmed) and installs or upgrades
-an uploaded `.eap` on all selected devices (classic Application API 1.x), and installs license key files (with the
-package or on their own, matched by the MAC address in the key). Compliance check type **Application running**
+an uploaded `.eap` on all selected devices (classic Application API 1.x; several `.eap` files of one application and
+version at once, one per architecture, each device gets its own), installs license key files (with the package or on
+their own, matched by the MAC address in the key), and changes the settings an application registered (action
+`settings`, started from the Applications page, `docs/spec/app-management.md`). Compliance check type **Application running**
 (`ApplicationRunningCheck`, `docs/spec/compliance.md`): the application is installed / running, optionally at least a
 version and a valid license; the choices are read from one device.
 
@@ -558,7 +579,12 @@ version and a valid license; the choices are read from one device.
   architecture, an AXIS OS outside the package's range or below its schema minimum, root apps on AXIS OS 12+ and a
   downgrade without the explicit option; a license key is sent only to the device whose MAC address it names, for the
   installed application's id and not expired (a device without a key: Done with warnings, nothing sent); activation with
-  a license code is not offered (the device has no API for it, its web page asks Axis online).
+  a license code is not offered (the device has no API for it, its web page asks Axis online). Several packages: same
+  application and version, one per architecture, refused in the dialog before any upload otherwise; the task picks the
+  file again from a fresh basicdeviceinfo, a device without one is Done with warnings "No package for armv7hf.", nothing
+  changed. Change settings: every name must be a setting of the installed application and every value fit its type and
+  range before the one write, read back afterwards (passwords never read back); setting values never appear in a log,
+  step text, task name or the audit log.
 
 ## Outputs and Notifications (event rule actions)
 

@@ -77,6 +77,22 @@ message Device {
   // The days before its end that the certificate counts as "expires soon" (the Certificate expires chip): PKI's Expiry
   // warning policy of the device (docs/spec/pki.md); 0 = 30 (a server without PKI).
   int32 cert_warning_days = 34;
+  // Clock health (docs/spec/main-window.md "Clock"): the device clock minus the server clock in milliseconds, measured
+  // from the HTTP Date header of the status poll; unset until measured.
+  optional sint32 clock_offset_ms = 35;
+  NtpState ntp_state = 36;                        // from getNTPInfo in the full refresh; UNKNOWN without the NTP API
+  bool clock_off = 37;                            // offset beyond Polling.ClockToleranceSeconds or NTP not synced
+  // |clock_offset_ms| beyond Polling.ClockToleranceSeconds, whatever the status (the Clock column shows the last measured
+  // value of devices that are not Ok); clock_off adds status Ok and NTP not synced.
+  bool clock_beyond_tolerance = 38;
+}
+
+// What the device's NTP client reports (ntp.cgi getNTPInfo).
+enum NtpState {
+  NTP_STATE_UNKNOWN = 0;      // not read yet, or no NTP API
+  NTP_STATE_SYNCED = 1;
+  NTP_STATE_NOT_SYNCED = 2;   // NTP on, but not synchronized
+  NTP_STATE_OFF = 3;          // the device does not use NTP
 }
 
 // One entry of the device's VAPIX API discovery list (apidiscovery.cgi getApiList).

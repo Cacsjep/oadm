@@ -168,6 +168,11 @@ internal sealed class HostCallContext : ICallContext
         public bool? IsActive(Guid taskId) => call.HasAllDevices || owners.IsOwner(taskId, call.UserId)
             ? inner.IsActive(taskId)
             : inner.IsActive(taskId) == false ? false : null;
+
+        // Only the caller's own tasks for a user with a device group (the inner runner knows no view).
+        public Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct) => call.HasAllDevices || owners.IsOwner(taskId, call.UserId)
+            ? inner.GetOutcomeAsync(taskId, ct)
+            : Task.FromResult<TaskOutcome?>(null);
     }
 }
 
@@ -468,6 +473,12 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
         {
             guard.Check(Member, system);
             return inner.AnyActiveAsync(taskIds, ct);
+        }
+
+        public Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct)
+        {
+            guard.Check(Member, system);
+            return inner.GetOutcomeAsync(taskId, ct);
         }
     }
 

@@ -41,6 +41,19 @@ public sealed class ServerSettingsStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task TheAllowedClockDifferenceDefaultsToTwoAndAcceptsOneToAnHour()
+    {
+        Assert.Equal(2, (await _store.GetServerSettingsAsync(CancellationToken.None)).ClockToleranceSeconds);
+        Assert.Equal("2", await _store.GetJsonAsync(SettingKeys.PollingClockToleranceSeconds, CancellationToken.None));
+
+        var saved = await _store.SetServerSettingsAsync((await _store.GetServerSettingsAsync(CancellationToken.None)) with { ClockToleranceSeconds = 3600 }, CancellationToken.None);
+        Assert.Equal(3600, (await _store.GetServerSettingsAsync(CancellationToken.None)).ClockToleranceSeconds);
+        await Assert.ThrowsAsync<ArgumentException>(() => _store.SetServerSettingsAsync(saved with { ClockToleranceSeconds = 0 }, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => _store.SetAsync(SettingKeys.PollingClockToleranceSeconds, 3601, CancellationToken.None));
+        Assert.Equal(3600, (await _store.GetServerSettingsAsync(CancellationToken.None)).ClockToleranceSeconds);
+    }
+
+    [Fact]
     public async Task TypedSetOverridesAndResetRestoresDefault()
     {
         var changes = new List<string>();

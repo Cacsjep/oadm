@@ -516,10 +516,10 @@ public sealed partial class DevicePollingService : IDisposable
 
         try
         {
-            var info = full
-                ? await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false)
-                : await client.GetBasicDeviceInfoAsync(StatusPollTimeout, ct).ConfigureAwait(false);
+            var timed = await client.GetTimedBasicDeviceInfoAsync(full ? null : StatusPollTimeout, _time, ct).ConfigureAwait(false);
+            var info = timed.Info;
             observation.Status = DeviceStatus.Ok;
+            observation.ClockOffsetMs = timed.OffsetMs; // the Date header of an Ok answer; none keeps the last value
             observation.Model = info.ProdNbr;
             observation.Firmware = info.Version;
             if (!string.IsNullOrWhiteSpace(info.ProdType))
@@ -611,6 +611,8 @@ public sealed partial class DevicePollingService : IDisposable
                 LogApiListFailed(device.Id, ex.Message);
             }
 
+            observation.NtpState = await ReadNtpStateAsync(client, device, observation.Apis ?? device.Apis, ct).ConfigureAwait(false);
+
             if (device.Scheme == DeviceScheme.Http)
             {
                 // Reached over HTTP (e.g. a port forward of port 80 only): no TLS handshake to observe, so the web server's
@@ -646,6 +648,27 @@ public sealed partial class DevicePollingService : IDisposable
         {
             LogWebServerCertificateFailed(deviceId, ex.Message);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// getNTPInfo when the API list has <c>ntp</c> 1.x; Unknown without it or when the read fails (never fails the refresh).
+    /// </summary>
+    private async Task<NtpState> ReadNtpStateAsync(VapixClient client, Device device, IReadOnlyList<Sdk.Vapix.DeviceApi> apis, CancellationToken ct)
+    {
+        if (Sdk.Vapix.DeviceApiExtensions.FindApi(apis, ClockHealth.NtpApiId, 1) is not { } api)
+        {
+            return NtpState.Unknown;
+        }
+
+        try
+        {
+            return await client.GetNtpStateAsync(api.Version, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            LogNtpInfoFailed(device.Id, ex.Message);
+            return NtpState.Unknown;
         }
     }
 
@@ -757,6 +780,9 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: API list not readable ({Reason})")]
     private partial void LogApiListFailed(Guid deviceId, string reason);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: NTP state not readable ({Reason})")]
+    private partial void LogNtpInfoFailed(Guid deviceId, string reason);
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: web server certificate not readable over HTTP ({Reason})")]
     private partial void LogWebServerCertificateFailed(Guid deviceId, string reason);
 
@@ -822,6 +848,12 @@ public sealed partial class DevicePollingService : IDisposable
 
         public string? Architecture { get; set; }
 
+        /// <summary>From the Date header of an Ok answer; null keeps the stored value.</summary>
+        public int? ClockOffsetMs { get; set; }
+
+        /// <summary>From getNTPInfo (full refresh of an Ok device only); null keeps the stored value.</summary>
+        public NtpState? NtpState { get; set; }
+
         public DeviceCategory Category { get; set; }
 
         public CertificateInfo? Certificate { get; set; }
@@ -841,6 +873,8 @@ public sealed partial class DevicePollingService : IDisposable
             d.ServerName = ServerName ?? d.ServerName;
             d.Soc = Soc ?? d.Soc;
             d.Architecture = Architecture ?? d.Architecture;
+            d.ClockOffsetMs = ClockHealth.Next(d.ClockOffsetMs, ClockOffsetMs);
+            d.NtpState = NtpState ?? d.NtpState;
             if (ProductType is not null)
             {
                 d.ProductType = ProductType;

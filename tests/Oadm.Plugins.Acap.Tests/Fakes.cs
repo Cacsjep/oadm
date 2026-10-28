@@ -107,6 +107,16 @@ internal sealed class FakeAcapDevice : IVapixClient
             case ApplicationApiClient.ControlPath:
                 Writes.Add($"{query["action"]} {query["package"]}");
                 return Text(Control(query["action"]!, query["package"]!));
+            case AppSettings.ParamPath when string.Equals(query["action"], "listdefinitions", StringComparison.Ordinal):
+                Assert.Equal(HttpMethod.Get, request.Method);
+                return Text(DefinitionsXml(query["group"]!));
+            case AppSettings.ParamPath:
+                Writes.Add("param update");
+                Assert.Null(query["action"]); // values only in the POST body, never in the URL
+                return Text(Update(await request.Content!.ReadAsStringAsync(ct)));
+            case AppLogReader.LogPath:
+                Assert.Equal(HttpMethod.Get, request.Method);
+                return Text(LogText);
             default:
                 return new HttpResponseMessage(HttpStatusCode.NotFound);
         }
@@ -221,6 +231,74 @@ internal sealed class FakeAcapDevice : IVapixClient
         }
     }
 
+    /// <summary>The settings of an application (param.cgi root.&lt;app&gt;): the type element as the device sends it and the value.</summary>
+    public Dictionary<string, List<FakeSetting>> Settings { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The form bodies of every param.cgi update.</summary>
+    public List<string> SettingsUpdates { get; } = [];
+
+    /// <summary>The answer of a param.cgi update instead of applying it (e.g. "# Error: Error setting 'root.x.A' to 'secret'!").</summary>
+    public string? UpdateReply { get; set; }
+
+    /// <summary>Settings the device takes ("OK") but keeps unchanged.</summary>
+    public HashSet<string> IgnoredSettings { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The answer of systemlog.cgi.</summary>
+    public string LogText { get; set; } = string.Empty;
+
+    public void AddSetting(string app, string name, string type, string value, string? flags = null, string? niceName = null)
+    {
+        if (!Settings.TryGetValue(app, out var list))
+        {
+            Settings[app] = list = [];
+        }
+
+        list.Add(new FakeSetting(name, type, value, flags, niceName));
+    }
+
+    private string DefinitionsXml(string group)
+    {
+        var app = group.StartsWith("root.", StringComparison.Ordinal) ? group[5..] : group;
+        if (!Settings.TryGetValue(app, out var list))
+        {
+            return $"# Error: Error -1 getting param in group '{group}'\n";
+        }
+
+        var sb = new StringBuilder("<?xml version=\"1.0\" encoding=\"iso-8859-1\" ?>\n<parameterDefinitions xmlns=\"http://www.axis.com/ParameterDefinitionsSchema\" version=\"1.0\">\n<group name=\"root\">\n");
+        sb.Append(CultureInfoInvariant($"<group name=\"{E(app)}\">\n"));
+        foreach (var s in list)
+        {
+            var value = s.Type.StartsWith("<password", StringComparison.Ordinal) ? "******" : s.Value;
+            sb.Append(CultureInfoInvariant($"<parameter name=\"{E(s.Name)}\" value=\"{E(value)}\" securityLevel=\"7766\" niceName=\"{E(s.NiceName ?? s.Name)}\"><type {s.Flags}>{s.Type}</type></parameter>\n"));
+        }
+
+        return sb.Append("</group>\n</group>\n</parameterDefinitions>").ToString();
+    }
+
+    private string Update(string form)
+    {
+        SettingsUpdates.Add(form);
+        if (UpdateReply is not null)
+        {
+            return UpdateReply;
+        }
+
+        var values = HttpUtility.ParseQueryString(form);
+        Assert.Equal("update", values["action"]);
+        foreach (var key in values.AllKeys.Where(k => k is not null && k != "action"))
+        {
+            var parts = key!.Split('.', 3);
+            Assert.Equal("root", parts[0]);
+            var setting = Settings[parts[1]].Single(s => s.Name == parts[2]);
+            if (!IgnoredSettings.Contains(setting.Name))
+            {
+                setting.Value = values[key]!;
+            }
+        }
+
+        return "OK";
+    }
+
     private string ListXml()
     {
         var sb = new StringBuilder("<reply result=\"ok\">\n");
@@ -237,6 +315,22 @@ internal sealed class FakeAcapDevice : IVapixClient
     private static string E(string? s) => SecurityElement.Escape(s ?? string.Empty);
 
     private static HttpResponseMessage Text(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "text/plain") };
+}
+
+/// <summary>One parameter of an application on <see cref="FakeAcapDevice"/>.</summary>
+internal sealed class FakeSetting(string name, string type, string value, string? flags, string? niceName)
+{
+    public string Name { get; } = name;
+
+    /// <summary>The type element, e.g. <c>&lt;int min="0" max="10" /&gt;</c>.</summary>
+    public string Type { get; } = type;
+
+    public string Value { get; set; } = value;
+
+    /// <summary>Attributes of the type element, e.g. <c>hidden="true"</c>.</summary>
+    public string Flags { get; } = flags ?? string.Empty;
+
+    public string? NiceName { get; } = niceName;
 }
 
 internal sealed class InMemoryUploadedFiles : IUploadedFiles

@@ -44,6 +44,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         ZeroConfSeconds = 30,
         MaxParallelTasksPerPlugin = 16,
         WaitingRetryMinutes = 15,
+        ClockToleranceSeconds = 2,
         AllowBasicOverHttp = false,
         ServerName = "acs",
         ListenUrl = "https://0.0.0.0:5080",
@@ -1039,11 +1040,18 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "'Tasks.MaxParallelPerPlugin' must be an integer between 1 and 256."));
             }
 
+            if (settings.HasClockToleranceSeconds && settings.ClockToleranceSeconds is < 1 or > 3600)
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The allowed clock difference is 1 to 3600 seconds."));
+            }
+
+            int clockTolerance = settings.HasClockToleranceSeconds ? settings.ClockToleranceSeconds : _settings.ClockToleranceSeconds;
             int maxParallel = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : _settings.MaxParallelTasksPerPlugin;
             int waitingRetry = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : _settings.WaitingRetryMinutes;
             bool allowBasic = settings.HasAllowBasicOverHttp ? settings.AllowBasicOverHttp : _settings.AllowBasicOverHttp;
             _settings = settings.Clone();
             _settings.WaitingRetryMinutes = waitingRetry;
+            _settings.ClockToleranceSeconds = clockTolerance;
             _settings.AllowBasicOverHttp = allowBasic;
             _settings.ClearUseHostName(); // no longer a server setting
             _settings.MaxParallelTasksPerPlugin = maxParallel;
@@ -1698,7 +1706,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         }
     }
 
-    private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => WithSampleApis(new Device
+    private Device CreateDevice(string serial, string address, string model, string firmware, DeviceStatus status) => WithSampleClock(WithSampleApis(new Device
     {
         Id = Guid.NewGuid().ToString(),
         Serial = serial,
@@ -1725,7 +1733,36 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         CertSubject = "CN=axis-" + serial.ToLowerInvariant(),
         CertIssuer = "CN=axis-" + serial.ToLowerInvariant(),
         CertNameMatches = false,
-    });
+    }), _settings.ClockToleranceSeconds);
+
+    /// <summary>
+    /// Clock values for the Clock column: most devices within a second (Ok), some ahead or behind, one with NTP not synced,
+    /// some not measured yet. Beyond the tolerance and off like the server computes them (off: status Ok and beyond the
+    /// tolerance or NTP not synced).
+    /// </summary>
+    internal static Device WithSampleClock(Device device, int toleranceSeconds)
+    {
+        int pick = device.Serial.Sum(c => c) % 10;
+        (int? offsetMs, NtpState ntp) = pick switch
+        {
+            0 => ((int?)null, NtpState.Unknown),
+            1 => (49_400, NtpState.Synced),
+            2 => (-125_000, NtpState.Off),
+            3 => (3 * 3600 * 1000 + 10_000, NtpState.Off),
+            4 => (400, NtpState.NotSynced),
+            _ => ((pick - 7) * 300, NtpState.Synced),
+        };
+        if (offsetMs is { } offset)
+        {
+            device.ClockOffsetMs = offset;
+        }
+
+        device.NtpState = ntp;
+        device.ClockBeyondTolerance = offsetMs is { } measured && Math.Abs((long)measured) > toleranceSeconds * 1000L;
+        device.ClockOff = device.Status == DeviceStatus.Ok && offsetMs is not null
+            && (device.ClockBeyondTolerance || ntp == NtpState.NotSynced);
+        return device;
+    }
 
     /// <summary>A typical AXIS OS 12 API list (subset of apidiscovery getApiList) so plugin CanRun checks work in fake mode.</summary>
     private static Device WithSampleApis(Device device)

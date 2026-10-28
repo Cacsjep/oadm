@@ -69,7 +69,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DateTime(.Client)/         Date and time
   Oadm.Plugins.Network(.Client)/          Network settings, Assign IP address
   Oadm.Plugins.Acap(.Client)/             Applications (ACAP) and their license keys
-  Oadm.Plugins.SnapshotReport(.Client)/   first Core plugin: rail page + PDF maintenance report
+  Oadm.Plugins.SnapshotReport(.Client)/   first Core plugin: rail page + PDF maintenance report (off by default)
   Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
   Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
   Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
@@ -80,6 +80,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
   Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
   Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
+  Oadm.Plugins.AppManagement(.Client)/   core plugin: Applications page, the apps of many devices, log and settings (off by default)
   Oadm.Plugins.LoadTest(.Client)/ core plugin: Load test, a load test of the chosen cameras and the network (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
@@ -219,6 +220,9 @@ must never break.
   profile (staging DHCP range, password, configuration files, applications, name and tags, certificate and 802.1X, fixed
   address range) runs by itself on factory-new cameras only; the fixed IP is written only on Apply network and checked;
   the DHCP server's settings are saved and always restored; Administrator only.
+- **[Application management](docs/spec/app-management.md)** (core plugin `oadm.app-management`, free, off by default):
+  the chosen devices and the applications of the selected ones, Hide AXIS apps; every change
+  is a task of `oadm.acap` with its checks and permissions; reads only on demand, kept in server memory.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

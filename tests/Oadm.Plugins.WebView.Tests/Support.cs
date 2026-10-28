@@ -110,6 +110,11 @@ internal sealed class TestContext(List<IDeviceInfo> devices) : ICorePluginClient
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
 
     public void RaiseDevicesChanged() => DevicesChanged?.Invoke(this, EventArgs.Empty);
+
+    public event EventHandler<DevicePageRequest>? OpenDevicePageRequested;
+
+    /// <summary>The host asks for a page of a device (another plugin's page called OpenDevicePage).</summary>
+    public void RaiseOpenDevicePage(Guid deviceId, string path) => OpenDevicePageRequested?.Invoke(this, new DevicePageRequest(deviceId, path));
 }
 
 internal sealed class FakeWebAccess : IDeviceWebAccess

@@ -146,6 +146,53 @@ public sealed class ToolbarContext : IToolbarContext
         return taskIds;
     }
 
+    /// <summary>
+    /// Runs a task plugin on the given devices like the context menu does (a core plugin page,
+    /// <see cref="ICorePluginClientContext.RunTaskAsync"/>): the same <see cref="TaskPluginRunner"/>, dialog first. Devices
+    /// outside the client's mirror (unknown, outside the user's group) and devices the plugin cannot run on are left out;
+    /// a plugin missing from the catalog (off, or the role cannot run it) starts nothing. Null when nothing was started.
+    /// </summary>
+    public Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, CancellationToken ct) =>
+        RunTaskAsync(pluginId, deviceIds, null, ct);
+
+    /// <summary>The run of a core plugin page with the dialog opened on <paramref name="startView"/> (<see cref="ITaskDialogContext.StartView"/>).</summary>
+    public async Task<IReadOnlyList<string>?> RunTaskAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? startView, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        TaskPluginInfo? plugin = Find(pluginId);
+        if (plugin is null)
+        {
+            return null;
+        }
+
+        var seen = new HashSet<Guid>();
+        var devices = new List<DeviceRowViewModel>(deviceIds.Count);
+        foreach (Guid id in deviceIds)
+        {
+            if (seen.Add(id) && _store.Find(id.ToString()) is { } row && TaskPluginCatalog.CanRun(plugin, row.Id))
+            {
+                devices.Add(row);
+            }
+        }
+
+        if (devices.Count == 0)
+        {
+            return null;
+        }
+
+        IReadOnlyList<string>? taskIds = await _runner.RunAsync(plugin, devices, startView, ct).ConfigureAwait(true);
+        if (taskIds is { Count: > 0 })
+        {
+            _showTasks();
+        }
+
+        return taskIds;
+    }
+
+    /// <summary>Whether the device is in the client's device list (O(1)).</summary>
+    public bool Knows(Guid deviceId) => _store.Find(deviceId.ToString()) is not null;
+
     public Task OpenAsync(string hostPage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(hostPage);

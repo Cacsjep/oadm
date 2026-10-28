@@ -187,7 +187,7 @@ public sealed record FakePublishedEvent(string Topic, string? PayloadJson, Plugi
 /// during the call of a user with a device group (<see cref="CallAsGroup"/>) the context's own <see cref="Devices"/>,
 /// <see cref="Vapix"/>, <see cref="Tasks"/> and <see cref="System"/> refuse with <see cref="DeviceAccessRefusedException"/>
 /// (also in work the plugin starts from the call and in that user's jobs), exactly like on the server. The tasks it starts
-/// stay active (<see cref="ITaskRunner.IsActive"/>) until they are cancelled or the test ends them with <see cref="EndTask"/>;
+/// stay active (<see cref="ITaskRunner.IsActive"/>) until they are cancelled or the test ends them with <see cref="EndTask(Guid, TaskEndState, string?)"/> (then <see cref="ITaskRunner.GetOutcomeAsync"/> answers that end);
 /// like the host, an unknown or ended task is not active (false). Unlike the host, <see cref="ITaskRunner.Cancel"/> ends the
 /// task at once: on the server a cancelled task stays active until its run stops.
 /// </summary>
@@ -378,7 +378,7 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     bool ITaskRunner.Cancel(Guid taskId)
     {
         Check("Tasks");
-        return EndTask(taskId);
+        return EndTask(taskId, TaskEndState.Cancelled);
     }
 
     /// <summary>True while a task the plugin started is active; false once it ended and for an unknown task, like the host.</summary>
@@ -388,8 +388,42 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         return TaskActive(taskId);
     }
 
-    /// <summary>Ends a task the plugin started (as if it finished): true when it was still active.</summary>
-    public bool EndTask(Guid taskId) => _tasks.TryGetValue(taskId, out var task) && Interlocked.Exchange(ref task.Ended, 1) == 0;
+    /// <summary>How an ended task ended (<see cref="EndTask(Guid, TaskEndState, string?)"/>; Done without a message by default), null while it is active and for an unknown task, like the host.</summary>
+    Task<TaskOutcome?> ITaskRunner.GetOutcomeAsync(Guid taskId, CancellationToken ct)
+    {
+        Check("Tasks");
+        return Task.FromResult(OutcomeOf(taskId));
+    }
+
+    /// <summary>Ends a task the plugin started (as if it finished, Done): true when it was still active.</summary>
+    public bool EndTask(Guid taskId) => EndTask(taskId, TaskEndState.Done);
+
+    /// <summary>
+    /// Ends a task the plugin started as <paramref name="state"/> with its <paramref name="message"/> (Failed with its error,
+    /// ...), what <see cref="ITaskRunner.GetOutcomeAsync"/> then answers: true when it was still active.
+    /// </summary>
+    public bool EndTask(Guid taskId, TaskEndState state, string? message = null)
+    {
+        if (!_tasks.TryGetValue(taskId, out var task))
+        {
+            return false;
+        }
+
+        lock (task)
+        {
+            if (task.Ended != 0)
+            {
+                return false;
+            }
+
+            task.Outcome = new TaskOutcome(task.DeviceId, state, message); // before Ended: a reader that sees the end sees its outcome
+            Volatile.Write(ref task.Ended, 1);
+            return true;
+        }
+    }
+
+    /// <summary>The outcome of an ended task without the call checks; null while active or unknown.</summary>
+    internal TaskOutcome? OutcomeOf(Guid taskId) => _tasks.TryGetValue(taskId, out var task) && Volatile.Read(ref task.Ended) == 1 ? task.Outcome : null;
 
     /// <summary>
     /// Calls <paramref name="method"/> like the host: refuses a method the plugin keeps for users with all devices
@@ -495,6 +529,8 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         public Guid DeviceId { get; } = deviceId;
 
         public string? StartedBy { get; } = startedBy;
+
+        public TaskOutcome? Outcome { get; set; }
     }
 
     /// <summary>The server's refusal of the full accesses in a group user's call.</summary>
@@ -559,13 +595,19 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         public bool Cancel(Guid taskId)
         {
             core.Check("System.Tasks", system: true);
-            return core.EndTask(taskId);
+            return core.EndTask(taskId, TaskEndState.Cancelled);
         }
 
         public bool? IsActive(Guid taskId)
         {
             core.Check("System.Tasks", system: true);
             return core.TaskActive(taskId);
+        }
+
+        public Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct)
+        {
+            core.Check("System.Tasks", system: true);
+            return Task.FromResult(core.OutcomeOf(taskId));
         }
     }
 

@@ -1,0 +1,24 @@
+{
+  "apiVersion": "1.5",
+  "context": "oadm",
+  "method": "getNTPInfo",
+  "data": {
+    "client": {
+      "enabled": true,
+      "NTSEnabled": false,
+      "serversSource": "static",
+      "maxSupportedStaticServers": 5,
+      "staticServers": [
+        "10.0.0.17"
+      ],
+      "advertisedServers": [],
+      "staticNTSKEServers": [],
+      "NTSKEServerCACerts": [],
+      "synced": true,
+      "timeToNextSync": 44,
+      "timeOffset": 0.016422,
+      "minpoll": 6,
+      "maxpoll": 10
+    }
+  }
+}

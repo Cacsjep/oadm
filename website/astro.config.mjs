@@ -162,6 +162,7 @@ export default defineConfig({
 						{ label: 'Image Health Dashboard', slug: 'tools/image-health-dashboard' },
 						{ label: 'I/O Monitor', slug: 'tools/io-monitor' },
 						{ label: 'Load test', slug: 'tools/load-test' },
+						{ label: 'Applications', slug: 'tools/applications' },
 						{ label: 'Edge Recording Export', slug: 'tools/edge-recording-export' },
 						{ label: 'Edge storage', slug: 'tools/edge-storage' },
 						{ label: 'Snapshot report', slug: 'tools/snapshot-report' },

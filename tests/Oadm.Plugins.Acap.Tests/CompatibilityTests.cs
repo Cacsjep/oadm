@@ -117,12 +117,17 @@ public sealed class CompatibilityTests
         Assert.Equal(warns, r.Warnings.Any(w => w.Contains("AllowRoot", StringComparison.Ordinal)));
     }
 
-    [Fact]
-    public void Signed_only_device_gives_a_warning()
+    [Theory]
+    [InlineData("12.11.77", false, true)]   // the device says so
+    [InlineData("13.0.0", null, true)]      // AXIS OS 13: the setting is gone, signed only
+    [InlineData("13.1.5", true, true)]
+    [InlineData("12.11.77", null, false)]   // before 11.2: no setting, unsigned allowed
+    [InlineData("12.4.0", true, false)]
+    public void Signed_only_device_gives_a_warning(string firmware, bool? allowUnsigned, bool warns)
     {
-        var r = AcapCompatibility.Check(Package(), P3265 with { AllowUnsigned = false }, null, false);
+        var r = AcapCompatibility.Check(Package(), P3265 with { FirmwareVersion = firmware, AllowUnsigned = allowUnsigned }, null, false);
         Assert.True(r.IsCompatible);
-        Assert.Contains(r.Warnings, w => w.Contains("only signed", StringComparison.Ordinal));
+        Assert.Equal(warns, r.Warnings.Any(w => w.Contains("only signed", StringComparison.Ordinal)));
     }
 
     [Theory]

@@ -28,6 +28,10 @@ public sealed class DeviceListCsvTests
         device.ProductType = "Dome Camera";
         device.Soc = "Axis Artpec-8";
         device.Architecture = "aarch64";
+        device.ClockOffsetMs = 49_400;
+        device.NtpState = NtpState.Synced;
+        device.ClockBeyondTolerance = true;
+        device.ClockOff = true;
         device.CertNotAfter = Timestamp.FromDateTime(new DateTime(2027, 3, 4, 10, 0, 0, DateTimeKind.Utc));
         device.CertTrust = CertificateTrust.SelfSigned;
         device.Tags.AddRange(["Building A", "PTZ"]);
@@ -35,8 +39,8 @@ public sealed class DeviceListCsvTests
         string csv = DeviceListCsv.Write([Row(device)]);
 
         string[] lines = csv.Split("\r\n");
-        Assert.Equal("MAC address,Status,Address,Tags,Site,Host name,Model,Firmware,SoC,Architecture,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X,Compliance", lines[0]);
-        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,aarch64,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
+        Assert.Equal("MAC address,Status,Address,Tags,Site,Host name,Model,Firmware,SoC,Architecture,Clock,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X,Compliance", lines[0]);
+        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,aarch64,50 s ahead,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
         Assert.Equal("", lines[2]); // CRLF after the last record
     }
 
@@ -48,7 +52,7 @@ public sealed class DeviceListCsvTests
     [InlineData("", null)]
     [InlineData(null, null)]
     public void Soc_text_uses_the_axis_spelling_without_the_brand(string? soc, string? expected) =>
-        Assert.Equal(expected, DeviceSocText.ToText(soc));
+        Assert.Equal(expected, Oadm.Sdk.Client.DeviceTexts.Soc(soc));
 
     [Fact]
     public void The_search_finds_devices_by_soc()

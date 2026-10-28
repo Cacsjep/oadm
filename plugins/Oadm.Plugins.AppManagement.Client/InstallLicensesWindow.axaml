@@ -1,0 +1,52 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+        x:Class="Oadm.Plugins.AppManagement.Client.InstallLicensesWindow"
+        x:DataType="vm:InstallLicensesViewModel"
+        Title="{x:Static vm:InstallLicensesViewModel.Title}"
+        Width="1100" Height="680"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Install licenses of the Applications page: the key files, the selected applications with the key found for each,
+       Install licenses. One operation, no card. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:InstallLicensesViewModel.Title}" />
+
+    <Border Grid.Row="1" Classes="dialogBody">
+      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <ui:FileRow Grid.Row="0" ButtonText="Choose files" FileName="{Binding FileName}" Details="{Binding FileDetails}"
+                    Command="{Binding ChooseFilesCommand}" ToolTip.Tip="Key files or a ZIP of them" />
+        <ui:StatusChip Grid.Row="1" Margin="0,8,0,0" IsWarning="True" Text="{Binding ProblemText}" MaxLines="3" IsVisible="{Binding HasProblems}" />
+        <Panel Grid.Row="2" Margin="0,12,0,0">
+          <DataGrid x:Name="RowsGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Single"
+                    CanUserSortColumns="True" CanUserReorderColumns="False" CanUserResizeColumns="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Address" Width="120" MinWidth="100" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:LicenseTargetRow" />
+              <DataGridTextColumn Header="Model" Width="110" MinWidth="80" Binding="{Binding Model}" x:DataType="vm:LicenseTargetRow" />
+              <DataGridTextColumn Header="Application" Width="1.4*" MinWidth="160" Binding="{Binding Application}" x:DataType="vm:LicenseTargetRow" />
+              <DataGridTextColumn Header="License" Width="120" MinWidth="100" Binding="{Binding License}" x:DataType="vm:LicenseTargetRow" />
+              <DataGridTemplateColumn Header="Result" Width="2*" MinWidth="240" CanUserSort="True" SortMemberPath="ResultSortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:LicenseTargetRow">
+                    <ui:StatusChip Text="{Binding Verdict}" Detail="{Binding Details}" MaxLines="2" IsVisible="{Binding HasVerdict}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <ui:LoadingOverlay Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
+        </Panel>
+        <TextBlock Grid.Row="3" Classes="error" Margin="0,12,0,0" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="0,0,8,0" Text="{Binding Summary}" />
+      <Button Classes="primary" Content="Install licenses" Command="{Binding InstallCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding InstallBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -4,5 +4,6 @@
   "minSdkVersion": "0.4.0",
   "displayName": "Snapshot report",
   "description": "Snapshots of every camera and a PDF maintenance report.",
+  "enabledByDefault": false,
   "siteSupport": "full"
 }
