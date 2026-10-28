@@ -223,7 +223,10 @@ jobs:
           $licenses = @(Query 'SELECT FileName FROM File') | Where-Object { $_ -match 'LICENSE\.txt|THIRD-PARTY-NOTICES\.txt|LGPL-2\.1\.txt' }
           if ($licenses.Count -ne 6) { throw "license texts in both folders expected, found $($licenses.Count)" }
           if (@(@(Query 'SELECT FileName FROM File') -match 'TERMS\.md').Count -ne 2) { throw 'TERMS.md in both folders expected' }
-          if (@(@(Query 'SELECT DefaultDir FROM Directory') -match '(^|\|)docs$').Count -ne 1) { throw 'one docs folder (client Help) expected' }
+          # Help: docs only below the client folder. WiX writes one Directory row per harvested group, several for the same
+          # folder (Client\docs), so the check is on the parent, not the row count.
+          $docs = @(Query 'SELECT Directory_Parent, DefaultDir FROM Directory') -match '\| (\w+\|)?docs$'
+          if ($docs.Count -eq 0 -or @($docs -notmatch '^ClientFolder \|').Count -ne 0) { throw "docs folder below the client only expected: $($docs -join '; ')" }
           Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
 
       - name: Validate site node MSI

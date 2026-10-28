@@ -42,7 +42,7 @@ installed version.
   next to the client executable (MSI and .deb: the client folder, both "Server and client" and "Client only"; .pkg:
   `OADM.app/Contents/Resources/docs`, no code in `Contents/MacOS`, so the client also looks there). The server, its
   portable ZIP and the OADM Site Node carry no docs. Checks: the published client has `docs/index.html` and the server
-  no `docs/`; the MSI has one `docs` folder; the .deb's client has `/opt/oadm/client/docs/index.html`, the server none;
+  no `docs/`; the MSI has `docs` below the client folder only (WiX writes several Directory rows for it); the .deb's client has `/opt/oadm/client/docs/index.html`, the server none;
   the .pkg has `Contents/Resources/docs/index.html`; the smoke tests check the installed `docs\index.html` (MSI both
   ways, .deb both ways).
 - Developer builds: `manage build docs-offline` (needs Node.js; `npm ci` when `website/node_modules` is missing) builds
