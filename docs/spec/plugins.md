@@ -247,7 +247,9 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   (`DevicePageRequest.IsDevicePath` = `Oadm.Sdk.Vapix.DevicePaths.IsOnDevice`, SDK 0.7.0, the one check of the server
   and client parts, also Web View's Custom path and an application's own page: one leading "/", no "//" anywhere, no
   "\\", no ".." segment also percent-encoded, no spaces or control characters; `DevicePaths.ToDevicePath` adds the
-  leading "/" to a page such as list.cgi names it), then raises
+  leading "/" to a page such as list.cgi names it; the relay of Web View's pages (`DeviceWebGrpcService`) and VAPIX
+  Commander's rendered paths keep their own checks on purpose: they must pass an encoded "/" inside a segment or a query
+  value, e.g. `?returnPage=%2Fcamera%2F` or a value "my app/1"), then raises
   `OpenDevicePageRequested` (`DevicePageRequest` {DeviceId, Path}, DIM never raised) on the Web View page's context, which
   opens or reuses the device's tab on that path (its preset when one has the path, else Custom). First user: Open app page
   of Applications.
