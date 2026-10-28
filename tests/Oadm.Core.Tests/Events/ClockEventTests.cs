@@ -1,9 +1,11 @@
 using Oadm.Core.Devices;
 using Oadm.Core.Events;
 using Oadm.Core.Settings;
+using Oadm.Core.Sites;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Testing;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Core.Tests.Events;
 
@@ -43,6 +45,32 @@ public sealed class ClockEventTests
         await rig.Devices.RemoveAsync(b.Id, CancellationToken.None);
         await watch.WaitForAsync(null);
         Assert.Equal(["1", "2", "1", null], watch.Counts);
+    }
+
+    [Fact]
+    public async Task ADeviceKeepsItsPlaceInTheCountWhileItsSiteIsOffline()
+    {
+        var sites = new FakeSiteTransport();
+        var site = sites.AddSite("Building B");
+        await using var rig = await EventRulesRig.StartAsync(sites: sites);
+        await using var publisher = new SiteStatusPublisher(sites, rig.Devices, rig.Devices.Changes);
+        publisher.Start();
+        var watch = new AnyClockOffWatch(rig);
+        var off = await rig.Devices.AddAsync(new Device { Serial = "ACCC8E400001", Address = "192.168.0.20", SiteId = site.Id, Status = DeviceStatus.Ok, Model = "P3265-V", ClockOffsetMs = 50_000 }, CancellationToken.None);
+        await watch.WaitForAsync("1");
+
+        var handled = publisher.Handled;
+        sites.SetOnline(site.Id, false);
+        await Eventually.TrueAsync(() => publisher.Handled > handled, "the site went offline");
+        await rig.SettleAsync();
+        Assert.Equal(DeviceStatus.SiteOffline, (await rig.Devices.GetAsync(off.Id, CancellationToken.None))!.Status);
+
+        handled = publisher.Handled;
+        sites.SetOnline(site.Id, true);
+        await Eventually.TrueAsync(() => publisher.Handled > handled, "the site is back");
+        await rig.SettleAsync();
+
+        Assert.Equal(["1"], watch.Counts); // never off and on again: rules on the event fire once
     }
 
     [Fact]

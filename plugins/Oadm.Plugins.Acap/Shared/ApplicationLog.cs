@@ -32,7 +32,8 @@ public sealed record AppLog(IReadOnlyList<AppLogLine> Lines, bool Truncated)
 /// The device's log lines of one application: <c>GET /axis-cgi/admin/systemlog.cgi?appname=&lt;Name&gt;</c> (read only; seen on
 /// AXIS P3265-V, AXIS OS 12.11: a header line "----- Contents of SYSTEM_LOG for 'eva' -----", blank lines, then
 /// "&lt;time&gt; &lt;host&gt; [ LEVEL ] process[pid]: message"). At most <see cref="MaxLines"/> lines and <see cref="MaxBytes"/>
-/// are kept: the newest.
+/// are kept: the newest; a line is cut to <see cref="MaxLineLength"/> while it is read and an answer is read up to
+/// <see cref="MaxReadChars"/>.
 /// </summary>
 public static class AppLogReader
 {
@@ -67,8 +68,9 @@ public static class AppLogReader
     public static AppLog Parse(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
-        using var reader = new StringReader(text);
-        return Read(reader);
+        var lines = new LineSplitter();
+        lines.Feed(text.AsSpan());
+        return lines.End();
     }
 
     /// <summary>Reads the answer line by line and keeps only the newest lines within the limits (memory stays bounded).</summary>
@@ -79,29 +81,28 @@ public static class AppLogReader
         return await ReadAsync(reader, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Reads lines until the end; the newest <see cref="MaxLines"/> lines and <see cref="MaxBytes"/> are kept.</summary>
+    /// <summary>
+    /// Reads lines until the end; the newest <see cref="MaxLines"/> lines and <see cref="MaxBytes"/> are kept. Memory stays
+    /// bounded whatever the device sends: the answer is read in blocks, a line holds at most <see cref="MaxLineLength"/>
+    /// characters (the rest of a longer one, even an endless one without a line break, is skipped), and the read stops
+    /// after <see cref="MaxReadChars"/> (Truncated).
+    /// </summary>
     public static async Task<AppLog> ReadAsync(TextReader reader, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        var kept = new Kept();
-        while (await reader.ReadLineAsync(ct).ConfigureAwait(false) is { } line)
+        var lines = new LineSplitter();
+        var buffer = new char[16 * 1024];
+        int read;
+        while (!lines.Full && (read = await reader.ReadAsync(buffer.AsMemory(), ct).ConfigureAwait(false)) > 0)
         {
-            kept.Add(line);
+            lines.Feed(buffer.AsSpan(0, read));
         }
 
-        return kept.ToLog();
+        return lines.End();
     }
 
-    private static AppLog Read(TextReader reader)
-    {
-        var kept = new Kept();
-        while (reader.ReadLine() is { } line)
-        {
-            kept.Add(line);
-        }
-
-        return kept.ToLog();
-    }
+    /// <summary>The most characters of one answer read; beyond them the read stops and the log is Truncated.</summary>
+    public const long MaxReadChars = 32L * MaxBytes;
 
     /// <summary>One line, or null for the header and blank lines.</summary>
     public static AppLogLine? ParseLine(string line)
@@ -133,6 +134,89 @@ public static class AppLogReader
         };
     }
 
+    /// <summary>
+    /// Splits the answer into lines like <see cref="TextReader.ReadLine"/> (LF, CR or CR LF), each cut to
+    /// <see cref="MaxLineLength"/> while it is read, into <see cref="Kept"/>.
+    /// </summary>
+    private sealed class LineSplitter
+    {
+        private readonly Kept _kept = new();
+        private readonly StringBuilder _line = new();
+        private bool _afterCr;
+        private bool _any;
+        private long _chars;
+        private bool _stopped;
+
+        /// <summary>The answer reached <see cref="MaxReadChars"/>: nothing more is read.</summary>
+        public bool Full => _stopped;
+
+        public void Feed(ReadOnlySpan<char> text)
+        {
+            if (_stopped)
+            {
+                return;
+            }
+
+            if (_chars + text.Length > MaxReadChars)
+            {
+                text = text[..(int)(MaxReadChars - _chars)];
+                _stopped = true;
+            }
+
+            _chars += text.Length;
+            while (!text.IsEmpty)
+            {
+                if (_afterCr && text[0] == '\n')
+                {
+                    text = text[1..];
+                    _afterCr = false;
+                    continue;
+                }
+
+                _afterCr = false;
+                var end = text.IndexOfAny('\r', '\n');
+                var part = end < 0 ? text : text[..end];
+                if (!part.IsEmpty)
+                {
+                    _any = true;
+                    var room = MaxLineLength - _line.Length;
+                    if (room > 0)
+                    {
+                        _line.Append(part[..Math.Min(room, part.Length)]);
+                    }
+                }
+
+                if (end < 0)
+                {
+                    return;
+                }
+
+                _afterCr = text[end] == '\r';
+                _kept.Add(_line.ToString());
+                _line.Clear();
+                _any = false;
+                text = text[(end + 1)..];
+            }
+        }
+
+        public AppLog End()
+        {
+            if (_any)
+            {
+                _kept.Add(_line.ToString());
+                _line.Clear();
+                _any = false;
+            }
+
+            if (_stopped)
+            {
+                _kept.MarkTruncated();
+            }
+
+            return _kept.ToLog();
+        }
+    }
+
     /// <summary>The newest lines within the limits.</summary>
     private sealed class Kept
     {
@@ -155,6 +239,8 @@ public static class AppLogReader
                 _truncated = true;
             }
         }
+
+        public void MarkTruncated() => _truncated = true;
 
         public AppLog ToLog() => _lines.Count == 0 && !_truncated ? AppLog.Empty : new AppLog([.. _lines], _truncated);
 

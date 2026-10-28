@@ -325,20 +325,20 @@ public static class BuiltInComplianceTypes
 
             if (Devices.ClockHealth.IsBeyondTolerance(offset, Allowed(invocation)))
             {
-                return ComplianceResult.Failed(Devices.ClockHealth.OffsetText(offset));
+                return ComplianceResult.Failed(ClockTexts.OffsetText(offset));
             }
 
             if (NtpRequired(invocation) && row.NtpState is Devices.NtpState.NotSynced)
             {
-                return ComplianceResult.Failed("NTP not synced");
+                return ComplianceResult.Failed(ClockTexts.NtpNotSynced);
             }
 
             if (NtpRequired(invocation) && row.NtpState is Devices.NtpState.Off)
             {
-                return ComplianceResult.Failed("NTP off");
+                return ComplianceResult.Failed(ClockTexts.NtpOff);
             }
 
-            return ComplianceResult.Passed(Devices.ClockHealth.OffsetText(offset));
+            return ComplianceResult.Passed(ClockTexts.OffsetText(offset));
         }
 
         private static int Allowed(ComplianceInvocation invocation) =>

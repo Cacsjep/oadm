@@ -241,7 +241,10 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   `OpenDevicePage(deviceId, path)` (SDK 0.7.0, DIM false): a page of a device's web interface in Web View; the host
   (`MainWindowViewModel.OpenDevicePageInWebView`) opens it only while the Web View page is in the rail, the role has
   `oadm.web-view:open`, the device is in the client's list and the path stays on the device
-  (`DevicePageRequest.IsDevicePath`: one leading "/", no "//", "\\", "..", spaces or control characters), then raises
+  (`DevicePageRequest.IsDevicePath` = `Oadm.Sdk.Vapix.DevicePaths.IsOnDevice`, SDK 0.7.0, the one check of the server
+  and client parts, also Web View's Custom path and an application's own page: one leading "/", no "//" anywhere, no
+  "\\", no ".." segment also percent-encoded, no spaces or control characters; `DevicePaths.ToDevicePath` adds the
+  leading "/" to a page such as list.cgi names it), then raises
   `OpenDevicePageRequested` (`DevicePageRequest` {DeviceId, Path}, DIM never raised) on the Web View page's context, which
   opens or reuses the device's tab on that path (its preset when one has the path, else Custom). First user: Open app page
   of Applications.

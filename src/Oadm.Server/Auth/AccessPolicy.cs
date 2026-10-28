@@ -261,10 +261,6 @@ public static class AccessPolicy
     public static string DeniedMessage(string permission, PermissionCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
-        var entry = catalog.Find(permission);
-        var name = entry is null ? permission
-            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup or HostPermissions.LogsGroup ? entry.Name
-            : entry.Group + ": " + entry.Name;
-        return $"Your role does not allow: {name}.";
+        return catalog.DeniedMessage(permission);
     }
 }

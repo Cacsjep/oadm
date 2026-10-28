@@ -127,7 +127,7 @@ public sealed partial class TaskGrpcService(
         return reply;
     }
 
-    private static string UnknownTaskPlugin(string pluginId) => $"Unknown task plugin '{pluginId}'.";
+    private static string UnknownTaskPlugin(string pluginId) => TaskRunPermissions.UnknownPlugin(pluginId);
 
     /// <summary>One task per device of the caller's view; any device outside it (or unknown) refuses the whole run.</summary>
     public override async Task<Proto.RunTaskReply> Run(Proto.RunTaskRequest request, ServerCallContext context)
@@ -143,10 +143,9 @@ public sealed partial class TaskGrpcService(
             throw GrpcGuard.NotFound(UnknownTaskPlugin(request.PluginId));
         }
 
-        foreach (var key in PermissionCatalog.RunKeys(task.Plugin, payload))
-        {
-            AuthInterceptor.Require(key, roles.Catalog);
-        }
+        // The same check as call.Tasks of a plugin's call: PERMISSION_DENIED with what the role lacks (the interceptor's answer
+        // to DeviceAccessRefusedException).
+        TaskRunPermissions.Require(task.Plugin, payload, caller.Permissions, () => roles.Catalog);
 
         var view = await views.ForAsync(context).ConfigureAwait(false);
         var devices = await view.GetAsync(ids, context.CancellationToken).ConfigureAwait(false);

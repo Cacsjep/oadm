@@ -211,6 +211,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
             UseProxy = false,
             PreAuthenticate = true,
             SslOptions = { RemoteCertificateValidationCallback = pinning.ValidateSslCallback },
+
+            // Marks when a request was written (the clock offset of the status poll measures only its last exchange).
+            PlaintextStreamFilter = (context, _) => ValueTask.FromResult(RequestSendClock.Wrap(context.PlaintextStream)),
         };
         (router ?? DeviceRouter.Local).Configure(handler, route, timeout ?? DeviceConnections.DefaultTimeout);
 
@@ -316,10 +319,20 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         request.Options.Set(StatusReadOption, true);
+
+        // The round trip of the exchange that carries the Date header: from the last write to the connection (after a
+        // Digest challenge and a new connection), not from before the request (a custom handler marks nothing: from here).
+        var clock = new RequestSendClock(time);
         var sent = time.GetUtcNow();
-        var (text, date) = await SendForTextAndDateAsync(request, ct).ConfigureAwait(false);
+        string text;
+        DateTimeOffset? date;
+        using (clock.Use())
+        {
+            (text, date) = await SendForTextAndDateAsync(request, ct).ConfigureAwait(false);
+        }
+
         var received = time.GetUtcNow();
-        return new TimedBasicDeviceInfo(VapixParsers.ParseBasicDeviceInfo(text), date, sent, received);
+        return new TimedBasicDeviceInfo(VapixParsers.ParseBasicDeviceInfo(text), date, clock.LastWrite ?? sent, received);
     }
 
     /// <summary>basicdeviceinfo getAllUnrestrictedProperties: works anonymously, no SocSerialNumber/Architecture.</summary>

@@ -124,7 +124,10 @@ internal sealed partial class AppReadService : IAsyncDisposable
 
     /// <summary>
     /// One page of the session's rows, in a stable order; rows of devices that are no longer the caller's (removed, or out of
-    /// the caller's device group) are dropped first.
+    /// the caller's device group) are dropped first. The first page (<see cref="RowsRequest.Skip"/> 0) lists the caller's
+    /// devices once and keeps the sorted ids of the visible rows; the later pages take their slice of these ids, with each
+    /// row as it is now, and ask the caller's view for that slice's devices only (a device the caller no longer sees is
+    /// dropped, never sent). The whole paged load is O(n log n), not one list and sort per page.
     /// </summary>
     public async Task<RowsPage> GetRowsAsync(ICallContext caller, RowsRequest request, CancellationToken ct)
     {
@@ -136,8 +139,61 @@ internal sealed partial class AppReadService : IAsyncDisposable
             return new RowsPage();
         }
 
+        var skip = Math.Max(0, request.Skip);
+        IReadOnlyList<Guid>? order;
+        lock (session.Gate)
+        {
+            order = skip == 0 ? null : session.PageOrder;
+        }
+
+        if (order is null)
+        {
+            order = await PageOrderAsync(caller, session, ct).ConfigureAwait(false);
+        }
+
+        var slice = order.Skip(skip).Take(AppManagementInfo.RowsPerPage).ToList();
+        var next = skip + slice.Count;
+        var seen = new HashSet<Guid>(slice.Count);
+        if (skip > 0)
+        {
+            // The first page checked every row; a later page checks its own devices again (the view may have changed).
+            foreach (var id in slice)
+            {
+                if (await caller.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null)
+                {
+                    seen.Add(id);
+                }
+            }
+        }
+
+        var page = new List<DeviceApps>(slice.Count);
+        lock (session.Gate)
+        {
+            foreach (var id in slice)
+            {
+                if (skip > 0 && !seen.Contains(id))
+                {
+                    if (session.Rows.Remove(id))
+                    {
+                        session.PendingRows.Remove(id);
+                        session.PendingRemoved.Add(id);
+                        session.StateDirty = true;
+                    }
+                }
+                else if (session.Rows.TryGetValue(id, out var row))
+                {
+                    page.Add(row);
+                }
+            }
+        }
+
+        return new RowsPage { Devices = page, Next = next < order.Count ? next : null, State = State(session, session.Job) };
+    }
+
+    /// <summary>Drops the rows of devices the caller no longer sees, then keeps the sorted ids of the others for the pages.</summary>
+    private static async Task<IReadOnlyList<Guid>> PageOrderAsync(ICallContext caller, Session session, CancellationToken ct)
+    {
         var visible = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
-        List<DeviceApps> rows;
         lock (session.Gate)
         {
             foreach (var gone in session.Rows.Keys.Where(id => !visible.Contains(id)).ToList())
@@ -148,13 +204,11 @@ internal sealed partial class AppReadService : IAsyncDisposable
                 session.StateDirty = true;
             }
 
-            rows = [.. session.Rows.Values.OrderBy(r => r.DeviceId)];
+            var ids = session.Rows.Keys.ToArray();
+            Array.Sort(ids);
+            session.PageOrder = ids;
+            return ids;
         }
-
-        var skip = Math.Max(0, request.Skip);
-        var page = rows.Skip(skip).Take(AppManagementInfo.RowsPerPage).ToList();
-        var next = skip + page.Count;
-        return new RowsPage { Devices = page, Next = next < rows.Count ? next : null, State = State(session, session.Job) };
     }
 
     /// <summary>
@@ -196,6 +250,12 @@ internal sealed partial class AppReadService : IAsyncDisposable
         if (request.Items.Count is 0 or > MaxItemsPerRun || (install is not null && request.Items.Count != 1))
         {
             throw new ArgumentException(install is null ? "Choose 1 to 1,000 applications. Nothing was changed." : "Install one application at a time. Nothing was changed.", nameof(request));
+        }
+
+        // The values belong to one application's settings: never applied to another one.
+        if (request.Action == AcapAction.Settings && request.Items.Count != 1)
+        {
+            throw new ArgumentException("Change the settings of one application at a time. Nothing was changed.", nameof(request));
         }
 
         var runs = new List<(string Payload, IReadOnlyList<Guid> DeviceIds)>(request.Items.Count);
@@ -306,8 +366,9 @@ internal sealed partial class AppReadService : IAsyncDisposable
     }
 
     /// <summary>
-    /// One device's row: not contacted when it is not Ok or has no Application API 1.x, else list.cgi (one request) parsed by
-    /// the Applications plugin. Null when <paramref name="ct"/> was cancelled (a newer read or the plugin stopping); Gone
+    /// One device's row: not contacted when it is not Ok or has no Application API 1.x, else list.cgi parsed by the
+    /// Applications plugin, then AllowUnsigned (config.cgi) and the embedded development version (param.cgi) at the same time,
+    /// best effort: three read requests in one slot and one timeout. Null when <paramref name="ct"/> was cancelled (a newer read or the plugin stopping); Gone
     /// when the device is no longer the caller's.
     /// </summary>
     internal async Task<(DeviceApps? Row, bool Gone)> ReadDeviceAsync(IVapixClientFactory vapix, IDeviceInfo device, CancellationToken ct)
@@ -344,14 +405,16 @@ internal sealed partial class AppReadService : IAsyncDisposable
             var api = new ApplicationApiClient(client);
             var apps = await api.ListAsync(timeout.Token).ConfigureAwait(false);
 
-            // The install dialog's checks need them like the Applications plugin's (best effort: null when not offered).
-            var allowUnsigned = await api.TryGetAllowUnsignedAsync(timeout.Token).ConfigureAwait(false);
-            var embeddedDevelopment = await api.TryGetEmbeddedDevelopmentVersionAsync(timeout.Token).ConfigureAwait(false);
+            // The install dialog's checks need them like the Applications plugin's (best effort: null when not offered), both
+            // at the same time within the device's slot and timeout.
+            var allowUnsigned = api.TryGetAllowUnsignedAsync(timeout.Token);
+            var embeddedDevelopment = api.TryGetEmbeddedDevelopmentVersionAsync(timeout.Token);
+            await Task.WhenAll(allowUnsigned, embeddedDevelopment).ConfigureAwait(false);
             return (row with
             {
                 Applications = apps,
-                AllowUnsigned = allowUnsigned,
-                EmbeddedDevelopmentVersion = embeddedDevelopment,
+                AllowUnsigned = await allowUnsigned.ConfigureAwait(false),
+                EmbeddedDevelopmentVersion = await embeddedDevelopment.ConfigureAwait(false),
                 ReadUtc = _options.Time.GetUtcNow(),
             }, false);
         }
@@ -943,6 +1006,9 @@ internal sealed partial class AppReadService : IAsyncDisposable
         public HashSet<Guid> PendingRemoved { get; } = [];
 
         public HashSet<Guid> Chosen { get; set; } = [];
+
+        /// <summary>The sorted ids of the rows the last first page saw (<see cref="GetRowsAsync"/>); null before one.</summary>
+        public IReadOnlyList<Guid>? PageOrder { get; set; }
 
         public List<IPluginJob> Follows { get; } = [];
 

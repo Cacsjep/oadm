@@ -432,10 +432,10 @@ public sealed partial class FakeOadmApi
 
                 var allowed = settings["allowedSeconds"]?.GetValue<int>() ?? 2;
                 var ntpSynced = settings["ntpSynced"]?.GetValue<bool>() ?? true;
-                var offsetText = Oadm.Client.Devices.DeviceClockText.OffsetText(device.ClockOffsetMs) ?? "Within 1 s";
+                var offsetText = Oadm.Sdk.Devices.ClockTexts.OffsetText(device.ClockOffsetMs);
                 return Math.Abs((long)device.ClockOffsetMs) > allowed * 1000L ? (ComplianceOutcome.ComplianceFailed, offsetText)
-                    : ntpSynced && device.NtpState is NtpState.NotSynced ? (ComplianceOutcome.ComplianceFailed, "NTP not synced")
-                    : ntpSynced && device.NtpState is NtpState.Off ? (ComplianceOutcome.ComplianceFailed, "NTP off")
+                    : ntpSynced && device.NtpState is NtpState.NotSynced ? (ComplianceOutcome.ComplianceFailed, Oadm.Sdk.Devices.ClockTexts.NtpNotSynced)
+                    : ntpSynced && device.NtpState is NtpState.Off ? (ComplianceOutcome.ComplianceFailed, Oadm.Sdk.Devices.ClockTexts.NtpOff)
                     : (ComplianceOutcome.CompliancePassed, offsetText);
             case FirmwareType:
                 var wanted = settings["minimum"]?.GetValue<string>() ?? string.Empty;

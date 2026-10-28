@@ -4,7 +4,8 @@ namespace Oadm.Sdk.Plugins;
 /// The host refused device access during the call of a user with a device group (SDK 0.4.0, OADM 4.5): the plugin used
 /// <c>ctx.Devices</c>, <c>ctx.Vapix</c>, <c>ctx.Tasks</c>, <c>ctx.EventStreams</c> or <c>ctx.System</c> instead of the
 /// call (<see cref="ICallContext"/>), the method is one only users with all devices may call
-/// (<see cref="ICorePlugin.RequiresAllDevices"/>), or the plugin was built for an SDK before the call context. The host
+/// (<see cref="ICorePlugin.RequiresAllDevices"/>), the plugin was built for an SDK before the call context, or a task run
+/// through <c>call.Tasks</c> needs a permission the user's role lacks ("Your role does not allow: ..."). The host
 /// answers PERMISSION_DENIED with <see cref="Exception.Message"/>; nothing reached a device.
 /// </summary>
 public sealed class DeviceAccessRefusedException : Exception

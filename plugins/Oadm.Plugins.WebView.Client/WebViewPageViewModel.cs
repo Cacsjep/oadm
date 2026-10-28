@@ -108,10 +108,8 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
 
     private bool CanUseCurrentPath => !SelectedPreset.IsCustom || IsDevicePath(CustomPath.Trim());
 
-    /// <summary>One leading "/", no "//", "\" or spaces: the path stays on the device.</summary>
-    public static bool IsDevicePath(string path) =>
-        path.Length > 0 && path[0] == '/' && !path.StartsWith("//", StringComparison.Ordinal)
-        && !path.Contains('\\', StringComparison.Ordinal) && !path.Any(c => char.IsControl(c) || c == ' ');
+    /// <summary>Whether the path stays on the device (<see cref="Oadm.Sdk.Vapix.DevicePaths.IsOnDevice"/>).</summary>
+    public static bool IsDevicePath(string path) => Oadm.Sdk.Vapix.DevicePaths.IsOnDevice(path);
 
     partial void OnSearchTextChanged(string value) => Rebuild();
 

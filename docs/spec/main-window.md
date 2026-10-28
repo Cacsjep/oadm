@@ -131,7 +131,7 @@ and the saved per-client order cover other preferences):
 | Firmware | Version |
 | SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceTexts.Soc` of the client SDK); empty until read; in the search and the export |
 | Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export |
-| Clock | on by default: the device clock against the server's (see "Clock" below): "OK", "50 s ahead", "2 min behind", "3 h ahead", "NTP not synced" (offset within the tolerance but NTP not synced); seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check; devices that are not Ok show their last measured value as plain text; empty until measured; the warning colour while off; sorted by the absolute offset; in the search and the export |
+| Clock | on by default: the device clock against the server's (see "Clock" below): "OK", "50 s ahead", "2 min behind", "3 h ahead", "NTP not synced" (offset within the tolerance but NTP not synced); seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check (one implementation, `Oadm.Sdk.Devices.ClockTexts`, SDK 0.7.0: "OK" below 1 s, "NTP not synced", "NTP off"); devices that are not Ok show their last measured value as plain text; empty until measured; the warning colour while off; sorted by the absolute offset; in the search and the export |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
 | DHCP | off by default (column chooser): Network.BootProto == dhcp -> Yes/No |
@@ -161,7 +161,9 @@ is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is 
 
 - Offset: every status poll takes the HTTP `Date` header of the basicdeviceinfo answer (whole seconds, UTC) and stores
   `device + 0.5 s - (sent + received) / 2` in milliseconds (`Device.ClockOffsetMs`; the half second: the header cuts the
-  fraction off). Only Ok answers count; no header or an unreadable one keeps the last value. A reading less than 1 s from
+  fraction off). Sent is the last write of the request to the connection (`RequestSendClock`, the handler's
+  `PlaintextStreamFilter`): a new connection and the Digest 401 challenge before the authorized request are not part of
+  the round trip. Only Ok answers count; no header or an unreadable one keeps the last value. A reading less than 1 s from
   the stored one keeps the stored one, nothing is written or published (`ClockHealth.MinChangeMs`: the whole-second header
   jitters by up to a second, 30,000 devices would publish every poll). Clamped to about 24.8 days either way (an int of
   ms). Through a site the relay's time is part of the round trip, nothing else changes.
@@ -175,7 +177,9 @@ is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is 
   written).
 - The offset is against the OADM server's clock: the server should take its time from NTP itself.
 - Event: **Any device: clock off** (built-in, group "Any device", `oadm.device.any-clock-off`, value `count`), on while at
-  least one device is off. No per-device twin.
+  least one device is off. No per-device twin. A device whose site is offline keeps its place in the count until the
+  site is back (like the status events: Site offline never takes a device out and back in, rules fire once); a device
+  of a removed site leaves it.
 - Compliance: host check type **Clock** (cached values only): fails when |offset| > its own **Allowed difference (s)**
   (default 2, 1..3600) or, with **NTP must be synced** (default on), NtpState NotSynced or Off; "Not measured yet" while the
   offset is unknown; not checked while the device is not Ok (`oadm.compliance.clock`, settings `allowedSeconds`, `ntpSynced`).

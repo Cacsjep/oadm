@@ -99,7 +99,7 @@ public sealed class ClockHealthTests
     [InlineData(-int.MaxValue, "24 days behind")]
     public void TheOffsetReadsInTheLargestWholeUnit(int offset, string text)
     {
-        Assert.Equal(text, ClockHealth.OffsetText(offset));
+        Assert.Equal(text, Oadm.Sdk.Devices.ClockTexts.OffsetText(offset));
     }
 
     [Fact]

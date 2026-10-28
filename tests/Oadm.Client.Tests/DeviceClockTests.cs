@@ -26,8 +26,8 @@ namespace Oadm.Client.Tests;
 public sealed class DeviceClockTests
 {
     [Theory]
-    [InlineData(999, null)]
-    [InlineData(-999, null)]
+    [InlineData(999, "OK")] // the same text as the Clock compliance check
+    [InlineData(-999, "OK")]
     [InlineData(1000, "1 s ahead")]
     [InlineData(2100, "3 s ahead")] // seconds round up: off never reads as within the allowed difference
     [InlineData(-49_400, "50 s behind")]
@@ -38,8 +38,8 @@ public sealed class DeviceClockTests
     [InlineData(-86_400_000, "1 day behind")]
     [InlineData(int.MaxValue, "24 days ahead")]
     [InlineData(int.MinValue, "24 days behind")]
-    public void Offset_text_uses_whole_units(int offsetMs, string? expected) =>
-        Assert.Equal(expected, DeviceClockText.OffsetText(offsetMs));
+    public void Offset_text_uses_whole_units(int offsetMs, string expected) =>
+        Assert.Equal(expected, Oadm.Sdk.Devices.ClockTexts.OffsetText(offsetMs));
 
     [Fact]
     public void Cell_shows_the_offset_beyond_the_tolerance_then_ntp_then_ok_and_a_chip_only_while_off()

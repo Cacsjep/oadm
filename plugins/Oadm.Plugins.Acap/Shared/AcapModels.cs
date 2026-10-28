@@ -319,24 +319,10 @@ public sealed record InstalledApplication
 
     /// <summary>
     /// <see cref="ConfigurationPage"/> as a path on the device ("/local/ax_msf/redirect.html"); null without one or when it
-    /// would leave the device (a scheme, "//", "\", "..", spaces or control characters).
+    /// would leave the device (<see cref="Oadm.Sdk.Vapix.DevicePaths.ToDevicePath"/>).
     /// </summary>
     [JsonIgnore]
-    public string? ConfigurationPath
-    {
-        get
-        {
-            var page = ConfigurationPage?.Trim();
-            if (string.IsNullOrEmpty(page) || page.Contains("://", StringComparison.Ordinal) || page.Contains('\\', StringComparison.Ordinal)
-                || page.Any(c => char.IsControl(c) || c == ' '))
-            {
-                return null;
-            }
-
-            var path = "/" + page.TrimStart('/');
-            return page.StartsWith("//", StringComparison.Ordinal) || path.Split('?', '#')[0].Split('/').Contains("..", StringComparer.Ordinal) ? null : path;
-        }
-    }
+    public string? ConfigurationPath => Oadm.Sdk.Vapix.DevicePaths.ToDevicePath(ConfigurationPage);
 
     [JsonIgnore]
     public bool IsRunning => string.Equals(Status, "Running", StringComparison.OrdinalIgnoreCase);

@@ -326,6 +326,59 @@ public sealed class TaskViewTests : DeviceGroupTestBase
     }
 
     [Fact]
+    public async Task CallTasksNeedsTheRunPermissionsOfTheCallersRoleLikeTheGrpcRun()
+    {
+        var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);
+        var (_, caller, view) = await GroupUserAsync();
+        Assert.True(_registry.RegisterTaskPlugin(new PartsPlugin(), new PluginOrigin("test.apps", "1.0.0", null) { MinSdkVersion = SdkInfo.Version }));
+        await using var engine = Engine();
+        var installOnly = caller with { Permissions = PermissionSet.Of([PermissionKeys.Task(PartsPlugin.PluginId, "install")]) };
+        var call = PluginCallRules.CreateCall(new PluginCaller(installOnly, view), _vapix, engine, null);
+
+        // The payload's permission is missing: refused before any task exists, with the text of gRPC Run.
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => call.Tasks.RunAsync(PartsPlugin.PluginId, [inside.Id], "remove", "x", Ct));
+        Assert.Equal("Your role does not allow: Remove.", refused.Message);
+        Assert.Empty(await engine.ListAsync(Ct));
+
+        // A payload the role allows runs; a role with "remove" runs the removal.
+        var installed = await call.Tasks.RunAsync(PartsPlugin.PluginId, [inside.Id], "install", "x", Ct);
+        await engine.WaitForCompletionAsync(installed[0], Ct);
+        var withRemove = caller with { Permissions = PermissionSet.Of([PermissionKeys.Task(PartsPlugin.PluginId, "remove")]) };
+        var removed = await engine.ForView(view, TaskCaller.Of(withRemove)).RunAsync(PartsPlugin.PluginId, [inside.Id], "remove", "x", Ct);
+        await engine.WaitForCompletionAsync(removed[0], Ct);
+        Assert.Equal(TaskState.Done, (await engine.GetAsync(removed[0], Ct))!.State);
+        Assert.Equal(2, (await engine.ListAsync(Ct)).Count);
+    }
+
+    /// <summary>A task with two declared permissions; the payload names the one a run needs.</summary>
+    private sealed class PartsPlugin : ITaskPlugin
+    {
+        public const string PluginId = "t.apps";
+
+        public string Id => PluginId;
+
+        public string DisplayName => "Apps";
+
+        public string? IconKey => null;
+
+        public bool ShowInToolbar => false;
+
+        public bool RequiresDialog => false;
+
+        public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+        [
+            new("install", "Install", "Install applications."),
+            new("remove", "Remove", "Remove applications."),
+        ];
+
+        public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) => payloadJson is "install" or "remove" ? [payloadJson] : null;
+
+        public bool CanRun(IDeviceInfo device) => true;
+
+        public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task TheSystemRunnerRefusesDevicesOutsideTheViewOfAGroupCaller()
     {
         var inside = await AddDeviceAsync("ACCC8E000001", tags: [Tag]);

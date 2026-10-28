@@ -406,6 +406,9 @@ public enum LicenseKeyVerdict
     SeveralApplications = 3,
 
     NoKey = 4,
+
+    /// <summary>The device has keys for the application that have not expired, but none for the installed version.</summary>
+    OtherVersion = 5,
 }
 
 /// <summary>One device's key: the verdict, its short text and the details (the Applications dialog's and page's row).</summary>
@@ -430,7 +433,6 @@ public sealed class LicenseKeyMatcher
 
     private readonly LicenseKeySet _keys;
     private readonly Dictionary<string, LicenseKey> _any;
-    private readonly Dictionary<string, Dictionary<string, LicenseKey>> _usable = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Dictionary<string, List<LicenseKey>>> _all = new(StringComparer.Ordinal);
     private HashSet<string>? _several;
 
@@ -443,8 +445,13 @@ public sealed class LicenseKeyMatcher
     /// <summary>The application id the keys must have: null for none, "" or "0" (the device reports no id).</summary>
     public static string? ApplicationIdOf(string? id) => id is { Length: > 0 } and not "0" ? id : null;
 
-    /// <summary>The verdict of the device with MAC address <paramref name="mac"/> for <paramref name="applicationId"/>.</summary>
-    public LicenseKeyMatch Match(string? mac, string? applicationId, DateOnly today)
+    /// <summary>
+    /// The verdict of the device with MAC address <paramref name="mac"/> for <paramref name="applicationId"/>. Of several
+    /// keys of the device for the application the best one counts: one that has not expired and fits
+    /// <paramref name="applicationVersion"/> (the installed version; null or unreadable: any version), the latest end date
+    /// first. Only when none is usable: <see cref="LicenseKeyVerdict.OtherVersion"/> or <see cref="LicenseKeyVerdict.Expired"/>.
+    /// </summary>
+    public LicenseKeyMatch Match(string? mac, string? applicationId, DateOnly today, string? applicationVersion = null)
     {
         var device = LicenseKey.NormalizeMac(mac) ?? string.Empty;
         var appId = ApplicationIdOf(applicationId);
@@ -453,11 +460,20 @@ public sealed class LicenseKeyMatcher
             return new(LicenseKeyVerdict.SeveralApplications, "Several keys", "The files have keys of several applications for this device. Choose the keys of one application.");
         }
 
-        if (Usable(appId).TryGetValue(device, out var key))
+        if (All(appId).TryGetValue(device, out var keys))
         {
-            return key.IsExpired(today)
-                ? new(LicenseKeyVerdict.Expired, "Key expired", $"The key expired on {key.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.")
-                : new(LicenseKeyVerdict.Found, "Key found", "Key " + key.ValidityText + ".");
+            if (Usable(keys, today, applicationVersion).FirstOrDefault() is { } key)
+            {
+                return new(LicenseKeyVerdict.Found, "Key found", "Key " + key.ValidityText + ".");
+            }
+
+            if (keys.Where(k => !k.IsExpired(today)).OrderByDescending(End).FirstOrDefault() is { } open)
+            {
+                return new(LicenseKeyVerdict.OtherVersion, "Other version", $"The key is for {open.VersionRangeText}; {applicationVersion} is installed.");
+            }
+
+            var latest = keys.MaxBy(End)!;
+            return new(LicenseKeyVerdict.Expired, "Key expired", $"The key expired on {latest.ExpirationDate!.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}.");
         }
 
         return _any.TryGetValue(device, out var other)
@@ -466,41 +482,28 @@ public sealed class LicenseKeyMatcher
     }
 
     /// <summary>
-    /// The keys of the payload for the device: every key of the device for the application that has not expired, one per
-    /// version range (the task installs the one that fits the installed version); empty when <see cref="Match"/> finds none.
+    /// The keys of the payload for the device: the usable keys of <see cref="Match"/> (not expired, fitting
+    /// <paramref name="applicationVersion"/> when known), the best first, one per version range (the task installs the one
+    /// that fits the installed version); empty exactly when <see cref="Match"/> with the same arguments is not Found.
     /// </summary>
-    public IReadOnlyList<LicenseKeyEntry> PayloadKeys(string? mac, string? applicationId, DateOnly today)
+    public IReadOnlyList<LicenseKeyEntry> PayloadKeys(string? mac, string? applicationId, DateOnly today, string? applicationVersion = null)
     {
         var appId = ApplicationIdOf(applicationId);
-        if (LicenseKey.NormalizeMac(mac) is not { } device || !Usable(appId).ContainsKey(device) || !All(appId).TryGetValue(device, out var keys))
+        if (LicenseKey.NormalizeMac(mac) is not { } device || (appId is null && Several().Contains(device)) || !All(appId).TryGetValue(device, out var keys))
         {
             return [];
         }
 
-        return [.. keys.Where(k => !k.IsExpired(today)).Select(k => new LicenseKeyEntry(device, k.Xml))];
+        return [.. Usable(keys, today, applicationVersion).Select(k => new LicenseKeyEntry(device, k.Xml))];
     }
 
     private HashSet<string> Several() => _several ??= _keys.DevicesWithSeveralApplications();
 
-    /// <summary>The first key of each device for the application (any application when the id is unknown: then only devices with one).</summary>
-    private Dictionary<string, LicenseKey> Usable(string? appId)
-    {
-        if (!_usable.TryGetValue(appId ?? string.Empty, out var keys))
-        {
-            keys = _keys.ByDevice(appId);
-            if (appId is null)
-            {
-                foreach (var device in Several())
-                {
-                    keys.Remove(device);
-                }
-            }
+    /// <summary>The keys that have not expired and fit the version, the latest end date first (no end date before all).</summary>
+    private static IEnumerable<LicenseKey> Usable(List<LicenseKey> keys, DateOnly today, string? applicationVersion) =>
+        keys.Where(k => !k.IsExpired(today) && k.Fits(applicationVersion)).OrderByDescending(End);
 
-            _usable[appId ?? string.Empty] = keys;
-        }
-
-        return keys;
-    }
+    private static DateOnly End(LicenseKey key) => key.ExpirationDate ?? DateOnly.MaxValue;
 
     private Dictionary<string, List<LicenseKey>> All(string? appId)
     {

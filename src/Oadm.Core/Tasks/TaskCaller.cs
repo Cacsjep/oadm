@@ -120,15 +120,17 @@ public sealed class TaskCallContext : ICallContext
 }
 
 /// <summary>
-/// Task runs for one user's view (<see cref="TaskEngine.ForView"/>, <c>call.Tasks</c> of the user's call): the whole run is
-/// refused when any device is outside the view or unknown; for a user with a device group, cancel and the active check
-/// reach only the user's own tasks.
+/// Task runs for one user's view (<see cref="TaskEngine.ForView"/>, <c>call.Tasks</c> of the user's call): the run needs the
+/// permissions of the caller's role like gRPC Run (<see cref="TaskRunPermissions"/>), and the whole run is refused when any
+/// device is outside the view or unknown; for a user with a device group, cancel and the active check reach only the
+/// user's own tasks.
 /// </summary>
 internal sealed class ViewTaskRunner(TaskEngine engine, DeviceView view, TaskCaller caller) : ITaskRunner
 {
     public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
+        TaskRunPermissions.Require(engine.Plugins, pluginId, payloadJson, caller.Permissions, refuseUnknown: true);
         var devices = await view.GetAsync(deviceIds, ct).ConfigureAwait(false);
         return await engine.RunAsync(pluginId, devices, payloadJson, caller, ct).ConfigureAwait(false);
     }

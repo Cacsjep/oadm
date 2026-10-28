@@ -219,6 +219,93 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public async Task A_huge_line_without_a_break_is_cut_while_it_is_read()
+    {
+        // 10 MB without a line break, then one normal line: the long one is cut, the next one is kept whole.
+        using var stream = new GeneratedStream(10 * 1024 * 1024, "\n2026-10-27T07:45:40.900+01:00 host [ INFO    ] app[1]: after\n");
+
+        var log = await AppLogReader.ReadAsync(stream, CancellationToken.None);
+
+        Assert.False(log.Truncated);
+        Assert.Equal(2, log.Lines.Count);
+        Assert.Equal(new string('x', AppLogReader.MaxLineLength), log.Lines[0].Text);
+        Assert.Equal("after", log.Lines[1].Message);
+        Assert.Equal(stream.Length, stream.BytesRead);
+    }
+
+    [Fact]
+    public async Task An_endless_answer_stops_after_the_read_limit()
+    {
+        using var stream = new GeneratedStream(long.MaxValue, string.Empty);
+
+        var log = await AppLogReader.ReadAsync(stream, CancellationToken.None);
+
+        Assert.True(log.Truncated);
+        Assert.Equal(new string('x', AppLogReader.MaxLineLength), Assert.Single(log.Lines).Text);
+        Assert.InRange(stream.BytesRead, AppLogReader.MaxReadChars, AppLogReader.MaxReadChars + (1024 * 1024));
+    }
+
+    [Fact]
+    public void Line_breaks_split_like_read_line_also_across_blocks()
+    {
+        var log = AppLogReader.Parse("a\r\nb\rc\n\nd");
+        Assert.Equal(["a", "b", "c", "d"], log.Lines.Select(l => l.Text));
+    }
+
+    /// <summary>A stream of <c>x</c> bytes (<paramref name="length"/>, long.MaxValue: endless) followed by <paramref name="tail"/>.</summary>
+    private sealed class GeneratedStream(long length, string tail) : Stream
+    {
+        private readonly byte[] _tail = System.Text.Encoding.UTF8.GetBytes(tail);
+
+        public long BytesRead { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => length == long.MaxValue ? long.MaxValue : length + _tail.Length;
+
+        public override long Position { get => BytesRead; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            var n = 0;
+            if (BytesRead < length)
+            {
+                n = (int)Math.Min(buffer.Length, length - BytesRead);
+                buffer[..n].Fill((byte)'x');
+                BytesRead += n;
+            }
+
+            while (n < buffer.Length && BytesRead < Length)
+            {
+                buffer[n++] = _tail[(int)(BytesRead - length)];
+                BytesRead++;
+            }
+
+            return n;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromResult(Read(buffer.Span));
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => Task.FromResult(Read(buffer.AsSpan(offset, count)));
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task Api_client_reads_settings_and_log_with_GET_only()
     {
         var device = new FakeAcapDevice { LogText = Fixture("systemlog-eva-p3265v-12.11.txt") };

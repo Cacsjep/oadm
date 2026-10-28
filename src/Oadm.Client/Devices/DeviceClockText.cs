@@ -1,20 +1,15 @@
-using System.Globalization;
-
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Devices;
 
 /// <summary>
 /// The Clock column (docs/spec/main-window.md "Clock"): the device clock against the server's: "OK", the offset
 /// ("50 s ahead", "2 min behind", "3 h ahead", "4 days behind") or "NTP not synced"; a warning chip while off; empty until
-/// measured. Rounding: seconds round up (a clock 2.1 s off reads "3 s", so an off clock never reads as within the allowed
-/// difference), minutes, hours and days are whole units rounded down ("at least"). Below 1 s the cell says "OK".
+/// measured. The texts are the shared <see cref="ClockTexts"/> of the Clock compliance check.
 /// </summary>
 public static class DeviceClockText
 {
-    public const string Ok = "OK"; // the word of the OK status (DeviceStatusInfo)
-    public const string NtpNotSynced = "NTP not synced";
-
     /// <summary>
     /// The cell: empty until measured; the offset while it is beyond the allowed difference, else "NTP not synced" while
     /// the device's NTP is not synchronized, else "OK". A warning chip only while the server counts the clock as off (a
@@ -27,36 +22,10 @@ public static class DeviceClockText
             return ChipInfo.Empty;
         }
 
-        string text = beyondTolerance ? OffsetText(offset) ?? Ok
-            : ntp == NtpState.NotSynced ? NtpNotSynced
-            : Ok;
+        string text = beyondTolerance ? ClockTexts.OffsetText(offset)
+            : ntp == NtpState.NotSynced ? ClockTexts.NtpNotSynced
+            : ClockTexts.Ok;
         return new ChipInfo(text, clockOff ? PillKind.Warning : PillKind.Ok);
-    }
-
-    /// <summary>
-    /// "50 s ahead", "1 min behind", "3 h ahead", "1 day behind"; null below a second (a clock that close needs no number).
-    /// Positive = the device clock is ahead of the server's.
-    /// </summary>
-    public static string? OffsetText(long offsetMs)
-    {
-        long abs = Math.Abs(offsetMs);
-        if (abs < 1000)
-        {
-            return null;
-        }
-
-        long seconds = (abs + 999) / 1000; // rounded up
-        string amount = seconds switch
-        {
-            < 60 => Format($"{seconds} s"),
-            < 3600 => Format($"{seconds / 60} min"),
-            < 86400 => Format($"{seconds / 3600} h"),
-            < 2 * 86400 => "1 day",
-            _ => Format($"{seconds / 86400} days"),
-        };
-        return amount + (offsetMs > 0 ? " ahead" : " behind");
-
-        static string Format(FormattableString text) => text.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>The cell's tooltip: the offset and the NTP state ("50 s ahead, NTP not synced"); null until measured.</summary>
@@ -67,12 +36,12 @@ public static class DeviceClockText
             return null;
         }
 
-        string clock = OffsetText(offset) ?? "Within 1 s of the server";
+        string clock = ClockTexts.IsWithinOneSecond(offset) ? "Within 1 s of the server" : ClockTexts.OffsetText(offset);
         string? state = ntp switch
         {
             NtpState.Synced => "NTP synced",
-            NtpState.NotSynced => NtpNotSynced,
-            NtpState.Off => "NTP off",
+            NtpState.NotSynced => ClockTexts.NtpNotSynced,
+            NtpState.Off => ClockTexts.NtpOff,
             _ => null,
         };
         return state is null ? clock : clock + ", " + state;

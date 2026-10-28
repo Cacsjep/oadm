@@ -111,6 +111,21 @@ public sealed class PermissionCatalog
 
     public PermissionEntry? Find(string key) => _byKey.GetValueOrDefault(key);
 
+    /// <summary>
+    /// The text of a refusal for a missing permission, by the name the matrix shows ("Your role does not allow: Delete
+    /// tasks.", "Your role does not allow: Applications: Remove."). The one text of the gRPC checks and of task runs
+    /// through a plugin's call (<see cref="TaskRunPermissions"/>).
+    /// </summary>
+    public string DeniedMessage(string permission)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(permission);
+        var entry = Find(permission);
+        var name = entry is null ? permission
+            : entry.Group is HostPermissions.DevicesGroup or HostPermissions.TasksGroup or HostPermissions.EventRulesGroup or HostPermissions.LogsGroup ? entry.Name
+            : entry.Group + ": " + entry.Name;
+        return $"Your role does not allow: {name}.";
+    }
+
     /// <summary>The catalog of the host permissions and every plugin in <paramref name="registry"/>.</summary>
     public static PermissionCatalog Build(PluginRegistry registry)
     {

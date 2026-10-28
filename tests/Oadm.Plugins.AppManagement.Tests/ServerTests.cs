@@ -44,7 +44,7 @@ public sealed class ServerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_read_lists_the_applications_with_one_request_and_never_writes()
+    public async Task A_read_lists_the_applications_with_three_read_requests_and_never_writes()
     {
         var device = Add("10.0.0.48");
         var rows = await ReadAsync(_ctx.CallAsAllDevices(), new ReadRequest { DeviceIds = [device.Id] });
@@ -54,11 +54,13 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal(["lpv", "vmd"], row.Applications.Select(a => a.Name).Order());
         Assert.True(row.Applications.Single(a => a.Name == "vmd").Bundled);
         var camera = _ctx.Cameras[device.Id];
-        // list.cgi, then AllowUnsigned and the embedded development version for the install dialog's checks: reads only.
+        // list.cgi first, then AllowUnsigned and the embedded development version (in either order, they run at the same
+        // time) for the install dialog's checks: reads only.
         Assert.Equal(3, camera.Requests.Count);
         Assert.Equal("POST " + ApplicationApiClient.ListPath, camera.Requests[0]);
-        Assert.StartsWith("POST /axis-cgi/applications/config.cgi?action=get&name=AllowUnsigned", camera.Requests[1], StringComparison.Ordinal);
-        Assert.StartsWith("GET /axis-cgi/param.cgi?action=list&", camera.Requests[2], StringComparison.Ordinal);
+        var optional = camera.Requests.Skip(1).Order(StringComparer.Ordinal).ToList();
+        Assert.StartsWith("GET /axis-cgi/param.cgi?action=list&", optional[0], StringComparison.Ordinal);
+        Assert.StartsWith("POST /axis-cgi/applications/config.cgi?action=get&name=AllowUnsigned", optional[1], StringComparison.Ordinal);
         Assert.Equal(0, camera.Writes);
     }
 
@@ -203,6 +205,36 @@ public sealed class ServerTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<RunReply>(call, AppManagementMethods.Run,
             new RunRequest { Action = AcapAction.Stop, Items = [new RunItem { Application = "../x", DeviceIds = [a.Id] }] }));
         Assert.Empty(_ctx.TaskRuns);
+    }
+
+    [Fact]
+    public async Task Change_settings_takes_one_application_and_its_values_go_only_to_it()
+    {
+        var a = Add("10.0.0.48");
+        var call = _ctx.CallAsAllDevices();
+        var values = new Dictionary<string, string> { ["Mode"] = "1" };
+        var two = new RunRequest
+        {
+            Action = AcapAction.Settings,
+            Values = values,
+            Items =
+            [
+                new RunItem { Application = "lpv", DeviceIds = [a.Id] },
+                new RunItem { Application = "vmd", DeviceIds = [a.Id] },
+            ],
+        };
+
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<RunReply>(call, AppManagementMethods.Run, two));
+        Assert.Contains("one application at a time. Nothing was changed.", refused.Message, StringComparison.Ordinal);
+        Assert.Empty(_ctx.TaskRuns);
+
+        var one = two with { Items = [two.Items[0]] };
+        var reply = await CallAsync<RunReply>(call, AppManagementMethods.Run, one);
+        Assert.Single(reply.TaskIds);
+        var payload = AcapPayload.Parse(Assert.Single(_ctx.TaskRuns).PayloadJson);
+        Assert.Equal("lpv", payload.Application);
+        Assert.Equal("1", payload.Values!["Mode"]);
+        Assert.All(_ctx.Cameras.Values, c => Assert.Empty(c.Requests));
     }
 
     [Fact]
@@ -469,6 +501,48 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Null(second.Next);
     }
 
+    [Fact]
+    public async Task Later_pages_never_send_a_device_the_caller_no_longer_sees_and_keep_their_order()
+    {
+        var devices = Enumerable.Range(0, AppManagementInfo.RowsPerPage + 5).Select(i => Add("10.0." + (i / 250) + "." + (i % 250), api: false)).ToList();
+        var call = _ctx.CallAsAllDevices();
+        await ReadAsync(call, new ReadRequest { All = true });
+        var sorted = devices.Select(d => d.Id).Order().ToList();
+
+        var first = await CallAsync<RowsPage>(call, AppManagementMethods.GetRows, new RowsRequest());
+        Assert.Equal(sorted.Take(AppManagementInfo.RowsPerPage), first.Devices.Select(r => r.DeviceId));
+
+        // Between the pages a device of the second page is removed: that page leaves it out, the others keep their place.
+        var removed = sorted[^2];
+        _ctx.DeviceList.RemoveAll(d => d.Id == removed);
+        var second = await CallAsync<RowsPage>(call, AppManagementMethods.GetRows, new RowsRequest { Skip = first.Next!.Value });
+        Assert.Equal(sorted.Skip(AppManagementInfo.RowsPerPage).Where(id => id != removed), second.Devices.Select(r => r.DeviceId));
+        Assert.Null(second.Next);
+        Assert.Equal(AppManagementInfo.RowsPerPage + 4, (await CallAsync<ReadState>(call, AppManagementMethods.GetState, null)).Devices);
+
+        // A new first page lists the devices again.
+        var again = await CallAsync<RowsPage>(call, AppManagementMethods.GetRows, new RowsRequest());
+        Assert.DoesNotContain(removed, again.Devices.Select(r => r.DeviceId));
+        Assert.Equal(AppManagementInfo.RowsPerPage, again.Next);
+    }
+
+    [Fact]
+    public async Task A_later_page_of_a_group_user_leaves_out_a_device_that_left_the_group()
+    {
+        var devices = Enumerable.Range(0, AppManagementInfo.RowsPerPage + 3).Select(i => Add("10.1." + (i / 250) + "." + (i % 250), api: false)).ToList();
+        var sorted = devices.Select(d => d.Id).Order().ToList();
+        var group = sorted.ToHashSet();
+        var call = _ctx.CallAsGroup(group);
+        await ReadAsync(call, new ReadRequest { All = true });
+        var first = await CallAsync<RowsPage>(call, AppManagementMethods.GetRows, new RowsRequest());
+
+        // The same session, now without the last device in its group (the view changed between the pages).
+        var narrower = _ctx.CallAsGroup(sorted.Take(sorted.Count - 1));
+        var same = new SessionCall(narrower, call.SessionId);
+        var second = await CallAsync<RowsPage>(same, AppManagementMethods.GetRows, new RowsRequest { Skip = first.Next!.Value });
+        Assert.Equal(sorted.Skip(AppManagementInfo.RowsPerPage).Take(2), second.Devices.Select(r => r.DeviceId));
+    }
+
     /// <summary>How often the device was read (its list.cgi requests; each read also asks two optional values).</summary>
     private static int Reads(FakeCamera camera) => camera.Requests.Count(r => r.EndsWith(ApplicationApiClient.ListPath, StringComparison.Ordinal));
 }
@@ -495,4 +569,28 @@ internal sealed class DeniedCall(ICallContext inner, params string[] denied) : I
 
     public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => inner.Contains(device);
 
+}
+
+/// <summary>Another call of the same login session (its view may differ: a group changed between two calls).</summary>
+internal sealed class SessionCall(ICallContext inner, string sessionId) : ICallContext
+{
+    public string UserName => inner.UserName;
+
+    public string SessionId => sessionId;
+
+    public string DeviceScopeKey => inner.DeviceScopeKey;
+
+    public bool HasAllDevices => inner.HasAllDevices;
+
+    public Oadm.Sdk.Devices.IDeviceRepository Devices => inner.Devices;
+
+    public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => inner.Vapix;
+
+    public Oadm.Sdk.Tasks.ITaskRunner Tasks => inner.Tasks;
+
+    public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => inner.EventStreams;
+
+    public bool Has(string permission) => inner.Has(permission);
+
+    public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => inner.Contains(device);
 }

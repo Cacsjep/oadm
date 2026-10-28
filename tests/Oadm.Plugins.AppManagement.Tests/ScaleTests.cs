@@ -4,6 +4,8 @@ using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Plugins.Acap;
 using Oadm.Plugins.AppManagement.Client;
+using Oadm.Plugins.AppManagement.Reading;
+using Oadm.Sdk.Testing;
 
 using Xunit.Abstractions;
 
@@ -131,5 +133,63 @@ public sealed class ScaleTests(ITestOutputHelper output)
             {
             }
         }
+    }
+
+    [Fact]
+    [Trait("Category", "Perf")]
+    public async Task Thirty_thousand_rows_load_page_by_page_within_budget()
+    {
+        var ctx = new FakeCoreContext();
+        var repository = new IndexedDevices();
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
+        {
+            repository.Add(Samples.ManagedDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", applicationApi: false));
+        }
+
+        // The host answers a device by id from its cache; the call over an indexed repository does the same.
+        var call = FakeCallContext.Over(repository);
+        var jobs = new FakePluginJobs();
+        await using var service = new AppReadService(ctx, new AppManagementOptions { Time = new FakeTimeProvider(), EventInterval = TimeSpan.FromHours(1) });
+        await service.ReadAsync(call, jobs, new ReadRequest { All = true }, CancellationToken.None);
+        await Eventually.TrueAsync(() => !service.GetState(call).Reading, "the read ended");
+
+        var watch = Stopwatch.StartNew();
+        var rows = new List<Guid>(repository.Count);
+        int? skip = 0;
+        var pages = 0;
+        while (skip is { } at)
+        {
+            var page = await service.GetRowsAsync(call, new RowsRequest { Skip = at }, CancellationToken.None);
+            rows.AddRange(page.Devices.Select(r => r.DeviceId));
+            skip = page.Next;
+            pages++;
+        }
+
+        var load = watch.Elapsed;
+        Assert.Equal(30, pages);
+        Assert.Equal(repository.Ids.Order(), rows);
+        output.WriteLine($"30,000 rows in {pages} pages: {load.TotalMilliseconds:F0} ms");
+        Assert.True(load < TimeSpan.FromSeconds(1), $"the paged load took {load.TotalMilliseconds:F0} ms");
+    }
+
+    /// <summary>Devices by id in O(1), like the host's device cache.</summary>
+    private sealed class IndexedDevices : Oadm.Sdk.Devices.IDeviceRepository
+    {
+        private readonly Dictionary<Guid, Oadm.Sdk.Devices.IDeviceInfo> _byId = [];
+        private readonly List<Oadm.Sdk.Devices.IDeviceInfo> _all = [];
+
+        public int Count => _all.Count;
+
+        public IEnumerable<Guid> Ids => _byId.Keys;
+
+        public void Add(FakeDevice device)
+        {
+            _byId.Add(device.Id, device);
+            _all.Add(device);
+        }
+
+        public Task<IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo>>([.. _all]);
+
+        public Task<Oadm.Sdk.Devices.IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(_byId.GetValueOrDefault(id));
     }
 }

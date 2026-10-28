@@ -1015,18 +1015,10 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 continue;
             }
 
-            // Site offline says nothing about the device: its status events keep their state until the site is back, so an
-            // offline site never fires "Device unreachable" and never turns the others off. A device first seen while its
-            // site is offline or starting (after a server start) starts from its stored, last real status: no edges.
-            if (ClockHealth.IsOff(device.Status, device.ClockOffsetMs, device.NtpState, ClockToleranceSeconds))
-            {
-                _clockOff.Add(id);
-            }
-            else
-            {
-                _clockOff.Remove(id);
-            }
-
+            // Site offline says nothing about the device: its status events and its count in "Any device: clock off" keep
+            // their state until the site is back, so an offline site never fires "Device unreachable", never turns the
+            // others off and never takes a device out of the clock count and back in. A device first seen while its site is
+            // offline or starting (after a server start) starts from its stored, last real status: no edges.
             var status = device.Status;
             if (status == DeviceStatus.SiteOffline && !_statusKnown.Contains(id) && device.StoredStatus is { } stored)
             {
@@ -1037,6 +1029,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             {
                 // The site was removed (devices kept until replaced or removed): it never comes back, so nothing stays on.
                 _statusKnown.Add(id);
+                _clockOff.Remove(id);
                 SetBuiltIn(BuiltInEvents.Unreachable, id, false);
                 SetBuiltIn(BuiltInEvents.CredentialsRequired, id, false);
                 SetBuiltIn(BuiltInEvents.CertificateChanged, id, false);
@@ -1044,6 +1037,15 @@ public sealed partial class RuleEngine : IAsyncDisposable
             else if (status != DeviceStatus.SiteOffline)
             {
                 _statusKnown.Add(id);
+                if (ClockHealth.IsOff(status, device.ClockOffsetMs, device.NtpState, ClockToleranceSeconds))
+                {
+                    _clockOff.Add(id);
+                }
+                else
+                {
+                    _clockOff.Remove(id);
+                }
+
                 SetBuiltIn(BuiltInEvents.Unreachable, id, status == DeviceStatus.Unreachable);
                 SetBuiltIn(BuiltInEvents.CredentialsRequired, id, status == DeviceStatus.CredentialsRequired);
                 SetBuiltIn(BuiltInEvents.CertificateChanged, id, status == DeviceStatus.CertificateChanged);

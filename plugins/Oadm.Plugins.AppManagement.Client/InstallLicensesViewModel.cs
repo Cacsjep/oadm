@@ -201,7 +201,7 @@ public sealed partial class InstallLicensesViewModel : ObservableObject
         for (var i = 0; i < rows.Length; i++)
         {
             var target = Targets[i];
-            rows[i] = new LicenseTargetRow(target, matcher.Match(target.Mac, target.App!.ApplicationId, today));
+            rows[i] = new LicenseTargetRow(target, matcher.Match(target.Mac, target.App!.ApplicationId, today, target.App.Version));
             fit += rows[i].CanInstall ? 1 : 0;
         }
 
@@ -233,7 +233,7 @@ public sealed partial class InstallLicensesViewModel : ObservableObject
                 ids.Add(row.DeviceId);
                 var id = LicenseKeyMatcher.ApplicationIdOf(row.Row.App!.ApplicationId);
                 appId ??= id;
-                keys.AddRange(matcher.PayloadKeys(row.Row.Mac, id, today));
+                keys.AddRange(matcher.PayloadKeys(row.Row.Mac, id, today, row.Row.App.Version));
             }
 
             items.Add(new RunItem { Application = group.Key, DisplayName = group.First().Application, DeviceIds = ids, LicenseKeys = keys, LicenseApplicationId = appId });

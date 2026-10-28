@@ -159,6 +159,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// </summary>
     public DeviceGroups.DeviceViewFactory? Views { get; init; }
 
+    /// <summary>The plugins the engine runs (the role check of <see cref="ViewTaskRunner"/>).</summary>
+    internal PluginRegistry Plugins => _plugins;
+
     private async Task<IReadOnlyList<Guid>> RunCoreAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -171,7 +174,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         if (!_plugins.TryGetTaskPlugin(pluginId, out var registration))
         {
-            throw new ArgumentException($"Unknown task plugin '{pluginId}'.", nameof(pluginId));
+            throw new ArgumentException(TaskRunPermissions.UnknownPlugin(pluginId), nameof(pluginId));
         }
 
         var batchId = Guid.NewGuid();

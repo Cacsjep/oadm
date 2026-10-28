@@ -336,12 +336,6 @@ public interface ICorePluginClientContext
 /// <param name="Path">The path on the device, starting with "/" (checked by the host).</param>
 public sealed record DevicePageRequest(Guid DeviceId, string Path)
 {
-    /// <summary>
-    /// Whether <paramref name="path"/> stays on the device: one leading "/", no "//", "\", ".." segment, spaces or control
-    /// characters.
-    /// </summary>
-    public static bool IsDevicePath(string? path) =>
-        path is { Length: > 0 } && path[0] == '/' && !path.StartsWith("//", StringComparison.Ordinal)
-        && !path.Contains('\\', StringComparison.Ordinal) && !path.Any(c => char.IsControl(c) || c == ' ')
-        && !path.Split('?', '#')[0].Split('/').Contains("..", StringComparer.Ordinal);
+    /// <summary>Whether <paramref name="path"/> stays on the device (<see cref="Oadm.Sdk.Vapix.DevicePaths.IsOnDevice"/>).</summary>
+    public static bool IsDevicePath(string? path) => Oadm.Sdk.Vapix.DevicePaths.IsOnDevice(path);
 }

@@ -34,7 +34,8 @@ dialog's payload, parsed by its own `Parse` before a run), `AcapPermissions`, `A
 The page never writes to a device. Start, Stop, Remove and Change settings are `oadm.acap` tasks started through
 `ICallContext.Tasks` (the caller's device group), one run per application, after the permission check the task service
 does (`task:oadm.acap:startStop`, `remove`, `settings`, `install` (+ `downgrade`), `license`), with all devices checked
-before the first task. Install and Install licenses are the page's own dialogs: the files are read and every row checked
+before the first task. Install and Change settings take one application per run (the settings' values belong to it).
+Install and Install licenses are the page's own dialogs: the files are read and every row checked
 with the Applications plugin's rules on the client, the packages uploaded (`ICorePluginClientContext.UploadAsync`, SDK
 0.7.0), then the server part starts the runs (Install: one run for the devices that fit, the task checks each again
 before it uploads; Install licenses: one run per application with the keys of its devices). After the

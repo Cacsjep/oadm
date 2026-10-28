@@ -114,6 +114,19 @@ public sealed class WebViewTests(ITestOutputHelper output)
         Assert.True(Oadm.Sdk.Client.DevicePageRequest.IsDevicePath("/local/x/index.html#/a?b=c"));
     }
 
+    [Theory]
+    [InlineData("/local/../axis-cgi/admin/systemlog.cgi")]
+    [InlineData("/local/%2e%2e/axis-cgi/admin/systemlog.cgi")]
+    [InlineData("/local/x.html?next=https://evil.example")]
+    [InlineData("/local//x.html")]
+    [InlineData("/http://evil.example/")]
+    public void The_custom_path_uses_the_shared_device_path_check(string path)
+    {
+        Assert.False(WebViewPageViewModel.IsDevicePath(path));
+        Assert.Equal(Oadm.Sdk.Vapix.DevicePaths.IsOnDevice(path), WebViewPageViewModel.IsDevicePath(path));
+        Assert.True(WebViewPageViewModel.IsDevicePath("/local/objectanalytics/index.html#/"));
+    }
+
     [Fact]
     public async Task Close_all_closes_every_tab_and_Back_asks_the_active_browser()
     {

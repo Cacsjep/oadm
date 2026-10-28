@@ -93,6 +93,53 @@ public sealed class LicenseKeyTests : IDisposable
     }
 
     [Fact]
+    public void An_expired_key_for_one_version_never_hides_a_valid_key_for_another()
+    {
+        // An expired key for 1.x read first, a valid one for 2.x after it: the valid one counts, Match and PayloadKeys agree.
+        var expired1 = KeyFor(1).Replace("<ExpirationDate>2027-09-18<", "<ExpirationDate>2026-01-31<", StringComparison.Ordinal);
+        var valid2 = KeyFor(2);
+        var set = LicenseKeySet.Read([("v1.xml", Encoding.UTF8.GetBytes(expired1)), ("v2.xml", Encoding.UTF8.GetBytes(valid2))]);
+        var matcher = new LicenseKeyMatcher(set);
+
+        foreach (var version in new string?[] { null, "2.3.0" })
+        {
+            var match = matcher.Match("B8A44F631339", "415090", Today, version);
+            Assert.Equal(LicenseKeyVerdict.Found, match.Verdict);
+            Assert.Equal("Key valid until 2027-09-18.", match.Details);
+            Assert.Equal([valid2], matcher.PayloadKeys("B8A44F631339", "415090", Today, version).Select(k => k.Xml));
+        }
+
+        // Unknown application id (the device reports none): the same choice.
+        Assert.Equal(LicenseKeyVerdict.Found, matcher.Match("B8A44F631339", null, Today).Verdict);
+
+        // Installed 1.x: the only key for it expired, the 2.x key does not fit; the payload is empty like the verdict says.
+        var old = matcher.Match("B8A44F631339", "415090", Today, "1.4");
+        Assert.Equal(LicenseKeyVerdict.OtherVersion, old.Verdict);
+        Assert.False(old.IsUsable);
+        Assert.Equal("The key is for versions 2.0 to 2.x; 1.4 is installed.", old.Details);
+        Assert.Empty(matcher.PayloadKeys("B8A44F631339", "415090", Today, "1.4"));
+    }
+
+    [Fact]
+    public void Of_several_usable_keys_the_fitting_one_and_the_latest_end_come_first()
+    {
+        var v1 = KeyFor(1);
+        var v2 = KeyFor(2).Replace("<ExpirationDate>2027-09-18<", "<ExpirationDate>2028-01-31<", StringComparison.Ordinal);
+        var allExpired = LicenseKeySet.Read([("a.xml", Encoding.UTF8.GetBytes(KeyFor(1).Replace("2027-09-18", "2026-02-01", StringComparison.Ordinal))),
+            ("b.xml", Encoding.UTF8.GetBytes(KeyFor(2).Replace("2027-09-18", "2026-05-01", StringComparison.Ordinal)))]);
+        var matcher = new LicenseKeyMatcher(LicenseKeySet.Read([("v1.xml", Encoding.UTF8.GetBytes(v1)), ("v2.xml", Encoding.UTF8.GetBytes(v2))]));
+
+        Assert.Equal([v2, v1], matcher.PayloadKeys("B8A44F631339", "415090", Today).Select(k => k.Xml));
+        Assert.Equal([v1], matcher.PayloadKeys("B8A44F631339", "415090", Today, "1.2.0").Select(k => k.Xml));
+        Assert.Equal("Key valid until 2027-09-18.", matcher.Match("B8A44F631339", "415090", Today, "1.2.0").Details);
+
+        // Every key expired: the verdict names the latest end date.
+        var expired = new LicenseKeyMatcher(allExpired).Match("B8A44F631339", "415090", Today);
+        Assert.Equal(LicenseKeyVerdict.Expired, expired.Verdict);
+        Assert.Equal("The key expired on 2026-05-01.", expired.Details);
+    }
+
+    [Fact]
     public void Files_and_zips_are_read_with_the_latest_key_per_device_and_problems_named()
     {
         using var zipStream = new MemoryStream();

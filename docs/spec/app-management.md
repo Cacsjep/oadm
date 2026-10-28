@@ -38,13 +38,15 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 
 - Per device: the cached API list must offer `application` 1.x (else the row "Applications cannot be managed on this
   device", no request), then `applications/list.cgi`, then best effort (null when not offered) `config.cgi` AllowUnsigned
-  and the embedded development version parameter for the install dialog's checks (three read requests). Parsing and error texts are the Applications
+  and the embedded development version parameter for the install dialog's checks, these two at the same time (three
+  read requests in one slot and one timeout per device). Parsing and error texts are the Applications
   plugin's (`ApplicationApiClient`, list parser), linked as source (`plugins/Shared`), not copied.
 - Devices that are not Ok: not read, "Not checked: <status>" like Compliance.
 - A failed read keeps the device in the list with the error in its status cell.
 - Each application also carries its own page as list.cgi names it (`ConfigurationPage`, e.g.
   `local/ax_msf/redirect.html`; `InstalledApplication.ConfigurationPath` = "/" + it, null without one or when it would
-  leave the device: a scheme, "//", "\\", "..", spaces).
+  leave the device: the SDK's one check `DevicePaths.ToDevicePath` / `IsOnDevice`, as for Open app page and Web View's
+  Custom path: no "//" anywhere (no scheme or host), no "\\", no ".." segment also percent-encoded, no spaces).
 
 ## Page
 
@@ -100,7 +102,9 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
     no card. **Choose files**: key files or ZIPs of them (`LicenseKeySet.ReadFiles`). A virtualized grid: address, model,
     application, license, **Result**: the key of that device and application with the Applications plugin's own rules
     (`LicenseKeyMatcher`, linked source, also the Applications dialog's: MAC address, application id, expiry; "No license
-    key for this device.", "Key expired", "Other application", "Several keys"); applications that need no license are
+    key for this device.", "Key expired", "Other application", "Other version", "Several keys"; of several keys of a device
+    for the application the best counts: not expired, fitting the installed version, the latest end date first, so an
+    expired key never hides a valid one; the payload carries exactly the usable keys of that verdict); applications that need no license are
     skipped ("This application needs no license."). Files that are not keys show as one warning below the file row.
     **Install licenses** asks the server part to start one `oadm.acap` license run per application with the keys of its
     devices (`RunItem.LicenseKeys`, `LicenseApplicationId`).
@@ -137,7 +141,7 @@ the device is read again; when it cannot be asked, Settings stays (the window th
 
 - **Log** (a row's ⋯ **Show log**): `GET /axis-cgi/admin/systemlog.cgi?appname=<Name>` (the device's log lines of
   that application only; read only, through the page's server part on the device's route). Shown in a window with the
-  shared log view (newest last, Refresh, Copy, search, at most 2 MB / 10,000 lines kept); a device without lines: "No log
+  shared log view (newest last, Refresh, Copy, search, at most 2 MB / 10,000 lines kept, each line cut to 8 KB while it is read, the read stopped after 64 M characters); a device without lines: "No log
   lines from this application." The Level column is narrow and shows only the status icon (`ui:StatusChip` without text:
   error for ERR/ERROR/CRIT/ALERT/EMERG, warning for WARNING/WARN, info for INFO/NOTICE; DEBUG and others no icon) with
   the level as its tooltip; the search still finds the level text. Seen on AXIS P3265-V, AXIS OS 12.11 (2026-10-28).
@@ -155,7 +159,8 @@ the device is read again; when it cannot be asked, Settings stays (the window th
   are not shown (the device page hides them too); password types are never read back or shown (empty field, "Unchanged").
   Several devices: one row per parameter with the value of most devices and "differs on 3".
 - **Change settings** = a task of `oadm.acap`, new action **Change settings** (`{action: "settings", application,
-  values: {name: value}}`, payload in memory only, values never logged): Check compatibility, Read installed
+  values: {name: value}}`, payload in memory only, values never logged; the server part refuses a run with more than
+  one application, "Change the settings of one application at a time. Nothing was changed."): Check compatibility, Read installed
   applications (the application must be installed), Read settings (the definitions, every name must exist and every value
   fit its type and range, else Failed "Nothing was changed"), Change settings (`param.cgi?action=update`, all values in
   one request), Verify settings (read back, passwords skipped). New permission `task:oadm.acap:settings` ("Change

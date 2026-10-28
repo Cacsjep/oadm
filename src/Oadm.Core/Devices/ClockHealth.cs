@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 
 using Oadm.Sdk.Devices;
@@ -79,32 +78,6 @@ public static class ClockHealth
     {
         ArgumentNullException.ThrowIfNull(device);
         return IsOff(device.Status, device.ClockOffsetMs, device.NtpState, toleranceSeconds);
-    }
-
-    /// <summary>
-    /// "OK" below one second, else "50 s ahead", "2 min behind", "3 h ahead", "4 days behind": seconds rounded up (an off
-    /// clock never reads as within the allowed difference), the larger units rounded down. The client's Clock column says
-    /// the same (DeviceClockText).
-    /// </summary>
-    public static string OffsetText(int offsetMs)
-    {
-        var abs = Math.Abs((long)offsetMs);
-        if (abs < 1000)
-        {
-            return "OK";
-        }
-
-        var seconds = (abs + 999) / 1000;
-
-        var amount = seconds switch
-        {
-            < 60 => string.Create(CultureInfo.InvariantCulture, $"{seconds} s"),
-            < 3600 => string.Create(CultureInfo.InvariantCulture, $"{seconds / 60} min"),
-            < 86_400 => string.Create(CultureInfo.InvariantCulture, $"{seconds / 3600} h"),
-            < 172_800 => "1 day",
-            _ => string.Create(CultureInfo.InvariantCulture, $"{seconds / 86_400} days"),
-        };
-        return amount + (offsetMs > 0 ? " ahead" : " behind");
     }
 
     /// <summary>The <c>getNTPInfo</c> request body for the device's API version.</summary>

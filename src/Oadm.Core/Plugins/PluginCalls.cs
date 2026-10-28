@@ -70,7 +70,8 @@ public sealed class PluginCaller
 internal sealed class HostCallContext : ICallContext
 {
     /// <param name="viewWatcher">Ends a group user's event streams when their device leaves the view; without it a group user gets no event streams (fail closed).</param>
-    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners)
+    /// <param name="registry">The task plugins for the role check of a run through another runner than the engine (null: no check there; the engine checks itself).</param>
+    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners, PluginRegistry? registry = null)
     {
         Caller = caller;
         var view = caller.View;
@@ -81,7 +82,7 @@ internal sealed class HostCallContext : ICallContext
         // ITaskExecutionContext.Caller), also when a job starts them after the call ended.
         Tasks = tasks is Oadm.Core.Tasks.TaskEngine engine
             ? engine.ForView(view, Oadm.Core.Tasks.TaskCaller.Of(caller.Caller))
-            : new ViewTasks(this, tasks, taskOwners);
+            : new ViewTasks(this, tasks, taskOwners, registry);
         EventStreams = eventStreams is null ? null
             : caller.HasAllDevices ? eventStreams
             : viewWatcher is null ? null
@@ -147,11 +148,18 @@ internal sealed class HostCallContext : ICallContext
     }
 
     /// <summary>The call's runner over another <see cref="ITaskRunner"/> than the engine (tests, tools).</summary>
-    private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners) : ITaskRunner
+    private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners, PluginRegistry? registry) : ITaskRunner
     {
         public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
+
+            // The role's permissions for the run first, like gRPC Run (a plugin the registry does not know is left to the runner).
+            if (registry is not null)
+            {
+                Oadm.Core.Tasks.TaskRunPermissions.Require(registry, pluginId, payloadJson, call.Caller.Caller.Permissions, refuseUnknown: false);
+            }
+
 
             // The whole run is refused when any device is outside the view (nothing starts in part). The owner is the caller,
             // never what the plugin says.
