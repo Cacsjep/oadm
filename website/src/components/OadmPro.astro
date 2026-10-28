@@ -8,7 +8,7 @@ import { forumUrl } from '../lib/forum';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
-const quotePlans = ['Individual', 'Up to 500 devices', 'Up to 30,000 devices', 'Unlimited', 'Custom plugin', 'Something else', 'Not sure yet'];
+const quotePlans = ['Up to 200 devices', 'Up to 1,000 devices', 'Up to 4,000 devices', 'Unlimited', 'Custom plugin', 'Something else', 'Not sure yet'];
 
 // Lucide icons (ISC license), 24 x 24 stroke paths.
 const icons = {
@@ -19,20 +19,19 @@ const icons = {
 const check = '<path d="M20 6 9 17l-5-5"/>';
 const cross = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 
-// Per two years (the maintenance period of most project offers). Individual: support for one plugin on one server, for a
-// project offer. Then two plans per server, sized by its devices (the license key's device limit), and one for a whole
-// company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
-const all = ['Support with an SLA', 'Feature requests first', 'EST server', '802.1X server', '30-day trial'];
+// Per two years (the maintenance period of most project offers). Three plans per server, sized by its devices (the license
+// key's device limit), and one for a whole company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
+const all = ['Support with an SLA', 'EST server', '802.1X server', 'Feature requests first'];
 const plans = [
-	{ devices: 'Individual', price: '€440', from: true, text: 'One plugin with commercial support, ready for your project offer.', included: ['Support with an SLA for one plugin', 'Any plugin: OADM, PRO or your own', 'One server', '30-day trial'] },
-	{ devices: 'Up to 500 devices', price: '€940', text: 'One server. One site or a small customer.', included: all },
-	{ devices: 'Up to 30,000 devices', price: '€4,870', text: 'One server with every device it can manage.', included: all },
+	{ devices: 'Up to 200 devices', price: '€440', text: 'One server. One site or a small customer.', included: all },
+	{ devices: 'Up to 1,000 devices', price: '€1,940', text: 'One server for a larger site or several small ones.', included: all },
+	{ devices: 'Up to 4,000 devices', price: '€4,870', text: 'One server for a large installation.', included: all },
 	{ devices: 'Unlimited', price: '€9,740', text: 'A license key for each server of one company, any number of devices.', included: all },
 ];
 
 // The SLA of every plan (#sla; the "Support with an SLA" lines of the plans link here). Planned terms, final at launch.
 const covered = [
-	'OADM, the enterprise plugins and the plugin of an Individual plan',
+	'OADM and the enterprise plugins',
 	'Bug fixes, for critical bugs a fix outside the normal releases',
 	'Support by email, with the people who build OADM',
 ];
@@ -65,7 +64,7 @@ const custom = [
 			<div class="pro-plan" data-plan={p.devices}>
 				<strong>{p.devices}</strong>
 				<span class="pro-plan-text">{p.text}</span>
-				<span class="pro-price">{p.from && 'From '}<b>{p.price}</b> per 2 years</span>
+				<span class="pro-price"><b>{p.price}</b> per 2 years</span>
 				<ul>
 					{p.included.map((i) => (
 						<li><svg viewBox="0 0 24 24" aria-hidden="true" set:html={check} />{i.startsWith('Support with an SLA') ? <a href="#sla">{i}</a> : i}</li>
