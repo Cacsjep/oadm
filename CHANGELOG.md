@@ -12,11 +12,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Clock column and the event Any device: clock off: devices whose clock drifts or loses NTP.
 - Compliance check Clock: the device clock matches the server's and NTP is synced.
 - Plugin SDK 0.7.0.
-- Applications: install one package per processor type at once.
-- Applications: change the settings an application registers, on many devices at once.
-- Applications page: the applications of many devices with versions, status and licenses, and start, stop, install or remove them.
-- Applications page: install applications and licenses on many devices, with a check per device before anything is written.
-- Applications page: the log of an application, and its settings or its own page.
+- Applications page: install, license, start, stop and remove the applications of many devices, with their log and settings.
 
 ### Changed
 
