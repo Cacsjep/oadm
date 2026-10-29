@@ -45,6 +45,9 @@
               <TextBlock Text="{x:Static vm:AppSettingsViewModel.NoSettingsText}" TextWrapping="Wrap" />
               <Button Classes="link" Content="Open app page" Command="{Binding OpenAppPageCommand}" IsVisible="{Binding CanOpenAppPage}"
                       HorizontalAlignment="Left" />
+              <!-- Web View off: the link greyed out and what to do. -->
+              <Button Classes="link" Content="Open app page" IsEnabled="False" IsVisible="{Binding ShowWebViewOff}" HorizontalAlignment="Left" />
+              <TextBlock Classes="secondary" Text="{x:Static vm:AppSettingsViewModel.WebViewOffHint}" IsVisible="{Binding ShowWebViewOff}" />
               <TextBlock Classes="secondary" Text="{x:Static vm:AppSettingsViewModel.OneDeviceHint}" IsVisible="{Binding ShowOneDeviceHint}" />
             </StackPanel>
 

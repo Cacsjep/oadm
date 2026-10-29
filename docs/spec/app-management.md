@@ -135,7 +135,8 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 
 The device's own Apps page offers both in an application's menu (⋯); the page offers them per row. A row's ⋯ menu shows
 **Settings** when the application registered settings on the row's device, else **Open app page** when it has its own
-page (list.cgi `ConfigurationPage`) and Web View is on, and always **Show log**. Whether it has settings is asked when the
+page (list.cgi `ConfigurationPage`; greyed out while Web View is off, tooltip "Turn on Web View on the Plugins page"),
+and always **Show log**. Whether it has settings is asked when the
 menu first opens (the settings read for that one device, at most 5 s, the ⋯ button disabled meanwhile) and kept until
 the device is read again; when it cannot be asked, Settings stays (the window then says why).
 
@@ -153,7 +154,8 @@ the device is read again; when it cannot be asked, Settings stays (the window th
   own page on the device."). Then, when the application lists a `ConfigurationPage` and Web View (`oadm.web-view`) is
   on: one device: the link **Open app page** opens that device's Web View tab on the page
   (`ICorePluginClientContext.OpenDevicePage(deviceId, path)`, SDK 0.7.0; the window closes; when the host opens nothing
-  the window says "Web View cannot open this device."); several devices: no link, "Open it on one device." Without a
+  the window says "Web View cannot open this device."); several devices: no link, "Open it on one device."; Web View off: the link greyed out and "Turn on Web View on the
+  Plugins page." below it. Without a
   `ConfigurationPage`: the text only. Each parameter: nice name, value,
   type from the definition (text, number with range, list of values, yes/no); parameters the definition marks `hidden`
   are not shown (the device page hides them too); password types are never read back or shown (empty field, "Unchanged").

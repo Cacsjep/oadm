@@ -157,7 +157,8 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
 
     /// <summary>
     /// An application row: Settings (of the selected rows when the row is one of them) when the application has settings,
-    /// else Open app page when it has its own page; Show log always. The button waits while the device is asked once.
+    /// else Open app page when it has its own page (greyed out while Web View is off); Show log always. The button waits while
+    /// the device is asked once.
     /// </summary>
     private async void OnRowActions(object? sender, RoutedEventArgs e)
     {
@@ -182,14 +183,36 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
         {
             items.Add(new("Settings", vm.ShowSettingsCommand, row));
         }
-        else if (menu.AppPage)
+        else if (menu.AppPage || menu.WebViewOff)
         {
-            items.Add(new("Open app page", vm.OpenAppPageCommand, row));
+            items.Add(new(OpenAppPageText, vm.OpenAppPageCommand, row));
         }
 
         items.Add(new("Show log", vm.ShowLogCommand, row));
-        RowActions.Show(button, items);
+        if (!menu.WebViewOff)
+        {
+            RowActions.Show(button, items);
+            return;
+        }
+
+        // Web View off: Open app page greyed out, its tooltip says what to do (the look of RowActions otherwise).
+        var flyout = new MenuFlyout { Placement = PlacementMode.BottomEdgeAlignedRight };
+        foreach (var item in IssuedCertificateList.MenuItems(items))
+        {
+            if (item is MenuItem { Header: OpenAppPageText } page)
+            {
+                page.IsEnabled = false;
+                ToolTip.SetTip(page, AppSettingsViewModel.WebViewOffTip);
+                ToolTip.SetShowOnDisabled(page, true);
+            }
+
+            flyout.Items.Add(item);
+        }
+
+        flyout.ShowAt(button);
     }
+
+    private const string OpenAppPageText = "Open app page";
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

@@ -314,9 +314,12 @@ public sealed class PageTests
         vm.OpenAppPageCommand.Execute(rows["withpage"]);
         Assert.Equal((rows["withpage"].DeviceId, "/local/withpage/index.html"), Assert.Single(ctx.OpenedPages));
 
-        // Without Web View the page cannot open: only Show log.
+        // Without Web View the page cannot open: Open app page greyed out, the plain one still only Show log.
         ctx.PluginsOn.Clear();
-        Assert.Equal(new AppRowMenu(false, false), await vm.MenuForAsync(rows["withpage"], CancellationToken.None));
+        Assert.Equal(new AppRowMenu(false, false, WebViewOff: true), await vm.MenuForAsync(rows["withpage"], CancellationToken.None));
+        Assert.Equal(new AppRowMenu(false, false), await vm.MenuForAsync(rows["plain"], CancellationToken.None));
+        vm.OpenAppPageCommand.Execute(rows["withpage"]);
+        Assert.Single(ctx.OpenedPages);
     }
 
     [Fact]

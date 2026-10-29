@@ -7,6 +7,11 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Changed
+
+- Applications page: Open app page shows greyed out while Web View is off, with how to turn it on.
+- Docs: the sidebar lists sorted A to Z.
+
 ## [4.7.0] - 2026-10-29
 
 ### Added

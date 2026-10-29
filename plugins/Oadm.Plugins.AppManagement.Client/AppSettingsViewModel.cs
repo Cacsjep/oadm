@@ -205,6 +205,15 @@ public sealed partial class AppSettingsViewModel : ObservableObject
 
     public const string AppPageNotOpened = "Web View cannot open this device.";
 
+    /// <summary>Why Open app page is greyed out: the application has its own page but Web View is off.</summary>
+    public const string WebViewOffTip = "Turn on Web View on the Plugins page";
+
+    /// <summary>The same as a line below the greyed-out link of the settings window.</summary>
+    public const string WebViewOffHint = WebViewOffTip + ".";
+
+    /// <summary>The application has its own page but Web View is off: the link shows greyed out with <see cref="WebViewOffTip"/>.</summary>
+    public bool ShowWebViewOff => ConfigurationPath is not null && _ctx.IsPluginOn(WebViewId) == false && _deviceIds.Count == 1;
+
     /// <summary>The application has its own page and Web View is on.</summary>
     private bool HasAppPage => ConfigurationPath is not null && _ctx.IsPluginOn(WebViewId) == true;
 

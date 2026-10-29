@@ -317,6 +317,9 @@ public sealed class LogAndSettingsTests : IAsyncLifetime
 
         var off = new AppSettingsViewModel(new FakePageContext(), "ax_msf", "Missing Features", [Guid.NewGuid()], "10.0.0.48", "/local/ax_msf/redirect.html");
         Assert.False(off.CanOpenAppPage);
+        Assert.True(off.ShowWebViewOff); // the link greyed out with "Turn on Web View on the Plugins page."
+        Assert.False(noPage.ShowWebViewOff);
+        Assert.False(several.ShowWebViewOff);
         off.OpenAppPageCommand.Execute(null);
         Assert.Empty(ctx.OpenedPages);
     }

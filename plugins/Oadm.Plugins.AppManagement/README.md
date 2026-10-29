@@ -43,7 +43,9 @@ page's tasks end (`ITaskRunner.IsActive`, every 2 s) the server part asks `ITask
 each ended, keeps the messages of Failed and Done with warnings tasks per device and application
 (`DeviceApps.TaskResults`, dropped by the next read the user starts) and reads the devices again; `AppRow.StatusText`
 shows "<state>. <message>". The settings window offers **Open app page** for one device when list.cgi names a
-`ConfigurationPage` and Web View is on (`ICorePluginClientContext.OpenDevicePage`, SDK 0.7.0). Setting values go only to
+`ConfigurationPage` and Web View is on (`ICorePluginClientContext.OpenDevicePage`, SDK 0.7.0); while Web View is off the
+link is greyed out with "Turn on Web View on the Plugins page." (the row's ⋯ menu: the same entry greyed out, that text as
+its tooltip). Setting values go only to
 callers with `task:oadm.acap:settings`, travel only in the task payload and are never logged.
 
 ## Tests

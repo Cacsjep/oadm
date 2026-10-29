@@ -25,8 +25,12 @@ public interface IApplicationDialogs
     Task<bool> ShowLicensesAsync(InstallLicensesViewModel licenses);
 }
 
-/// <summary>The ⋯ menu of an application row besides Show log: Settings, or else Open app page, or neither.</summary>
-public sealed record AppRowMenu(bool Settings, bool AppPage);
+/// <summary>
+/// The ⋯ menu of an application row besides Show log: Settings, or else Open app page, or neither. <paramref name="WebViewOff"/>:
+/// the application has its own page but Web View is off, so Open app page shows greyed out with
+/// <see cref="AppSettingsViewModel.WebViewOffTip"/>.
+/// </summary>
+public sealed record AppRowMenu(bool Settings, bool AppPage, bool WebViewOff = false);
 
 /// <summary>One entry of the status filter.</summary>
 public sealed record StatusChoice(AppStatusFilter Value, string Text)
@@ -343,7 +347,7 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
 
     /// <summary>
     /// The ⋯ menu of a row: Settings when the application registered settings on the row's device, else Open app page when
-    /// it has its own page and Web View is on; Show log always. The device is asked once (one read, the settings window's)
+    /// it has its own page (greyed out while Web View is off); Show log always. The device is asked once (one read, the settings window's)
     /// and the answer kept until the device is read again; when it cannot be asked, Settings stays (the window says more).
     /// </summary>
     public async Task<AppRowMenu> MenuForAsync(AppRow row, CancellationToken ct)
@@ -384,7 +388,13 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
             }
         }
 
-        return has ? new AppRowMenu(true, false) : new AppRowMenu(false, AppPageOf(row) is not null);
+        if (has)
+        {
+            return new AppRowMenu(true, false);
+        }
+
+        return AppPageOf(row) is not null ? new AppRowMenu(false, true)
+            : new AppRowMenu(false, false, row.App?.ConfigurationPath is not null && _ctx.IsPluginOn(AppSettingsViewModel.WebViewId) == false);
     }
 
     /// <summary>The row's application page when Web View can open it, else null.</summary>
