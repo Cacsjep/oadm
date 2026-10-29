@@ -21,8 +21,8 @@
     <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.84.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <!-- Windows service (MSI) and systemd unit (.deb); both are no-ops on a console. -->
-    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.13" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.14" />
   </ItemGroup>
 
   <ItemGroup>

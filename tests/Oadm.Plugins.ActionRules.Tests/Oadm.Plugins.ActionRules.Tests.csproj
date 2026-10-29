@@ -15,7 +15,7 @@
     <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
     <!-- In-process server for the end-to-end hardware test. -->
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.14" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
