@@ -7,6 +7,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-10-29
+
 ### Added
 
 - Clock column and the event Any device: clock off: devices whose clock drifts or loses NTP.
