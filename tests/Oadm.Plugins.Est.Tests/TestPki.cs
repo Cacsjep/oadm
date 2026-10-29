@@ -15,7 +15,7 @@ internal static class TestPki
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
-        return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddYears(30));
+        return Created(request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-10), DateTimeOffset.UtcNow.AddYears(30)));
     }
 
     public static X509Certificate2 Intermediate(X509Certificate2 issuer, string name)
@@ -27,7 +27,7 @@ internal static class TestPki
         request.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(request.PublicKey, false));
         request.CertificateExtensions.Add(X509AuthorityKeyIdentifierExtension.CreateFromCertificate(issuer, true, false));
         using var signed = request.Create(issuer, DateTimeOffset.UtcNow.AddDays(-5), DateTimeOffset.UtcNow.AddYears(20), Serial());
-        return signed.CopyWithPrivateKey(key);
+        return Created(signed.CopyWithPrivateKey(key));
     }
 
     /// <summary>A device ID certificate with the camera's serial in the subject (X.520 serialNumber), with its key.</summary>
@@ -55,6 +55,53 @@ internal static class TestPki
     {
         var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         return (new CertificateRequest(subject, key, HashAlgorithmName.SHA256).CreateSigningRequest(), key);
+    }
+
+    /// <summary>The thumbprints of the test CAs of this process.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> CreatedCas = new(StringComparer.Ordinal);
+
+    private static int _cleanupRegistered;
+
+    /// <summary>
+    /// On Windows, <c>SslStreamCertificateContext.Create</c> with chain certificates (the EST server's CA chain, the test
+    /// client's intermediate) adds them to the user's Intermediate Certification Authorities store for Schannel. Test CAs
+    /// are unique per test, so every run would leave about 40 there: they are removed when the test process ends.
+    /// </summary>
+    private static X509Certificate2 Created(X509Certificate2 ca)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            CreatedCas.TryAdd(ca.Thumbprint, 0);
+            if (Interlocked.Exchange(ref _cleanupRegistered, 1) == 0)
+            {
+                AppDomain.CurrentDomain.ProcessExit += (_, _) => RemoveCreatedCas();
+            }
+        }
+
+        return ca;
+    }
+
+    /// <summary>Removes this process's test CAs from the user's Intermediate store (only those, never others).</summary>
+    internal static void RemoveCreatedCas()
+    {
+        try
+        {
+            using var store = new X509Store(StoreName.CertificateAuthority, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadWrite);
+            foreach (var certificate in store.Certificates)
+            {
+                if (CreatedCas.ContainsKey(certificate.Thumbprint))
+                {
+                    store.Remove(certificate);
+                }
+
+                certificate.Dispose();
+            }
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            // best effort: the store could not be opened
+        }
     }
 
     /// <summary>A name of its own per test CA: Windows caches chains by name, CAs of other tests with the same name mix up.</summary>
