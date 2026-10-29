@@ -136,6 +136,32 @@ Downgrade blocked). It uploads the files with `ITaskDialogContext.UploadAsync` (
 the other, one progress bar, cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`,
 with several files also `"files":[{"fileId","fileName"}]`.
 
+## Firmware online (spec, not built)
+
+Researched with the maintainer 2026-10-29, parked: a built version (sign-in through the user's MyAxis session cookie) was
+dropped as too fragile. What stays is how to find the firmware of a model on the Axis download site.
+
+- **Where.** The public listings `https://www.axis.com/ftp/pub_soft/MPQT/` (cameras) and `.../PACS/` (audio, access
+  control, intercoms, I/O, switches; a product in both is taken from MPQT): one folder per product, in it one folder per
+  version (`12_11_147/`) and `latest/` (the newest .bin as `<product>.bin` plus `ver.txt` with its version). Each listing
+  is an HTML table, one row per entry: icon, name, date, size ("120.7M") and SHA-256. Version folders are two to five
+  numbers (`10_12_356_2`); folders with a suffix (`10_12_212_TTA`, special builds) are skipped.
+- **Model match.** The device's model matches a product folder only exactly after normalizing both: lower case, only
+  a-z and 0-9, without "AXIS " (`P1455-LE` never takes `P1455-LE-3` or `P3265-LVE_9_mm`). Not every model is listed
+  (P12-MkIII is not).
+- **Versions.** Per model the newest version of each major (`OS12`, `OS11`, ...). The model's newest major is its active
+  track (its newest version); an older major counts only with its last minor (10.11 next to 10.12 is dropped), marked LTS
+  only when that minor is one (`AxisOsUpgradePath.LtsTracks`: 6.50, 8.40, 9.80, 10.12, 11.11, 12.11). A model whose
+  newest major ends on an LTS minor has no active track (C1410 on 11.11). A version only in `latest/` (named by
+  `ver.txt`, P1455-LE 11.11.212) counts with the `latest/` file. Latest is what `ver.txt` names, else the version with
+  the .bin of `latest/`, else the highest. Versions without a .bin, a SHA-256 or a size of at least 1 MB are left out.
+- **Lookup.** Only the models of the selected devices, never the whole site: both root listings, then per model its
+  folder, `latest/`, `ver.txt` and the newest folder of each track; at most 8 models at a time, no cache (the site
+  changes during the day). Each page 0.1 to 0.15 s; measured 2026-10-29: 5 models 1 s, 50 models 3 s, 100 models 5 s.
+- **Downloads need a login.** Every .bin below `/ftp/pub_soft/` answers `302` to `/my-axis/login`; the listings and
+  `ver.txt` are public. A download by OADM would need the user's MyAxis session (cookie `axis_connect_session_sid`, not
+  a public Axis API), which is why the built version was dropped.
+
 ## Task steps
 
 Every device request and every wait is a named step (`FirmwareTaskPlugin.Steps`, all planned up front and shown as

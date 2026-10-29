@@ -48,6 +48,8 @@ the version and commits it.
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
   verified and committed (Commit firmware waits up to 5 minutes while AXIS OS has not finished booting); at most 4
   devices at a time.
+- Firmware online (spec, not built; README "Firmware online"): how the newest version of each major of a model is found
+  on the public listings of www.axis.com/ftp; the downloads need a MyAxis login, so nothing is downloaded by OADM.
 
 ## Network settings and Assign IP address
 
