@@ -223,6 +223,9 @@ must never break.
 - **[Application management](docs/spec/app-management.md)** (core plugin `oadm.app-management`, free, off by default):
   the chosen devices and the applications of the selected ones, Hide AXIS apps; every change
   is a task of `oadm.acap` with its checks and permissions; reads only on demand, kept in server memory.
+- **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
+  C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
+  settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
