@@ -13,6 +13,7 @@ public partial class FirmwareDialogWindow : Window
             if (DataContext is FirmwareDialogViewModel vm)
             {
                 vm.CloseRequested += (_, payload) => Close(payload);
+                vm.OpenLinkRequested += (_, uri) => _ = Launcher.LaunchUriAsync(uri);
             }
         };
 

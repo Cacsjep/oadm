@@ -11,6 +11,9 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Applications page: Open app page shows greyed out while Web View is off, with how to turn it on.
 - Docs: the sidebar lists sorted A to Z.
+- Upgrade firmware: an upgrade from an LTS version to the next major is no longer marked Not recommended; Details asks to be on the latest LTS first.
+- Upgrade firmware: upgrades to AXIS OS 13 show a link to the Axis guide of its breaking changes.
+- Upgrade firmware: devices with an unsigned application, or one that does not support AXIS OS 13, are skipped and the application is named.
 
 ## [4.7.0] - 2026-10-29
 

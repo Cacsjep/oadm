@@ -212,7 +212,18 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 images.Add(FirmwareImageInspector.Inspect(f.FileName ?? found.Name, found.Size));
             }
 
-            var (index, check) = FirmwareCompatibility.Choose(info.ProdNbr, info.Version, images, payload.FactoryDefaultMode, payload.AllowDowngrade);
+            // AXIS OS 13 and later refuse the upgrade for an unsigned or undeclared application: checked before the upload.
+            IReadOnlyList<InstalledApp>? apps = null;
+            if (images.Any(i => i.Version?.Major >= InstalledAppRules.FromMajor))
+            {
+                apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
+                if (apps is null)
+                {
+                    ctx.Log(TaskLogLevel.Warning, "The installed applications could not be read; the device checks them itself.");
+                }
+            }
+
+            var (index, check) = FirmwareCompatibility.Choose(info.ProdNbr, info.Version, images, payload.FactoryDefaultMode, payload.AllowDowngrade, apps);
             if (index < 0)
             {
                 step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
@@ -240,6 +251,11 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 // Advice only: the upgrade runs; AXIS OS 12.6.85 / 11.11.169 and later refuse it, then the error repeats it.
                 ctx.Log(TaskLogLevel.Warning, "Not the recommended upgrade path. " + advice);
                 pathAdvice = advice;
+            }
+            else if (check.PathNote is { } note)
+            {
+                ctx.Log(TaskLogLevel.Info, note);
+                pathAdvice = note;
             }
 
             step.Complete(Invariant($"{image.FileName}, {file.Size / (1024 * 1024)} MB: {check.Message}"));
@@ -335,7 +351,8 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
 
         var status = await new FwmgrClient(ctx.Vapix).GetStatusAsync(ct).ConfigureAwait(false);
-        return ToInfo(status, api.Version, info).ToJson();
+        var apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
+        return (ToInfo(status, api.Version, info) with { Applications = apps }).ToJson();
     }
 
     public static FirmwareStatusInfo ToInfo(FwmgrStatus status, string? fwmgrVersion, BasicDeviceInfo? info)
@@ -393,7 +410,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
         catch (FwmgrException ex) when (ex.NothingInstalled)
         {
-            // A refused upgrade off the recommended path: the advice says what to install first.
+            // A refused upgrade off (or maybe off) the recommended path: the advice or note says what to install first.
             var path = pathAdvice is null ? string.Empty : " " + pathAdvice;
             throw new InvalidOperationException($"{ex.Message} The device still runs {oldVersion}.{path}", ex);
         }

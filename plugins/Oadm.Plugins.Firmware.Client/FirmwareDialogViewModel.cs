@@ -63,6 +63,7 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
         FirmwareVerdict.InvalidFile => "Invalid file",
         FirmwareVerdict.UnknownVersionRefused => "Refused",
         FirmwareVerdict.NoFileForModel => "No file",
+        FirmwareVerdict.AppsBlock => "Apps block it",
         _ => "Not supported",
     };
 
@@ -76,6 +77,9 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     public bool IsError => Check is { WillInstall: false, IsNoOp: false };
 
     public bool WillInstall => Check?.WillInstall == true;
+
+    /// <summary>The device's installed applications from the status query; null until read or when not readable.</summary>
+    internal IReadOnlyList<InstalledApp>? Apps { get; set; }
 
     /// <summary>The status query was started for this row (preloaded or because the grid showed it).</summary>
     internal bool StatusRequested { get; set; }
@@ -208,6 +212,36 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     public bool HasPathWarning => PathWarning is not null;
 
+    /// <summary>The Axis guides of major versions with breaking changes, by major version.</summary>
+    public static IReadOnlyDictionary<int, Uri> BreakingChangesGuides { get; } = new Dictionary<int, Uri>
+    {
+        [13] = new("https://www.axis.com/for-developers/news/AXIS-OS-13-breaking-changes"),
+    };
+
+    /// <summary>
+    /// "AXIS OS 13 has breaking changes." when a device that installs moves up to a major version with an Axis guide of
+    /// its breaking changes (<see cref="BreakingChangesGuides"/>); null otherwise.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBreakingChanges))]
+    public partial string? BreakingChangesNotice { get; private set; }
+
+    public bool HasBreakingChanges => BreakingChangesNotice is not null;
+
+    private Uri? _breakingChangesGuide;
+
+    /// <summary>Raised with a web address the window opens in the browser.</summary>
+    public event EventHandler<Uri>? OpenLinkRequested;
+
+    [RelayCommand]
+    private void OpenBreakingChanges()
+    {
+        if (_breakingChangesGuide is { } uri)
+        {
+            OpenLinkRequested?.Invoke(this, uri);
+        }
+    }
+
     /// <summary>Set after a successful start.</summary>
     public string? Result { get; private set; }
 
@@ -291,6 +325,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
             row.Supported = status.Supported;
             row.CurrentVersion = status.ActiveVersion ?? row.CurrentVersion;
+            row.Apps = status.Applications;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -523,7 +558,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
         else
         {
-            var (index, check) = FirmwareCompatibility.Choose(row.Model, row.CurrentVersion, _images, SelectedMode.Mode, AllowDowngrade);
+            var (index, check) = FirmwareCompatibility.Choose(row.Model, row.CurrentVersion, _images, SelectedMode.Mode, AllowDowngrade, row.Apps);
             row.FileIndex = index;
             row.Check = check;
         }
@@ -536,15 +571,19 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         if (_chosen.Count == 0)
         {
             Summary = "Choose an AXIS OS .bin file.";
+            _breakingChangesGuide = null;
+            BreakingChangesNotice = null;
         }
         else
         {
             int install = 0, upToDate = 0;
+            var breakingMajor = 0;
             foreach (var row in Devices)
             {
-                if (row.WillInstall)
+                if (row.WillInstall || row.Check?.Verdict == FirmwareVerdict.AppsBlock)
                 {
-                    install++;
+                    install += row.WillInstall ? 1 : 0;
+                    breakingMajor = Math.Max(breakingMajor, BreakingMajor(row));
                 }
                 else if (row.Check?.IsNoOp == true)
                 {
@@ -554,10 +593,33 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
             var skipped = Devices.Count - install - upToDate;
             Summary = string.Create(CultureInfo.InvariantCulture, $"{install:N0} of {Devices.Count:N0} {(Devices.Count == 1 ? "device" : "devices")} will be updated, {upToDate:N0} already up to date, {skipped:N0} not possible.");
+            _breakingChangesGuide = breakingMajor > 0 ? BreakingChangesGuides[breakingMajor] : null;
+            BreakingChangesNotice = breakingMajor > 0 ? string.Create(CultureInfo.InvariantCulture, $"AXIS OS {breakingMajor} has breaking changes.") : null;
         }
 
         StartCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(StartBlockedReason));
+    }
+
+    /// <summary>The newest major version with a breaking changes guide this row moves up to, else 0.</summary>
+    private int BreakingMajor(FirmwareDeviceRow row)
+    {
+        if (row.FileIndex < 0 || row.FileIndex >= _images.Length || _images[row.FileIndex].Version is not { } target
+            || AxisOsVersion.TryParse(row.CurrentVersion) is not { } current || target.Major <= current.Major)
+        {
+            return 0;
+        }
+
+        var major = 0;
+        foreach (var m in BreakingChangesGuides.Keys)
+        {
+            if (m > current.Major && m <= target.Major && m > major)
+            {
+                major = m;
+            }
+        }
+
+        return major;
     }
 
     partial void OnIsUploadingChanged(bool value) => OnPropertyChanged(nameof(StartBlockedReason));

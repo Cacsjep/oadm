@@ -148,6 +148,9 @@ public sealed record FirmwareStatusInfo
 
     public string? Soc { get; init; }
 
+    /// <summary>The installed applications (<see cref="InstalledAppRules"/>); null when the device could not list them.</summary>
+    public IReadOnlyList<InstalledApp>? Applications { get; init; }
+
     public string ToJson() => JsonSerializer.Serialize(this, FirmwarePayload.JsonOptions);
 
     public static FirmwareStatusInfo? FromJson(string? json) =>

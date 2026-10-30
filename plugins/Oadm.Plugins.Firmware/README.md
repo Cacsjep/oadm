@@ -36,7 +36,7 @@ Everything the plugin uses (`status`, `upgrade`, `commit`) is in 1.0, so it requ
 | `getSupportedVersions` | no | `["1.10"]` on the camera |
 
 Errors: `{"error":{"code":N,"message":...}}`. 400 bad request, 405 unknown method, 417 API version, 423 busy, 500
-internal; upgrade: 409 downgrade without factory default, 410 revoked version, 412 previous upgrade not committed, 415
+internal; upgrade: 402 an installed application does not support the new version (AXIS OS 13), 409 downgrade without factory default, 410 revoked version, 412 previous upgrade not committed, 415
 invalid image, 421 image does not match the device, 422 missing mandatory signature, 424 unknown custom firmware
 certificate. All upgrade errors come before the installation, so the device still runs its old firmware (the plugin says
 so).
@@ -96,16 +96,47 @@ was changed."; the other selected devices are not affected.
 
 Axis recommends an upgrade path (AXIS OS knowledge base "Upgrade path"), and AXIS OS 12.6.85, 11.11.169 and later refuse
 upgrades off it; a factory default lifts it. `Shared/AxisOsUpgradePath` knows the LTS tracks (6.50, 8.40, 9.80, 10.12,
-11.11, 12.11), not their latest versions (no online lookup), and names what to install first:
+11.11, 12.11), not their latest versions (no online lookup). Only what it knows for certain is a warning:
 
-- the device runs an LTS track and the target leaves it: the latest version of that track;
-- every LTS track between the device's version and the target: its latest version.
+- `Advice`: the upgrade jumps over an LTS track. It names every LTS track in between (and first the device's own track
+  when it is an LTS track), each "the latest". `FirmwareCheck.PathAdvice`: the row shows "Not recommended" (warning, still
+  installed) with the path in Details and one line below the list; the task logs it as a warning.
+- `Note`: the upgrade leaves the device's LTS track for the next one (12.11.147 -> 13.0.88). It is on the path only from the
+  latest version of that track, which OADM cannot tell. `FirmwareCheck.PathNote`: the row stays "Upgrade", Details adds
+  "Major upgrade. Make sure the device runs the latest AXIS OS 12.11 first."; the task logs it as info.
 
 Examples (`UpgradePathTests`): 11.8.61 -> 12.6.85 "the latest AXIS OS 11.11, then 12.6.85"; 9.80.49 -> 11.11.169 "the
-latest AXIS OS 9.80, then the latest 10.12, then 11.11.169"; no advice within a track, from an active version to the LTS
-of its major line, with a factory default or for downgrades. `FirmwareCheck.PathAdvice` carries it: the dialog shows the
-row as "Not recommended" (warning, still installed) with the path in Details and one line below the list; the task logs
-it as a warning and, when the device refuses the upload (nothing installed), ends the error with it.
+latest AXIS OS 9.80, then the latest 10.12, then 11.11.169"; 11.11.109 -> 12.6.85 a note; nothing within a track, from an
+active version to the LTS of its major line, with a factory default or for downgrades. When the device refuses the upload
+(nothing installed), the task error ends with the advice or the note.
+
+### Major versions with breaking changes
+
+`FirmwareDialogViewModel.BreakingChangesGuides` maps a major version to the Axis guide of its breaking changes (13:
+axis.com "AXIS OS 13 breaking changes"). When a device that installs moves up to such a major, the dialog shows one line
+below the list, whatever the number of devices: "AXIS OS 13 has breaking changes." with the link "Read the Axis guide before
+upgrading" (opened in the browser). Models without AXIS OS 13 get no file.
+
+### Installed applications (AXIS OS 13 and later)
+
+From AXIS OS 13 the device reinstalls every application during the upgrade and refuses it (fwmgr 402, nothing installed)
+when one is unsigned or does not declare the new version (manifest `compatibleOsVersions`, mandatory from 13; old
+manifests and `package.conf` declare none). `Shared/InstalledAppRules` applies the same rule before the upload, from
+`applications/list.cgi` (`InstalledAppsReader`, read-only, the call of the Applications plugin):
+
+- an application blocks when it is not bundled and its `SignatureStatus` is not `Signed` ("not signed"), it lists no
+  `CompatibleOsVersions` ("declares no AXIS OS versions") or none of its ranges holds the target ("supports AXIS OS 12.10 to
+  12"); range bounds compare at their own precision (max `13` = any 13.x);
+- a field is judged only when the device reports it for some application (older AXIS OS lists neither); bundled
+  applications come with AXIS OS and are replaced by the upgrade;
+- verdict `AppsBlock` ("Apps block it", error, no task): "12.11.147 → 13.0.88. Face Verifier: not signed. Update or remove it
+  with Applications (ACAP) first.";
+- the dialog gets the list with the status query (`FirmwareStatusInfo.Applications`, rows read like the status); the task
+  reads it again in Validate file when a file is AXIS OS 13 or later and refuses before the upload ("Nothing was
+  changed."). An unreadable list is no refusal: the task logs a warning and the device decides.
+
+Recorded on AXIS P3265-V 12.11.77 (`Fixtures/applications-list-p3265v-12.11.xml`): applications installed while unsigned
+ones were allowed report `SignatureStatus="Unknown"`; Axis applications `Signed`.
 
 ### Gates before the first write
 
@@ -195,7 +226,7 @@ Password not set); the full refresh after the task covers it partly.
 ## Query
 
 `ITaskPluginQuery` method `status` (read-only): fresh API list; when fwmgr 1.x is offered, fwmgr `status` +
-`basicdeviceinfo`, returned as `FirmwareStatusInfo` JSON (`supported`, `fwmgrVersion`, `activeVersion`, `activePart`,
+`applications/list.cgi` (null when not readable) + `basicdeviceinfo`, returned as `FirmwareStatusInfo` JSON (`supported`, `fwmgrVersion`, `activeVersion`, `activePart`,
 `inactiveVersion`, `isCommitted`, `pendingCommit`, `timeToRollback`, `lastUpgradeAt`, `resetSource`, `model`,
 `architecture`). Unsupported devices return `{"supported":false,...}` without calling fwmgr.
 

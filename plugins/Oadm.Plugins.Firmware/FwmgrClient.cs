@@ -62,12 +62,14 @@ public sealed class FwmgrException : Exception
     public string? DeviceMessage { get; }
 
     /// <summary>The upgrade was refused before installation: the device still runs its old firmware.</summary>
-    public bool NothingInstalled => Method == "upgrade" && Code is 400 or 409 or 410 or 412 or 415 or 417 or 421 or 422 or 423 or 424;
+    public bool NothingInstalled => Method == "upgrade" && Code is 400 or 402 or 409 or 410 or 412 or 415 or 417 or 421 or 422 or 423 or 424;
 
     private static string Describe(string method, int code, string? deviceMessage)
     {
         var text = code switch
         {
+            // AXIS OS 13 and later: an installed application does not declare support for the new version.
+            402 when method == "upgrade" => "An installed application does not support this AXIS OS version. Update or remove it with Applications (ACAP), then try again.",
             409 when method == "upgrade" => "The device refuses to install an older firmware version without a factory default.",
             410 => "This firmware version has been revoked by Axis and cannot be installed.",
             412 when method == "upgrade" => "A previous upgrade has not been committed yet. Commit or roll it back first.",

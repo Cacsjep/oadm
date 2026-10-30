@@ -133,14 +133,15 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Contains("87.0 MB", vm.FileDetails, StringComparison.Ordinal);
         Assert.Contains("for P3265-V, AXIS OS 12.11.77", vm.FileDetails, StringComparison.Ordinal);
         Assert.Null(vm.FileError);
-        // 11.11.160 -> 12.11.77 still installs, with the path Axis recommends (the latest 11.11 first) as a warning.
+        // 11.11.160 -> 12.11.77 leaves the LTS track 11.11: an upgrade with a note (OADM cannot tell whether 11.11.160 is its latest).
         Assert.Equal(ClientVerdict.Upgrade, vm.Devices[0].Check!.Verdict);
         Assert.True(vm.Devices[0].WillInstall);
-        Assert.False(vm.Devices[0].IsOk);
-        Assert.True(vm.Devices[0].IsWarn);
-        Assert.Equal("Not recommended", vm.Devices[0].VerdictText);
-        Assert.Equal("11.11.160 → 12.11.77. Recommended path: the latest AXIS OS 11.11, then 12.11.77.", vm.Devices[0].Message);
-        Assert.Equal("1 device is not on the upgrade path Axis recommends (Details). AXIS OS 12.6.85, 11.11.169 and later refuse such an upgrade; the upgrade still starts.", vm.PathWarning);
+        Assert.True(vm.Devices[0].IsOk);
+        Assert.False(vm.Devices[0].IsWarn);
+        Assert.Equal("Upgrade", vm.Devices[0].VerdictText);
+        Assert.Equal("11.11.160 → 12.11.77. Major upgrade. Make sure the device runs the latest AXIS OS 11.11 first.", vm.Devices[0].Message);
+        Assert.Null(vm.PathWarning);
+        Assert.False(vm.HasBreakingChanges);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[1].Check!.Verdict);
         Assert.Equal(ClientVerdict.WrongProduct, vm.Devices[2].Check!.Verdict);
         Assert.True(vm.Devices[2].IsError);
@@ -148,6 +149,67 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal("1 of 4 devices will be updated, 1 already up to date, 2 not possible.", vm.Summary);
         Assert.Equal(ClientDirection.Upgrade, vm.Direction());
         Assert.True(vm.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task An_upgrade_to_axis_os_13_shows_one_line_with_the_axis_guide()
+    {
+        Device[] devices =
+        [
+            .. Enumerable.Range(1, 10).Select(i => new Device($"10.0.1.{i}", "Q6088-E", "12.11.147")),
+            new("10.0.1.20", "Q6088-E", "13.0.88"),
+            new("10.0.1.21", "P3265-V", "12.11.77"),
+        ];
+        using var vm = new DialogViewModel(new FakeDialogContext(), devices, new FakeFileSource());
+        Uri? opened = null;
+        vm.OpenLinkRequested += (_, uri) => opened = uri;
+
+        await vm.SelectFileAsync("Q6088-E_13_0_88.bin", CancellationToken.None);
+
+        // Ten devices move up to AXIS OS 13: one line below the list, the rows keep their own details.
+        Assert.Equal("AXIS OS 13 has breaking changes.", vm.BreakingChangesNotice);
+        Assert.True(vm.HasBreakingChanges);
+        Assert.Equal("Upgrade", vm.Devices[0].VerdictText);
+        Assert.Equal("12.11.147 → 13.0.88. Major upgrade. Make sure the device runs the latest AXIS OS 12.11 first.", vm.Devices[0].Message);
+        Assert.Null(vm.PathWarning);
+        vm.OpenBreakingChangesCommand.Execute(null);
+        Assert.Equal(new Uri("https://www.axis.com/for-developers/news/AXIS-OS-13-breaking-changes"), opened);
+
+        // No device installs AXIS OS 13 any more (a file for another model): the line goes.
+        await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
+        Assert.Null(vm.BreakingChangesNotice);
+        Assert.False(vm.HasBreakingChanges);
+    }
+
+    [Fact]
+    public async Task A_device_with_an_unsigned_application_is_skipped_for_axis_os_13()
+    {
+        Device[] devices = [new("10.0.2.1", "Q6088-E", "12.11.147"), new("10.0.2.2", "Q6088-E", "12.11.147")];
+        var ctx = new FakeDialogContext();
+        ctx.Status[devices[0].Id] = new ClientStatus
+        {
+            Supported = true,
+            ActiveVersion = "12.11.147",
+            Applications = [new() { Name = "faceverifier", NiceName = "Face Verifier", SignatureStatus = "Unknown", CompatibleOsVersions = [new("12.10", "99")] }],
+        }.ToJson();
+        ctx.Status[devices[1].Id] = new ClientStatus
+        {
+            Supported = true,
+            ActiveVersion = "12.11.147",
+            Applications = [new() { Name = "objectanalytics", NiceName = "AXIS Object Analytics", Bundled = true, SignatureStatus = "Signed", CompatibleOsVersions = [new("12", "12")] }],
+        }.ToJson();
+        using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
+
+        await vm.SelectFileAsync("Q6088-E_13_0_88.bin", CancellationToken.None);
+        await vm.LoadStatusAsync(CancellationToken.None);
+
+        Assert.Equal("Apps block it", vm.Devices[0].VerdictText);
+        Assert.True(vm.Devices[0].IsError);
+        Assert.False(vm.Devices[0].WillInstall);
+        Assert.Equal("12.11.147 → 13.0.88. Face Verifier: not signed. Update or remove it with Applications (ACAP) first.", vm.Devices[0].Message);
+        Assert.Equal("Upgrade", vm.Devices[1].VerdictText); // only a bundled application
+        Assert.Equal("1 of 2 devices will be updated, 0 already up to date, 1 not possible.", vm.Summary);
+        Assert.True(vm.HasBreakingChanges);
     }
 
     [Fact]
@@ -407,6 +469,12 @@ public sealed class FirmwareDialogHeadlessTests
                 new("10.0.0.51", "P3265-V", "12.20.10"),
             ];
             ctx.Status[devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "11.11.160", InactiveVersion = "11.11.100", IsCommitted = true }.ToJson();
+            ctx.Status[devices[3].Id] = new ClientStatus
+            {
+                Supported = true,
+                ActiveVersion = "12.20.10",
+                Applications = [new() { Name = "faceverifier", NiceName = "Face Verifier", SignatureStatus = "Unknown", CompatibleOsVersions = [new("12.10", "99")] }],
+            }.ToJson();
             using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
             var window = new DialogWindow { DataContext = vm };
             window.Show();
@@ -416,10 +484,10 @@ public sealed class FirmwareDialogHeadlessTests
             await PumpAsync();
             Capture(window, outDir, "firmware-dialog.png");
 
-            // Keep the settings: 11.11.160 -> 12.11.77 is off the recommended path, the dialog says so and still upgrades.
+            // Keep the settings: 11.11.160 -> 12.11.77 leaves the LTS track, the Details say to be on its latest first.
             vm.SelectedMode = vm.Modes[0];
             await PumpAsync();
-            Assert.True(vm.HasPathWarning);
+            Assert.Contains("Major upgrade", vm.Devices[0].Message, StringComparison.Ordinal);
             Capture(window, outDir, "firmware-dialog-path.png");
 
             vm.IsUploading = true;
@@ -433,6 +501,13 @@ public sealed class FirmwareDialogHeadlessTests
             await vm.SelectFilesAsync(["C:\\Downloads\\P3265-V_12_11_77.bin", "C:\\Downloads\\M3215-LVE_12_11_147.bin"], CancellationToken.None);
             await PumpAsync();
             Capture(window, outDir, "firmware-dialog-files.png");
+
+            // AXIS OS 13: 11.11.160 jumps over 12.11 (Not recommended) and the line with the Axis guide.
+            await vm.SelectFileAsync("C:\\Downloads\\P3265-V_13_0_88.bin", CancellationToken.None);
+            await PumpAsync();
+            Assert.True(vm.HasPathWarning);
+            Assert.True(vm.HasBreakingChanges);
+            Capture(window, outDir, "firmware-dialog-os13.png");
             window.Close();
             return vm.Devices.Count;
         }, CancellationToken.None);

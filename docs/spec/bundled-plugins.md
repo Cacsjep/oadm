@@ -48,6 +48,12 @@ the version and commits it.
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
   verified and committed (Commit firmware waits up to 5 minutes while AXIS OS has not finished booting); at most 4
   devices at a time.
+- Upgrade path (README "Upgrade path"): advice only, never refused; "Not recommended" only when an upgrade jumps over
+  an LTS track, leaving the device's LTS track is a note in Details (OADM does not know the latest version of a track). A
+  major version with breaking changes (13) shows one line with the Axis guide below the list, never one per device.
+- AXIS OS 13 and later: a device with an installed application that is unsigned or does not declare the target version
+  (bundled ones excepted, README "Installed applications") is "Apps block it" and gets no task; the task checks again
+  before the upload and refuses with "Nothing was changed.".
 - Firmware online (spec, not built; README "Firmware online"): how the newest version of each major of a model is found
   on the public listings of www.axis.com/ftp; the downloads need a MyAxis login, so nothing is downloaded by OADM.
 

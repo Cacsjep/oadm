@@ -29,6 +29,9 @@ public enum FirmwareVerdict
 
     /// <summary>Several files were chosen and none is for this product: the device is skipped.</summary>
     NoFileForModel = 8,
+
+    /// <summary>AXIS OS 13 or later and an installed application that is unsigned or does not declare it: the device would refuse.</summary>
+    AppsBlock = 9,
 }
 
 public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
@@ -38,6 +41,12 @@ public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
     /// the upgrade still runs; newer AXIS OS refuses it. Null when on the path.
     /// </summary>
     public string? PathAdvice { get; init; }
+
+    /// <summary>
+    /// An upgrade that leaves the device's LTS track (<see cref="AxisOsUpgradePath.Note"/>): on the path only from the
+    /// latest version of that track, which OADM does not know. A note, not a warning. Null otherwise.
+    /// </summary>
+    public string? PathNote { get; init; }
 
     /// <summary>The upgrade request is sent to the device.</summary>
     public bool WillInstall => Verdict is FirmwareVerdict.Upgrade or FirmwareVerdict.DeviceValidates or FirmwareVerdict.Downgrade;
@@ -55,7 +64,9 @@ public static class FirmwareCompatibility
     /// <summary>The downgrade checkbox of the dialog as the refusals name it (its label without the hint in brackets).</summary>
     public const string AllowDowngradeName = "Allow downgrade to an older AXIS OS version";
 
-    public static FirmwareCheck Evaluate(string? deviceModel, string? deviceVersion, FirmwareImageInfo image, FactoryDefaultMode mode, bool allowDowngrade)
+    /// <param name="apps">The device's installed applications (<see cref="InstalledAppRules"/>); null when not read.</param>
+    public static FirmwareCheck Evaluate(string? deviceModel, string? deviceVersion, FirmwareImageInfo image, FactoryDefaultMode mode, bool allowDowngrade,
+        IReadOnlyList<InstalledApp>? apps = null)
     {
         ArgumentNullException.ThrowIfNull(image);
         if (image.RejectReason is { } reason)
@@ -88,9 +99,16 @@ public static class FirmwareCompatibility
 
         if (cmp > 0)
         {
+            if (apps is not null && InstalledAppRules.Blocking(apps, target) is { Count: > 0 } blocking)
+            {
+                return new(FirmwareVerdict.AppsBlock, $"{current} → {target}. {InstalledAppRules.Describe(blocking)}");
+            }
+
             // Off the recommended path: advice only (a factory default lifts the path).
             var advice = mode == FactoryDefaultMode.None ? AxisOsUpgradePath.Advice(current, target) : null;
-            return new(FirmwareVerdict.Upgrade, advice is null ? $"{current} → {target}" : $"{current} → {target}. {advice}") { PathAdvice = advice };
+            var note = mode == FactoryDefaultMode.None ? AxisOsUpgradePath.Note(current, target) : null;
+            var extra = advice ?? note;
+            return new(FirmwareVerdict.Upgrade, extra is null ? $"{current} → {target}" : $"{current} → {target}. {extra}") { PathAdvice = advice, PathNote = note };
         }
 
         var across = target.Major != current.Major ? " (older major version)" : string.Empty;
@@ -114,12 +132,13 @@ public static class FirmwareCompatibility
     /// The file of several for one device: the file for its product, else a file whose product is not known from its name
     /// (the device checks it). One file is always that file. Index -1: none of the files is for this device.
     /// </summary>
-    public static (int Index, FirmwareCheck Check) Choose(string? deviceModel, string? deviceVersion, IReadOnlyList<FirmwareImageInfo> images, FactoryDefaultMode mode, bool allowDowngrade)
+    public static (int Index, FirmwareCheck Check) Choose(string? deviceModel, string? deviceVersion, IReadOnlyList<FirmwareImageInfo> images, FactoryDefaultMode mode, bool allowDowngrade,
+        IReadOnlyList<InstalledApp>? apps = null)
     {
         ArgumentNullException.ThrowIfNull(images);
         if (images.Count == 1)
         {
-            return (0, Evaluate(deviceModel, deviceVersion, images[0], mode, allowDowngrade));
+            return (0, Evaluate(deviceModel, deviceVersion, images[0], mode, allowDowngrade, apps));
         }
 
         var unnamed = -1;
@@ -134,7 +153,7 @@ public static class FirmwareCompatibility
             {
                 if (!string.IsNullOrWhiteSpace(deviceModel) && ProductMatches(product, deviceModel))
                 {
-                    return (i, Evaluate(deviceModel, deviceVersion, images[i], mode, allowDowngrade));
+                    return (i, Evaluate(deviceModel, deviceVersion, images[i], mode, allowDowngrade, apps));
                 }
             }
             else if (unnamed < 0)
@@ -144,7 +163,7 @@ public static class FirmwareCompatibility
         }
 
         return unnamed >= 0
-            ? (unnamed, Evaluate(deviceModel, deviceVersion, images[unnamed], mode, allowDowngrade))
+            ? (unnamed, Evaluate(deviceModel, deviceVersion, images[unnamed], mode, allowDowngrade, apps))
             : (-1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
     }
 

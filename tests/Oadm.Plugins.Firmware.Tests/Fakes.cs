@@ -139,6 +139,9 @@ internal sealed class FakeAxisDevice : IVapixClient
     public IReadOnlyList<DeviceApi> Apis { get; set; } = Fixture.RecordedApis();
     public string StatusJson { get; set; } = Fixture.Read("fwmgr-status-p3265v-12.11.77.json");
     public int? UpgradeErrorCode { get; set; }
+
+    /// <summary>The list.cgi reply; null answers 404 (no application API).</summary>
+    public string? ApplicationsXml { get; set; }
     public bool DropConnectionAfterUpload { get; set; }
     public int CommitFailures { get; set; }
 
@@ -185,6 +188,14 @@ internal sealed class FakeAxisDevice : IVapixClient
         {
             Methods.Add("getAllUnrestrictedProperties");
             return Probe();
+        }
+
+        if (path == "axis-cgi/applications/list.cgi")
+        {
+            Methods.Add("list.cgi");
+            return ApplicationsXml is { } xml
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(xml, Encoding.UTF8, "text/xml") }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
         }
 
         Assert.Equal("axis-cgi/firmwaremanagement.cgi", path);

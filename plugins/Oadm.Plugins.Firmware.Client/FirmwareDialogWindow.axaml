@@ -24,7 +24,7 @@
 
     <!-- Devices -->
     <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
-      <Grid RowDefinitions="Auto,*,Auto">
+      <Grid RowDefinitions="Auto,*,Auto,Auto">
         <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
         <DataGrid x:Name="DevicesGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
@@ -58,6 +58,10 @@
           </DataGrid.Columns>
         </DataGrid>
         <TextBlock Grid.Row="2" Classes="warning" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding PathWarning}" IsVisible="{Binding HasPathWarning}" />
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" IsVisible="{Binding HasBreakingChanges}">
+          <TextBlock Classes="warning" VerticalAlignment="Center" Text="{Binding BreakingChangesNotice}" />
+          <Button Classes="link" VerticalAlignment="Center" Content="Read the Axis guide before upgrading" Command="{Binding OpenBreakingChangesCommand}" />
+        </StackPanel>
       </Grid>
     </Border>
 

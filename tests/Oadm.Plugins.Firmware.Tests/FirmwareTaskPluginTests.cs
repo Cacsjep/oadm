@@ -309,6 +309,22 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    public async Task Device_error_402_names_the_installed_application_and_changes_nothing()
+    {
+        var (ctx, device, payload, _) = Setup();
+        device.UpgradeErrorCode = 402;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None));
+
+        Assert.StartsWith("An installed application does not support this AXIS OS version. Update or remove it with Applications (ACAP), then try again.", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("still runs 11.11.160", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, device.Probes);
+        Assert.Equal(
+            Then("Upload firmware: Failed", "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
+            StepRun.Lines(ctx.Steps));
+    }
+
+    [Fact]
     public async Task Device_error_421_reports_that_the_old_firmware_still_runs()
     {
         var (ctx, device, payload, _) = Setup();
@@ -318,9 +334,9 @@ public sealed class FirmwareTaskPluginTests
 
         Assert.Contains("does not match this device", ex.Message, StringComparison.Ordinal);
         Assert.Contains("still runs 11.11.160", ex.Message, StringComparison.Ordinal);
-        // 11.11.160 -> 12.11.77 is off the path Axis recommends: the error says what to install first.
-        Assert.EndsWith("Recommended path: the latest AXIS OS 11.11, then 12.11.77.", ex.Message, StringComparison.Ordinal);
-        Assert.Contains((TaskLogLevel.Warning, "Not the recommended upgrade path. Recommended path: the latest AXIS OS 11.11, then 12.11.77."), ctx.Logs);
+        // 11.11.160 -> 12.11.77 leaves the LTS track 11.11: the error repeats to be on its latest first.
+        Assert.EndsWith("Major upgrade. Make sure the device runs the latest AXIS OS 11.11 first.", ex.Message, StringComparison.Ordinal);
+        Assert.Contains((TaskLogLevel.Info, "Major upgrade. Make sure the device runs the latest AXIS OS 11.11 first."), ctx.Logs);
         Assert.Equal(0, device.Probes);
         Assert.Equal(
             Then("Upload firmware: Failed", "Install firmware: Skipped", "Wait for the device to come back: Skipped", "Verify version: Skipped", "Read commit state: Skipped", "Commit firmware: Skipped"),
@@ -516,8 +532,55 @@ public sealed class FirmwareTaskPluginTests
         Assert.Null(info.IsCommitted);
         Assert.Equal("crash", info.ResetSource);
         Assert.Equal("P3265-V", info.Model);
+        Assert.Null(info.Applications); // the device has no application list (404)
         Assert.DoesNotContain("upgrade", device.Methods);
         Assert.DoesNotContain("commit", device.Methods);
+    }
+
+    [Fact]
+    public async Task Status_query_returns_the_installed_applications()
+    {
+        var device = new FakeAxisDevice { Version = "12.11.77", ApplicationsXml = Fixture.Read("applications-list-p3265v-12.11.xml") };
+
+        var json = await new FirmwareTaskPlugin().QueryAsync(new QueryContext(device), new FakeDevice(), "status", null, CancellationToken.None);
+
+        var apps = FirmwareStatusInfo.FromJson(json)!.Applications!;
+        Assert.Equal(8, apps.Count);
+        var lpr = Assert.Single(apps, a => a.Name == "fflprapp");
+        Assert.Equal("Signed", lpr.SignatureStatus);
+        Assert.Equal([new AppOsRange("12.10", "13")], lpr.CompatibleOsVersions);
+        Assert.True(Assert.Single(apps, a => a.Name == "objectanalytics").Bundled);
+    }
+
+    [Fact]
+    public async Task An_unsigned_application_stops_an_upgrade_to_axis_os_13_before_the_upload()
+    {
+        var (ctx, device, payload, _) = Setup("P3265-V_13_0_88.bin");
+        device.Version = "12.11.77";
+        device.ApplicationsXml = """
+            <reply result="ok">
+             <application Name="faceverifier" NiceName="Face Verifier" Bundled="No" Status="Stopped" SignatureStatus="Unknown"><CompatibleOsVersions><VersionRange><Min>12.10</Min><Max>99</Max></VersionRange></CompatibleOsVersions></application>
+             <application Name="objectanalytics" NiceName="AXIS Object Analytics" Bundled="Yes" Status="Running" SignatureStatus="Signed"><CompatibleOsVersions><VersionRange><Min>12</Min><Max>12</Max></VersionRange></CompatibleOsVersions></application>
+            </reply>
+            """;
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None));
+
+        Assert.Equal("12.11.77 → 13.0.88. Face Verifier: not signed. Update or remove it with Applications (ACAP) first. Nothing was changed.", ex.Message);
+        Assert.Contains("list.cgi", device.Methods);
+        Assert.DoesNotContain("upgrade", device.Methods);
+    }
+
+    [Fact]
+    public async Task Applications_are_not_read_below_axis_os_13()
+    {
+        var (ctx, device, payload, _) = Setup();
+        device.ApplicationsXml = Fixture.Read("applications-list-p3265v-12.11.xml");
+
+        await Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None);
+
+        Assert.DoesNotContain("list.cgi", device.Methods);
+        Assert.Contains("upgrade", device.Methods);
     }
 
     [Fact]
