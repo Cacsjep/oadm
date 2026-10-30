@@ -7,6 +7,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.7.1] - 2026-10-30
+
 ### Changed
 
 - Applications page: Open app page shows greyed out while Web View is off, with how to turn it on.
