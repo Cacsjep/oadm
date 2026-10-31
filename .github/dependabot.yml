@@ -1,12 +1,14 @@
-# Weekly pull requests for updates: the commit-pinned GitHub Actions (new hash and version comment) and the NuGet
-# packages, grouped so related packages move together. Security updates come at once, outside the schedule.
-# Every pull request is built and unit-tested by pr.yml before it is merged.
+# Security updates only: open-pull-requests-limit 0 turns the weekly version updates off, the security updates (repository
+# setting Dependabot security updates) still come at once for the commit-pinned GitHub Actions, the NuGet packages and
+# the website. The ignore rules below apply to them too. Every pull request is built and unit-tested by pr.yml before it
+# is merged.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     groups:
       actions:
         patterns: ["*"]
@@ -15,7 +17,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     # Newer majors changed their license away from open source (OSMF EULA): stay on the last open one.
     ignore:
       - dependency-name: "JsonSchema.Net"
@@ -41,6 +43,7 @@ updates:
     directory: /website
     schedule:
       interval: weekly
+    open-pull-requests-limit: 0
     # astro-mermaid 2.1 takes mermaid 10 or 11 only (npm ci refuses 12).
     ignore:
       - dependency-name: "mermaid"
