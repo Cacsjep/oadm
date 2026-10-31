@@ -17,8 +17,26 @@ public sealed class WindowFitTests
         Assert.Equal(1160, fitted.Width);
         Assert.Equal(816 - 2 * WindowFit.Margin, fitted.Height);
         Assert.Equal(816 - 2 * WindowFit.Margin, fitted.MinHeight);
-        Assert.Equal(816 - 2 * WindowFit.Margin, fitted.MaxHeight);
+    }
+
+    [Fact]
+    public void A_window_without_a_maximum_keeps_none_so_it_maximizes_on_a_larger_monitor()
+    {
+        // The main window opened on Full HD, then moved to a 4K monitor: Maximize must fill that one.
+        var fitted = WindowFit.Fit(new FittedSize(1800, 900, 1200, 640, double.PositiveInfinity, double.PositiveInfinity), SmallScreen);
+
+        Assert.Equal(1536 - 2 * WindowFit.Margin, fitted.Width);
+        Assert.True(double.IsPositiveInfinity(fitted.MaxWidth));
+        Assert.True(double.IsPositiveInfinity(fitted.MaxHeight));
+    }
+
+    [Fact]
+    public void A_set_maximum_larger_than_the_screen_shrinks_to_it()
+    {
+        var fitted = WindowFit.Fit(new FittedSize(800, 600, 400, 300, 2000, 1200), SmallScreen);
+
         Assert.Equal(1536 - 2 * WindowFit.Margin, fitted.MaxWidth);
+        Assert.Equal(816 - 2 * WindowFit.Margin, fitted.MaxHeight);
     }
 
     [Fact]
@@ -29,6 +47,7 @@ public sealed class WindowFitTests
         Assert.True(double.IsNaN(fitted.Height));
         Assert.Equal(460, fitted.Width);
         Assert.Equal(816 - 2 * WindowFit.Margin, fitted.MaxHeight);
+        Assert.True(double.IsPositiveInfinity(fitted.MaxWidth)); // its width is fixed
     }
 
     [Fact]

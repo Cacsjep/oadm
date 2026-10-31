@@ -103,7 +103,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   dialogs alike, is fitted to the screen it opens on (`Oadm.Theme.Shell.WindowFit`, also used by the site node app, attached in `App`, applied once the window is placed: dialogs open next to
   their owner, also on another monitor, plugin windows on the monitor of the main window; a window larger than the
   work area shrinks to it (no margin, `WindowFit.Margin` = 0: a margin kept Maximize of the main window short of the
-  screen), its minimum and maximum follow, then it is centered or
+  screen), its minimum follows, a maximum only where the window sizes to its content or already had one (a window
+  without a maximum keeps none: moved to a larger monitor, Maximize fills that one), then it is centered or
   moved back onto the screen; `WindowFitTests`). Toolbars of buttons are `ui:ToolbarOverflowPanel` (entries that do not fit go behind a More
   button), input rows that must not leave the card wrap (`WrapPanel.inputRow`), grid columns keep readable minimum
   widths and the grid scrolls sideways. Check a new page with the layout survey (`LayoutSurveyTests`,

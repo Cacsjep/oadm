@@ -7,6 +7,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows moved to a larger monitor now maximize to fill it.
+
 ## [4.7.1] - 2026-10-30
 
 ### Changed

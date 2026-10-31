@@ -53,8 +53,10 @@ public static class WindowFit
     }
 
     /// <summary>
-    /// The sizes of a window inside <paramref name="available"/> (the work area in logical pixels): width, height,
-    /// minimum and maximum never exceed it less <see cref="Margin"/> on each side, and nothing grows.
+    /// The sizes of a window inside <paramref name="available"/> (the work area in logical pixels): width, height and
+    /// minimum never exceed it less <see cref="Margin"/> on each side, and nothing grows. A maximum is set only where the
+    /// window sizes to its content or already has one: a window without a maximum keeps none, so it still maximizes to a
+    /// larger monitor it is moved to (the system keeps a maximized window on its monitor).
     /// </summary>
     public static FittedSize Fit(FittedSize requested, Size available)
     {
@@ -65,8 +67,8 @@ public static class WindowFit
             Limit(requested.Height, maxHeight),
             Math.Min(requested.MinWidth, maxWidth),
             Math.Min(requested.MinHeight, maxHeight),
-            Math.Min(requested.MaxWidth, maxWidth),
-            Math.Min(requested.MaxHeight, maxHeight));
+            LimitMaximum(requested.MaxWidth, requested.Width, maxWidth),
+            LimitMaximum(requested.MaxHeight, requested.Height, maxHeight));
     }
 
     /// <summary>The position that keeps a window of <paramref name="size"/> (device pixels) inside <paramref name="area"/>.</summary>
@@ -78,6 +80,10 @@ public static class WindowFit
     }
 
     private static double Limit(double value, double max) => double.IsNaN(value) ? value : Math.Min(value, max);
+
+    /// <summary>A maximum of the screen for a size from content (NaN) or a set maximum; none stays none.</summary>
+    private static double LimitMaximum(double maximum, double size, double max) =>
+        double.IsNaN(size) || !double.IsPositiveInfinity(maximum) ? Math.Min(maximum, max) : maximum;
 
     private static void Apply(Window window)
     {
