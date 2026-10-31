@@ -1,0 +1,146 @@
+---
+// The logos of companies that use OADM, a muted band that scrolls to the right
+// without end (the list twice, moved by half its width). Hover pauses it; reduced motion shows one still row.
+const logos = [
+	{ src: '/trust/trust1.png', alt: 'WEB2SEE', href: 'https://www.web2see.net/' },
+	{ src: '/trust/trust2.png', alt: 'WG Global', href: 'https://wgglobal.eu/' },
+	{ src: '/trust/trust3.png', alt: 'Prudencia Security', tall: true, href: 'https://prudsec.se/' },
+	{ src: '/trust/trust5.png', alt: 'RedGroup Defense Systems', href: 'https://www.redgroupdefense.com/' },
+	{ src: '/trust/trust7.png', alt: 'AiDANT Intelligent Technology', href: '' },
+	{ src: '/trust/trust8.png', alt: 'Anava', href: '' },
+];
+---
+
+<section class="trusted-by not-content">
+	<p class="trusted-by-label">Used by</p>
+	<div class="trusted-by-viewport">
+		<div class="trusted-by-track">
+			{[false, true].map((copy) => (
+				<ul class="trusted-by-set" aria-hidden={copy ? 'true' : undefined}>
+					{logos.map((logo) => {
+						const img = (
+							<img src={logo.src} alt={copy ? '' : logo.alt} class:list={[{ tall: logo.tall }]} loading="lazy" />
+						);
+						return (
+							<li>
+								{logo.href ? (
+									<a href={logo.href} target="_blank" rel="noopener" tabindex={copy ? -1 : undefined}>
+										{img}
+									</a>
+								) : (
+									img
+								)}
+							</li>
+						);
+					})}
+				</ul>
+			))}
+		</div>
+	</div>
+</section>
+
+<style>
+	.trusted-by {
+		margin: 3rem auto 0;
+		padding-block: 1.75rem;
+		border-top: 1px solid var(--sl-color-hairline);
+		max-width: 72rem;
+	}
+	.trusted-by-label {
+		margin: 0 0 1.25rem;
+		text-align: center;
+		font-size: var(--sl-text-xs);
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--sl-color-gray-3);
+	}
+	/* The logos fade out at both edges. */
+	.trusted-by-viewport {
+		overflow: hidden;
+		mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+	}
+	.trusted-by-track {
+		display: flex;
+		width: max-content;
+		animation: trusted-by-scroll 40s linear infinite;
+	}
+	.trusted-by-viewport:hover .trusted-by-track,
+	.trusted-by-viewport:focus-within .trusted-by-track {
+		animation-play-state: paused;
+	}
+	@keyframes trusted-by-scroll {
+		from {
+			transform: translateX(-50%);
+		}
+		to {
+			transform: translateX(0);
+		}
+	}
+	.trusted-by-set {
+		display: flex;
+		align-items: center;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	/* Space after every logo (not a gap), so both halves are exactly the same width. */
+	.trusted-by-set li {
+		display: flex;
+		align-items: center;
+		height: 56px;
+		margin: 0;
+		padding-right: 4rem;
+	}
+	.trusted-by-set a {
+		display: inline-flex;
+	}
+	.trusted-by-set img {
+		height: 36px;
+		width: auto;
+		max-width: 180px;
+		object-fit: contain;
+		/* One colour for every logo, like the reference band. */
+		filter: brightness(0) invert(1);
+		opacity: 0.6;
+		transition: opacity 0.2s;
+	}
+	.trusted-by-set img.tall {
+		height: 56px;
+	}
+	.trusted-by-set img:hover {
+		opacity: 1;
+	}
+	:global(:root[data-theme='light']) .trusted-by-set img {
+		filter: brightness(0);
+	}
+	@media (max-width: 40rem) {
+		.trusted-by-set li {
+			padding-right: 2.5rem;
+		}
+		.trusted-by-set img {
+			height: 28px;
+		}
+		.trusted-by-set img.tall {
+			height: 44px;
+		}
+	}
+	/* No movement for visitors who turned it off: one still, centred row that wraps. */
+	@media (prefers-reduced-motion: reduce) {
+		.trusted-by-viewport {
+			mask-image: none;
+		}
+		.trusted-by-track {
+			animation: none;
+			width: auto;
+			justify-content: center;
+		}
+		.trusted-by-set {
+			flex-wrap: wrap;
+			justify-content: center;
+			row-gap: 1.5rem;
+		}
+		.trusted-by-set[aria-hidden] {
+			display: none;
+		}
+	}
+</style>
