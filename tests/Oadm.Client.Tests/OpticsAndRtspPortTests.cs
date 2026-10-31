@@ -281,6 +281,13 @@ public sealed class OpticsAndRtspPortTests
         var oadm = Assert.Single(f.Devices.ContextMenuEntries, e => e.Header == DevicesViewModel.OadmMenuHeader);
         Assert.Equal([DevicesViewModel.RtspPortMenuHeader], oadm.Items!.Select(i => i.Header));
 
+        var radar = TestSupport.Device("d3", "E82725131166", "10.0.0.3", "D2122-VE");
+        radar.Category = DeviceCategory.Radar; // its radar picture streams over RTSP too
+        f.SeedDevices(Video("d1", "10.0.0.1"), audio, radar);
+        f.Select("d3");
+        f.Devices.RebuildContextMenu();
+        Assert.Single(f.Devices.ContextMenuEntries, e => e.Header == DevicesViewModel.OadmMenuHeader);
+
         session.Update(new UserInfo { UserName = "tech", Role = UserRole.Operator, RoleId = FakeOadmApi.ViewerRoleId, RoleName = "Viewer", Permissions = { "devices.liveView" } });
         Assert.DoesNotContain(f.Devices.ContextMenuEntries, e => e.Header == DevicesViewModel.OadmMenuHeader);
         Assert.False(f.Devices.LiveView.Video.Optics.CanControl);

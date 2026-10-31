@@ -105,6 +105,9 @@ encoder/video server, camera, radar, speaker/horn, audio/microphone/amplifier, I
 module). Empty ProdType is `Unknown`; an unmatched one is `Other` and logged once per string.
 Verified: AXIS P3265-V on AXIS OS 12.11 reports ProdType `Dome Camera` (also anonymously via
 `getAllUnrestrictedProperties`). `HasVideo` is true for Camera, Encoder and Intercom.
+`HasLiveVideo` (SDK default member, not sent) adds Radar: security radars stream their radar picture (AXIS D2122-VE,
+`Image.I0.Type=Source,Radar`); only live view, Live view, Dashboards and the RTSP port use it, everything else (snapshots,
+exposure, optics, Image Health) stays on `HasVideo`.
 Filled by the anonymous probe on the add page (discovered list shows the icon), on add and on
 every basicdeviceinfo poll.
 

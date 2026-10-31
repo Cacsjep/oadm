@@ -445,7 +445,8 @@ Without the OS browser runtime (WebView2, WebKitGTK) the page says what to insta
 
 `plugins/Oadm.Plugins.LiveView` (+ `.Client`), id `oadm.live-view`, rail page **Live View** (group Monitoring, icon
 `grid`; New view `gridAdd`), **off by default**. Saved views of several cameras at once, like a VMS: a view is a grid of
-cameras, opened in a tab.
+cameras, opened in a tab. Offered are the devices with `HasLiveVideo` (cameras, encoders, intercoms and security radars),
+also on Dashboards.
 
 - Rules that must hold: views live on the server, shared by the users of the same devices (plugin setting `views`; each
   view belongs to the device group of the user who made it, none = all devices; group users see and change only their

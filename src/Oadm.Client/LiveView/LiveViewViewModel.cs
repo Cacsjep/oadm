@@ -128,7 +128,7 @@ public static class LiveViewDefaults
 
 /// <summary>
 /// Whether a device row gets the live view, based on the device category from the server:
-/// offered for devices with video (camera, encoder, intercom) and for
+/// offered for devices with live video (camera, encoder, intercom, radar) and for
 /// devices whose category is not known yet.
 /// </summary>
 public static class LiveViewSupport
@@ -142,6 +142,6 @@ public static class LiveViewSupport
 
         // The category comes from the device (basicdeviceinfo ProdType). Until it is known, allow
         // live view and let the stream tell.
-        return row.HasVideo || row.Category == Oadm.Contracts.V1.DeviceCategory.Unknown;
+        return row.HasLiveVideo || row.Category == Oadm.Contracts.V1.DeviceCategory.Unknown;
     }
 }

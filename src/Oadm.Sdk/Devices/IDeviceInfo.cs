@@ -24,6 +24,12 @@ public interface IDeviceInfo
     /// <summary>The device produces video (camera, encoder, video intercom). Use it in <c>CanRun</c>, e.g. for snapshots.</summary>
     bool HasVideo { get; }
 
+    /// <summary>
+    /// The device sends a live video stream: the devices with <see cref="HasVideo"/> and security radars (their radar
+    /// picture). Use it for live video only; a radar has no exposure, optics or snapshots of a scene.
+    /// </summary>
+    bool HasLiveVideo => DeviceCategories.HasLiveVideo(Category);
+
     /// <summary>VAPIX APIs and versions from the last full refresh; empty until known. See <c>DeviceApiExtensions</c>.</summary>
     IReadOnlyList<Vapix.DeviceApi> Apis { get; }
 
@@ -118,6 +124,10 @@ public static class DeviceCategories
     /// <summary>Categories whose devices deliver video: Camera, Encoder, Intercom.</summary>
     public static bool HasVideo(DeviceCategory category) =>
         category is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom;
+
+    /// <summary>Categories whose devices send a live video stream: those with <see cref="HasVideo"/> and Radar.</summary>
+    public static bool HasLiveVideo(DeviceCategory category) =>
+        HasVideo(category) || category is DeviceCategory.Radar;
 }
 
 /// <summary>Whether OADM can work with a device, from the polling.</summary>

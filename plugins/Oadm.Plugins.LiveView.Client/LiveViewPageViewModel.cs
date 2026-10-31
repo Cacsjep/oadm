@@ -42,7 +42,7 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
     }
 
     /// <summary>Cameras (devices with video) grouped by tag.</summary>
-    public DeviceTreeModel Tree { get; } = new() { Filter = d => d.HasVideo };
+    public DeviceTreeModel Tree { get; } = new() { Filter = d => d.HasLiveVideo };
 
     public RangeObservableCollection<ViewEntry> Views { get; } = [];
 

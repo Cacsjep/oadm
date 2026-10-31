@@ -239,7 +239,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         }
 
         var shown = tab.Widgets.Where(w => w.Widget.Kind == WidgetKind.Video).Select(w => w.Widget.DeviceId).OfType<Guid>().ToHashSet();
-        var ids = await pick("Add cameras", [.. _ctx.Devices.Where(d => d.HasVideo)], d => shown.Contains(d.Id) ? DashboardTexts.OnDashboard : null).ConfigureAwait(true);
+        var ids = await pick("Add cameras", [.. _ctx.Devices.Where(d => d.HasLiveVideo)], d => shown.Contains(d.Id) ? DashboardTexts.OnDashboard : null).ConfigureAwait(true);
         if (ids is { Count: > 0 })
         {
             tab.AddCameras([.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()]);
@@ -480,7 +480,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         var own = widgets.Count == 1 ? widgets[0].Widget.DeviceId : null;
         var video = widgets.Any(w => w.Widget.Kind == WidgetKind.Video);
         var ids = await pick("Copy for other devices", [.. _ctx.Devices.Where(d => allowed.Contains(d.Id))],
-            d => d.Id == own ? DashboardTexts.OwnDevice : video && !d.HasVideo ? DashboardTexts.NoVideo : null).ConfigureAwait(true);
+            d => d.Id == own ? DashboardTexts.OwnDevice : video && !d.HasLiveVideo ? DashboardTexts.NoVideo : null).ConfigureAwait(true);
         return ids is null ? [] : [.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()];
     }
 

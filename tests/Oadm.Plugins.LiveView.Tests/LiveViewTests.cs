@@ -157,6 +157,19 @@ public sealed class LiveViewTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public Task A_security_radar_is_offered_with_the_cameras() => OnUi(async () =>
+    {
+        using var host = new PluginHost();
+        var radar = new TestDevice("10.0.0.30", "D2122-VE") { Category = DeviceCategory.Radar };
+        var io = new TestDevice("10.0.0.120", "A9210") { Category = DeviceCategory.IoModule };
+        var ctx = new TestContext(host, [radar, io]) { Video = new FakeVideoAccess() };
+        using var vm = new LiveViewPageViewModel(ctx);
+
+        Assert.True(await Headless.UntilAsync(() => vm.IsLoaded));
+        Assert.Equal(["10.0.0.30"], vm.Tree.DeviceRows.Select(r => r.Address));
+    });
+
+    [Fact]
     public Task A_new_view_is_edited_filled_saved_and_opened_by_everyone() => OnUi(async () =>
     {
         var (host, ctx, vm, cam1, cam2) = Page();

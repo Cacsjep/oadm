@@ -102,6 +102,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     [ObservableProperty] public partial string Scheme { get; private set; } = "";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SdkCategory))]
+    [NotifyPropertyChangedFor(nameof(HasLiveVideo))]
     public partial DeviceCategory Category { get; private set; }
     [ObservableProperty] public partial string? ProductType { get; private set; }
 
@@ -121,7 +122,12 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     [ObservableProperty] public partial long ClockSortKey { get; private set; } = long.MaxValue;
     [ObservableProperty] public partial string CategoryIconKey { get; private set; } = "device.generic";
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
-    [ObservableProperty] public partial bool HasVideo { get; private set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLiveVideo))]
+    public partial bool HasVideo { get; private set; }
+
+    /// <summary>The device sends live video: <see cref="HasVideo"/> or a security radar (its radar picture).</summary>
+    public bool HasLiveVideo => HasVideo || Category == DeviceCategory.Radar;
     /// <summary>VAPIX API list from the server's last full refresh; task plugin dialogs check compatibility with it.</summary>
     public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; private set; } = [];
     [ObservableProperty] public partial DateTime? CertNotAfterUtc { get; private set; }

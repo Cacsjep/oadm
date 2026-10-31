@@ -15,7 +15,7 @@ sees each device as a read-only `IDeviceInfo` and talks to it through an `IVapix
 | `Address`, `HostName` | The address OADM reaches it at (IP or DNS name) and its host name |
 | `Model`, `FirmwareVersion` | Product number (`P3265-V`) and AXIS OS version (`12.11.77`) |
 | `Status` | `Ok`, `Unreachable`, `CredentialsRequired`, `PasswordNotSet`, `CertificateChanged`, `Unknown`, `SiteOffline` (its site node is not connected) |
-| `Category`, `HasVideo` | Camera, encoder, speaker, intercom, I/O module, ...; `HasVideo` for cameras, encoders and intercoms |
+| `Category`, `HasVideo`, `HasLiveVideo` | Camera, encoder, speaker, intercom, I/O module, ...; `HasVideo` for cameras, encoders and intercoms; `HasLiveVideo` adds security radars (live video only) |
 | `Apis` | The VAPIX API list of the last full refresh, see [API checks](#api-checks) |
 | `Tags` | The tags the user gave the device ("Building A") |
 | `SiteId`, `SiteName` | The site OADM reaches the device through ("Building B"); null on the server's own network. Two sites may use the same addresses: key devices by `Id` |

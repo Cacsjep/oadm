@@ -385,13 +385,13 @@ public sealed partial class DevicesViewModel : ObservableObject
     public const string RtspPortMenuHeader = "RTSP port";
 
     /// <summary>
-    /// Context menu "OADM > RTSP port": the port OADM uses for live view and events of the selected video devices (a port
+    /// Context menu "OADM > RTSP port": the port OADM uses for live view and events of the selected devices with live video (a port
     /// forward); stored in OADM, the devices are not changed.
     /// </summary>
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private async Task EditRtspPortAsync()
     {
-        var targets = SelectedDevices.Where(d => d.HasVideo).ToList();
+        var targets = SelectedDevices.Where(d => d.HasLiveVideo).ToList();
         if (targets.Count == 0)
         {
             return;
@@ -763,8 +763,8 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
 
         // OADM: settings of OADM itself for these devices (nothing is written to the devices), rarely needed: a submenu
-        // after the task groups. RTSP port: video devices only.
-        if (Can(HostPermissionKeys.DevicesOpticsControl) && SelectedDevices.Any(d => d.HasVideo))
+        // after the task groups. RTSP port: devices with live video only.
+        if (Can(HostPermissionKeys.DevicesOpticsControl) && SelectedDevices.Any(d => d.HasLiveVideo))
         {
             if (plugins.Count == 0)
             {

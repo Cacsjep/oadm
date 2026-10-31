@@ -350,6 +350,8 @@ public sealed class DashboardsPageTests
             vm.PickDevices = (_, _, _) => Task.FromResult<IReadOnlyList<Guid>?>([camera.Id]);
             await vm.AddCamerasCommand.ExecuteAsync(null);
             Assert.Equal(DashboardTexts.NoVideo, (await CopyReason(vm, vm.ActiveTab!.Widgets[^1]))(io));
+            var radar = new TestDevice("10.0.0.30", "D2122-VE") { Category = DeviceCategory.Radar };
+            Assert.Null((await CopyReason(vm, vm.ActiveTab!.Widgets[^1]))(radar)); // a radar sends live video too
         }
     });
 

@@ -24,7 +24,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 
 - `IPlugin`: `Id` ("oadm.restart"), `DisplayName`, `IconKey`.
 - `IDeviceInfo`: the read-only device view for plugins (server and client): id, serial, address, host name, model,
-  firmware, status, category, `HasVideo`, `Apis` (API list of the last full refresh), `CredentialUserName` (never a
+  firmware, status, category, `HasVideo`, `HasLiveVideo` (adds radars, for live video only), `Apis` (API list of the last full refresh), `CredentialUserName` (never a
   password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
   `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted), `Tags`, `SiteId` / `SiteName`,
   `AddedByAllDevices`, `Soc` / `Architecture` (SDK 0.7.0, DIM null: basicdeviceinfo as reported, filled by the server).

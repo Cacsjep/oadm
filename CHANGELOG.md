@@ -7,6 +7,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Changed
+
+- Security radars get the live preview and can be added to Live view and Dashboards.
+
 ### Fixed
 
 - Windows moved to a larger monitor now maximize to fill it.

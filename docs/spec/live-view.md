@@ -87,8 +87,8 @@ web UI.
   the stream key carries a generation per device, new viewers never join a connection on the old port).
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
-  cell has a hover state and the tooltip "Live preview"; devices without video are disabled
-  (`LiveViewSupport.IsSupported`: the device's `HasVideo` from its category, see [data-model.md](data-model.md); a device
+  cell has a hover state and the tooltip "Live preview"; devices without live video are disabled
+  (`LiveViewSupport.IsSupported`: the row's `HasLiveVideo`, its `HasVideo` or category Radar (the radar picture), see [data-model.md](data-model.md); a device
   whose category is still Unknown is allowed and the stream tells).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor

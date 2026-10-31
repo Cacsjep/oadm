@@ -119,7 +119,7 @@ public sealed class LiveViewViewModelTests : IDisposable
     [InlineData(DeviceCategory.Speaker, false)]
     [InlineData(DeviceCategory.DoorController, false)]
     [InlineData(DeviceCategory.IoModule, false)]
-    [InlineData(DeviceCategory.Radar, false)]
+    [InlineData(DeviceCategory.Radar, true)] // the radar picture
     public void Live_view_support_follows_the_device_category(DeviceCategory category, bool expected)
     {
         var device = TestSupport.Device("x", "B8A44F000009", "10.0.0.9", "any");
