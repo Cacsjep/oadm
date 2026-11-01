@@ -17,6 +17,13 @@ public sealed class DevCamera
 
     public string? Note { get; set; }
 
+    /// <summary>
+    /// Firmware without basicdeviceinfo (AXIS OS before 8.x, the A1001 line), often a loan device: never in
+    /// <see cref="DevCameras.All"/> (the hardware tests there expect 8.40 or later, and some write), only in
+    /// <c>DevCameras.Legacy</c> for read-only tests.
+    /// </summary>
+    public bool Legacy { get; set; }
+
     public string EffectiveScheme => string.IsNullOrWhiteSpace(Scheme) ? Uri.UriSchemeHttps : Scheme.Trim().ToLowerInvariant();
 
     public override string ToString()
@@ -38,8 +45,11 @@ public static class DevCameras
 
     private static readonly Lazy<(string? Path, IReadOnlyList<DevCamera> Cameras)> Loaded = new(LoadDefault);
 
-    /// <summary>All configured cameras; empty when no file was found.</summary>
-    public static IReadOnlyList<DevCamera> All => Loaded.Value.Cameras;
+    /// <summary>All configured cameras except the <see cref="DevCamera.Legacy"/> ones; empty when no file was found.</summary>
+    public static IReadOnlyList<DevCamera> All { get; } = [.. Loaded.Value.Cameras.Where(c => !c.Legacy)];
+
+    /// <summary>The <see cref="DevCamera.Legacy"/> devices: read-only tests only.</summary>
+    public static IReadOnlyList<DevCamera> Legacy { get; } = [.. Loaded.Value.Cameras.Where(c => c.Legacy)];
 
     /// <summary>Path of the file that was loaded, or null.</summary>
     public static string? ConfigPath => Loaded.Value.Path;

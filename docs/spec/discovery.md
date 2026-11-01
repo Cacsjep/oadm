@@ -43,5 +43,13 @@ HTTP 80, `POST /axis-cgi/basicdeviceinfo.cgi` with
 `{"apiVersion":"1.0","method":"getAllProperties"}`.
 - `401` with `WWW-Authenticate` realm `AXIS_<serial>` -> Axis device, serial from realm.
 - `200` (anonymous allowed) -> parse properties directly.
+- `404` (firmware without basicdeviceinfo: AXIS OS before 8.x, the A1001 door controller line; verified on an AXIS Q2901-E
+  6.50.5.18 and an AXIS A1001 1.65.6) -> the same judgment on `GET /axis-cgi/param.cgi?action=list&group=root.Brand,
+  root.Properties.Firmware,root.Properties.System`: 401 with realm `AXIS_<serial>`, or 200 with
+  `Properties.System.SerialNumber` and `Brand.ProdNbr` (`VapixParsers.DeviceInfoFromParameters`, basicdeviceinfo's names).
+  No getAllUnrestrictedProperties and no systemready afterwards (that firmware has neither).
 - Connection refused / timeout (default 1500 ms) -> not a device.
+- An address that answered, but not like an Axis device, is logged at Information (`DiscoveryLog.ProbeNotAxis`, one line
+  per address with the answers, e.g. "http basicdeviceinfo 404, http param.cgi 404"), so it is in the system report; a
+  discovered device whose address gave no Axis answer shows "The device gave no Axis answer on HTTPS or HTTP.".
 No ICMP, no ARP. Result goes into the same discovered list as mDNS, deduplicated by serial.

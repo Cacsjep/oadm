@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Sites;
+using Oadm.Core.Vapix;
 
 namespace Oadm.Core.Discovery;
 
@@ -38,6 +39,9 @@ public interface IDeviceProbe
 /// <list type="bullet">
 /// <item>401 with realm <c>AXIS_&lt;serial&gt;</c> (Digest on HTTP, Basic on HTTPS) =&gt; Axis device.</item>
 /// <item>200 with a propertyList =&gt; Axis device with anonymous access.</item>
+/// <item>404 (firmware without basicdeviceinfo: before AXIS OS 8.x, the A1001 line) =&gt; the same judgment on
+/// <c>GET /axis-cgi/param.cgi?action=list&amp;group=root.Brand,root.Properties.Firmware,root.Properties.System</c>
+/// (401 realm, or 200 with a serial number and a product number).</item>
 /// <item>Anything else on both schemes =&gt; not a device.</item>
 /// </list>
 /// Once identified, two more anonymous read-only calls on the same scheme enrich the result:
@@ -99,54 +103,104 @@ public sealed class VapixDeviceProbe : IDeviceProbe, IDisposable
     public async Task<DeviceProbeResult?> ProbeAsync(IPAddress address, DeviceRoute route, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(address);
+        var answers = new List<string>(4);
         foreach (var scheme in (string[])["https", "http"])
         {
             var baseUri = BuildBaseUri(scheme, address);
-            using var response = await PostAsync(route, baseUri, BasicDeviceInfoPath, GetAllPropertiesBody, timeout, cancellationToken).ConfigureAwait(false);
-            if (response is null)
+            DeviceProbeResult? result;
+            var parameters = false;
+            using (var response = await SendAsync(route, baseUri, BasicDeviceInfoPath, GetAllPropertiesBody, timeout, cancellationToken).ConfigureAwait(false))
             {
-                continue;
-            }
-
-            DeviceProbeResult? result = null;
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                var serial = AxisRealm.TryGetSerial(GetChallenges(response));
-                if (serial is not null)
+                if (response is null)
                 {
-                    result = new DeviceProbeResult(address, serial, scheme, null, null, null, DiscoveredDeviceStatus.CredentialsRequired, false);
+                    continue;
                 }
-            }
-            else if (response.StatusCode == HttpStatusCode.OK)
-            {
-                var props = await ReadPropertiesAsync(response, cancellationToken).ConfigureAwait(false);
-                if (props is not null && SerialNumber.Normalize(props.GetValueOrDefault("SerialNumber")) is { } serial)
+
+                answers.Add($"{scheme} basicdeviceinfo {(int)response.StatusCode}");
+                result = await JudgeAsync(address, scheme, response, parameters: false, cancellationToken).ConfigureAwait(false);
+                if (result is null && response.StatusCode == HttpStatusCode.NotFound)
                 {
-                    result = new DeviceProbeResult(
-                        address,
-                        serial,
-                        scheme,
-                        props.GetValueOrDefault("ProdNbr"),
-                        props.GetValueOrDefault("ProdFullName"),
-                        props.GetValueOrDefault("Version"),
-                        DiscoveredDeviceStatus.AnonymousAccess,
-                        true,
-                        props.GetValueOrDefault("ProdType"));
+                    // Firmware without basicdeviceinfo (before AXIS OS 8.x, the A1001 line): the device information parameters.
+                    using var legacy = await SendAsync(route, baseUri, "/" + VapixClient.DeviceInfoParametersPath, null, timeout, cancellationToken).ConfigureAwait(false);
+                    if (legacy is not null)
+                    {
+                        answers.Add($"{scheme} param.cgi {(int)legacy.StatusCode}");
+                        result = await JudgeAsync(address, scheme, legacy, parameters: true, cancellationToken).ConfigureAwait(false);
+                        parameters = true;
+                    }
                 }
             }
 
             if (result is null)
             {
-                DiscoveryLog.ProbeNotAxis(_logger, address, scheme, response.StatusCode);
                 continue;
             }
 
-            result = await EnrichAsync(route, result, baseUri, timeout, cancellationToken).ConfigureAwait(false);
+            if (!parameters)
+            {
+                // getAllUnrestrictedProperties and systemready do not exist on firmware without basicdeviceinfo.
+                result = await EnrichAsync(route, result, baseUri, timeout, cancellationToken).ConfigureAwait(false);
+            }
+
             DiscoveryLog.ProbeAxis(_logger, address, result.Serial, result.Model, result.Status, scheme);
             return result;
         }
 
+        if (answers.Count > 0)
+        {
+            // Answered, but not like an Axis device: logged (support report), once per address.
+            var answered = string.Join(", ", answers);
+            DiscoveryLog.ProbeNotAxis(_logger, address, answered);
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// An Axis answer: 401 with the realm <c>AXIS_&lt;serial&gt;</c>, or 200 with a serial number (basicdeviceinfo's property
+    /// list, or with <paramref name="parameters"/> the device information parameters with a product number); else null.
+    /// </summary>
+    private static async Task<DeviceProbeResult?> JudgeAsync(IPAddress address, string scheme, HttpResponseMessage response, bool parameters, CancellationToken ct)
+    {
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            return AxisRealm.TryGetSerial(GetChallenges(response)) is { } realmSerial
+                ? new DeviceProbeResult(address, realmSerial, scheme, null, null, null, DiscoveredDeviceStatus.CredentialsRequired, false)
+                : null;
+        }
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return null;
+        }
+
+        IReadOnlyDictionary<string, string>? props;
+        if (parameters)
+        {
+            var body = await ReadBodyAsync(response, ct).ConfigureAwait(false);
+            props = body is null ? null : VapixParsers.DeviceInfoFromParameters(VapixParsers.ParseParameterList(body));
+            if (props is not null && string.IsNullOrWhiteSpace(props.GetValueOrDefault("ProdNbr")))
+            {
+                props = null;
+            }
+        }
+        else
+        {
+            props = await ReadPropertiesAsync(response, ct).ConfigureAwait(false);
+        }
+
+        return props is not null && SerialNumber.Normalize(props.GetValueOrDefault("SerialNumber")) is { } serial
+            ? new DeviceProbeResult(
+                address,
+                serial,
+                scheme,
+                props.GetValueOrDefault("ProdNbr"),
+                props.GetValueOrDefault("ProdFullName"),
+                props.GetValueOrDefault("Version"),
+                DiscoveredDeviceStatus.AnonymousAccess,
+                true,
+                props.GetValueOrDefault("ProdType"))
+            : null;
     }
 
     public void Dispose()
@@ -261,14 +315,17 @@ public sealed class VapixDeviceProbe : IDeviceProbe, IDisposable
     }
 
     /// <remarks>A <see cref="SiteException"/> (the site cannot carry the probe) is not "no device" and passes through.</remarks>
-    private async Task<HttpResponseMessage?> PostAsync(DeviceRoute route, Uri baseUri, string path, string body, TimeSpan timeout, CancellationToken ct)
+    private Task<HttpResponseMessage?> PostAsync(DeviceRoute route, Uri baseUri, string path, string body, TimeSpan timeout, CancellationToken ct) =>
+        SendAsync(route, baseUri, path, body, timeout, ct);
+
+    /// <summary>A POST of the JSON <paramref name="body"/>, or a GET without one.</summary>
+    private async Task<HttpResponseMessage?> SendAsync(DeviceRoute route, Uri baseUri, string path, string? body, TimeSpan timeout, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(_router.Timeout(route, timeout));
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, path))
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
-        };
+        using var request = body is null
+            ? new HttpRequestMessage(HttpMethod.Get, new Uri(baseUri, path))
+            : new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, path)) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         request.Options.Set(DeviceRouter.RouteOption, route);
         request.Options.Set(DeviceRouter.ConnectTimeoutOption, timeout);
         try

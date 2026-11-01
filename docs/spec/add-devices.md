@@ -169,7 +169,9 @@ lockout risk): the credentials typed on the page (RetryAuth), then the credentia
 added. Passwords of managed devices are never tried on new devices. Before the first credential goes to
 a scheme the device must pass the **Axis check** on it: anonymous `basicdeviceinfo
 getAllUnrestrictedProperties` answering a 12-hex `SerialNumber` equal to the discovered serial and a
-`ProdNbr` (once per scheme and login run). Logins go to HTTPS first, then HTTP ("Add manually" with an
+`ProdNbr` (once per scheme and login run); firmware without basicdeviceinfo (404) answers the same from the device
+information parameters (`VapixClient.GetUnrestrictedPropertiesAsync`, [vapix.md](vapix.md) "Firmware without
+basicdeviceinfo"), usually 401 with the realm, judged like AXIS OS 8.x below. Logins go to HTTPS first, then HTTP ("Add manually" with an
 entered scheme: only that one); the handler answers Digest when offered, else Basic, also over plain HTTP
 for such a verified device. A device that fails the check gets no credential and shows UNREACHABLE "The
 device did not identify itself as an Axis device. No password was sent." (logged as a warning). One try

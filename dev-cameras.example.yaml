@@ -7,3 +7,5 @@ cameras:
     password: change-me
     scheme: https              # optional: https (default) or http
     note: "AXIS P3265-V lab"   # optional, free text
+    # legacy: true             # optional: firmware without basicdeviceinfo (before AXIS OS 8.x, the A1001 line);
+                               # used only by read-only tests, never by the other hardware tests

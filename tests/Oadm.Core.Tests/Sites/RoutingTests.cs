@@ -229,7 +229,8 @@ public sealed class RoutingTests
         Assert.Null(await probe.ProbeAsync(IPAddress.Parse("192.168.0.20"), route, Generous, CancellationToken.None));
         Assert.Null(await probe.ProbeAsync(IPAddress.Parse("192.168.0.21"), Generous, CancellationToken.None));
 
-        Assert.Equal([route, route, DeviceRoute.Local, DeviceRoute.Local], handler.Routes);
+        // Each scheme: basicdeviceinfo, then (404) the device information parameters, all on the probed route.
+        Assert.Equal([route, route, route, route, DeviceRoute.Local, DeviceRoute.Local, DeviceRoute.Local, DeviceRoute.Local], handler.Routes);
     }
 
     [Fact]

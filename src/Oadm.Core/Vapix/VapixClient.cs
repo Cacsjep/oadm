@@ -309,10 +309,44 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
     internal async Task<TimedBasicDeviceInfo> GetTimedBasicDeviceInfoAsync(TimeSpan? timeout, TimeProvider time, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(time);
-        using var request = new HttpRequestMessage(HttpMethod.Post, BasicDeviceInfoPath)
+        if (!UsesDeviceInfoParameters)
         {
-            Content = new StringContent("""{"apiVersion":"1.0","method":"getAllProperties"}""", Encoding.UTF8, JsonMediaType),
-        };
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, BasicDeviceInfoPath)
+                {
+                    Content = new StringContent("""{"apiVersion":"1.0","method":"getAllProperties"}""", Encoding.UTF8, JsonMediaType),
+                };
+                var (text, date, sent, received) = await SendTimedAsync(request, timeout, time, ct).ConfigureAwait(false);
+                return new TimedBasicDeviceInfo(VapixParsers.ParseBasicDeviceInfo(text), date, sent, received);
+            }
+            catch (VapixException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                // Firmware without basicdeviceinfo (before AXIS OS 8.x, the A1001 line): the parameters from now on.
+                UsesDeviceInfoParameters = true;
+            }
+        }
+
+        using (var request = new HttpRequestMessage(HttpMethod.Get, DeviceInfoParametersPath))
+        {
+            var (text, date, sent, received) = await SendTimedAsync(request, timeout, time, ct).ConfigureAwait(false);
+            return new TimedBasicDeviceInfo(VapixParsers.ParseDeviceInfoParameters(text), date, sent, received);
+        }
+    }
+
+    /// <summary>
+    /// The device has no basicdeviceinfo (it answered 404): the device information comes from <c>param.cgi</c>
+    /// (<see cref="VapixParsers.DeviceInfoGroups"/>). Kept for the client's life, so a poll is one request.
+    /// </summary>
+    public bool UsesDeviceInfoParameters { get; private set; }
+
+    /// <summary><c>param.cgi?action=list</c> of <see cref="VapixParsers.DeviceInfoGroups"/>.</summary>
+    internal static string DeviceInfoParametersPath { get; } = $"{ParamPath}?action=list&group={string.Join(',', VapixParsers.DeviceInfoGroups)}";
+
+    /// <summary>One status read with the answer's Date header and the round trip around it.</summary>
+    private async Task<(string Text, DateTimeOffset? Date, DateTimeOffset Sent, DateTimeOffset Received)> SendTimedAsync(
+        HttpRequestMessage request, TimeSpan? timeout, TimeProvider time, CancellationToken ct)
+    {
         if (timeout is { } limit)
         {
             request.Options.Set(VapixRequestOptions.Timeout, limit);
@@ -332,14 +366,30 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         }
 
         var received = time.GetUtcNow();
-        return new TimedBasicDeviceInfo(VapixParsers.ParseBasicDeviceInfo(text), date, clock.LastWrite ?? sent, received);
+        return (text, date, clock.LastWrite ?? sent, received);
     }
 
-    /// <summary>basicdeviceinfo getAllUnrestrictedProperties: works anonymously, no SocSerialNumber/Architecture.</summary>
+    /// <summary>
+    /// basicdeviceinfo getAllUnrestrictedProperties: works anonymously, no SocSerialNumber/Architecture. Firmware without
+    /// basicdeviceinfo (404): the <see cref="VapixParsers.DeviceInfoGroups"/> parameters under the same names; most such
+    /// devices refuse them without a login (<see cref="VapixAuthenticationException"/> with the realm's serial number).
+    /// </summary>
     public async Task<IReadOnlyDictionary<string, string>> GetUnrestrictedPropertiesAsync(CancellationToken ct)
     {
-        var json = await PostJsonAsync(BasicDeviceInfoPath, """{"apiVersion":"1.0","method":"getAllUnrestrictedProperties"}""", ct).ConfigureAwait(false);
-        return VapixParsers.ParseBasicDeviceInfoProperties(json);
+        if (!UsesDeviceInfoParameters)
+        {
+            try
+            {
+                var json = await PostJsonAsync(BasicDeviceInfoPath, """{"apiVersion":"1.0","method":"getAllUnrestrictedProperties"}""", ct).ConfigureAwait(false);
+                return VapixParsers.ParseBasicDeviceInfoProperties(json);
+            }
+            catch (VapixException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                UsesDeviceInfoParameters = true;
+            }
+        }
+
+        return VapixParsers.DeviceInfoFromParameters(await ListParametersAsync(VapixParsers.DeviceInfoGroups, ct).ConfigureAwait(false));
     }
 
     /// <inheritdoc />

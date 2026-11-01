@@ -25,8 +25,8 @@ internal static partial class DiscoveryLog
     [LoggerMessage(EventId = 4005, Level = LogLevel.Debug, Message = "mDNS: socket error on {Address}")]
     public static partial void SocketError(ILogger logger, Exception exception, IPAddress? address);
 
-    [LoggerMessage(EventId = 4010, Level = LogLevel.Debug, Message = "Probe {Address}: {Scheme} answered {StatusCode} without Axis signature")]
-    public static partial void ProbeNotAxis(ILogger logger, IPAddress address, string scheme, HttpStatusCode statusCode);
+    [LoggerMessage(EventId = 4010, Level = LogLevel.Information, Message = "Probe {Address}: answered without Axis signature ({Answers})")]
+    public static partial void ProbeNotAxis(ILogger logger, IPAddress address, string answers);
 
     [LoggerMessage(EventId = 4011, Level = LogLevel.Debug, Message = "Probe {Address}: Axis {Serial} {Model} {Status} via {Scheme}")]
     public static partial void ProbeAxis(ILogger logger, IPAddress address, string serial, string? model, DiscoveredDeviceStatus status, string scheme);

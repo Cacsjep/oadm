@@ -158,7 +158,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                 : device.Status switch
                 {
                     DiscoveredDeviceStatus.PasswordNotSet => new DeviceAuthResult(DeviceAuthState.PasswordNotSet),
-                    DiscoveredDeviceStatus.Unreachable => new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: "The device did not answer on HTTPS or HTTP."),
+                    DiscoveredDeviceStatus.Unreachable => new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: NoAxisAnswerText),
                     _ => DeviceAuthResult.Pending,
                 };
             // Rejected credentials stay counted for the serial (lockout protection survives a new address).
@@ -854,6 +854,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Discovered device {Serial} at {Address} did not pass the Axis check; no credential was sent")]
     private partial void LogNotAxis(string serial, string address);
+
+    /// <summary>A discovered device whose address gave no Axis answer (no answer at all, or not like an Axis device).</summary>
+    internal const string NoAxisAnswerText = "The device gave no Axis answer on HTTPS or HTTP.";
 
     private const string NotAxisText = "The device did not identify itself as an Axis device. No password was sent.";
 

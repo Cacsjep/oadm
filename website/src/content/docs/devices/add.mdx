@@ -43,6 +43,9 @@ Devices without a DNS name are added by IP address. OADM keeps the address a dev
 | Password not set | Factory default. **Set password** sets the first `root` password when you add the device. **Use for all factory-default devices** applies it to every one. |
 | Unreachable | The device does not answer, or did not identify itself as an Axis device. No password was sent to it. |
 
+Devices with older firmware, such as AXIS OS 6.x or the AXIS A1001, are found and added too. Their model shows once
+OADM is logged in. Many tasks need newer firmware and stay grey with the reason.
+
 <Steps>
 
 1. Devices OADM logged in to are already checked. Uncheck the ones you do not want; the check box in the list header

@@ -53,6 +53,18 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   and time run; Device configuration (12.5) stays greyed with its reason. PKI runs from 6.53 through the SOAP certificate
   service ([pki.md](pki.md) "Older AXIS OS"). Other writes on such firmware are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).
+- **Firmware without basicdeviceinfo** (AXIS OS before 8.x, the A1001 door controller line; verified read-only on an AXIS
+  Q2901-E with 6.50.5.18 and an AXIS A1001 with 1.65.6, `tests/Oadm.Core.Tests/Vapix/LegacyFirmwareHardwareTests`, fixtures
+  `param-deviceinfo-*.txt`): `basicdeviceinfo.cgi`, `apidiscovery.cgi` and `systemready.cgi` answer 404; anonymous
+  `param.cgi` answers 401 with the realm `AXIS_<serial>`. A 404 of basicdeviceinfo makes `VapixClient` read
+  `param.cgi?action=list&group=root.Brand,root.Properties.Firmware,root.Properties.System` instead
+  (`VapixParsers.ParseDeviceInfoParameters`: SerialNumber from `Properties.System.SerialNumber`, ProdNbr, ProdShortName,
+  ProdFullName and ProdType from `Brand`, Version from `Properties.Firmware.Version`, HardwareID and Architecture from
+  `Properties.System`; no Soc) and remembers it for the client's life (`UsesDeviceInfoParameters`: a poll is one request,
+  with its Date header for the clock). So discovery, Add manually, the login, the add's check, polling, Log in, a moved
+  device and Trust new certificate work on them. `GetUnrestrictedPropertiesAsync` falls back the same way (401 with the
+  realm's serial, or the parameters under basicdeviceinfo's names). The API list comes from `LegacyApiList` (above); a
+  factory-default device is not recognized (no systemready).
 - Endpoints of the core:
   - `basicdeviceinfo.cgi` -> SerialNumber, ProdNbr, ProdShortName, Version, HardwareID
   - `param.cgi?action=list&group=Network.BootProto,Network.UPnP.FriendlyName,Network.Interface.I0.dot1x.Enabled,HTTPS.Enabled`

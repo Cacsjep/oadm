@@ -1,0 +1,15 @@
+root.Brand.Brand=AXIS
+root.Brand.ProdFullName=AXIS A1001 Network Door Controller
+root.Brand.ProdNbr=A1001
+root.Brand.ProdShortName=AXIS A1001
+root.Brand.ProdType=Network Door Controller
+root.Brand.ProdVariant=
+root.Brand.WebURL=http://www.axis.com/
+root.Properties.Firmware.BuildDate=Nov 22 2023 17:50
+root.Properties.Firmware.BuildNumber=8
+root.Properties.Firmware.Version=1.65.6
+root.Properties.System.Architecture=mips
+root.Properties.System.HardwareID=1D3
+root.Properties.System.Language=English
+root.Properties.System.LanguageType=default
+root.Properties.System.SerialNumber=ACCC8E2477F4

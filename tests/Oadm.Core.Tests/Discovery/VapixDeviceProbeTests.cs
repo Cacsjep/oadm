@@ -111,7 +111,8 @@ public class VapixDeviceProbeTests
         using var probe = new VapixDeviceProbe(handler);
 
         Assert.Null(await probe.ProbeAsync(Address, Timeout, CancellationToken.None));
-        Assert.Equal(2, handler.Requests.Count); // https and http tried
+        // https and http tried; after a 404 also the device information parameters (firmware without basicdeviceinfo)
+        Assert.Equal(status == HttpStatusCode.NotFound ? 4 : 2, handler.Requests.Count);
     }
 
     [Fact]

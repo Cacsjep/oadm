@@ -40,6 +40,15 @@ internal sealed class FakeAxisDevice
     /// </summary>
     public System.Security.Cryptography.X509Certificates.X509Certificate2? Certificate { get; set; }
 
+    /// <summary>
+    /// Firmware without basicdeviceinfo, apidiscovery and systemready (404, like AXIS OS 6.50 and the A1001 1.65): the
+    /// device information is in param.cgi (root.Brand, root.Properties), anonymous requests get 401 with the realm.
+    /// </summary>
+    public bool NoBasicDeviceInfo { get; set; }
+
+    /// <summary>root.Brand.ProdType of <see cref="NoBasicDeviceInfo"/>.</summary>
+    public string ProductType { get; set; } = "Network Camera";
+
     /// <summary>When true, every connection is refused.</summary>
     public bool Offline { get; set; }
 
@@ -130,6 +139,28 @@ internal sealed class FakeAxisDevice
             RejectedLogins++;
         }
 
+        if (NoBasicDeviceInfo && path is "axis-cgi/basicdeviceinfo.cgi" or "axis-cgi/systemready.cgi" or "axis-cgi/apidiscovery.cgi")
+        {
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        }
+
+        if (NoBasicDeviceInfo && path == "axis-cgi/param.cgi" && query.Contains("root.Brand", StringComparison.Ordinal))
+        {
+            return !authorized
+                ? Unauthorized()
+                : Text(
+                    "root.Brand.Brand=AXIS\n"
+                    + $"root.Brand.ProdFullName=AXIS {Model} {ProductType}\n"
+                    + $"root.Brand.ProdNbr={Model}\n"
+                    + $"root.Brand.ProdShortName=AXIS {Model}\n"
+                    + $"root.Brand.ProdType={ProductType}\n"
+                    + "root.Properties.Firmware.BuildDate=May 27 2024 19:33\n"
+                    + $"root.Properties.Firmware.Version={Firmware}\n"
+                    + "root.Properties.System.Architecture=mips\n"
+                    + "root.Properties.System.HardwareID=1D3\n"
+                    + $"root.Properties.System.SerialNumber={Serial}\n");
+        }
+
         switch (path)
         {
             case "axis-cgi/basicdeviceinfo.cgi":
@@ -179,7 +210,8 @@ internal sealed class FakeAxisDevice
             case "axis-cgi/param.cgi":
                 if (!authorized)
                 {
-                    return Unauthorized();
+                    // An imitation without any Axis answer (NotFound) has no Axis login realm on the parameters either.
+                    return credentials is null && AnonymousAnswer == FakeAxisAnswer.NotFound ? new HttpResponseMessage(HttpStatusCode.NotFound) : Unauthorized();
                 }
 
                 return Text(
@@ -393,7 +425,7 @@ internal enum FakeAxisAnswer
     /// <summary>Valid: serial number and product number.</summary>
     Axis,
 
-    /// <summary>Not found (HTTP 404): an imitation that only copies the 401 realm.</summary>
+    /// <summary>Not found (HTTP 404), also on the anonymous device information parameters: no Axis answer at all.</summary>
     NotFound,
 
     /// <summary>A property list without a serial number.</summary>

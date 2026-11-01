@@ -77,6 +77,58 @@ public static partial class VapixParsers
     }
 
     /// <summary>
+    /// The parameter groups that stand in for basicdeviceinfo on firmware without it (AXIS OS before 8.x, the A1001 door
+    /// controller line): brand, firmware and system properties (<c>param.cgi?action=list</c>).
+    /// </summary>
+    public static IReadOnlyList<string> DeviceInfoGroups { get; } = ["root.Brand", "root.Properties.Firmware", "root.Properties.System"];
+
+    /// <summary>
+    /// The <see cref="DeviceInfoGroups"/> parameters under basicdeviceinfo's property names (SerialNumber, ProdNbr,
+    /// ProdShortName, ProdFullName, ProdType, Brand, Version, HardwareID, Architecture), so callers judge both answers alike.
+    /// Keys without the <c>root.</c> prefix (<see cref="ParseParameterList(string)"/>).
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> DeviceInfoFromParameters(IReadOnlyDictionary<string, string> parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Copy(string from, string to)
+        {
+            if (parameters.TryGetValue(from, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                result[to] = value.Trim();
+            }
+        }
+
+        Copy("Properties.System.SerialNumber", "SerialNumber");
+        Copy("Brand.ProdNbr", "ProdNbr");
+        Copy("Brand.ProdShortName", "ProdShortName");
+        Copy("Brand.ProdFullName", "ProdFullName");
+        Copy("Brand.ProdType", "ProdType");
+        Copy("Brand.Brand", "Brand");
+        Copy("Properties.Firmware.Version", "Version");
+        Copy("Properties.System.HardwareID", "HardwareID");
+        Copy("Properties.System.Architecture", "Architecture");
+        return result;
+    }
+
+    /// <summary>The SDK record from the <see cref="DeviceInfoGroups"/> parameters (no Soc: older firmware has none).</summary>
+    /// <exception cref="VapixException">No serial number in the parameters.</exception>
+    public static BasicDeviceInfo ParseDeviceInfoParameters(string text)
+    {
+        var p = DeviceInfoFromParameters(ParseParameterList(text));
+        var serial = Get(p, "SerialNumber") ?? throw new VapixException("param.cgi has no Properties.System.SerialNumber.");
+        return new BasicDeviceInfo(
+            SerialNumber: NormalizeSerial(serial),
+            ProdNbr: Get(p, "ProdNbr") ?? string.Empty,
+            ProdShortName: Get(p, "ProdShortName"),
+            ProdFullName: Get(p, "ProdFullName"),
+            Version: Get(p, "Version") ?? string.Empty,
+            HardwareId: Get(p, "HardwareID"),
+            Architecture: Get(p, "Architecture"),
+            ProdType: Get(p, "ProdType"));
+    }
+
+    /// <summary>
     /// Parses <c>param.cgi?action=list</c> output. Keys are returned without the optional
     /// <c>root.</c> prefix (the device adds it for whole groups but not for single parameters).
     /// Lines starting with <c>#</c> are per-group errors and are returned in <paramref name="errors"/>.

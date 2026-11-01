@@ -1,0 +1,15 @@
+root.Brand.Brand=AXIS
+root.Brand.ProdFullName=AXIS Q2901-E Temperature Alarm Camera
+root.Brand.ProdNbr=Q2901-E
+root.Brand.ProdShortName=AXIS Q2901-E
+root.Brand.ProdType=Temperature Alarm Camera
+root.Brand.ProdVariant=9mm
+root.Brand.WebURL=http://www.axis.com/
+root.Properties.Firmware.BuildDate=May 27 2024 19:33
+root.Properties.Firmware.BuildNumber=2
+root.Properties.Firmware.Version=6.50.5.18
+root.Properties.System.Architecture=mips
+root.Properties.System.HardwareID=1E7
+root.Properties.System.Language=English
+root.Properties.System.LanguageType=default
+root.Properties.System.SerialNumber=ACCC8E263B09

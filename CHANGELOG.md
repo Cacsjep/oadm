@@ -18,6 +18,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Fixed
 
+- Devices with older firmware (for example AXIS OS 6.x or the AXIS A1001) are found and can be added and polled.
+- Add devices: an address that answers but not as an Axis device no longer says the device did not answer.
 - Windows moved to a larger monitor now maximize to fill it.
 
 ## [4.7.1] - 2026-10-30

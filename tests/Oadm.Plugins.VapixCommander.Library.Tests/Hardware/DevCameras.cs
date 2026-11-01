@@ -17,6 +17,13 @@ public sealed class DevCamera
 
     public string? Note { get; set; }
 
+    /// <summary>
+    /// Firmware without basicdeviceinfo (AXIS OS before 8.x, the A1001 line), often a loan device: never in
+    /// <see cref="DevCameras.All"/> (the hardware tests there expect 8.40 or later, and some write), only in
+    /// <c>DevCameras.Legacy</c> for read-only tests.
+    /// </summary>
+    public bool Legacy { get; set; }
+
     public string EffectiveScheme => string.IsNullOrWhiteSpace(Scheme) ? Uri.UriSchemeHttps : Scheme.Trim().ToLowerInvariant();
 
     public override string ToString() => Note is null ? Address : $"{Address} ({Note})";
@@ -33,7 +40,8 @@ public static class DevCameras
 
     private static readonly Lazy<IReadOnlyList<DevCamera>> Loaded = new(Load);
 
-    public static IReadOnlyList<DevCamera> All => Loaded.Value;
+    /// <summary>All configured cameras except the <see cref="DevCamera.Legacy"/> ones.</summary>
+    public static IReadOnlyList<DevCamera> All => [.. Loaded.Value.Where(c => !c.Legacy)];
 
     private static List<DevCamera> Load()
     {

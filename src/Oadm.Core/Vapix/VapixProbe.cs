@@ -82,14 +82,36 @@ public sealed class VapixProbe
 
             using (response)
             {
-                return await InterpretAsync(client, address, scheme, response, ct).ConfigureAwait(false);
+                if (response.StatusCode != HttpStatusCode.NotFound)
+                {
+                    return await InterpretAsync(client, address, scheme, response, parameters: false, ct).ConfigureAwait(false);
+                }
+            }
+
+            // Firmware without basicdeviceinfo (before AXIS OS 8.x, the A1001 line): the device information parameters.
+            HttpResponseMessage legacy;
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, VapixClient.DeviceInfoParametersPath);
+                legacy = await client.SendAsync(request, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested && IsTransportFailure(ex))
+            {
+                continue;
+            }
+
+            using (legacy)
+            {
+                return await InterpretAsync(client, address, scheme, legacy, parameters: true, ct).ConfigureAwait(false);
             }
         }
 
         return null;
     }
 
-    private static async Task<VapixProbeResult?> InterpretAsync(VapixClient client, string address, string scheme, HttpResponseMessage response, CancellationToken ct)
+    /// <param name="parameters">The answer is <c>param.cgi</c>'s device information (<see cref="VapixParsers.DeviceInfoGroups"/>), not basicdeviceinfo.</param>
+    private static async Task<VapixProbeResult?> InterpretAsync(VapixClient client, string address, string scheme, HttpResponseMessage response, bool parameters,
+        CancellationToken ct)
     {
         string? serial;
         string? model = null;
@@ -111,8 +133,13 @@ public sealed class VapixProbe
         {
             try
             {
-                var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                var info = VapixParsers.ParseBasicDeviceInfo(json);
+                var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                var info = parameters ? VapixParsers.ParseDeviceInfoParameters(body) : VapixParsers.ParseBasicDeviceInfo(body);
+                if (parameters && string.IsNullOrEmpty(info.ProdNbr))
+                {
+                    return null; // a parameter list without a product number is not an Axis answer
+                }
+
                 serial = info.SerialNumber;
                 model = info.ProdNbr;
                 firmware = info.Version;
@@ -130,7 +157,7 @@ public sealed class VapixProbe
             return null;
         }
 
-        if (model is null)
+        if (model is null && !parameters)
         {
             try
             {
