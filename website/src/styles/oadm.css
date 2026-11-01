@@ -544,6 +544,14 @@ header .social-icons::after {
 	color: var(--sl-color-white);
 }
 
+/* Download and, right of it, the Firmware Downloader extension as the secondary button; they stack on narrow screens. */
+.downloads .dl-actions {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.75rem;
+}
+
 /* The one Download button of the landing page (accent), with the version of the latest release. */
 .downloads .dl-main {
 	border-color: var(--sl-color-accent);

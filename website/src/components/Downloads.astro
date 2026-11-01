@@ -11,6 +11,8 @@ const { assets, version } = await latestRelease();
 // The newsletter lives on the support forum; the form here subscribes without an account there.
 const portal = 'https://support.oadm.app/';
 const youtube = 'https://www.youtube.com/@oadm-ca';
+// The Chrome extension that downloads AXIS firmware for OADM.
+const firmwareDownloader = 'https://chromewebstore.google.com/detail/ecpnmknfgnpkndjcnjfbihfnfhhekfcg';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 type Row = { name: string; note?: string; pattern: string };
@@ -88,9 +90,14 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 ---
 
 <div class="downloads not-content" data-repo={repo}>
-	<button class="dl dl-main" type="button" aria-haspopup="dialog" aria-controls="download-dialog">
-		<Icon name="download" />Download<span class="dl-version-text" hidden={!version}>{version}</span>
-	</button>
+	<div class="dl-actions">
+		<button class="dl dl-main" type="button" aria-haspopup="dialog" aria-controls="download-dialog">
+			<Icon name="download" />Download<span class="dl-version-text" hidden={!version}>{version}</span>
+		</button>
+		<a class="dl" href={firmwareDownloader} target="_blank" rel="noopener" title="Chrome extension for AXIS firmware">
+			<Icon name="chrome" />Firmware Downloader
+		</a>
+	</div>
 	<dialog id="download-dialog" class="dl-dialog" aria-labelledby="download-title">
 		<div class="dl-dialog-head">
 			<h2 id="download-title">Download OADM <span class="dl-version-text">{version}</span></h2>
