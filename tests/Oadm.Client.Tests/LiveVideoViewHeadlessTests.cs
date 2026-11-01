@@ -61,7 +61,7 @@ public sealed class LiveVideoViewHeadlessTests
     }
 
     [Fact]
-    public async Task The_picture_area_shows_the_ring_the_error_or_the_GPU_warning()
+    public async Task The_picture_area_shows_the_ring_or_the_error_and_no_GPU_warning()
     {
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
@@ -77,11 +77,9 @@ public sealed class LiveVideoViewHeadlessTests
 
             Assert.True(await UntilAsync(() => fakes.StreamCount == 1));
             fakes.Streams[0].Send();
-            Assert.True(await UntilAsync(() => video.HasDecodingWarning));
+            Assert.True(await UntilAsync(() => video.State == LiveViewState.Live));
             Dispatcher.UIThread.RunJobs();
-            var warning = Find<StatusChip>(window, c => c.Name == "GpuWarning");
-            Assert.True(warning.IsEffectivelyVisible);
-            Assert.Equal(GpuDecodingTexts.LinuxDriver, ToolTip.GetTip(warning));
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible); // the processor decodes, silently
             Assert.False(ring.IsEffectivelyVisible);
 
             fakes.Streams[0].Fail(new RpcException(new Status(StatusCode.PermissionDenied, "The camera rejected the stored credentials.")));

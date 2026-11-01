@@ -39,7 +39,7 @@
         </Border>
       </StackPanel>
 
-      <!-- Top right: the GPU warning (always), the channel switch (on hover); below them the details card -->
+      <!-- Top right: the channel switch (on hover); below it the details card -->
       <StackPanel Classes="videoCorner" HorizontalAlignment="Right" VerticalAlignment="Top">
         <StackPanel Classes="videoRow" HorizontalAlignment="Right" Orientation="Horizontal">
           <Panel Classes="videoHover">
@@ -60,9 +60,6 @@
               </ItemsControl>
             </Border>
           </Panel>
-          <Border Classes="videoOverlay" IsVisible="{Binding HasDecodingWarning}">
-            <ui:StatusChip x:Name="GpuWarning" IsWarning="True" Text="" ToolTip.Tip="{Binding DecodingWarning}" />
-          </Border>
         </StackPanel>
         <Border Classes="videoOverlay videoDetails" HorizontalAlignment="Right" IsVisible="{Binding ShowDetails}">
           <Grid ColumnDefinitions="Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">

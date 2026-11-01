@@ -24,9 +24,8 @@ web UI.
   quality button (**Adaptive**: the smallest resolution of the channel's list that fills the picture's size in device
   pixels without enlarging, at the adaptive frame rate; **Full**: the largest at `MaxFps`; default Adaptive; both take
   **16:9** whenever the channel lists 16:9 resolutions (almost every monitor is 16:9, also a 4:3 sensor offers them), else
-  the sensor's aspect: `LiveVideoViewModel.PreferredAspect`); top right the
-  orange GPU warning icon (always, what to do as tooltip) and on hover the channel switch ("1 2 ...", tooltip = name; the
-  place can turn it off and set the channel), below them the details card when the setting is on (`Border.videoDetails`,
+  the sensor's aspect: `LiveVideoViewModel.PreferredAspect`); top right on hover the channel switch ("1 2 ...", tooltip = name; the
+  place can turn it off and set the channel), below it the details card when the setting is on (`Border.videoDetails`,
   one row each: Codec, Resolution, Frame rate, Bit rate, Decoding GPU or Processor; `VideoDetails`; top right because the
   bottom belongs to the controls); at the bottom one row: the zoom and focus or PTZ bar over the width and at its right end
   the controls button (`Icon.sliders`, only for a camera with zoom and focus or PTZ and a role with "Optics Control"; on
@@ -155,15 +154,15 @@ web UI.
   (Windows d3d11va, dxva2; macOS videotoolbox; Linux vaapi, cuda; `OADM_GPU_DEVICES` overrides the list) and decodes the
   embedded H.264 and H.265 clips on it; output `device=`, `h264=ok|failed: ...`, `h265=...`, `problem=`. Only after it
   passed does the client open the device in its own process (`HwDevice`, one per device type, shared by all streams).
-  `FfmpegVideoDecoderFactory` creates GPU decoders for the codecs that passed, else processor decoders with the warning
-  text. A GPU decoder that fails on a stream (no hardware format, a copy that fails, no picture after two keyframes)
-  reopens on the processor and says why; decoding never throws. Linux: the bundled FFmpeg has VA-API built in with the
+  `FfmpegVideoDecoderFactory` creates GPU decoders for the codecs that passed, else processor decoders (no warning in
+  the live view: on a computer without a usable graphics card, such as a server VM, the processor is the normal case). A GPU decoder that fails on a stream (no hardware format, a copy that fails, no picture after two keyframes)
+  reopens on the processor and logs why once per stream; decoding never throws. Linux: the bundled FFmpeg has VA-API built in with the
   driver path of its build machine, so `HwDevice.PrepareEnvironment` (start of `Main`) sets `LIBVA_DRIVERS_PATH` to the
-  system's `dri` folders through libc `setenv` unless the user set it. The details say "GPU" or "Processor", and an
-  orange warning icon top right over the picture (tooltip: what to do, `GpuDecodingTexts`: Linux "Install the video driver of the graphics card (Intel:
-  intel-media-va-driver, AMD: mesa-va-drivers, NVIDIA: the NVIDIA driver) or turn off ...", no device, the driver stopped
-  the test, a codec the card cannot decode) whenever the setting is on and the stream runs on the processor; off = no
-  warning. A finished test or a changed setting opens a new stream with the right decoder (silent swap). Verified on Windows
+  system's `dri` folders through libc `setenv` unless the user set it. The details say "GPU" or "Processor"; the live view never
+  warns about the processor. What to do shows only in the setting's hint in Settings (`GpuDecodingTexts`: Linux "Install
+  the video driver of the graphics card (Intel: intel-media-va-driver, AMD: mesa-va-drivers, NVIDIA: the NVIDIA driver) or
+  turn off ...", no device, the driver stopped the test) and in the log (the test result once per start, a codec the card
+  cannot decode or a fallback once per stream). A finished test or a changed setting opens a new stream with the right decoder (silent swap). Verified on Windows
   (NVIDIA: d3d11va, dxva2, cuda decode both codecs). Tests: `GpuDecodingTests` (every device type decodes every picture or
   says why, the separate process and a crashing one), `LiveVideoViewModelTests`.
 - Tests: `LiveVideoViewModelTests` (resolution choice, Full, the silent swap, a failing or slow new stream, hidden and

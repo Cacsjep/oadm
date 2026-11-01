@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Security radars get the live preview and can be added to Live view and Dashboards.
+- Live video no longer shows a warning when the processor decodes it instead of the graphics card; Settings still says why.
 
 ### Fixed
 

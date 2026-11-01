@@ -341,13 +341,12 @@ public sealed class LiveVideoViewModelTests : IDisposable
     });
 
     [Fact]
-    public Task The_details_say_GPU_or_the_icon_warns_what_to_do() => _ui.RunAsync(async () =>
+    public Task The_details_say_GPU_or_Processor_and_the_processor_needs_no_warning() => _ui.RunAsync(async () =>
     {
         _fakes.Decoders.UsesGpu = true;
         using (var video = await LiveAsync())
         {
             Assert.Equal("GPU", video.Details.Decoding);
-            Assert.False(video.HasDecodingWarning);
         }
 
         _fakes.Decoders.UsesGpu = false;
@@ -355,11 +354,9 @@ public sealed class LiveVideoViewModelTests : IDisposable
         using var cpu = Create();
         cpu.Start("b");
         (await _fakes.StreamAsync(1)).Send();
-        await TestSupport.WaitUntilAsync(() => cpu.HasDecodingWarning);
-        Assert.Equal(GpuDecodingTexts.LinuxDriver, cpu.DecodingWarning);
+        await TestSupport.WaitUntilAsync(() => cpu.State == LiveViewState.Live);
         Assert.Equal("Processor", cpu.Details.Decoding);
-        cpu.Stop();
-        Assert.False(cpu.HasDecodingWarning);
+        Assert.False(cpu.HasError);
     });
 
     [Fact]

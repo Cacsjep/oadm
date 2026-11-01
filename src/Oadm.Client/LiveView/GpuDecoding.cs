@@ -23,7 +23,7 @@ public enum GpuDecodingState
     /// <summary>The test decoded both clips (or one codec) on the graphics card.</summary>
     Available,
 
-    /// <summary>The test failed: decoding uses the processor and the live view shows <see cref="GpuDecodingStatus.Problem"/>.</summary>
+    /// <summary>The test failed: decoding uses the processor without a warning; Settings shows <see cref="GpuDecodingStatus.Problem"/>.</summary>
     Unavailable,
 
     /// <summary>Turned off in Settings: the processor decodes, no warning.</summary>
@@ -33,7 +33,7 @@ public enum GpuDecodingState
 /// <summary>The result of the GPU decoding test.</summary>
 /// <param name="Device">FFmpeg device type that worked ("d3d11va", "vaapi", "videotoolbox", "cuda").</param>
 /// <param name="Codecs">The codecs the graphics card decoded in the test.</param>
-/// <param name="Problem">What the user can do when it does not work (orange warning in the live view).</param>
+/// <param name="Problem">What the user can do when it does not work (the hint in Settings, the log).</param>
 public sealed record GpuDecodingStatus(GpuDecodingState State, string? Device, IReadOnlySet<VideoCodec> Codecs, string? Problem)
 {
     public static GpuDecodingStatus NotChecked { get; } = new(GpuDecodingState.NotChecked, null, new HashSet<VideoCodec>(), null);
@@ -43,12 +43,12 @@ public sealed record GpuDecodingStatus(GpuDecodingState State, string? Device, I
     /// <summary>The graphics card decodes <paramref name="codec"/>.</summary>
     public bool Decodes(VideoCodec codec) => State == GpuDecodingState.Available && Device is not null && Codecs.Contains(codec);
 
-    /// <summary>The warning for a stream of <paramref name="codec"/> on the processor although GPU decoding is on; null otherwise.</summary>
+    /// <summary>Why a stream of <paramref name="codec"/> runs on the processor although GPU decoding is on (log only); null otherwise.</summary>
     public string? WarningFor(VideoCodec codec) => State switch
     {
         GpuDecodingState.Unavailable => Problem,
         GpuDecodingState.Available when !Codecs.Contains(codec) => string.Create(CultureInfo.InvariantCulture,
-            $"The graphics card cannot decode {(codec == VideoCodec.H265 ? "H.265" : "H.264")}; the processor decodes it. {GpuDecodingTexts.TurnOff}"),
+            $"The graphics card cannot decode {(codec == VideoCodec.H265 ? "H.265" : "H.264")}; the processor decodes it."),
         _ => null,
     };
 }
@@ -56,10 +56,6 @@ public sealed record GpuDecodingStatus(GpuDecodingState State, string? Device, I
 /// <summary>The user texts of GPU decoding (one phrase per concept).</summary>
 public static class GpuDecodingTexts
 {
-    public const string TurnOff = "To hide this, turn off \"Decode video on the graphics card\" in Settings.";
-
-    public const string ChipText = "GPU decoding not available";
-
     public const string LinuxDriver = "Install the video driver of the graphics card (Intel: intel-media-va-driver, AMD: mesa-va-drivers, "
         + "NVIDIA: the NVIDIA driver) or turn off \"Decode video on the graphics card\" in Settings.";
 

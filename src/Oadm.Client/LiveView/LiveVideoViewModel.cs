@@ -190,16 +190,6 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     /// <summary>The details card shows: the setting is on and a picture is there.</summary>
     public bool ShowDetails => Settings.ShowDetails && Image is not null && Details != VideoDetails.None;
 
-    /// <summary>
-    /// Why the graphics card does not decode the stream although "Decode video on the graphics card" is on, and what to do
-    /// (the small orange icon over the picture); empty otherwise.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasDecodingWarning))]
-    public partial string DecodingWarning { get; private set; } = "";
-
-    public bool HasDecodingWarning => DecodingWarning.Length > 0;
-
     /// <summary>Channels of the device (view areas, sensors, encoder inputs).</summary>
     public ObservableCollection<LiveViewSourceOption> Sources { get; } = [];
 
@@ -284,7 +274,6 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         IsControlsOpen = false;
         Optics.Clear();
         Ptz.Clear();
-        DecodingWarning = "";
         SwapImage(null);
         SetState(LiveViewState.Closed, "");
     }
@@ -638,6 +627,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         {
             IVideoDecoder? decoder = null;
             var decoderCodec = VideoCodec.Unspecified;
+            string? shownProblem = null;
             try
             {
                 await foreach (var frame in _api.WatchLiveViewAsync(session.Request, ct).ConfigureAwait(false))
@@ -648,13 +638,20 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
                         decoder?.Dispose();
                         decoder = _decoders.Create(frame.Codec);
                         decoderCodec = frame.Codec;
+                        shownProblem = decoder.GpuProblem; // the start test's result, logged by GpuDecodingService
                     }
 
                     var image = decoder.Decode(frame);
                     if (image is not null)
                     {
                         attempt = 0;
-                        var picture = new Picture(image, frame.Codec, frame.Camera, decoder.UsesGpu, decoder.GpuProblem ?? "");
+                        if (decoder.GpuProblem is { } problem && problem != shownProblem)
+                        {
+                            shownProblem = problem; // the graphics card failed on this stream: logged once, the processor decodes
+                            LogStreamProblem(_logger, problem);
+                        }
+
+                        var picture = new Picture(image, frame.Codec, frame.Camera, decoder.UsesGpu);
                         _ui.Post(() => OnPicture(session, picture));
                     }
                 }
@@ -730,7 +727,6 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
             MarkSelected();
         }
 
-        DecodingWarning = picture.GpuProblem;
         SwapImage(picture.Image);
         UpdateDetails(session, picture);
         SetState(LiveViewState.Live, "");
@@ -759,7 +755,6 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
         {
             CancelSessions();
             SwapImage(null);
-            DecodingWarning = "";
             SetState(LiveViewState.Error, reason);
             return false;
         }
@@ -1024,7 +1019,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     /// <summary>What a stream asks the server for.</summary>
     internal readonly record struct StreamTarget(int Camera, int Width, int Height, int Fps);
 
-    private sealed record Picture(LiveImage Image, VideoCodec Codec, int Camera, bool UsesGpu, string GpuProblem);
+    private sealed record Picture(LiveImage Image, VideoCodec Codec, int Camera, bool UsesGpu);
 
     /// <summary>One stream from the server: shown (active) or waiting for its first picture (pending).</summary>
     private sealed class Session(int id, LiveViewRequest request, StreamTarget target)

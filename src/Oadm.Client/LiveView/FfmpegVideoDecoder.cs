@@ -89,7 +89,7 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
         if (hwDevice is not null && !Open(hwDevice))
         {
             Close();
-            _fallbackProblem ??= $"The graphics card cannot decode this stream; the processor decodes it. {GpuDecodingTexts.TurnOff}";
+            _fallbackProblem ??= "The graphics card cannot decode this stream; the processor decodes it.";
         }
 
         if (_context == null && !Open(null))
@@ -115,7 +115,7 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
     /// <summary>True while the last picture came from the graphics card.</summary>
     public bool UsesGpu { get; private set; }
 
-    /// <summary>Why this stream is not decoded on the graphics card although it should be (the live view's warning); null otherwise.</summary>
+    /// <summary>Why this stream is not decoded on the graphics card although it should be (logged once); null otherwise.</summary>
     public string? GpuProblem
     {
         get => _fallbackProblem ?? _initialProblem;
@@ -339,7 +339,7 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
             return false;
         }
 
-        _fallbackProblem = $"The graphics card failed on this stream ({reason}); the processor decodes it. {GpuDecodingTexts.TurnOff}";
+        _fallbackProblem = $"The graphics card failed on this stream ({reason}); the processor decodes it.";
         Close();
         UsesGpu = false;
         return Open(null);
@@ -362,7 +362,7 @@ public sealed unsafe class FfmpegVideoDecoder : IVideoDecoder
         // The card does not take this stream (size, profile): FFmpeg decodes it on the processor, which the warning says.
         _hwRefused = true;
         UsesGpu = false;
-        _fallbackProblem ??= $"The graphics card cannot decode this stream; the processor decodes it. {GpuDecodingTexts.TurnOff}";
+        _fallbackProblem ??= "The graphics card cannot decode this stream; the processor decodes it.";
         return last;
     }
 
