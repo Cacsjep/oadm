@@ -69,7 +69,7 @@ public sealed class DuplicateCacheTests
     [Fact]
     public void AtMostTheCapacityTheOldestAnsweredGoFirst()
     {
-        // docs/spec "Duplicates": 20,000 answers (twice the open sessions allowed), so the cache keeps up with 30,000 devices.
+        // docs/spec "Duplicates": 20,000 answers (twice the open sessions allowed), so the cache keeps up with every open session.
         Assert.Equal(20_000, new RadiusDuplicateCache(new FakeTimeProvider()).Capacity);
         var cache = new RadiusDuplicateCache(new FakeTimeProvider(), capacity: 100);
         for (var i = 0; i < 110; i++)

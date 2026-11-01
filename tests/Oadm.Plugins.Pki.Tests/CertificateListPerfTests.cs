@@ -11,17 +11,17 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// The Certificates card at 30,000 devices with two certificates each, plus certificates created here: the first page, a
+/// The Certificates card at the device limit with two certificates each, plus certificates created here: the first page, a
 /// deep page, the search over every column and each filter are one pass on the server. Budgets about ten times the
 /// measured times; the times go to the test output.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class CertificateListPerfTests(ITestOutputHelper output)
 {
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
 
     [Fact]
-    public async Task Thirty_thousand_devices_with_two_certificates_each_page_search_and_filter_fast()
+    public async Task A_hundred_thousand_devices_with_two_certificates_each_page_search_and_filter_fast()
     {
         var now = DateTime.UtcNow;
         var records = new MemoryPluginRecords();
@@ -66,16 +66,17 @@ public sealed class CertificateListPerfTests(ITestOutputHelper output)
 
         await TimedAsync(new CertificatesRequest()); // warm up
         var first = await TimedAsync(new CertificatesRequest());
-        var deep = await TimedAsync(new CertificatesRequest { Offset = 59_500 });
+        const int Deep = (Devices * 2) - 500;
+        var deep = await TimedAsync(new CertificatesRequest { Offset = Deep });
         var search = await TimedAsync(new CertificatesRequest { Search = "10.0.117.3" });
         var searchUse = await TimedAsync(new CertificatesRequest { Search = "IEEE 802.1X" });
         var soon = await TimedAsync(new CertificatesRequest { State = IssuedCertificateState.ExpiresSoon });
         var issuer = await TimedAsync(new CertificatesRequest { IssuedBy = PkiService.OtherIssuerId });
         var byIssuer = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.Issuer });
-        var byIssuerDeep = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.Issuer, Offset = 59_500 });
+        var byIssuerDeep = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.Issuer, Offset = Deep });
         var noGroups = await TimedAsync(new CertificatesRequest { GroupBy = IssuedCertificateGrouping.None });
-        output.WriteLine($"first page {first.Ms} ms, offset 59,500 {deep.Ms} ms, search address {search.Ms} ms, search use {searchUse.Ms} ms, state filter {soon.Ms} ms, issuer filter {issuer.Ms} ms, "
-            + $"by issuer {byIssuer.Ms} ms, by issuer offset 59,500 {byIssuerDeep.Ms} ms, no groups {noGroups.Ms} ms");
+        output.WriteLine($"{Devices:N0} devices: first page {first.Ms} ms, offset {Deep:N0} {deep.Ms} ms, search address {search.Ms} ms, search use {searchUse.Ms} ms, state filter {soon.Ms} ms, issuer filter {issuer.Ms} ms, "
+            + $"by issuer {byIssuer.Ms} ms, by issuer offset {Deep:N0} {byIssuerDeep.Ms} ms, no groups {noGroups.Ms} ms");
 
         // The page's list: one grouped page of 500 rows with badges, second lines and group headers.
         var ctx = new PluginPageContext(pki.Plugin, pki.Hub);
@@ -87,7 +88,7 @@ public sealed class CertificateListPerfTests(ITestOutputHelper output)
         output.WriteLine($"page list: first grouped page with badges {client} ms");
         Assert.Equal(500, list.Rows.Count);
         Assert.True(badges > 0);
-        Assert.Contains(list.GroupTitles, t => t.StartsWith("Device certificates · 60,000", StringComparison.Ordinal));
+        Assert.Contains(list.GroupTitles, t => t.StartsWith($"Device certificates · {Devices * 2:N0}", StringComparison.Ordinal));
         Assert.True(client < 1000, $"page list: {client} ms (budget 1,000 ms)");
 
         Assert.Equal(first.Reply.Total, first.Reply.Groups.Sum(g => g.Count));
@@ -99,7 +100,7 @@ public sealed class CertificateListPerfTests(ITestOutputHelper output)
 
         Assert.True(first.Reply.Total > Devices * 2 + 50);
         Assert.Equal(500, first.Reply.Rows.Count);
-        Assert.Equal(59_500, deep.Reply.Offset);
+        Assert.Equal(Deep, deep.Reply.Offset);
         Assert.Contains(search.Reply.Rows, r => r.Device == "10.0.117.3");
         Assert.Equal(Devices + 1, searchUse.Reply.Total); // and the OADM CA by its Used by ("Issuing: HTTPS, IEEE 802.1X, ...")
         Assert.Equal(Devices / 100 * 2, soon.Reply.Total);

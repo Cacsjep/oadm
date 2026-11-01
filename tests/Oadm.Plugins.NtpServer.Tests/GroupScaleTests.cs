@@ -24,7 +24,7 @@ namespace Oadm.Plugins.NtpServer.Tests;
 /// </summary>
 public sealed class GroupScaleTests(ITestOutputHelper output)
 {
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
     private const int Groups = 5;
 
     [Fact]
@@ -32,10 +32,10 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Publish_rounds_for_group_pages_at_30000_devices_are_fast()
+    public async Task Publish_rounds_for_group_pages_at_100000_devices_are_fast()
     {
         var elapsed = await PublishRoundsAsync(rounds: 100);
-        output.WriteLine($"100 publish rounds for {Groups} groups at 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"100 publish rounds for {Groups} groups at {Devices:N0} devices: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"100 rounds took {elapsed.TotalMilliseconds:0} ms");
     }
 
@@ -170,7 +170,7 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
         return watch.Elapsed;
     }
 
-    /// <summary>30,000 devices in 5 groups (device i in group i % 5).</summary>
+    /// <summary>The most devices in 5 groups (device i in group i % 5).</summary>
     private static (List<IDeviceInfo> Devices, CountingDeviceScopes Scopes, List<string> Keys, List<List<Guid>> Members) Setup()
     {
         var devices = Enumerable.Range(0, Devices)

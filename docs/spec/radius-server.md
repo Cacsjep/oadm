@@ -157,7 +157,7 @@ certificate"); the OADM-sent form of a certificate alert says "Client certificat
 - **Duplicates:** a retransmission (same switch, port, identifier, authenticator) gets the cached answer, never a second step
   (RFC 5080 2.2.2). At most 20,000 cached answers (twice the open sessions allowed) and 32 MB, 30 s each, the oldest
   answered ones go first and a request still in work is never evicted. The final answer of every ended session
-  (Access-Accept or Access-Reject) is kept apart for 30 s by switch and State (at most 65,536), so the retransmission of the
+  (Access-Accept or Access-Reject) is kept apart for 30 s by switch and State (at most 131,072), so the retransmission of the
   last request gets it again even after the busy cache dropped it (no "Session not found" Reject for a camera that passed).
 - **EAP-TLS** (RFC 5216, TLS 1.2; RFC 9190, TLS 1.3 with the one-byte commitment message, no resumption, no tickets). TLS
   1.2 and 1.3 by default; TLS 1.0 and 1.1 only when the 802.1X server policy lowers the minimum (RFC 8996 deprecates them;
@@ -283,7 +283,7 @@ accepts can neither authenticate nor renew. Deleting is PKI's Certificates tab; 
 
 ## Limits and load
 
-- 30,000 devices may authenticate after a power cut: TLS handshakes run with bounded parallelism (64 at a time, the rest
+- 100,000 devices may authenticate after a power cut: TLS handshakes run with bounded parallelism (64 at a time, the rest
   wait in a queue; the switch retransmits and gets the cached or next answer), the session table and the log are O(1) per
   change, pushes to the page go through one batched event per 500 ms.
 - Per switch at most 1,000 open sessions, per switch port at most 8 (a new one on a full port ends the oldest there, "Too
@@ -338,7 +338,7 @@ records, `docs/spec/settings-backup.md`).
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
 - Switches added, changed and removed while sessions run; the 802.1X server policy: minimum version 1.3 refuses a 1.2 client
   with the alert text, an old CBC suite is offered only with minimum 1.0 or 1.1.
-- Perf (`Category=Perf`): 30,000 authentications, the session table and the log at their limits.
+- Perf (`Category=Perf`): 100,000 authentications, the session table and the log at their limits.
 - Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with a certificate of a CA of PKI on a real switch.
 
 ## Code (protocol)
@@ -527,7 +527,7 @@ camelCase with enums as camelCase strings; linked into the client part).
   handshake, loopback and a new address within 5 s, intermediates: only CAs OADM issues with in between),
   `DroppedRequestTests`, `AllowCaTests`, `PolicyTests`, `ConversionTests` (fixtures of every stored format in
   `Fixtures/Conversion`), `PluginTests` (manifest, the canary over every method, rows of a group user), `PluginPerfTests`
-  (Category=Perf: 30,000 authentications through the plugin, the log at 50,000 kept). Support: `Support/PluginHarness.cs`
+  (Category=Perf: 100,000 authentications through the plugin, the log at 50,000 kept). Support: `Support/PluginHarness.cs`
   (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
 - **Not built yet:** recorded conversations of real switches (no hardware here; the protocol tests replay the RFC examples),
   accounting.

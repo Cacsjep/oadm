@@ -93,7 +93,9 @@ public partial class DevicesView : UserControl
     /// the same rows again in the grid's current rows and hands the result to the view model. Every row selected is told
     /// by the count alone: in a grouped view the grid finds each selected row by walking its group from the start.
     /// </summary>
-    private TakenSelection TakeSelectionOff()
+    /// <param name="exact">The rows themselves even when every row is selected: the rows change before the selection goes
+    /// back (a search), so "every row" would select rows that were not selected.</param>
+    private TakenSelection TakeSelectionOff(bool exact = false)
     {
         int rows = DeviceGrid.ItemsSource switch
         {
@@ -101,7 +103,7 @@ public partial class DevicesView : UserControl
             System.Collections.ICollection list => list.Count,
             _ => int.MaxValue,
         };
-        bool all = DeviceGrid.SelectedItems.Count >= rows;
+        bool all = !exact && DeviceGrid.SelectedItems.Count >= rows;
         var keep = all ? null : DeviceGrid.SelectedItems.Cast<object>().ToHashSet();
         var paused = GridSelection.Pause(DeviceGrid);
         DeviceGrid.SelectedItems.Clear();
@@ -109,10 +111,11 @@ public partial class DevicesView : UserControl
     }
 
     /// <summary>
-    /// A selection taken off the grid (<paramref name="keep"/> null: every row). Putting it back: every row in one step;
-    /// otherwise row by row (the grid looks up each row it adds in the whole list), in the plain grid from the smaller side
-    /// (in a grouped view removing a row makes the grid walk the whole selection). Across a switch of group by tag the
-    /// devices stay selected: every tag row of a selected device, every device of a selected tag row.
+    /// A selection taken off the grid (<paramref name="keep"/> null: every row). Putting it back: every row in one step; in
+    /// the plain grid each run of rows in one step (<see cref="GridRangeSelect"/>); otherwise row by row (the grid looks up
+    /// each row it adds in the whole list), from the smaller side (in a grouped view removing a row makes the grid walk the
+    /// whole selection). Across a switch of group by tag the devices stay selected: every tag row of a selected device,
+    /// every device of a selected tag row.
     /// </summary>
     private sealed class TakenSelection(DataGrid grid, HashSet<object>? keep, IDisposable paused)
     {
@@ -132,6 +135,11 @@ public partial class DevicesView : UserControl
             List<object> selected = [];
             try
             {
+                if (grid.SelectedItems.Count > 0)
+                {
+                    grid.SelectedItems.Clear(); // new rows without a selection: the grid selected its first row by itself
+                }
+
                 if (keep is null)
                 {
                     grid.SelectAll();
@@ -144,6 +152,10 @@ public partial class DevicesView : UserControl
                 if (selected.Count == current.Count && current.Count > 0)
                 {
                     grid.SelectAll();
+                }
+                else if (selected.Count == 0 || GridRangeSelect.TrySelect(grid, Kept))
+                {
+                    // nothing to select, or the plain grid took the runs of rows in one step
                 }
                 else if (selected.Count * 2 > current.Count && grid.ItemsSource is not DataGridCollectionView)
                 {
@@ -219,6 +231,28 @@ public partial class DevicesView : UserControl
     }
 
     /// <summary>
+    /// The plain grid's rows were replaced (a search, a device list change) while many rows are selected: the grid looks up
+    /// every selected row in the whole new list (quadratic: with 100,000 selected and sorted rows a search took 14 s and
+    /// clearing it 19 s). This handler runs before the grid's: the selection comes off now and the rows still shown go back
+    /// right after the grid took the new rows (in one step, <see cref="GridRangeSelect"/>): about 0.2 s.
+    /// </summary>
+    private void OnFilteredRowsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Reset
+            || _viewModel is not { GroupByTag: false } vm
+            || !ReferenceEquals(DeviceGrid.ItemsSource, vm.FilteredDevices)
+            || DeviceGrid.SelectedItems.Count < LargeSelection
+            || TopLevel.GetTopLevel(this) is not WindowBase { IsVisible: true })
+        {
+            return;
+        }
+
+        // The grid's rows are still the old ones here (its view keeps its own copy until its handler runs).
+        var selection = TakeSelectionOff(exact: true);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => selection.PutBack(GridRows), Avalonia.Threading.DispatcherPriority.Send);
+    }
+
+    /// <summary>
     /// A new items source. With a large selection it comes off first and goes back after with the ring: the grid would
     /// look up every selected row in the whole new view. <paramref name="onlyLargeSelection"/>: nothing to do otherwise.
     /// </summary>
@@ -252,6 +286,7 @@ public partial class DevicesView : UserControl
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.TagGrouping.Rows.CollectionChanged -= OnGroupRowsChanged;
+            _viewModel.FilteredDevices.CollectionChanged -= OnFilteredRowsChanged;
             _viewModel.Compliance.ChecksChanged -= OnComplianceChecksChanged;
             _viewModel = null;
         }
@@ -261,6 +296,7 @@ public partial class DevicesView : UserControl
             _viewModel = vm;
             vm.PropertyChanged += OnViewModelPropertyChanged;
             vm.TagGrouping.Rows.CollectionChanged += OnGroupRowsChanged; // before any collection view of the rows
+            vm.FilteredDevices.CollectionChanged += OnFilteredRowsChanged; // before the grid's view of the rows
             ApplyItemsSource();
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext, TrailingToolbarPanel);
             EmptyAddButton.Flyout = Toolbar.AddToolbarPlugin.CreateMenu(vm.ToolbarContext);

@@ -105,9 +105,9 @@ public sealed class ClockTests
     }
 
     [Fact]
-    public async Task A_dialog_reads_no_more_than_the_first_hundred_of_30000_cameras()
+    public async Task A_dialog_reads_no_more_than_the_first_hundred_of_100000_cameras()
     {
-        var ids = Enumerable.Range(0, 30_000).Select(_ => Guid.NewGuid()).ToList();
+        var ids = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(_ => Guid.NewGuid()).ToList();
         var asked = new System.Collections.Concurrent.ConcurrentBag<Guid>();
         var server = new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
         Task<string?> Query(Guid id, CancellationToken ct)

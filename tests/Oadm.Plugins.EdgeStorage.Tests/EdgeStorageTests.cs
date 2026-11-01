@@ -374,7 +374,7 @@ public sealed class PluginTests(ITestOutputHelper output)
         plugin.Sweep.Publish();
         output.WriteLine($"{devices.Items.Count:N0} cameras read in {watch.ElapsedMilliseconds} ms");
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, plugin.Sweep.Count(r => r.State == CardStates.Ok));
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(200), $"the sweep took {watch.ElapsedMilliseconds} ms (measured 20,600 ms at 100,000 cameras)");
         Assert.Equal(DeviceLimits.MaxDevices / EdgeStorageInfo.MaxRowsPerEvent, events.Published.Count(e => e.Topic == EdgeStorageMethods.RowsTopic));
     }
 }

@@ -422,10 +422,10 @@ public sealed class LiveViewTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void The_camera_tree_of_5000_devices_builds_and_searches_fast()
+    public void The_camera_tree_of_100000_devices_builds_and_searches_fast()
     {
         using var host = new PluginHost();
-        var devices = Enumerable.Range(0, 5000).Select(i => (IDeviceInfo)new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", i % 3 == 0 ? ["Building A"] : [])
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", i % 3 == 0 ? ["Building A"] : [])
         { Category = i % 10 == 0 ? DeviceCategory.IoModule : DeviceCategory.Camera }).ToList();
         var ctx = new TestContext(host, devices);
         var watch = Stopwatch.StartNew();
@@ -435,7 +435,7 @@ public sealed class LiveViewTests(ITestOutputHelper output)
         vm.SearchText = "10.0.1";
         vm.SearchText = string.Empty;
         output.WriteLine($"build {build} ms, search + clear {watch.ElapsedMilliseconds} ms, {vm.Tree.Rows.Count} rows");
-        Assert.Equal(4500, vm.Tree.DeviceRows.Select(r => r.Device.Id).Distinct().Count());
+        Assert.Equal(devices.Count - (devices.Count / 10), vm.Tree.DeviceRows.Select(r => r.Device.Id).Distinct().Count());
         Assert.InRange(build, 0, 2000);
     }
 

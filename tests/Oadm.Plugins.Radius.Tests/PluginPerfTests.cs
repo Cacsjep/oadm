@@ -10,17 +10,17 @@ namespace Oadm.Plugins.Radius.Tests;
 
 /// <summary>
 /// Scale through the plugin (docs/spec/radius-server.md "Limits and load"): 1,000 cameras each run a full EAP-TLS
-/// conversation through the UDP listener and the 64 workers, checked against 30,000 managed devices, with the log at 50,000
-/// entries kept. Decision 2026-10-24: 1,000 instead of all 30,000 (that took 8 min at 16 ms per camera, half of it the test
+/// conversation through the UDP listener and the 64 workers, checked against the most managed devices (DeviceLimits.MaxDevices), with the log at
+/// 50,000 entries kept. Decision 2026-10-24: 1,000 instead of all of them (30,000 took 8 min at 16 ms per camera, half of it the test
 /// camera's own TLS); the time per camera does not grow with the count. Budget about 10x the measured time.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class PluginPerfTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task AThousandCamerasAuthenticateThroughThePluginAmongThirtyThousandDevices()
+    public async Task AThousandCamerasAuthenticateThroughThePluginAmongAHundredThousandDevices()
     {
-        const int Devices = 30_000;
+        const int Devices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
         const int Count = 1_000;
         await using var harness = await PluginHarness.CreateAsync(start: false);
         var serials = Enumerable.Range(0, Devices).Select(i => "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture)).ToList();
@@ -77,7 +77,7 @@ public sealed class PluginPerfTests(ITestOutputHelper output)
         var page = await harness.CallAsync<LogPage>(RadiusMethods.ListLog, new LogQuery("ACCC8E0001"));
         var search = watch.Elapsed;
 
-        output.WriteLine($"{Count} authentications among {Devices} devices through the plugin (64 at a time): {handshakes.TotalMilliseconds:F0} ms, {handshakes.TotalMilliseconds / Count:F2} ms each");
+        output.WriteLine($"{Count} authentications among {Devices:N0} devices through the plugin (64 at a time): {handshakes.TotalMilliseconds:F0} ms, {handshakes.TotalMilliseconds / Count:F2} ms each");
         output.WriteLine($"Sessions tab and log of {Count} ended sessions: {drained.TotalMilliseconds:F0} ms; search over the log: {search.TotalMilliseconds:F0} ms");
         Assert.Equal(Count, accepted);
         Assert.Equal(Count, harness.Service.Log.Count);

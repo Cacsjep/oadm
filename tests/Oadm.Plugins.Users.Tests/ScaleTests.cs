@@ -8,17 +8,17 @@ using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Users.Tests;
 
-/// <summary>HARD RULE "scale to thousands of devices": the Users dialog and CanRun with 30,000 devices.</summary>
+/// <summary>HARD RULE "scale to thousands of devices": the Users dialog and CanRun with the most devices (DeviceLimits.MaxDevices).</summary>
 public sealed class ScaleTests
 {
     private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
-    public async Task Users_dialog_with_30000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
+    public async Task Users_dialog_with_100000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Users_dialog_with_30000_devices_opens_fast()
+    public async Task Users_dialog_with_100000_devices_opens_fast()
     {
         var elapsed = await OpenWithTheMostDevicesAsync();
         Assert.True(elapsed < TimeSpan.FromSeconds(1), $"Opening took {elapsed.TotalMilliseconds:0} ms");
@@ -27,7 +27,7 @@ public sealed class ScaleTests
     private static async Task<TimeSpan> OpenWithTheMostDevicesAsync()
     {
         var apis = Fixtures.P3265ApiList();
-        var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new ScaleDevice($"10.0.{i / 256}.{i % 256}", DeviceStatus.Ok, apis)).ToList();
+        var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new ScaleDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", DeviceStatus.Ok, apis)).ToList();
         var ctx = new CountingContext();
 
         var watch = Stopwatch.StartNew();
@@ -45,7 +45,7 @@ public sealed class ScaleTests
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_30000_devices_is_cheap()
+    public void CanRun_over_100000_devices_is_cheap()
     {
         var apis = Fixtures.P3265ApiList();
         var devices = Enumerable.Range(0, Count).Select(i => new ScaleDevice("10.0.0.48", i % 10 == 0 ? DeviceStatus.Unreachable : DeviceStatus.Ok, apis)).ToList();
@@ -60,7 +60,7 @@ public sealed class ScaleTests
 
         watch.Stop();
         Assert.Equal(10 * (Count - (Count / 10)), runnable);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"{10 * Count:N0} CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Like <see cref="FakeDevice"/> without parsing the API list fixture per device.</summary>

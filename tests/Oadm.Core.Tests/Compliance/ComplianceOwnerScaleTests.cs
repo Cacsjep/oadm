@@ -18,6 +18,7 @@ namespace Oadm.Core.Tests.Compliance;
 /// 10 of all devices. The group's checks cover only its devices, the group user's list is filtered fast, and a change of
 /// the group's rules moves every result of its checks.
 /// </summary>
+[Collection(Perf.PerfScale.OneAtATime)]
 public sealed class ComplianceOwnerScaleTests(ITestOutputHelper output)
 {
     [Fact]
@@ -25,24 +26,17 @@ public sealed class ComplianceOwnerScaleTests(ITestOutputHelper output)
     public async Task HundredThousandDevicesAndChecksOfAGroup()
     {
         await using var rig = await ComplianceRig.StartAsync(enabled: false);
-        var odds = new HashSet<Guid>();
-        for (var i = 0; i < DeviceLimits.MaxDevices; i++)
+        var devices = await rig.SeedDevicesAsync(Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new Device
         {
-            var added = await rig.Devices.AddAsync(new Device
-            {
-                Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
-                Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
-                Model = "P3265-V",
-                FirmwareVersion = "10.12.1",
-                Status = DeviceStatus.Ok,
-                Category = DeviceCategory.Camera,
-                Tags = [i % 2 == 0 ? "Even" : "Odd"],
-            }, CancellationToken.None);
-            if (i % 2 == 1)
-            {
-                odds.Add(added.Id);
-            }
-        }
+            Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
+            Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
+            Model = "P3265-V",
+            FirmwareVersion = "10.12.1",
+            Status = DeviceStatus.Ok,
+            Category = DeviceCategory.Camera,
+            Tags = [i % 2 == 0 ? "Even" : "Odd"],
+        }));
+        var odds = devices.Where((_, i) => i % 2 == 1).Select(d => d.Id).ToHashSet();
 
         var even = (await rig.Tags.CreateAsync("Even", TagColor.None, CancellationToken.None)).Id;
         var odd = (await rig.Tags.CreateAsync("Odd", TagColor.None, CancellationToken.None)).Id;
@@ -85,15 +79,33 @@ public sealed class ComplianceOwnerScaleTests(ITestOutputHelper output)
             Assert.True(filtering < TimeSpan.FromSeconds(5), $"filtering took {filtering}");
         }
 
-        // The group's rules change to the other half: every result of its checks moves.
+        // The group's rules change to the other half: every result of its checks moves. The results of the first check
+        // follow one subscription (a new snapshot of every result on each try would hold the engine's lock again and again).
+        var first = mine[0];
+        using var moving = rig.Engine.Watch();
+        var current = moving.Snapshot.Where(r => r.CheckId == first).ToDictionary(r => r.DeviceId);
         watch.Restart();
         await rig.Groups.SaveAsync(group.Id, "Even", "", new DeviceGroupRules(false, [], [odd], [], []), 0, CancellationToken.None);
         await Eventually.TrueAsync(() =>
         {
-            using var now = rig.Engine.Watch();
-            var first = mine[0];
-            var results = now.Snapshot.Where(r => r.CheckId == first).ToList();
-            return results.Count == DeviceLimits.MaxDevices / 2 && results.All(r => odds.Contains(r.DeviceId));
+            while (moving.Changes.TryRead(out var change))
+            {
+                if (change.CheckId != first)
+                {
+                    continue;
+                }
+
+                if (change.Removed)
+                {
+                    current.Remove(change.DeviceId);
+                }
+                else
+                {
+                    current[change.DeviceId] = change;
+                }
+            }
+
+            return current.Count == DeviceLimits.MaxDevices / 2 && odds.All(current.ContainsKey);
         }, "the results follow the group", TimeSpan.FromMinutes(5));
         var moved = watch.Elapsed;
 

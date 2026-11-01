@@ -120,7 +120,31 @@ internal sealed class FakeDevices : IDeviceRepository
 
     public Task<IReadOnlyList<IDeviceInfo>> ListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<IDeviceInfo>>([.. Items]);
 
-    public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.FirstOrDefault(d => d.Id == id));
+    /// <summary>
+    /// By id in O(1) like the host's device cache (the tests only add devices: the index follows the count). A search per
+    /// call made the search of 100,000 cameras take 70 s.
+    /// </summary>
+    public Task<IDeviceInfo?> FindAsync(Guid id, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (_indexed != Items.Count)
+            {
+                for (var i = _indexed; i < Items.Count; i++)
+                {
+                    _byId.TryAdd(Items[i].Id, Items[i]);
+                }
+
+                _indexed = Items.Count;
+            }
+
+            return Task.FromResult(_byId.GetValueOrDefault(id));
+        }
+    }
+
+    private readonly Lock _gate = new();
+    private readonly Dictionary<Guid, IDeviceInfo> _byId = [];
+    private int _indexed;
 }
 
 /// <summary>One recording of a <see cref="FakeCamera"/>: stop null while it records.</summary>

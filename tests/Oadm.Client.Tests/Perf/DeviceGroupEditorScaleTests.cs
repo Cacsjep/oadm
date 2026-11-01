@@ -5,12 +5,12 @@ using Xunit.Abstractions;
 
 namespace Oadm.Client.Tests.Perf;
 
-/// <summary>The device group editor (the shared device picker in its group mode) with 30,000 devices: open, search, choose, count.</summary>
+/// <summary>The device group editor (the shared device picker in its group mode) with 100,000 devices (the device limit): open, search, choose, count.</summary>
 [Trait("Category", "Perf")]
 public sealed class DeviceGroupEditorScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public void The_editor_stays_fast_with_30000_devices()
+    public void The_editor_stays_fast_with_100000_devices()
     {
         var sites = Enumerable.Range(0, 100).Select(i => new DevicePickerSite(Guid.NewGuid(), $"Site {i:D3}")).ToList();
         string[] tags = [.. Enumerable.Range(0, 500).Select(i => $"Tag {i:D3}")];
@@ -34,13 +34,13 @@ public sealed class DeviceGroupEditorScaleTests(ITestOutputHelper output)
             Sites = [new DevicePickerSite(null, "This server"), .. sites],
             Tags = [.. tags.Select((t, i) => new DevicePickerTag($"tag-{i}", t))],
         };
-        var initial = new DeviceGroupChoice(false, [sites[1].Id!.Value], ["tag-3"], [.. devices.Take(5_000).Select(d => d.Serial)], [.. devices.Skip(29_000).Select(d => d.Serial)]);
+        var initial = new DeviceGroupChoice(false, [sites[1].Id!.Value], ["tag-3"], [.. devices.Take(5_000).Select(d => d.Serial)], [.. devices.Skip(ClientScale.Devices - 1_000).Select(d => d.Serial)]);
         DevicePickerViewModel picker = null!;
-        TimeSpan budget = TimeSpan.FromSeconds(2);
+        TimeSpan budget = TimeSpan.FromSeconds(10); // measured 0.7 to 1.3 s at 100,000 devices
         ClientScale.Measure(output, "Editor opens with a group (5,000 single devices, 1,000 excepted)", budget, () =>
             picker = new DevicePickerViewModel(devices, initial, options));
         ClientScale.Measure(output, "Search (one keystroke)", TimeSpan.FromMilliseconds(500), () => picker.SearchText = "Site 042");
-        Assert.Equal(300, picker.Visible.Count);
+        Assert.Equal(ClientScale.Devices / 100, picker.Visible.Count);
         ClientScale.Measure(output, "Select all of the search", TimeSpan.FromMilliseconds(500), () => picker.SelectAllCommand.Execute(null));
         ClientScale.Measure(output, "Search cleared", TimeSpan.FromMilliseconds(500), () => picker.SearchText = "");
         ClientScale.Measure(output, "Choose a site", TimeSpan.FromMilliseconds(500), () => picker.Sites[0].IsChecked = true);
@@ -50,7 +50,7 @@ public sealed class DeviceGroupEditorScaleTests(ITestOutputHelper output)
         DeviceGroupChoice choice = null!;
         ClientScale.Measure(output, "The rules for Save", TimeSpan.FromMilliseconds(500), () => choice = picker.GroupChoice);
         Assert.True(choice.ThisServer);
-        Assert.True(picker.CoveredCount > 7_500); // every 4th device has no site
-        Assert.EndsWith("of 30,000 devices", picker.Summary, StringComparison.Ordinal);
+        Assert.True(picker.CoveredCount > ClientScale.Devices / 4); // every 4th device has no site
+        Assert.EndsWith("of 100,000 devices", picker.Summary, StringComparison.Ordinal);
     }
 }

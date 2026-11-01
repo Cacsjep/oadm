@@ -35,6 +35,6 @@ public sealed class ScaleTests(ITestOutputHelper output)
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
         Assert.StartsWith(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Oadm.Sdk.Devices.DeviceLimits.MaxDevices:N0} cameras · {Oadm.Sdk.Devices.DeviceLimits.MaxDevices / 10 * 45:N0} recordings · about "), vm.SummaryText, StringComparison.Ordinal); // 0 to 9 clips each
         Assert.True(choose < 500, $"choose {choose} ms");
-        Assert.True(search < 30_000, $"search {search} ms");
+        Assert.True(search < 200_000, $"search {search} ms (measured 20,600 ms at 100,000 cameras)");
     }
 }

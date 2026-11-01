@@ -12,9 +12,9 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Radius.Tests;
 
 /// <summary>
-/// Scale (docs/spec/radius-server.md "Limits and load": 30,000 devices after a power cut, the session table at 10,000):
+/// Scale (docs/spec/radius-server.md "Limits and load": the most devices after a power cut, the session table at 10,000):
 /// many full handshakes in parallel on one processor, the session table at its limit with the timeout sweep, the duplicate
-/// cache at capacity, 30,000 MAC addresses. Budgets about 10x the measured time; the times go to the test output.
+/// cache at capacity, a MAC address of each of the most devices (DeviceLimits.MaxDevices). Budgets about 10x the measured time; the times go to the test output.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class PerfTests(ITestOutputHelper output)
@@ -105,7 +105,7 @@ public sealed class PerfTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ThirtyThousandMacAddressesNormalizeQuickly()
+    public void AHundredThousandMacAddressesNormalizeQuickly()
     {
         var formats = new Func<int, string>[]
         {
@@ -115,7 +115,7 @@ public sealed class PerfTests(ITestOutputHelper output)
         };
         var watch = Stopwatch.StartNew();
         var valid = 0;
-        for (var i = 0; i < 30_000; i++)
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
         {
             if (MacAddress.Parse(formats[i % 3](i)).IsValid)
             {
@@ -124,8 +124,8 @@ public sealed class PerfTests(ITestOutputHelper output)
         }
 
         watch.Stop();
-        output.WriteLine($"30,000 MAC addresses: {watch.ElapsedMilliseconds} ms");
-        Assert.Equal(30_000, valid);
+        output.WriteLine($"{valid:N0} MAC addresses: {watch.ElapsedMilliseconds} ms");
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, valid);
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"{watch.ElapsedMilliseconds} ms");
     }
 }

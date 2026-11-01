@@ -86,7 +86,7 @@ public sealed class DevicePollingScaleTests(ITestOutputHelper output) : IAsyncLi
         using var polling = new DevicePollingService(Devices, factory, _db.Get<ServerSettingsStore>()) { MaxParallelism = 32 };
         using var subscription = _db.Get<IDeviceChangeFeed>().Subscribe();
 
-        await PerfScale.MeasureAsync(output, "PollAllAsync 100,000 devices, first round (model and firmware learned)", TimeSpan.FromSeconds(60), () =>
+        await PerfScale.MeasureAsync(output, "PollAllAsync 100,000 devices, first round (model and firmware learned, written one by one; measured about 65 s)", TimeSpan.FromSeconds(240), () =>
             polling.PollAllAsync(CancellationToken.None));
         Assert.Equal(PerfScale.Devices, Drain(subscription));
 

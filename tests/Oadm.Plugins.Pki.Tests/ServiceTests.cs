@@ -243,11 +243,11 @@ public sealed class ServiceTests
     }
 
     [Fact]
-    public void Issued_counts_for_30000_devices_are_one_pass() => CountTheMostDevices();
+    public void Issued_counts_for_100000_devices_are_one_pass() => CountTheMostDevices();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Issued_counts_for_30000_devices_are_fast()
+    public void Issued_counts_for_100000_devices_are_fast()
     {
         var elapsed = CountTheMostDevices();
         Assert.True(elapsed < TimeSpan.FromMilliseconds(500), $"took {elapsed.TotalMilliseconds:0} ms");
@@ -255,8 +255,9 @@ public sealed class ServiceTests
 
     private static TimeSpan CountTheMostDevices()
     {
+        const int Devices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
         var now = DateTime.UtcNow;
-        var issued = Enumerable.Range(0, 30_000).SelectMany(i => new[]
+        var issued = Enumerable.Range(0, Devices).SelectMany(i => new[]
         {
             new IssuedCertificate { SerialNumber = "a" + i, DeviceId = new Guid(i, 0, 0, new byte[8]), Purpose = CertificatePurpose.Https, CaId = i % 10 == 0 ? "OLD" : "NEW", IssuedUtc = now.AddDays(-1), NotAfterUtc = now.AddDays(i % 100 == 0 ? 5 : 300) },
             new IssuedCertificate { SerialNumber = "b" + i, DeviceId = new Guid(i, 0, 0, new byte[8]), Purpose = CertificatePurpose.Dot1x, CaId = "NEW", IssuedUtc = now.AddDays(-1), NotAfterUtc = now.AddDays(300) },
@@ -266,11 +267,11 @@ public sealed class ServiceTests
         var counts = IssuedCounts.From(issued, "NEW", now, 30);
         watch.Stop();
 
-        Assert.Equal(30_000, counts.Devices);
-        Assert.Equal(30_000, counts.WithCurrentCa);
-        Assert.Equal(3000, counts.WithPreviousCa);
-        Assert.Equal(300, counts.ExpiringSoon);
-        Assert.Equal(3000, counts.DevicesPerCa["OLD"]);
+        Assert.Equal(Devices, counts.Devices);
+        Assert.Equal(Devices, counts.WithCurrentCa);
+        Assert.Equal(Devices / 10, counts.WithPreviousCa);
+        Assert.Equal(Devices / 100, counts.ExpiringSoon);
+        Assert.Equal(Devices / 10, counts.DevicesPerCa["OLD"]);
         return watch.Elapsed;
     }
 }

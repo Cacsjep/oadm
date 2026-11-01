@@ -223,12 +223,12 @@ public sealed class DeviceImportFileTests
         Assert.True(watch.ElapsedMilliseconds < 5000, $"{DeviceImportFile.MaxLines:N0} lines took {watch.ElapsedMilliseconds} ms");
     }
 
-    /// <summary>As many lines as one server has devices, each with a long host name, login and tags: far below the size limit.</summary>
+    /// <summary>As many lines as one server has devices, each with a long host name, login and tags: below the size limit.</summary>
     private static string HundredThousandLines()
     {
         string text = "Address,User name,Password,Tags\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines)
             .Select(i => $"camera-{i}.{new string('s', 60)}.example.com,{new string('u', 64)},{new string('p', 100)}{i},Building {i % 50}; {new string('t', 64)}"));
-        Assert.True(Encoding.UTF8.GetByteCount(text) < DeviceImportFile.MaxBytes / 4);
+        Assert.True(Encoding.UTF8.GetByteCount(text) < DeviceImportFile.MaxBytes);
         return text;
     }
 }

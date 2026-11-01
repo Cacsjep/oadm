@@ -16,6 +16,7 @@ namespace Oadm.Core.Tests.Compliance;
 /// The engine at the device limit: 100,000 devices and the most checks (50), one check with all 100,000 devices chosen one by
 /// one; turning compliance on, a burst of device changes and the events stay fast and change only what changed.
 /// </summary>
+[Collection(Perf.PerfScale.OneAtATime)]
 public sealed class ComplianceScaleTests(ITestOutputHelper output)
 {
     [Fact]
@@ -23,20 +24,16 @@ public sealed class ComplianceScaleTests(ITestOutputHelper output)
     public async Task HundredThousandDevicesWithFiftyChecks()
     {
         await using var rig = await ComplianceRig.StartAsync(enabled: false);
-        var devices = new List<Device>();
-        for (var i = 0; i < DeviceLimits.MaxDevices; i++)
+        var devices = await rig.SeedDevicesAsync(Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new Device
         {
-            devices.Add(await rig.Devices.AddAsync(new Device
-            {
-                Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
-                Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
-                Model = "P3265-V",
-                FirmwareVersion = i % 10 == 0 ? "10.12.1" : "12.11.77",
-                Status = DeviceStatus.Ok,
-                Category = DeviceCategory.Camera,
-                Tags = [i % 2 == 0 ? "Even" : "Odd"],
-            }, CancellationToken.None));
-        }
+            Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
+            Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
+            Model = "P3265-V",
+            FirmwareVersion = i % 10 == 0 ? "10.12.1" : "12.11.77",
+            Status = DeviceStatus.Ok,
+            Category = DeviceCategory.Camera,
+            Tags = [i % 2 == 0 ? "Even" : "Odd"],
+        }));
 
         var chosen = await rig.SaveAsync(BuiltInComplianceTypes.FirmwareId, new JsonObject { ["minimum"] = "11.0" }, name: "Chosen",
             devices: new DeviceSelector { Mode = DeviceSelectorMode.Devices, DeviceIds = [.. devices.Select(d => d.Id)] });

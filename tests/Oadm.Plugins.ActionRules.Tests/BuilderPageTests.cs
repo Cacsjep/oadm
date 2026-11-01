@@ -170,7 +170,7 @@ public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output
         Assert.DoesNotContain(form.Actions, a => (a.Value as ActionOption)?.Token.Contains("erase", StringComparison.Ordinal) == true);
         Assert.Equal("Each device uses its own recipient of this name.", form.Recipient.Hint);
         output.WriteLine($"New rule form for {devices.Count:N0} devices: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 2_000, $"took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 13_000, $"took {watch.ElapsedMilliseconds} ms (measured 1,300 ms at 100,000 devices)");
     }
 
     private static void Capture(Avalonia.Controls.Window window, string name)

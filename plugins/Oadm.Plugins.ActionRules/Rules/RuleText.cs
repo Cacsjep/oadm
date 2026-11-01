@@ -48,9 +48,20 @@ public static partial class RuleText
 
     /// <summary>The trigger of a rule (start event, conditions in any order, timeout) as one comparable string.</summary>
     public static string TriggerKey(EventFilter? start, IEnumerable<EventFilter> conditions, string? timeout) =>
-        "start:" + (start is null ? "-" : Key(start))
-        + ";if:" + string.Join(",", conditions.Select(Key).Order(StringComparer.Ordinal))
-        + ";t:" + (timeout ?? "-");
+        TriggerKey(start, conditions, timeout, Key);
+
+    /// <summary>
+    /// <see cref="TriggerKey(EventFilter?, IEnumerable{EventFilter}, string?)"/> with the filter keys from
+    /// <paramref name="key"/> (the grouping of the page remembers them: the same filters repeat on many devices).
+    /// </summary>
+    public static string TriggerKey(EventFilter? start, IEnumerable<EventFilter> conditions, string? timeout, Func<EventFilter, string> key)
+    {
+        ArgumentNullException.ThrowIfNull(conditions);
+        ArgumentNullException.ThrowIfNull(key);
+        return "start:" + (start is null ? "-" : key(start))
+            + ";if:" + string.Join(",", conditions.Select(key).Order(StringComparer.Ordinal))
+            + ";t:" + (timeout ?? "-");
+    }
 
     /// <summary>
     /// The filter of an event with the chosen item values, as the web interface writes it:

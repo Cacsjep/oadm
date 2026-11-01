@@ -19,9 +19,9 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.SnapshotReport.Tests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices" for the snapshot report: a page with 30,000 tiles loads snapshots only for
-/// shown rows with bounded requests, cancels loads of rows scrolled away and keeps a bounded number of pictures; the
-/// server lists 30,000 devices and snapshots 5,000 with bounded parallelism.
+/// HARD RULE "scale to thousands of devices" for the snapshot report: a page with a tile per device at the device limit loads
+/// snapshots only for shown rows with bounded requests, cancels loads of rows scrolled away and keeps a bounded number of
+/// pictures; the server lists as many devices and snapshots 5,000 with bounded parallelism.
 /// </summary>
 public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 {
@@ -31,7 +31,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Page_with_30000_tiles_loads_only_shown_rows_cancels_scrolled_away_loads_and_bounds_memory()
+    public async Task Page_with_100000_tiles_loads_only_shown_rows_cancels_scrolled_away_loads_and_bounds_memory()
     {
         var ctx = new ManyTilesContext(Count);
         var ui = new TrackingUi();
@@ -44,9 +44,9 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal(Count, vm.Tiles.Count);
         Assert.Equal(SnapshotReportViewModel.InitialLoadCount, ctx.Snapshots); // not one request per tile
         Assert.Equal(TileState.Waiting, vm.Tiles[Count - 1].State);
-        Assert.Contains("30,000 pictures from 30,000 cameras · 30,000 selected", vm.StatusLine, StringComparison.Ordinal);
+        Assert.Contains($"{Count:N0} pictures from {Count:N0} cameras · {Count:N0} selected", vm.StatusLine, StringComparison.Ordinal);
 
-        // The view: 4 tiles per row, 7,500 rows of which about 6 are shown at a time.
+        // The view: 4 tiles per row, Count / 4 rows of which about 6 are shown at a time.
         vm.AvailableWidth = 4 * (vm.TileWidth + SnapshotReportViewModel.TileSpacing) + 20;
         Assert.Equal(4, vm.Columns);
         Assert.Equal(Count / 4, vm.Rows.Count);
@@ -94,7 +94,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
         Assert.Equal(TileState.Waiting, vm.Rows[0].Tiles[0].State); // dropped, reloads when shown again
         Assert.Null(vm.Rows[0].Tiles[0].Jpeg);
 
-        // Select all, search and the status line over 30,000 tiles.
+        // Select all, search and the status line over every tile.
         watch.Restart();
         vm.IsAllSelected = false;
         vm.IsAllSelected = true;
@@ -103,21 +103,21 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
         _ = vm.StatusLine;
         var bulk = watch.ElapsedMilliseconds;
 
-        output.WriteLine($"30,000 tiles: refresh {open} ms, fast scroll {scroll} ms, select all + search + status {bulk} ms");
+        output.WriteLine($"{Count:N0} tiles: refresh {open} ms, fast scroll {scroll} ms, select all + search + status {bulk} ms");
         Assert.True(open < 5000, $"Refresh took {open} ms");
-        Assert.True(scroll < 1000, $"Scrolling over 7,500 rows took {scroll} ms");
+        Assert.True(scroll < 1000, $"Scrolling over {Count / 4:N0} rows took {scroll} ms");
         Assert.True(bulk < 1000, $"Select all, search and status took {bulk} ms");
     }
 
     [Fact]
-    public async Task Page_with_30000_tiles_selects_and_filters_in_one_pass() => await SelectAndFilterTheMostTilesAsync();
+    public async Task Page_with_100000_tiles_selects_and_filters_in_one_pass() => await SelectAndFilterTheMostTilesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Page_with_30000_tiles_selects_and_filters_fast()
+    public async Task Page_with_100000_tiles_selects_and_filters_fast()
     {
         var elapsed = await SelectAndFilterTheMostTilesAsync();
-        output.WriteLine($"30,000 tiles: select none, search, select all {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"{Count:N0} tiles: select none, search, select all {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(1), $"took {elapsed.TotalMilliseconds:0} ms");
     }
 
@@ -144,7 +144,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Server_lists_30000_devices_with_one_device_list_and_bounded_requests()
+    public async Task Server_lists_100000_devices_with_one_device_list_and_bounded_requests()
     {
         var devices = Devices();
         var repository = new CountingRepository(devices);
@@ -158,18 +158,18 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
 
         Assert.Equal(Count, all.Tiles.Count);
         Assert.Equal(Count, some.Tiles.Count);
-        Assert.Equal(0, repository.Finds); // 30,000 ids: one list call, not 30,000 lookups
+        Assert.Equal(0, repository.Finds); // every id: one list call, not one lookup per device
         Assert.True(factory.MaxConcurrent <= SnapshotReportPluginInfo.Parallelism, $"{factory.MaxConcurrent} device requests at once");
         Assert.Equal(Count, factory.SourceReads); // the second list reused the sources of the first
-        output.WriteLine($"Server lists 30,000 devices twice: {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"Server lists {Count:N0} devices twice: {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 5000, $"took {watch.ElapsedMilliseconds} ms");
     }
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Report_of_5000_of_30000_devices_takes_snapshots_with_bounded_workers_at_a_reduced_size()
+    public async Task Report_of_5000_of_100000_devices_takes_snapshots_with_bounded_workers_at_a_reduced_size()
     {
-        // One report holds at most ReportJobs.MaxItems (5,000) snapshots: the first 5,000 of 30,000 devices.
+        // One report holds at most ReportJobs.MaxItems (5,000) snapshots: the first 5,000 of the most devices.
         var devices = Devices()[..ReportJobs.MaxItems];
         var repository = new CountingRepository(devices);
         var factory = new SharedCameraFactory();
@@ -220,7 +220,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
         {
             Tiles = [.. Enumerable.Range(0, count).Select(i =>
             {
-                var address = string.Create(CultureInfo.InvariantCulture, $"10.0.{i / 256}.{i % 256}");
+                var address = string.Create(CultureInfo.InvariantCulture, $"10.{i / 65536}.{i / 256 % 256}.{i % 256}");
                 return new SnapshotTile
                 {
                     Device = new DeviceFacts { DeviceId = Guid.NewGuid(), Address = address, Model = "AXIS P3265-V", Serial = "B8A44F631339", Status = "Ok" },
@@ -404,7 +404,7 @@ public sealed class ScaleTests(Xunit.Abstractions.ITestOutputHelper output)
     }
 }
 
-/// <summary>The page rendered offscreen with 30,000 tiles (one headless session at a time: see <see cref="HeadlessSessions"/>).</summary>
+/// <summary>The page rendered offscreen with a tile per device at the device limit (one headless session at a time: see <see cref="HeadlessSessions"/>).</summary>
 [Collection(HeadlessSessions.Name)]
 public sealed class HeadlessScaleTests
 {
@@ -412,7 +412,7 @@ public sealed class HeadlessScaleTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Rendered_page_with_30000_tiles_creates_controls_and_requests_only_for_shown_rows()
+    public async Task Rendered_page_with_100000_tiles_creates_controls_and_requests_only_for_shown_rows()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var ctx = new ScaleTests.ManyTilesContext(Count);
@@ -432,7 +432,7 @@ public sealed class HeadlessScaleTests
             if (!string.IsNullOrEmpty(outDir) && frame is not null)
             {
                 Directory.CreateDirectory(outDir);
-                frame.Save(Path.Combine(outDir, "snapshot-report-30000-tiles.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+                frame.Save(Path.Combine(outDir, "snapshot-report-100000-tiles.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
             }
 
             frame?.Dispose();

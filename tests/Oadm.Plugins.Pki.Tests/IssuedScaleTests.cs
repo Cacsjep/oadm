@@ -14,17 +14,17 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// 30,000 devices with four certificates each (HTTPS and IEEE 802.1X, each renewed once, as OADM before 4.5 kept them): the
+/// The most devices (DeviceLimits.MaxDevices) with four certificates each (HTTPS and IEEE 802.1X, each renewed once, as OADM before 4.5 kept them): the
 /// list of current certificates loads, pages, filters and searches in one pass, a revocation of 5,000 is one write, and the
 /// 802.1X server's revocation check stays a hash lookup. Budgets about ten times the measured times; the times go to the test output.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class IssuedScaleTests(ITestOutputHelper output)
 {
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
 
     [Fact]
-    public async Task Thirty_thousand_devices_with_four_certificates_each_stay_fast()
+    public async Task A_hundred_thousand_devices_with_four_certificates_each_stay_fast()
     {
         var now = new DateTimeOffset(2026, 10, 24, 12, 0, 0, TimeSpan.Zero);
         var time = new FakeTimeProvider(now);
@@ -107,7 +107,7 @@ public sealed class IssuedScaleTests(ITestOutputHelper output)
 
         var lookups = watch.Elapsed;
         Assert.True(hits > 0);
-        output.WriteLine($"load {load.TotalMilliseconds:F0} ms, first page {page.TotalMilliseconds:F0} ms, two filtered pages {filters.TotalMilliseconds:F0} ms, group page {groupTime.TotalMilliseconds:F0} ms, revoke {result.Revoked:N0} {revoke.TotalMilliseconds:F0} ms, 1,000,000 lookups {lookups.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{Devices:N0} devices: load {load.TotalMilliseconds:F0} ms, first page {page.TotalMilliseconds:F0} ms, two filtered pages {filters.TotalMilliseconds:F0} ms, group page {groupTime.TotalMilliseconds:F0} ms, revoke {result.Revoked:N0} {revoke.TotalMilliseconds:F0} ms, 1,000,000 lookups {lookups.TotalMilliseconds:F0} ms");
         Assert.True(load < TimeSpan.FromSeconds(5), $"load took {load}");
         Assert.True(page < TimeSpan.FromSeconds(2), $"a page took {page}");
         Assert.True(filters < TimeSpan.FromSeconds(4), $"two filtered pages took {filters}");

@@ -14,14 +14,14 @@ namespace Oadm.Plugins.Radius.Tests.Client;
 
 /// <summary>
 /// The page at its limits (CLAUDE.md "scale to thousands of devices"): 10,000 open sessions with batches of events every
-/// 500 ms, the ended rows leaving in one step, a log page of 500 rows with live rows, the VLAN tag choices from 30,000
-/// devices. Budgets about 10x the measured time; the times go to the test output.
+/// 500 ms, the ended rows leaving in one step, a log page of 500 rows with live rows, the VLAN tag choices from the most
+/// devices (DeviceLimits.MaxDevices). Budgets about 10x the measured time; the times go to the test output.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class PagePerfTests(ITestOutputHelper output)
 {
     private const int Sessions = RadiusPageLimits.MaxSessions;
-    private const int Devices = 30_000;
+    private const int Devices = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
 
     [Fact]
     public async Task Ten_thousand_sessions_load_update_in_batches_and_leave_in_one_step()
@@ -70,7 +70,7 @@ public sealed class PagePerfTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_cards_with_30000_devices_and_a_full_log_page_stay_fast()
+    public async Task The_cards_with_100000_devices_and_a_full_log_page_stay_fast()
     {
         var server = new FakeRadiusBackend();
         var now = DateTime.UtcNow;
@@ -78,7 +78,7 @@ public sealed class PagePerfTests(ITestOutputHelper output)
         var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
         {
             Serial = Mac(i).Replace(":", string.Empty, StringComparison.Ordinal),
-            Address = "10.2." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+            Address = "10." + (2 + (i / 62500)).ToString(CultureInfo.InvariantCulture) + "." + (i / 250 % 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
             Tags = ["Building " + (i % 40).ToString(CultureInfo.InvariantCulture), i % 2 == 0 ? "Outdoor" : "Indoor"],
         }).ToList();
         var ctx = new FakePageContext(server) { DeviceList = devices };
@@ -102,7 +102,7 @@ public sealed class PagePerfTests(ITestOutputHelper output)
         var live = watch.Elapsed;
         Assert.Equal(500, vm.Log.Rows.Count);
 
-        output.WriteLine($"30,000 devices: cards {serverTab.TotalMilliseconds:F0} ms; log page of 500 of 50,000 {logPage.TotalMilliseconds:F0} ms; 20 live batches of 50 {live.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{Devices:N0} devices: cards {serverTab.TotalMilliseconds:F0} ms; log page of 500 of 50,000 {logPage.TotalMilliseconds:F0} ms; 20 live batches of 50 {live.TotalMilliseconds:F0} ms");
         Assert.True(serverTab < TimeSpan.FromSeconds(1), $"the cards took {serverTab.TotalMilliseconds:F0} ms");
         Assert.True(logPage < TimeSpan.FromSeconds(1), $"log page took {logPage.TotalMilliseconds:F0} ms");
         Assert.True(live < TimeSpan.FromSeconds(1), $"live rows took {live.TotalMilliseconds:F0} ms");

@@ -282,12 +282,13 @@ public sealed class PageViewModelTests
         var sync = watch.Elapsed;
         Assert.Equal(DeviceLimits.MaxDevices, vm.Targets.Count);
         Assert.Equal(["10.0.0.0", "10.0.0.1", "10.0.0.2"], vm.Targets.Take(3).Select(t => t.Address)); // numeric, not 10.0.0.10
-        Assert.Equal("10.0.117.47", vm.Targets[^1].Address);
+        const int Last = DeviceLimits.MaxDevices - 1;
+        Assert.Equal(string.Create(CultureInfo.InvariantCulture, $"10.{Last / 65536}.{Last / 256 % 256}.{Last % 256}"), vm.Targets[^1].Address);
 
         watch.Restart();
         vm.SetChoice(DeviceChoice.AllDevices);
         var all = watch.Elapsed;
-        Assert.Equal("30,000 devices", vm.TargetSummary);
+        Assert.Equal($"{DeviceLimits.MaxDevices:N0} devices", vm.TargetSummary);
         Assert.Equal(DeviceLimits.MaxDevices, vm.SelectedTargetCount);
 
         watch.Restart();
@@ -299,7 +300,9 @@ public sealed class PageViewModelTests
         watch.Restart();
         vm.SetChoice(DeviceChoice.Devices([devices[0].Id], ["Even"]));
         var byTag = watch.Elapsed;
-        Assert.Equal(15_000, vm.SelectedTargetCount); // device 0 has the tag too
+        const int Even = DeviceLimits.MaxDevices / 2;
+        const int EvenSpeakers = DeviceLimits.MaxDevices / 50; // every 25th device is a speaker without the APIs
+        Assert.Equal(Even, vm.SelectedTargetCount); // device 0 has the tag too
         Assert.Equal("Selected devices: Tag Even and 10.0.0.0", vm.DevicesText);
 
         watch.Restart();
@@ -307,9 +310,9 @@ public sealed class PageViewModelTests
         vm.Add(page.Item("common.basicdeviceinfo.read"));
         vm.Add(page.Item("common.daynight.shiftlevel"));
         var compatibility = watch.Elapsed / 3;
-        Assert.Equal("15,000 devices · 14,400 compatible · 600 not compatible", vm.TargetSummary);
-        Assert.Equal(600, vm.ProblemTargets.Count);
-        Assert.StartsWith("3 commands × 15,000 devices", vm.RunSummary, StringComparison.Ordinal);
+        Assert.Equal($"{Even:N0} devices · {Even - EvenSpeakers:N0} compatible · {EvenSpeakers:N0} not compatible", vm.TargetSummary);
+        Assert.Equal(EvenSpeakers, vm.ProblemTargets.Count);
+        Assert.StartsWith($"3 commands × {Even:N0} devices", vm.RunSummary, StringComparison.Ordinal);
         return (sync, all, devicesSelection, byTag, compatibility);
     }
 

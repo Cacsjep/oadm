@@ -987,7 +987,7 @@ public sealed partial class PolicyEditorViewModel : ValidatingViewModel
             // Plugins know tags by name: the name is the id.
             Tags = [.. tags.Select(t => new DevicePickerTag(t, t))],
         };
-        // No copy of the device list and no picker over it for every form (30,000 devices): only Choose devices makes one.
+        // No copy of the device list and no picker over it for every form (100,000 devices): only Choose devices makes one.
         _devices = devices as IReadOnlyList<IDeviceInfo> ?? [.. devices ?? []];
         _choice = new DeviceGroupChoice(chosen.ThisServer, chosen.SiteIds ?? [], chosen.Tags ?? [], chosen.Serials ?? [], chosen.ExceptSerials ?? []);
         _devicesText = TextOf(_choice);

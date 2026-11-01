@@ -213,21 +213,21 @@ public sealed class WebViewTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Five_thousand_devices_build_and_search() => BuildAndSearchFiveThousand();
+    public void A_hundred_thousand_devices_build_and_search() => BuildAndSearchTheMost();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Five_thousand_devices_build_and_search_fast()
+    public void A_hundred_thousand_devices_build_and_search_fast()
     {
-        var (build, search) = BuildAndSearchFiveThousand();
+        var (build, search) = BuildAndSearchTheMost();
         output.WriteLine($"build {build} ms, search + clear {search} ms");
         Assert.True(build < 2000, $"build took {build} ms");
         Assert.True(search < 2000, $"search took {search} ms");
     }
 
-    private static (long Build, long Search) BuildAndSearchFiveThousand()
+    private static (long Build, long Search) BuildAndSearchTheMost()
     {
-        var devices = Enumerable.Range(0, 5000)
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
             .Select(i => (IDeviceInfo)new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", i % 3 == 0 ? ["Building A", "PTZ"] : i % 3 == 1 ? ["Building B"] : []))
             .ToList();
         var ctx = new TestContext(devices);
@@ -238,7 +238,7 @@ public sealed class WebViewTests(ITestOutputHelper output)
         vm.SearchText = "10.0.19";
         vm.SearchText = string.Empty;
         var search = watch.ElapsedMilliseconds;
-        Assert.Equal(5000 + 1667 + 4, vm.TreeRows.Count);
+        Assert.Equal(devices.Count + ((devices.Count + 2) / 3) + 4, vm.TreeRows.Count); // every third twice (two tags), 4 headers
         return (build, search);
     }
 

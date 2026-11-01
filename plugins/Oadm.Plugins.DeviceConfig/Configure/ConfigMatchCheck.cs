@@ -26,8 +26,8 @@ public sealed class ConfigMatchCheck : IComplianceCheckType
     private static readonly ConcurrentDictionary<string, AdmConfig> Parsed = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The file of a check, parsed once per check version: the host hands every device run the same invocation, so 30,000
-    /// devices do not decode and hash the same file 30,000 times.
+    /// The file of a check, parsed once per check version: the host hands every device run the same invocation, so 100,000
+    /// devices do not decode and hash the same file 100,000 times.
     /// </summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ComplianceInvocation, AdmConfig> PerInvocation = new();
 

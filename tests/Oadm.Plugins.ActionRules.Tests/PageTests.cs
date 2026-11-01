@@ -481,7 +481,7 @@ public sealed class PageTests(ITestOutputHelper output)
         vm.GroupByIndex = 1;
         output.WriteLine($"build {build} ms, search {search} ms, select all {select} ms, regroup {watch.ElapsedMilliseconds - build - search - select} ms");
         Assert.Equal(2, vm.Groups.Count);
-        Assert.True(watch.ElapsedMilliseconds < 6_000);
+        Assert.True(watch.ElapsedMilliseconds < 40_000, $"took {watch.ElapsedMilliseconds} ms (measured 4,100 ms at 100,000 devices)");
     }
 
     [Fact]

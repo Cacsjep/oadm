@@ -1,8 +1,11 @@
 using System.Diagnostics;
 
+using Microsoft.EntityFrameworkCore;
+
 using Oadm.Core.Auth;
 using Oadm.Core.DeviceGroups;
 using Oadm.Core.Devices;
+using Oadm.Core.Persistence;
 using Oadm.Sdk.Devices;
 
 using Xunit.Abstractions;
@@ -13,22 +16,26 @@ namespace Oadm.Core.Tests.DeviceGroups;
 /// The lists of a user of a device group at the device limit: the tag counts of the view (100,000 devices, a group of
 /// 50,000).
 /// </summary>
+[Collection(Perf.PerfScale.OneAtATime)]
 public sealed class SharedCoreScaleTests(ITestOutputHelper output) : DeviceGroupTestBase
 {
     [Fact]
     [Trait("Category", "Perf")]
     public async Task TheTagsOfAGroupAtHundredThousandDevices()
     {
-        for (var i = 0; i < DeviceLimits.MaxDevices; i++)
+        // Seeded in one transaction (adding the devices one by one takes minutes at the device limit and is not measured).
+        await using (var db = await Db.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync(Ct))
         {
-            await Devices.AddAsync(new Device
+            db.Devices.AddRange(Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new Device
             {
+                Id = Guid.NewGuid(),
                 Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
                 Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
                 Status = DeviceStatus.Ok,
                 AddedByAllDevices = true,
                 Tags = [i % 2 == 0 ? "Even" : "Odd"],
-            }, Ct);
+            }));
+            await db.SaveChangesAsync(Ct);
         }
 
         var even = (await Tags.CreateAsync("Even", TagColor.None, Ct)).Id;

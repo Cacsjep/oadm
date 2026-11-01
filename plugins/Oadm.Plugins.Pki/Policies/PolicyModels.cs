@@ -183,7 +183,7 @@ public static class PolicyLimits
     public const int MinExpiryDays = 1;
     public const int MaxExpiryDays = 365;
 
-    /// <summary>Reauthentication every N minutes: 10 minutes to one day (30,000 devices reauthenticating every few minutes would load the switches and the server).</summary>
+    /// <summary>Reauthentication every N minutes: 10 minutes to one day (100,000 devices reauthenticating every few minutes would load the switches and the server).</summary>
     public const int MinReauthMinutes = 10;
     public const int MaxReauthMinutes = 1440;
 

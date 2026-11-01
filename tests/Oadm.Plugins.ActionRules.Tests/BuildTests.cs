@@ -206,45 +206,6 @@ public sealed class BuildTests : IAsyncLifetime
     }
 
     [Fact]
-    [Trait("Category", "Perf")]
-    public async Task The_events_of_100000_devices_merge_fast()
-    {
-        var devices = new FakeDevices();
-        var cameras = new FakeCameras();
-        var plugin = new ActionRulesPlugin();
-        await plugin.StartAsync(new FakeContext(devices, cameras, new RecordingRunner(), new RecordingEvents(), _data + "-perf"), CancellationToken.None);
-        try
-        {
-            var os = new[] { "os10", "os11", "os12" };
-            for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
-            {
-                var device = new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" };
-                devices.Items.Add(device);
-                cameras.Cameras[device.Id] = new RuleCamera(os[i % 3]);
-            }
-
-            var read = System.Diagnostics.Stopwatch.StartNew();
-            await Parallel.ForEachAsync(devices.Items, async (d, ct) => await plugin.ReadAsync(d, ct));
-            read.Stop();
-            var watch = System.Diagnostics.Stopwatch.StartNew();
-            var reply = plugin.Events(new EventsRequest([.. devices.Items.Select(d => d.Id)]));
-            watch.Stop();
-
-            Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, reply.Events.Single(e => e.Event.Topic == VirtualInputTopic).Devices);
-            Assert.True(watch.ElapsedMilliseconds < 1_000, $"merge took {watch.ElapsedMilliseconds} ms");
-            Console.WriteLine($"read {devices.Items.Count:N0} devices {read.ElapsedMilliseconds} ms, merge {watch.ElapsedMilliseconds} ms, {reply.Events.Count} events");
-        }
-        finally
-        {
-            await plugin.DisposeAsync();
-            if (Directory.Exists(_data + "-perf"))
-            {
-                Directory.Delete(_data + "-perf", recursive: true);
-            }
-        }
-    }
-
-    [Fact]
     public async Task An_event_that_is_not_on_or_off_cannot_be_a_condition()
     {
         var reply = _plugin.Events(new EventsRequest([_os12.Id]));

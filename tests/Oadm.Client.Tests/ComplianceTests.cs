@@ -490,9 +490,9 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
         page.SelectCardCommand.Execute(page.Cards[3]);
         page.SearchText = "10.0.1.";
         var filter = watch.Elapsed;
-        output.WriteLine($"1,500,000 results applied in {apply.TotalMilliseconds:N0} ms, {memory:N0} MB kept; filter, tab, card and search in {filter.TotalMilliseconds:N0} ms");
-        Assert.True(apply < TimeSpan.FromSeconds(10), $"apply took {apply}");
-        Assert.True(memory < 400, $"{memory} MB kept");
+        output.WriteLine($"{store.Devices.Count * 50:N0} results applied in {apply.TotalMilliseconds:N0} ms, {memory:N0} MB kept; filter, tab, card and search in {filter.TotalMilliseconds:N0} ms");
+        Assert.True(apply < TimeSpan.FromSeconds(40), $"apply took {apply} (measured 1.3 s at 30,000 devices, 4 s at 100,000)");
+        Assert.True(memory < 1_400, $"{memory} MB kept (measured 221 MB at 30,000 devices, 748 MB at 100,000: about 150 bytes per result)");
         Assert.True(filter < TimeSpan.FromSeconds(5), $"filter took {filter}");
         api.Dispose();
     });

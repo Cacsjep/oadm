@@ -144,7 +144,8 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
         var seen = fake.EventsSeenBy(pages[0]).Where(e => e.Topic == DhcpServerMethods.LeasesTopic)
             .SelectMany(e => DhcpJson.Deserialize<LeasesEvent>(e.PayloadJson).Changed).ToList();
         Assert.Equal(rounds, seen.Count);
-        var mine = members[0].Select(id => MacAddress.Format(Mac(devices.First(d => d.Id == id)))).ToHashSet(StringComparer.Ordinal);
+        var byId = devices.ToDictionary(d => d.Id); // by id: a search per member took 15 s at 100,000 devices
+        var mine = members[0].Select(id => MacAddress.Format(Mac(byId[id]))).ToHashSet(StringComparer.Ordinal);
         Assert.All(seen, l => Assert.Contains(l.Mac, mine));
         return watch.Elapsed;
     }

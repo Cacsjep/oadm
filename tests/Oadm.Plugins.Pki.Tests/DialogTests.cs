@@ -121,7 +121,7 @@ public sealed class CertificatesViewModelTests(ITestOutputHelper output)
     [Fact]
     public void One_window_reads_at_most_5000_devices()
     {
-        // View and Delete certificates read every device, 4 at a time: 30,000 devices would take hours and 1.1 million rows.
+        // View and Delete certificates read every device, 4 at a time: 100,000 devices would take hours and 3.7 million rows.
         Assert.Equal(5000, CertificatesViewModel.MaxDevices);
         Assert.Equal("Choose at most 5,000 devices.", CertificatesViewModel.TooManyText);
     }
@@ -314,14 +314,14 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task Install_confirms_and_returns_the_usable_certificates_for_30000_devices() => await InstallForTheMostDevicesAsync();
+    public async Task Install_confirms_and_returns_the_usable_certificates_for_100000_devices() => await InstallForTheMostDevicesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Install_for_30000_devices_is_fast()
+    public async Task Install_for_100000_devices_is_fast()
     {
         var elapsed = await InstallForTheMostDevicesAsync();
-        output.WriteLine($"30000 devices: add, confirm and payload {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"{DeviceLimits.MaxDevices:N0} devices: add, confirm and payload {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(2), $"took {elapsed}");
     }
 
@@ -343,11 +343,11 @@ public sealed class InstallCaViewModelTests(ITestOutputHelper output)
         };
         vm.CloseRequested += (_, p) => payload = p;
         vm.Add(["c:/certs/bundle.pem"]);
-        Assert.Equal("30,000 selected devices", vm.Scope);
+        Assert.Equal($"{DeviceLimits.MaxDevices:N0} selected devices", vm.Scope);
 
         await vm.InstallCommand.ExecuteAsync(null);
         Assert.Null(payload); // cancelled in the confirmation
-        Assert.Equal(("Install CA certificates", "Install 2 CA certificates on 30,000 devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
+        Assert.Equal(("Install CA certificates", $"Install 2 CA certificates on {DeviceLimits.MaxDevices:N0} devices? The devices then trust certificates these CAs issued. 1 row with a problem is left out.", "Install"), asked);
 
         answer = true;
         await vm.InstallCommand.ExecuteAsync(null);

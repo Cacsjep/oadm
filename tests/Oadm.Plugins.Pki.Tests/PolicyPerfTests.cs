@@ -11,18 +11,18 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Pki.Tests;
 
 /// <summary>
-/// The overlap check and the warnings of the policies stay fast at 30,000 devices (CLAUDE.md "scale to thousands of devices";
+/// The overlap check and the warnings of the policies stay fast at the device limit (CLAUDE.md "scale to thousands of devices";
 /// docs/spec/pki.md "Policies"): a save checks its kind against every device, the card's rows look for later overlaps, the
 /// expiry days of every device.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class PolicyPerfTests(ITestOutputHelper output)
 {
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
     private const int Policies = 60;
 
     [Fact]
-    public async Task Saves_rows_and_expiry_days_at_30000_devices_stay_fast()
+    public async Task Saves_rows_and_expiry_days_at_100000_devices_stay_fast()
     {
         var sites = new FakeSites();
         var siteIds = Enumerable.Range(0, 10).Select(i => sites.Add("Site " + i.ToString(CultureInfo.InvariantCulture)).Id).ToList();
@@ -37,7 +37,7 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
             () => [new CertificateAuthorityInfo(CertificateAuthorityInfo.OadmId, "OADM CA", CertificateAuthorityKind.Oadm, [], DateTime.UtcNow.AddYears(1), true)],
             new FakeProtectedTags());
 
-        // One VLAN policy per tag (no overlaps) and expiry warnings per site: every save checks its kind against 30,000 devices.
+        // One VLAN policy per tag (no overlaps) and expiry warnings per site: every save checks its kind against every device.
         var watch = Stopwatch.StartNew();
         for (var i = 0; i < Policies; i++)
         {
@@ -78,9 +78,9 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
         watch.Restart();
         var soon = devices.Count(d => store.ExpiryDaysFor(d) == 45);
         var expiry = watch.Elapsed;
-        Assert.Equal(Devices / 3, soon);
+        Assert.Equal((Devices + 2) / 3, soon); // every third device, from device 0
 
-        output.WriteLine($"30,000 devices: {Policies + siteIds.Count} saves {saves.TotalMilliseconds:F0} ms ({perSave.TotalMilliseconds:F1} ms each); refused overlap {overlap.TotalMilliseconds:F0} ms; card rows {card.TotalMilliseconds:F0} ms; expiry days of every device {expiry.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{Devices:N0} devices: {Policies + siteIds.Count} saves {saves.TotalMilliseconds:F0} ms ({perSave.TotalMilliseconds:F1} ms each); refused overlap {overlap.TotalMilliseconds:F0} ms; card rows {card.TotalMilliseconds:F0} ms; expiry days of every device {expiry.TotalMilliseconds:F0} ms");
         Assert.True(perSave < TimeSpan.FromMilliseconds(500), $"a save took {perSave.TotalMilliseconds:F0} ms");
         Assert.True(overlap < TimeSpan.FromSeconds(3), $"the overlap check took {overlap.TotalMilliseconds:F0} ms");
         Assert.True(card < TimeSpan.FromSeconds(3), $"the rows took {card.TotalMilliseconds:F0} ms");
@@ -88,28 +88,29 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_policy_table_and_its_search_with_150_policies_at_30000_devices_stay_fast()
+    public async Task The_policy_table_and_its_search_with_150_policies_at_100000_devices_stay_fast()
     {
         const int Rules = 150;
         var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
         {
             Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture),
-            Address = "10.1." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+            Address = "10." + (16 + (i / 62500)).ToString(CultureInfo.InvariantCulture) + "." + (i / 250 % 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
             Tags = ["Tag " + (i % Rules).ToString(CultureInfo.InvariantCulture)],
         }).ToList();
         await using var pki = await PkiHarness.StartAsync(devices: devices);
+        // Saved in the store: a save on the page also answers with the whole list (measured below), 150 lists took 2 minutes.
         for (var i = 0; i < Rules; i++)
         {
-            Assert.Null((await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy
+            Assert.Null((await pki.Service.Policies.SaveAsync(new PkiPolicy
             {
                 Name = "VLAN " + i.ToString(CultureInfo.InvariantCulture),
                 Kind = PolicyKinds.Vlan,
                 Vlan = 1000 + i, // summaries "VLAN 1014": the search below matches names only
                 Devices = new PolicyDevices { Tags = ["Tag " + i.ToString(CultureInfo.InvariantCulture)] },
-            })).Error);
+            }, "admin", PkiService.CipherSuites, CancellationToken.None)).Error);
         }
 
-        // The server's list: the rows with their device texts and warnings at 30,000 devices.
+        // The server's list: the rows with their device texts and warnings at the device limit.
         var watch = Stopwatch.StartNew();
         var list = await pki.InvokeAsync<PolicyList>(PolicyMethods.GetPolicies);
         var read = watch.Elapsed;
@@ -125,25 +126,25 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
         var search = watch.Elapsed;
         Assert.Equal(11, page.Rows.Count); // VLAN 14 and VLAN 140..149
 
-        output.WriteLine($"30,000 devices, {Rules} VLAN policies: the list {read.TotalMilliseconds:F0} ms; the table {apply.TotalMilliseconds:F0} ms; the search {search.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{Devices:N0} devices, {Rules} VLAN policies: the list {read.TotalMilliseconds:F0} ms; the table {apply.TotalMilliseconds:F0} ms; the search {search.TotalMilliseconds:F0} ms");
         Assert.True(read < TimeSpan.FromSeconds(3), $"the list took {read.TotalMilliseconds:F0} ms");
         Assert.True(apply < TimeSpan.FromMilliseconds(500), $"the table took {apply.TotalMilliseconds:F0} ms");
         Assert.True(search < TimeSpan.FromMilliseconds(200), $"the search took {search.TotalMilliseconds:F0} ms");
     }
 
     [Fact]
-    public async Task Opening_policies_and_typing_in_their_form_at_30000_devices_build_no_device_picker()
+    public async Task Opening_policies_and_typing_in_their_form_at_100000_devices_build_no_device_picker()
     {
         var devices = Enumerable.Range(0, Devices).Select(i => (IDeviceInfo)new FakeDevice
         {
             Serial = "ACCC8E" + i.ToString("X6", CultureInfo.InvariantCulture),
-            Address = "10.2." + (i / 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
+            Address = "10." + (32 + (i / 62500)).ToString(CultureInfo.InvariantCulture) + "." + (i / 250 % 250).ToString(CultureInfo.InvariantCulture) + "." + (i % 250).ToString(CultureInfo.InvariantCulture),
         }).ToList();
         await using var pki = await PkiHarness.StartAsync(devices: devices);
         var page = new Client.PoliciesViewModel(new PluginPageContext(pki.Plugin, pki.Hub) { DeviceList = devices });
         await page.LoadAsync(CancellationToken.None);
 
-        // Every row clicked, three rounds: a form each time, no picker over the 30,000 devices (Choose devices makes one).
+        // Every row clicked, three rounds: a form each time, no picker over every device (Choose devices makes one).
         var watch = Stopwatch.StartNew();
         for (var round = 0; round < 3; round++)
         {
@@ -168,7 +169,7 @@ public sealed class PolicyPerfTests(ITestOutputHelper output)
         Assert.False(editor.HasPicker);
         Assert.NotNull(editor.NewPicker()); // the dialog's picker, only now
 
-        output.WriteLine($"30,000 devices: open a policy {opens.TotalMilliseconds:F2} ms; a keystroke {keystroke.TotalMilliseconds:F3} ms");
+        output.WriteLine($"{Devices:N0} devices: open a policy {opens.TotalMilliseconds:F2} ms; a keystroke {keystroke.TotalMilliseconds:F3} ms");
         Assert.True(opens < TimeSpan.FromMilliseconds(25), $"opening a policy took {opens.TotalMilliseconds:F1} ms");
         Assert.True(keystroke < TimeSpan.FromMilliseconds(2), $"a keystroke took {keystroke.TotalMilliseconds:F2} ms");
     }

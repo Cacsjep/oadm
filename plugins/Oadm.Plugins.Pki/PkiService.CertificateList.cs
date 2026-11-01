@@ -15,7 +15,7 @@ namespace Oadm.Plugins.Pki;
 /// (in the order of the Certificate authorities card), then the certificates of the 802.1X and EST servers, then the ones
 /// created, signed or imported here (newest first), then each managed camera's current certificate per use (newest
 /// first). The first three are a few hundred rows at most and built per request; the device certificates are one pass over
-/// the store (60,000 rows at 30,000 devices). Users limited to a device group see only their devices' certificates.
+/// the store (200,000 rows at 100,000 devices). Users limited to a device group see only their devices' certificates.
 /// </summary>
 public sealed partial class PkiService
 {

@@ -128,7 +128,7 @@ public sealed class ExportTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_devices_export_into_one_zip()
+    public async Task A_hundred_thousand_devices_export_into_one_zip()
     {
         var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new FakeDevice
         {
@@ -151,14 +151,15 @@ public sealed class ExportTests(ITestOutputHelper output)
         using var file = new MemoryStream();
         var watch = Stopwatch.StartNew();
         await vm.RunAsync(new ExportTarget(() => Task.FromResult<Stream>(new KeepOpenStream(file)), "site.zip"));
-        output.WriteLine($"30,000 devices: {watch.ElapsedMilliseconds} ms, {file.Length / 1024} KB");
+        output.WriteLine($"{devices.Count:N0} devices: {watch.ElapsedMilliseconds} ms, {file.Length / 1024} KB");
 
-        Assert.Equal("30,000 configurations saved.", vm.ResultText);
+        Assert.Equal($"{Oadm.Sdk.Devices.DeviceLimits.MaxDevices:N0} configurations saved.", vm.ResultText);
         Assert.True(max <= DeviceConfigIds.ExportParallelism, $"max {max}");
         file.Position = 0;
         using var zip = new ZipArchive(file, ZipArchiveMode.Read);
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, zip.Entries.Count);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60));
+        // Linear: 58 KB of configuration per device compressed into the ZIP (measured about 42 s at 100,000). Budget about 10x.
+        Assert.True(watch.Elapsed < TimeSpan.FromMinutes(7), $"took {watch.Elapsed.TotalSeconds:F0} s (measured about 42 s at 100,000)");
     }
 
     private static void InterlockedMax(ref int target, int value)

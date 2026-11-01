@@ -75,8 +75,8 @@ public sealed class DeviceImportFile
         "https://10.0.0.60:8443,,,";
 
     /// <summary>
-    /// Largest file read (64 MB). Only a guard against a wrong file: the lines are the limit, 30,000 lines with long
-    /// host names, passwords and tags stay far below it (an export line is about 130 bytes, an ADM device about 400).
+    /// Largest file read (64 MB). Only a guard against a wrong file: the lines are the limit, 100,000 lines with long
+    /// host names, passwords and tags stay below it (an export line is about 130 bytes, an ADM device about 400).
     /// </summary>
     public const int MaxBytes = 64 * 1024 * 1024;
 

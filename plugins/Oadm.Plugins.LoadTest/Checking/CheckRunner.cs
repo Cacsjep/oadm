@@ -556,7 +556,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
         }
     }
 
-    /// <summary>Saves the per-second values of a batch and frees them (30,000 streams never sit in memory at once).</summary>
+    /// <summary>Saves the per-second values of a batch and frees them (100,000 streams never sit in memory at once).</summary>
     private async Task SaveBatchAsync(int batch)
     {
         if (batch <= _savedBatch)

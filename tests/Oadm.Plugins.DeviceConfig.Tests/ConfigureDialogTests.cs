@@ -45,7 +45,7 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
     /// <summary>The query of the dialog, answered by the server code against one fake camera per device; counts the calls.</summary>
     private sealed class Server
     {
-        // Cameras are made only for the devices the dialog reads (30,000 fake cameras would be needlessly heavy).
+        // Cameras are made only for the devices the dialog reads (100,000 fake cameras would be needlessly heavy).
         private readonly Dictionary<Guid, IDeviceInfo> _devices = [];
         private readonly Dictionary<Guid, ConfigureCamera> _cameras = [];
 
@@ -397,11 +397,11 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_devices_of_twenty_models_need_twenty_reads_and_the_list_stays_fast()
+    public async Task A_hundred_thousand_devices_of_twenty_models_need_twenty_reads_and_the_list_stays_fast()
     {
         var server = new Server();
         var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)server.Add(
-            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"10.1.{i / 256}.{i % 256}"),
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"10.{1 + (i / 65536)}.{i / 256 % 256}.{i % 256}"),
             "AXIS P3265-V",
             string.Create(System.Globalization.CultureInfo.InvariantCulture, $"12.{i % 20}.1"))).ToList();
         var dialog = Dialog(server, devices, new FakeUi());
@@ -416,7 +416,7 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
         dialog.Editor.SearchText = string.Empty;
         dialog.Editor.ShowAll = true;
         var filter = watch.Elapsed;
-        output.WriteLine($"30,000 devices: load {load.TotalMilliseconds:F0} ms, filter {filter.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{devices.Count:N0} devices: load {load.TotalMilliseconds:F0} ms, filter {filter.TotalMilliseconds:F0} ms");
         Assert.True(filter < TimeSpan.FromMilliseconds(500), $"filter {filter.TotalMilliseconds} ms");
         Assert.True(load < TimeSpan.FromSeconds(30), $"load {load.TotalMilliseconds} ms");
     }

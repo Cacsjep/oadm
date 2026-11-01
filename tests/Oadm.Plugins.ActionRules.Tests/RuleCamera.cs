@@ -31,15 +31,16 @@ internal sealed class RuleCamera : IVapixClient
     {
         _os = os;
         HasRest = hasRest ?? os == "os12";
-        _templates = SoapActionEngine.ParseActionTemplates(Fixture("GetActionTemplates", os));
-        _recipients = SoapActionEngine.ParseRecipientTemplates(Fixture("GetRecipientTemplates", os));
-        foreach (var r in SoapActionEngine.ParseRecipients(Fixture("GetRecipientConfigurations", os)))
+        var parsed = ParsedFixtures.GetOrAdd(os, Parsed.Of);
+        _templates = parsed.Templates;
+        _recipients = parsed.RecipientTemplates;
+        foreach (var r in parsed.Recipients)
         {
             Recipients[r.Id] = r;
             _nextRecipient = Math.Max(_nextRecipient, int.Parse(r.Id, CultureInfo.InvariantCulture) + 1);
         }
 
-        foreach (var schedule in SoapActionEngine.ParseSchedules(Fixture("GetScheduledEvents", os)))
+        foreach (var schedule in parsed.Schedules)
         {
             Schedules[schedule.Id] = schedule;
         }
@@ -90,8 +91,32 @@ internal sealed class RuleCamera : IVapixClient
 
     public sealed record Rule(string Name, bool Enabled, EventFilter? Start, List<EventFilter> Conditions, string? Timeout, string ConfigId);
 
-    public static XDocument Fixture(string name, string os = "os12") =>
-        XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Fixtures", $"{os}-{name}.xml"));
+    public static XDocument Fixture(string name, string os = "os12") => XDocument.Parse(FixtureXml(name, os));
+
+    /// <summary>
+    /// The fixture's XML, read from disk once per test process: the scale tests create a camera per device (the device
+    /// limit), and loading the files for every camera and request took longer than the reads under test.
+    /// </summary>
+    private static string FixtureXml(string name, string os) =>
+        FixtureTexts.GetOrAdd(os + "-" + name, key => XDocument.Load(Path.Combine(AppContext.BaseDirectory, "Fixtures", key + ".xml")).ToString());
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> FixtureTexts = new(StringComparer.Ordinal);
+
+    /// <summary>The parsed templates, recipients and schedules of an AXIS OS fixture set (immutable records), once per process.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Parsed> ParsedFixtures = new(StringComparer.Ordinal);
+
+    private sealed record Parsed(
+        IReadOnlyList<ActionTemplate> Templates,
+        IReadOnlyList<RecipientTemplate> RecipientTemplates,
+        IReadOnlyList<DeviceRecipient> Recipients,
+        IReadOnlyList<DeviceSchedule> Schedules)
+    {
+        public static Parsed Of(string os) => new(
+            SoapActionEngine.ParseActionTemplates(Fixture("GetActionTemplates", os)),
+            SoapActionEngine.ParseRecipientTemplates(Fixture("GetRecipientTemplates", os)),
+            [.. SoapActionEngine.ParseRecipients(Fixture("GetRecipientConfigurations", os))],
+            [.. SoapActionEngine.ParseSchedules(Fixture("GetScheduledEvents", os))]);
+    }
 
     /// <summary>Adds a rule directly (test setup); returns its id.</summary>
     public string Add(string name, string template, IEnumerable<(string Name, string Value)> parameters, EventFilter? start = null, IEnumerable<EventFilter>? conditions = null, bool enabled = true, string? timeout = null)
@@ -367,7 +392,7 @@ internal sealed class RuleCamera : IVapixClient
             case "GetActionTemplates":
             case "GetRecipientTemplates":
             case "GetEventInstances":
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Fixture(method, _os).ToString(), Encoding.UTF8, "application/soap+xml") };
+                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(FixtureXml(method, _os), Encoding.UTF8, "application/soap+xml") };
             case "AddActionConfiguration":
                 var nc = call.Element(Aa + "NewActionConfiguration")!;
                 var configId = (_nextConfig++).ToString(CultureInfo.InvariantCulture);

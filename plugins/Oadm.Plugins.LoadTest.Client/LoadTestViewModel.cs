@@ -768,7 +768,7 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
 
     /// <summary>
     /// The chosen ids, or none with <c>all</c> for the choice "All devices" (the server takes the caller's video devices, so
-    /// 30,000 ids never travel).
+    /// 100,000 ids never travel).
     /// </summary>
     private (List<Guid> Ids, bool All) ChosenIds() => DeviceChoice.Choice.Kind == DeviceChoiceKind.All
         ? ([], true)

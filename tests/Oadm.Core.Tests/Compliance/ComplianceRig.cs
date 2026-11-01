@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Text.Json.Nodes;
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -95,6 +96,32 @@ internal sealed class ComplianceRig : IAsyncDisposable
         AllView = await Views.ForScopeAsync(Oadm.Core.Auth.DeviceScope.All, "admin", CancellationToken.None);
         await _engine.LoadAsync(CancellationToken.None);
         await _engine.StartAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Stores many devices in one transaction and starts the engine again on them (a server restart): the scale tests at the
+    /// device limit, where adding them one by one takes minutes and is not what they measure.
+    /// </summary>
+    public async Task<IReadOnlyList<Device>> SeedDevicesAsync(IEnumerable<Device> devices)
+    {
+        var list = devices.ToList();
+        await using (var db = await _db.Get<Microsoft.EntityFrameworkCore.IDbContextFactory<Oadm.Core.Persistence.OadmDbContext>>().CreateDbContextAsync())
+        {
+            foreach (var device in list)
+            {
+                if (device.Id == Guid.Empty)
+                {
+                    device.Id = Guid.NewGuid();
+                }
+
+                db.Devices.Add(device);
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        await StartEngineAsync();
+        return list;
     }
 
     public async Task<Device> AddDeviceAsync(string address, DeviceStatus status = DeviceStatus.Ok, params string[] tags) =>
@@ -239,17 +266,10 @@ internal sealed class RecordingPublisher : IEventPublisher
     {
         lock (_sync)
         {
-            var on = new HashSet<Guid>(States.GetValueOrDefault(typeId) ?? []);
-            if (isOn)
-            {
-                on.Add(deviceId!.Value);
-            }
-            else
-            {
-                on.Remove(deviceId!.Value);
-            }
-
-            States[typeId] = on;
+            // An immutable set: one change costs O(log n), not a copy of every device that is on (O(n^2) at the device limit),
+            // and a test reading a state never sees it change under it.
+            var on = States.GetValueOrDefault(typeId) as ImmutableHashSet<Guid> ?? [.. States.GetValueOrDefault(typeId) ?? []];
+            States[typeId] = isOn ? on.Add(deviceId!.Value) : on.Remove(deviceId!.Value);
         }
     }
 
@@ -259,7 +279,7 @@ internal sealed class RecordingPublisher : IEventPublisher
     {
         lock (_sync)
         {
-            States[typeId] = [.. onDevices];
+            States[typeId] = ImmutableHashSet.CreateRange(onDevices);
             FullReports.AddOrUpdate(typeId, 1, (_, n) => n + 1);
         }
     }

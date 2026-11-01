@@ -55,8 +55,8 @@ public sealed class DeviceGridBusyTests : IDisposable
     }
 
     [Theory]
-    [InlineData(1_100)] // fewer than half selected: put back row by row
-    [InlineData(2_500)] // more than half: all selected, then the others taken off
+    [InlineData(1_100)] // fewer than half selected
+    [InlineData(2_500)] // more than half
     public async Task A_sort_keeps_exactly_a_large_partial_selection(int selected)
     {
         await HeadlessSession.Shared.Dispatch(() =>
@@ -85,6 +85,57 @@ public sealed class DeviceGridBusyTests : IDisposable
             Assert.Equal(expected, f.Devices.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
             Assert.Equal(expected, grid.SelectedItems.Cast<DeviceRowViewModel>().Select(r => r.Id).Order(StringComparer.Ordinal));
             Assert.Equal("Row.Model", Assert.Single(grid.CollectionView!.SortDescriptions).PropertyPath);
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_search_keeps_exactly_the_shown_rows_of_a_large_selection(bool sorted)
+    {
+        await HeadlessSession.Shared.Dispatch(() =>
+        {
+            using var f = new DevicesFixture();
+            f.SeedDevices([.. ClientScale.MakeDevices(6_000)]);
+            var vm = f.Devices;
+            var view = new DevicesView { DataContext = vm };
+            var window = new Window { Width = 1440, Height = 900, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
+            if (sorted)
+            {
+                grid.Columns.First(c => c.Header as string == "Model").Sort(ListSortDirection.Descending);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            var chosen = vm.FilteredDevices.Where((_, i) => i % 3 != 1).ToList();
+            var chosenSet = chosen.ToHashSet<object>();
+            Assert.True(Oadm.Client.Controls.GridRangeSelect.TrySelect(grid, chosenSet.Contains)); // row by row would take seconds
+
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(chosen.Count, grid.SelectedItems.Count);
+            var shown = chosen.Where(r => r.Matches("10.0.1")).Select(r => r.Id).Order(StringComparer.Ordinal).ToList();
+            Assert.True(shown.Count >= DevicesView.LargeSelection, "the search keeps a large selection");
+            int changes = 0;
+            grid.SelectionChanged += (_, _) => changes++;
+
+            vm.SearchText = "10.0.1";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(shown, vm.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.Equal(shown, grid.SelectedItems.Cast<DeviceRowViewModel>().Select(r => r.Id).Order(StringComparer.Ordinal));
+
+            vm.SearchText = "";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(f.Store.Devices.Count, vm.FilteredDevices.Count);
+            Assert.Equal(shown, vm.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.Equal(shown, grid.SelectedItems.Cast<DeviceRowViewModel>().Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.InRange(changes, 1, 8); // a few per search, not one per row
+            Assert.Equal(0, view.BusyRuns);
             window.Close();
             return Task.CompletedTask;
         }, CancellationToken.None);

@@ -110,9 +110,9 @@ public sealed class StartupStallScaleTests(ITestOutputHelper output)
 
         Assert.Equal(ClientScale.Devices + StartupStallTests.FakeSampleDevices, m.Devices);
 
-        // Measured about 50 ms (about 110 ms on a cold start with the plugin pages); before the rows were built off the UI
-        // thread 500 to 600 ms.
-        TimeSpan budget = TimeSpan.FromMilliseconds(400);
+        // Measured about 50 ms at 30,000 devices (about 110 ms on a cold start with the plugin pages); before the rows were
+        // built off the UI thread 500 to 600 ms.
+        TimeSpan budget = TimeSpan.FromSeconds(1); // at 100,000 devices measured 310 to 440 ms; never a freeze over 1 s (CLAUDE.md)
         output.WriteLine($"Budget {budget.TotalMilliseconds:F0} ms");
         Assert.True(m.LoadingStall < budget,
             $"the UI thread stalled {m.LoadingStall.TotalMilliseconds:F0} ms while the splash loaded, budget {budget.TotalMilliseconds:F0} ms");
