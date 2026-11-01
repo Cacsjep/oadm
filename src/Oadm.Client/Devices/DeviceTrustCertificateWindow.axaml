@@ -16,7 +16,7 @@
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,*,Auto">
         <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="0,0,0,10"
-                   Text="Trust a new certificate only if you know why it changed, for example a new certificate or a factory default." />
+                   Text="Trust a new certificate only if you know why it changed, for example a certificate you installed or a factory default." />
 
         <!-- Virtualized; read in pages -->
         <DataGrid x:Name="CertificateGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True">
