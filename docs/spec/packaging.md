@@ -158,7 +158,8 @@ Plugin SDK packaging: `docs/spec/plugins.md` "Loading and packaging" and `websit
 - Every GitHub Action is pinned by its full commit hash (the version as a comment). `.github/dependabot.yml` opens security
   updates only (`open-pull-requests-limit: 0` turns the weekly version updates off) for the Actions (new hashes), the
   NuGet packages (ignored: JsonSchema.Net 9+ and WixToolset 7+, whose license moved to the OSMF EULA; PDFsharp-MigraDoc
-  6.3+) and the website's npm packages; other updates are done by hand.
+  6.3+, which needs a license file to write a PDF) and the website's npm packages (ignored: mermaid 12+, astro-mermaid
+  takes 10 or 11); other updates are done by hand.
 - Vulnerable transitive npm packages of the website are pinned with `overrides` entries in `website/package.json`
   (postcss-selector-parser 7.1.6; katex 0.18.9 under mermaid 11) until their parents update; npm versions are pinned
   exactly.

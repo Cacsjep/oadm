@@ -13,13 +13,14 @@ description: How OADM protects devices and their passwords, and how to report a 
   Administrators can show a password of the credential list; every time is written to the audit log.
 - When adding devices, OADM only sends a password after the device answered like an Axis device, and tries HTTPS
   first.
-- OADM remembers each device's HTTPS certificate and stops talking to a device whose certificate changed.
+- OADM remembers each device's HTTPS certificate and stops talking to a device whose certificate changed, until you
+  trust the new one.
 - Tasks check that a device supports a change before the first write.
 
 ## How the code is checked
 
 - The source code is open. Every change to the main branch and every pull request is scanned with CodeQL.
-- Dependabot watches every dependency for known vulnerabilities and proposes updates every week.
+- Dependabot watches every dependency for known vulnerabilities and proposes security updates at once.
 - Secret scanning stops passwords or keys from being pushed to the repository.
 - Every release lists a SHA-256 checksum for each download (`SHA256SUMS.txt`).
 

@@ -92,7 +92,7 @@ Layout, top to bottom:
    `tests/Oadm.Server.Tests/DeviceCertificateTrustTests`, `tests/Oadm.Client.Tests/DeviceTrustCertificateTests`.
    **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see [tags.md](tags.md).
    **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
-   rarely needed; today **RTSP port** (video devices, "Optics Control"), see [live-view.md](live-view.md).
+   rarely needed; today **RTSP port** (devices with live video, "Optics Control"), see [live-view.md](live-view.md).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Start time, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
@@ -139,11 +139,11 @@ and the saved per-client order cover other preferences):
 | Model | ProdNbr |
 | Status | computed, see enum |
 | Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See [compliance.md](compliance.md) |
-| MAC address | SerialNumber from basicdeviceinfo; dimmed (`CellStyleClasses="dimmed"`, the secondary text colour) |
+| MAC address | SerialNumber from basicdeviceinfo (or its parameters on older firmware); dimmed (`CellStyleClasses="dimmed"`, the secondary text colour) |
 | Firmware | Version |
 | SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceTexts.Soc` of the client SDK); empty until read; in the search and the export; dimmed |
 | Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export; dimmed |
-| Clock | on by default: the device clock against the server's (see "Clock" below), "OK", or the warning icon alone while off (beyond the tolerance, or NTP not synced); how far ("50 s ahead", "2 min behind", "3 h ahead") or "NTP not synced" in the tooltip with the NTP state and in the export (`DeviceRowViewModel.ClockDetail`, also searched); a device that is not Ok shows that text plain; seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check (one implementation, `Oadm.Sdk.Devices.ClockTexts`, SDK 0.7.0: "OK" below 1 s, "NTP not synced", "NTP off"); devices that are not Ok show their last measured value as plain text; empty until measured; the warning colour while off; sorted by the absolute offset; in the search and the export |
+| Clock | on by default: the device clock against the server's (see "Clock" below): "OK", or the warning icon alone while off (beyond the tolerance, or NTP not synced); the tooltip gives how far ("50 s ahead", "2 min behind", "3 h ahead"; "Within 1 s of the server") and the NTP state (`DeviceClockText.Tooltip`); the export and the search use `DeviceRowViewModel.ClockDetail` (the offset beyond the tolerance, else "NTP not synced" or "OK"); a device that is not Ok shows its last measured value as plain text; seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check (`Oadm.Sdk.Devices.ClockTexts`, SDK 0.7.0); empty until measured; sorted by the absolute offset |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
 | DHCP | off by default (column chooser): Network.BootProto == dhcp -> Yes/No |

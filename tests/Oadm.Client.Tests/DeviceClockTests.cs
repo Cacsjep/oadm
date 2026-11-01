@@ -42,7 +42,7 @@ public sealed class DeviceClockTests
         Assert.Equal(expected, Oadm.Sdk.Devices.ClockTexts.OffsetText(offsetMs));
 
     [Fact]
-    public void Cell_shows_the_offset_beyond_the_tolerance_then_ntp_then_ok_and_a_chip_only_while_off()
+    public void Cell_is_ok_or_the_warning_icon_alone_while_off_and_the_detail_has_the_offset()
     {
         Assert.Equal(ChipInfo.Empty, DeviceClockText.ToChip(null, NtpState.NotSynced, clockOff: false, beyondTolerance: false));
 

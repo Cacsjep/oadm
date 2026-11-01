@@ -5,8 +5,9 @@ namespace Oadm.Theme.Shell;
 
 /// <summary>
 /// Keeps every window (main window, dialogs, plugin dialogs) inside the screen it opens on: a dialog designed for a large
-/// screen is made smaller on a small or scaled one (Full HD at 125 % leaves about 1536 x 816), its minimum and maximum
-/// sizes follow, and it is moved back onto the screen. Applied once a window is shown (<see cref="Attach"/>), on the screen
+/// screen is made smaller on a small or scaled one (Full HD at 125 % leaves about 1536 x 816), its minimum follows (a
+/// maximum only where it sizes to its content or had one, so Maximize still fills a larger monitor), and it is moved back
+/// onto the screen. Applied once a window is shown (<see cref="Attach"/>), on the screen
 /// it was placed on (next to its owner, which may be another monitor); the size logic is <see cref="Fit"/>, without UI.
 /// </summary>
 public static class WindowFit

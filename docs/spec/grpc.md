@@ -90,7 +90,7 @@ used again.
     reaches the device. `certificates` {device_id, pinned_fingerprint, fingerprint, subject, issuer, not_before_unix_ms,
     not_after_unix_ms, trust, message} in request order; message instead of a certificate: "The device does not show
     Certificate changed. Nothing was changed." (any other status or HTTP), "The device presents the trusted certificate
-    again.", "Unreachable - ...", the removed device.
+    again.", "The device presented no certificate.", "Unreachable - ...", the removed device.
   - `TrustNewCertificates(devices {device_id, fingerprint})` (same permission): per device only with status Certificate
     changed, `DeviceAddressService.UpdateTlsAsync` pinned to the **confirmed** fingerprint: the serial must be the
     record's (stored credentials), then the pin and the certificate details are stored, the cached client dropped and a

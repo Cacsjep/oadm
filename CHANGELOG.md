@@ -9,13 +9,12 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device, no need to remove and add it again.
+- Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device with its tags and history.
+- Security radars get the live preview and can be added to Live view and Dashboards.
 
 ### Changed
 
-- Security radars get the live preview and can be added to Live view and Dashboards.
 - Live video no longer shows a warning when the processor decodes it instead of the graphics card; Settings still says why.
-- Devices list: live view is no longer offered for a door controller or other device without video right after adding it.
 - Devices list: the Clock column shows only a warning icon when the clock is off; hover it to see how far.
 - Devices list: MAC address, SoC and Architecture are shown dimmed.
 
@@ -23,6 +22,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Devices with older firmware (for example AXIS OS 6.x or the AXIS A1001) are found and can be added and polled.
 - Add devices: an address that answers but not as an Axis device no longer says the device did not answer.
+- Add devices: model, firmware and device type show right after adding, so live view is no longer offered for a door controller or other device without video.
 - Windows moved to a larger monitor now maximize to fill it.
 
 ## [4.7.1] - 2026-10-30

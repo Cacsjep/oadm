@@ -74,7 +74,7 @@ web UI.
   Verified with an AXIS Q6411-LE of the AXIS Virtual Loan Tool (AXIS OS 13.0.88) behind port forwards; opt-in
   `PtzHardwareWriteTests` (`OADM_PTZ_URL`, `_USER`, `_PASSWORD`, `_RTSP_PORT`; also streams over the forwarded RTSP port).
   Fake mode: the Q6135-LE (10.0.0.22) is a PTZ camera with three presets.
-- **RTSP port** (context menu **OADM > RTSP port**, video devices, "Optics Control"; `Devices/RtspPortWindow` +
+- **RTSP port** (context menu **OADM > RTSP port**, devices with live video, "Optics Control"; `Devices/RtspPortWindow` +
   `RtspPortViewModel`, single operation): the port OADM connects to for live view and events of the selection, for
   cameras behind a port forward (AXIS Virtual Loan Tool, NAT); one call for the selection; empty or 554 = default,
   "Use default"; "The devices use different ports." when they differ; intro "Used for live view and events. Not set on the
@@ -87,8 +87,8 @@ web UI.
 - Open/close: the icon of the shown device or the close button or Escape closes the panel and
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
   cell has a hover state and the tooltip "Live preview"; devices without live video are disabled
-  (`LiveViewSupport.IsSupported`: the row's `HasLiveVideo`, its `HasVideo` or category Radar (the radar picture), see [data-model.md](data-model.md); a device
-  whose category is still Unknown is allowed and the stream tells; the grid binds `DeviceRowViewModel.OffersLiveView`, so the
+  (`LiveViewSupport.IsSupported` = `DeviceRowViewModel.OffersLiveView`: `HasLiveVideo`, i.e. `HasVideo` or Radar (the radar
+  picture), see [data-model.md](data-model.md), or a category still Unknown (the stream tells); the grid binds it, so the
   icon follows a category that arrives after the row, e.g. right after an add).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
@@ -168,7 +168,7 @@ web UI.
   says why, the separate process and a crashing one), `LiveVideoViewModelTests`.
 - Tests: `LiveVideoViewModelTests` (resolution choice, Full, the silent swap, a failing or slow new stream, hidden and
   shown, channels, reconnect and errors, details, controls and options, fullscreen), `LiveVideoViewHeadlessTests`
-  (hover parts, controls, ring, error, warning, fullscreen and Esc), `LiveViewViewModelTests` (the side panel).
+  (hover parts, controls, ring, error and no GPU warning, fullscreen and Esc), `LiveViewViewModelTests` (the side panel).
 - Fake mode replays recorded video of the development camera (H.265 or H.264) and reports two view areas for the
   P3265-V and four sensors plus quad view for the P3727-PLE.
 - Measured on the development camera at 640x360, 10 fps: first frame 0.3-0.6 s after the request through the
