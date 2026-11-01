@@ -113,7 +113,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// <summary>CPU architecture as the device reports it ("aarch64"); null until the server read it.</summary>
     [ObservableProperty] public partial string? Architecture { get; private set; }
 
-    /// <summary>The Clock cell: "OK", "Off", "NTP not synced", a warning chip while off, empty until measured (<see cref="DeviceClockText"/>).</summary>
+    /// <summary>The Clock cell: "OK", the warning icon alone while off, empty until measured (<see cref="DeviceClockText"/>).</summary>
     [ObservableProperty] public partial ChipInfo Clock { get; private set; } = ChipInfo.Empty;
 
     /// <summary>The Clock value of the export and the search: the offset while off ("50 s ahead"), else like the cell.</summary>

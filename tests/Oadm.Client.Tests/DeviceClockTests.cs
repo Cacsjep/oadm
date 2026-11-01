@@ -52,21 +52,21 @@ public sealed class DeviceClockTests
         Assert.False(ok.IsChip);
 
         ChipInfo ahead = DeviceClockText.ToChip(49_400, NtpState.Synced, clockOff: true, beyondTolerance: true);
-        Assert.Equal(DeviceClockText.Off, ahead.Text);
+        Assert.Equal("", ahead.Text);
         Assert.Equal("50 s ahead", DeviceClockText.Detail(49_400, NtpState.Synced, beyondTolerance: true));
-        Assert.True(ahead.IsWarning);
-        Assert.True(ahead.IsChip);
+        Assert.True(ahead.IsWarning); // the grid shows the warning icon alone
 
         // Beyond the tolerance wins over NTP; within it, NTP not synced says so.
-        Assert.Equal(DeviceClockText.Off, DeviceClockText.ToChip(-125_000, NtpState.NotSynced, clockOff: true, beyondTolerance: true).Text);
+        Assert.Equal("", DeviceClockText.ToChip(-125_000, NtpState.NotSynced, clockOff: true, beyondTolerance: true).Text);
         Assert.Equal("2 min behind", DeviceClockText.Detail(-125_000, NtpState.NotSynced, beyondTolerance: true));
         ChipInfo ntp = DeviceClockText.ToChip(400, NtpState.NotSynced, clockOff: true, beyondTolerance: false);
-        Assert.Equal("NTP not synced", ntp.Text);
+        Assert.Equal("", ntp.Text); // the warning icon alone
         Assert.True(ntp.IsWarning);
+        Assert.Equal("NTP not synced", DeviceClockText.Detail(400, NtpState.NotSynced, beyondTolerance: false));
 
         // A device that is not Ok is never off: its last measured offset as plain text.
         ChipInfo lastMeasured = DeviceClockText.ToChip(3 * 3600 * 1000 + 10_000, NtpState.Off, clockOff: false, beyondTolerance: true);
-        Assert.Equal(DeviceClockText.Off, lastMeasured.Text);
+        Assert.Equal("3 h ahead", lastMeasured.Text);
         Assert.False(lastMeasured.IsChip);
         Assert.Equal("NTP not synced", DeviceClockText.ToChip(400, NtpState.NotSynced, clockOff: false, beyondTolerance: false).Text);
     }
@@ -108,7 +108,7 @@ public sealed class DeviceClockTests
         device.ClockOff = true;
         Assert.True(row.Apply(device));
         Assert.True(row.Clock.IsWarning);
-        Assert.Equal(DeviceClockText.Off, row.Clock.Text);
+        Assert.Equal("", row.Clock.Text);
         Assert.Equal("2 min behind", row.ClockDetail);
         Assert.Equal("2 min behind, NTP off", row.ClockTooltip);
         Assert.Equal(125_000, row.ClockSortKey);
@@ -201,8 +201,9 @@ public sealed class DeviceClockTests
 
             // Ok plain text, an off clock as a warning chip.
             Assert.Contains(grid.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "OK" && t.IsEffectivelyVisible);
-            Assert.Contains(grid.GetVisualDescendants().OfType<StatusChip>(), c => c.IsWarning && c.IsEffectivelyVisible
-                && (c.Text == "NTP not synced" || c.Text?.EndsWith(" ahead", StringComparison.Ordinal) == true || c.Text?.EndsWith(" behind", StringComparison.Ordinal) == true));
+            // An off clock: the warning icon alone, how far in its tooltip.
+            Assert.Contains(grid.GetVisualDescendants().OfType<StatusChip>(), c => c.IsWarning && c.IsEffectivelyVisible && string.IsNullOrEmpty(c.Text)
+                && ToolTip.GetTip(c) is string tip && (tip.Contains("NTP not synced", StringComparison.Ordinal) || tip.Contains(" ahead", StringComparison.Ordinal) || tip.Contains(" behind", StringComparison.Ordinal)));
             Capture(window, outDir, "client-clock-column");
 
             clock.Sort(ListSortDirection.Ascending);

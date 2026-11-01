@@ -4,32 +4,20 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Client.Devices;
 
 /// <summary>
-/// The Clock column (docs/spec/main-window.md "Clock"): the device clock against the server's, short: "Off", "NTP not
-/// synced" or "OK"; a warning chip while off; how far in the tooltip and the export ("50 s ahead", "2 min behind"); empty
-/// until measured. The offset texts are the shared <see cref="ClockTexts"/> of the Clock compliance check.
+/// The Clock column (docs/spec/main-window.md "Clock"): the device clock against the server's: the warning icon alone while
+/// the clock is off (beyond the allowed difference or NTP not synced), else "OK"; how far and the NTP state in the tooltip,
+/// the export and the search ("50 s ahead", "NTP not synced"); empty until measured. The texts are the shared
+/// <see cref="ClockTexts"/> of the Clock compliance check.
 /// </summary>
 public static class DeviceClockText
 {
-    /// <summary>The cell of a clock beyond the allowed difference (how far: <see cref="Tooltip"/>).</summary>
-    public const string Off = "Off";
-
     /// <summary>
-    /// The cell: empty until measured; "Off" while the offset is beyond the allowed difference, else "NTP not synced"
-    /// while the device's NTP is not synchronized, else "OK". A warning chip only while the server counts the clock as off
-    /// (a device that is not Ok shows its last measured state as plain text).
+    /// The cell: empty until measured; the warning icon without text while the server counts the clock as off; else
+    /// <see cref="Detail"/> as plain text ("OK", or the last measured state of a device that is not Ok).
     /// </summary>
-    public static ChipInfo ToChip(int? offsetMs, NtpState ntp, bool clockOff, bool beyondTolerance)
-    {
-        if (offsetMs is null)
-        {
-            return ChipInfo.Empty;
-        }
-
-        string text = beyondTolerance ? Off
-            : ntp == NtpState.NotSynced ? ClockTexts.NtpNotSynced
-            : ClockTexts.Ok;
-        return new ChipInfo(text, clockOff ? PillKind.Warning : PillKind.Ok);
-    }
+    public static ChipInfo ToChip(int? offsetMs, NtpState ntp, bool clockOff, bool beyondTolerance) => offsetMs is null ? ChipInfo.Empty
+        : clockOff ? new ChipInfo("", PillKind.Warning)
+        : new ChipInfo(Detail(offsetMs, ntp, beyondTolerance), PillKind.Ok);
 
     /// <summary>
     /// The export's Clock value: the offset while it is beyond the allowed difference ("50 s ahead"), else "NTP not synced"
