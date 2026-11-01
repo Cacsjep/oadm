@@ -26,7 +26,7 @@ public interface IDeviceInfo
 
     /// <summary>
     /// The device sends a live video stream: the devices with <see cref="HasVideo"/> and security radars (their radar
-    /// picture). Use it for live video only; a radar has no exposure, optics or snapshots of a scene.
+    /// picture). Use it for live video only; a radar has no exposure, optics or snapshots of a scene. SDK 0.8.0.
     /// </summary>
     bool HasLiveVideo => DeviceCategories.HasLiveVideo(Category);
 
@@ -125,7 +125,7 @@ public static class DeviceCategories
     public static bool HasVideo(DeviceCategory category) =>
         category is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom;
 
-    /// <summary>Categories whose devices send a live video stream: those with <see cref="HasVideo"/> and Radar.</summary>
+    /// <summary>Categories whose devices send a live video stream: those with <see cref="HasVideo"/> and Radar (SDK 0.8.0).</summary>
     public static bool HasLiveVideo(DeviceCategory category) =>
         HasVideo(category) || category is DeviceCategory.Radar;
 }

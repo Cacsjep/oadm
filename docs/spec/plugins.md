@@ -24,7 +24,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 
 - `IPlugin`: `Id` ("oadm.restart"), `DisplayName`, `IconKey`.
 - `IDeviceInfo`: the read-only device view for plugins (server and client): id, serial, address, host name, model,
-  firmware, status, category, `HasVideo`, `HasLiveVideo` (adds radars, for live video only), `Apis` (API list of the last full refresh), `CredentialUserName` (never a
+  firmware, status, category, `HasVideo`, `HasLiveVideo` (SDK 0.8.0, DIM: adds radars, for live video only; also `DeviceCategories.HasLiveVideo`), `Apis` (API list of the last full refresh), `CredentialUserName` (never a
   password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
   `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted), `Tags`, `SiteId` / `SiteName`,
   `AddedByAllDevices`, `Soc` / `Architecture` (SDK 0.7.0, DIM null: basicdeviceinfo as reported, filled by the server).
@@ -320,11 +320,11 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.7.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.8.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.7.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.7.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.8.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.8.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:

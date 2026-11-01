@@ -11,6 +11,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device with its tags and history.
 - Security radars get the live preview and can be added to Live view and Dashboards.
+- Plugin SDK 0.8.0.
 
 ### Changed
 
