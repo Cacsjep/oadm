@@ -92,9 +92,9 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 <div class="downloads not-content" data-repo={repo}>
 	<div class="dl-actions">
 		<button class="dl dl-main" type="button" aria-haspopup="dialog" aria-controls="download-dialog">
-			<Icon name="download" />Download<span class="dl-version-text" hidden={!version}>{version}</span>
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="dl-arrow"><path d="M12 15V3" /><path d="m7 10 5 5 5-5" /></g><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Download
 		</button>
-		<a class="dl" href={firmwareDownloader} target="_blank" rel="noopener" title="Chrome extension for AXIS firmware">
+		<a class="dl fw-open" href={firmwareDownloader} target="_blank" rel="noopener" title="Chrome extension for AXIS firmware" aria-haspopup="dialog" aria-controls="firmware-dialog">
 			<Icon name="chrome" />Firmware Downloader
 		</a>
 	</div>
@@ -138,6 +138,16 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 			<a href={`${base}project/changelog/`}>Release notes</a>
 			<a class="dl-checksums" href={checksums}>Checksums</a>
 			<a href={releasePage}>All files on GitHub</a>
+		</div>
+	</dialog>
+	<dialog id="firmware-dialog" class="dl-dialog fw-dialog" aria-labelledby="firmware-title">
+		<div class="dl-dialog-head">
+			<h2 id="firmware-title">Firmware Downloader</h2>
+			<button class="dl-close" type="button" aria-label="Close"><Icon name="close" /></button>
+		</div>
+		<div class="fw-body">
+			<p>Find AXIS OS firmware, import devices from OADM or AXIS Device Manager and batch-download updates with your My Axis account.</p>
+			<a class="dl fw-store" href={firmwareDownloader} target="_blank" rel="noopener"><Icon name="chrome" />Download from Chrome Store</a>
 		</div>
 	</dialog>
 	<nav class="dl-links" aria-label="Community and learning">
@@ -191,6 +201,19 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 	dialog?.querySelector('.dl-close')?.addEventListener('click', () => dialog.close());
 	dialog?.addEventListener('click', (event) => {
 		if (event.target === dialog) dialog.close();
+	});
+
+	// Firmware Downloader: the link opens a short info first; without JavaScript it goes straight to the store.
+	const firmware = root?.querySelector<HTMLDialogElement>('.fw-dialog');
+	root?.querySelector('.fw-open')?.addEventListener('click', (event) => {
+		if (!firmware?.showModal) return;
+		event.preventDefault();
+		firmware.showModal();
+	});
+	firmware?.querySelector('.dl-close')?.addEventListener('click', () => firmware.close());
+	firmware?.querySelector('.fw-store')?.addEventListener('click', () => firmware.close());
+	firmware?.addEventListener('click', (event) => {
+		if (event.target === firmware) firmware.close();
 	});
 
 	// Newsletter: the button opens the form, which posts to the support forum (double opt-in by mail).

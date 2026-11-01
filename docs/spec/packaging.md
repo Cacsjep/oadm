@@ -195,6 +195,9 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   the server and client ZIPs of every system under a heading per system; one row per file with its name, file name and
   size; a group or row whose file the release lacks is hidden. Below them How to install, Release notes (the changelog
   page), Checksums (`SHA256SUMS.txt`) and All files on GitHub.
+- **Firmware Downloader** (right of Download, the Chrome extension): a link to the Chrome Web Store that opens a small
+  `<dialog>` with one line of info and the accent button "Download from Chrome Store" (new tab); X, Escape and a click
+  outside close it; without JavaScript the link opens the store.
 - Below the button: the intro video (`IntroVideo.astro`, `public/intro.mp4` with the preview image `intro-poster.jpg` and
   a play button in the middle; loaded on click, with sound and controls), then one quiet row of grey links without boxes
   or headings (`.dl-links`): **Support Forum**, **Newsletter** (an email field that posts to the support forum; double
@@ -203,7 +206,7 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 - **Forum check:** the page checks the forum on every visit (`src/lib/forum.ts`: `GET /api/health`, 2 s; any answer
   counts) and while it does not answer greys out the Support Forum links, the newsletter and the Bug report menu's
   Support Forum entry with "Currently not available. We are working on it.".
-- **Tools:** "Explore the tools", one card per page with a screenshot (`PluginCards.astro`, Compliance first, then the
+- **Tools:** "Explore", one card per page with a screenshot (`PluginCards.astro`, Compliance first, then the
   plugins in rail order; EST server and 802.1X server with a PRO badge next to the name; folded by `Reveal.astro`: about
   one row fading out, "Show all N tools", without JavaScript all). Then Security (three points) and "Extend OADM with
   plugins".
@@ -212,8 +215,8 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   `/activate/`); icon cards; a plan lights up on hover (none recommended); no buy button: "Estimated launch: end of
   November 2026"; commercial support with an SLA, feature requests with a higher priority, the enterprise plugin EST
   server.
-  - Plans per two years (the maintenance period of project offers): Individual (support for one plugin on one server,
-    for a project offer) from €440, up to 500 devices per server €940, up to 30,000 per server €4,870, Unlimited (a
+  - Plans per two years (the maintenance period of project offers): up to 200 devices per server €440, up to 1,000
+    per server €1,940, up to 100,000 per server €4,870 (`OadmPro.astro`; the devices a plan supports, never enforced), Unlimited (a
     license key for each server of one company, any number of devices) €9,740 (prices end in 40, 50 or 70, never 99 or
     round), without VAT; every plan with SLA support, the enterprise plugins and a 30-day trial. Below the plans:
     renewal before the end 15% less, three years for tenders on request (quote form) (planned, final at launch).

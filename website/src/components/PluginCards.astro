@@ -52,7 +52,7 @@ const plugins = [
 const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: p.image, width: 1600, format: 'webp' })).src));
 ---
 
-<Reveal more={`Show all ${plugins.length} tools`} preview={22} fade={14}>
+<Reveal more={`Show all ${plugins.length}`} preview={22} fade={14}>
 <div class="plugin-cards not-content">
 	{plugins.map((p, i) => (
 		<a class="plugin-card" href={`${base}${p.path ?? `tools/${p.page}`}/`} data-large={large[i]}>

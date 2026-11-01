@@ -8,7 +8,7 @@ import { forumUrl } from '../lib/forum';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
-const quotePlans = ['Up to 200 devices', 'Up to 1,000 devices', 'Up to 4,000 devices', 'Unlimited', 'Custom plugin', 'Something else', 'Not sure yet'];
+const quotePlans = ['Up to 200 devices', 'Up to 1,000 devices', 'Up to 100,000 devices', 'Unlimited', 'Custom plugin', 'Something else', 'Not sure yet'];
 
 // Lucide icons (ISC license), 24 x 24 stroke paths.
 const icons = {
@@ -19,13 +19,13 @@ const icons = {
 const check = '<path d="M20 6 9 17l-5-5"/>';
 const cross = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 
-// Per two years (the maintenance period of most project offers). Three plans per server, sized by its devices (the license
-// key's device limit), and one for a whole company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
+// Per two years (the maintenance period of most project offers). Three plans per server, sized by the devices it supports
+// (support scope only: OADM never limits devices by license), and one for a whole company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
 const all = ['Support with an SLA', 'EST server', '802.1X server', 'Feature requests first'];
 const plans = [
 	{ devices: 'Up to 200 devices', price: '€440', text: 'One server. One site or a small customer.', included: all },
 	{ devices: 'Up to 1,000 devices', price: '€1,940', text: 'One server for a larger site or several small ones.', included: all },
-	{ devices: 'Up to 4,000 devices', price: '€4,870', text: 'One server for a large installation.', included: all },
+	{ devices: 'Up to 100,000 devices', price: '€4,870', text: 'One server for a large installation.', included: all },
 	{ devices: 'Unlimited', price: '€9,740', text: 'A license key for each server of one company, any number of devices.', included: all },
 ];
 
