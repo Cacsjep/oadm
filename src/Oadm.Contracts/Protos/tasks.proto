@@ -8,6 +8,9 @@ import "google/protobuf/timestamp.proto";
 // with it (a request without fields keeps the former behavior).
 service TaskService {
   rpc ListTaskPlugins (ListTaskPluginsRequest) returns (TaskPluginList);
+  // The same entries as ListTaskPlugins, one message per plugin: at 100,000 devices one list can pass the client's 32 MB
+  // message limit (about 2 MB of ids per plugin that runs on half the devices), one plugin never does.
+  rpc StreamTaskPlugins (ListTaskPluginsRequest) returns (stream TaskPluginInfo);
   rpc Run (RunTaskRequest) returns (RunTaskReply);   // one transaction for all tasks of the Run
   // Newest first. limit 0 = every task (legacy; with 50,000 tasks that is one huge message).
   rpc List (ListTasksRequest) returns (TaskList);

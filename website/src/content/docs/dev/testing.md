@@ -114,6 +114,9 @@ A server can manage 100,000 devices. Every feature with a device list has a `Per
 keeps search, select all, the summary and updates fast, writes its measured times to the test output and has a
 generous but meaningful budget.
 
+A few `Perf` tests run for several minutes (a task on 100,000 devices: about 9). With `--blame-hang-timeout`, give
+`Perf` runs 20 minutes; 5 minutes is enough for the unit tests.
+
 ## Real cameras
 
 Copy `dev-cameras.example.yaml` to `dev-cameras.yaml` at the repository root (git-ignored: it holds passwords) and

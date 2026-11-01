@@ -97,9 +97,29 @@ public sealed partial class TaskGrpcService(
     /// </summary>
     public override async Task<Proto.TaskPluginList> ListTaskPlugins(Proto.ListTaskPluginsRequest request, ServerCallContext context)
     {
+        var reply = new Proto.TaskPluginList();
+        reply.Plugins.AddRange(await TaskPluginsAsync(request, context).ConfigureAwait(false));
+        return reply;
+    }
+
+    /// <summary>
+    /// The entries of <see cref="ListTaskPlugins"/>, one message per plugin: the whole list can pass the client's message
+    /// limit at 100,000 devices, one plugin's ids never do.
+    /// </summary>
+    public override async Task StreamTaskPlugins(
+        Proto.ListTaskPluginsRequest request, IServerStreamWriter<Proto.TaskPluginInfo> responseStream, ServerCallContext context)
+    {
+        foreach (var plugin in await TaskPluginsAsync(request, context).ConfigureAwait(false))
+        {
+            await responseStream.WriteAsync(plugin, context.CancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<List<Proto.TaskPluginInfo>> TaskPluginsAsync(Proto.ListTaskPluginsRequest request, ServerCallContext context)
+    {
         var caller = AuthInterceptor.CallerOf(context); // fail closed: never "no caller = every plugin"
         var view = await views.ForAsync(context).ConfigureAwait(false);
-        var reply = new Proto.TaskPluginList();
+        var reply = new List<Proto.TaskPluginInfo>();
         foreach (var entry in await runnable.GetAsync(view, context.CancellationToken).ConfigureAwait(false))
         {
             if (!caller.Permissions.HasAny(PermissionCatalog.TaskKeys(entry.Plugin.Plugin)))
@@ -114,7 +134,7 @@ public sealed partial class TaskGrpcService(
 
             try
             {
-                reply.Plugins.Add(Mappers.ToProto(entry, request.Compact));
+                reply.Add(Mappers.ToProto(entry, request.Compact));
             }
 #pragma warning disable CA1031 // A plugin with a throwing property must not break the menu.
             catch (Exception ex)

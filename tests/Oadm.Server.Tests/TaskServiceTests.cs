@@ -38,6 +38,29 @@ public sealed class TaskServiceTests
         Assert.DoesNotContain(noCredentials.Id.ToString(), restart.RunnableDeviceIds);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StreamTaskPluginsSendsTheListOnePluginPerMessage(bool compact)
+    {
+        await using var host = await TestServerHost.StartAsync();
+        RegisterFastRestart(host);
+        await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.2", 2, password: null, status: SdkDeviceStatus.CredentialsRequired);
+        var request = new Proto.ListTaskPluginsRequest { Compact = compact };
+
+        var list = await host.Tasks.ListTaskPluginsAsync(request);
+        using var call = host.Tasks.StreamTaskPlugins(request);
+        var streamed = new List<Proto.TaskPluginInfo>();
+        await foreach (var plugin in call.ResponseStream.ReadAllAsync())
+        {
+            streamed.Add(plugin);
+        }
+
+        Assert.Contains(streamed, p => p.Id == RestartTaskPlugin.PluginId);
+        Assert.Equal(list.Plugins, streamed);
+    }
+
     [Fact]
     public async Task RunRestartTaskReportsProgressAndRefreshesTheDevice()
     {

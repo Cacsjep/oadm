@@ -408,8 +408,29 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<DiscoveredDevice> RetryAuthAsync(RetryAuthRequest request, CancellationToken ct) =>
         await C.AddDevices.RetryAuthAsync(request, cancellationToken: ct);
 
-    public async Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct) =>
-        (await C.Tasks.ListTaskPluginsAsync(new ListTaskPluginsRequest { Compact = true }, cancellationToken: ct)).Plugins;
+    /// <summary>
+    /// The task entries one message per plugin (at 100,000 devices the whole list can pass the 32 MB message limit); an
+    /// older server without the stream sends the whole list in one message.
+    /// </summary>
+    public async Task<IReadOnlyList<TaskPluginInfo>> ListTaskPluginsAsync(CancellationToken ct)
+    {
+        var request = new ListTaskPluginsRequest { Compact = true };
+        try
+        {
+            using var call = C.Tasks.StreamTaskPlugins(request, cancellationToken: ct);
+            var plugins = new List<TaskPluginInfo>();
+            await foreach (var plugin in call.ResponseStream.ReadAllAsync(ct))
+            {
+                plugins.Add(plugin);
+            }
+
+            return plugins;
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
+        {
+            return (await C.Tasks.ListTaskPluginsAsync(request, cancellationToken: ct)).Plugins;
+        }
+    }
 
     public async Task<IReadOnlyList<string>> RunTaskAsync(string pluginId, IReadOnlyCollection<string> deviceIds, string? payloadJson, string owner, CancellationToken ct)
     {

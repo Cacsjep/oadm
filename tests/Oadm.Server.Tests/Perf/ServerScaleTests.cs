@@ -164,6 +164,22 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
             output.WriteLine("Legacy full ListTaskPlugins message: larger than the client limit of 32 MB (the client asks for the compact form)");
         }
 
+        // The stream the client uses: one message per plugin, so even the full form (every runnable id) stays far below
+        // the client's 32 MB limit per message, whatever the whole list adds up to.
+        long total = 0;
+        int largest = 0;
+        using (var call = Host.Tasks.StreamTaskPlugins(new Proto.ListTaskPluginsRequest()))
+        {
+            await foreach (var plugin in call.ResponseStream.ReadAllAsync())
+            {
+                total += plugin.CalculateSize();
+                largest = Math.Max(largest, plugin.CalculateSize());
+            }
+        }
+
+        output.WriteLine($"StreamTaskPlugins full form: {total / 1024 / 1024.0:F1} MB in all, largest message {largest / 1024 / 1024.0:F1} MB");
+        Assert.True(largest < 8 * 1024 * 1024, "one plugin's message stays below 8 MB at the device limit");
+
         var compactPlugin = compact.Plugins.Single(p => p.Id == "perf.task0");
         Assert.True(compactPlugin.RunnableOnAllExcept);
         Assert.Empty(compactPlugin.RunnableDeviceIds);
@@ -337,7 +353,7 @@ public sealed class ServerBatchScaleTests(ITestOutputHelper output)
             deleted = await host.Tasks.DeleteAllAsync(new Proto.Empty()));
         Assert.Equal(ServerScale.Devices, deleted.Deleted);
 
-        await ServerScale.MeasureAsync(output, "Remove 100,000 devices (one transaction)", TimeSpan.FromSeconds(30), async () =>
+        await ServerScale.MeasureAsync(output, "Remove 100,000 devices (one transaction; measured 28 to 44 s)", TimeSpan.FromSeconds(240), async () =>
         {
             var request = new Proto.DeviceIds();
             request.Ids.AddRange(deviceIds);

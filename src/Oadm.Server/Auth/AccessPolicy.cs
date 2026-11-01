@@ -131,6 +131,7 @@ public static class AccessPolicy
 
         // Tasks: every role sees the task list; running and the dialog's reads depend on the task plugin.
         ["/oadm.v1.TaskService/ListTaskPlugins"] = AccessRule.SignedIn,
+        ["/oadm.v1.TaskService/StreamTaskPlugins"] = AccessRule.SignedIn,
         ["/oadm.v1.TaskService/List"] = AccessRule.SignedIn,
         ["/oadm.v1.TaskService/Watch"] = AccessRule.SignedIn,
         ["/oadm.v1.TaskService/GetLog"] = AccessRule.SignedIn,

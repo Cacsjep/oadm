@@ -142,6 +142,9 @@ used again.
     (`ITaskPlugin.NotSupportedReason`, computed in the same cache), grouped by reason, most devices first, every id sent
     once: with `runnable_on_all_except` the not-runnable ids are sorted by group and each group takes its `count` of them,
     otherwise the most common reason is `other_devices` (no ids) and the rarer ones list their ids.
+  - `StreamTaskPlugins(ListTaskPluginsRequest)`: the same entries, one `TaskPluginInfo` message per plugin; the client
+    uses it (at 100,000 devices the whole list can pass its 32 MB message limit, one plugin stays at a few MB) and falls
+    back to `ListTaskPlugins` when a server answers UNIMPLEMENTED.
   - `Run(pluginId, deviceIds, payloadJson)`: one task per device, reply `task_ids` (`task_id` is deprecated = first id),
     all tasks of a Run written in one transaction.
   - `List(ListTasksRequest)`: newest first, `limit` / `offset` paging, `TaskList.total_count = 2`, limit 0 = all.
