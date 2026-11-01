@@ -377,7 +377,7 @@
     <Setter Property="LineHeight" Value="19" />
     <Setter Property="Margin" Value="0,0,12,0" />
   </Style>
-  <!-- A dimmed column (the time of a log-like table: 802.1X sessions, EST enrollments): CellStyleClasses="dimmed" -->
+  <!-- A dimmed column (the time of a log-like table: 802.1X sessions, EST enrollments; the device grid's MAC address, SoC and Architecture): CellStyleClasses="dimmed" -->
   <Style Selector="DataGridCell.dimmed">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
   </Style>

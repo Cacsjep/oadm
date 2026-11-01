@@ -139,10 +139,10 @@ and the saved per-client order cover other preferences):
 | Model | ProdNbr |
 | Status | computed, see enum |
 | Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See [compliance.md](compliance.md) |
-| MAC address | SerialNumber from basicdeviceinfo |
+| MAC address | SerialNumber from basicdeviceinfo; dimmed (`CellStyleClasses="dimmed"`, the secondary text colour) |
 | Firmware | Version |
-| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceTexts.Soc` of the client SDK); empty until read; in the search and the export |
-| Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export |
+| SoC | basicdeviceinfo `Soc` (status poll and full refresh), shown in Axis spelling: "Axis Artpec-8" = "ARTPEC-8", other chips as reported (`DeviceTexts.Soc` of the client SDK); empty until read; in the search and the export; dimmed |
+| Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export; dimmed |
 | Clock | on by default: the device clock against the server's (see "Clock" below): "OK", "50 s ahead", "2 min behind", "3 h ahead", "NTP not synced" (offset within the tolerance but NTP not synced); seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check (one implementation, `Oadm.Sdk.Devices.ClockTexts`, SDK 0.7.0: "OK" below 1 s, "NTP not synced", "NTP off"); devices that are not Ok show their last measured value as plain text; empty until measured; the warning colour while off; sorted by the absolute offset; in the search and the export |
 | Tags | the device's tags as chips (`c:TagChipList`, `Border.tagChip`: the name in the tag color on a subtle pill), "+N" when they do not fit, tooltip with every tag; sorted by "Building A; PTZ" |
 | Site | the site the device is reached through (`Device.site_name`), empty on the server's own network; shown only while the server has sites; in the search and the export |
