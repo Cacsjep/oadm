@@ -2,6 +2,8 @@ using System.ComponentModel;
 
 using Avalonia.Controls;
 
+using Oadm.Sdk.Client.Controls;
+
 namespace Oadm.Plugins.Users.Client;
 
 /// <summary>
@@ -16,7 +18,13 @@ public partial class UsersWindow : Window
     public UsersWindow()
     {
         InitializeComponent();
-        UsersGrid.SelectionChanged += (_, _) => ForwardSelection();
+        UsersGrid.SelectionChanged += (_, _) =>
+        {
+            if (!GridSort.IsMovingSelection(UsersGrid))
+            {
+                ForwardSelection();
+            }
+        };
     }
 
     protected override void OnDataContextChanged(EventArgs e)

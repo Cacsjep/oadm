@@ -33,6 +33,7 @@ public partial class App : Application
     {
         ApplyCrispTextToAllWindows();
         WindowFit.Attach();
+        Oadm.Sdk.Client.Controls.GridSort.Install();
         Infrastructure.WheelScroll.Attach();
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

@@ -49,7 +49,7 @@ src/
                        DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
                        ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
                        GroupedChoice, CheckChoice, DeviceTree, PageHeader, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
-                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup, LineChart, BarChart), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
+                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup, GridSort, LineChart, BarChart), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
                        form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)

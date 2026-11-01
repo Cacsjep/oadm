@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
 
+using Oadm.Sdk.Client.Controls;
+
 namespace Oadm.Plugins.EdgeStorage.Client;
 
 /// <summary>Shows the page; the view model connects while the view is in the visual tree. Opens the page's dialogs.</summary>
@@ -9,7 +11,13 @@ public partial class EdgeStorageView : UserControl, IStorageDialogs
     public EdgeStorageView()
     {
         InitializeComponent();
-        RowGrid.SelectionChanged += (_, _) => (DataContext as EdgeStorageViewModel)?.SetSelection(RowGrid.SelectedItems.OfType<StorageRowViewModel>());
+        RowGrid.SelectionChanged += (_, _) =>
+        {
+            if (!GridSort.IsMovingSelection(RowGrid))
+            {
+                (DataContext as EdgeStorageViewModel)?.SetSelection(RowGrid.SelectedItems.OfType<StorageRowViewModel>());
+            }
+        };
     }
 
     protected override void OnDataContextChanged(EventArgs e)

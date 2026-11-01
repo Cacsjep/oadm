@@ -5,6 +5,7 @@ using Avalonia.Collections;
 using Avalonia.Controls;
 
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Controls;
 
@@ -123,9 +124,9 @@ public static class GridSelection
 
     private static void OnGridSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (sender is not DataGrid grid || GetSelectedItems(grid) is not { } target)
+        if (sender is not DataGrid grid || GetSelectedItems(grid) is not { } target || GridSort.IsMovingSelection(grid))
         {
-            return;
+            return; // while a sort moves the selection: the same rows are selected after
         }
 
         // Scale: select all on 5,000 rows is one SelectionChanged with 5,000 added items. Item by item that

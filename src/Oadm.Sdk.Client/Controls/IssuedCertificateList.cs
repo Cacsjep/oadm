@@ -171,7 +171,7 @@ public sealed class IssuedCertificateList : UserControl
         Table.ContextRequested += OnRowContextRequested;
         Table.SelectionChanged += (_, _) =>
         {
-            if (!_restoring)
+            if (!_restoring && !GridSort.IsMovingSelection(Table))
             {
                 _vm?.SetSelection(Table.SelectedItems.OfType<IssuedCertificateRow>());
             }

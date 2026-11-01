@@ -26,7 +26,7 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
         InitializeComponent();
         DevicesGrid.SelectionChanged += (_, _) =>
         {
-            if (!_reselecting)
+            if (!_reselecting && !GridSort.IsMovingSelection(DevicesGrid))
             {
                 _viewModel?.SetSelectedDevices(DevicesGrid.SelectedItems.OfType<AppDeviceRow>());
             }
@@ -40,7 +40,7 @@ public partial class ApplicationsView : UserControl, IApplicationDialogs
         };
         AppsGrid.SelectionChanged += (_, _) =>
         {
-            if (!_reselecting)
+            if (!_reselecting && !GridSort.IsMovingSelection(AppsGrid))
             {
                 _viewModel?.SetDeviceSelection(AppsGrid.SelectedItems.OfType<AppRow>());
             }

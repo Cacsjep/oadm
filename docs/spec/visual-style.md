@@ -264,6 +264,10 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
     `Border.dropPreview`.
 - `GridGroup`: the group key of a `DataGrid.groups` grid whose header shows an icon (chevron, the theme icon
   `Icon.<IconKey>` and the name; equal by name and icon; a plain string key shows the name only; PKI's policy groups).
+- `GridSort`: the sort of every grid with 1,000 or more selected rows (the client installs it at start, plugin grids
+  included): the selection comes off before the sort and goes back right after (the grid would look up every selected row
+  in the whole list: 30,000 rows took 2 s, grouped 6 s). A `SelectionChanged` handler that hands the selection to a view
+  model skips the change while `GridSort.IsMovingSelection(grid)`. The device grid sorts on its own (with the ring).
 - `RowActions`: the ⋯ menu of a table row, one look everywhere (the certificate tables, PKI's policies, the 802.1X
   switches, the EST profiles, the role columns and device groups of Permissions): everyday entries, a separator, the red
   ones last.

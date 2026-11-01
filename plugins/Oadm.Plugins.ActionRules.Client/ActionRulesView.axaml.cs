@@ -17,12 +17,18 @@ public partial class ActionRulesView : UserControl, IRuleDialogs
         InitializeComponent();
         GroupGrid.SelectionChanged += (_, _) =>
         {
-            if (!_restoring)
+            if (!_restoring && !GridSort.IsMovingSelection(GroupGrid))
             {
                 (DataContext as ActionRulesViewModel)?.SetGroupSelection(GroupGrid.SelectedItems.OfType<RuleGroupRow>());
             }
         };
-        MemberGrid.SelectionChanged += (_, _) => (DataContext as ActionRulesViewModel)?.SetMemberSelection(MemberGrid.SelectedItems.OfType<RuleMemberRow>());
+        MemberGrid.SelectionChanged += (_, _) =>
+        {
+            if (!GridSort.IsMovingSelection(MemberGrid))
+            {
+                (DataContext as ActionRulesViewModel)?.SetMemberSelection(MemberGrid.SelectedItems.OfType<RuleMemberRow>());
+            }
+        };
         HookPresets(RecipientGroupGrid, RecipientMemberGrid, vm => vm.Recipients);
         HookPresets(ScheduleGroupGrid, ScheduleMemberGrid, vm => vm.Schedules);
     }
@@ -71,14 +77,14 @@ public partial class ActionRulesView : UserControl, IRuleDialogs
     {
         groups.SelectionChanged += (_, _) =>
         {
-            if (!_restoring && DataContext is ActionRulesViewModel vm)
+            if (!_restoring && !GridSort.IsMovingSelection(groups) && DataContext is ActionRulesViewModel vm)
             {
                 tab(vm).SetGroupSelection(groups.SelectedItems.OfType<PresetGroupRow>());
             }
         };
         members.SelectionChanged += (_, _) =>
         {
-            if (DataContext is ActionRulesViewModel vm)
+            if (!GridSort.IsMovingSelection(members) && DataContext is ActionRulesViewModel vm)
             {
                 tab(vm).SetMemberSelection(members.SelectedItems.OfType<PresetMemberRow>());
             }
