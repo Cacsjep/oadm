@@ -10,25 +10,20 @@
   -->
   <StyleInclude Source="avares://Oadm.Theme/OadmTheme.axaml" />
 
-  <!-- Group mode of the device grid: dot + "Building A · 42 devices" in the tag color, collapsible -->
-  <Style Selector="DataGrid.tagGroups DataGridRowGroupHeader">
-    <Setter Property="Background" Value="{DynamicResource Oadm.CardBackgroundBrush}" />
-    <Setter Property="MinHeight" Value="{DynamicResource Oadm.GridRowHeight}" />
-    <Setter Property="FontSize" Value="{DynamicResource Oadm.FontSizeBody}" />
+  <!-- Group mode of the device grid (and Compliance): a group's header is a row of the grid's flat list (Tags/TagGroupRows):
+       chevron, "Building A · 42 devices" in the tag color, collapsible; no cells, never shown as selected -->
+  <Style Selector="DataGrid.tagGroups DataGridRow.tagHeader">
     <Setter Property="Template">
-      <ControlTemplate x:DataType="collections:DataGridCollectionViewGroup">
-        <dgp:DataGridFrozenGrid Name="PART_Root" Background="{TemplateBinding Background}" MinHeight="{TemplateBinding MinHeight}"
-                                ColumnDefinitions="Auto,Auto,Auto,Auto,*" RowDefinitions="*,Auto">
-          <Rectangle Name="PART_IndentSpacer" Grid.Column="1" />
-          <ToggleButton Name="PART_ExpanderButton" Grid.Column="2" Classes="groupExpander" Margin="8,0,0,0" Focusable="False" />
-          <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0">
-            <Ellipse Classes="tagDot" Fill="{Binding ((tags:TagGroupKey)Key).Color, Converter={x:Static tags:TagColorBrushConverter.Instance}}" />
-            <TextBlock Classes="groupHeader" Text="{Binding ((tags:TagGroupKey)Key).HeaderText}"
-                       Foreground="{Binding ((tags:TagGroupKey)Key).Color, Converter={x:Static tags:TagColorBrushConverter.Instance}}" />
-            <TextBlock Name="PART_PropertyNameElement" IsVisible="False" />
-            <TextBlock Name="PART_ItemCountElement" IsVisible="False" />
+      <ControlTemplate x:DataType="tags:TagGroupKey">
+        <dgp:DataGridFrozenGrid Name="PART_Root" Background="{DynamicResource Oadm.CardBackgroundBrush}"
+                                MinHeight="{DynamicResource Oadm.GridRowHeight}" ColumnDefinitions="Auto,Auto,*">
+          <ToggleButton Grid.Column="0" Classes="groupExpander" Margin="8,0,0,0" Focusable="False"
+                        IsChecked="{Binding IsExpanded}" dgp:DataGridFrozenGrid.IsFrozen="True" />
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,0,0"
+                      TextElement.FontSize="{DynamicResource Oadm.FontSizeBody}" dgp:DataGridFrozenGrid.IsFrozen="True">
+            <TextBlock Classes="groupHeader" Text="{Binding HeaderText}"
+                       Foreground="{Binding Color, Converter={x:Static tags:TagColorBrushConverter.Instance}}" />
           </StackPanel>
-          <DataGridRowHeader Name="PART_RowHeader" Grid.RowSpan="2" dgp:DataGridFrozenGrid.IsFrozen="True" />
         </dgp:DataGridFrozenGrid>
       </ControlTemplate>
     </Setter>

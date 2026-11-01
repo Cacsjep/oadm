@@ -12,11 +12,12 @@ namespace Oadm.Client.Devices;
 
 /// <summary>
 /// An item of the device grid: the device row itself, or (group mode) a device under one of its tags. The grid's
-/// columns bind through <see cref="Row"/>, so both kinds show the same cells.
+/// columns bind through <see cref="Row"/>, so both kinds show the same cells. A group's header row (group mode) has no
+/// device: <see cref="Row"/> is null there.
 /// </summary>
 public interface IDeviceGridItem
 {
-    DeviceRowViewModel Row { get; }
+    DeviceRowViewModel? Row { get; }
 }
 
 /// <summary>One row of the device grid. Updated in place from DeviceService.Watch events.</summary>

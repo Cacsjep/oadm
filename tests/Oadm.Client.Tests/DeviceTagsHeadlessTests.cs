@@ -68,7 +68,7 @@ public sealed class DeviceTagsHeadlessTests
             tags.Sort(ListSortDirection.Ascending);
             Dispatcher.UIThread.RunJobs();
             List<string> sorted = grid.GetVisualDescendants().OfType<DataGridRow>()
-                .OrderBy(r => r.Bounds.Top).Select(r => ((IDeviceGridItem)r.DataContext!).Row.TagsText).ToList();
+                .OrderBy(r => r.Bounds.Top).Select(r => ((IDeviceGridItem)r.DataContext!).Row!.TagsText).ToList();
             Assert.Equal(sorted.Order(StringComparer.CurrentCulture).ToList(), sorted);
             tags.ClearSort();
 
@@ -77,16 +77,16 @@ public sealed class DeviceTagsHeadlessTests
             await TestSupport.WaitUntilAsync(() =>
             {
                 Dispatcher.UIThread.RunJobs();
-                return grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Any();
+                return grid.GetVisualDescendants().OfType<DataGridRow>().Any(r => r.Classes.Contains("tagHeader"));
             });
             Assert.Contains("tagGroups", grid.Classes);
             Assert.IsType<Avalonia.Collections.DataGridCollectionView>(grid.ItemsSource);
-            List<string> headers = grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>()
+            List<string> headers = grid.GetVisualDescendants().OfType<DataGridRow>().Where(r => r.Classes.Contains("tagHeader"))
                 .OrderBy(h => h.Bounds.Top)
                 .Select(h => h.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("groupHeader")).Text ?? "").ToList();
             Assert.Equal("Building A · 5 devices", headers[0]);
             Assert.Equal(["Building A", "Building C", "Outdoor", "PTZ", "No tag"], vm.TagGrouping.Groups.Select(g => g.Name));
-            Assert.Equal(vm.TagGrouping.Rows.Count, vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count)));
+            Assert.Equal(vm.TagGrouping.Rows.Count, vm.TagGrouping.Groups.Count + vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count)));
             Button toggle = window.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "GroupByTagButton");
             Assert.Contains("active", toggle.Classes);
             Assert.Equal("Group by tag", ToolTip.GetTip(toggle));

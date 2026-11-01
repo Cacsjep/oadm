@@ -209,7 +209,7 @@ public sealed class DeviceClockTests
             clock.Sort(ListSortDirection.Ascending);
             Dispatcher.UIThread.RunJobs();
             List<long> keys = grid.GetVisualDescendants().OfType<DataGridRow>()
-                .OrderBy(r => r.Bounds.Top).Select(r => ((IDeviceGridItem)r.DataContext!).Row.ClockSortKey).ToList();
+                .OrderBy(r => r.Bounds.Top).Select(r => ((IDeviceGridItem)r.DataContext!).Row!.ClockSortKey).ToList();
             Assert.NotEmpty(keys);
             Assert.Equal(keys.Order().ToList(), keys);
             Capture(window, outDir, "client-clock-column-sorted");

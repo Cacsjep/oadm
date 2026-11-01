@@ -177,7 +177,56 @@ public sealed class DeviceGridBusyTests : IDisposable
 
             var expected = chosen.Select(r => r.Id).Order(StringComparer.Ordinal).ToList();
             Assert.Equal(expected, vm.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
-            Assert.Equal(vm.TagGrouping.Rows.Count(r => chosen.Contains(r.Row)), grid.SelectedItems.Count); // every tag row of them
+            Assert.Equal(vm.TagGrouping.Rows.OfType<Oadm.Client.Tags.DeviceTagRow>().Count(r => chosen.Contains(r.Row)), grid.SelectedItems.OfType<Oadm.Client.Tags.DeviceTagRow>().Count()); // every tag row of them
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Group_mode_sorts_within_each_group_and_a_header_click_selects_nothing()
+    {
+        await HeadlessSession.Shared.Dispatch(() =>
+        {
+            using var f = new DevicesFixture();
+            f.Store.Tags.Reset(TagNames.Select((n, i) => new DeviceTag { Name = n, Color = (TagColor)(i + 1), Defined = true }));
+            f.SeedDevices([.. Tagged(300, version: 0)]);
+            var vm = f.Devices;
+            vm.GroupByTag = true;
+            var view = new DevicesView { DataContext = vm };
+            var window = new Window { Width = 1440, Height = 900, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
+
+            grid.Columns.First(c => c.Header as string == "Address").Sort(ListSortDirection.Descending);
+            Dispatcher.UIThread.RunJobs();
+
+            // Each header first, then its devices by address descending; the groups keep the tag name order.
+            var rows = ((System.Collections.IEnumerable)grid.CollectionView!).Cast<Oadm.Client.Tags.ITagGridRow>().ToList();
+            Assert.Equal(TagNames, rows.OfType<Oadm.Client.Tags.TagGroupKey>().Select(g => g.Name));
+            Assert.Equal(TagNames.Length + 300, rows.Count);
+            for (int i = 0, start = 0; i <= rows.Count; i++)
+            {
+                if (i == rows.Count || (i > start && rows[i] is Oadm.Client.Tags.TagGroupKey))
+                {
+                    var group = rows[start..i];
+                    Assert.IsType<Oadm.Client.Tags.TagGroupKey>(group[0]);
+                    var addresses = group.Skip(1).Cast<Oadm.Client.Tags.DeviceTagRow>().Select(r => r.Row.DisplayAddress).ToList();
+                    Assert.All(group.Skip(1), r => Assert.Same(group[0], r.Group));
+                    Assert.Equal(addresses.OrderDescending(StringComparer.CurrentCulture), addresses);
+                    start = i;
+                }
+            }
+
+            // A click on a header row selects nothing.
+            var header = grid.GetVisualDescendants().OfType<DataGridRow>().First(r => r.Classes.Contains(Oadm.Client.Tags.TagGroupRows.HeaderClass));
+            grid.SelectedItems.Clear();
+            var point = Avalonia.VisualExtensions.TranslatePoint(header, new Avalonia.Point(400, header.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(point, Avalonia.Input.MouseButton.Left);
+            window.MouseUp(point, Avalonia.Input.MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Empty(grid.SelectedItems);
             window.Close();
             return Task.CompletedTask;
         }, CancellationToken.None);

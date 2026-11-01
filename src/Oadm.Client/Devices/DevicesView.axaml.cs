@@ -25,7 +25,7 @@ public partial class DevicesView : UserControl
         InitializeComponent();
         DeviceGrid.CellPointerPressed += OnCellPointerPressed;
         DeviceGrid.Sorting += OnSorting;
-        DeviceGrid.AddHandler(KeyDownEvent, OnGridKeyDown, RoutingStrategies.Tunnel);
+        TagGroupRows.Attach(DeviceGrid);
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
@@ -46,8 +46,6 @@ public partial class DevicesView : UserControl
 
     /// <summary>Long grid actions that showed the ring (tests).</summary>
     internal int BusyRuns { get; private set; }
-
-    private int GridRowCount => _viewModel is not { } vm ? 0 : vm.GroupByTag ? vm.TagGrouping.Rows.Count : vm.FilteredDevices.Count;
 
     private System.Collections.IEnumerable? GridRows => _viewModel is not { } vm ? null : vm.GroupByTag ? vm.TagGrouping.Rows : vm.FilteredDevices;
 
@@ -171,16 +169,6 @@ public partial class DevicesView : UserControl
         }
     }
 
-    /// <summary>Ctrl+A while grouped by tag on many rows takes about 2 s at 30,000 devices: the ring shows meanwhile.</summary>
-    private void OnGridKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.A && e.KeyModifiers.HasFlag(KeyModifiers.Control) && _viewModel?.GroupByTag == true && GridRowCount >= LargeSelection)
-        {
-            e.Handled = true;
-            _ = RunBusyAsync("Selecting", DeviceGrid.SelectAll);
-        }
-    }
-
     /// <summary>Shows the ring over the grid, lets it paint, then runs <paramref name="action"/> on the UI thread.</summary>
     internal Task RunBusyAsync(string text, Action action) => RunBusyAsync(text, () =>
     {
@@ -263,7 +251,6 @@ public partial class DevicesView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            _viewModel.TagGrouping.GroupsChanged -= OnGroupsChanged;
             _viewModel.TagGrouping.Rows.CollectionChanged -= OnGroupRowsChanged;
             _viewModel.Compliance.ChecksChanged -= OnComplianceChecksChanged;
             _viewModel = null;
@@ -273,7 +260,6 @@ public partial class DevicesView : UserControl
         {
             _viewModel = vm;
             vm.PropertyChanged += OnViewModelPropertyChanged;
-            vm.TagGrouping.GroupsChanged += OnGroupsChanged;
             vm.TagGrouping.Rows.CollectionChanged += OnGroupRowsChanged; // before any collection view of the rows
             ApplyItemsSource();
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext, TrailingToolbarPanel);
@@ -367,15 +353,6 @@ public partial class DevicesView : UserControl
         }
     }
 
-    /// <summary>Other groups (a tag appeared, was renamed or has no devices left): new group keys in tag name order.</summary>
-    private void OnGroupsChanged(object? sender, EventArgs e)
-    {
-        if (_viewModel?.GroupByTag == true)
-        {
-            ReplaceItemsSource();
-        }
-    }
-
     /// <summary>
     /// Normal: the device rows. Group mode: the (device x tag) rows in a collection view grouped by tag, with the groups
     /// as explicit keys so they keep the tag name order ("No tag" last) whatever column the user sorts by.
@@ -395,16 +372,8 @@ public partial class DevicesView : UserControl
             return;
         }
 
-        var view = new DataGridCollectionView(vm.TagGrouping.Rows);
-        var byTag = new DataGridPathGroupDescription(nameof(DeviceTagRow.Group));
-        foreach (TagGroupKey key in vm.TagGrouping.Groups)
-        {
-            byTag.GroupKeys.Add(key);
-        }
-
-        view.GroupDescriptions.Add(byTag);
         DeviceGrid.Classes.Add("tagGroups");
-        DeviceGrid.ItemsSource = view;
+        DeviceGrid.ItemsSource = vm.TagGrouping.CreateView();
         ApplyTagsColumn(vm);
     }
 

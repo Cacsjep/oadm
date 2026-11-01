@@ -19,8 +19,11 @@ namespace Oadm.Client.Tests.Perf;
 /// Opt-in: <c>OADM_LIMITS_DEVICES</c> = the device counts to try, e.g. "5000,25000,50000". Nothing is asserted on time.
 /// </summary>
 [Trait("Category", "Perf")]
-public sealed class ClientLimitsTests(ITestOutputHelper output)
+[Collection("DevicesView busy")]
+public sealed class ClientLimitsTests(ITestOutputHelper output) : IDisposable
 {
+    public void Dispose() => DevicesView.BusyPaintDelay = TimeSpan.FromMilliseconds(50);
+
     private static readonly string[] TagNames = [.. Enumerable.Range(0, 10).Select(i => $"Building {(char)('A' + i)}")];
 
     private static IReadOnlyList<int> Sizes =>
@@ -48,6 +51,7 @@ public sealed class ClientLimitsTests(ITestOutputHelper output)
             List<string> lines = await HeadlessSession.Shared.Dispatch(() =>
             {
                 var log = new List<string> { $"== {size:N0} devices" };
+                DevicesView.BusyPaintDelay = TimeSpan.Zero; // the work behind the ring runs in the timed jobs
                 double heapStart = HeapMb();
                 using var f = new DevicesFixture();
                 f.Store.Tags.Reset(TagNames.Select((n, i) => new DeviceTag { Name = n, Color = (TagColor)(i % 8 + 1), Defined = true }));
@@ -104,6 +108,29 @@ public sealed class ClientLimitsTests(ITestOutputHelper output)
                 {
                     grid.SelectAll();
                     Dispatcher.UIThread.RunJobs();
+                });
+                Time(log, "Select none in group mode", () =>
+                {
+                    grid.SelectedItems.Clear();
+                    Dispatcher.UIThread.RunJobs();
+                });
+                Time(log, "Select all in group mode, from nothing selected", () =>
+                {
+                    grid.SelectAll();
+                    Dispatcher.UIThread.RunJobs();
+                });
+                Time(log, "Sort by Firmware in group mode, all selected", () =>
+                {
+                    grid.Columns.First(c => c.Header as string == "Firmware").Sort(ListSortDirection.Ascending);
+                    Dispatcher.UIThread.RunJobs();
+                });
+                Time(log, "Collapse and expand the first group, all selected", () =>
+                {
+                    vm.TagGrouping.Groups[0].IsExpanded = false;
+                    Dispatcher.UIThread.RunJobs();
+                    vm.TagGrouping.Groups[0].IsExpanded = true;
+                    Dispatcher.UIThread.RunJobs();
+                    window.UpdateLayout();
                 });
                 Time(log, "1,000 tag changes while grouped", () =>
                 {

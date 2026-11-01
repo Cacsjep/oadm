@@ -15,8 +15,20 @@ namespace Oadm.Client.Tests.Perf;
 
 /// <summary>Group mode with 30,000 devices and up to three tags each (52,500 device x tag rows).</summary>
 [Trait("Category", "Perf")]
-public sealed class TagGroupScaleTests(ITestOutputHelper output)
+[Collection("DevicesView busy")]
+public sealed class TagGroupScaleTests : IDisposable
 {
+    private readonly ITestOutputHelper output;
+
+    /// <summary>The work behind the ring runs in the measured jobs.</summary>
+    public TagGroupScaleTests(ITestOutputHelper output)
+    {
+        this.output = output;
+        DevicesView.BusyPaintDelay = TimeSpan.Zero;
+    }
+
+    public void Dispose() => DevicesView.BusyPaintDelay = TimeSpan.FromMilliseconds(50);
+
     private static readonly string[] TagNames = [.. Enumerable.Range(0, 10).Select(i => $"Building {(char)('A' + i)}")];
 
     /// <summary>Device i has i % 4 tags (0..3), so a quarter is in "No tag".</summary>
@@ -44,7 +56,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
     {
         using DevicesFixture f = Seeded();
         DevicesViewModel vm = f.Devices;
-        int expectedRows = vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count));
+        int expectedRows = vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count)) + 11; // and a header per group
 
         ClientScale.Measure(output, "Group mode on: 30,000 devices x up to 3 tags", TimeSpan.FromSeconds(1), () => vm.GroupByTag = true);
         Assert.Equal(expectedRows, vm.TagGrouping.Rows.Count);
@@ -64,7 +76,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
 
         ClientScale.Measure(output, "Burst of 1,000 device updates that change tags", TimeSpan.FromSeconds(2), () =>
             f.Store.ApplyBatch([.. TaggedDevices(version: 1).Take(1000).Select(d => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = d })]));
-        Assert.Equal(vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count)), vm.TagGrouping.Rows.Count);
+        Assert.Equal(vm.FilteredDevices.Sum(d => Math.Max(1, d.Tags.Count)) + vm.TagGrouping.Groups.Count, vm.TagGrouping.Rows.Count);
 
         int resets = 0;
         vm.TagGrouping.Rows.CollectionChanged += (_, _) => resets++;
@@ -99,9 +111,9 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
             int realized = grid.GetVisualDescendants().OfType<DataGridRow>().Count();
             log.Add($"Realized rows: {realized} of {vm.TagGrouping.Rows.Count} (virtualized)");
             Assert.InRange(realized, 1, 200);
-            Assert.NotEmpty(grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>());
+            Assert.Contains(grid.GetVisualDescendants().OfType<DataGridRow>(), r => r.Classes.Contains("tagHeader"));
 
-            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(20), () =>
+            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(2), () =>
             {
                 grid.SelectAll();
                 Dispatcher.UIThread.RunJobs();
@@ -115,7 +127,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
                 window.UpdateLayout();
             });
 
-            Measure(log, "1,000 tag changes while grouped and sorted", TimeSpan.FromSeconds(45), () =>
+            Measure(log, "1,000 tag changes while grouped and sorted", TimeSpan.FromSeconds(20), () =>
             {
                 f.Store.ApplyBatch([.. TaggedDevices(version: 2).Take(1000).Select(d => new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = d })]);
                 Dispatcher.UIThread.RunJobs();

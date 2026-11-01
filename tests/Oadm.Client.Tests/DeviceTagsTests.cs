@@ -15,6 +15,9 @@ namespace Oadm.Client.Tests;
 /// <summary>Device tags in the client: store, rows, Tags dialog, group mode, export and import.</summary>
 public sealed class DeviceTagsTests
 {
+    /// <summary>A header as its tag name, a device row as "id@tag".</summary>
+    private static string Text(ITagGridRow row) => row is DeviceTagRow d ? $"{d.Row.Id}@{d.Group.Name}" : row.Group.Name;
+
     private static Device Tagged(string id, string address, params string[] tags)
     {
         Device device = TestSupport.Device(id, "ACCC8E00000" + id[^1], address, "P3265-V");
@@ -250,10 +253,10 @@ public sealed class DeviceTagsTests
 
         Assert.True(f.Settings.Current.GroupDevicesByTag);
         Assert.Equal(["Building A · 1 device", "PTZ · 2 devices", "No tag · 1 device"], vm.TagGrouping.Groups.Select(g => g.HeaderText));
-        Assert.Equal(["a@Building A", "a@PTZ", "b@PTZ", "c@No tag"], vm.TagGrouping.Rows.Select(r => $"{r.Row.Id}@{r.Group.Name}"));
+        Assert.Equal(["Building A", "a@Building A", "PTZ", "a@PTZ", "b@PTZ", "No tag", "c@No tag"], vm.TagGrouping.Rows.Select(Text)); // each header, then its devices
 
         // Both rows of device a selected: one device.
-        vm.SelectedGridItems.ReplaceAll(vm.TagGrouping.Rows.Where(r => r.Row.Id == "a"));
+        vm.SelectedGridItems.ReplaceAll(vm.TagGrouping.Rows.OfType<DeviceTagRow>().Where(r => r.Row.Id == "a"));
         Assert.Equal(["a"], vm.SelectedDevices.Select(d => d.Id));
         Assert.Equal("3 devices, 1 selected", vm.StatusLine);
         vm.SelectedGridItems.ReplaceAll(vm.TagGrouping.Rows);
@@ -272,8 +275,32 @@ public sealed class DeviceTagsTests
 
         // Search filters the groups; the mode is remembered by a new layout.
         vm.SearchText = "10.0.0.1";
-        Assert.Equal(["a@Building A", "a@PTZ"], vm.TagGrouping.Rows.Select(r => $"{r.Row.Id}@{r.Group.Name}"));
+        Assert.Equal(["Building A", "a@Building A", "PTZ", "a@PTZ"], vm.TagGrouping.Rows.Select(Text));
         Assert.True(new ColumnLayoutViewModel(f.Settings).GroupByTag);
+    }
+
+    [Fact]
+    public void A_collapsed_group_keeps_its_header_and_hides_its_devices()
+    {
+        using DevicesFixture f = Seeded();
+        DevicesViewModel vm = f.Devices;
+        vm.ToggleGroupByTagCommand.Execute(null);
+        TagGroupKey ptz = vm.TagGrouping.Groups.Single(g => g.Name == "PTZ");
+
+        ptz.IsExpanded = false;
+
+        Assert.Equal(["Building A", "a@Building A", "PTZ", "No tag", "c@No tag"], vm.TagGrouping.Rows.Select(Text));
+        Assert.Equal("PTZ · 2 devices", ptz.HeaderText);
+
+        // A rebuild keeps it collapsed; expanding shows its devices again.
+        f.Store.ApplyBatch([new DeviceChanged { Kind = DeviceChanged.Types.Kind.Updated, Device = Tagged("c", "10.0.0.3", "PTZ") }]);
+        Assert.Equal(["Building A", "a@Building A", "PTZ"], vm.TagGrouping.Rows.Select(Text));
+        ptz.IsExpanded = true;
+        Assert.Equal(["Building A", "a@Building A", "PTZ", "a@PTZ", "b@PTZ", "c@PTZ"], vm.TagGrouping.Rows.Select(Text));
+
+        // A header is no device.
+        vm.SelectedGridItems.ReplaceAll(vm.TagGrouping.Rows.Take(2));
+        Assert.Equal(["a"], vm.SelectedDevices.Select(d => d.Id));
     }
 
     [Fact]

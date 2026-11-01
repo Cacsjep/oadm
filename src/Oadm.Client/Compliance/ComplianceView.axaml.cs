@@ -23,6 +23,7 @@ public partial class ComplianceView : UserControl
     public ComplianceView()
     {
         InitializeComponent();
+        TagGroupRows.Attach(ResultGrid);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -32,7 +33,6 @@ public partial class ComplianceView : UserControl
         {
             _viewModel.ColumnsChanged -= OnColumnsChanged;
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            _viewModel.TagGrouping.GroupsChanged -= OnGroupsChanged;
         }
 
         _viewModel = DataContext as ComplianceViewModel;
@@ -40,7 +40,6 @@ public partial class ComplianceView : UserControl
         {
             _viewModel.ColumnsChanged += OnColumnsChanged;
             _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-            _viewModel.TagGrouping.GroupsChanged += OnGroupsChanged;
         }
 
         ApplyItemsSource();
@@ -48,14 +47,6 @@ public partial class ComplianceView : UserControl
     }
 
     private void OnColumnsChanged(object? sender, EventArgs e) => BuildCheckColumns();
-
-    private void OnGroupsChanged(object? sender, EventArgs e)
-    {
-        if (_viewModel?.GroupByTag == true)
-        {
-            ApplyItemsSource();
-        }
-    }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -81,16 +72,8 @@ public partial class ComplianceView : UserControl
             return;
         }
 
-        var view = new DataGridCollectionView(vm.TagGrouping.Rows);
-        var byTag = new DataGridPathGroupDescription(nameof(DeviceTagRow.Group));
-        foreach (TagGroupKey key in vm.TagGrouping.Groups)
-        {
-            byTag.GroupKeys.Add(key);
-        }
-
-        view.GroupDescriptions.Add(byTag);
         ResultGrid.Classes.Add("tagGroups");
-        ResultGrid.ItemsSource = view;
+        ResultGrid.ItemsSource = vm.TagGrouping.CreateView();
     }
 
     private void BuildCheckColumns()
@@ -148,7 +131,7 @@ public partial class ComplianceView : UserControl
     {
         public int Compare(object? x, object? y) => Rank(x).CompareTo(Rank(y));
 
-        private int Rank(object? item) => (item as IDeviceGridItem)?.Row.Compliance.Get(checkId)?.Outcome switch
+        private int Rank(object? item) => (item as IDeviceGridItem)?.Row?.Compliance.Get(checkId)?.Outcome switch
         {
             ComplianceOutcome.ComplianceFailed => 0,
             ComplianceOutcome.ComplianceCouldNotCheck => 1,

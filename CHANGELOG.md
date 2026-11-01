@@ -28,6 +28,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Windows moved to a larger monitor now maximize to fill it.
 - Devices list: sorting with many devices selected no longer holds the window for seconds, and turning on Group by tag keeps the selected devices.
 - Every other list with many rows selected (Compliance, waiting devices, Applications, SD cards, action rules, certificates) sorts at once.
+- Group by tag stays quick with many devices: turning it on, select all, sorting and collapsing a group.
+- Group by tag: the group headers no longer show a colored dot, and the devices line up with the column headings.
 
 ## [4.7.1] - 2026-10-30
 

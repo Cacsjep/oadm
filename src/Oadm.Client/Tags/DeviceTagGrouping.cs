@@ -1,3 +1,5 @@
+using Avalonia.Collections;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Client.Devices;
@@ -5,12 +7,25 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tags;
 
+/// <summary>A row of the device grid in group mode: a group's header or a device under one of its tags.</summary>
+public interface ITagGridRow
+{
+    /// <summary>The group the row belongs to (a header: its own group).</summary>
+    TagGroupKey Group { get; }
+
+    /// <summary>
+    /// The device; null for a header. Declared here as well: the grid's sort finds a column's path ("Row.Model") on the
+    /// list's item type, and an interface does not show the members of the interfaces it extends.
+    /// </summary>
+    DeviceRowViewModel? Row { get; }
+}
+
 /// <summary>
 /// A group of the device grid in group mode: one tag (header "● Building A · 42 devices" in the tag color) or the
-/// devices without a tag ("No tag", last). One instance per tag, reused across rebuilds, so the grid's group
-/// descriptions keep matching.
+/// devices without a tag ("No tag", last). One instance per tag, reused across rebuilds. It is also the group's header
+/// row in the grid's flat list (no device: <see cref="Row"/> is null).
 /// </summary>
-public sealed partial class TagGroupKey : ObservableObject
+public sealed partial class TagGroupKey : ObservableObject, ITagGridRow, IDeviceGridItem
 {
     public const string NoTagName = "No tag";
 
@@ -37,6 +52,15 @@ public sealed partial class TagGroupKey : ObservableObject
     /// <summary>Color of the dot and the text; Unspecified (grey) for "No tag" and undefined tags.</summary>
     public TagColor Color => Tag?.Color ?? TagColor.Unspecified;
 
+    /// <summary>The group's devices are shown (the header's chevron).</summary>
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
+    TagGroupKey ITagGridRow.Group => this;
+
+    /// <summary>A header row has no device.</summary>
+    public DeviceRowViewModel? Row => null;
+
     internal void NotifyTagChanged()
     {
         OnPropertyChanged(nameof(Name));
@@ -48,7 +72,7 @@ public sealed partial class TagGroupKey : ObservableObject
 }
 
 /// <summary>A device under one of its tags (group mode). A device with three tags is three of these.</summary>
-public sealed class DeviceTagRow(DeviceRowViewModel row, TagGroupKey group) : IDeviceGridItem
+public sealed class DeviceTagRow(DeviceRowViewModel row, TagGroupKey group) : IDeviceGridItem, ITagGridRow
 {
     public DeviceRowViewModel Row { get; } = row;
 
@@ -59,8 +83,10 @@ public sealed class DeviceTagRow(DeviceRowViewModel row, TagGroupKey group) : ID
 
 /// <summary>
 /// Group mode of the device grid: the shown devices as (device x tag) rows, a device with several tags under every one
-/// of them, devices without tags under "No tag". Rebuilt in O(devices x tags) with one collection reset, only when the
-/// shown devices, a device's tags or the tag names changed; status and other updates of a row reach the grid through
+/// of them, devices without tags under "No tag". One flat list: each group's header row, then its devices (none while the
+/// group is collapsed); the grid never groups by itself (its grouped view finds rows by walking a group from the start:
+/// quadratic at 100,000 devices). Rebuilt in O(devices x tags) with one collection reset, only when the shown devices, a
+/// device's tags, the tag names or a group's chevron changed; status and other updates of a row reach the grid through
 /// bindings on the shared <see cref="DeviceRowViewModel"/>. Row objects are reused across rebuilds. UI thread only.
 /// </summary>
 public sealed class DeviceTagGrouping
@@ -69,16 +95,26 @@ public sealed class DeviceTagGrouping
     private readonly TagGroupKey _noTag = new(null);
     private readonly Dictionary<(DeviceRowViewModel Row, TagGroupKey Group), DeviceTagRow> _rows = [];
     private readonly Dictionary<string, IReadOnlyList<string>> _tagsAtBuild = new(StringComparer.Ordinal);
+    private readonly Dictionary<TagGroupKey, int> _order = [];
     private IReadOnlyList<DeviceRowViewModel> _source = [];
-    private IReadOnlyList<TagGroupKey> _groups = [];
+    private List<TagGroupKey> _groups = [];
+    private Dictionary<TagGroupKey, List<DeviceTagRow>> _members = [];
 
-    /// <summary>The grid items of group mode, in group order (tag name, "No tag" last), devices in source order within a group.</summary>
-    public RangeObservableCollection<DeviceTagRow> Rows { get; } = [];
+    public DeviceTagGrouping()
+    {
+        _noTag.PropertyChanged += OnKeyChanged;
+    }
 
-    /// <summary>The groups that have devices, in display order (the grid's group keys).</summary>
+    /// <summary>
+    /// The grid items of group mode in group order (tag name, "No tag" last): each group's header, then its devices in
+    /// source order (none while the group is collapsed).
+    /// </summary>
+    public RangeObservableCollection<ITagGridRow> Rows { get; } = [];
+
+    /// <summary>The groups that have devices, in display order.</summary>
     public IReadOnlyList<TagGroupKey> Groups => _groups;
 
-    /// <summary>Raised after a rebuild changed which groups exist or their order (the view sets new group keys).</summary>
+    /// <summary>Raised after a rebuild changed which groups exist or their order.</summary>
     public event EventHandler? GroupsChanged;
 
     /// <summary>Builds the rows for the shown devices.</summary>
@@ -103,6 +139,7 @@ public sealed class DeviceTagGrouping
                 if (!_keys.TryGetValue(tag, out TagGroupKey? key))
                 {
                     key = new TagGroupKey(tag);
+                    key.PropertyChanged += OnKeyChanged;
                     _keys[tag] = key;
                 }
 
@@ -126,17 +163,21 @@ public sealed class DeviceTagGrouping
             groups.Add(_noTag);
         }
 
-        var rows = new List<DeviceTagRow>(used.Count);
         foreach (TagGroupKey group in groups)
         {
-            List<DeviceTagRow> list = members[group];
-            group.Count = list.Count;
-            rows.AddRange(list);
+            group.Count = members[group].Count;
         }
 
         bool groupsChanged = !groups.SequenceEqual(_groups);
         _groups = groups;
-        Rows.ReplaceAll(rows);
+        _members = members;
+        _order.Clear();
+        for (int i = 0; i < groups.Count; i++)
+        {
+            _order[groups[i]] = i;
+        }
+
+        ShowRows();
         if (groupsChanged)
         {
             GroupsChanged?.Invoke(this, EventArgs.Empty);
@@ -163,6 +204,26 @@ public sealed class DeviceTagGrouping
 
             list.Add(row);
         }
+    }
+
+    /// <summary>
+    /// A view of <see cref="Rows"/> for the grid: a column sort orders the devices within each group, the groups keep their
+    /// order and each header stays first (the group order is always the first sort description).
+    /// </summary>
+    public DataGridCollectionView CreateView()
+    {
+        var view = new DataGridCollectionView(Rows);
+        var order = DataGridSortDescription.FromComparer(new GroupOrder(_order));
+        view.SortDescriptions.Add(order);
+        view.SortDescriptions.CollectionChanged += (_, _) =>
+        {
+            if (view.SortDescriptions.Count == 0 || !ReferenceEquals(view.SortDescriptions[0], order))
+            {
+                view.SortDescriptions.Remove(order);
+                view.SortDescriptions.Insert(0, order);
+            }
+        };
+        return view;
     }
 
     /// <summary>
@@ -210,5 +271,42 @@ public sealed class DeviceTagGrouping
         }
 
         return result;
+    }
+
+    /// <summary>The flat list: each group's header, then its devices unless it is collapsed.</summary>
+    private void ShowRows()
+    {
+        var rows = new List<ITagGridRow>(_members.Values.Sum(m => m.Count) + _groups.Count);
+        foreach (TagGroupKey group in _groups)
+        {
+            rows.Add(group);
+            if (group.IsExpanded)
+            {
+                rows.AddRange(_members[group]);
+            }
+        }
+
+        Rows.ReplaceAll(rows);
+    }
+
+    private void OnKeyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TagGroupKey.IsExpanded) && sender is TagGroupKey key && _order.ContainsKey(key))
+        {
+            ShowRows();
+        }
+    }
+
+    /// <summary>By group (tag name order, "No tag" last), the header before the group's devices.</summary>
+    private sealed class GroupOrder(Dictionary<TagGroupKey, int> order) : System.Collections.IComparer
+    {
+        public int Compare(object? x, object? y) => Rank(x).CompareTo(Rank(y));
+
+        private long Rank(object? item) => item switch
+        {
+            TagGroupKey key => order.GetValueOrDefault(key, int.MaxValue) * 2L,
+            DeviceTagRow row => (order.GetValueOrDefault(row.Group, int.MaxValue) * 2L) + 1,
+            _ => long.MaxValue,
+        };
     }
 }

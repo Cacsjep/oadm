@@ -72,19 +72,22 @@ with the labels in the grid, the search, the export and the import; plugins read
   `DeviceTag.group_names`), a failed server call directly below the list (OK shows the server's own refusal, e.g. the
   device-group guard for a group user), footer Cancel /
   **OK**: the changed check boxes as one `SetDeviceTags` call for the whole selection; nothing changed = no call.
-- **Group mode** (toolbar "Group by tag", persisted per client): the grid shows a collapsible group per tag in tag
-  name order and "No tag" last, header "● Building A · 42 devices" in the tag color (theme style
-  `DataGrid.tagGroups DataGridRowGroupHeader`, chevron expander `ToggleButton.groupExpander`); the Tags column is hidden
-  while grouping (the group header names the tag). **A device with several tags
-  appears under every one of them**: the rows are `DeviceTagRow` wrappers (device x tag, `Tags/
-  DeviceTagGrouping`), grouped by Avalonia's `DataGridCollectionView` with the groups as explicit `GroupKeys` (so the group
-  order stays when the user sorts a column; sorting works within the groups). Every grid column binds through
-  `IDeviceGridItem.Row`, so device rows and wrappers share the columns. The grid selection goes to `SelectedGridItems`;
-  `SelectedDevices` holds each device once (status line, context menu, toolbar, actions). The wrappers are rebuilt
-  (one reset, rows reused) only when the shown devices, a device's tags or the tag names change; status updates reach
-  the grid through bindings. Measured with 5,000 devices x up to 3 tags (8,750 rows): build 24 ms, search + clear 18 ms,
-  select all 8 ms, 1,000 tag changes 92 ms (view model); headless grid: group mode on + render 0.5 s, select all 0.5 s,
-  1,000 tag changes while grouped and sorted 1.9 s (DataGridCollectionView regroups).
+- **Group mode** (toolbar "Group by tag", persisted per client; the device grid and Compliance): a collapsible group per
+  tag in tag name order and "No tag" last, header "Building A · 42 devices" in the tag color with a chevron; the Tags
+  column is hidden while grouping (the header names the tag). **A device with several tags appears under every one of
+  them**: the rows are `DeviceTagRow` wrappers (device x tag, `Tags/DeviceTagGrouping`). The grid never groups by itself
+  (Avalonia's grouped view finds each row by walking its group: 100,000 devices took 7 s to group and 13 s to select
+  all): `DeviceTagGrouping.Rows` is one flat list, each group's header row (the `TagGroupKey`) then its devices, none
+  while the group is collapsed (a collapsed group's devices are not selected). `CreateView` keeps the group order as the
+  first sort description, so a column sort orders the devices within each group and every header stays first.
+  `Tags/TagGroupRows` gives header rows the class `tagHeader` (the client theme's header template: chevron and text, no
+  cells, never shown as selected) and a click on a header selects nothing. Every grid column binds through
+  `IDeviceGridItem.Row` (null for a header). The grid selection goes to `SelectedGridItems`; `SelectedDevices` holds each
+  device once (status line, context menu, toolbar, actions). The rows are rebuilt (one reset, rows reused) only when the
+  shown devices, a device's tags, the tag names or a chevron change; status updates reach the grid through bindings.
+  Measured headless at 100,000 devices x up to 3 tags (175,011 rows): group mode on + render 1.0 s, select all 0.13 s,
+  sort with all selected 0.4 s, collapse or expand with all selected about 1 s each (with the ring), 1,000 tag changes
+  while grouped 1.4 s.
 - **Export / import**: the device export has a "Tags" column ("Building A; PTZ"); the import (add page, Import from
   file) reads an optional "Tags" (or "Tag") column, ";"-separated, and assigns those tags to the devices that get added,
   one `SetDeviceTags` call per distinct tag set; missing definitions are created by the server with the next palette
