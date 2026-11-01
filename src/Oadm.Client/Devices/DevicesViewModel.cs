@@ -59,6 +59,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private readonly Shell.UserSession? _session;
     private bool _selectionNeedsLogin;
     private bool _selectionNeedsPassword;
+    private bool _selectionNeedsCertificate;
 
     public DevicesViewModel(
         DeviceStore store,
@@ -359,6 +360,24 @@ public sealed partial class DevicesViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Context menu "Trust new certificate": the certificate the devices of the selection with Certificate changed present
+    /// now, trusted after the user saw it, instead of removing and adding them again.
+    /// </summary>
+    [RelayCommand]
+    private async Task TrustCertificateAsync()
+    {
+        List<DeviceRowViewModel> devices = TrustCertificateTargets();
+        if (devices.Count > 0)
+        {
+            await _dialogs.ShowDeviceTrustCertificateAsync(new DeviceTrustCertificateViewModel(_api, devices)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>The selected devices with Certificate changed (O(selection)).</summary>
+    internal List<DeviceRowViewModel> TrustCertificateTargets() =>
+        SelectedDevices.Where(d => d.ContractStatus == DeviceStatus.CertificateChanged).ToList();
+
     /// <summary>The selected devices without a password yet (O(selection)).</summary>
     internal List<DeviceRowViewModel> SetPasswordTargets() =>
         SelectedDevices.Where(d => d.ContractStatus == DeviceStatus.PasswordNotSet).ToList();
@@ -381,6 +400,9 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     /// <summary>The context menu's submenu of OADM's own settings for the selected devices.</summary>
     public const string OadmMenuHeader = "OADM";
+
+    /// <summary>The context menu entry of devices with Certificate changed.</summary>
+    public const string TrustCertificateMenuHeader = "Trust new certificate";
 
     public const string RtspPortMenuHeader = "RTSP port";
 
@@ -740,6 +762,12 @@ public sealed partial class DevicesViewModel : ObservableObject
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Set password", IconKey = "lock", Command = SetPasswordCommand });
         }
 
+        _selectionNeedsCertificate = SelectionNeedsCertificate();
+        if (_selectionNeedsCertificate && Can(HostPermissionKeys.DevicesAddRemove))
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = TrustCertificateMenuHeader, IconKey = "shield", Command = TrustCertificateCommand });
+        }
+
         if (Can(HostPermissionKeys.TagsAssign))
         {
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
@@ -808,10 +836,13 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private bool SelectionNeedsPassword() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.PasswordNotSet);
 
+    private bool SelectionNeedsCertificate() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CertificateChanged);
+
     /// <summary>A device changed: the "Log in" entry follows the status of the selected devices (O(selection), rebuilt only on a change).</summary>
     private void OnSelectedStatusMayHaveChanged()
     {
-        if (SelectedDevices.Count > 0 && (SelectionNeedsLogin() != _selectionNeedsLogin || SelectionNeedsPassword() != _selectionNeedsPassword))
+        if (SelectedDevices.Count > 0 && (SelectionNeedsLogin() != _selectionNeedsLogin || SelectionNeedsPassword() != _selectionNeedsPassword
+            || SelectionNeedsCertificate() != _selectionNeedsCertificate))
         {
             RebuildContextMenu();
         }

@@ -53,7 +53,8 @@ On the device, the login method is a setting of its web interface (HTTP authenti
 
 **Devices show Certificate changed.**
 The device presents another HTTPS certificate than when it was added. OADM sends nothing to it. Find out why, then
-remove the device and add it again.
+right-click it and use **Trust new certificate**. Compare the fingerprint with the one in the device's web interface if
+you are unsure.
 
 **NTP or DHCP server: port in use.**
 Another program holds the port. The page names it when it can, for example the Windows Time service. See

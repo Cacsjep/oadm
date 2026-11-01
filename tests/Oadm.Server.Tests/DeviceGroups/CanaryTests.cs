@@ -73,6 +73,13 @@ public sealed partial class CanaryTests
             await Devices(c).LogInAsync(new Proto.DeviceLogInRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, UserName = "root", Password = "pass" }),
         ["/oadm.v1.DeviceService/GetCredentialUserName"] = async (c, id) =>
             await Devices(c).GetCredentialUserNameAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.DeviceService/GetPresentedCertificates"] = async (c, id) =>
+            await Devices(c).GetPresentedCertificatesAsync(new Proto.DeviceIds { Ids = { c.Inside.ToString(), id.ToString() } }),
+        ["/oadm.v1.DeviceService/TrustNewCertificates"] = async (c, id) =>
+            await Devices(c).TrustNewCertificatesAsync(new Proto.TrustNewCertificatesRequest
+            {
+                Devices = { new Proto.TrustNewCertificate { DeviceId = c.Inside.ToString(), Fingerprint = "AB" }, new Proto.TrustNewCertificate { DeviceId = id.ToString(), Fingerprint = "AB" } },
+            }),
         ["/oadm.v1.DeviceService/SetFirstPassword"] = async (c, id) =>
             await Devices(c).SetFirstPasswordAsync(new Proto.SetFirstPasswordRequest { DeviceIds = { c.Inside.ToString(), id.ToString() }, Password = "Secret123" }),
         ["/oadm.v1.DeviceService/GetWebUiUrl"] = async (c, id) =>

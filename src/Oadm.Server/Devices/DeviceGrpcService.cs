@@ -305,6 +305,68 @@ public sealed class DeviceGrpcService(
         return reply;
     }
 
+    /// <summary>"Trust new certificate": the certificate each device with Certificate changed presents now (nothing is sent to it).</summary>
+    public override async Task<Proto.PresentedCertificatesReply> GetPresentedCertificates(Proto.DeviceIds request, ServerCallContext context)
+    {
+        var ids = GrpcGuard.ParseIds(request.Ids, "device id");
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, context.CancellationToken).ConfigureAwait(false);
+        var reply = new Proto.PresentedCertificatesReply();
+        foreach (var presented in await actions.ReadPresentedCertificatesAsync(viewed, context.CancellationToken).ConfigureAwait(false))
+        {
+            var proto = new Proto.PresentedCertificate
+            {
+                DeviceId = presented.DeviceId.ToString(),
+                PinnedFingerprint = presented.PinnedFingerprint ?? string.Empty,
+                Message = presented.Message ?? string.Empty,
+            };
+            if (presented.Certificate is { } certificate)
+            {
+                proto.Fingerprint = certificate.Fingerprint;
+                proto.Subject = certificate.Subject;
+                proto.Issuer = certificate.Issuer;
+                proto.NotBeforeUnixMs = new DateTimeOffset(certificate.NotBeforeUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                proto.NotAfterUnixMs = new DateTimeOffset(certificate.NotAfterUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                proto.Trust = Mappers.ToProto(certificate.TrustAt(DateTimeOffset.UtcNow));
+            }
+
+            reply.Certificates.Add(proto);
+        }
+
+        return reply;
+    }
+
+    /// <summary>
+    /// "Trust new certificate": pins the fingerprint the user confirmed on each device (connected pinned to it, the serial
+    /// checked with the stored credentials); the record, its tags and history stay.
+    /// </summary>
+    public override async Task<Proto.TrustNewCertificatesReply> TrustNewCertificates(Proto.TrustNewCertificatesRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        var fingerprints = new Dictionary<Guid, string>();
+        foreach (var entry in request.Devices)
+        {
+            fingerprints[GrpcGuard.ParseId(entry.DeviceId, "device id")] = entry.Fingerprint ?? string.Empty;
+        }
+
+        if (fingerprints.Count == 0)
+        {
+            throw GrpcGuard.InvalidArgument("Select at least one device.");
+        }
+
+        var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync([.. fingerprints.Keys], ct).ConfigureAwait(false);
+        var results = await actions.TrustNewCertificatesAsync(viewed, fingerprints, ct).ConfigureAwait(false);
+        var reply = new Proto.TrustNewCertificatesReply();
+        foreach (var result in results)
+        {
+            reply.Results.Add(new Proto.TrustNewCertificateResult { DeviceId = result.DeviceId.ToString(), Ok = result.Ok, Message = result.Message ?? string.Empty });
+        }
+
+        var okCount = results.Count(r => r.Ok);
+        var devicesText = results.Count == 1 ? "1 device" : $"{results.Count} devices";
+        await audit.WriteAsync(AuditActions.DeviceCertificateTrusted, devicesText, $"{okCount} trusted", ct).ConfigureAwait(false);
+        return reply;
+    }
+
     public override async Task<Proto.UrlReply> GetWebUiUrl(Proto.DeviceId request, ServerCallContext context)
     {
         var id = GrpcGuard.ParseId(request.Id, "device id");

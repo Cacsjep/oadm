@@ -17,6 +17,7 @@ public sealed class DeviceActions(
     DevicePollingService polling,
     DeviceLoginService logins,
     DeviceFirstPasswordService firstPasswords,
+    DeviceCertificateTrustService certificates,
     DeviceStatusNotes? notes = null)
 {
     /// <summary>The ids of every device with stored credentials (one read; the feed asks it per batch).</summary>
@@ -88,6 +89,14 @@ public sealed class DeviceActions(
     /// <inheritdoc cref="DeviceFirstPasswordService.ReadPoliciesAsync(ViewedDevices, CancellationToken)"/>
     public Task<IReadOnlyList<DevicePassphrasePolicy>> ReadPoliciesAsync(ViewedDevices viewed, CancellationToken ct) =>
         firstPasswords.ReadPoliciesAsync(viewed, ct);
+
+    /// <inheritdoc cref="DeviceCertificateTrustService.ReadAsync"/>
+    public Task<IReadOnlyList<PresentedDeviceCertificate>> ReadPresentedCertificatesAsync(ViewedDevices viewed, CancellationToken ct) =>
+        certificates.ReadAsync(viewed, ct);
+
+    /// <inheritdoc cref="DeviceCertificateTrustService.TrustAsync"/>
+    public Task<IReadOnlyList<DeviceCertificateTrustResult>> TrustNewCertificatesAsync(ViewedDevices viewed, IReadOnlyDictionary<Guid, string> fingerprints, CancellationToken ct) =>
+        certificates.TrustAsync(viewed, fingerprints, ct);
 
     /// <summary>The logged-in VAPIX client of one viewed device (the web interface relay).</summary>
     public Task<VapixClient> GetClientAsync(ViewedDevices one, CancellationToken ct) => clients.GetClientAsync(Single(one), ct);

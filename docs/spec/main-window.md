@@ -33,7 +33,7 @@ Layout, top to bottom:
    leaves or enters it leaves or enters the grid ([device-scope.md](device-scope.md)).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, **Log in**, **Set password**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, **Set password**, **Trust new certificate**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry)
    holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
@@ -78,6 +78,18 @@ Layout, top to bottom:
    stands below the password ("1 of 3 devices failed: 10.0.0.41 (The device already has a password. Nothing was
    changed)"). Fake mode sets it in memory (10.0.0.40 is Password not set, policy "complex"). Tests:
    `tests/Oadm.Server.Tests/SetFirstPasswordTests`, `tests/Oadm.Client.Tests/DeviceSetPasswordTests`.
+   **Trust new certificate** (icon `shield`, permission "Add and remove devices") is shown only while the selection holds
+   a device with status Certificate changed and follows the status live; it applies to those devices, instead of removing
+   and adding them again (the record, its tags and task history stay). Dialog `Devices/DeviceTrustCertificateWindow`
+   (`DeviceTrustCertificateViewModel`, one card with a list): one line "Trust a new certificate only if you know why it
+   changed, ...", one row per device: Device, Issued to, Issued by, Valid until, Fingerprint (SHA-256, "3F:9A:...") or
+   in its place the reason there is none (`ui:StatusChip`: reading, "The device presents the trusted certificate again.",
+   Unreachable ...). The certificates are read with `GetPresentedCertificates` in pages of 200 devices (`ui:ProgressRow`);
+   Cancel / **Trust** (disabled with the reason as tooltip while no row can be trusted) sends exactly the shown
+   fingerprints (`TrustNewCertificates`, pages of 200). All trusted: the dialog closes; otherwise the trusted devices leave
+   the list and the others show their reason in the row ("The device now presents another certificate than shown.
+   Nothing was changed."). Fake mode trusts in memory (10.0.0.33 is Certificate changed). Tests:
+   `tests/Oadm.Server.Tests/DeviceCertificateTrustTests`, `tests/Oadm.Client.Tests/DeviceTrustCertificateTests`.
    **Tags** (icon `tag`, one or many devices) opens the Tags dialog, see [tags.md](tags.md).
    **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
    rarely needed; today **RTSP port** (video devices, "Optics Control"), see [live-view.md](live-view.md).

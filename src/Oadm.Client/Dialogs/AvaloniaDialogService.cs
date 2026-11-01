@@ -205,6 +205,19 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowDeviceTrustCertificateAsync(Devices.DeviceTrustCertificateViewModel trust)
+    {
+        ArgumentNullException.ThrowIfNull(trust);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new Devices.DeviceTrustCertificateWindow();
+        window.Attach(trust);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task ShowWaitingDevicesAsync(Devices.WaitingDevicesViewModel waiting)
     {
         ArgumentNullException.ThrowIfNull(waiting);

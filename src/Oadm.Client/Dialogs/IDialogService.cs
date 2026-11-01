@@ -26,6 +26,9 @@ public interface IDialogService
 
     /// <summary>Shows the "Set password" dialog of factory-default devices; true when all took the password.</summary>
     Task<bool> ShowDeviceSetPasswordAsync(Oadm.Client.Devices.DeviceSetPasswordViewModel setPassword);
+
+    /// <summary>The "Trust new certificate" dialog; true when every device was trusted.</summary>
+    Task<bool> ShowDeviceTrustCertificateAsync(Oadm.Client.Devices.DeviceTrustCertificateViewModel trust);
     /// <summary>The Add user, Edit user or Change password dialog of the Users page (<see cref="Oadm.Client.Settings.UsersViewModel.Form"/>).</summary>
     Task ShowUserFormAsync(Oadm.Client.Settings.UsersViewModel users);
 

@@ -68,7 +68,7 @@ used again.
     Certificate changed devices are refused without a request. The accepting devices get the credential in one
     transaction, their cached client dropped and a full refresh queued (that sets Ok). Reply `results` {device_id, ok,
     rejected, message: "The user name or password is wrong.", "Unreachable - ...", "Another device answers at this
-    address.", "Certificate changed - accept the new certificate first"} in request order + `credential_list_note`. Saved
+    address.", `DeviceMessages.CertificateChanged`} in request order + `credential_list_note`. Saved
     to the credential list only for an Admin caller and only when a device accepted it; a full list is the note "The
     credential list is full (20 entries); the login was not saved there.". Audit "Device login" {user name, "5 devices,
     3 logged in"}. INVALID_ARGUMENT without devices, user name or password.
@@ -84,6 +84,20 @@ used again.
     the password; INVALID_ARGUMENT without devices or for a password that is not 1-64 printable ASCII.
   - `GetPassphrasePolicies(DeviceIds)`: anonymous systemready per device, `policies` {device_id, policy none / length /
     complex, empty when unreadable}; the hint of the Set password dialog.
+  - `GetPresentedCertificates(DeviceIds)` (context menu "Trust new certificate"; permission "Add and remove devices"):
+    per device (`Oadm.Core.Devices.DeviceCertificateTrustService`, 8 at a time) a client pinned to the **old**
+    fingerprint sends one GET; the handshake fails on the new certificate before the request, so nothing (no login)
+    reaches the device. `certificates` {device_id, pinned_fingerprint, fingerprint, subject, issuer, not_before_unix_ms,
+    not_after_unix_ms, trust, message} in request order; message instead of a certificate: "The device does not show
+    Certificate changed. Nothing was changed." (any other status or HTTP), "The device presents the trusted certificate
+    again.", "Unreachable - ...", the removed device.
+  - `TrustNewCertificates(devices {device_id, fingerprint})` (same permission): per device only with status Certificate
+    changed, `DeviceAddressService.UpdateTlsAsync` pinned to the **confirmed** fingerprint: the serial must be the
+    record's (stored credentials), then the pin and the certificate details are stored, the cached client dropped and a
+    full refresh queued; the record keeps its id, tags and history. Another certificate by then: "The device now presents
+    another certificate than shown. Nothing was changed."; another serial: "Another device answers at this address.".
+    Reply `results` {device_id, ok, message} in request order; audit "Trusted new device certificate" {"3 devices",
+    "2 trusted"}; INVALID_ARGUMENT without devices.
 - **`DiscoveryService`** (`discovery.proto`): `StartZeroConf`, `StartRangeScan(from, to)`, `ProbeAddress(address,
   user_name = 2, password = 3, expected_serial = 4)` (one IP or host name, optional port and scheme; INVALID_ARGUMENT for an
   unusable or unresolvable address, only one of user name (1..64) and password (1..256), or an expected serial that is not

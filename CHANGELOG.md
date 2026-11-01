@@ -7,6 +7,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Added
+
+- Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device, no need to remove and add it again.
+
 ### Changed
 
 - Security radars get the live preview and can be added to Live view and Dashboards.

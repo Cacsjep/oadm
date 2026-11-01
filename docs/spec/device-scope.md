@@ -329,7 +329,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
 ## Code: devices
 
 - **Device list:** `DeviceGrpcService` takes `DeviceViewFactory` and `DeviceActions` (Core: remove, refresh, credentials,
-  Log in, Set password, passphrase policies, the relay's VAPIX client, status notes; only `ViewedDevices`), never the
+  Log in, Set password, passphrase policies, Trust new certificate, the relay's VAPIX client, status notes; only `ViewedDevices`), never the
   repository. `List` and the `Watch` snapshot read `DeviceView.PagesAsync(1,000)` (a group: the cached allowed ids, rows
   per page); `DeviceView.Subscribe()` gives a `DeviceViewFeed` (subscribed at once; `Sent(id)` for the snapshot,
   `ReadAsync(max)`): changes outside the view are dropped, a device that leaves becomes Removed, one that enters Added; a

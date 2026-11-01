@@ -332,6 +332,7 @@ public static partial class OadmServerHost
         services.AddSingleton<ITaskDeviceAddresses>(sp => sp.GetRequiredService<DeviceAddressService>());
         services.AddSingleton<DeviceLoginService>();
         services.AddSingleton<DeviceFirstPasswordService>();
+        services.AddSingleton<DeviceCertificateTrustService>();
         services.AddSingleton<DeviceActions>(); // DeviceService and the web relay: only devices of the caller's view
         services.AddSingleton(sp => new TaskPluginQueries(
             sp.GetRequiredService<PluginRegistry>(),

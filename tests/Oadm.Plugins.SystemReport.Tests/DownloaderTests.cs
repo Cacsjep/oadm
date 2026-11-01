@@ -100,7 +100,7 @@ public sealed class DownloaderTests : IDisposable
     [Theory]
     [InlineData(DeviceStatus.CredentialsRequired, "Credentials required - the device rejects the stored credentials")]
     [InlineData(DeviceStatus.PasswordNotSet, "Password not set - the device is in factory default")]
-    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed. Remove the device and add it again to trust the new certificate.")]
+    [InlineData(DeviceStatus.CertificateChanged, "Certificate changed. Use Trust new certificate in the device list if you know why it changed.")]
     [InlineData(DeviceStatus.SiteOffline, "Site offline")]
     public async Task Refused_statuses_send_nothing(DeviceStatus status, string expected)
     {

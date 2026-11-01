@@ -99,6 +99,12 @@ public interface IOadmApi
     /// <summary>Device id -> passphrase policy ("none", "length", "complex"; empty when unknown) for the Set password hint.</summary>
     Task<IReadOnlyDictionary<string, string>> GetPassphrasePoliciesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
 
+    /// <summary>"Trust new certificate": the certificate each device with Certificate changed presents now, in request order.</summary>
+    Task<IReadOnlyList<PresentedCertificate>> GetPresentedCertificatesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
+
+    /// <summary>"Trust new certificate": pins the shown fingerprint (device id to fingerprint); one result per device.</summary>
+    Task<TrustNewCertificatesReply> TrustNewCertificatesAsync(IReadOnlyDictionary<string, string> fingerprints, CancellationToken ct);
+
     // TagService
     /// <summary>Every tag definition with its device count, then the undefined names used on devices.</summary>
     Task<IReadOnlyList<DeviceTag>> ListTagsAsync(CancellationToken ct);

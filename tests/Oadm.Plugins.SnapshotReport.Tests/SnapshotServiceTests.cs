@@ -210,7 +210,7 @@ public sealed class SnapshotServiceTests
 
         using var service = new SnapshotService(new FakeRepository(certificate, factoryDefault, speaker), factory);
 
-        Assert.Equal("Certificate changed. Remove the device and add it again to trust the new certificate.", (await service.TakeAsync(certificate.Id, 1, 640, 360, CancellationToken.None)).Error);
+        Assert.Equal("Certificate changed. Use Trust new certificate in the device list if you know why it changed.", (await service.TakeAsync(certificate.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("Password not set - the device is in factory default", (await service.TakeAsync(factoryDefault.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("The device has no video", (await service.TakeAsync(speaker.Id, 1, 640, 360, CancellationToken.None)).Error);
         Assert.Equal("1 device is no longer available.", (await service.TakeAsync(Guid.NewGuid(), 1, 640, 360, CancellationToken.None)).Error);

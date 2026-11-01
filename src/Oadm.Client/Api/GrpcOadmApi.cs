@@ -357,6 +357,16 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return reply.Policies.ToDictionary(p => p.DeviceId, p => p.Policy);
     }
 
+    public async Task<IReadOnlyList<PresentedCertificate>> GetPresentedCertificatesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
+        (await C.Devices.GetPresentedCertificatesAsync(ToIds(deviceIds), cancellationToken: ct)).Certificates;
+
+    public async Task<TrustNewCertificatesReply> TrustNewCertificatesAsync(IReadOnlyDictionary<string, string> fingerprints, CancellationToken ct)
+    {
+        var request = new TrustNewCertificatesRequest();
+        request.Devices.AddRange(fingerprints.Select(f => new TrustNewCertificate { DeviceId = f.Key, Fingerprint = f.Value }));
+        return await C.Devices.TrustNewCertificatesAsync(request, cancellationToken: ct);
+    }
+
     public async Task<string> GetWebUiUrlAsync(string deviceId, CancellationToken ct) =>
         (await C.Devices.GetWebUiUrlAsync(new DeviceId { Id = deviceId }, cancellationToken: ct)).Url;
 

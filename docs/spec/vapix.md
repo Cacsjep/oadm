@@ -22,7 +22,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   no admin user yet) and `passphrasepolicy` (none, length, complex).
 - Prefer HTTPS, fall back to HTTP if 443 is closed. Store which scheme worked.
 - Certificates: trust on first use. Store SHA-256 fingerprint on add. A later mismatch sets
-  status `CertificateChanged` and blocks tasks until the user accepts the new certificate.
+  status `CertificateChanged` and blocks tasks until the user trusts the new certificate (device context menu **Trust new
+  certificate**, [main-window.md](main-window.md): the record, tags and history stay; [grpc.md](grpc.md) `TrustNewCertificates`).
   Exception, renewals by a CA of PKI ([est-server.md](est-server.md)): a new server certificate issued directly by a CA of PKI with its key
   (the PKI's renewal issuers only, not the roots above them, not the OS store), valid now and naming the device
   and no other camera (exactly one `axis-<12 hex>.local`: `axis-<serial>.local`, `Device.Serial` through

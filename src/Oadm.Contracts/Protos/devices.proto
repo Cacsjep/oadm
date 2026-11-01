@@ -25,6 +25,12 @@ service DeviceService {
   rpc SetFirstPassword (SetFirstPasswordRequest) returns (SetFirstPasswordReply);
   // The passphrase policy (systemready: none, length, complex) of each device, for the hint of the Set password dialog.
   rpc GetPassphrasePolicies (DeviceIds) returns (PassphrasePoliciesReply);
+  // "Trust new certificate" for devices with status Certificate changed: the certificate each one presents now (the TLS
+  // handshake with the old pin only; nothing is sent to the device).
+  rpc GetPresentedCertificates (DeviceIds) returns (PresentedCertificatesReply);
+  // Pins the fingerprint the user confirmed for each device (checked again: pinned to it, serial with the stored
+  // credentials), keeps the record and queues its refresh. One call for the selection.
+  rpc TrustNewCertificates (TrustNewCertificatesRequest) returns (TrustNewCertificatesReply);
 }
 
 message DeviceId { string id = 1; }
@@ -101,4 +107,42 @@ message DevicePassphrasePolicy {
 
 message PassphrasePoliciesReply {
   repeated DevicePassphrasePolicy policies = 1;
+}
+
+message PresentedCertificate {
+  string device_id = 1;
+  string pinned_fingerprint = 2;   // SHA-256, upper hex: the certificate OADM trusts
+  string fingerprint = 3;          // SHA-256, upper hex of the presented one; empty when message is set
+  string subject = 4;
+  string issuer = 5;
+  int64 not_before_unix_ms = 6;
+  int64 not_after_unix_ms = 7;
+  CertificateTrust trust = 8;   // like Device.cert_trust
+  // User facing reason when there is nothing to trust: "The device does not show Certificate changed. Nothing was
+  // changed.", "The device presents the trusted certificate again.", "Unreachable - ...".
+  string message = 9;
+}
+
+message PresentedCertificatesReply {
+  repeated PresentedCertificate certificates = 1;   // one per requested device, in request order
+}
+
+message TrustNewCertificate {
+  string device_id = 1;
+  string fingerprint = 2;   // the presented fingerprint the user saw and confirmed
+}
+
+message TrustNewCertificatesRequest {
+  repeated TrustNewCertificate devices = 1;
+}
+
+message TrustNewCertificateResult {
+  string device_id = 1;
+  bool ok = 2;
+  // User facing reason when not ok: "The device now presents another certificate than shown. Nothing was changed.", ...
+  string message = 3;
+}
+
+message TrustNewCertificatesReply {
+  repeated TrustNewCertificateResult results = 1;   // one per requested device, in request order
 }

@@ -91,6 +91,8 @@ public static class AccessPolicy
         ["/oadm.v1.DeviceService/GetCredentialUserName"] = AccessRule.Needs(HostPermissions.DevicesLogin),
         ["/oadm.v1.DeviceService/SetFirstPassword"] = AccessRule.Needs(HostPermissions.DevicesLogin),
         ["/oadm.v1.DeviceService/GetPassphrasePolicies"] = AccessRule.Needs(HostPermissions.DevicesLogin),
+        ["/oadm.v1.DeviceService/GetPresentedCertificates"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
+        ["/oadm.v1.DeviceService/TrustNewCertificates"] = AccessRule.Needs(HostPermissions.DevicesAddRemove),
         ["/oadm.v1.DeviceService/GetWebUiUrl"] = AccessRule.Needs(HostPermissions.DevicesWebInterface),
         ["/oadm.v1.DeviceWebService/Open"] = AccessRule.Needs(WebViewOpen),
         ["/oadm.v1.DeviceWebService/Exchange"] = AccessRule.Needs(WebViewOpen),

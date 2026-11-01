@@ -44,10 +44,10 @@ public static class DeviceMessages
     }
 
     /// <summary>
-    /// The device presents another certificate than the one OADM pinned. OADM has no accept action: removing the device
-    /// and adding it again pins the new certificate.
+    /// The device presents another certificate than the one OADM pinned. The device list's "Trust new certificate" shows
+    /// the new one and pins it once the user confirmed it.
     /// </summary>
-    public const string CertificateChanged = "Certificate changed. Remove the device and add it again to trust the new certificate.";
+    public const string CertificateChanged = "Certificate changed. Use Trust new certificate in the device list if you know why it changed.";
 
     /// <summary>The device rejects the stored login (status Credentials required).</summary>
     public const string CredentialsRequired = "Credentials required - the device rejects the stored credentials";
