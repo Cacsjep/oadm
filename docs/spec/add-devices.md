@@ -187,7 +187,9 @@ the credential that worked (server memory); `Commit` stores that credential for 
 (explicit `credentials` in the request win). Passwords never leave the server once
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
-background.
+background. The add's one login with the stored credential (`DeviceAdder.VerifyAsync`, basicdeviceinfo or its parameters)
+also stores model, firmware, ProdType, category, Soc and Architecture at once, so a device that tells nothing anonymously
+(401 with the realm only) is never Unknown, and offered live video, while the refresh waits.
 
 **Device groups** ([device-scope.md](device-scope.md), Decisions "New devices"): the server builds an `AddReach` from the caller
 (`Oadm.Server.AddDevices.AddReach`): a user with all devices adds everywhere; a user with a device group

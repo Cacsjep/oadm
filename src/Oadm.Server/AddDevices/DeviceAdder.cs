@@ -6,6 +6,7 @@ using Oadm.Core.Security;
 using Oadm.Core.Vapix;
 using Oadm.Server.Discovery;
 using Oadm.Server.Mapping;
+using Oadm.Sdk.Vapix;
 
 using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 
@@ -121,23 +122,27 @@ public sealed partial class DeviceAdder(
         }
 
         SdkDeviceStatus status;
+        BasicDeviceInfo? info = null;
         if (factoryDefault)
         {
-            status = initialPassword is null
-                ? SdkDeviceStatus.PasswordNotSet
+            (status, info) = initialPassword is null
+                ? (SdkDeviceStatus.PasswordNotSet, null)
                 : await SetInitialPasswordAsync(device, initialPassword, ct).ConfigureAwait(false);
         }
         else if (deviceCredentials is not null)
         {
             await credentials.SetAsync(device.Id, deviceCredentials.UserName.Trim(), deviceCredentials.Password, ct).ConfigureAwait(false);
-            status = await VerifyAsync(device.Id, ct).ConfigureAwait(false);
+            (status, info) = await VerifyAsync(device.Id, ct).ConfigureAwait(false);
         }
         else
         {
             status = probed is null ? SdkDeviceStatus.Unreachable : SdkDeviceStatus.CredentialsRequired;
         }
 
-        await devices.UpdateAsync(device.Id, d => d.Status = status, ct).ConfigureAwait(false);
+        // The verified login read the device information: model, firmware and category at once, not only after the
+        // queued refresh (a device that tells nothing anonymously, e.g. 401 with the realm only, is Unknown until then and
+        // would be offered live video).
+        await devices.UpdateAsync(device.Id, d => Apply(d, status, info), ct).ConfigureAwait(false);
         LogAdded(device.Serial, device.Address, status);
         return (device.Id, status);
     }
@@ -190,7 +195,7 @@ public sealed partial class DeviceAdder(
         return (useDnsName && dnsName is not null ? dnsName : found.Address.ToString(), dnsName);
     }
 
-    private async Task<SdkDeviceStatus> SetInitialPasswordAsync(Device device, string password, CancellationToken ct)
+    private async Task<(SdkDeviceStatus Status, BasicDeviceInfo? Info)> SetInitialPasswordAsync(Device device, string password, CancellationToken ct)
     {
         var scheme = Mappers.ToSchemeString(device.Scheme);
         try
@@ -207,24 +212,59 @@ public sealed partial class DeviceAdder(
         {
             LogInitialPasswordFailed(device.Serial, ex.Message);
             var status = DeviceStatusClassifier.FromException(ex);
-            return status is SdkDeviceStatus.Unreachable or SdkDeviceStatus.CertificateChanged or SdkDeviceStatus.SiteOffline ? status : SdkDeviceStatus.PasswordNotSet;
+            return (status is SdkDeviceStatus.Unreachable or SdkDeviceStatus.CertificateChanged or SdkDeviceStatus.SiteOffline ? status : SdkDeviceStatus.PasswordNotSet, null);
         }
 
         return await VerifyAsync(device.Id, ct).ConfigureAwait(false);
     }
 
-    /// <summary>One authenticated call with the stored credentials.</summary>
-    private async Task<SdkDeviceStatus> VerifyAsync(Guid deviceId, CancellationToken ct)
+    /// <summary>One authenticated call with the stored credentials; its device information when it worked.</summary>
+    private async Task<(SdkDeviceStatus Status, BasicDeviceInfo? Info)> VerifyAsync(Guid deviceId, CancellationToken ct)
     {
         try
         {
             var client = await clients.GetClientAsync(deviceId, ct).ConfigureAwait(false);
-            await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
-            return SdkDeviceStatus.Ok;
+            return (SdkDeviceStatus.Ok, await client.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false));
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            return DeviceStatusClassifier.FromException(ex);
+            return (DeviceStatusClassifier.FromException(ex), null);
+        }
+    }
+
+    /// <summary>The status after the add, and what the verified login read (like the poll: empty values change nothing).</summary>
+    private static void Apply(Device device, SdkDeviceStatus status, BasicDeviceInfo? info)
+    {
+        device.Status = status;
+        if (info is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.ProdNbr))
+        {
+            device.Model = info.ProdNbr.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Version))
+        {
+            device.FirmwareVersion = info.Version.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.ProdType))
+        {
+            device.ProductType = info.ProdType.Trim();
+            device.Category = DeviceCategoryMapper.Map(device.ProductType);
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Soc))
+        {
+            device.Soc = info.Soc.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Architecture))
+        {
+            device.Architecture = info.Architecture.Trim();
         }
     }
 

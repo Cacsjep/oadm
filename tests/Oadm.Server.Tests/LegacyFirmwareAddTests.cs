@@ -45,6 +45,11 @@ public sealed class LegacyFirmwareAddTests
 
         var reply = await host.AddDevices.CommitAsync(new Proto.CommitRequest { SessionId = session, DiscoveredIds = { found.DiscoveredId } });
         var id = Assert.Single(reply.DeviceIds);
+
+        // The add's verified login already stored the category: no live video offered while the refresh is queued.
+        var stored = (await host.Get<DeviceRepository>().GetAsync(Guid.Parse(id), CancellationToken.None))!;
+        Assert.Equal(Oadm.Sdk.Devices.DeviceCategory.DoorController, stored.Category);
+        Assert.Equal("A1001", stored.Model);
         await TestHelpers.WaitUntilAsync(
             async () => (await TestHelpers.GetDeviceAsync(host, id)) is { Status: Proto.DeviceStatus.Ok, FirmwareVersion: "1.65.6" },
             "the added device is polled");
