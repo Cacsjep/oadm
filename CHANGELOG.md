@@ -7,6 +7,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.8.0-rc.1] - 2026-11-01
+
 ### Added
 
 - Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device with its tags and history.

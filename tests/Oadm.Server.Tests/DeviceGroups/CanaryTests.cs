@@ -250,6 +250,21 @@ public sealed partial class CanaryTests
             var compact = await client.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true });
             return $"{full} | {compact}";
         },
+        ["/oadm.v1.TaskService/StreamTaskPlugins"] = async c =>
+        {
+            var client = new Proto.TaskService.TaskServiceClient(c.Invoker);
+            var text = new System.Text.StringBuilder();
+            foreach (var compact in new[] { false, true })
+            {
+                using var call = client.StreamTaskPlugins(new Proto.ListTaskPluginsRequest { Compact = compact });
+                await foreach (var plugin in call.ResponseStream.ReadAllAsync())
+                {
+                    text.Append(plugin).Append(" | ");
+                }
+            }
+
+            return text.ToString();
+        },
     };
 
     /// <summary>
@@ -575,7 +590,7 @@ public sealed partial class CanaryTests
         foreach (var (method, call) in ListCases)
         {
             var text = await call(canary);
-            Assert.True(text.Contains(method.EndsWith("ListTaskPlugins", StringComparison.Ordinal) ? canary.Inside.ToString() : inside.ToString(), StringComparison.Ordinal), $"{method} misses the view's data: {text}");
+            Assert.True(text.Contains(method.EndsWith("TaskPlugins", StringComparison.Ordinal) ? canary.Inside.ToString() : inside.ToString(), StringComparison.Ordinal), $"{method} misses the view's data: {text}");
             foreach (var hidden in new[] { canary.Outside, outside, removedDevice, removed })
             {
                 Assert.False(text.Contains(hidden.ToString(), StringComparison.Ordinal), $"{method} names {hidden} outside the view: {text}");
