@@ -14,21 +14,22 @@ namespace Oadm.Core.Devices;
 /// <summary>
 /// Keeps the device table current.
 /// <list type="bullet">
-/// <item>Status poll: every <c>Polling.IntervalSeconds</c> (live-updated from
-/// <see cref="ServerSettingsStore.Changed"/>) one basicdeviceinfo call per device (<see cref="StatusPollTimeout"/>, 3 s)
-/// with at most <see cref="MaxParallelism"/> (200) at once, the starts spread evenly over the interval
-/// (<see cref="PollRoundAsync"/>), updating Status, Model, FirmwareVersion and LastSeenUtc (a LastSeenUtc-only change is not
-/// published). A device that stops answering is asked once more at the end of the round before it turns Unreachable,
+/// <item>Status poll: rounds of one basicdeviceinfo call per device (<see cref="StatusPollTimeout"/>, 3 s) with at most
+/// <see cref="MaxParallelism"/> (200) at once (<see cref="PollRoundAsync"/>), each followed by <see cref="RoundPause"/>
+/// (60 s) before the next one starts, so a round never overlaps the next and a large installation simply polls a little
+/// less often; no setting. Updating Status, Model, FirmwareVersion and LastSeenUtc; a LastSeenUtc-only change is written in
+/// batches of <see cref="LastSeenBatchSize"/> (one transaction each) and not published. A device that stops answering is asked once more at the end of the round before it turns Unreachable,
 /// except in an outage (more than <see cref="OutageShare"/> of the round failed). A new firmware or model queues a full
 /// refresh.</item>
 /// <item>Full refresh: basicdeviceinfo plus param.cgi network info (DHCP, HTTPS, 802.1X, UPnP
 /// name), the HTTPS certificate seen in the TLS handshake (expiry, chain trust, subject, issuer)
 /// and the Server column. Queued with <see cref="QueueRefresh"/> (on add, manual Refresh, after a
 /// task) or run directly with <see cref="RefreshAsync"/>.</item>
-/// <item>Scheduled full refresh: every <c>Polling.FullRefreshMinutes</c> (default 10) per device that is Ok (others are
-/// watched by the status poll), staggered after a start so the devices stay spread over the interval, checked every
-/// <see cref="FullRefreshCheckPeriod"/>, and immediately when a status poll sees a device go from a non-Ok status back to
-/// Ok. Both go through the deduplicating refresh queue, at most <see cref="RefreshParallelism"/> (64) at once.</item>
+/// <item>Full refresh rounds like the status poll: a round over every device that is Ok (others are watched by the status
+/// poll) and was not refreshed within the last <see cref="FullRefreshPause"/> (a task, back online or new firmware refreshed
+/// it already), then <see cref="FullRefreshPause"/> (10 min) before the next one; no setting. Immediately as well when a
+/// status poll sees a device go from a non-Ok status back to Ok or a new firmware. Rounds and the queue share one limit:
+/// at most <see cref="RefreshParallelism"/> (64) full refreshes at once.</item>
 /// </list>
 /// Status comes from <see cref="DeviceStatusClassifier"/>; a pinned certificate mismatch becomes
 /// CertificateChanged; a 401 on a device whose systemready says needsetup becomes PasswordNotSet.
@@ -45,12 +46,10 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly ILogger _logger;
     private readonly Channel<Guid> _refreshQueue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = false });
     private readonly ConcurrentDictionary<Guid, byte> _pendingRefresh = new();
-    private readonly Lock _wakeSync = new();
-    private CancellationTokenSource _wake = new();
+    private readonly Lock _lastSeenSync = new();
+    private List<(Guid Id, DateTime LastSeenUtc)> _lastSeen = [];
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFullRefresh = new();
-    private readonly DateTimeOffset _startedAt;
-    private int _intervalSeconds = ServerSettings.DefaultPollingIntervalSeconds;
-    private int _fullRefreshMinutes = ServerSettings.DefaultFullRefreshMinutes;
+    private SemaphoreSlim? _fullGate;
     private bool _mostDevicesDown;
 
     public DevicePollingService(
@@ -72,15 +71,25 @@ public sealed partial class DevicePollingService : IDisposable
         _sites = sites;
         _time = timeProvider ?? TimeProvider.System;
         _logger = (ILogger?)logger ?? NullLogger.Instance;
-        _startedAt = _time.GetUtcNow();
-        _settings.Changed += OnSettingChanged;
     }
 
     /// <summary>
-    /// Status polls at the same time. Default 200: the starts are spread over the interval, so this only matters while
-    /// many devices are slow or do not answer (30,000 devices answering in 70 ms keep about 40 busy).
+    /// Status polls at the same time (default 200): a pool, the next device starts as soon as one poll ends, so a slow or
+    /// dead device never holds the others (measured: about 1,000 polls per second).
     /// </summary>
     public int MaxParallelism { get; init; } = 200;
+
+    /// <summary>The pause after a round before the next one starts. 60 s; no setting.</summary>
+    public TimeSpan RoundPause { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Polls that change nothing but LastSeenUtc are written together, this many in one transaction (default 500): one
+    /// transaction per poll was the ceiling of a round at 50,000 devices.
+    /// </summary>
+    public int LastSeenBatchSize { get; init; } = 500;
+
+    /// <summary>The last finished status round (the support report); null before the first one.</summary>
+    public PollRoundInfo? LastRound { get; private set; }
 
     /// <summary>Full refreshes at the same time. Default 64.</summary>
     public int RefreshParallelism { get; init; } = 64;
@@ -97,14 +106,11 @@ public sealed partial class DevicePollingService : IDisposable
     /// <summary>An outage also needs at least this many failed devices (default 10): a small site always gets the second try.</summary>
     public int OutageMinimum { get; init; } = 10;
 
-    /// <summary>Current poll interval in seconds.</summary>
-    public int IntervalSeconds => Volatile.Read(ref _intervalSeconds);
+    /// <summary>The pause after a full refresh round before the next one starts. 10 min; no setting.</summary>
+    public TimeSpan FullRefreshPause { get; init; } = TimeSpan.FromMinutes(10);
 
-    /// <summary>Current scheduled full refresh interval in minutes.</summary>
-    public int FullRefreshMinutes => Volatile.Read(ref _fullRefreshMinutes);
-
-    /// <summary>How often the scheduler looks for devices whose full refresh is due. Default 30 s.</summary>
-    public TimeSpan FullRefreshCheckPeriod { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>The last finished full refresh round (the support report); null before the first one.</summary>
+    public PollRoundInfo? LastFullRound { get; private set; }
 
     /// <summary>Raised after a device was polled or refreshed (also when the device did not answer).</summary>
     public event EventHandler<Device>? DeviceUpdated;
@@ -123,25 +129,15 @@ public sealed partial class DevicePollingService : IDisposable
     }
 
     /// <summary>
-    /// Runs the poll loop and the refresh queue until <paramref name="ct"/> is cancelled. The first
-    /// poll runs after one interval (devices get a full refresh when added).
+    /// Runs the status rounds, the full refresh rounds and the refresh queue until <paramref name="ct"/> is cancelled. The
+    /// first status round runs after one pause, the first full refresh round after one full pause (devices get a full
+    /// refresh when added).
     /// </summary>
     public async Task RunAsync(CancellationToken ct)
     {
-        try
-        {
-            var settings = await _settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
-            Volatile.Write(ref _intervalSeconds, settings.PollingIntervalSeconds);
-            Volatile.Write(ref _fullRefreshMinutes, settings.FullRefreshMinutes);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            LogSettingsFailed(ex);
-        }
-
         var worker = RunRefreshQueueAsync(ct);
         var poller = RunPollLoopAsync(ct);
-        var scheduler = RunFullRefreshScheduleAsync(ct);
+        var scheduler = RunFullRefreshLoopAsync(ct);
         try
         {
             await Task.WhenAll(worker, poller, scheduler).ConfigureAwait(false);
@@ -152,21 +148,16 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
-    /// <summary>Share of the poll interval over which the status polls of one round are spread.</summary>
-    public const double RoundSpreadFraction = 0.9;
-
-    /// <summary>One status poll of every managed device, with bounded parallelism, all started at once.</summary>
-    public Task PollAllAsync(CancellationToken ct) => PollRoundAsync(TimeSpan.Zero, ct);
+    /// <summary>One status poll of every managed device (<see cref="PollRoundAsync"/>).</summary>
+    public Task PollAllAsync(CancellationToken ct) => PollRoundAsync(ct);
 
     /// <summary>
-    /// One status poll of every managed device. Scale: the starts are spread evenly over
-    /// <paramref name="spreadOver"/> (the poll loop passes <see cref="RoundSpreadFraction"/> of the
-    /// interval), so 5,000 devices at 60 s mean about 90 polls per second instead of a burst of 5,000,
-    /// and at most <see cref="MaxParallelism"/> run at the same time (a slow or unreachable device
-    /// delays later starts, it never adds parallel requests). Each device row is read right before its
-    /// poll, so a row changed during the round is polled with its current address and credentials.
+    /// One status poll of every managed device: a pool of at most <see cref="MaxParallelism"/> polls, the next device
+    /// starts as soon as one poll ends (a slow or unreachable device never adds parallel requests). Each device row is read
+    /// right before its poll, so a row changed during the round is polled with its current address and credentials. A poll
+    /// that changes nothing but LastSeenUtc is collected and written with others in one transaction.
     /// </summary>
-    public async Task PollRoundAsync(TimeSpan spreadOver, CancellationToken ct)
+    public async Task PollRoundAsync(CancellationToken ct)
     {
         var ids = await _devices.ListDeviceIdsAsync(ct).ConfigureAwait(false);
         var start = _time.GetUtcNow();
@@ -174,7 +165,7 @@ public sealed partial class DevicePollingService : IDisposable
         var missed = new ConcurrentBag<(Device Device, Observation Observation)>();
         var polled = 0;
         var failed = 0;
-        await Parallel.ForEachAsync(PacedAsync(ids, start, spreadOver, ct), options, async (id, token) =>
+        await Parallel.ForEachAsync(ids, options, async (id, token) =>
         {
             var device = await _devices.GetAsync(id, token).ConfigureAwait(false);
             if (device is null || device.Status == DeviceStatus.SiteOffline)
@@ -191,7 +182,15 @@ public sealed partial class DevicePollingService : IDisposable
             Interlocked.Increment(ref polled);
             if (observation.Status != DeviceStatus.Unreachable)
             {
-                await ApplyAsync(device, observation, full: false, token).ConfigureAwait(false);
+                if (OnlyLastSeen(device, observation) is { } seen)
+                {
+                    await CollectLastSeenAsync(device.Id, seen, token).ConfigureAwait(false);
+                }
+                else
+                {
+                    await ApplyAsync(device, observation, full: false, token).ConfigureAwait(false);
+                }
+
                 return;
             }
 
@@ -205,6 +204,7 @@ public sealed partial class DevicePollingService : IDisposable
                 missed.Add((device, observation)); // asked once more at the end of the round
             }
         }).ConfigureAwait(false);
+        await FlushLastSeenAsync(ct).ConfigureAwait(false);
 
         if (!missed.IsEmpty)
         {
@@ -222,6 +222,83 @@ public sealed partial class DevicePollingService : IDisposable
         }
 
         NoteRound(polled, failed);
+        LastRound = new PollRoundInfo(ids.Count, _time.GetUtcNow() - start, _time.GetUtcNow());
+    }
+
+    /// <summary>
+    /// The new LastSeenUtc when <paramref name="observation"/> changes nothing else of <paramref name="device"/> (status,
+    /// model, firmware, clock, certificate pin, the status note); null when it changes more (then it is written and
+    /// published at once).
+    /// </summary>
+    private DateTime? OnlyLastSeen(Device device, Observation observation)
+    {
+        if (observation.LastSeen is not { } seen
+            || (_notes?.Get(device.Id) ?? null) != (observation.Status == DeviceStatus.CredentialsRequired ? observation.Note : null))
+        {
+            return null;
+        }
+
+        var after = device.Clone();
+        observation.ApplyTo(after);
+        return after.Status == device.Status
+            && after.Model == device.Model
+            && after.FirmwareVersion == device.FirmwareVersion
+            && after.CertFingerprintSha256 == device.CertFingerprintSha256
+            && after.ServerName == device.ServerName
+            && after.Soc == device.Soc
+            && after.Architecture == device.Architecture
+            && after.ClockOffsetMs == device.ClockOffsetMs
+            && after.NtpState == device.NtpState
+            && after.ProductType == device.ProductType
+            && after.Category == device.Category
+            && after.DhcpEnabled == device.DhcpEnabled
+            && after.HttpsEnabled == device.HttpsEnabled
+            && after.Dot1xEnabled == device.Dot1xEnabled
+            && after.UpnpFriendlyName == device.UpnpFriendlyName
+            && ReferenceEquals(after.Apis, device.Apis)
+            && after.CertNotAfterUtc == device.CertNotAfterUtc
+            && after.CertTrust == device.CertTrust
+            && after.CertSubject == device.CertSubject
+            && after.CertIssuer == device.CertIssuer
+            && after.CertNameMatches == device.CertNameMatches
+                ? seen
+                : null;
+    }
+
+    /// <summary>Collects a LastSeenUtc-only change; a full batch is written at once (one transaction).</summary>
+    private async Task CollectLastSeenAsync(Guid id, DateTime seen, CancellationToken ct)
+    {
+        List<(Guid Id, DateTime LastSeenUtc)>? full = null;
+        lock (_lastSeenSync)
+        {
+            _lastSeen.Add((id, seen));
+            if (_lastSeen.Count >= Math.Max(1, LastSeenBatchSize))
+            {
+                full = _lastSeen;
+                _lastSeen = [];
+            }
+        }
+
+        if (full is not null)
+        {
+            await _devices.SetLastSeenManyAsync(full, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Writes the collected LastSeenUtc changes (the end of a round).</summary>
+    private async Task FlushLastSeenAsync(CancellationToken ct)
+    {
+        List<(Guid Id, DateTime LastSeenUtc)> rest;
+        lock (_lastSeenSync)
+        {
+            rest = _lastSeen;
+            _lastSeen = [];
+        }
+
+        if (rest.Count > 0)
+        {
+            await _devices.SetLastSeenManyAsync(rest, ct).ConfigureAwait(false);
+        }
     }
 
     /// <summary>One warning when most devices of a round did not answer, one information when they answer again.</summary>
@@ -249,64 +326,40 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
-    /// <summary>Planned start of the device at <paramref name="index"/> of <paramref name="count"/> within a round.</summary>
-    public static TimeSpan StartOffset(int index, int count, TimeSpan spreadOver) =>
-        count <= 1 || spreadOver <= TimeSpan.Zero ? TimeSpan.Zero : spreadOver * ((double)index / count);
-
-    private async IAsyncEnumerable<Guid> PacedAsync(IReadOnlyList<Guid> ids, DateTimeOffset start, TimeSpan spreadOver,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
-    {
-        for (var i = 0; i < ids.Count; i++)
-        {
-            var wait = start + StartOffset(i, ids.Count, spreadOver) - _time.GetUtcNow();
-            if (wait > MinPacingDelay)
-            {
-                await Task.Delay(wait, _time, ct).ConfigureAwait(false);
-            }
-
-            yield return ids[i];
-        }
-    }
-
-    /// <summary>Waits shorter than this are skipped (timer resolution); the next wait catches up.</summary>
-    private static readonly TimeSpan MinPacingDelay = TimeSpan.FromMilliseconds(5);
-
     /// <summary>
-    /// Queues a full refresh for every device whose last full refresh is at least
-    /// <see cref="FullRefreshMinutes"/> ago. A device without a full refresh since the service started
-    /// counts from the service start plus a stagger: the n-th of N devices (by serial) is due
-    /// n/N of an interval later, so after a server start 5,000 devices are not all due at once.
-    /// Reads only the device ids. Returns the queued device ids.
+    /// One full refresh round: every device that is Ok and was not refreshed within the last <see cref="FullRefreshPause"/>,
+    /// in a pool with the queue's limit (<see cref="RefreshParallelism"/> together). Returns how many were refreshed.
     /// </summary>
-    public async Task<IReadOnlyList<Guid>> QueueDueFullRefreshesAsync(CancellationToken ct)
+    public async Task<int> FullRefreshRoundAsync(CancellationToken ct)
     {
         var devices = await _devices.ListIdsWithStatusAsync(ct).ConfigureAwait(false);
-        var now = _time.GetUtcNow();
-        var interval = TimeSpan.FromMinutes(FullRefreshMinutes);
+        var start = _time.GetUtcNow();
         var known = devices.Select(d => d.Id).ToHashSet();
         foreach (var gone in _lastFullRefresh.Keys.Where(id => !known.Contains(id)))
         {
             _lastFullRefresh.TryRemove(gone, out _);
         }
 
-        var due = new List<Guid>();
-        for (var i = 0; i < devices.Count; i++)
+        var due = devices
+            .Where(d => d.Status == DeviceStatus.Ok
+                && !_pendingRefresh.ContainsKey(d.Id)
+                && !(_lastFullRefresh.TryGetValue(d.Id, out var last) && start - last < FullRefreshPause))
+            .Select(d => d.Id)
+            .ToList();
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, RefreshParallelism), CancellationToken = ct };
+        await Parallel.ForEachAsync(due, options, async (id, token) =>
         {
-            var (id, status) = devices[i];
-            if (status != DeviceStatus.Ok)
+            try
             {
-                continue; // the status poll watches it and queues a refresh when it is Ok again
+                await RefreshAsync(id, token).ConfigureAwait(false);
             }
-
-            var baseline = _lastFullRefresh.TryGetValue(id, out var last) ? last : _startedAt + StartOffset(i, devices.Count, interval);
-            if (baseline + interval <= now)
+            catch (Exception ex) when (ex is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                due.Add(id);
+                LogRefreshFailed(ex, id);
             }
-        }
-
-        QueueRefresh(due);
-        return due;
+        }).ConfigureAwait(false);
+        LastFullRound = new PollRoundInfo(due.Count, _time.GetUtcNow() - start, _time.GetUtcNow());
+        return due.Count;
     }
 
     /// <summary>Whether a full refresh of the device waits in the queue (diagnostics and tests).</summary>
@@ -327,80 +380,83 @@ public sealed partial class DevicePollingService : IDisposable
     public async Task<Device?> RefreshAsync(Guid deviceId, CancellationToken ct)
     {
         var device = await _devices.GetAsync(deviceId, ct).ConfigureAwait(false);
-        return device is null ? null : await UpdateDeviceAsync(device, full: true, ct).ConfigureAwait(false);
+        if (device is null)
+        {
+            return null;
+        }
+
+        // Rounds and the queue together: at most RefreshParallelism full refreshes at once.
+        var gate = FullGate;
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await UpdateDeviceAsync(device, full: true, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private SemaphoreSlim FullGate
+    {
+        get
+        {
+            if (Volatile.Read(ref _fullGate) is { } gate)
+            {
+                return gate;
+            }
+
+            var created = new SemaphoreSlim(Math.Max(1, RefreshParallelism));
+            var existing = Interlocked.CompareExchange(ref _fullGate, created, null);
+            if (existing is not null)
+            {
+                created.Dispose();
+                return existing;
+            }
+
+            return created;
+        }
     }
 
     public void Dispose()
     {
-        _settings.Changed -= OnSettingChanged;
         _refreshQueue.Writer.TryComplete();
-        lock (_wakeSync)
-        {
-            _wake.Dispose();
-        }
+        _fullGate?.Dispose();
     }
 
     /// <summary>
-    /// A round starts every interval (measured from the start of the previous round, so a round that
-    /// takes most of the interval does not double it); its polls are spread over the interval. A round
-    /// that takes longer than the interval is followed by the next one right away.
+    /// Round, then <see cref="RoundPause"/>, then the next round: a round never overlaps the next, and the time between two
+    /// polls of a device is the round's length plus the pause (about 61 s for 100 devices, about 90 s for 50,000).
     /// </summary>
     private async Task RunPollLoopAsync(CancellationToken ct)
     {
-        var nextRound = _time.GetUtcNow() + TimeSpan.FromSeconds(IntervalSeconds);
         while (!ct.IsCancellationRequested)
         {
-            CancellationToken wake;
-            lock (_wakeSync)
-            {
-                wake = _wake.Token;
-            }
-
-            using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct, wake);
+            await Task.Delay(RoundPause, _time, ct).ConfigureAwait(false);
             try
             {
-                var wait = nextRound - _time.GetUtcNow();
-                if (wait > TimeSpan.Zero)
-                {
-                    await Task.Delay(wait, _time, delayCts.Token).ConfigureAwait(false);
-                }
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                // Interval changed: start waiting again with the new value.
-                nextRound = _time.GetUtcNow() + TimeSpan.FromSeconds(IntervalSeconds);
-                continue;
-            }
-
-            var interval = TimeSpan.FromSeconds(IntervalSeconds);
-            var roundStart = _time.GetUtcNow();
-            try
-            {
-                await PollRoundAsync(interval * RoundSpreadFraction, ct).ConfigureAwait(false);
+                await PollRoundAsync(ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 LogPollFailed(ex);
             }
-
-            nextRound = roundStart + interval;
         }
 
         ct.ThrowIfCancellationRequested();
     }
 
-    private async Task RunFullRefreshScheduleAsync(CancellationToken ct)
+    /// <summary>Full refresh round, then <see cref="FullRefreshPause"/>, then the next round (like the status rounds).</summary>
+    private async Task RunFullRefreshLoopAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            await Task.Delay(FullRefreshCheckPeriod, _time, ct).ConfigureAwait(false);
+            await Task.Delay(FullRefreshPause, _time, ct).ConfigureAwait(false);
             try
             {
-                var queued = await QueueDueFullRefreshesAsync(ct).ConfigureAwait(false);
-                if (queued.Count > 0)
-                {
-                    LogScheduledFullRefresh(queued.Count);
-                }
+                var refreshed = await FullRefreshRoundAsync(ct).ConfigureAwait(false);
+                LogFullRound(refreshed, LastFullRound?.Duration.TotalSeconds ?? 0);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
@@ -416,8 +472,8 @@ public sealed partial class DevicePollingService : IDisposable
         var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, RefreshParallelism), CancellationToken = ct };
         await Parallel.ForEachAsync(_refreshQueue.Reader.ReadAllAsync(ct), options, async (id, token) =>
         {
-            // Stamp before the device leaves the pending set: otherwise the scheduler could see it due and not pending
-            // in the gap until UpdateDeviceAsync stamps it, and queue the same refresh a second time.
+            // Stamp before the device leaves the pending set: otherwise a round could see it neither fresh nor pending
+            // in the gap until UpdateDeviceAsync stamps it, and refresh it a second time.
             _lastFullRefresh[id] = _time.GetUtcNow();
             _pendingRefresh.TryRemove(id, out _);
             try
@@ -440,7 +496,7 @@ public sealed partial class DevicePollingService : IDisposable
 
         if (full)
         {
-            // Stamped at the start so the scheduler does not queue a refresh that is already running.
+            // Stamped at the start so a round does not start a refresh that is already running.
             _lastFullRefresh[device.Id] = _time.GetUtcNow();
         }
 
@@ -685,77 +741,6 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 
-    private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
-    {
-        if (e.Key == SettingKeys.PollingFullRefreshMinutes)
-        {
-            OnFullRefreshMinutesChanged(e.ValueJson);
-            return;
-        }
-
-        if (e.Key != SettingKeys.PollingIntervalSeconds)
-        {
-            return;
-        }
-
-        var seconds = ServerSettings.DefaultPollingIntervalSeconds;
-        if (e.ValueJson is not null)
-        {
-            try
-            {
-                seconds = JsonSerializer.Deserialize<int>(e.ValueJson);
-            }
-            catch (JsonException)
-            {
-                return;
-            }
-        }
-
-        if (seconds < 1 || Interlocked.Exchange(ref _intervalSeconds, seconds) == seconds)
-        {
-            return;
-        }
-
-        LogIntervalChanged(seconds);
-        lock (_wakeSync)
-        {
-            var old = _wake;
-            _wake = new CancellationTokenSource();
-            try
-            {
-                old.Cancel();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Disposed during shutdown.
-            }
-
-            old.Dispose();
-        }
-    }
-
-    private void OnFullRefreshMinutesChanged(string? valueJson)
-    {
-        var minutes = ServerSettings.DefaultFullRefreshMinutes;
-        if (valueJson is not null)
-        {
-            try
-            {
-                minutes = JsonSerializer.Deserialize<int>(valueJson);
-            }
-            catch (JsonException)
-            {
-                return;
-            }
-        }
-
-        if (minutes is >= ServerSettings.MinFullRefreshMinutes and <= ServerSettings.MaxFullRefreshMinutes
-            && Interlocked.Exchange(ref _fullRefreshMinutes, minutes) != minutes)
-        {
-            LogFullRefreshChanged(minutes);
-        }
-    }
-
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} ({Address}) has a certificate an OADM CA renewed; it is pinned now")]
     private partial void LogCertificateRenewed(Guid deviceId, string address);
 
@@ -786,16 +771,10 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Device {DeviceId}: web server certificate not readable over HTTP ({Reason})")]
     private partial void LogWebServerCertificateFailed(Guid deviceId, string reason);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Polling interval changed to {Seconds} s")]
-    private partial void LogIntervalChanged(int seconds);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Full refresh round: {Count} devices in {Seconds:0.0} s")]
+    private partial void LogFullRound(int count, double seconds);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Full refresh interval changed to {Minutes} min")]
-    private partial void LogFullRefreshChanged(int minutes);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Scheduled full refresh queued for {Count} devices")]
-    private partial void LogScheduledFullRefresh(int count);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Scheduling the periodic full refresh failed")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "A full refresh round failed")]
     private partial void LogScheduleFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} has new firmware or model ({Old} -> {New}), queuing a full refresh")]
@@ -912,3 +891,6 @@ public sealed partial class DevicePollingService : IDisposable
         }
     }
 }
+
+/// <summary>A finished status round: how many devices, how long it took, when it ended (the support report).</summary>
+public sealed record PollRoundInfo(int Devices, TimeSpan Duration, DateTimeOffset FinishedAt);

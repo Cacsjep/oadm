@@ -356,6 +356,31 @@ public sealed class DeviceRepository(IDbContextFactory<OadmDbContext> dbFactory,
         return Shown(entity.Clone());
     }
 
+    /// <summary>
+    /// Writes LastSeenUtc of many devices in one transaction (the status poll's batches: a poll that changed nothing else).
+    /// Only that column is written, so a row another writer changed meanwhile keeps its other values; a removed device is
+    /// skipped. Not published (watchers do not get identical devices every round).
+    /// </summary>
+    public async Task SetLastSeenManyAsync(IReadOnlyCollection<(Guid Id, DateTime LastSeenUtc)> seen, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(seen);
+        if (seen.Count == 0)
+        {
+            return;
+        }
+
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        await db.Database.OpenConnectionAsync(ct).ConfigureAwait(false);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+        foreach (var (id, lastSeen) in seen)
+        {
+            DateTime? value = lastSeen;
+            await db.Devices.Where(d => d.Id == id).ExecuteUpdateAsync(u => u.SetProperty(d => d.LastSeenUtc, value), ct).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>Publishes the devices as stored now (a writer outside the repository, a note that changed without a write).</summary>
     public Task<IReadOnlyList<Device>> PublishStoredAsync(IReadOnlyCollection<Guid> ids) =>
         StoredDevicePublisher.PublishStoredAsync(dbFactory, changeFeed, ids);

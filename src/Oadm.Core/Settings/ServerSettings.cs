@@ -92,7 +92,12 @@ public static class SettingKeys
     }
 }
 
-/// <summary>Typed snapshot of all Goal 1 server settings (defaults applied).</summary>
+/// <summary>
+/// Typed snapshot of all Goal 1 server settings (defaults applied). <see cref="PollingIntervalSeconds"/> and
+/// <see cref="FullRefreshMinutes"/> are unused since 4.8 (status and full refresh run in rounds with a fixed pause,
+/// <see cref="Devices.DevicePollingService.RoundPause"/> and <see cref="Devices.DevicePollingService.FullRefreshPause"/>);
+/// they are kept so backups and older clients still read and write them.
+/// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The server's own host name.")]
 public sealed record ServerSettings(
     int PollingIntervalSeconds,

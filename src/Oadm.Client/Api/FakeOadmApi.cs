@@ -1025,16 +1025,6 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         lock (_gate)
         {
             ThrowIfOffline();
-            if (settings.PollingIntervalSeconds < 5)
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Polling interval must be at least 5 seconds"));
-            }
-
-            if (settings.FullRefreshMinutes is < 1 or > 1440)
-            {
-                throw new RpcException(new Status(StatusCode.InvalidArgument, "Device details are read every 1 to 1440 minutes."));
-            }
-
             if (settings.HasMaxParallelTasksPerPlugin && settings.MaxParallelTasksPerPlugin is < 1 or > 256)
             {
                 throw new RpcException(new Status(StatusCode.InvalidArgument, "'Tasks.MaxParallelPerPlugin' must be an integer between 1 and 256."));

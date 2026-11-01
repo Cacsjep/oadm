@@ -63,13 +63,13 @@ public sealed class SiteOfflinePollingTests : IAsyncLifetime, IDisposable
 
         await _polling.PollAllAsync(CancellationToken.None);
         await _polling.RefreshAsync(atSite.Id, CancellationToken.None);
+        Assert.Equal(1, _cameras.Requests("10.0.0.1"));
         _time.Advance(TimeSpan.FromMinutes(20));
-        var due = await _polling.QueueDueFullRefreshesAsync(CancellationToken.None);
+        await _polling.FullRefreshRoundAsync(CancellationToken.None); // Site offline is not Ok: not part of the round
 
         Assert.Equal(0, _cameras.Requests("192.168.0.20"));
-        Assert.Equal(1, _cameras.Requests("10.0.0.1"));
-        Assert.DoesNotContain(atSite.Id, due);
-        Assert.Contains(local.Id, due);
+        Assert.True(_cameras.Requests("10.0.0.1") > 1, "the local device got its full refresh");
+        Assert.NotNull(_polling.LastFullRefresh(local.Id));
         _sites.SetOnline(_site.Id, true);
         Assert.Equal(DeviceStatus.Ok, (await Devices.GetAsync(atSite.Id, CancellationToken.None))!.Status);
     }

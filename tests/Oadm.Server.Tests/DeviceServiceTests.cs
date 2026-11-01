@@ -162,10 +162,7 @@ public sealed class DeviceServiceTests
             async () => (await TestHelpers.GetDeviceAsync(host, device.Id.ToString())).HasDhcpEnabled,
             "full refresh after coming back online");
 
-        await host.Settings.SetAsync(new Proto.ServerSettings { PollingIntervalSeconds = 7 });
-        Assert.Equal(7, polling.IntervalSeconds);
-        await host.Get<ServerSettingsStore>().ResetAsync(SettingKeys.PollingIntervalSeconds, CancellationToken.None);
-        Assert.Equal(60, polling.IntervalSeconds);
+        Assert.Equal(TimeSpan.FromSeconds(60), polling.RoundPause); // no setting: a round, then 60 s
     }
 
     [Fact]

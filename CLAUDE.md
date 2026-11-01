@@ -165,7 +165,8 @@ must never break.
 - **[Visual style](docs/spec/visual-style.md)**: dark (and light) Fluent look of MultiDrive, the colors in
   `Oadm.Theme`, the rail, cards, dialogs, status chips, small screens, and the catalogue of shared controls.
 - **[Main window](docs/spec/main-window.md)**: the device grid and its columns, toolbar, context menu, tasks pane, Logs
-  page, polling (60 s status, 10 min full refresh, spread over the round).
+  page, polling (status rounds with a 60 s pause after each, LastSeen in batches; full refresh rounds with a 10 min pause;
+  no settings).
 - **[Live view](docs/spec/live-view.md)**: RTSP on the server, frames over gRPC, FFmpeg in the client (GPU decoding
   tested in a separate process first), the shared live video component, zoom, focus, PTZ, RTSP port.
 - **[Device tags](docs/spec/tags.md)**, **[Compliance](docs/spec/compliance.md)** (off by default, read only, Not checked

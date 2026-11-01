@@ -446,7 +446,7 @@ public sealed class AuthTests
     public async Task AuditLogRecordsSettingsCredentialsTasksAndDeviceRemoval()
     {
         await using var host = await TestServerHost.StartAsync();
-        await host.Settings.SetAsync(new Proto.ServerSettings { PollingIntervalSeconds = 30 });
+        await host.Settings.SetAsync(new Proto.ServerSettings { ClockToleranceSeconds = 30 });
         var entry = await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "root", Password = "Pass-word-1" });
         await host.Settings.RevealCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
         await host.Settings.RemoveCredentialAsync(new Proto.CredentialEntryId { Id = entry.Id });
@@ -454,7 +454,7 @@ public sealed class AuthTests
 
         var list = await host.Audit.ListAsync(new Proto.ListAuditRequest());
         var byAction = list.Entries.ToDictionary(e => e.Action, e => e);
-        Assert.Equal("Polling interval (s) 60 -> 30", byAction[AuditActions.SettingsChanged].Detail);
+        Assert.Equal("Allowed clock difference (s) 2 -> 30", byAction[AuditActions.SettingsChanged].Detail);
         Assert.Equal("root", byAction[AuditActions.CredentialAdded].Target);
         Assert.Equal("root", byAction[AuditActions.CredentialRevealed].Target);
         Assert.Equal("root", byAction[AuditActions.CredentialRemoved].Target);

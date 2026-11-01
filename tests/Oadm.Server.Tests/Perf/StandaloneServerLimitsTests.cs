@@ -21,7 +21,8 @@ namespace Oadm.Server.Tests.Perf;
 /// <summary>
 /// Memory of the real server process (Oadm.Server.dll with the development plugins) with N devices in its database, idle
 /// and while clients load the device list. Opt-in with <c>OADM_LIMITS_DEVICES</c>. Contacts no device: the devices have
-/// addresses of the benchmark range 198.18.0.0/15, polling and full refresh are set to once a day, NTP and DHCP are off.
+/// addresses of the benchmark range 198.18.0.0/15 (no answer), NTP and DHCP are off. Polling has no setting since 4.8: the
+/// first status round starts 60 s after the start and asks the benchmark addresses, so the later numbers include it.
 /// </summary>
 [Trait("Category", "Perf")]
 public sealed class StandaloneServerLimitsTests(ITestOutputHelper output)
@@ -78,8 +79,6 @@ public sealed class StandaloneServerLimitsTests(ITestOutputHelper output)
             });
         }
 
-        db.Settings.Add(new Setting { Key = SettingKeys.PollingIntervalSeconds, ValueJson = "86400" });
-        db.Settings.Add(new Setting { Key = SettingKeys.PollingFullRefreshMinutes, ValueJson = "1440" });
         db.Settings.Add(new Setting { Key = Oadm.Server.Plugins.PluginActivation.SettingKey, ValueJson = """{"oadm.ntp-server":false,"oadm.dhcp-server":false}""" });
         await db.SaveChangesAsync();
     }

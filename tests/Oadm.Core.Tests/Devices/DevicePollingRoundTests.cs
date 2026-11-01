@@ -59,6 +59,26 @@ public sealed class DevicePollingRoundTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task APollThatOnlyMovesLastSeenIsWrittenInABatchAndNotPublished()
+    {
+        var devices = await AddManyAsync(20);
+        await _polling.PollAllAsync(CancellationToken.None); // learns model and firmware: written and published
+        using var subscription = _db.Get<IDeviceChangeFeed>().Subscribe();
+        _time.Advance(TimeSpan.FromMinutes(1));
+
+        await _polling.PollAllAsync(CancellationToken.None);
+
+        Assert.False(subscription.Reader.TryRead(out _)); // nothing but LastSeen changed: no device sent to the clients
+        Assert.All(await Devices.ListDevicesAsync(CancellationToken.None), d => Assert.Equal(_time.GetUtcNow().UtcDateTime, d.LastSeenUtc));
+
+        // A real change still goes out at once.
+        _cameras.Firmware(devices[0].Address, "12.12.1");
+        await _polling.PollAllAsync(CancellationToken.None);
+        Assert.True(subscription.Reader.TryRead(out _));
+        Assert.Equal("12.12.1", (await Devices.GetAsync(devices[0].Id, CancellationToken.None))!.FirmwareVersion);
+    }
+
+    [Fact]
     public async Task TheStatusPollAsksWithTheShortTimeoutAndTheFullRefreshWithTheDefault()
     {
         var device = await AddAsync("10.0.0.1", DeviceStatus.Ok);
@@ -147,14 +167,15 @@ public sealed class DevicePollingRoundTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task TheScheduleRefreshesOnlyDevicesThatAreOk()
+    public async Task AFullRefreshRoundRefreshesOnlyDevicesThatAreOk()
     {
         var ok = await AddAsync("10.0.0.1", DeviceStatus.Ok);
-        await AddAsync("10.0.0.2", DeviceStatus.Unreachable);
+        var dead = await AddAsync("10.0.0.2", DeviceStatus.Unreachable);
         await AddAsync("10.0.0.3", DeviceStatus.CredentialsRequired);
 
-        _time.Advance(TimeSpan.FromMinutes(20));
-        Assert.Equal([ok.Id], await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
+        Assert.Equal(1, await _polling.FullRefreshRoundAsync(CancellationToken.None));
+        Assert.NotNull(_polling.LastFullRefresh(ok.Id));
+        Assert.Null(_polling.LastFullRefresh(dead.Id));
     }
 
     private async Task<List<Device>> AddManyAsync(int count)

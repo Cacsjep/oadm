@@ -10,8 +10,8 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 
 | Key | Default, range | Settings page, proto |
 |---|---|---|
-| `Polling.IntervalSeconds` | 60, 5..86400 | Polling "Status polling interval (s)", `polling_interval_seconds = 1` |
-| `Polling.FullRefreshMinutes` | 10, 1..1440 | Polling "Read device details every (min)", `full_refresh_minutes = 6` |
+| `Polling.IntervalSeconds` | unused since 4.8 (the status poll pauses 60 s after each round, docs/spec/main-window.md); still read and written for backups and older clients, not on the Settings page | `polling_interval_seconds = 1` |
+| `Polling.FullRefreshMinutes` | unused since 4.8 (device details are read in rounds with a 10 min pause, docs/spec/main-window.md); still read and written for backups and older clients, not on the Settings page | `full_refresh_minutes = 6` |
 | `Polling.ClockToleranceSeconds` | 2, 1..3600 | Polling "Allowed clock difference (s)", `optional clock_tolerance_seconds = 13`; read live (`ClockTolerance`), see `docs/spec/main-window.md` "Clock" |
 | `Scan.Parallelism` | 32 | Discovery "Addresses scanned at once", `scan_parallelism = 2` |
 | `Scan.TimeoutMs` | 1500 | Discovery "Scan timeout (ms)" (range scans and the first contact of imported lines), `scan_timeout_ms = 3` |

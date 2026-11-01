@@ -24,7 +24,7 @@ sees each device as a read-only `IDeviceInfo` and talks to it through an `IVapix
 | `ConnectsOverHttps` | How OADM connects: false over HTTP, so what you send crosses the network unencrypted; null while unknown |
 | `CertNotAfterUtc`, `CertTrustName` | The HTTPS certificate's end date and its rating |
 
-The server polls every device's status every 60 s and reads everything else in a full refresh every 10 minutes, after
+The server polls every device's status, pauses 60 s after each round, and reads everything else in full refresh rounds with a 10 minute pause, after
 every task and when a device comes back. `IDeviceInfo` is that cached picture: reading it costs nothing and never
 contacts the device.
 

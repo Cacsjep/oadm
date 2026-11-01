@@ -39,7 +39,8 @@ public sealed class SupportReport(
     BackupManager backups,
     ServerRunMode runMode,
     TimeProvider time,
-    ISiteStates? sites = null)
+    ISiteStates? sites = null,
+    DevicePollingService? polling = null)
 {
     /// <summary>Reports older than this in the work folder are leftovers of a broken download.</summary>
     public static readonly TimeSpan LeftoverAge = TimeSpan.FromMinutes(30);
@@ -138,8 +139,12 @@ public sealed class SupportReport(
         }
 
         Head("Settings");
-        Line("Status polling interval (s)", server.PollingIntervalSeconds);
-        Line("Read device details every (min)", server.FullRefreshMinutes);
+        Line("Status poll", polling?.LastRound is { } round
+            ? string.Create(CultureInfo.InvariantCulture, $"last round {round.Devices} devices in {round.Duration.TotalSeconds:0.0} s at {round.FinishedAt:u}, then a {polling.RoundPause.TotalSeconds:0} s pause")
+            : "no round yet");
+        Line("Device details", polling?.LastFullRound is { } full
+            ? string.Create(CultureInfo.InvariantCulture, $"last round {full.Devices} devices in {full.Duration.TotalSeconds:0.0} s at {full.FinishedAt:u}, then a {polling.FullRefreshPause.TotalMinutes:0} min pause")
+            : "no round yet");
         Line("Allowed clock difference (s)", server.ClockToleranceSeconds);
         Line("Addresses scanned at once", server.ScanParallelism);
         Line("Scan timeout (ms)", server.ScanTimeoutMs);

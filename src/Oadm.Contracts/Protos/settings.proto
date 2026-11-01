@@ -21,12 +21,12 @@ service SettingsService {
 message RevealedCredential { string password = 1; }
 
 message ServerSettings {
-  int32 polling_interval_seconds = 1;   // default 60
+  int32 polling_interval_seconds = 1;   // unused since 4.8 (the status poll pauses 60 s after each round); kept for older clients
   int32 scan_parallelism = 2;           // default 32
   int32 scan_timeout_ms = 3;            // default 1500
   string server_name = 4;
   string listen_url = 5;
-  int32 full_refresh_minutes = 6;       // default 10, 1..1440
+  int32 full_refresh_minutes = 6;   // unused since 4.8 (device details are read in rounds with a 10 min pause); kept for older clients
   // No longer used (the add page chooses DNS names or IP addresses per add, CommitRequest.use_host_name); ignored in a Set,
   // never sent. Kept so the field number is not reused.
   optional bool use_host_name = 7;

@@ -15,6 +15,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Changed
 
+- Device status and details: OADM checks every device, then waits 60 seconds, and reads all details, then waits 10 minutes; the two polling settings are gone, large installations need no tuning.
 - Live video no longer shows a warning when the processor decodes it instead of the graphics card; Settings still says why.
 - Devices list: the Clock column shows only a warning icon when the clock is off; hover it to see how far.
 - Devices list: MAC address, SoC and Architecture are shown dimmed.

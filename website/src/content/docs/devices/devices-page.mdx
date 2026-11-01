@@ -30,7 +30,9 @@ import login from '../../../assets/screens/client-device-login.png';
 | Architecture | The processor type, for example aarch64. Off by default. |
 
 Click a header to sort. Choose columns with the columns button right of the toolbar. Order and widths are kept per
-computer. OADM checks every device every 60 seconds and reads all details every 10 minutes.
+computer. OADM checks every device, waits 60 seconds after each round and checks again; it reads all details in rounds
+with a 10 minute pause, and at once after a task, a new firmware or when a device is back. A device that does not answer
+within 3 s is asked once more before it shows Unreachable. Large installations need no settings for this.
 
 ## Toolbar
 

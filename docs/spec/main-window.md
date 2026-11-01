@@ -152,22 +152,30 @@ and the saved per-client order cover other preferences):
 | Certificate | CertTrust: Trusted (plain text), Self-signed (warn chip), Untrusted / Expired (error chip). Empty when HTTPS is off or unreadable. Both certificate cells have a tooltip with subject, issuer and valid-until date |
 | IEEE 802.1X | dot1x.Enabled -> Enabled/Disabled |
 
-Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) for every device every **60 s** by
-default (`Polling.IntervalSeconds`). Full refresh (basicdeviceinfo + network parameters +
-certificate info + server name) on add, after a task finishes on that device,
-every **10 minutes** per device that is Ok (`Polling.FullRefreshMinutes`, checked every 30 s; devices that are not Ok
-are left to the status poll), immediately when a status poll sees a device go from any non-Ok status back to Ok, and
-immediately when it sees a new firmware version or model (a new API list). All full refreshes go through one deduplicating
-queue, at most `RefreshParallelism` = 64 at once. Scale: a poll round starts every interval and spreads
-its device starts evenly over 90 % of it (`PollRoundAsync`, at most `MaxParallelism` = 200 at once, no setting: the
-spread keeps about 40 busy for 30,000 devices answering in 70 ms, the cap only matters while devices are slow or dead);
-each device row is read right before its poll. A device that stops answering (timeout, refused connection) is asked once
-more at the end of the round before it turns Unreachable; in an outage (more than `OutageShare` = 10 % of the round
-failed) there is no second try (30,000 dead devices: one round of 7.6 minutes). More than half of a round failing logs one
+Polling: server refreshes status (basicdeviceinfo, **3 s** timeout: `StatusPollTimeout`) in rounds: a round polls every
+device, then the server pauses **60 s** (`DevicePollingService.RoundPause`, no setting) and starts the next round. A round
+never overlaps the next, and the time between two polls of a device is the round's length plus the pause (about 61 s for
+100 devices, about 90 s for 50,000), so a large installation needs no tuning. The former setting `Polling.IntervalSeconds`
+is unused since 4.8 (kept for backups and older clients). A round is a pool of at most `MaxParallelism` = 200 polls: the
+next device starts as soon as one poll ends, so a slow or dead device never holds the others (measured about 1,000 polls
+per second). A poll that changes nothing but LastSeenUtc is collected and written with others, `LastSeenBatchSize` = 500
+in one transaction (`DeviceRepository.SetLastSeenManyAsync`, only that column, not published); any other change is
+written and published at once. Full refresh (basicdeviceinfo + network parameters + certificate info + server name, about
+5 requests per device) works the same way: a round over every device that is Ok (others are left to the status poll) and
+was not refreshed within the last 10 minutes, then a **10 min** pause (`DevicePollingService.FullRefreshPause`, no
+setting; the former `Polling.FullRefreshMinutes` is unused since 4.8), then the next round (about 10 min for 1,000
+devices, about 15 min for 50,000, measured 171 per second). Outside the rounds a full refresh runs on add, after a task
+finishes on that device, immediately when a status poll sees a device go from any non-Ok status back to Ok, and
+immediately when it sees a new firmware version or model (a new API list); those go through one deduplicating queue, and
+the next round skips devices refreshed this way within the pause. Rounds and queue share one limit: at most
+`RefreshParallelism` = 64 full refreshes at once. The support report shows the last status round and the last full
+refresh round (devices, length). Status and details are two loops on purpose: a full round is about five times longer,
+and the status keeps its pace while it runs. Each device row is read right before its poll. A device that stops
+answering (timeout, refused connection) is asked once more at the end of the round before it turns Unreachable; in an
+outage (more than `OutageShare` = 10 % of the round failed) there is no second try (50,000 dead devices: one round of
+13 minutes). More than half of a round failing logs one
 warning "Most devices do not answer (F of P). Check the server's network.", and one information when they answer again; single
-failed polls are Debug only. After a server start the first scheduled full refresh is staggered: the n-th of N devices
-is due n/N of an interval later. A poll that changes nothing but LastSeenUtc is written but not published to watchers (no
-30,000 identical updates per minute to every client). Tests `DevicePollingRoundTests`, `DevicePollingScheduleTests`.
+failed polls are Debug only. Tests `DevicePollingRoundTests`, `DevicePollingScheduleTests`.
 
 **Clock.** OADM watches every device's clock with the polling it does anyway, no extra request per minute:
 

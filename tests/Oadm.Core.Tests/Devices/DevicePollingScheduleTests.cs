@@ -49,73 +49,69 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public async Task FullRefreshIsDueEveryConfiguredInterval()
+    public async Task AFullRefreshRoundSkipsDevicesRefreshedWithinThePause()
     {
         var device = await AddAsync(DeviceStatus.Ok);
-        Assert.Equal(10, _polling.FullRefreshMinutes);
+        Assert.Equal(TimeSpan.FromMinutes(10), _polling.FullRefreshPause);
 
-        Assert.Empty(await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
-        _time.Advance(TimeSpan.FromMinutes(9));
-        Assert.Empty(await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
-        _time.Advance(TimeSpan.FromMinutes(1));
-        Assert.Equal([device.Id], await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
-
-        await _polling.RefreshAsync(device.Id, CancellationToken.None);
+        Assert.Equal(1, await _polling.FullRefreshRoundAsync(CancellationToken.None));
         Assert.Equal(_time.GetUtcNow(), _polling.LastFullRefresh(device.Id));
-        Assert.Empty(await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
+        Assert.Equal(1, _polling.LastFullRound!.Devices);
 
-        _time.Advance(TimeSpan.FromMinutes(10));
-        Assert.Equal([device.Id], await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
-
-        // Setting changes apply live.
-        await _polling.RefreshAsync(device.Id, CancellationToken.None);
-        await _db.Get<ServerSettingsStore>().SetAsync(SettingKeys.PollingFullRefreshMinutes, 30, CancellationToken.None);
-        Assert.Equal(30, _polling.FullRefreshMinutes);
-        _time.Advance(TimeSpan.FromMinutes(29));
-        Assert.Empty(await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
+        // Refreshed a moment ago (here by the round; a task or coming back online does the same): the next round skips it.
+        _time.Advance(TimeSpan.FromMinutes(9));
+        Assert.Equal(0, await _polling.FullRefreshRoundAsync(CancellationToken.None));
         _time.Advance(TimeSpan.FromMinutes(1));
-        Assert.Single(await _polling.QueueDueFullRefreshesAsync(CancellationToken.None));
+        Assert.Equal(1, await _polling.FullRefreshRoundAsync(CancellationToken.None));
+        Assert.Equal(2, _camera.FullRefreshTimes.Count);
     }
 
     [Fact]
-    public async Task FullRefreshIntervalIsValidated()
+    public async Task ARoundIsFollowedBySixtySecondsOfPauseBeforeTheNext()
     {
-        var store = _db.Get<ServerSettingsStore>();
-        await Assert.ThrowsAsync<ArgumentException>(() => store.SetAsync(SettingKeys.PollingFullRefreshMinutes, 0, CancellationToken.None));
-        await Assert.ThrowsAsync<ArgumentException>(() => store.SetAsync(SettingKeys.PollingFullRefreshMinutes, 1441, CancellationToken.None));
-        await store.SetAsync(SettingKeys.PollingFullRefreshMinutes, 1440, CancellationToken.None);
-        Assert.Equal(1440, (await store.GetServerSettingsAsync(CancellationToken.None)).FullRefreshMinutes);
-        await store.ResetAsync(SettingKeys.PollingFullRefreshMinutes, CancellationToken.None);
-        Assert.Equal(ServerSettings.DefaultFullRefreshMinutes, (await store.GetServerSettingsAsync(CancellationToken.None)).FullRefreshMinutes);
+        await AddAsync(DeviceStatus.Ok);
+        using var cts = new CancellationTokenSource();
+        var run = _polling.RunAsync(cts.Token);
+
+        // No setting: the first round after the pause, the next one a pause after that round ended.
+        await Eventually.TrueAsync(() => _timers.Pending(_polling.RoundPause) > 0, "the loop waits its first pause");
+        _time.Advance(TimeSpan.FromSeconds(59));
+        Assert.Equal(0, _camera.StatusPolls);
+        _time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => _polling.LastRound is { Devices: 1 }, "the first round");
+        Assert.Equal(1, _camera.StatusPolls);
+
+        await Eventually.TrueAsync(() => _timers.Pending(_polling.RoundPause) > 0, "the pause after the round");
+        _time.Advance(TimeSpan.FromSeconds(59));
+        Assert.Equal(1, _camera.StatusPolls);
+        _time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => _camera.StatusPolls == 2, "the second round");
+
+        await cts.CancelAsync();
+        await run;
     }
 
     [Fact]
-    public async Task RunningServiceDoesAFullRefreshAfterTenMinutes()
+    public async Task RunningServiceDoesAFullRefreshRoundTenMinutesAfterTheLast()
     {
         var device = await AddAsync(DeviceStatus.Ok);
         var start = _time.GetUtcNow();
         using var cts = new CancellationTokenSource();
         var run = _polling.RunAsync(cts.Token);
 
-        // Step the clock one check period at a time, each step only once the schedule loop waits for it again, so no
-        // step is lost on a slow machine. Stop as soon as a refresh is queued.
-        while (_time.GetUtcNow() - start < TimeSpan.FromMinutes(30))
+        // Step the clock one status pause at a time, each step only once both loops wait again, so no step is lost on a
+        // slow machine: the first full round after 10 minutes, the next one 10 minutes after that round.
+        while (_camera.FullRefreshTimes.Count < 2 && _time.GetUtcNow() - start < TimeSpan.FromMinutes(30))
         {
-            await Eventually.TrueAsync(() => _timers.Pending(_polling.FullRefreshCheckPeriod) > 0, "the schedule loop waiting");
-            if (_polling.IsRefreshQueued(device.Id) || _polling.LastFullRefresh(device.Id) is not null)
-            {
-                break;
-            }
-
-            _time.Advance(_polling.FullRefreshCheckPeriod);
+            await Eventually.TrueAsync(() => _timers.Pending(_polling.RoundPause) > 0 && _timers.Pending(_polling.FullRefreshPause) > 0, "both loops waiting");
+            _time.Advance(_polling.RoundPause);
         }
 
-        await WaitUntilAsync(async () => (await Devices.GetAsync(device.Id, CancellationToken.None))!.DhcpEnabled is not null);
-        // First refresh exactly at 10 min (the clock stands still once it is queued), no duplicate inside the period.
         var times = _camera.FullRefreshTimes.ToArray().Order().ToArray();
         Assert.Equal(TimeSpan.FromMinutes(10), times[0] - start);
-        Assert.All(times.Skip(1), t => Assert.True(t - times[0] >= TimeSpan.FromMinutes(10), $"duplicate full refresh at {t - times[0]} after the first"));
-        Assert.True(_camera.StatusPolls > 0, "the light poll keeps running alongside");
+        Assert.Equal(TimeSpan.FromMinutes(20), times[1] - start);
+        Assert.True(_camera.StatusPolls > 0, "the status rounds keep running alongside");
+        Assert.NotNull(_polling.LastFullRefresh(device.Id));
 
         await cts.CancelAsync();
         await run;

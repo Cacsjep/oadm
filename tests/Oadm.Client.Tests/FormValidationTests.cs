@@ -233,16 +233,16 @@ public sealed class FormValidationTests
 
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
-            vm.PollingIntervalSeconds = null;
+            vm.ClockToleranceSeconds = null;
             vm.ServerName = " ";
             vm.ListenUrl = "ftp://server";
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal("Enter a whole number from 5 to 86400.", vm.ErrorOf(nameof(vm.PollingIntervalSeconds)));
+            Assert.Equal("Enter a whole number from 1 to 3600.", vm.ErrorOf(nameof(vm.ClockToleranceSeconds)));
             Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
             Assert.Equal("Enter a URL like https://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
             Assert.False(vm.SaveCommand.CanExecute(null));
-            Assert.Equal("Enter a whole number from 5 to 86400.", vm.SaveBlockedReason);
+            Assert.Equal("Enter a whole number from 1 to 3600.", vm.SaveBlockedReason);
 
             // The cards with an error opened by themselves (closed by default); the others stay closed.
             Dictionary<string, Oadm.Client.Controls.CollapsibleCard> cards = Cards(window);
@@ -253,10 +253,12 @@ public sealed class FormValidationTests
 
             List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
             Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
-            Assert.False(fields.Single(x => x.Label == "Read device details every (min)").HasError);
+            Assert.True(fields.Single(x => x.Label == "Allowed clock difference (s)").HasError);
+            // No settings for these: status and device details run in rounds with a fixed pause.
+            Assert.DoesNotContain(fields, x => x.Label is "Status polling interval (s)" or "Read device details every (min)");
             Capture(window, outDir, "client-settings-errors.png");
 
-            vm.PollingIntervalSeconds = 60;
+            vm.ClockToleranceSeconds = 2;
             vm.ServerName = "acs";
             vm.ListenUrl = "http://*:5080";
             Assert.True(vm.SaveCommand.CanExecute(null));
@@ -280,9 +282,9 @@ public sealed class FormValidationTests
             var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
 
-            // Two hours of status polling is within the server's range (5..86400 s): Save works with every card closed.
+            // An hour of allowed clock difference is within the server's range (1..3600 s): Save works with every card closed.
             Oadm.Contracts.V1.ServerSettings stored = await api.GetSettingsAsync(CancellationToken.None);
-            stored.PollingIntervalSeconds = 7200;
+            stored.ClockToleranceSeconds = 3600;
             await api.SetSettingsAsync(stored, CancellationToken.None);
             await vm.LoadAsync();
             Dispatcher.UIThread.RunJobs();
