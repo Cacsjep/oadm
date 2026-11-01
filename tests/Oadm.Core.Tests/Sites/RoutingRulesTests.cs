@@ -29,6 +29,8 @@ public sealed partial class RoutingRulesTests
         "src/Oadm.Client/DeviceWeb/DeviceWebRelay.cs",
         "src/Oadm.Client/Help/DocsServer.cs", // the Help window's loopback docs server: local files, never a device
         "src/Oadm.Client/Updates/ReleaseCheck.cs", // the new version check asks GitHub, never a device
+        "src/Oadm.Client/Vulnerabilities/VulnerabilityUpdates.cs", // the public CVE list (NVD, cve.org), never a device; opt-in
+        "src/Oadm.Server/Vulnerabilities/VulnerabilityUpdater.cs", // the public CVE list (NVD, cve.org), never a device; opt-in
         "plugins/Oadm.Plugins.DhcpServer/Serving/DhcpSockets.cs",
         "plugins/Oadm.Plugins.Notifications/SendHttpAction.cs",
         "plugins/Oadm.Plugins.Notifications/SendTcpAction.cs",
