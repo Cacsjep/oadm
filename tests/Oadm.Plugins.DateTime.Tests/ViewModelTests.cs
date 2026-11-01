@@ -277,11 +277,11 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void Thirty_thousand_devices_are_summarized_in_one_pass() => SummarizeTheMostDevices();
+    public void A_hundred_thousand_devices_are_summarized_in_one_pass() => SummarizeTheMostDevices();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_are_summarized_fast()
+    public void A_hundred_thousand_devices_are_summarized_fast()
     {
         var elapsed = SummarizeTheMostDevices();
         Assert.True(elapsed < TimeSpan.FromSeconds(1), $"took {elapsed.TotalMilliseconds:0} ms");
@@ -289,7 +289,9 @@ public sealed class ViewModelTests
 
     private static TimeSpan SummarizeTheMostDevices()
     {
-        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
+        const int count = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
+        static string N0(int value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+        var devices = Enumerable.Range(0, count)
             .Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.{i / 62500}.{i / 250 % 250}.{i % 250 + 1}")
             {
                 Apis = (i % 10) switch { 0 => Fixture.LegacyOnly, 1 => Fixture.NoNts, _ => Fixture.Modern },
@@ -304,17 +306,17 @@ public sealed class ViewModelTests
         vm.IsManual = true;
 
         watch.Stop();
-        Assert.Equal(24_000, vm.NtsDeviceCount);
-        Assert.Equal(3_000, vm.NoTimeApiCount);
-        Assert.Equal(3_000, vm.SingleNtpServerCount);
-        Assert.Equal("Set date and time for 30,000 devices", vm.Title);
-        Assert.Contains("3,000 of the selected devices lack the date and time settings of AXIS OS 9.30 or later", vm.ModeNote, StringComparison.Ordinal);
+        Assert.Equal(count / 10 * 8, vm.NtsDeviceCount);
+        Assert.Equal(count / 10, vm.NoTimeApiCount);
+        Assert.Equal(count / 10, vm.SingleNtpServerCount);
+        Assert.Equal($"Set date and time for {N0(count)} devices", vm.Title);
+        Assert.Contains($"{N0(count / 10)} of the selected devices lack the date and time settings of AXIS OS 9.30 or later", vm.ModeNote, StringComparison.Ordinal);
         vm.IsNtp = true;
-        Assert.StartsWith("3,000 of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
+        Assert.StartsWith($"{N0(count / 10)} of the selected devices take only one NTP server", vm.NtpNote, StringComparison.Ordinal);
         Assert.False(vm.HasNtsHint);
         vm.UseNts = true;
         Assert.True(vm.HasNtsHint);
-        Assert.Equal("NTS works on 24,000 of 30,000 devices; the others are not changed.", vm.NtsHint);
+        Assert.Equal($"NTS works on {N0(count / 10 * 8)} of {N0(count)} devices; the others are not changed.", vm.NtsHint);
         return watch.Elapsed;
     }
 }

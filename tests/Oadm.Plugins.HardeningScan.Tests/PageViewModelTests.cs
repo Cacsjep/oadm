@@ -44,11 +44,11 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         [.. Enumerable.Range(0, count).Select(i => new TestDevice { Address = $"10.{i / 65_000}.{i / 250 % 250}.{(i % 250) + 1}", Serial = $"B8A44F{i:X6}", Model = i % 2 == 0 ? "P3265-V" : "M3106-L Mk II" })];
 
     [Fact]
-    public void Thirty_thousand_devices_filter_search_and_summarize() => FilterTheMostDevices();
+    public void A_hundred_thousand_devices_filter_search_and_summarize() => FilterTheMostDevices();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_filter_search_and_summarize_fast()
+    public void A_hundred_thousand_devices_filter_search_and_summarize_fast()
     {
         var times = FilterTheMostDevices();
         output.WriteLine($"create {times[0].TotalMilliseconds:F0} ms, state {times[1].TotalMilliseconds:F0} ms, filter {times[2].TotalMilliseconds:F0} ms, search {times[3].TotalMilliseconds:F0} ms, level {times[4].TotalMilliseconds:F0} ms, batch {times[5].TotalMilliseconds:F0} ms");
@@ -74,21 +74,21 @@ public sealed class PageViewModelTests(ITestOutputHelper output)
         var apply = watch.Elapsed;
 
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
-        Assert.Equal(600, vm.CountOf(RowKind.NotReachable));
-        Assert.Equal(3_000, vm.CountOf(RowKind.Fail)); // every 10th (SSH on)
-        Assert.Contains("30,000 devices · 30,000 scanned", vm.SummaryText, StringComparison.Ordinal);
+        Assert.Equal(devices.Count / 50, vm.CountOf(RowKind.NotReachable));
+        Assert.Equal(devices.Count / 10, vm.CountOf(RowKind.Fail)); // every 10th (SSH on)
+        Assert.Contains(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{devices.Count:N0} devices · {devices.Count:N0} scanned"), vm.SummaryText, StringComparison.Ordinal);
 
         watch.Restart();
         vm.SelectedFilter = HardeningScanViewModel.FilterFailed;
         var filter = watch.Elapsed;
-        Assert.Equal(3_000, vm.Rows.Count);
+        Assert.Equal(devices.Count / 10, vm.Rows.Count);
         Assert.All(vm.Rows, r => Assert.Equal(RowKind.Fail, r.Kind));
 
         watch.Restart();
         vm.SelectedFilter = HardeningScanViewModel.FilterAll;
         vm.SearchText = "m3106";
         var search = watch.Elapsed;
-        Assert.Equal(15_000, vm.Rows.Count);
+        Assert.Equal(devices.Count / 2, vm.Rows.Count);
 
         watch.Restart();
         vm.Level = ScanLevel.Extended;

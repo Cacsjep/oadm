@@ -18,7 +18,7 @@ internal static class PerfScale
     public const string Category = "Category";
     public const string Perf = "Perf";
 
-    /// <summary>The scale tests run one at a time: at 30,000 devices parallel SQLite runs slow each other down several times.</summary>
+    /// <summary>The scale tests run one at a time: at 100,000 devices parallel SQLite runs slow each other down several times.</summary>
     public const string OneAtATime = "Perf one at a time";
 
     public const int Devices = DeviceLimits.MaxDevices;
@@ -60,7 +60,7 @@ internal static class PerfScale
         };
     }
 
-    /// <summary>50,000 finished tasks over 30,000 devices (2 batches), one second apart, oldest first.</summary>
+    /// <summary>50,000 finished tasks over 100,000 devices (2 batches), one second apart, oldest first.</summary>
     public static List<TaskRecord> History(int count = Tasks, int devices = Devices)
     {
         var deviceIds = Enumerable.Range(0, devices).Select(_ => Guid.NewGuid()).ToArray();

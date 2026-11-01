@@ -90,7 +90,7 @@ public sealed class ImageHealthPlugin : ICorePlugin, IAsyncDisposable
         }
     }
 
-    /// <summary>The cameras a check covers: the page's choice (1 to 30,000), or every video device of the caller for an older page without one.</summary>
+    /// <summary>The cameras a check covers: the page's choice (1 to DeviceLimits.MaxDevices), or every video device of the caller for an older page without one.</summary>
     private static HashSet<Guid>? CheckIds(string? payloadJson)
     {
         var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : ImageHealthJson.Deserialize<CheckRequest>(payloadJson).DeviceIds;

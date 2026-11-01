@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
-/// Clock health at 30,000 devices (docs/spec/main-window.md "Clock"): the count of Any device: clock off follows one batch of
+/// Clock health at 100,000 devices (docs/spec/main-window.md "Clock"): the count of Any device: clock off follows one batch of
 /// every device, and a new allowed difference republishes only the devices whose state changes, in one batch.
 /// </summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
@@ -21,7 +21,7 @@ namespace Oadm.Core.Tests.Perf;
 public sealed class ClockScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task TheCountAndANewToleranceStayLinearForThirtyThousandDevices()
+    public async Task TheCountAndANewToleranceStayLinearForHundredThousandDevices()
     {
         await using var rig = await EventRulesRig.StartAsync();
         var counts = new List<string?>();
@@ -45,7 +45,7 @@ public sealed class ClockScaleTests(ITestOutputHelper output)
                 var device = new Device
                 {
                     Serial = $"B8A44F{i:X6}",
-                    Address = $"10.1.{i / 250}.{i % 250}",
+                    Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
                     Model = "P3265-V",
                     Status = DeviceStatus.Ok,
                     ClockOffsetMs = i % 3 == 0 ? 5_000 : 200,
@@ -68,7 +68,7 @@ public sealed class ClockScaleTests(ITestOutputHelper output)
             }
         }
 
-        await PerfScale.MeasureAsync(output, "Any device: clock off over 30,000 published devices", TimeSpan.FromSeconds(10), async () =>
+        await PerfScale.MeasureAsync(output, "Any device: clock off over 100,000 published devices", TimeSpan.FromSeconds(10), async () =>
         {
             await rig.Devices.PublishStoredAsync(ids);
             await rig.SettleAsync();
@@ -78,7 +78,7 @@ public sealed class ClockScaleTests(ITestOutputHelper output)
         var seen = 0;
         rig.Devices.Changes.Changed += (_, _) => Interlocked.Increment(ref seen);
         var version = ((DeviceChangeFeed)rig.Devices.Changes).Version;
-        await PerfScale.MeasureAsync(output, "Allowed clock difference 2 -> 10 s at 30,000 devices", TimeSpan.FromSeconds(5), async () =>
+        await PerfScale.MeasureAsync(output, "Allowed clock difference 2 -> 10 s at 100,000 devices", TimeSpan.FromSeconds(5), async () =>
         {
             await rig.Settings.SetAsync(SettingKeys.PollingClockToleranceSeconds, 10, CancellationToken.None);
             await rig.Clock.Running;

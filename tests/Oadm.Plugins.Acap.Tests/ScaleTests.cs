@@ -12,7 +12,7 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.Acap.Tests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices": the Applications dialog with 30,000 selected devices checks a bounded
+/// HARD RULE "scale to thousands of devices": the Applications dialog with the most selected devices (DeviceLimits.MaxDevices) checks a bounded
 /// sample with bounded parallelism (never one query per device), builds the rows in one pass, and CanRun stays cheap.
 /// </summary>
 public sealed class ScaleTests : IDisposable
@@ -34,20 +34,20 @@ public sealed class ScaleTests : IDisposable
     private static List<IDeviceInfo> Devices() =>
         [.. Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice
         {
-            Address = string.Create(CultureInfo.InvariantCulture, $"10.0.{i / 256}.{i % 256}"),
+            Address = string.Create(CultureInfo.InvariantCulture, $"10.{i / 65536}.{i / 256 % 256}.{i % 256}"),
             Model = i % 2 == 0 ? "P3265-V" : "M3106",
             FirmwareVersion = i % 1000 == 7 ? "11.11.124" : "12.11.77",
         })];
 
     [Fact]
-    public async Task Dialog_with_30000_devices_checks_a_bounded_sample() => await OpenWithTheMostDevicesAsync();
+    public async Task Dialog_with_100000_devices_checks_a_bounded_sample() => await OpenWithTheMostDevicesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Dialog_with_30000_devices_opens_fast()
+    public async Task Dialog_with_100000_devices_opens_fast()
     {
         var elapsed = await OpenWithTheMostDevicesAsync();
-        _output.WriteLine($"Open the dialog with 30,000 devices and check the sample: {elapsed.TotalMilliseconds:0} ms");
+        _output.WriteLine($"Open the dialog with {Count:N0} devices and check the sample: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(2), $"Opening and checking took {elapsed.TotalMilliseconds:0} ms");
     }
 
@@ -71,9 +71,9 @@ public sealed class ScaleTests : IDisposable
         Assert.Equal(AcapDialogViewModel.CompatibilitySampleSize, vm.CompatibleCount);
         Assert.Equal("Checked at install", vm.Compatibility[Count - 1].Verdict);
         Assert.False(vm.Compatibility[Count - 1].IsError);
-        Assert.Equal("25 of 25 checked devices can install this package; the other 29,975 are checked by the task before installing.", vm.CompatibilitySummary);
+        Assert.Equal(string.Create(CultureInfo.InvariantCulture, $"25 of 25 checked devices can install this package; the other {Count - 25:N0} are checked by the task before installing."), vm.CompatibilitySummary);
         Assert.True(vm.InstallCommand.CanExecute(null));
-        Assert.Equal("Actions apply to all 30,000 selected devices.", vm.ScopeText);
+        Assert.Equal(string.Create(CultureInfo.InvariantCulture, $"Actions apply to all {Count:N0} selected devices."), vm.ScopeText);
         return watch.Elapsed;
     }
 
@@ -82,10 +82,10 @@ public sealed class ScaleTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Sample_of_30000_devices_is_fast()
+    public void Sample_of_100000_devices_is_fast()
     {
         var elapsed = SampleTheMostDevices();
-        _output.WriteLine($"Sample of 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        _output.WriteLine($"Sample of {Count:N0} devices: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromMilliseconds(500), $"Sampling took {elapsed.TotalMilliseconds:0} ms");
     }
 
@@ -107,7 +107,7 @@ public sealed class ScaleTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_30000_devices_is_cheap()
+    public void CanRun_over_100000_devices_is_cheap()
     {
         IReadOnlyList<DeviceApi> apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), new("application", "1.3")];
         var devices = Enumerable.Range(0, Count).Select(_ => new FakeDevice { Apis = apis }).ToList();
@@ -122,8 +122,8 @@ public sealed class ScaleTests : IDisposable
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        _output.WriteLine($"300,000 CanRun calls: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 6000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        _output.WriteLine($"{10 * Count:N0} CanRun calls: {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 6000, $"{10 * Count:N0} CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Every device runs AXIS OS 12.11 on aarch64 without the app; answers after a short delay.</summary>

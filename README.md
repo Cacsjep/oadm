@@ -19,7 +19,7 @@
 
 OADM manages Axis cameras, speakers, intercoms and I/O devices like AXIS Device Manager: find and add devices, upgrade
 firmware, set users, network, date and time, certificates and applications on many devices at once, with one task per
-device. A server runs as a service and manages up to 30,000 devices; the client connects to it from any computer. The
+device. A server runs as a service and manages up to 100,000 devices; the client connects to it from any computer. The
 user guide is at [oadm.app](https://oadm.app/).
 
 ## Install

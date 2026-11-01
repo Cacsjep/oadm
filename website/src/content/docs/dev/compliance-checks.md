@@ -98,7 +98,7 @@ there and one per line in the tooltip ("2 settings differ" then the differences)
 - **Shared reads.** `ctx.Reads.GetOrAddAsync(key, read, ct)` runs `read` once per device and run for every check that uses
   the key. Name the key after your plugin ("acme.parking:status"). The host's own plugins share `oadm.acap:list`
   (applications) and `oadm.edge-storage:disks` (disks) this way.
-- **Scale.** A server has up to 30,000 devices and 50 checks. The host gives every device run of a check version the same
+- **Scale.** A server has up to 100,000 devices and 50 checks. The host gives every device run of a check version the same
   `ComplianceInvocation`: work you do on the settings (parse a file, compile a pattern) can be kept per invocation, for
   example in a `ConditionalWeakTable<ComplianceInvocation, T>`. Never keep per-device data in the type.
 - **Never log or return secrets.**

@@ -7,12 +7,12 @@ using Xunit.Abstractions;
 
 namespace Oadm.Plugins.EdgeRecordingExport.Tests;
 
-/// <summary>30,000 cameras: the choice by tag, the search rows and the summary stay fast.</summary>
+/// <summary>The most cameras (DeviceLimits.MaxDevices): the choice by tag, the search rows and the summary stay fast.</summary>
 [Trait("Category", "Perf")]
 public sealed class ScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task Thirty_thousand_cameras_are_chosen_searched_and_summed_up_quickly()
+    public async Task A_hundred_thousand_cameras_are_chosen_searched_and_summed_up_quickly()
     {
         var rig = new Rig();
         for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
@@ -30,10 +30,10 @@ public sealed class ScaleTests(ITestOutputHelper output)
         watch.Restart();
         await vm.SearchCommand.ExecuteAsync(null);
         var search = watch.ElapsedMilliseconds;
-        output.WriteLine($"Choose: {choose} ms, search of 30,000 cameras (4 at a time, in process): {search} ms");
+        output.WriteLine($"Choose: {choose} ms, search of {vm.Rows.Count:N0} cameras (4 at a time, in process): {search} ms");
 
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
-        Assert.StartsWith("30,000 cameras · 135,000 recordings · about ", vm.SummaryText, StringComparison.Ordinal);
+        Assert.StartsWith(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Oadm.Sdk.Devices.DeviceLimits.MaxDevices:N0} cameras · {Oadm.Sdk.Devices.DeviceLimits.MaxDevices / 10 * 45:N0} recordings · about "), vm.SummaryText, StringComparison.Ordinal); // 0 to 9 clips each
         Assert.True(choose < 500, $"choose {choose} ms");
         Assert.True(search < 30_000, $"search {search} ms");
     }

@@ -146,10 +146,10 @@ public sealed class SiteDiscoveryTests(ITestOutputHelper output) : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task An_import_of_thirty_thousand_lines_with_sites_lists_filters_and_selects_fast() => _ui.RunAsync(async () =>
+    public Task An_import_of_a_hundred_thousand_lines_with_sites_lists_filters_and_selects_fast() => _ui.RunAsync(async () =>
     {
         DeviceImportFile file = DeviceImportFile.Parse("sites.csv", "Address,Site\n" + string.Join('\n',
-            Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"192.168.{i / 256 % 100}.{i % 256},{(i % 3 == 0 ? "" : i % 3 == 1 ? "Building B" : "Warehouse")}")));
+            Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"192.{168 + i / 65536}.{i / 256 % 256}.{i % 256},{(i % 3 == 0 ? "" : i % 3 == 1 ? "Building B" : "Warehouse")}")));
         await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
 
         var watch = Stopwatch.StartNew();
@@ -160,7 +160,7 @@ public sealed class SiteDiscoveryTests(ITestOutputHelper output) : IDisposable
         page.AllSelected = true;
         long all = watch.ElapsedMilliseconds;
 
-        output.WriteLine($"30,000 lines with sites: parsed and listed in {listed} ms, filtered in {filtered} ms, all in {all} ms");
+        output.WriteLine($"{DeviceImportFile.MaxLines:N0} lines with sites: parsed and listed in {listed} ms, filtered in {filtered} ms, all in {all} ms");
         Assert.Equal(DeviceImportFile.MaxLines, page.Rows.Count);
         Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count(l => l.Problem is null)); // (site, address): no line is a duplicate of another site's
         Assert.True(all < 10_000, $"too slow: {all} ms");
@@ -169,7 +169,7 @@ public sealed class SiteDiscoveryTests(ITestOutputHelper output) : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task Thirty_thousand_import_lines_that_each_answer_through_two_sites_are_listed_fast() => _ui.RunAsync(async () =>
+    public Task Hundred_thousand_import_lines_that_each_answer_through_two_sites_are_listed_fast() => _ui.RunAsync(async () =>
     {
         int count = DeviceImportFile.MaxLines;
         DeviceImportFile file = DeviceImportFile.Parse("two-routes.csv", "Address\n" + string.Join('\n',
@@ -188,7 +188,7 @@ public sealed class SiteDiscoveryTests(ITestOutputHelper output) : IDisposable
         }
 
         long elapsed = watch.ElapsedMilliseconds;
-        output.WriteLine($"30,000 lines answering through two sites: listed in {elapsed} ms");
+        output.WriteLine($"{count:N0} lines answering through two sites: listed in {elapsed} ms");
         Assert.Equal(2 * count, page.Rows.Count);
         Assert.Equal(2 * count, page.FilteredRows.Count);
         for (int i = 0; i < 2 * count; i += 2)

@@ -193,7 +193,7 @@ public static class DeviceGroupTexts
     public const string DevicesChanged = "Your devices changed. Connect again.";
     public const string UnknownGroup = "The device group does not exist (any more).";
     public const string EnterName = "Enter a name.";
-    public const string TooManyRules = "A device group can have at most 100 sites, 500 tags and 30,000 single devices.";
+    public const string TooManyRules = "A device group can have at most 100 sites, 500 tags and 100,000 single devices.";
     public const string TooManyGroups = "OADM keeps at most 200 device groups.";
     public const string ChangedMeanwhile = "Another administrator changed this device group meanwhile. Close it and make your changes again.";
 

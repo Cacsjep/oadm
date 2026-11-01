@@ -55,7 +55,7 @@ On the first `run dev`, trust the server, then create the first administrator (n
 | Category | Command | Content |
 |---|---|---|
 | Unit | `manage test unit` | Fast, no network, no devices |
-| `Perf` | `manage test perf` | 30,000 devices, 50,000 tasks |
+| `Perf` | `manage test perf` | 100,000 devices, 50,000 tasks |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras in `dev-cameras.yaml` |
 | `HardwareWrite` | never from `manage` | Change a device; only on purpose, only on a test device |
 

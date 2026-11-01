@@ -209,10 +209,10 @@ public sealed class RenewalTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Stopping_and_forgetting_thirty_thousand_cameras_stays_linear()
+    public async Task Stopping_and_forgetting_a_hundred_thousand_cameras_stays_linear()
     {
         var now = _time.GetUtcNow().UtcDateTime;
-        var devices = Enumerable.Range(0, 30_000).Select(i => new FakeDevice { Serial = $"ACCC8E{i:X6}", Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" }).ToList();
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => new FakeDevice { Serial = $"ACCC8E{i:X6}", Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" }).ToList();
         foreach (var device in devices)
         {
             Issue($"H{device.Serial}", "https", now, device);
@@ -225,14 +225,14 @@ public sealed class RenewalTests : IAsyncLifetime
             _est.Store.StopRenewals(device.Id, now, "https");
         }
 
-        foreach (var device in devices.Take(15_000))
+        foreach (var device in devices.Take(devices.Count / 2))
         {
             _est.Store.ForgetDevice(device.Id);
         }
 
         watch.Stop();
-        Assert.Equal(30_000, _est.Store.CertificateCount);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"30,000 stops and 15,000 forgets took {watch.Elapsed}");
+        Assert.Equal(devices.Count, _est.Store.CertificateCount); // two per device, half of them forgotten
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"{devices.Count:N0} stops and {devices.Count / 2:N0} forgets took {watch.Elapsed}");
         await _est.Store.FlushAsync(CancellationToken.None);
     }
 

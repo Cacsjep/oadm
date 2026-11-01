@@ -223,7 +223,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
 
 - **Model** (migration `DeviceGroups`): table `DeviceGroups` (`Oadm.Core.DeviceGroups.DeviceGroup`: Name unique
   case-insensitive 1..64, Description 0..200, `ThisServer`, `SiteIds`, `TagIds`, `Serials`, `ExceptSerials` as JSON
-  columns, `Revision` from 1, at most 200 groups, 100 sites, 500 tags and 30,000 serials each); `Users.AllDevices` +
+  columns, `Revision` from 1, at most 200 groups, 100 sites, 500 tags and 100,000 serials each); `Users.AllDevices` +
   `Users.DeviceGroupId` (FK Restrict); `Devices.AddedByAllDevices` + `AddedByGroupId` (no FK: a deleted group leaves the
   serial dormant); `WaitingDevices.QueuedByUserId`; `ComplianceChecks` `OwnerAllDevices` + `OwnerGroupId` (FK Restrict).
   `DeviceGroups` sets `AllDevices`, `AddedByAllDevices` and `OwnerAllDevices` to true on every existing row; the migration

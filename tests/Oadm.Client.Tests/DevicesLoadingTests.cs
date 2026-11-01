@@ -2,7 +2,7 @@ using Oadm.Client.Tests.Perf;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>Until the first device list arrived (seconds for 30,000 devices) the Devices page says it is loading, not "No devices yet".</summary>
+/// <summary>Until the first device list arrived (seconds for 100,000 devices) the Devices page says it is loading, not "No devices yet".</summary>
 public sealed class DevicesLoadingTests
 {
     [Fact]

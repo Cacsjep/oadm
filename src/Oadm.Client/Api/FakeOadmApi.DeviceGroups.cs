@@ -280,9 +280,9 @@ public sealed partial class FakeOadmApi
 
     private static DeviceGroupRules CleanRules(DeviceGroupRules rules)
     {
-        if (rules.SiteIds.Count > 100 || rules.TagIds.Count > 500 || rules.Serials.Count > 30_000 || rules.ExceptSerials.Count > 30_000)
+        if (rules.SiteIds.Count > 100 || rules.TagIds.Count > 500 || rules.Serials.Count > Oadm.Sdk.Devices.DeviceLimits.MaxDevices || rules.ExceptSerials.Count > Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
         {
-            throw Invalid("A device group can have at most 100 sites, 500 tags and 30,000 single devices.");
+            throw Invalid("A device group can have at most 100 sites, 500 tags and 100,000 single devices.");
         }
 
         var clean = new DeviceGroupRules { ThisServer = rules.ThisServer };

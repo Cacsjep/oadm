@@ -45,7 +45,7 @@ public sealed class PageServerAdditionsTests
     public async Task A_plan_over_1000_cameras_shows_the_refusal_and_keeps_Start_disabled()
     {
         var ctx = Context();
-        ctx.Answers[LoadTestMethods.Plan] = _ => LoadTestJson.Serialize(new CheckPlan(30_000, 0, TimeSpan.Zero, 0, 0, [], LoadTestInfo.TooManyStreams));
+        ctx.Answers[LoadTestMethods.Plan] = _ => LoadTestJson.Serialize(new CheckPlan(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, 0, TimeSpan.Zero, 0, 0, [], LoadTestInfo.TooManyStreams));
         using var vm = new LoadTestViewModel(ctx);
         vm.Activate();
 

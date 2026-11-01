@@ -140,7 +140,7 @@ public sealed class DeviceImportFileTests
         Assert.Equal("The file is larger than 64 MB. Split it into smaller files.", tooLarge.Message);
 
         string many = string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines + 1).Select(i => $"10.{i / 65536}.{i / 256 % 256}.{i % 256}"));
-        Assert.Equal("The file has more than 30,000 addresses. Split it into smaller files.", Assert.Throws<DeviceImportException>(() => Parse(many)).Message);
+        Assert.Equal("The file has more than 100,000 addresses. Split it into smaller files.", Assert.Throws<DeviceImportException>(() => Parse(many)).Message);
     }
 
     [Fact]
@@ -200,9 +200,9 @@ public sealed class DeviceImportFileTests
     }
 
     [Fact]
-    public void Thirty_thousand_lines_are_read()
+    public void Hundred_thousand_lines_are_read()
     {
-        DeviceImportFile file = Parse(ThirtyThousandLines());
+        DeviceImportFile file = Parse(HundredThousandLines());
 
         Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count);
         Assert.Equal(0, file.ProblemCount);
@@ -210,9 +210,9 @@ public sealed class DeviceImportFileTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_lines_are_read_fast()
+    public void Hundred_thousand_lines_are_read_fast()
     {
-        string text = ThirtyThousandLines();
+        string text = HundredThousandLines();
         Parse("10.0.0.1"); // warm up
 
         var watch = Stopwatch.StartNew();
@@ -220,11 +220,11 @@ public sealed class DeviceImportFileTests
         watch.Stop();
 
         Assert.Equal(DeviceImportFile.MaxLines, file.Lines.Count);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"30,000 lines took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"{DeviceImportFile.MaxLines:N0} lines took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>As many lines as one server has devices, each with a long host name, login and tags: far below the size limit.</summary>
-    private static string ThirtyThousandLines()
+    private static string HundredThousandLines()
     {
         string text = "Address,User name,Password,Tags\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines)
             .Select(i => $"camera-{i}.{new string('s', 60)}.example.com,{new string('u', 64)},{new string('p', 100)}{i},Building {i % 50}; {new string('t', 64)}"));

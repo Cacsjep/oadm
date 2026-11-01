@@ -881,7 +881,7 @@ reads the user text of a failed server call without a gRPC reference.
 
 ### Choose devices first
 
-A page that reads or changes devices never reaches out to every device by itself: a server can manage 30,000, and the
+A page that reads or changes devices never reaches out to every device by itself: a server can manage 100,000, and the
 user may want one building. The page starts with the choice command button (`PageDeviceChoice`: All devices, tags, chosen
 devices; the Devices page selection to start with, else the last choice on this computer, kept through
 `GetLocalSetting`) as the first control of its toolbar, reads nothing while `IsEmpty`, and sends only the ids of

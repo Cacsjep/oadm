@@ -161,7 +161,7 @@ must never break.
   through `DeviceRouter` on the device's route; banned socket APIs in `src/` and `plugins/`.
 - **[Add devices page](docs/spec/add-devices.md)**: one page, no wizard: Discovery, Network range, Add manually, Import
   from file, Import from ADM, the waiting list; automatic login with the credential list after the Axis check, at most
-  10 rejected credentials per device, passwords of managed devices never tried on new devices; at most 30,000 devices.
+  10 rejected credentials per device, passwords of managed devices never tried on new devices; at most 100,000 devices.
 - **[Visual style](docs/spec/visual-style.md)**: dark (and light) Fluent look of MultiDrive, the colors in
   `Oadm.Theme`, the rail, cards, dialogs, status chips, small screens, and the catalogue of shared controls.
 - **[Main window](docs/spec/main-window.md)**: the device grid and its columns, toolbar, context menu, tasks pane, Logs
@@ -312,20 +312,20 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `IFormFieldVisits.FieldLeft` the bound property, an empty required field says so) or a submit was
   tried, never on an untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
   `plugins/README.md` "Validation".
-- **HARD RULE, loading feedback.** Everything that can take longer than 1 s at 30,000 devices shows that it is working
+- **HARD RULE, loading feedback.** Everything that can take longer than 1 s at 100,000 devices shows that it is working
   from the first moment: a page or dialog that waits for a read `ui:LoadingOverlay` (ring and text, Cancel stays usable),
   a list or card that reloads `ui:ProgressRow` or a `ui:ProgressRing` in place, a button that started the work disabled
   while its row shows progress. The window never freezes without one: work that would block the UI thread for longer
   runs elsewhere or shows the ring first (the device grid: `DevicesView.RunBusyAsync`, a ring over the grid before a
-  sort or regroup of a large selection). A new feature checks its waits at 30,000 devices.
-- **HARD RULE, scale to thousands of devices.** A server manages up to 30,000 devices. Every list of
+  sort or regroup of a large selection). A new feature checks its waits at 100,000 devices.
+- **HARD RULE, scale to thousands of devices.** A server manages up to 100,000 devices (`DeviceLimits.MaxDevices`). Every list of
   devices, discovered devices, tasks, sources or tiles is virtualized (DataGrid, virtualizing
   ListBox/ItemsRepeater; never an ItemsControl/StackPanel creating one control per item), search,
   filter, sort and select-all are O(n) without per-item UI work, server calls are batched (one call
   for many devices, bounded parallelism on the server), per-device work is lazy for visible rows
   or summarized ("4,812 compatible, 188 missing API"), and images/snapshots load only for visible
-  tiles. Every feature with a device list has a test with at least 30,000 fake devices (the device limit) that keeps
-  filtering/selection/summary fast. Target size: **30,000 devices and 50,000 tasks in the history**.
+  tiles. Every feature with a device list has a test with `DeviceLimits.MaxDevices` (100,000) fake devices, the device limit, that keeps
+  filtering/selection/summary fast. Target size: **100,000 devices and 50,000 tasks in the history**.
   Concretely:
   - Collections bound to a grid are `RangeObservableCollection` (`Oadm.Sdk.Client.Collections`, plugin pages too): a
     filter, select-all, snapshot or batch is one `ReplaceAll`/`AddRange`/`InsertRange`/`RemoveAll`

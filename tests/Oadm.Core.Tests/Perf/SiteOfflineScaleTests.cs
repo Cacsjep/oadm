@@ -15,7 +15,7 @@ namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
 /// Site offline at scale (docs/spec/data-model.md, device statuses): a site with 3,000 devices going offline and online is one batch each and
-/// writes nothing; the computed status of 30,000 devices costs O(1) per device on every read.
+/// writes nothing; the computed status of 100,000 devices costs O(1) per device on every read.
 /// </summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
 [Collection(PerfScale.OneAtATime)]
@@ -36,7 +36,7 @@ public sealed class SiteOfflineScaleTests(ITestOutputHelper output) : IAsyncLife
         ctx.Devices.AddRange(Enumerable.Range(0, PerfScale.Devices).Select(i => new Device
         {
             Serial = $"B8A44F{i:X6}",
-            Address = $"10.1.{i / 250}.{i % 250}",
+            Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
             Model = "P3265-V",
             Status = i % 7 == 0 ? DeviceStatus.Unreachable : DeviceStatus.Ok,
             SiteId = i < AtSite ? _site.Id : i < 2 * AtSite ? other.Id : null,
@@ -81,23 +81,23 @@ public sealed class SiteOfflineScaleTests(ITestOutputHelper output) : IAsyncLife
     }
 
     [Fact]
-    public async Task TheComputedStatusOfThirtyThousandDevicesIsCheap()
+    public async Task TheComputedStatusOfHundredThousandDevicesIsCheap()
     {
         var devices = _db.Get<DeviceRepository>();
         _sites.SetOnline(_site.Id, false);
         IReadOnlyList<Device> all = [];
-        await PerfScale.MeasureAsync(output, "List 30,000 devices with their computed status", TimeSpan.FromSeconds(20), async () =>
+        await PerfScale.MeasureAsync(output, "List 100,000 devices with their computed status", TimeSpan.FromSeconds(20), async () =>
             all = await devices.ListDevicesAsync(CancellationToken.None));
         Assert.Equal(AtSite, all.Count(d => d.Status == DeviceStatus.SiteOffline));
         Assert.All(all.Where(d => d.SiteId == _site.Id), d => Assert.Equal("Building B", d.SiteName));
 
         IReadOnlyList<(Guid Id, DeviceStatus Status)> statuses = [];
-        await PerfScale.MeasureAsync(output, "Ids and computed statuses of 30,000 devices", TimeSpan.FromSeconds(10), async () =>
+        await PerfScale.MeasureAsync(output, "Ids and computed statuses of 100,000 devices", TimeSpan.FromSeconds(10), async () =>
             statuses = await devices.ListIdsWithStatusAsync(CancellationToken.None));
         Assert.Equal(AtSite, statuses.Count(s => s.Status == DeviceStatus.SiteOffline));
 
         var copies = all.Select(d => d.Clone()).ToList();
-        PerfScale.Measure(output, "Computed status of 30,000 devices in memory", TimeSpan.FromSeconds(1), () =>
+        PerfScale.Measure(output, "Computed status of 100,000 devices in memory", TimeSpan.FromSeconds(1), () =>
         {
             foreach (var device in copies)
             {

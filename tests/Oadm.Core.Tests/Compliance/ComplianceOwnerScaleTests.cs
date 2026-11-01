@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Compliance;
 
 /// <summary>
-/// Checks owned by a device group at the device limit: 30,000 devices, a group of half of them, 10 checks of the group and
+/// Checks owned by a device group at the device limit: 100,000 devices, a group of half of them, 10 checks of the group and
 /// 10 of all devices. The group's checks cover only its devices, the group user's list is filtered fast, and a change of
 /// the group's rules moves every result of its checks.
 /// </summary>
@@ -22,7 +22,7 @@ public sealed class ComplianceOwnerScaleTests(ITestOutputHelper output)
 {
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task ThirtyThousandDevicesAndChecksOfAGroup()
+    public async Task HundredThousandDevicesAndChecksOfAGroup()
     {
         await using var rig = await ComplianceRig.StartAsync(enabled: false);
         var odds = new HashSet<Guid>();

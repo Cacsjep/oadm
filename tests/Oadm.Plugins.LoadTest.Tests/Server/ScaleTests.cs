@@ -8,11 +8,11 @@ using Xunit.Abstractions;
 
 namespace Oadm.Plugins.LoadTest.Tests.Server;
 
-/// <summary>The limits: 30,000 chosen devices refused at once, 1,000 streams planned and run, the size of the largest run.</summary>
+/// <summary>The limits: DeviceLimits.MaxDevices (100,000) chosen devices refused at once, 1,000 streams planned and run, the size of the largest run.</summary>
 public sealed class ScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task Thirty_thousand_chosen_cameras_are_refused_without_reading_one()
+    public async Task A_hundred_thousand_chosen_cameras_are_refused_without_reading_one()
     {
         await using var rig = await new Rig().StartAsync();
         var cameras = rig.Cameras(DeviceLimits.MaxDevices);

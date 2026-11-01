@@ -36,7 +36,7 @@ range, Add manually, Import from file and Import from ADM open the same dialog w
   and **Site** ([sites.md](sites.md)); other columns ignored), or a plain file with one address per line; comma or semicolon, UTF-8 (BOM optional), UTF-16 with BOM,
   else Latin-1; a formula guard `'` of the export is removed. A password without a user name is for `root`; a user
   name alone is no credential. The whole file is refused in `ui:MessageWindow` ("Import from file") when it is larger
-  than 64 MB (a guard only: the lines are the limit), has more than 30,000 addresses (`DeviceLimits.MaxDevices`; the
+  than 64 MB (a guard only: the lines are the limit), has more than 100,000 addresses (`DeviceLimits.MaxDevices`; the
   same for an ADM export), no address at all, no Address column (with a header) or is not text.
   Problems of single lines stay in their row (chip "Not added" + detail): no address, not an IP address or host
   name (http/https, port, no path), "Listed before in line N." (same address), line longer than 4,096
@@ -67,8 +67,8 @@ waiting. OADM adds it once it answers.", neutral), is not kept again, and the fi
 Server: `Oadm.Core.Devices.WaitingDeviceStore` (table WaitingDevices, migration
 `WaitingDevices`: one entry per address (`WaitingDeviceStore.Normalize`: as a device record stores it, no scheme, upper
 case), an address kept again replaces login, MAC address and tags, renews its kept time and is tried like new; writes go
-one at a time; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 30,000,
-over it the whole call is refused "The waiting list holds at most 30,000 devices. Remove devices from it first.") and
+one at a time; password AES-GCM with the master key, entry id as associated data, never listed or logged; at most 100,000,
+over it the whole call is refused "The waiting list holds at most 100,000 devices. Remove devices from it first.") and
 `Oadm.Server.AddDevices.WaitingDeviceRunner` (hosted): a round every `Devices.WaitingRetryMinutes` (15, 1..1440, Settings
 page "Try waiting devices every (min)", after the end of the last round, first round a minute after the start, a changed
 setting applies within a minute) or at once for `TryNow`; each round reads the entries to try and, only when there are any,
@@ -223,7 +223,7 @@ an entry without a user id (kept before device groups existed) is tried as a use
 `WaitingDeviceStoreTests` (+ Perf 30,000 entries per scope), `DeviceGroupMembershipTests` (+ Perf 30,000 devices x 200
 groups), `DiscoverySitesTests`.
 
-**Device limit**: one server manages at most 30,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
+**Device limit**: one server manages at most 100,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
 `TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
 every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored (Prepare
 and Commit read the managed serials once for "managed already" and the limit, and look the session's devices up in one

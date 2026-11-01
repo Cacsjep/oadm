@@ -548,10 +548,10 @@ public sealed class AddDevicesPageTests : IDisposable
     });
 
     [Fact]
-    public Task An_import_of_thirty_thousand_lines_lists_and_filters() => _ui.RunAsync(async () =>
+    public Task An_import_of_a_hundred_thousand_lines_lists_and_filters() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
-        page.SetImport(ThirtyThousandLines());
+        page.SetImport(HundredThousandLines());
         page.SearchText = "10.1.3.";
         page.AllSelected = true;
 
@@ -562,9 +562,9 @@ public sealed class AddDevicesPageTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task An_import_of_thirty_thousand_lines_lists_and_filters_fast() => _ui.RunAsync(async () =>
+    public Task An_import_of_a_hundred_thousand_lines_lists_and_filters_fast() => _ui.RunAsync(async () =>
     {
-        DeviceImportFile file = ThirtyThousandLines();
+        DeviceImportFile file = HundredThousandLines();
         await using AddDevicesViewModel page = Create(AddDevicesMode.Import);
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -576,11 +576,11 @@ public sealed class AddDevicesPageTests : IDisposable
         long all = watch.ElapsedMilliseconds;
 
         Assert.Equal(256, page.FilteredRows.Count);
-        Assert.True(all < 10_000, $"30,000 lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
+        Assert.True(all < 10_000, $"{DeviceImportFile.MaxLines:N0} lines: listed in {listed} ms, filtered in {filtered} ms, total {all} ms");
     });
 
-    private static DeviceImportFile ThirtyThousandLines() => DeviceImportFile.Parse("big.csv",
-        "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.1.{i / 256}.{i % 256},root,pass{i}")));
+    private static DeviceImportFile HundredThousandLines() => DeviceImportFile.Parse("big.csv",
+        "Address,User name,Password\n" + string.Join("\n", Enumerable.Range(0, DeviceImportFile.MaxLines).Select(i => $"10.{1 + i / 65536}.{i / 256 % 256}.{i % 256},root,pass{i}")));
 
     [Fact]
     public Task Stop_ends_an_import_and_leaves_the_rest_unchecked() => _ui.RunAsync(async () =>

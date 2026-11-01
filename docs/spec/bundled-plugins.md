@@ -415,7 +415,7 @@ plugin `README.md`.
 - Rules that must hold: strictly read-only (GETs and list calls only); 15 s per request, 2 min per device, 16 devices at
   once; one failed read marks only its checks; Certificate changed, Credentials required, Password not set and
   Unreachable devices are not contacted; items that cannot be checked remotely are not shown; the latest AXIS OS is
-  information only; every method is Operator and not audited; results kept per device and level (at most 30,000, the
+  information only; every method is Operator and not audited; results kept per device and level (at most 100,000, the
   device limit `DeviceLimits.MaxDevices`).
 - Device groups: one scan at a time per device scope, a job of its user that every user of the scope may stop, results
   and devices of the user's view only; the scans of all scopes share one limit (16 devices at once for the plugin, the

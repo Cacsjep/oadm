@@ -11,7 +11,7 @@ import "google/protobuf/timestamp.proto";
 // tries it once more. Passwords travel client -> server only and are never listed.
 service WaitingDeviceService {
   // Keeps the lines (one entry per address; an address kept already gets the new login, MAC address and tags).
-  // RESOURCE_EXHAUSTED when the list would hold more than 30,000 devices (nothing is stored), INVALID_ARGUMENT for a
+  // RESOURCE_EXHAUSTED when the list would hold more than 100,000 devices (DeviceLimits.MaxDevices) (nothing is stored), INVALID_ARGUMENT for a
   // line without an address or with a login that is too long.
   rpc Add (AddWaitingRequest) returns (AddWaitingReply);
   // A page in address order after the address `after` (empty: from the start); limit 0 = all. Read on with next_after

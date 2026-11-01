@@ -145,7 +145,7 @@ public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void The_form_for_30000_devices_opens_and_changes_fast()
+    public void The_form_for_100000_devices_opens_and_changes_fast()
     {
         var set = TemplateSet.From(
             [new ActionTemplate(TcpWhileActive, "com.axis.recipient.tcp", ["message", "period"]), new ActionTemplate("com.axis.action.fixed.erase.configuration", null, [])],
@@ -169,7 +169,7 @@ public sealed class BuilderPageTests(Xunit.Abstractions.ITestOutputHelper output
 
         Assert.DoesNotContain(form.Actions, a => (a.Value as ActionOption)?.Token.Contains("erase", StringComparison.Ordinal) == true);
         Assert.Equal("Each device uses its own recipient of this name.", form.Recipient.Hint);
-        output.WriteLine($"New rule form for 30,000 devices: {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"New rule form for {devices.Count:N0} devices: {watch.ElapsedMilliseconds} ms");
         Assert.True(watch.ElapsedMilliseconds < 2_000, $"took {watch.ElapsedMilliseconds} ms");
     }
 

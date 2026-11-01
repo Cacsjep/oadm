@@ -288,7 +288,7 @@ public sealed class PageTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_rows_search_and_select_fast()
+    public async Task A_hundred_thousand_rows_search_and_select_fast()
     {
         await using var rig = new PageRig();
         for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
@@ -298,7 +298,7 @@ public sealed class PageTests(ITestOutputHelper output)
 
         var vm = rig.ViewModel;
         vm.Activate();
-        await UntilAsync(() => vm.Rows.Count == Oadm.Sdk.Devices.DeviceLimits.MaxDevices && !vm.IsReading && vm.OkText == "30,000", seconds: 120);
+        await UntilAsync(() => vm.Rows.Count == Oadm.Sdk.Devices.DeviceLimits.MaxDevices && !vm.IsReading && vm.OkText == DeviceLimits.MaxDevices.ToString("N0", System.Globalization.CultureInfo.InvariantCulture), seconds: 120);
         var watch = Stopwatch.StartNew();
         vm.SearchText = "10.0.1.";
         var search = watch.ElapsedMilliseconds;

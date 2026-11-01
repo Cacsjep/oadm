@@ -447,11 +447,11 @@ public sealed class ComplianceTests(ITestOutputHelper output) : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task Thirty_thousand_devices_with_fifty_checks_filter_fast() => _ui.RunAsync(async () =>
+    public Task Hundred_thousand_devices_with_fifty_checks_filter_fast() => _ui.RunAsync(async () =>
     {
         var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5), seedSampleData: false);
         var store = new DeviceStore();
-        store.Reset(Enumerable.Range(0, 30_000).Select(i => new Device
+        store.Reset(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => new Device
         {
             Id = Guid.NewGuid().ToString(), Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}", Serial = i.ToString("X12", System.Globalization.CultureInfo.InvariantCulture),
             Model = "P3265-V", Status = DeviceStatus.Ok,

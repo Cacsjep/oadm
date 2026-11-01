@@ -128,7 +128,7 @@ them in one file of the server project means a typo cannot break the page.
   group share a table and never see another group's devices.
 - **`refresh`** checks the request first: the page sends "all" or the chosen ids, never nothing. "All" is
   `caller.Devices.ListAsync`, the user's devices. An id the user cannot see is refused like an unknown one
-  (`DevicesNotAvailableException`), before any request. A server can manage 30,000 devices, so a page never reads every
+  (`DevicesNotAvailableException`), before any request. A server can manage 100,000 devices, so a page never reads every
   device by itself.
 - **`ctx.Jobs.Start`** runs the read after the call returns. The job reaches the devices through `job.Owner`, the user
   who started it; OADM ends it when the plugin stops or that user's devices change.

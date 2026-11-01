@@ -31,7 +31,7 @@ internal static class ServerScale
     public const int ApisPerDevice = 100;
     public const int Plugins = 10;
 
-    /// <summary>The scale tests run one at a time: at 30,000 devices parallel servers slow each other down several times.</summary>
+    /// <summary>The scale tests run one at a time: at 100,000 devices parallel servers slow each other down several times.</summary>
     public const string OneAtATime = "Perf one at a time";
 
     public static async Task<TimeSpan> MeasureAsync(ITestOutputHelper output, string what, TimeSpan budget, Func<Task> action)
@@ -110,7 +110,7 @@ internal static class ServerScale
 [CollectionDefinition(ServerScale.OneAtATime, DisableParallelization = true)]
 public sealed class ServerPerfOneAtATime;
 
-/// <summary>One server with 30,000 devices (100 APIs each), 10 task plugins and 50,000 finished tasks.</summary>
+/// <summary>One server with 100,000 devices (100 APIs each), 10 task plugins and 50,000 finished tasks.</summary>
 public sealed class ScaleServerFixture : IAsyncLifetime
 {
     internal TestServerHost Host { get; private set; } = null!;
@@ -142,10 +142,10 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
     private TestServerHost Host => fixture.Host;
 
     [Fact]
-    public async Task ListTaskPluginsFor30000DevicesAndTenPluginsIsFastCachedAndCompact()
+    public async Task ListTaskPluginsFor100000DevicesAndTenPluginsIsFastCachedAndCompact()
     {
         Proto.TaskPluginList full = null!;
-        await ServerScale.MeasureAsync(output, "ListTaskPlugins, 30,000 devices x 10 plugins, first call (CanRun 300,000 times)", TimeSpan.FromSeconds(10), async () =>
+        await ServerScale.MeasureAsync(output, $"ListTaskPlugins, {ServerScale.Devices:N0} devices x 10 plugins, first call (CanRun {10 * ServerScale.Devices:N0} times)", TimeSpan.FromSeconds(10), async () =>
             full = await Host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest()));
         await ServerScale.MeasureAsync(output, "ListTaskPlugins again (cached)", TimeSpan.FromSeconds(2), async () =>
             await Host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest()));
@@ -161,7 +161,7 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
         Assert.True(compactPlugin.RunnableOnAllExcept);
         Assert.Empty(compactPlugin.RunnableDeviceIds);
 
-        // Same set either way: 30,000 - every 20th (no API) - every 50th (unreachable) + every 100th (counted twice).
+        // Same set either way: 100,000 - every 20th (no API) - every 50th (unreachable) + every 100th (counted twice).
         var runnable = plugin.RunnableDeviceIds.ToHashSet();
         Assert.Equal(ServerScale.Devices - (ServerScale.Devices / 20) - (ServerScale.Devices / 50) + (ServerScale.Devices / 100), runnable.Count);
         var notRunnable = compactPlugin.NotRunnableDeviceIds.ToHashSet();
@@ -170,11 +170,11 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
     }
 
     [Fact]
-    public async Task DeviceWatchSnapshotOf30000DevicesEndsWithTheMarker()
+    public async Task DeviceWatchSnapshotOf100000DevicesEndsWithTheMarker()
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         var count = 0;
-        await ServerScale.MeasureAsync(output, "Device Watch snapshot of 30,000 devices (100 APIs each) until SNAPSHOT_END", TimeSpan.FromSeconds(30), async () =>
+        await ServerScale.MeasureAsync(output, "Device Watch snapshot of 100,000 devices (100 APIs each) until SNAPSHOT_END", TimeSpan.FromSeconds(30), async () =>
         {
             using var call = Host.Devices.Watch(new Proto.WatchDevicesRequest { SnapshotEndMarker = true }, cancellationToken: cts.Token);
             while (await call.ResponseStream.MoveNext(cts.Token))
@@ -189,7 +189,7 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
         });
         Assert.Equal(ServerScale.Devices, count);
 
-        // The legacy one-message List (137 MB at 30,000 devices) may exceed the client limit of 32 MB; the Watch stream sends one device per message.
+        // The legacy one-message List (137 MB at 30,000 devices, about 460 MB at 100,000) may exceed the client limit of 32 MB; the Watch stream sends one device per message.
         try
         {
             var list = await Host.Devices.ListAsync(new Proto.Empty(), cancellationToken: cts.Token);
@@ -229,20 +229,20 @@ public sealed class ServerScaleTests(ScaleServerFixture fixture, ITestOutputHelp
     }
 }
 
-/// <summary>Not-runnable reasons in ListTaskPlugins for 30,000 devices x 15 plugins (own server: other plugins).</summary>
+/// <summary>Not-runnable reasons in ListTaskPlugins for 100,000 devices x 15 plugins (own server: other plugins).</summary>
 [Trait("Category", "Perf")]
 [Collection(ServerScale.OneAtATime)]
 public sealed class ServerReasonScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task ReasonsFor30000DevicesAnd15PluginsKeepTheCompactReplySmallAndSendEveryIdOnce()
+    public async Task ReasonsFor100000DevicesAnd15PluginsKeepTheCompactReplySmallAndSendEveryIdOnce()
     {
         await using var host = await TestServerHost.StartAsync();
         var ids = await ServerScale.SeedDevicesAsync(host);
         ServerScale.RegisterPlugins(host, 15, lastApi: "api-999"); // the last one runs on no device
 
         Proto.TaskPluginList compact = null!;
-        await ServerScale.MeasureAsync(output, "ListTaskPlugins compact, 30,000 devices x 15 plugins, first call (CanRun 450,000 times + reasons)", TimeSpan.FromSeconds(10), async () =>
+        await ServerScale.MeasureAsync(output, $"ListTaskPlugins compact, {ServerScale.Devices:N0} devices x 15 plugins, first call (CanRun {15 * ServerScale.Devices:N0} times + reasons)", TimeSpan.FromSeconds(10), async () =>
             compact = await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true }));
         await ServerScale.MeasureAsync(output, "ListTaskPlugins compact again (cached)", TimeSpan.FromSeconds(2), async () =>
             await host.Tasks.ListTaskPluginsAsync(new Proto.ListTaskPluginsRequest { Compact = true }));
@@ -250,7 +250,7 @@ public sealed class ServerReasonScaleTests(ITestOutputHelper output)
 
         var reasonBytes = compact.Plugins.Where(p => p.RunnableOnAllExcept).Sum(p => p.NotRunnableGroups.Sum(g => g.CalculateSize() + 2));
         output.WriteLine($"Reply size: compact {compact.CalculateSize() / 1024.0:F1} KB (reasons of the 14 all-except plugins {reasonBytes} bytes), full {full.CalculateSize() / 1024.0:F1} KB");
-        Assert.True(compact.CalculateSize() < 1200 * 1024, "compact reply below 1,200 KB (200 KB per 5,000 devices)");
+        Assert.True(compact.CalculateSize() < ServerScale.Devices / 5_000 * 200 * 1024, "compact reply below 200 KB per 5,000 devices");
         Assert.True(reasonBytes < 4 * 1024, "the reasons add only a few short strings, no device ids, in the compact form");
 
         foreach (var plugin in compact.Plugins)
@@ -275,35 +275,35 @@ public sealed class ServerReasonScaleTests(ITestOutputHelper output)
         var task0 = compact.Plugins.Single(p => p.Id == "perf.task0");
         Assert.True(task0.RunnableOnAllExcept);
         Assert.Equal(
-            [("Needs the API api-000 (this device has 12.11.77)", 1_200), ("The device does not answer", 600)],
+            [("Needs the API api-000 (this device has 12.11.77)", (ServerScale.Devices / 20) - (ServerScale.Devices / 100)), ("The device does not answer", ServerScale.Devices / 50)],
             task0.NotRunnableGroups.Select(g => (g.Reason, g.Count)).ToArray());
         var unreachable = ids.Where((_, i) => i % 50 == 0).Select(id => id.ToString()).ToHashSet();
-        Assert.True(task0.NotRunnableDeviceIds.Skip(1_200).All(unreachable.Contains));
+        Assert.True(task0.NotRunnableDeviceIds.Skip((ServerScale.Devices / 20) - (ServerScale.Devices / 100)).All(unreachable.Contains));
 
         // perf.task14 (api-999): runs nowhere, so the runnable list is sent and the most common reason covers the rest.
         var none = compact.Plugins.Single(p => p.Id == "perf.task14");
         Assert.False(none.RunnableOnAllExcept);
         Assert.Empty(none.RunnableDeviceIds);
         var other = Assert.Single(none.NotRunnableGroups, g => g.OtherDevices);
-        Assert.Equal(("Needs the API api-999 (this device has 12.11.77)", 29_400, 0), (other.Reason, other.Count, other.DeviceIds.Count));
-        Assert.Equal(600, none.NotRunnableGroups.Single(g => !g.OtherDevices).DeviceIds.Count);
+        Assert.Equal(("Needs the API api-999 (this device has 12.11.77)", ServerScale.Devices - (ServerScale.Devices / 50), 0), (other.Reason, other.Count, other.DeviceIds.Count));
+        Assert.Equal(ServerScale.Devices / 50, none.NotRunnableGroups.Single(g => !g.OtherDevices).DeviceIds.Count);
     }
 }
 
-/// <summary>Writes on 30,000 devices through gRPC: Run, credentials, Delete all, Remove (own server, it deletes).</summary>
+/// <summary>Writes on 100,000 devices through gRPC: Run, credentials, Delete all, Remove (own server, it deletes).</summary>
 [Trait("Category", "Perf")]
 [Collection(ServerScale.OneAtATime)]
 public sealed class ServerBatchScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task RunSetCredentialsDeleteAllAndRemoveOn30000Devices()
+    public async Task RunSetCredentialsDeleteAllAndRemoveOn100000Devices()
     {
         await using var host = await TestServerHost.StartAsync();
         var ids = await ServerScale.SeedDevicesAsync(host);
         ServerScale.RegisterPlugins(host);
         var deviceIds = ids.Select(i => i.ToString()).ToList();
 
-        await ServerScale.MeasureAsync(output, "SetCredentials on 30,000 devices (one transaction)", TimeSpan.FromSeconds(30), async () =>
+        await ServerScale.MeasureAsync(output, "SetCredentials on 100,000 devices (one transaction)", TimeSpan.FromSeconds(30), async () =>
         {
             var request = new Proto.SetCredentialsRequest { UserName = "root", Password = "pw" };
             request.DeviceIds.AddRange(deviceIds);
@@ -311,7 +311,7 @@ public sealed class ServerBatchScaleTests(ITestOutputHelper output)
         });
 
         Proto.RunTaskReply reply = null!;
-        await ServerScale.MeasureAsync(output, "Run on 30,000 devices (gRPC reply after one store transaction)", TimeSpan.FromSeconds(20), async () =>
+        await ServerScale.MeasureAsync(output, "Run on 100,000 devices (gRPC reply after one store transaction)", TimeSpan.FromSeconds(20), async () =>
         {
             var request = new Proto.RunTaskRequest { PluginId = "perf.task1" };
             request.DeviceIds.AddRange(deviceIds);
@@ -320,7 +320,7 @@ public sealed class ServerBatchScaleTests(ITestOutputHelper output)
         Assert.Equal(ServerScale.Devices, reply.TaskIds.Count);
 
         var engine = host.Get<TaskEngine>();
-        await ServerScale.MeasureAsync(output, "30,000 tasks finished", TimeSpan.FromSeconds(480), async () =>
+        await ServerScale.MeasureAsync(output, "100,000 tasks finished", TimeSpan.FromSeconds(480), async () =>
         {
             foreach (var id in reply.TaskIds)
             {
@@ -329,11 +329,11 @@ public sealed class ServerBatchScaleTests(ITestOutputHelper output)
         });
 
         Proto.DeleteAllReply deleted = null!;
-        await ServerScale.MeasureAsync(output, "DeleteAll 30,000 tasks", TimeSpan.FromSeconds(30), async () =>
+        await ServerScale.MeasureAsync(output, "DeleteAll 100,000 tasks", TimeSpan.FromSeconds(30), async () =>
             deleted = await host.Tasks.DeleteAllAsync(new Proto.Empty()));
         Assert.Equal(ServerScale.Devices, deleted.Deleted);
 
-        await ServerScale.MeasureAsync(output, "Remove 30,000 devices (one transaction)", TimeSpan.FromSeconds(30), async () =>
+        await ServerScale.MeasureAsync(output, "Remove 100,000 devices (one transaction)", TimeSpan.FromSeconds(30), async () =>
         {
             var request = new Proto.DeviceIds();
             request.Ids.AddRange(deviceIds);

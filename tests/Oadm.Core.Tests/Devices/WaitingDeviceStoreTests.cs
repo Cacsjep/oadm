@@ -11,7 +11,7 @@ using Xunit.Abstractions;
 
 namespace Oadm.Core.Tests.Devices;
 
-/// <summary>The import's waiting list: one entry per address, passwords encrypted, 30,000 entries at most.</summary>
+/// <summary>The import's waiting list: one entry per address, passwords encrypted, 100,000 entries at most.</summary>
 #pragma warning disable CA1001 // disposed in DisposeAsync (IAsyncLifetime)
 public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLifetime
 {
@@ -230,7 +230,7 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task ThirtyThousandEntriesOfAHundredSitesAreListedPerScopeQuickly()
+    public async Task HundredThousandEntriesOfAHundredSitesAreListedPerScopeQuickly()
     {
         var sites = Enumerable.Range(0, 100).Select(_ => Guid.NewGuid()).ToArray();
         var lines = Enumerable.Range(0, WaitingDeviceStore.MaxEntries)
@@ -244,7 +244,7 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
         var ids = await _store.IdsAsync(scope, CancellationToken.None);
         var inScope = await _store.InScopeAsync([.. ids.Take(5_000)], scope, CancellationToken.None);
         long elapsed = watch.ElapsedMilliseconds;
-        output.WriteLine($"30,000 entries: a scope of 2 sites listed, counted and checked in {elapsed} ms ({counts.Count} entries)");
+        output.WriteLine($"100,000 entries: a scope of 2 sites listed, counted and checked in {elapsed} ms ({counts.Count} entries)");
         Assert.Equal(counts.Count, page.Total);
         Assert.Equal(counts.Count, ids.Count);
         Assert.Equal(Math.Min(5_000, ids.Count), inScope.Count);
@@ -253,7 +253,7 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task ThirtyThousandEntriesFitAndOneMoreIsRefusedWhole()
+    public async Task HundredThousandEntriesFitAndOneMoreIsRefusedWhole()
     {
         var lines = Enumerable.Range(0, WaitingDeviceStore.MaxEntries).Select(i => Line($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "pass" + i)).ToList();
         var watch = Stopwatch.StartNew();
@@ -275,7 +275,7 @@ public sealed class WaitingDeviceStoreTests(ITestOutputHelper output) : IAsyncLi
         var tries = await _store.ToTryAsync(null, includeLoginFailed: false, CancellationToken.None);
         long decrypt = watch.ElapsedMilliseconds;
         Assert.Equal(WaitingDeviceStore.MaxEntries, tries.Count);
-        output.WriteLine($"30,000 lines kept in {add} ms, a page of 5,000 listed in {list} ms, all decrypted in {decrypt} ms");
+        output.WriteLine($"100,000 lines kept in {add} ms, a page of 5,000 listed in {list} ms, all decrypted in {decrypt} ms");
         Assert.True(add < 30_000 && list < 3_000 && decrypt < 10_000, "too slow");
     }
 }

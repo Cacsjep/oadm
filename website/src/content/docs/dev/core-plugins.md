@@ -128,7 +128,7 @@ again. The loop also covers a server restart. The [plugin page tutorial](../tuto
 
 ### Choose devices first
 
-A page that reads devices never contacts every device on its own. A server can manage 30,000 devices, and the user may
+A page that reads devices never contacts every device on its own. A server can manage 100,000 devices, and the user may
 want one building. Put the shared choice button first in the page's toolbar and read only what the user chose:
 
 ```csharp

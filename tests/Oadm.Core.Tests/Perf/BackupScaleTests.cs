@@ -12,13 +12,13 @@ using Xunit.Abstractions;
 
 namespace Oadm.Core.Tests.Perf;
 
-/// <summary>A backup of 30,000 devices and 50,000 tasks: made, checked and staged in a reasonable time.</summary>
+/// <summary>A backup of 100,000 devices and 50,000 tasks: made, checked and staged in a reasonable time.</summary>
 [Trait("Category", "Perf")]
 [Collection(PerfScale.OneAtATime)]
 public sealed class BackupScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task ThirtyThousandDevicesAndFiftyThousandTasks()
+    public async Task HundredThousandDevicesAndFiftyThousandTasks()
     {
         var dir = TestDatabase.NewTempDirectory();
         try
@@ -26,7 +26,7 @@ public sealed class BackupScaleTests(ITestOutputHelper output)
             var db = await TestDatabase.CreateAsync(dir);
             await using (var ctx = await db.Get<IDbContextFactory<OadmDbContext>>().CreateDbContextAsync())
             {
-                ctx.Devices.AddRange(Enumerable.Range(0, PerfScale.Devices).Select(i => new Device { Serial = $"B8A44F{i:X6}", Address = $"10.1.{i / 250}.{i % 250}", Model = "P3265-V" }));
+                ctx.Devices.AddRange(Enumerable.Range(0, PerfScale.Devices).Select(i => new Device { Serial = $"B8A44F{i:X6}", Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}", Model = "P3265-V" }));
                 var now = DateTime.UtcNow;
                 ctx.Tasks.AddRange(Enumerable.Range(0, 50_000).Select(i => new TaskEntity { PluginId = "oadm.restart", Name = "Restart device", Status = TaskState.Done, Owner = "admin", CreatedUtc = now.AddSeconds(-i) }));
                 await ctx.SaveChangesAsync();

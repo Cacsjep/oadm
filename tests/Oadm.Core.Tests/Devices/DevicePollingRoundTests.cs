@@ -50,7 +50,7 @@ public sealed class DevicePollingRoundTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
-    public void TheDefaultsFitThirtyThousandDevices()
+    public void TheDefaultsFitHundredThousandDevices()
     {
         Assert.Equal(200, _polling.MaxParallelism);
         Assert.Equal(64, _polling.RefreshParallelism);

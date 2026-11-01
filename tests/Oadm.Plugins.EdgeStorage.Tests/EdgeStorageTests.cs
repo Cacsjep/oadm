@@ -359,7 +359,7 @@ public sealed class PluginTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_cameras_are_read_in_one_sweep()
+    public async Task A_hundred_thousand_cameras_are_read_in_one_sweep()
     {
         var (plugin, devices, cameras, _, events) = Create();
         await using var _ = plugin;
@@ -372,9 +372,9 @@ public sealed class PluginTests(ITestOutputHelper output)
         await plugin.InvokeAsync(EdgeStorageMethods.Read, null, CancellationToken.None);
         await plugin.Sweep!.Current;
         plugin.Sweep.Publish();
-        output.WriteLine($"30,000 cameras read in {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"{devices.Items.Count:N0} cameras read in {watch.ElapsedMilliseconds} ms");
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, plugin.Sweep.Count(r => r.State == CardStates.Ok));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30));
-        Assert.Equal(30, events.Published.Count(e => e.Topic == EdgeStorageMethods.RowsTopic)); // 1,000 rows per event
+        Assert.Equal(DeviceLimits.MaxDevices / EdgeStorageInfo.MaxRowsPerEvent, events.Published.Count(e => e.Topic == EdgeStorageMethods.RowsTopic));
     }
 }

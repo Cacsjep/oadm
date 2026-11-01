@@ -174,7 +174,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
 
     /// <summary>
     /// A task of a run ended (whatever its result): one less task that may write. O(1) per task end, also for a run over
-    /// 30,000 devices. Tasks cancelled while queued never report; Undo asks the task engine about those
+    /// 100,000 devices. Tasks cancelled while queued never report; Undo asks the task engine about those
     /// (<see cref="IsRunningAsync"/>) and <see cref="RunningLimit"/> forgets the run in the end.
     /// </summary>
     /// <summary>The tasks of the run that have not ended (tests).</summary>
@@ -583,7 +583,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
         return (await caller.Vapix.CreateAsync(source, ct).ConfigureAwait(false), devices);
     }
 
-    /// <summary>The devices a read covers: the page's choice (1 to 30,000), or every device for an older page without one.</summary>
+    /// <summary>The devices a read covers: the page's choice (1 to DeviceLimits.MaxDevices), or every device for an older page without one.</summary>
     private static HashSet<Guid>? ReadIds(string? payloadJson)
     {
         var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : ActionRulesJson.Deserialize<ReadRequest>(payloadJson).DeviceIds;
@@ -604,7 +604,7 @@ public sealed partial class ActionRulesPlugin : ICorePlugin, IAsyncDisposable
             .Select(g => new DeviceTargets(g.Key, [.. g.SelectMany(t => t.Rules).DistinctBy(r => r.Id)])).ToList();
         if (list.Count is 0 or > ActionRulesInfo.MaxDevicesPerRun)
         {
-            throw new ArgumentException("Choose items on 1 to 30,000 devices.", nameof(targets));
+            throw new ArgumentException($"Choose items on 1 to {Oadm.Sdk.Devices.DeviceLimits.MaxDevices:N0} devices.", nameof(targets));
         }
 
         return list.Any(t => t.Rules.Count > ActionRulesInfo.MaxRulesPerDevice)

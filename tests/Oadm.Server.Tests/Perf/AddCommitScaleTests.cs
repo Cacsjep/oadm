@@ -14,7 +14,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests.Perf;
 
 /// <summary>
-/// Commit of the add page with 30,000 selected devices (docs/spec/add-devices.md): the session's devices are looked up in
+/// Commit of the add page with 100,000 selected devices (docs/spec/add-devices.md): the session's devices are looked up in
 /// one step and "managed already" comes from one read of the managed serials, so the call is linear.
 /// </summary>
 [Trait("Category", "Perf")]
@@ -22,9 +22,9 @@ namespace Oadm.Server.Tests.Perf;
 public sealed class AddCommitScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task ACommitOfThirtyThousandManagedDevicesLooksThemUpOnce()
+    public async Task ACommitOfHundredThousandManagedDevicesLooksThemUpOnce()
     {
-        const int count = 30_000;
+        const int count = ServerScale.Devices;
         var backend = new ManyDevices(count);
         await using var host = await TestServerHost.StartAsync(configureServices: s => s.AddSingleton<IDiscoveryBackend>(backend));
         await ServerScale.SeedDevicesAsync(host, count); // the same serials: every selected device is managed already

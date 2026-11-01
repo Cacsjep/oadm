@@ -15,7 +15,7 @@ using DialogViewModel = fwclient::Oadm.Plugins.Firmware.Client.FirmwareDialogVie
 namespace Oadm.FirmwareDialogTests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices": the Upgrade firmware dialog with 30,000 selected devices reads the
+/// HARD RULE "scale to thousands of devices": the Upgrade firmware dialog with the most selected devices (DeviceLimits.MaxDevices) reads the
 /// status of a bounded number of devices with bounded parallelism, evaluates every row in one pass, and CanRun stays cheap.
 /// </summary>
 public sealed class FirmwareScaleTests
@@ -30,7 +30,7 @@ public sealed class FirmwareScaleTests
 
     [Fact]
     [Trait("Category", "Perf")] // about 2 s; flaky on its time budget when the whole unit suite runs in parallel
-    public async Task Dialog_with_30000_devices_reads_a_bounded_number_of_statuses_and_evaluates_fast()
+    public async Task Dialog_with_100000_devices_reads_a_bounded_number_of_statuses_and_evaluates_fast()
     {
         var devices = Devices();
         var ctx = new SlowStatusContext();
@@ -58,12 +58,12 @@ public sealed class FirmwareScaleTests
         Assert.Contains("already up to date", vm.Summary, StringComparison.Ordinal);
         Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {Count:N0} devices will be updated, {upToDate:N0} already up to date"), vm.Summary, StringComparison.Ordinal);
         Assert.True(open < 10000, $"Opening took {open} ms");
-        Assert.True(evaluate < 5000, $"Re-evaluating 30,000 rows twice took {evaluate} ms");
+        Assert.True(evaluate < 5000, $"Re-evaluating {Count:N0} rows twice took {evaluate} ms");
     }
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_30000_devices_is_cheap()
+    public void CanRun_over_100000_devices_is_cheap()
     {
         DeviceApi[] apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), new("fwmgr", "1.10")];
         var devices = Enumerable.Range(0, Count).Select(_ => new Oadm.Plugins.Firmware.Tests.FakeDevice(DeviceStatus.Ok, "P3265-V", "11.11.160", apis)).ToList();
@@ -78,7 +78,7 @@ public sealed class FirmwareScaleTests
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        Assert.True(watch.ElapsedMilliseconds < 5000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 5000, $"{10 * Count:N0} CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     /// <summary>Answers every status query after a short delay and records how many run at once.</summary>

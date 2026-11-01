@@ -166,18 +166,18 @@ public sealed class GridSortTests
     }
 }
 
-/// <summary>Sorting a grid of 30,000 selected rows (writes its times).</summary>
+/// <summary>Sorting a grid of 100,000 selected rows (the device limit) (writes its times).</summary>
 [Trait("Category", "Perf")]
 public sealed class GridSortScaleTests(ITestOutputHelper output)
 {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task A_sort_with_30000_selected_rows_stays_fast(bool grouped)
+    public async Task A_sort_with_100000_selected_rows_stays_fast(bool grouped)
     {
         var elapsed = await HeadlessSession.Shared.Dispatch(() =>
         {
-            using var g = GridSortTests.GridWindow.Show(30_000, grouped);
+            using var g = GridSortTests.GridWindow.Show(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, grouped);
             g.Grid.SelectAll();
             Dispatcher.UIThread.RunJobs();
 
@@ -186,11 +186,11 @@ public sealed class GridSortScaleTests(ITestOutputHelper output)
             Dispatcher.UIThread.RunJobs();
             watch.Stop();
 
-            Assert.Equal(30_000, g.Grid.SelectedItems.Count);
+            Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, g.Grid.SelectedItems.Count);
             return Task.FromResult(watch.Elapsed);
         }, CancellationToken.None);
 
-        output.WriteLine($"Sort of 30,000 selected rows ({(grouped ? "grouped" : "plain")}): {elapsed.TotalMilliseconds:F0} ms");
+        output.WriteLine($"Sort of {Oadm.Sdk.Devices.DeviceLimits.MaxDevices:N0} selected rows ({(grouped ? "grouped" : "plain")}): {elapsed.TotalMilliseconds:F0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"took {elapsed.TotalMilliseconds:F0} ms");
     }
 }

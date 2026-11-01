@@ -158,10 +158,10 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_waiting_devices_load_and_filter_fast()
+    public async Task Hundred_thousand_waiting_devices_load_and_filter_fast()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-        await KeepAsync(api, 30_000);
+        await KeepAsync(api, Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
         var vm = new WaitingDevicesViewModel(api, Substitute.For<IDialogService>(), new WaitingDevicesState());
 
         var watch = Stopwatch.StartNew();
@@ -171,8 +171,8 @@ public sealed class WaitingDevicesTests(ITestOutputHelper output)
         vm.SearchText = "10.99.12.";
         long search = watch.ElapsedMilliseconds;
         vm.SearchText = "";
-        output.WriteLine($"30,000 waiting devices: loaded in {load} ms, searched in {search} ms");
-        Assert.Equal(30_000, vm.Rows.Count);
+        output.WriteLine($"{vm.Rows.Count:N0} waiting devices: loaded in {load} ms, searched in {search} ms");
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
         Assert.True(load < 5_000 && search < 1_000, "too slow");
     }
 

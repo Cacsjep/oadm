@@ -14,7 +14,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
-/// <see cref="HostDeviceScopes"/> at full size: 30,000 devices and 50 groups. A polling round (an update of every device
+/// <see cref="HostDeviceScopes"/> at full size: 100,000 devices and 50 groups. A polling round (an update of every device
 /// that changes nothing a group reads) costs one comparison per device and raises nothing; a burst of moves raises one
 /// Changed per affected group.
 /// </summary>
@@ -31,7 +31,7 @@ public sealed class HostDeviceScopesScaleTests(ITestOutputHelper output) : Devic
         var devices = Enumerable.Range(0, PerfScale.Devices).Select(i => new Device
         {
             Serial = $"B8A44F{i:X6}",
-            Address = $"10.1.{i / 250}.{i % 250}",
+            Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
             SiteId = sites[i % GroupCount],
             Status = DeviceStatus.Ok,
             AddedByAllDevices = true,
@@ -50,7 +50,7 @@ public sealed class HostDeviceScopesScaleTests(ITestOutputHelper output) : Devic
 
         var time = new FakeTimeProvider();
         using var scopes = new HostDeviceScopes(Groups, Views, time);
-        await PerfScale.MeasureAsync(output, "load 30,000 rows", TimeSpan.FromSeconds(10), () => scopes.LoadAsync(Ct));
+        await PerfScale.MeasureAsync(output, "load 100,000 rows", TimeSpan.FromSeconds(10), () => scopes.LoadAsync(Ct));
         var changed = new ConcurrentQueue<string>();
         scopes.Changed += (_, k) => changed.Enqueue(k);
         var feed = Views.Feed;
@@ -61,7 +61,7 @@ public sealed class HostDeviceScopesScaleTests(ITestOutputHelper output) : Devic
             copy.Status = DeviceStatus.Unreachable;
             return new DeviceChange(DeviceChangeKind.Updated, d.Id, copy);
         }).ToList();
-        PerfScale.Measure(output, "a polling round of 30,000 updates", TimeSpan.FromSeconds(5), () => feed.PublishMany(round));
+        PerfScale.Measure(output, "a polling round of 100,000 updates", TimeSpan.FromSeconds(5), () => feed.PublishMany(round));
         time.Advance(HostDeviceScopes.CoalesceWindow);
         Assert.Empty(changed);
 

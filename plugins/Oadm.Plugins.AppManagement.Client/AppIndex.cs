@@ -18,7 +18,7 @@ public sealed record AppView(IReadOnlyList<AppRow> Rows, int Devices, int Failed
 
 /// <summary>
 /// The rows of the page by device id (whole devices replaced per read) and the filtered grid in one pass over the rows:
-/// search, Hide AXIS apps, status filter (30,000 devices with ten applications each: 300,000 rows).
+/// search, Hide AXIS apps, status filter (100,000 devices with ten applications each: 1,000,000 rows).
 /// </summary>
 public sealed class AppIndex
 {

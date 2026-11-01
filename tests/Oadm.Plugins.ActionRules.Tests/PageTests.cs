@@ -450,7 +450,7 @@ public sealed class PageTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_group_search_and_select_fast()
+    public void A_hundred_thousand_devices_group_search_and_select_fast()
     {
         var rows = new List<DeviceRulesRow>();
         for (var i = 0; i < DeviceLimits.MaxDevices; i++)

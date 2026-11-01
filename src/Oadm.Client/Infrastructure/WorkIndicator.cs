@@ -5,7 +5,7 @@ namespace Oadm.Client.Infrastructure;
 /// <summary>
 /// The progress row of a page for an action on many devices (remove, start tasks, delete all, export): shown when the action
 /// still runs after <see cref="ShowAfter"/>, so a quick one does not flash it, and hidden when it ends (CLAUDE.md, loading
-/// feedback: anything that can take longer than 1 s at 30,000 devices shows that it is working). UI thread only.
+/// feedback: anything that can take longer than 1 s at 100,000 devices shows that it is working). UI thread only.
 /// </summary>
 public sealed partial class WorkIndicator : ObservableObject
 {

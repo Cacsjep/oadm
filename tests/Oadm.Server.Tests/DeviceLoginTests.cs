@@ -247,13 +247,13 @@ public sealed class DeviceLoginTests
     }
 }
 
-/// <summary>One LogIn call for 30,000 devices.</summary>
+/// <summary>One LogIn call for 100,000 devices.</summary>
 [Trait("Category", "Perf")]
 [Collection(ServerScale.OneAtATime)]
 public sealed class DeviceLoginScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task LogInOn30000DevicesInOneCall()
+    public async Task LogInOn100000DevicesInOneCall()
     {
         var network = new FakeAxisNetwork();
         for (var i = 0; i < ServerScale.Devices; i++)
@@ -267,7 +267,7 @@ public sealed class DeviceLoginScaleTests(ITestOutputHelper output)
         request.DeviceIds.AddRange(ids.Select(i => i.ToString()));
 
         Proto.DeviceLogInReply reply = null!;
-        await ServerScale.MeasureAsync(output, "LogIn on 30,000 devices (8 at a time, one store transaction)", TimeSpan.FromSeconds(120), async () =>
+        await ServerScale.MeasureAsync(output, "LogIn on 100,000 devices (8 at a time, one store transaction)", TimeSpan.FromSeconds(120), async () =>
             reply = await host.Devices.LogInAsync(request));
 
         Assert.Equal(ServerScale.Devices, reply.Results.Count);

@@ -238,19 +238,19 @@ public sealed class PageTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task The_dialog_takes_30000_devices_from_the_picker() => await TakeThirtyThousandAsync();
+    public async Task The_dialog_takes_100000_devices_from_the_picker() => await TakeTheMostDevicesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task The_dialog_takes_30000_devices_from_the_picker_fast()
+    public async Task The_dialog_takes_100000_devices_from_the_picker_fast()
     {
-        var elapsed = await TakeThirtyThousandAsync();
+        var elapsed = await TakeTheMostDevicesAsync();
         Assert.True(elapsed < 30_000, $"took {elapsed} ms (measured well below 3 s)");
     }
 
-    private async Task<long> TakeThirtyThousandAsync()
+    private async Task<long> TakeTheMostDevicesAsync()
     {
-        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new TestDevice($"10.1.{i / 250}.{i % 250 + 1}")).ToList();
+        var devices = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(i => (IDeviceInfo)new TestDevice($"10.{1 + (i / 62_500)}.{i / 250 % 250}.{i % 250 + 1}")).ToList();
         var ctx = new PageContext(null, null, devices);
         var watch = Stopwatch.StartNew();
         using var editor = new TriggerEditorViewModel(ctx, null, []);
@@ -264,7 +264,7 @@ public sealed class PageTests(ITestOutputHelper output)
         };
         await editor.ChooseDevicesCommand.ExecuteAsync(null);
         var picked = watch.ElapsedMilliseconds - created;
-        output.WriteLine($"create {created} ms, pick 250 of 30,000 {picked} ms");
+        output.WriteLine($"create {created} ms, pick 250 of {devices.Count:N0} {picked} ms");
         Assert.Equal(250, editor.VisibleDevices.Count);
         Assert.Equal("250 chosen devices: 250 devices now", editor.DevicesSummary);
         return watch.ElapsedMilliseconds;

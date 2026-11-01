@@ -207,7 +207,7 @@ public sealed class BuildTests : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task The_events_of_30000_devices_merge_fast()
+    public async Task The_events_of_100000_devices_merge_fast()
     {
         var devices = new FakeDevices();
         var cameras = new FakeCameras();
@@ -218,7 +218,7 @@ public sealed class BuildTests : IAsyncLifetime
             var os = new[] { "os10", "os11", "os12" };
             for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
             {
-                var device = new FakeDevice { Address = $"10.1.{i / 250}.{i % 250}" };
+                var device = new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}" };
                 devices.Items.Add(device);
                 cameras.Cameras[device.Id] = new RuleCamera(os[i % 3]);
             }
@@ -232,7 +232,7 @@ public sealed class BuildTests : IAsyncLifetime
 
             Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, reply.Events.Single(e => e.Event.Topic == VirtualInputTopic).Devices);
             Assert.True(watch.ElapsedMilliseconds < 1_000, $"merge took {watch.ElapsedMilliseconds} ms");
-            Console.WriteLine($"read 30,000 devices {read.ElapsedMilliseconds} ms, merge {watch.ElapsedMilliseconds} ms, {reply.Events.Count} events");
+            Console.WriteLine($"read {devices.Items.Count:N0} devices {read.ElapsedMilliseconds} ms, merge {watch.ElapsedMilliseconds} ms, {reply.Events.Count} events");
         }
         finally
         {

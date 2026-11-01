@@ -15,7 +15,7 @@ namespace Oadm.Client.Api;
 /// </summary>
 public sealed partial class FakeOadmApi
 {
-    private const int FakeMaxWaiting = 30_000;
+    private const int FakeMaxWaiting = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
     private readonly List<WaitingDevice> _waiting = [];
     private readonly Broadcast<WaitingSummary> _waitingEvents = new();
     private bool _waitingTrying;
@@ -42,7 +42,7 @@ public sealed partial class FakeOadmApi
             int added = lines.Select(l => WaitingKey(l.Address, l.SiteId)).Distinct(StringComparer.Ordinal).Count(a => !byAddress.ContainsKey(a));
             if (_waiting.Count + added > FakeMaxWaiting)
             {
-                throw new RpcException(new Status(StatusCode.ResourceExhausted, "The waiting list holds at most 30,000 devices. Remove devices from it first."));
+                throw new RpcException(new Status(StatusCode.ResourceExhausted, "The waiting list holds at most 100,000 devices. Remove devices from it first."));
             }
 
             foreach (WaitingLine line in lines)

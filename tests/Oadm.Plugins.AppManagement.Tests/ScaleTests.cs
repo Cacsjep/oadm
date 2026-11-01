@@ -11,15 +11,17 @@ using Xunit.Abstractions;
 
 namespace Oadm.Plugins.AppManagement.Tests;
 
-/// <summary>30,000 devices with ten applications each (300,000 rows): the page stays fast.</summary>
+/// <summary>The most devices (DeviceLimits.MaxDevices) with ten applications each: the page stays fast.</summary>
 public sealed class ScaleTests(ITestOutputHelper output)
 {
+    private const int Count = Oadm.Sdk.Devices.DeviceLimits.MaxDevices;
+
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_with_ten_applications_filter_search_summarize_and_select_all_within_budget()
+    public void A_hundred_thousand_devices_with_ten_applications_filter_search_summarize_and_select_all_within_budget()
     {
-        var devices = new List<DeviceApps>(30_000);
-        for (var i = 0; i < 30_000; i++)
+        var devices = new List<DeviceApps>(Count);
+        for (var i = 0; i < Count; i++)
         {
             var apps = Enumerable.Range(0, 10).Select(n => Samples.App(
                 "app" + n,
@@ -38,35 +40,35 @@ public sealed class ScaleTests(ITestOutputHelper output)
         var watch = Stopwatch.StartNew();
         vm.ApplyRows(devices);
         var load = watch.Elapsed;
-        Assert.Equal(270_000, vm.DeviceRows.Count); // app0 is preinstalled
+        Assert.Equal(9 * Count, vm.DeviceRows.Count); // app0 is preinstalled
 
         watch.Restart();
         vm.HideAxisApps = false;
-        Assert.Equal(300_000, vm.DeviceRows.Count);
+        Assert.Equal(10 * Count, vm.DeviceRows.Count);
         var unfiltered = watch.Elapsed;
 
         watch.Restart();
         vm.SelectedStatus = ApplicationsViewModel.StatusChoices.Single(c => c.Value == AppStatusFilter.NotRunning);
-        Assert.Equal(60_000, vm.DeviceRows.Count);
+        Assert.Equal(2 * Count, vm.DeviceRows.Count); // (i + n) % 5 == 0
         var filter = watch.Elapsed;
 
         watch.Restart();
         vm.SearchText = "Application 3";
-        Assert.Equal(6_000, vm.DeviceRows.Count);
+        Assert.Equal(Count / 5, vm.DeviceRows.Count);
         var search = watch.Elapsed;
 
         vm.SearchText = string.Empty;
         vm.SelectedStatus = ApplicationsViewModel.StatusChoices[0];
         watch.Restart();
         vm.SetSelectedDevices(vm.Devices);
-        Assert.Equal(300_000, vm.SelectedApps.Count);
+        Assert.Equal(10 * Count, vm.SelectedApps.Count);
         vm.SetDeviceSelection(vm.SelectedApps);
         var items = vm.TargetApplications();
         var targets = vm.TargetDevices();
         var selectAll = watch.Elapsed;
-        Assert.Equal(30_000, vm.Devices.Count);
+        Assert.Equal(Count, vm.Devices.Count);
         Assert.Equal(10, items.Count);
-        Assert.Equal(30_000, targets.Count);
+        Assert.Equal(Count, targets.Count);
 
         output.WriteLine($"load {load.TotalMilliseconds:F0} ms, all rows {unfiltered.TotalMilliseconds:F0} ms, filter {filter.TotalMilliseconds:F0} ms, search {search.TotalMilliseconds:F0} ms, select all {selectAll.TotalMilliseconds:F0} ms");
         Assert.True(load < TimeSpan.FromSeconds(12), $"load took {load.TotalMilliseconds:F0} ms");
@@ -78,11 +80,11 @@ public sealed class ScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_devices_are_checked_for_an_install_and_matched_to_license_keys_within_budget()
+    public async Task A_hundred_thousand_devices_are_checked_for_an_install_and_matched_to_license_keys_within_budget()
     {
-        var devices = new List<DeviceApps>(30_000);
-        var keys = new List<(string, byte[])>(10_000);
-        for (var i = 0; i < 30_000; i++)
+        var devices = new List<DeviceApps>(Count);
+        var keys = new List<(string, byte[])>(LicenseKeySet.MaxKeys);
+        for (var i = 0; i < Count; i++)
         {
             var app = Samples.App("hello", "Hello World", i % 3 == 0 ? "1.0.0" : "1.2.0", license: "Missing", vendor: "Acme") with { ApplicationId = "415090" };
             var device = Samples.Device($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", app) with
@@ -91,7 +93,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
                 Architecture = i % 2 == 0 ? "aarch64" : "armv7hf",
             };
             devices.Add(device);
-            if (i % 3 == 0)
+            if (i % 3 == 0 && keys.Count < LicenseKeySet.MaxKeys) // one run takes at most 10,000 keys
             {
                 keys.Add(("k" + i, System.Text.Encoding.UTF8.GetBytes($"<LicenseKey><ApplicationID>415090</ApplicationID><ExpirationDate>2027-09-18</ExpirationDate><DeviceID>{device.Mac}</DeviceID><Signature>x</Signature></LicenseKey>")));
             }
@@ -108,7 +110,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
             var watch = Stopwatch.StartNew();
             await install.LoadFilesAsync([eap]);
             var check = watch.Elapsed;
-            Assert.Equal(15_000, install.FitCount); // aarch64 only
+            Assert.Equal(Count / 2, install.FitCount); // aarch64 only
 
             var rows = devices.SelectMany(d => AppRow.For(d, Samples.Today).Apps).ToList();
             var licenses = new InstallLicensesViewModel(new FakePageContext(), rows, () => Samples.Today);
@@ -137,11 +139,11 @@ public sealed class ScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_rows_load_page_by_page_within_budget()
+    public async Task A_hundred_thousand_rows_load_page_by_page_within_budget()
     {
         var ctx = new FakeCoreContext();
         var repository = new IndexedDevices();
-        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
+        for (var i = 0; i < Count; i++)
         {
             repository.Add(Samples.ManagedDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", applicationApi: false));
         }
@@ -166,9 +168,9 @@ public sealed class ScaleTests(ITestOutputHelper output)
         }
 
         var load = watch.Elapsed;
-        Assert.Equal(30, pages);
+        Assert.Equal(Count / AppManagementInfo.RowsPerPage, pages);
         Assert.Equal(repository.Ids.Order(), rows);
-        output.WriteLine($"30,000 rows in {pages} pages: {load.TotalMilliseconds:F0} ms");
+        output.WriteLine($"{rows.Count:N0} rows in {pages} pages: {load.TotalMilliseconds:F0} ms");
         Assert.True(load < TimeSpan.FromSeconds(1), $"the paged load took {load.TotalMilliseconds:F0} ms");
     }
 

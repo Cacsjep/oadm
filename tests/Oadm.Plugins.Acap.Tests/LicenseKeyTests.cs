@@ -521,14 +521,14 @@ public sealed class LicenseKeyTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Keys_for_30000_devices_are_read_and_matched_fast()
+    public async Task Keys_for_100000_devices_are_read_and_matched_fast()
     {
-        var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice { Address = $"10.1.{i / 250}.{i % 250}", Serial = $"B8A44F{i:X6}" }).ToList();
+        var devices = Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new FakeDevice { Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}", Serial = $"B8A44F{i:X6}" }).ToList();
         var zip = Path.Combine(_dir, "keys.zip");
         using (var file = File.Create(zip))
         using (var archive = new ZipArchive(file, ZipArchiveMode.Create))
         {
-            // One run reads at most LicenseKeySet.MaxKeys (10,000) keys: keys for the first 10,000 of 30,000 selected devices.
+            // One run reads at most LicenseKeySet.MaxKeys (10,000) keys: keys for the first 10,000 of all selected devices.
             foreach (var d in devices.Take(LicenseKeySet.MaxKeys))
             {
                 Write(archive, d.Serial + ".key", Key(mac: d.Serial));
@@ -546,7 +546,7 @@ public sealed class LicenseKeyTests : IDisposable
         await vm.LicenseSelectionCommand.ExecuteAsync(null);
         var elapsed = watch.Elapsed;
 
-        _output.WriteLine($"10,000 keys read and matched to 30,000 devices: {elapsed.TotalMilliseconds:F0} ms");
+        _output.WriteLine($"10,000 keys read and matched to {devices.Count:N0} devices: {elapsed.TotalMilliseconds:F0} ms");
         Assert.Equal(LicenseKeySet.MaxKeys, vm.LicensedCount);
         Assert.True(elapsed < TimeSpan.FromSeconds(5), $"{elapsed.TotalMilliseconds} ms");
     }

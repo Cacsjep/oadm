@@ -106,26 +106,26 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Thirty_thousand_devices_are_listed_searched_and_chosen()
+    public void Hundred_thousand_devices_are_listed_searched_and_chosen()
     {
-        var devices = ThirtyThousand();
+        var devices = HundredThousand();
         var vm = new DevicePickerViewModel(devices, devices.Take(100).Select(d => d.Id));
-        Assert.Equal("100 of 30,000 devices chosen", vm.Summary);
+        Assert.Equal("100 of 100,000 devices chosen", vm.Summary);
         vm.SearchText = "10.1.7.";
         vm.SelectAllCommand.Execute(null);
-        Assert.Equal("350 of 30,000 devices chosen", vm.Summary);
+        Assert.Equal("350 of 100,000 devices chosen", vm.Summary);
         vm.SearchText = string.Empty;
         vm.SelectAllCommand.Execute(null);
-        Assert.Equal("30,000 of 30,000 devices chosen", vm.Summary);
+        Assert.Equal("100,000 of 100,000 devices chosen", vm.Summary);
         vm.SelectNoneCommand.Execute(null);
-        Assert.Equal("0 of 30,000 devices chosen", vm.Summary);
+        Assert.Equal("0 of 100,000 devices chosen", vm.Summary);
     }
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_are_listed_searched_and_chosen_fast()
+    public void Hundred_thousand_devices_are_listed_searched_and_chosen_fast()
     {
-        var devices = ThirtyThousand();
+        var devices = HundredThousand();
         var watch = Stopwatch.StartNew();
         var vm = new DevicePickerViewModel(devices, devices.Take(100).Select(d => d.Id));
         var created = watch.ElapsedMilliseconds;
@@ -135,11 +135,11 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
         vm.SelectAllCommand.Execute(null);
         vm.SelectNoneCommand.Execute(null);
         output.WriteLine($"create {created} ms, search and select {watch.ElapsedMilliseconds - created} ms");
-        Assert.Equal("0 of 30,000 devices chosen", vm.Summary);
+        Assert.Equal("0 of 100,000 devices chosen", vm.Summary);
         Assert.True(watch.ElapsedMilliseconds < 5000, $"took {watch.ElapsedMilliseconds} ms");
     }
 
-    private static List<PickDevice> ThirtyThousand() =>
+    private static List<PickDevice> HundredThousand() =>
         Enumerable.Range(0, DeviceLimits.MaxDevices).Select(i => new PickDevice($"10.1.{i / 250}.{i % 250 + 1}", "AXIS P3265-V")).ToList();
 
     [Fact]

@@ -88,9 +88,9 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task The_picker_list_of_30000_devices_is_built_fast()
+    public async Task The_picker_list_of_100000_devices_is_built_fast()
     {
-        for (var i = 0; i < 30_000; i++)
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
         {
             _ctx.DeviceList.Add(new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", Category: i % 3 == 0 ? DeviceCategory.Speaker : DeviceCategory.Camera));
         }
@@ -107,7 +107,7 @@ public sealed class PageViewModelTests : IAsyncLifetime, IDisposable
         _ctx.RaiseDevicesChanged();
         watch.Stop();
 
-        Assert.Equal(20_001, count);
+        Assert.Equal(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Count(i => i % 3 != 0) + 1, count); // and the rig's camera
         Assert.NotNull(vm.SelectedCamera);
         Assert.True(watch.ElapsedMilliseconds < 500, $"{watch.ElapsedMilliseconds} ms");
     }

@@ -356,10 +356,10 @@ public sealed class PageTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task The_picker_list_of_30000_devices_is_built_fast()
+    public async Task The_picker_list_of_100000_devices_is_built_fast()
     {
         await using var rig = await new Rig().StartAsync();
-        for (var i = 0; i < 30_000; i++)
+        for (var i = 0; i < Oadm.Sdk.Devices.DeviceLimits.MaxDevices; i++)
         {
             rig.Devices.Items.Add(new TestDevice($"10.{i / 65536}.{i / 256 % 256}.{i % 256}", "P3265-V", HasIo: i % 3 != 0));
         }
@@ -367,18 +367,20 @@ public sealed class PageTests : IDisposable
         var ctx = new PluginPageContext(rig.Plugin, rig.Hub, rig.Devices.Items, rig.Call);
         using var vm = new IoMonitorViewModel(ctx);
         var count = 0;
+        Guid? picked = null;
         vm.PickDevice = (devices, _) =>
         {
             count = devices.Count;
-            return Task.FromResult<Guid?>(devices[^1].Id);
+            picked = devices[^1].Id;
+            return Task.FromResult(picked);
         };
         var watch = System.Diagnostics.Stopwatch.StartNew();
         await vm.ChooseDeviceCommand.ExecuteAsync(null);
         ctx.RaiseDevicesChanged();
         watch.Stop();
 
-        Assert.Equal(20_000, count);
-        Assert.Equal(rig.Devices.Items[^1].Id, vm.SelectedDevice?.Id);
+        Assert.Equal(Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Count(i => i % 3 != 0), count);
+        Assert.Equal(picked, vm.SelectedDevice?.Id);
         Assert.True(watch.ElapsedMilliseconds < 500, $"{watch.ElapsedMilliseconds} ms");
     }
 

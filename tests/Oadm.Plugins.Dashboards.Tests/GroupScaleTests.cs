@@ -25,7 +25,7 @@ namespace Oadm.Plugins.Dashboards.Tests;
 public sealed class GroupScaleTests(ITestOutputHelper output)
 {
     private const string Trigger = "oadm.device-triggers.door";
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
     private const int Groups = 5;
     private const int SessionsPerGroup = 10;
 
@@ -34,10 +34,10 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Pushes_to_group_pages_at_30000_devices_are_fast()
+    public async Task Pushes_to_group_pages_at_100000_devices_are_fast()
     {
         var elapsed = await PushRoundsAsync(rounds: 100);
-        output.WriteLine($"100 pushes to {Groups * SessionsPerGroup} group pages of {Groups} groups at 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"100 pushes to {Groups * SessionsPerGroup} group pages of {Groups} groups at {Devices:N0} devices: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"100 pushes took {elapsed.TotalMilliseconds:0} ms");
     }
 

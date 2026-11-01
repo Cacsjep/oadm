@@ -12,12 +12,12 @@ using Xunit.Abstractions;
 
 namespace Oadm.Server.Tests.Perf;
 
-/// <summary>The waiting list with 30,000 entries tried through sites (docs/spec/sites.md, Discovery and moves at sites).</summary>
+/// <summary>The waiting list with 100,000 entries tried through sites (docs/spec/sites.md, Discovery and moves at sites).</summary>
 [Trait("Category", "Perf")]
 public sealed class SiteDiscoveryScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task ThirtyThousandWaitingDevicesAreTriedThroughTheirSites()
+    public async Task HundredThousandWaitingDevicesAreTriedThroughTheirSites()
     {
         var sites = new FakeSiteTransport();
         var a = sites.AddSite("Building A");
@@ -29,8 +29,10 @@ public sealed class SiteDiscoveryScaleTests(ITestOutputHelper output)
             s.AddSingleton<ISiteNetwork>(sites);
         });
 
-        // 10,000 for each site and 10,000 for everywhere; 1 of 100 at each site answers (factory default: no login needed).
-        const int perPart = 10_000;
+        // A third of the waiting list for each site and a third for everywhere; 1 of 100 at each site answers (factory default:
+        // no login needed).
+        const int perPart = WaitingDeviceStore.MaxEntries / 3;
+        var answering = 2 * ((perPart + 99) / 100);
         var lines = new List<WaitingLine>(3 * perPart);
         for (var i = 0; i < perPart; i++)
         {
@@ -55,9 +57,9 @@ public sealed class SiteDiscoveryScaleTests(ITestOutputHelper output)
         var added = await host.Get<WaitingDeviceRunner>().RunRoundAsync(null, includeLoginFailed: false, CancellationToken.None);
         var round = watch.ElapsedMilliseconds;
 
-        output.WriteLine($"30,000 waiting entries (2 sites): kept in {kept} ms, one round through the sites in {round} ms, {added} added");
-        Assert.Equal(200, added);
-        Assert.Equal(3 * perPart - 200, await store.CountAsync(CancellationToken.None));
+        output.WriteLine($"{3 * perPart:N0} waiting entries (2 sites): kept in {kept} ms, one round through the sites in {round} ms, {added} added");
+        Assert.Equal(answering, added);
+        Assert.Equal(3 * perPart - answering, await store.CountAsync(CancellationToken.None));
         var repository = host.Get<DeviceRepository>();
         Assert.Equal(a.Id, (await repository.FindBySerialAsync("ACCCA0000000", CancellationToken.None))!.SiteId);
         Assert.Equal(b.Id, (await repository.FindBySerialAsync("ACCCB0000000", CancellationToken.None))!.SiteId);

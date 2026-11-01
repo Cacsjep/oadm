@@ -40,10 +40,10 @@ public sealed class DeviceLimitTests
     }
 
     [Fact]
-    public void TheLimitIsThirtyThousandDevices()
+    public void TheLimitIsHundredThousandDevices()
     {
-        Assert.Equal(30_000, DeviceLimits.MaxDevices);
-        Assert.Equal("OADM manages at most 30,000 devices. Remove devices first, or add fewer.", DeviceLimits.TooManyDevicesText);
+        Assert.Equal(100_000, DeviceLimits.MaxDevices);
+        Assert.Equal("OADM manages at most 100,000 devices. Remove devices first, or add fewer.", DeviceLimits.TooManyDevicesText);
     }
 
     [Fact]

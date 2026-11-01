@@ -109,7 +109,7 @@ public sealed class DeviceListCsvTests
 
     [Fact]
     [Trait("Category", "Perf")]
-    public void Thirty_thousand_devices_are_written_fast()
+    public void Hundred_thousand_devices_are_written_fast()
     {
         List<DeviceRowViewModel> rows = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices)
             .Select(i => Row(TestSupport.Device(i.ToString(System.Globalization.CultureInfo.InvariantCulture), $"ACCC8E{i:X6}", $"10.0.{i / 250}.{(i % 250) + 1}", "AXIS P3265-V")))
@@ -121,7 +121,7 @@ public sealed class DeviceListCsvTests
         watch.Stop();
 
         Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices + 1, Csv.Read(Encoding.UTF8.GetString(bytes)).Count());
-        Assert.True(watch.ElapsedMilliseconds < 5_000, $"30,000 devices took {watch.ElapsedMilliseconds} ms (about 0.3 s on a developer machine)");
+        Assert.True(watch.ElapsedMilliseconds < 5_000, $"{rows.Count:N0} devices took {watch.ElapsedMilliseconds} ms");
     }
 
     [Fact]

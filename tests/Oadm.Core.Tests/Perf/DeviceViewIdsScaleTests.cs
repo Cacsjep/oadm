@@ -11,7 +11,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
-/// The allowed ids of a group's view at full size (30,000 devices): status changes of every device never read the device
+/// The allowed ids of a group's view at full size (100,000 devices): status changes of every device never read the device
 /// table again (the cache follows the feed's membership version); a move out of the group does, once.
 /// </summary>
 [Trait(PerfScale.Category, PerfScale.Perf)]
@@ -26,7 +26,7 @@ public sealed class DeviceViewIdsScaleTests(ITestOutputHelper output) : DeviceGr
         var devices = Enumerable.Range(0, PerfScale.Devices).Select(i => new Device
         {
             Serial = $"B8A44F{i:X6}",
-            Address = $"10.1.{i / 250}.{i % 250}",
+            Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
             SiteId = i % 2 == 0 ? b : w,
             Status = DeviceStatus.Ok,
             AddedByAllDevices = true,
@@ -50,12 +50,12 @@ public sealed class DeviceViewIdsScaleTests(ITestOutputHelper output) : DeviceGr
 
         feed.PublishMany(Round(DeviceStatus.Ok)); // the feed learns every device once
         IReadOnlySet<Guid> ids = null!;
-        await PerfScale.MeasureAsync(output, "allowed ids of 15,000 of 30,000", TimeSpan.FromSeconds(10), async () => ids = await view.IdsAsync(Ct));
+        await PerfScale.MeasureAsync(output, "allowed ids of 50,000 of 100,000", TimeSpan.FromSeconds(10), async () => ids = await view.IdsAsync(Ct));
         Assert.Equal(PerfScale.Devices / 2, ids.Count);
 
         // A polling round, then 1,000 single status changes each followed by a read of the ids (one per plugin event).
         var round = Round(DeviceStatus.Unreachable);
-        PerfScale.Measure(output, "a polling round of 30,000 status changes", TimeSpan.FromSeconds(5), () => feed.PublishMany(round));
+        PerfScale.Measure(output, "a polling round of 100,000 status changes", TimeSpan.FromSeconds(5), () => feed.PublishMany(round));
         await PerfScale.MeasureAsync(output, "1,000 status changes, each with a read of the ids", TimeSpan.FromSeconds(2), async () =>
         {
             for (var i = 0; i < 1_000; i++)

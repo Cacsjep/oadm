@@ -51,7 +51,7 @@ public sealed class DeviceGroupMembershipTests(ITestOutputHelper output) : Devic
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task ThirtyThousandNewDevicesAgainstTwoHundredGroups()
+    public async Task HundredThousandNewDevicesAgainstTwoHundredGroups()
     {
         var sites = Enumerable.Range(0, 100).Select(i => Sites.Add("Site " + i)).ToArray();
         for (var i = 0; i < DeviceGroup.MaxGroups; i++)
@@ -66,7 +66,7 @@ public sealed class DeviceGroupMembershipTests(ITestOutputHelper output) : Devic
         var watch = Stopwatch.StartNew();
         var changes = await DeviceGroupMembership.EnteredAsync(Views, devices, Ct);
         var elapsed = watch.ElapsedMilliseconds;
-        output.WriteLine($"30,000 devices against 200 groups in {elapsed} ms, {changes.Count} groups entered");
+        output.WriteLine($"100,000 devices against 200 groups in {elapsed} ms, {changes.Count} groups entered");
         Assert.Equal(DeviceGroup.MaxGroups, changes.Count);
         Assert.True(elapsed < 10_000, $"too slow: {elapsed} ms");
     }

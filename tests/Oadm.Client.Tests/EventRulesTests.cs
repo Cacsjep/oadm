@@ -269,9 +269,9 @@ public sealed class EventRulesTests : IDisposable
     });
 
     [Fact]
-    public Task Thirty_thousand_devices_are_chosen_in_the_shared_picker() => _ui.RunAsync(async () =>
+    public Task Hundred_thousand_devices_are_chosen_in_the_shared_picker() => _ui.RunAsync(async () =>
     {
-        var (targets, shown, _) = await ChooseInThirtyThousandAsync();
+        var (targets, shown, _) = await ChooseInHundredThousandAsync();
 
         Assert.Equal(256, shown.SelectedIds.Count);
         Assert.Equal(256, targets.ChosenIds.Count);
@@ -282,16 +282,16 @@ public sealed class EventRulesTests : IDisposable
 
     [Fact]
     [Trait("Category", "Perf")]
-    public Task Thirty_thousand_devices_are_chosen_in_the_shared_picker_fast() => _ui.RunAsync(async () =>
+    public Task Hundred_thousand_devices_are_chosen_in_the_shared_picker_fast() => _ui.RunAsync(async () =>
     {
-        var (targets, _, elapsed) = await ChooseInThirtyThousandAsync();
+        var (targets, _, elapsed) = await ChooseInHundredThousandAsync();
 
         Assert.Equal(256, targets.ChosenIds.Count);
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"{elapsed.TotalMilliseconds:F0} ms");
     });
 
-    /// <summary>An action's targets: 256 of 30,000 devices chosen in the picker (search and Select all); the time it took.</summary>
-    private async Task<(DeviceSelectorViewModel Targets, DevicePickerViewModel Shown, TimeSpan Elapsed)> ChooseInThirtyThousandAsync()
+    /// <summary>An action's targets: 256 of 100,000 devices chosen in the picker (search and Select all); the time it took.</summary>
+    private async Task<(DeviceSelectorViewModel Targets, DevicePickerViewModel Shown, TimeSpan Elapsed)> ChooseInHundredThousandAsync()
     {
         var (api, _, _, _) = await CreateAsync();
         using (api)

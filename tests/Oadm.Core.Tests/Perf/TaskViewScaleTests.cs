@@ -13,7 +13,7 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Perf;
 
 /// <summary>
-/// The task history of a device group at full size (docs/spec/device-scope.md, Tests): 30,000 devices, half of them at the
+/// The task history of a device group at full size (docs/spec/device-scope.md, Tests): 100,000 devices, half of them at the
 /// group's site, and 50,000 tasks. The history page and the Watch snapshot are filtered in the query; the limit counts
 /// after the filter.
 /// </summary>
@@ -31,7 +31,7 @@ public sealed class TaskViewScaleTests(ITestOutputHelper output) : DeviceGroupTe
             var devices = Enumerable.Range(0, PerfScale.Devices).Select(i => new Device
             {
                 Serial = $"B8A44F{i:X6}",
-                Address = $"10.1.{i / 250}.{i % 250}",
+                Address = $"10.{i / 65536}.{i / 256 % 256}.{i % 256}",
                 Model = "P3265-V",
                 SiteId = i % 2 == 0 ? site : null,
                 AddedByAllDevices = true,
@@ -61,12 +61,12 @@ public sealed class TaskViewScaleTests(ITestOutputHelper output) : DeviceGroupTe
         await using var engine = new TaskEngine(store, new PluginRegistry(), Devices, new FakeVapixClientFactory()) { Views = Views };
 
         IReadOnlySet<Guid> ids = new HashSet<Guid>();
-        await PerfScale.MeasureAsync(output, "the view's 15,000 device ids (first read)", TimeSpan.FromSeconds(10), async () =>
+        await PerfScale.MeasureAsync(output, "the view's 50,000 device ids (first read)", TimeSpan.FromSeconds(10), async () =>
             ids = await view.IdsAsync(Ct));
         Assert.Equal(PerfScale.Devices / 2, ids.Count);
 
         TaskPage first = null!;
-        await PerfScale.MeasureAsync(output, "group history, first page of 100 (json_each over 15,000 ids)", TimeSpan.FromSeconds(5), async () =>
+        await PerfScale.MeasureAsync(output, "group history, first page of 100 (json_each over 50,000 ids)", TimeSpan.FromSeconds(5), async () =>
             first = await engine.ListPageAsync(view, 0, 100, Ct));
         Assert.Equal(expected.Count, first.TotalCount);
         Assert.Equal(expected.Take(100).Select(t => t.Id), first.Tasks.Select(t => t.Id));

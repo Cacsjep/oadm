@@ -36,8 +36,8 @@ public sealed class RadiusDuplicateCache
     /// <summary>The default bytes of cached answers (about 20,000 answers of a fragment each).</summary>
     public const long DefaultMaxBytes = 32L * 1024 * 1024;
 
-    /// <summary>Final answers of ended sessions kept at most (more than 30,000 devices ending within 30 s).</summary>
-    public const int FinalCapacity = 65_536;
+    /// <summary>Final answers of ended sessions kept at most (more than 100,000 devices ending within 30 s).</summary>
+    public const int FinalCapacity = 131_072;
 
     /// <summary>The default lifetime of an entry (RFC 5080 2.2.2: 5..30 s).</summary>
     public static readonly TimeSpan DefaultLifetime = TimeSpan.FromSeconds(30);

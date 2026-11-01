@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 namespace Oadm.Plugins.ActionRules.Tests;
 
 /// <summary>
-/// The open runs of the editor: a task end costs O(1) whatever the size of the runs (30,000 devices), and only Undo asks
+/// The open runs of the editor: a task end costs O(1) whatever the size of the runs (the device limit), and only Undo asks
 /// the task engine whether a run's tasks ended.
 /// </summary>
 public sealed class RunTrackingTests(ITestOutputHelper output) : IAsyncLifetime
@@ -31,7 +31,7 @@ public sealed class RunTrackingTests(ITestOutputHelper output) : IAsyncLifetime
 
     private async Task<RunStarted> DeleteOnAsync(int count)
     {
-        var devices = Enumerable.Range(0, count).Select(i => new FakeDevice { Address = "10.1." + (i / 250) + "." + (i % 250) }).ToList();
+        var devices = Enumerable.Range(0, count).Select(i => new FakeDevice { Address = "10." + (1 + (i / 62_500)) + "." + (i / 250 % 250) + "." + (i % 250) }).ToList();
         _devices.Items.AddRange(devices);
         var request = new RunRequest([.. devices.Select(d => new DeviceTargets(d.Id, [new RuleRef("1", "a")]))], null);
         return ActionRulesJson.Deserialize<RunStarted>(await _plugin.InvokeAsync(ActionRulesMethods.Delete, ActionRulesJson.Serialize(request), CancellationToken.None));
@@ -75,10 +75,10 @@ public sealed class RunTrackingTests(ITestOutputHelper output) : IAsyncLifetime
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Thirty_thousand_task_ends_of_a_run_next_to_another_open_run_are_fast()
+    public async Task A_hundred_thousand_task_ends_of_a_run_next_to_another_open_run_are_fast()
     {
-        var run = await DeleteOnAsync(30_000);
-        var open = await DeleteOnAsync(30_000);
+        var run = await DeleteOnAsync(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
+        var open = await DeleteOnAsync(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
 
         var watch = Stopwatch.StartNew();
         foreach (var id in run.TaskIds)
@@ -88,9 +88,9 @@ public sealed class RunTrackingTests(ITestOutputHelper output) : IAsyncLifetime
         }
 
         watch.Stop();
-        output.WriteLine($"30,000 task ends next to an open run of 30,000: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"30,000 task ends took {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"{run.TaskIds.Count:N0} task ends next to an open run of {open.TaskIds.Count:N0}: {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"{run.TaskIds.Count:N0} task ends took {watch.ElapsedMilliseconds} ms");
         Assert.Equal(0, _runner.IsActiveCalls);
-        Assert.Equal(30_000, open.TaskIds.Count);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, open.TaskIds.Count);
     }
 }

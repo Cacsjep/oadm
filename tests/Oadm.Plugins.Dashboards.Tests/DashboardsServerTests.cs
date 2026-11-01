@@ -444,8 +444,9 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         using var host = new PluginHost();
         var devices = Enumerable.Range(0, 50).Select(_ => Guid.NewGuid()).ToList();
         host.Plugin.Watch(new WatchRequest("page", [.. devices.Select(d => new ValueKey(Types.Temperature, d))]));
-        // 30,000 other devices send too.
-        var others = Enumerable.Range(0, 30_000).Select(_ => Guid.NewGuid()).ToList();
+        // As many other devices as the device limit send too.
+        var others = Enumerable.Range(0, Oadm.Sdk.Devices.DeviceLimits.MaxDevices).Select(_ => Guid.NewGuid()).ToList();
+        var perRound = others.Count / 40;
 
         var watch = Stopwatch.StartNew();
         for (var round = 0; round < 40; round++) // 10 s at 4 updates a second
@@ -455,7 +456,7 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
                 host.Feed.Publish(Types.Temperature, device, PublishedEventKind.Fired, ("temperature", round.ToString(System.Globalization.CultureInfo.InvariantCulture)));
             }
 
-            for (var i = round * 750; i < (round + 1) * 750; i++)
+            for (var i = round * perRound; i < (round + 1) * perRound; i++)
             {
                 host.Feed.Publish(Types.Temperature, others[i], PublishedEventKind.Fired, ("temperature", "20"));
             }
@@ -465,7 +466,7 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
 
         watch.Stop();
         var pushes = host.Events.Of(DashboardsMethods.ValuesTopic);
-        output.WriteLine($"{40 * (50 + 750)} events and {pushes.Count} pushes in {watch.ElapsedMilliseconds} ms, {host.Plugin.Values.Count} keys");
+        output.WriteLine($"{40 * (50 + perRound)} events and {pushes.Count} pushes in {watch.ElapsedMilliseconds} ms, {host.Plugin.Values.Count} keys");
         Assert.Equal(40, pushes.Count);
         Assert.All(pushes, p => Assert.Equal(50, Read<ValuesReply>(p.PayloadJson).Values.Count));
         Assert.InRange(watch.ElapsedMilliseconds, 0, 5_000);

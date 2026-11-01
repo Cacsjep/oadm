@@ -43,7 +43,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `CertificateWindow` | The details of one certificate: validity, issued to and by, fingerprint, uses (`ShowAsync`) |
 | `ui:PageHeader` | `Subtitle` and `IsHidden` of the host page header, set on your page view |
 | `MessageWindow` | Every message and confirmation: `MessageWindow.ConfirmAsync(owner, title, message, confirmText)` |
-| `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 30,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |
+| `DevicePickerWindow` | Every "choose devices" dialog: search, tags, Select all, 100,000 devices; `ShowAsync` (ids), `ShowOneAsync` (one device), `ShowChoiceAsync` (All devices, tags, chosen devices) |
 | `PageDeviceChoice` | The device choice of a page that reads many devices: a toolbar button with the devices icon ("Choose devices", "Selected devices: ..."), see [Core plugins](../core-plugins/) |
 | `ComboBox Classes="grouped"` + `GroupedChoice` | A select field with group headers |
 | `ComboBox Classes="multiSelect"` + `CheckChoice` / `CheckChoiceList` | A select field with check boxes (`ICheckChoice` items); `CheckChoiceList` offers "All" or chosen items: `<ComboBox Classes="multiSelect" ItemsSource="{Binding Sites.Entries}" PlaceholderText="{Binding Sites.Summary}" />` |

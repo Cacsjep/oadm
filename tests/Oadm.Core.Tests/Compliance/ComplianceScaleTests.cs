@@ -13,14 +13,14 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.Compliance;
 
 /// <summary>
-/// The engine at the device limit: 30,000 devices and the most checks (50), one check with all 30,000 devices chosen one by
+/// The engine at the device limit: 100,000 devices and the most checks (50), one check with all 100,000 devices chosen one by
 /// one; turning compliance on, a burst of device changes and the events stay fast and change only what changed.
 /// </summary>
 public sealed class ComplianceScaleTests(ITestOutputHelper output)
 {
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task ThirtyThousandDevicesWithFiftyChecks()
+    public async Task HundredThousandDevicesWithFiftyChecks()
     {
         await using var rig = await ComplianceRig.StartAsync(enabled: false);
         var devices = new List<Device>();

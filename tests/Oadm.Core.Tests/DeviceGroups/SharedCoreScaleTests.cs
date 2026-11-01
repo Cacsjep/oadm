@@ -10,14 +10,14 @@ using Xunit.Abstractions;
 namespace Oadm.Core.Tests.DeviceGroups;
 
 /// <summary>
-/// The lists of a user of a device group at the device limit: the tag counts of the view (30,000 devices, a group of
-/// 15,000).
+/// The lists of a user of a device group at the device limit: the tag counts of the view (100,000 devices, a group of
+/// 50,000).
 /// </summary>
 public sealed class SharedCoreScaleTests(ITestOutputHelper output) : DeviceGroupTestBase
 {
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task TheTagsOfAGroupAtThirtyThousandDevices()
+    public async Task TheTagsOfAGroupAtHundredThousandDevices()
     {
         for (var i = 0; i < DeviceLimits.MaxDevices; i++)
         {

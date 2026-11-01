@@ -11,7 +11,7 @@ using Proto = Oadm.Contracts.V1;
 namespace Oadm.Server.Tests.Perf;
 
 /// <summary>
-/// The device feed of a user with a device group at 30,000 devices (docs/spec/device-scope.md, Tests): the snapshot of a
+/// The device feed of a user with a device group at 100,000 devices (docs/spec/device-scope.md, Tests): the snapshot of a
 /// group of 3,000 reads only the group's rows, and a burst of changes of every device reaches the group's stream as its
 /// own changes only, with devices that enter or leave the group as Added and Removed.
 /// </summary>
@@ -23,7 +23,7 @@ public sealed class DeviceGroupWatchScaleTests(ITestOutputHelper output)
     private const int Moved = 1_000;
 
     [Fact]
-    public async Task TheFeedOfAGroupOf3000In30000DevicesIsFastAndCarriesOnlyTheGroup()
+    public async Task TheFeedOfAGroupOf3000In100000DevicesIsFastAndCarriesOnlyTheGroup()
     {
         await using var host = await TestServerHost.StartAsync();
         var ids = await ServerScale.SeedDevicesAsync(host);

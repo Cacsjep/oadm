@@ -28,7 +28,7 @@ Click **Add** on the Devices page and choose:
 **Stop** ends a running search; the devices found stay in the list. **Scan again** searches once more.
 Devices OADM already manages are not listed.
 
-One server manages up to 30,000 devices. An add that would go over it is refused whole: uncheck devices, or remove
+One server manages up to 100,000 devices. An add that would go over it is refused whole: uncheck devices, or remove
 devices you no longer need first.
 
 **Use DNS names instead of IP addresses** (Discovery and Network range) lists and adds the devices by their DNS name.
@@ -63,7 +63,7 @@ OADM is logged in. Many tasks need newer firmware and stay grey with the reason.
 - Columns: **Address** (or IP address, IP, Host name), optional **User name**, **Password** and **Tags**. Other columns
   are ignored. Comma or semicolon.
 - A password without a user name is for `root`. Logins in the file are tried first and are never saved.
-- Up to 30,000 addresses per file. A line with a problem shows **Not added** and the reason in its row.
+- Up to 100,000 addresses per file. A line with a problem shows **Not added** and the reason in its row.
 - Devices that do not answer can wait and be added later, see [Devices that are off](#devices-that-are-off).
 - Tags in the file are given to the devices you add. Several tags in one cell are separated with `;`.
 

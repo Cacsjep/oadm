@@ -99,12 +99,12 @@ public sealed class StartupStallTests(ITestOutputHelper output)
     }
 }
 
-/// <summary>The start with 30,000 devices and 10,000 tasks: the splash keeps its frames.</summary>
+/// <summary>The start with 100,000 devices and 10,000 tasks: the splash keeps its frames.</summary>
 [Trait("Category", "Perf")]
 public sealed class StartupStallScaleTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task The_splash_keeps_animating_while_30000_devices_load()
+    public async Task The_splash_keeps_animating_while_100000_devices_load()
     {
         StartupStallTests.StartMeasure m = await StartupStallTests.RunStartAsync(output, ClientScale.Devices, 10_000);
 

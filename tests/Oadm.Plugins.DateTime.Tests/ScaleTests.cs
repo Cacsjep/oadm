@@ -10,26 +10,26 @@ using Xunit.Abstractions;
 
 namespace Oadm.Plugins.DateAndTime.Tests;
 
-/// <summary>HARD RULE "scale to thousands of devices": opening the dialog and CanRun with 30,000 devices.</summary>
+/// <summary>HARD RULE "scale to thousands of devices": opening the dialog and CanRun with the most devices (DeviceLimits.MaxDevices).</summary>
 public sealed class ScaleTests(ITestOutputHelper output)
 {
     private const int Count = DeviceLimits.MaxDevices;
 
     [Fact]
-    public async Task Dialog_with_30000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
+    public async Task Dialog_with_100000_devices_reads_only_the_first_device() => await OpenWithTheMostDevicesAsync();
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Dialog_with_30000_devices_opens_fast()
+    public async Task Dialog_with_100000_devices_opens_fast()
     {
         var elapsed = await OpenWithTheMostDevicesAsync();
-        output.WriteLine($"Open the dialog with 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"Open the dialog with {Count:N0} devices: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(1), $"Opening took {elapsed.TotalMilliseconds:0} ms");
     }
 
     private static async Task<TimeSpan> OpenWithTheMostDevicesAsync()
     {
-        var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.0.{i / 256}.{i % 256}")).ToList();
+        var devices = Enumerable.Range(0, Count).Select(i => (IDeviceInfo)new FakeDevice(Guid.NewGuid(), $"10.{i / 65536}.{i / 256 % 256}.{i % 256}")).ToList();
         var ctx = new CountingContext();
 
         var watch = Stopwatch.StartNew();
@@ -44,7 +44,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")] // time budget; a CI runner can take over a second
-    public void CanRun_over_30000_devices_is_cheap()
+    public void CanRun_over_100000_devices_is_cheap()
     {
         IReadOnlyList<DeviceApi> apis = [.. Enumerable.Range(0, 120).Select(i => new DeviceApi("api-" + i, "1." + i)), .. Fixture.Modern];
         var devices = Enumerable.Range(0, Count).Select(_ => new FakeDevice(Guid.NewGuid()) { Apis = apis }).ToList();
@@ -59,8 +59,8 @@ public sealed class ScaleTests(ITestOutputHelper output)
 
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
-        output.WriteLine($"300,000 CanRun calls: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 6000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        output.WriteLine($"{10 * Count:N0} CanRun calls: {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 6000, $"{10 * Count:N0} CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     private sealed class CountingContext : ITaskDialogContext

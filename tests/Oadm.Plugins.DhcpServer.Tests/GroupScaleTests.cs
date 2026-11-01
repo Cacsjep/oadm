@@ -23,7 +23,7 @@ namespace Oadm.Plugins.DhcpServer.Tests;
 /// </summary>
 public sealed class GroupScaleTests(ITestOutputHelper output)
 {
-    private const int Devices = 30_000;
+    private const int Devices = DeviceLimits.MaxDevices;
     private const int Groups = 5;
 
     [Fact]
@@ -31,10 +31,10 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
 
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Publish_rounds_for_group_pages_at_30000_devices_are_fast()
+    public async Task Publish_rounds_for_group_pages_at_100000_devices_are_fast()
     {
         var elapsed = await PublishRoundsAsync(rounds: 100);
-        output.WriteLine($"100 publish rounds for {Groups} groups at 30,000 devices: {elapsed.TotalMilliseconds:0} ms");
+        output.WriteLine($"100 publish rounds for {Groups} groups at {Devices:N0} devices: {elapsed.TotalMilliseconds:0} ms");
         Assert.True(elapsed < TimeSpan.FromSeconds(10), $"100 rounds took {elapsed.TotalMilliseconds:0} ms");
     }
 
@@ -153,11 +153,11 @@ public sealed class GroupScaleTests(ITestOutputHelper output)
 
     private static LeaseInfo Lease(ulong mac, string address) => new(MacAddress.Format(mac), address, null, null, true, LeaseInfo.Active, null);
 
-    /// <summary>30,000 devices in 5 groups (device i in group i % 5), each with its serial number as MAC address.</summary>
+    /// <summary>The most devices (DeviceLimits.MaxDevices) in 5 groups (device i in group i % 5), each with its serial number as MAC address.</summary>
     private static (List<IDeviceInfo> Devices, CountingDeviceScopes Scopes, List<string> Keys, List<List<Guid>> Members) Setup()
     {
         var devices = Enumerable.Range(0, Devices)
-            .Select(i => (IDeviceInfo)new Testing.FakeDevice { Address = $"10.1.{i / 256 % 256}.{i % 256}", Serial = $"ACCC8E{i:X6}" }).ToList();
+            .Select(i => (IDeviceInfo)new Testing.FakeDevice { Address = $"10.{1 + (i / 65536)}.{i / 256 % 256}.{i % 256}", Serial = $"ACCC8E{i:X6}" }).ToList();
         var scopes = new CountingDeviceScopes(devices);
         var members = Enumerable.Range(0, Groups).Select(g => devices.Where((_, i) => i % Groups == g).Select(d => d.Id).ToList()).ToList();
         var keys = members.Select(scopes.Add).ToList();

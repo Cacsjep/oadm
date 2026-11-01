@@ -333,15 +333,15 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public void Thirty_thousand_rows_load_and_update()
+    public void A_hundred_thousand_rows_load_and_update()
     {
         var ctx = Context();
         using var vm = new LoadTestViewModel(ctx);
-        var rows = ManyRows(30_000);
+        var rows = ManyRows(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
         vm.ApplyLive(new LiveEvent(Samples.Running(1), 0, Samples.Graphs(1), rows));
-        Assert.Equal(30_000, vm.Rows.Count);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
         vm.ApplyRows([.. rows.Take(200).Select(r => r with { AverageMbps = 9 })]);
-        Assert.Equal(30_000, vm.Rows.Count);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceLimits.MaxDevices, vm.Rows.Count);
     }
 
     internal static List<StreamRow> ManyRows(int count)
@@ -361,10 +361,10 @@ public sealed class PageViewModelTests
 public sealed class PagePerfTests(ITestOutputHelper output)
 {
     [Fact]
-    public void Thirty_thousand_rows_update_every_second_within_budget()
+    public void A_hundred_thousand_rows_update_every_second_within_budget()
     {
         using var vm = new LoadTestViewModel(new FakePageContext());
-        var rows = PageViewModelTests.ManyRows(30_000);
+        var rows = PageViewModelTests.ManyRows(Oadm.Sdk.Devices.DeviceLimits.MaxDevices);
         var watch = Stopwatch.StartNew();
         vm.ApplyLive(new LiveEvent(Samples.Running(1), 0, Samples.Graphs(1), rows));
         var load = watch.Elapsed;
@@ -378,7 +378,7 @@ public sealed class PagePerfTests(ITestOutputHelper output)
         }
 
         var updates = watch.Elapsed / 10;
-        output.WriteLine($"30,000 rows: load {load.TotalMilliseconds:0} ms, one live second {updates.TotalMilliseconds:0} ms");
+        output.WriteLine($"{rows.Count:N0} rows: load {load.TotalMilliseconds:0} ms, one live second {updates.TotalMilliseconds:0} ms");
         Assert.True(load < TimeSpan.FromSeconds(3), $"load took {load.TotalMilliseconds:0} ms");
         Assert.True(updates < TimeSpan.FromSeconds(1), $"one live second took {updates.TotalMilliseconds:0} ms");
     }

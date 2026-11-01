@@ -43,7 +43,7 @@ public sealed class DeviceViewTests : DeviceGroupTestBase
     [Fact]
     public async Task AUsersStoredViewFollowsEveryChangeOfTheUserAtOnce()
     {
-        // ForUserAsync keeps the user's row between writes (30,000 tasks leaving the queue read it once): every write ends that.
+        // ForUserAsync keeps the user's row between writes (100,000 tasks leaving the queue read it once): every write ends that.
         var group = (await SaveGroupAsync("B", thisServer: true)).Group;
         var other = (await SaveGroupAsync("C", thisServer: true)).Group;
         var anna = await Users.AddAsync("anna", "pw", BuiltInRoles.OperatorId, DeviceScope.Group(group.Id), Ct);

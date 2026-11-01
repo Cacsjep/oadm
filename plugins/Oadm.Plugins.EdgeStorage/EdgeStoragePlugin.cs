@@ -178,7 +178,7 @@ public sealed partial class EdgeStoragePlugin : ICorePlugin, IAsyncDisposable
         return await caller.Tasks.RunAsync(EdgeStorageInfo.TaskPluginId, [.. request.DeviceIds.Distinct()], EdgeStorageJson.Serialize(payload), owner, ct).ConfigureAwait(false);
     }
 
-    /// <summary>The cameras a read covers: the page's choice (1 to 30,000), or every camera for an older page without one.</summary>
+    /// <summary>The cameras a read covers: the page's choice (1 to DeviceLimits.MaxDevices), or every camera for an older page without one.</summary>
     private static HashSet<Guid>? ReadIds(string? payloadJson)
     {
         var ids = string.IsNullOrWhiteSpace(payloadJson) ? null : EdgeStorageJson.Deserialize<ReadRequest>(payloadJson).DeviceIds;
