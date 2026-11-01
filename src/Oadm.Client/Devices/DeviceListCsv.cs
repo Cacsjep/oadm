@@ -51,7 +51,7 @@ public static class DeviceListCsv
                 d.FirmwareVersion,
                 d.Soc,
                 d.Architecture,
-                d.Clock.Text,
+                d.ClockDetail,
                 DeviceCategoryInfo.ToText(d.Category),
                 d.ProductType,
                 d.DhcpText,

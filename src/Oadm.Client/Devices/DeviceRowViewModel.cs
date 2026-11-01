@@ -113,8 +113,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// <summary>CPU architecture as the device reports it ("aarch64"); null until the server read it.</summary>
     [ObservableProperty] public partial string? Architecture { get; private set; }
 
-    /// <summary>The Clock cell: "Ok", "50 s ahead", "NTP not synced", a warning chip while off, empty until measured (<see cref="DeviceClockText"/>).</summary>
+    /// <summary>The Clock cell: "OK", "Off", "NTP not synced", a warning chip while off, empty until measured (<see cref="DeviceClockText"/>).</summary>
     [ObservableProperty] public partial ChipInfo Clock { get; private set; } = ChipInfo.Empty;
+
+    /// <summary>The Clock value of the export and the search: the offset while off ("50 s ahead"), else like the cell.</summary>
+    public string ClockDetail { get; private set; } = "";
 
     /// <summary>The Clock cell's tooltip: the offset and the NTP state.</summary>
     [ObservableProperty] public partial string? ClockTooltip { get; private set; }
@@ -221,6 +224,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         Architecture = string.IsNullOrEmpty(device.Architecture) ? null : device.Architecture;
         int? clockOffsetMs = device.HasClockOffsetMs ? device.ClockOffsetMs : null;
         Clock = DeviceClockText.ToChip(clockOffsetMs, device.NtpState, device.ClockOff, device.ClockBeyondTolerance);
+        ClockDetail = DeviceClockText.Detail(clockOffsetMs, device.NtpState, device.ClockBeyondTolerance);
         ClockTooltip = DeviceClockText.Tooltip(clockOffsetMs, device.NtpState);
         ClockSortKey = DeviceClockText.SortKey(clockOffsetMs);
         CategoryIconKey = DeviceCategoryInfo.ToIconKey(device.Category);
@@ -278,7 +282,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
         string term = search.Trim();
         return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
-            || Contains(Architecture) || Contains(Clock.Text) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
+            || Contains(Architecture) || Contains(Clock.Text) || Contains(ClockDetail) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
     }

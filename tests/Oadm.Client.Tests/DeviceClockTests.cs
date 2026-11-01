@@ -52,19 +52,21 @@ public sealed class DeviceClockTests
         Assert.False(ok.IsChip);
 
         ChipInfo ahead = DeviceClockText.ToChip(49_400, NtpState.Synced, clockOff: true, beyondTolerance: true);
-        Assert.Equal("50 s ahead", ahead.Text);
+        Assert.Equal(DeviceClockText.Off, ahead.Text);
+        Assert.Equal("50 s ahead", DeviceClockText.Detail(49_400, NtpState.Synced, beyondTolerance: true));
         Assert.True(ahead.IsWarning);
         Assert.True(ahead.IsChip);
 
         // Beyond the tolerance wins over NTP; within it, NTP not synced says so.
-        Assert.Equal("2 min behind", DeviceClockText.ToChip(-125_000, NtpState.NotSynced, clockOff: true, beyondTolerance: true).Text);
+        Assert.Equal(DeviceClockText.Off, DeviceClockText.ToChip(-125_000, NtpState.NotSynced, clockOff: true, beyondTolerance: true).Text);
+        Assert.Equal("2 min behind", DeviceClockText.Detail(-125_000, NtpState.NotSynced, beyondTolerance: true));
         ChipInfo ntp = DeviceClockText.ToChip(400, NtpState.NotSynced, clockOff: true, beyondTolerance: false);
         Assert.Equal("NTP not synced", ntp.Text);
         Assert.True(ntp.IsWarning);
 
         // A device that is not Ok is never off: its last measured offset as plain text.
         ChipInfo lastMeasured = DeviceClockText.ToChip(3 * 3600 * 1000 + 10_000, NtpState.Off, clockOff: false, beyondTolerance: true);
-        Assert.Equal("3 h ahead", lastMeasured.Text);
+        Assert.Equal(DeviceClockText.Off, lastMeasured.Text);
         Assert.False(lastMeasured.IsChip);
         Assert.Equal("NTP not synced", DeviceClockText.ToChip(400, NtpState.NotSynced, clockOff: false, beyondTolerance: false).Text);
     }
@@ -106,7 +108,8 @@ public sealed class DeviceClockTests
         device.ClockOff = true;
         Assert.True(row.Apply(device));
         Assert.True(row.Clock.IsWarning);
-        Assert.Equal("2 min behind", row.Clock.Text);
+        Assert.Equal(DeviceClockText.Off, row.Clock.Text);
+        Assert.Equal("2 min behind", row.ClockDetail);
         Assert.Equal("2 min behind, NTP off", row.ClockTooltip);
         Assert.Equal(125_000, row.ClockSortKey);
         Assert.True(row.Matches("behind"));
@@ -115,7 +118,7 @@ public sealed class DeviceClockTests
 
         device.ClockOff = false; // the device is no longer Ok: the last measured offset, no chip
         Assert.True(row.Apply(device));
-        Assert.Equal("2 min behind", row.Clock.Text);
+        Assert.Equal("2 min behind", row.ClockDetail);
         Assert.False(row.Clock.IsChip);
 
         device.ClockBeyondTolerance = false;
@@ -131,7 +134,7 @@ public sealed class DeviceClockTests
         foreach (string serial in Enumerable.Range(0, 20).Select(i => "ACCC8E" + i.ToString("X6", System.Globalization.CultureInfo.InvariantCulture)))
         {
             Device device = FakeOadmApi.WithSampleClock(TestSupport.Device(serial, serial, "10.0.0.1", "AXIS P3265-V"), 2);
-            texts.Add(new DeviceRowViewModel(device).Clock.Text);
+            texts.Add(new DeviceRowViewModel(device).ClockDetail);
         }
 
         Assert.Contains("", texts);
