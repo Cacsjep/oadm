@@ -363,6 +363,8 @@ public sealed partial class CanaryTests
         ["/oadm.v1.AuthService/Status"] = "open: server name and version",
         ["/oadm.v1.TagService/Create"] = "a tag definition: a name and a color, no device",
         ["/oadm.v1.ComplianceService/GetCatalog"] = "the kinds of checks and their settings, no device",
+        ["/oadm.v1.VulnerabilityService/Get"] = "the public list of Axis CVEs, no device (the client matches its own view)",
+        ["/oadm.v1.VulnerabilityService/Upload"] = "the public list of Axis CVEs from a client, no device",
         ["/oadm.v1.AuthService/Login"] = "open: the session",
         ["/oadm.v1.AuthService/CreateFirstAdmin"] = "open: only while no user exists",
         ["/oadm.v1.AuthService/Logout"] = "the own session",

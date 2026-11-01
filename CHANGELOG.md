@@ -7,6 +7,37 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-11-01
+
+### Added
+
+- Devices list: Vulnerabilities column shows the Axis CVEs a device may be affected by and the firmware that fixes them; search a CVE ID to see the devices.
+- Settings: Vulnerabilities, update the list online by the server or by the clients (off by default).
+- Devices with Certificate changed: Trust new certificate in the context menu shows the new certificate and keeps the device with its tags and history.
+- Security radars get the live preview and can be added to Live view and Dashboards.
+- Plugin SDK 0.8.0.
+
+### Changed
+
+- Devices list: SoC, HTTPS and IEEE 802.1X columns are hidden by default; turn them on with the columns button.
+- Devices list and Applications: the SoC is shown short, A8 for ARTPEC-8 and CV25 for Ambarella CV25.
+- One OADM server now manages up to 100,000 devices (was 30,000).
+- Device status and details: OADM checks every device, then waits 60 seconds, and reads all details, then waits 10 minutes; the two polling settings are gone, large installations need no tuning.
+- Live video no longer shows a warning when the processor decodes it instead of the graphics card; Settings still says why.
+- Devices list: the Clock column shows only a warning icon when the clock is off; hover it to see how far.
+- Devices list: MAC address, SoC and Architecture are shown dimmed.
+
+### Fixed
+
+- Devices with older firmware (for example AXIS OS 6.x or the AXIS A1001) are found and can be added and polled.
+- Add devices: an address that answers but not as an Axis device no longer says the device did not answer.
+- Add devices: model, firmware and device type show right after adding, so live view is no longer offered for a door controller or other device without video.
+- Windows moved to a larger monitor now maximize to fill it.
+- Devices list: sorting with many devices selected no longer holds the window for seconds, and turning on Group by tag keeps the selected devices.
+- Every other list with many rows selected (Compliance, waiting devices, Applications, SD cards, action rules, certificates) sorts at once.
+- Group by tag stays quick with many devices: turning it on, select all, sorting and collapsing a group.
+- Group by tag: the group headers no longer show a colored dot, and the devices line up with the column headings.
+
 ## [4.8.0-rc.1] - 2026-11-01
 
 ### Added

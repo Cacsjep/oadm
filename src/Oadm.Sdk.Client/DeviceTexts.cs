@@ -10,12 +10,13 @@ public static class DeviceTexts
     public const int ShortIdLength = 8;
 
     private const string AxisPrefix = "Axis ";
+    private const string AmbarellaPrefix = "Ambarella ";
     private const string Artpec = "Artpec";
 
     /// <summary>
-    /// The SoC text from basicdeviceinfo <c>Soc</c> (the SoC column, the Applications page): "Axis Artpec-8" becomes
-    /// "ARTPEC-8" (Axis' own spelling, without the brand every row would repeat); other chips stay as the device reports
-    /// them ("Ambarella CV25"). Null for none.
+    /// The SoC text from basicdeviceinfo <c>Soc</c> (the SoC column, the Applications page), short and without the brand
+    /// every row would repeat: "Axis Artpec-8" becomes "A8", "Ambarella CV25" becomes "CV25"; other chips stay as the device
+    /// reports them. Null for none. The device grid's search also finds the full name ("ARTPEC-8", "Ambarella").
     /// </summary>
     public static string? Soc(string? soc)
     {
@@ -30,8 +31,13 @@ public static class DeviceTexts
             text = text[AxisPrefix.Length..].TrimStart();
         }
 
+        if (text.StartsWith(AmbarellaPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return text[AmbarellaPrefix.Length..].TrimStart();
+        }
+
         return text.StartsWith(Artpec, StringComparison.OrdinalIgnoreCase)
-            ? "ARTPEC" + text[Artpec.Length..]
+            ? "A" + text[Artpec.Length..].TrimStart('-', ' ')
             : text;
     }
 

@@ -140,6 +140,7 @@ public sealed partial class SettingsGrpcService(
         }
 
         Add("Allowed clock difference (s)", before.ClockToleranceSeconds, after.ClockToleranceSeconds);
+        Add("Update the vulnerability list online", before.VulnerabilityUpdate, after.VulnerabilityUpdate);
         Add("Addresses scanned at once", before.ScanParallelism, after.ScanParallelism);
         Add("Scan timeout (ms)", before.ScanTimeoutMs, after.ScanTimeoutMs);
         Add("Discovery duration (s)", before.ZeroConfSeconds, after.ZeroConfSeconds);

@@ -173,6 +173,9 @@ must never break.
   for devices that are not Ok), **[Event rules](docs/spec/event-rules.md)** (events and actions from plugins, the engine,
   limits, the log), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
   parallelism per plugin).
+- **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of device firmware, Vulnerabilities column ("2 · High")
+  and search by CVE id, matched by model and firmware in the client; a base list ships with every release, the online update
+  is opt-in ("Update the list online": Off by default, By the server, By the clients) and never sends device data.
 - **[Plugin system](docs/spec/plugins.md)**: task and core plugins, SDK and client SDK, loading, plugins on and off,
   licenses, plugin documentation (every plugin has its `README.md`). New SDK members are default interface members.
 - **[Bundled plugins](docs/spec/bundled-plugins.md)**: one entry per plugin: id, what it does, on or off by default, the

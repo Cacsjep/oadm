@@ -40,15 +40,17 @@ public sealed class DeviceListCsvTests
 
         string[] lines = csv.Split("\r\n");
         Assert.Equal("MAC address,Status,Address,Tags,Site,Host name,Model,Firmware,SoC,Architecture,Clock,Category,Product type,DHCP,HTTPS,Certificate expires,Certificate,IEEE 802.1X,Compliance", lines[0]);
-        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,ARTPEC-8,aarch64,50 s ahead,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
+        Assert.Equal("ACCC8E5F6071,OK,10.0.0.48,Building A; PTZ,,cam-entrance,AXIS P3265-V,12.11.77,A8,aarch64,50 s ahead,Camera,Dome Camera,Yes,Enabled,2027-03-04,Self-signed,Disabled,", lines[1]);
         Assert.Equal("", lines[2]); // CRLF after the last record
     }
 
     [Theory]
-    [InlineData("Axis Artpec-8", "ARTPEC-8")]
-    [InlineData("Axis ARTPEC-9", "ARTPEC-9")]
-    [InlineData("  Axis Artpec-7 ", "ARTPEC-7")]
-    [InlineData("Ambarella CV25", "Ambarella CV25")]
+    [InlineData("Axis Artpec-8", "A8")]
+    [InlineData("Axis ARTPEC-9", "A9")]
+    [InlineData("  Axis Artpec-7 ", "A7")]
+    [InlineData("Ambarella CV25", "CV25")]
+    [InlineData("Ambarella S5L", "S5L")]
+    [InlineData("Novatek NT98528", "Novatek NT98528")]
     [InlineData("", null)]
     [InlineData(null, null)]
     public void Soc_text_uses_the_axis_spelling_without_the_brand(string? soc, string? expected) =>
@@ -61,8 +63,9 @@ public sealed class DeviceListCsvTests
         device.Soc = "Axis Artpec-8";
         DeviceRowViewModel row = Row(device);
 
-        Assert.Equal("ARTPEC-8", row.Soc);
+        Assert.Equal("A8", row.Soc);
         Assert.True(row.Matches("artpec-8"));
+        Assert.True(row.Matches("A8"));
         Assert.False(row.Matches("artpec-7"));
     }
 

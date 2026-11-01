@@ -11,6 +11,11 @@ public static class SettingKeys
     /// Int, default 2, 1..3600. Read live (<see cref="Devices.ClockTolerance"/>).
     /// </summary>
     public const string PollingClockToleranceSeconds = "Polling.ClockToleranceSeconds";
+
+    /// <summary>
+    /// Who fetches the list of Axis CVEs online (docs/spec/vulnerabilities.md): "off" (default, never), "server" or "clients".
+    /// </summary>
+    public const string VulnerabilitiesUpdate = "Vulnerabilities.Update";
     public const string ScanParallelism = "Scan.Parallelism";
     public const string ScanTimeoutMs = "Scan.TimeoutMs";
     public const string ServerName = "Server.Name";
@@ -110,8 +115,14 @@ public sealed record ServerSettings(
     int MaxParallelTasksPerPlugin = ServerSettings.DefaultMaxParallelTasksPerPlugin,
     int WaitingRetryMinutes = ServerSettings.DefaultWaitingRetryMinutes,
     bool AllowBasicOverHttp = false,
-    int ClockToleranceSeconds = ServerSettings.DefaultClockToleranceSeconds)
+    int ClockToleranceSeconds = ServerSettings.DefaultClockToleranceSeconds,
+    string VulnerabilityUpdate = ServerSettings.VulnerabilityUpdateOff)
 {
+    /// <summary>Values of <see cref="VulnerabilityUpdate"/>: no outgoing call, the server fetches, the clients fetch.</summary>
+    public const string VulnerabilityUpdateOff = "off";
+    public const string VulnerabilityUpdateServer = "server";
+    public const string VulnerabilityUpdateClients = "clients";
+
     public const int DefaultPollingIntervalSeconds = 60;
     public const int DefaultFullRefreshMinutes = 10;
     public const int MinFullRefreshMinutes = 1;

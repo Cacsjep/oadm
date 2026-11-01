@@ -4,6 +4,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:dev="using:Oadm.Client.Devices"
              xmlns:compliance="using:Oadm.Client.Compliance"
+             xmlns:vuln="using:Oadm.Client.Vulnerabilities"
              xmlns:tasks="using:Oadm.Client.Tasks"
              xmlns:lv="using:Oadm.Client.LiveView"
                       x:Class="Oadm.Client.Devices.DevicesView"
@@ -138,7 +139,7 @@
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
-              <DataGridTextColumn Tag="model" Header="Model" Width="160*" MinWidth="120" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="model" Header="Model" Width="110*" MinWidth="100" Binding="{Binding Row.Model}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="status" Header="Status" Width="160*" MinWidth="150" SortMemberPath="Row.StatusText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
@@ -155,6 +156,18 @@
               </DataGridTemplateColumn>
               <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="130" Binding="{Binding Row.Serial}" CellStyleClasses="dimmed" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="96" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTemplateColumn Tag="vulnerabilities" Header="Vulnerabilities" Width="120*" MinWidth="110" SortMemberPath="Row.Vulnerabilities.SortKey">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="dev:IDeviceGridItem">
+                    <!-- "2 · High": red for High and Critical, amber for Medium, plain for Low; the CVEs in the tooltip -->
+                    <Panel ToolTip.Tip="{Binding Row.Vulnerabilities, Converter={x:Static vuln:VulnerabilityTip.ForCell}}">
+                      <TextBlock Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsMinor}" />
+                      <ui:StatusChip Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsModerate}" IsWarning="True" />
+                      <ui:StatusChip Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsSevere}" IsError="True" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
               <DataGridTextColumn Tag="soc" Header="SoC" Width="100*" MinWidth="100" Binding="{Binding Row.Soc}" CellStyleClasses="dimmed" x:DataType="dev:IDeviceGridItem" />
               <DataGridTextColumn Tag="architecture" Header="Architecture" Width="100*" MinWidth="100" Binding="{Binding Row.Architecture}" CellStyleClasses="dimmed" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="clock" Header="Clock" Width="90*" MinWidth="90" SortMemberPath="Row.ClockSortKey">

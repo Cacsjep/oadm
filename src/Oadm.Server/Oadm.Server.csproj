@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The release's list of Axis CVEs (docs/spec/vulnerabilities.md; made by tools/Oadm.Vulnerabilities). -->
+    <EmbeddedResource Include="Vulnerabilities\axis-vulnerabilities.json" LogicalName="Oadm.Server.Vulnerabilities.axis-vulnerabilities.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Server.Tests" />
   </ItemGroup>
 

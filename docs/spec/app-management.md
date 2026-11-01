@@ -63,7 +63,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
   - right: **Install licenses**, **Start**, **Stop**, **Remove** (what does not fit goes into the More menu) and
     **Search applications**.
   - **Devices** (left): one row per device with shown rows after the filters, in address order: address, model, MAC
-    address, AXIS OS, SoC (the SoC column's text, `DeviceTexts.Soc`), architecture (`IDeviceInfo.Soc` / `Architecture`,
+    address, AXIS OS, SoC (the SoC column's short text, `DeviceTexts.Soc`: "A8", "CV25"; the search also finds the full name), architecture (`IDeviceInfo.Soc` / `Architecture`,
     SDK 0.7.0), Applications (the shown count, right-aligned), Status: a running task ("Stopping"), the read error (Not
     checked as a warning), "No applications", "All running" (ok) or the problems ("1 task problem, 1 license problem,
     1 license ends soon, 2 not running"; error for a failed task or a missing or invalid license, warning for licenses

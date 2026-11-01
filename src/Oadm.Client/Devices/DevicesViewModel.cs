@@ -141,6 +141,13 @@ public sealed partial class DevicesViewModel : ObservableObject
         ExpandCompliance = columns.ExpandCompliance;
         HasCompliance = store.Compliance.IsActive;
         store.Compliance.ChecksChanged += (_, _) => HasCompliance = store.Compliance.IsActive;
+        store.Vulnerabilities.Changed += (_, _) =>
+        {
+            if (Oadm.Contracts.Vulnerabilities.CveId.FromSearch(SearchText) is not null)
+            {
+                ApplyFilter(); // a search by CVE follows a new list
+            }
+        };
         OnHasComplianceChanged(HasCompliance);
         HasSites = store.Sites.HasSites;
         store.Sites.PropertyChanged += (_, _) => HasSites = store.Sites.HasSites;

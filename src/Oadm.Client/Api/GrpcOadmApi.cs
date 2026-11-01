@@ -497,6 +497,15 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<ServerSettings> GetSettingsAsync(CancellationToken ct) =>
         await C.Settings.GetAsync(new Empty(), cancellationToken: ct);
 
+    public async Task<VulnerabilityListReply> GetVulnerabilitiesAsync(CancellationToken ct) =>
+        await C.Vulnerabilities.GetAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<VulnerabilityListReply> UploadVulnerabilitiesAsync(string listJson, CancellationToken ct) =>
+        await C.Vulnerabilities.UploadAsync(new UploadVulnerabilitiesRequest { ListJson = listJson }, cancellationToken: ct);
+
+    public async Task<VulnerabilityListReply> RefreshVulnerabilitiesAsync(CancellationToken ct) =>
+        await C.Vulnerabilities.RefreshAsync(new Empty(), cancellationToken: ct);
+
     public async Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct) =>
         await C.Settings.SetAsync(settings, cancellationToken: ct);
 
@@ -731,6 +740,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public WaitingDeviceService.WaitingDeviceServiceClient Waiting { get; } = new(channel);
         public EventService.EventServiceClient Events { get; } = new(channel);
         public ComplianceService.ComplianceServiceClient Compliance { get; } = new(channel);
+        public VulnerabilityService.VulnerabilityServiceClient Vulnerabilities { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
         public LicenseService.LicenseServiceClient License { get; } = new(channel);
         public SupportService.SupportServiceClient Support { get; } = new(channel);

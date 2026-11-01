@@ -88,5 +88,7 @@
     <!-- Terms of use, shown on the first start (followed by the license, as the terms say) and at the top of About. -->
     <EmbeddedResource Include="..\..\TERMS.md" LogicalName="Oadm.Client.TERMS.md" Link="Settings\TERMS.md" />
     <EmbeddedResource Include="..\..\LICENSE" LogicalName="Oadm.Client.LICENSE" Link="Settings\LICENSE" />
+    <!-- Fake mode: the release list of Axis CVEs (docs/spec/vulnerabilities.md). -->
+    <EmbeddedResource Include="..\Oadm.Server\Vulnerabilities\axis-vulnerabilities.json" LogicalName="Oadm.Client.Api.FakeVulnerabilities.json" Link="Api\FakeVulnerabilities.json" />
   </ItemGroup>
 </Project>

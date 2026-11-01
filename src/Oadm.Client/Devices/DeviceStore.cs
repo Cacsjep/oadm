@@ -47,6 +47,13 @@ public sealed class DeviceStore
     public DeviceStore(TagStore? tags = null)
     {
         Tags = tags ?? new TagStore();
+        Vulnerabilities.Changed += (_, _) =>
+        {
+            foreach (var row in Devices)
+            {
+                row.OnVulnerabilitiesChanged(); // a new list: every cell matches again (cached per model and firmware)
+            }
+        };
     }
 
     /// <summary>The client's tag definitions (TagService.Watch), shared by every row's chips.</summary>
@@ -60,6 +67,9 @@ public sealed class DeviceStore
 
     /// <summary>The compliance checks and their results (ComplianceService), the Compliance column of every row.</summary>
     public Compliance.ComplianceStore Compliance { get; } = new();
+
+    /// <summary>The list of Axis CVEs (VulnerabilityService), the Vulnerabilities column of every row.</summary>
+    public Vulnerabilities.VulnerabilityCatalog Vulnerabilities { get; } = new();
 
     public RangeObservableCollection<DeviceRowViewModel> Devices { get; } = [];
 
@@ -142,7 +152,7 @@ public sealed class DeviceStore
             }
             else
             {
-                prepared.AttachStores(Tags, Compliance);
+                prepared.AttachStores(Tags, Compliance, Vulnerabilities);
                 _byId[device.Id] = prepared;
                 added.Add(prepared);
                 DevicesAtSite += prepared.IsAtSite ? 1 : 0;
@@ -220,7 +230,7 @@ public sealed class DeviceStore
             }
             else
             {
-                row = new DeviceRowViewModel(change.Device, Tags, Compliance);
+                row = new DeviceRowViewModel(change.Device, Tags, Compliance, vulnerabilities: Vulnerabilities);
                 _byId[id] = row;
                 added.Add(row);
                 changedIds.Add(id);

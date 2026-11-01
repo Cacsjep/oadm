@@ -47,6 +47,9 @@ message ServerSettings {
   // Polling.ClockToleranceSeconds: a device clock that differs more from the server's counts as off (Clock column, the
   // event Any device: clock off). Default 2, 1..3600; optional so a partial Set without it keeps the stored value.
   optional int32 clock_tolerance_seconds = 13;
+  // Vulnerabilities.Update: who fetches the list of Axis CVEs online, "off" (default, no outgoing call), "server" or
+  // "clients" (docs/spec/vulnerabilities.md); optional so a partial Set without it keeps the stored value.
+  optional string vulnerability_update = 14;
   // Read only (Get and Set replies), production hardening 3: set after the server had to replace its master key.
   // Clients show it as a banner until the user dismisses it (remembered per client by id). Field number kept high
   // on purpose (other settings use the low numbers).

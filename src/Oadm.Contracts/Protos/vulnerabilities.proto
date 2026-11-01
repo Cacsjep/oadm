@@ -1,0 +1,32 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// The Axis CVEs of device firmware OADM knows (docs/spec/vulnerabilities.md). The server keeps the newest list (the base
+// list of the release, or one fetched online when the setting Vulnerabilities.Update allows it); the clients match the
+// devices against it.
+service VulnerabilityService {
+  // The list and how it is kept up to date. Every signed-in user.
+  rpc Get (Empty) returns (VulnerabilityListReply);
+  // A list a client fetched (only while Vulnerabilities.Update is "clients"): kept when it parses, stays within the limits
+  // and is newer than the server's; audited. FAILED_PRECONDITION while the setting is another one, INVALID_ARGUMENT for a
+  // list that does not parse. Every signed-in user: the client of whoever starts first brings it.
+  rpc Upload (UploadVulnerabilitiesRequest) returns (VulnerabilityListReply);
+  // The server fetches the list now (only while Vulnerabilities.Update is "server"); UNAVAILABLE when it cannot reach it.
+  // Administrators.
+  rpc Refresh (Empty) returns (VulnerabilityListReply);
+}
+
+message VulnerabilityListReply {
+  string list_json = 1;                     // VulnerabilityList (Oadm.Contracts.Vulnerabilities), about 60 KB
+  string update = 2;                        // Vulnerabilities.Update: "off", "server" or "clients"
+  google.protobuf.Timestamp updated = 3;    // the list's date
+  string source = 4;                        // "release", "server" or "client"
+  int32 count = 5;                          // CVEs in the list
+}
+
+message UploadVulnerabilitiesRequest {
+  string list_json = 1;                     // VulnerabilityList, at most 2 MB
+}

@@ -31,16 +31,24 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     private TagStore? _tagStore;
     private Compliance.ComplianceStore? _complianceStore;
     private Compliance.DeviceCompliance? _compliance;
+    private Vulnerabilities.VulnerabilityCatalog? _vulnerabilityCatalog;
+    private string? _socFull;
+
+    /// <summary>The SoC as the device reports it with Axis' spelling ("Axis Artpec-8" as "ARTPEC-8"): the search finds both.</summary>
+    private string? SocSearch => _socFull?.Replace("Artpec", "ARTPEC", StringComparison.OrdinalIgnoreCase);
     private readonly TimeProvider _time;
 
     /// <param name="time">The clock of the certificate chips ("40 days"); tests pass a fake one.</param>
-    public DeviceRowViewModel(Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null, TimeProvider? time = null)
+    public DeviceRowViewModel(
+        Device device, TagStore? tags = null, Compliance.ComplianceStore? compliance = null, TimeProvider? time = null,
+        Vulnerabilities.VulnerabilityCatalog? vulnerabilities = null)
     {
         ArgumentNullException.ThrowIfNull(device);
         _time = time ?? TimeProvider.System;
         Id = device.Id;
         _tagStore = tags;
         _complianceStore = compliance;
+        _vulnerabilityCatalog = vulnerabilities;
         Update(device);
     }
 
@@ -50,10 +58,11 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     /// Gives a row built off the UI thread without the stores (<see cref="DeviceStore.Prepare"/>) the client's tag and
     /// compliance stores; UI thread, before the row is shown. The tag chips then use the shared tags.
     /// </summary>
-    internal void AttachStores(TagStore? tags, Compliance.ComplianceStore? compliance)
+    internal void AttachStores(TagStore? tags, Compliance.ComplianceStore? compliance, Vulnerabilities.VulnerabilityCatalog? vulnerabilities = null)
     {
         _tagStore = tags;
         _complianceStore = compliance;
+        _vulnerabilityCatalog = vulnerabilities;
         if (tags is not null && Tags.Count > 0)
         {
             TagChips = Tags.Select(tags.Resolve).ToList();
@@ -62,6 +71,17 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
 
     /// <summary>The device's compliance (Compliance column); the same object for the whole session.</summary>
     public Compliance.DeviceCompliance Compliance => _compliance ??= _complianceStore?.For(Id) ?? new Compliance.ComplianceStore().For(Id);
+
+    /// <summary>The Axis CVEs this device may be affected by (Vulnerabilities column): by model and firmware, shared and cached.</summary>
+    public Vulnerabilities.DeviceVulnerabilities Vulnerabilities =>
+        _vulnerabilityCatalog?.For(Model, FirmwareVersion) ?? Oadm.Client.Vulnerabilities.DeviceVulnerabilities.None;
+
+    /// <summary>A new list of CVEs arrived: the cell reads its match again.</summary>
+    internal void OnVulnerabilitiesChanged() => OnPropertyChanged(nameof(Vulnerabilities));
+
+    partial void OnModelChanged(string? value) => OnPropertyChanged(nameof(Vulnerabilities));
+
+    partial void OnFirmwareVersionChanged(string? value) => OnPropertyChanged(nameof(Vulnerabilities));
 
     /// <inheritdoc />
     public DeviceRowViewModel Row => this;
@@ -222,6 +242,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
         Category = device.Category;
         ProductType = string.IsNullOrEmpty(device.ProductType) ? null : device.ProductType;
         Soc = Oadm.Sdk.Client.DeviceTexts.Soc(device.Soc);
+        _socFull = device.Soc;
         Architecture = string.IsNullOrEmpty(device.Architecture) ? null : device.Architecture;
         int? clockOffsetMs = device.HasClockOffsetMs ? device.ClockOffsetMs : null;
         Clock = DeviceClockText.ToChip(clockOffsetMs, device.NtpState, device.ClockOff, device.ClockBeyondTolerance);
@@ -281,8 +302,14 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
             return true;
         }
 
+        // A CVE id ("CVE-2024-6509"): the devices it may affect (docs/spec/vulnerabilities.md).
+        if (Oadm.Contracts.Vulnerabilities.CveId.FromSearch(search) is { } cve)
+        {
+            return Vulnerabilities.Ids.Contains(cve);
+        }
+
         string term = search.Trim();
-        return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc)
+        return Contains(Serial) || Contains(Address) || Contains(HostName) || Contains(Model) || Contains(FirmwareVersion) || Contains(Soc) || Contains(SocSearch)
             || Contains(Architecture) || Contains(Clock.Text) || Contains(ClockDetail) || Contains(SiteName) || Contains(StatusText) || Tags.Any(Contains);
 
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;

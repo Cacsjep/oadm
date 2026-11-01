@@ -75,6 +75,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => SitesLoopAsync(ct), ct);
         _ = Task.Run(() => ComplianceChecksLoopAsync(ct), ct);
         _ = Task.Run(() => ComplianceResultsLoopAsync(ct), ct);
+        _ = Task.Run(() => VulnerabilityLoopAsync(ct), ct);
         if (_session is not null)
         {
             _ = Task.Run(() => SessionLoopAsync(_session, ct), ct);
@@ -374,6 +375,48 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             _ui.Post(() => _devices.Changed -= OnDevices);
         }
     }
+
+    /// <summary>Hourly check of the vulnerability list; a client fetches online only with the server's setting "By the clients".</summary>
+    public static readonly TimeSpan VulnerabilityPeriod = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// The server's list of Axis CVEs (the Vulnerabilities column): at connect, then every hour; with the setting "By the
+    /// clients" this client fetches a newer one online when the server's is older than a day (docs/spec/vulnerabilities.md).
+    /// </summary>
+    private async Task VulnerabilityLoopAsync(CancellationToken ct)
+    {
+        var updates = new Vulnerabilities.VulnerabilityUpdates(_api, _devices.Vulnerabilities, _ui, time: _time);
+        TimeSpan delay = MinDelay;
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await updates.SyncAsync(force: false, ct).ConfigureAwait(false);
+                delay = VulnerabilityPeriod;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogVulnerabilitiesFailed(ex);
+                delay = delay >= VulnerabilityPeriod ? VulnerabilityPeriod : TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks * 4, delay.Ticks * 2));
+            }
+
+            try
+            {
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vulnerability list not updated")]
+    private partial void LogVulnerabilitiesFailed(Exception ex);
 
     /// <summary>Whether the role may see compliance (a server without roles: everyone).</summary>
     private bool MaySeeCompliance => _session is null || _session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.ComplianceView);

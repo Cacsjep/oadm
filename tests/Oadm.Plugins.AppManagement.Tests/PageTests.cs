@@ -193,7 +193,7 @@ public sealed class PageTests
 
         Assert.Equal(4, vm.Devices.Count);
         var rows = vm.Devices.ToDictionary(r => r.DeviceId);
-        Assert.Equal(("ARTPEC-7", "armv7hf", 1), (rows[b.DeviceId].Soc, rows[b.DeviceId].Architecture, rows[b.DeviceId].AppCount));
+        Assert.Equal(("A7", "armv7hf", 1), (rows[b.DeviceId].Soc, rows[b.DeviceId].Architecture, rows[b.DeviceId].AppCount));
         Assert.Equal("1 license problem, 1 not running", rows[a.DeviceId].SummaryText);
         Assert.True(rows[a.DeviceId].IsError);
         Assert.Equal("All running", rows[b.DeviceId].SummaryText);

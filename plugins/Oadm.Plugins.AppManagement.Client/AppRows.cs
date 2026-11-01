@@ -60,7 +60,7 @@ public sealed partial class AppRow
         }
 
         AppHaystack = string.Join('\n', Address, AppName, AppKey, Vendor, Version);
-        Haystack = string.Join('\n', Address, Mac, Model, Firmware, DeviceTexts.Soc(device.Soc), device.Architecture, AppName, AppKey, Vendor, Version);
+        Haystack = string.Join('\n', Address, Mac, Model, Firmware, DeviceTexts.Soc(device.Soc), device.Soc, device.Architecture, AppName, AppKey, Vendor, Version);
     }
 
     /// <summary>The device's rows: one per application (sorted by name), and the row without one.</summary>

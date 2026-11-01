@@ -284,13 +284,16 @@ public sealed class ColumnLayoutTests
         var layout = new ColumnLayoutViewModel(new InMemoryClientSettingsStore());
 
         Assert.Equal(
-            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "soc", "architecture", "clock", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
+            ["icon", "address", "model", "status", "compliance", "mac", "firmware", "vulnerabilities", "soc", "architecture", "clock", "tags", "site", "dhcp", "https", "certExpires", "certTrust", "dot1x"],
             layout.Columns.Select(c => c.Key).ToArray());
         Assert.DoesNotContain(layout.Choosable, c => c.Key == "icon");
         Assert.Equal("IEEE 802.1X", layout.Find("dot1x")!.Header);
         Assert.False(layout.Find("architecture")!.IsVisible); // off until chosen, like Compliance
-        Assert.True(layout.Find("soc")!.IsVisible);
+        Assert.False(layout.Find("soc")!.IsVisible); // off until chosen
         Assert.False(layout.Find("dhcp")!.IsVisible); // off until chosen
+        Assert.False(layout.Find("https")!.IsVisible); // off until chosen
+        Assert.False(layout.Find("dot1x")!.IsVisible); // off until chosen
+        Assert.True(layout.Find("vulnerabilities")!.IsVisible);
         Assert.True(layout.Find("clock")!.IsVisible);
         Assert.Equal("Clock", layout.Find("clock")!.Header);
     }
@@ -301,11 +304,13 @@ public sealed class ColumnLayoutTests
         var settings = new InMemoryClientSettingsStore();
         var layout = new ColumnLayoutViewModel(settings);
 
-        layout.Find("dot1x")!.IsVisible = false;
+        layout.Find("dot1x")!.IsVisible = true; // off by default
+        layout.Find("clock")!.IsVisible = false;
         layout.Capture([("model", 1, 200.0), ("mac", 4, 150.0)]);
 
         var restored = new ColumnLayoutViewModel(settings);
-        Assert.False(restored.Find("dot1x")!.IsVisible);
+        Assert.True(restored.Find("dot1x")!.IsVisible);
+        Assert.False(restored.Find("clock")!.IsVisible);
         Assert.Equal(200.0, restored.Find("model")!.Width);
         Assert.True(restored.Find("model")!.DisplayIndex < restored.Find("mac")!.DisplayIndex);
     }

@@ -186,6 +186,9 @@ public static class AccessPolicy
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).
         ["/oadm.v1.SettingsService/Get"] = AccessRule.SignedIn,
+        ["/oadm.v1.VulnerabilityService/Get"] = AccessRule.SignedIn,
+        ["/oadm.v1.VulnerabilityService/Upload"] = AccessRule.SignedIn, // only while the setting is "clients"; audited
+        ["/oadm.v1.VulnerabilityService/Refresh"] = AccessRule.Admin,
         ["/oadm.v1.SettingsService/Set"] = AccessRule.Admin.ForAllDevices(),
         ["/oadm.v1.SettingsService/ListCredentials"] = AccessRule.Admin.ForAllDevices(), // never for users with a group
         ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin.ForAllDevices(),

@@ -120,6 +120,28 @@
           </StackPanel>
         </c:CollapsibleCard>
 
+        <!-- docs/spec/vulnerabilities.md: who fetches the list of Axis CVEs online (saved with Save), the list, Check now -->
+        <c:CollapsibleCard Title="Vulnerabilities">
+          <StackPanel Classes="form">
+            <ui:FormField Label="Update the list online" IsVisible="{Binding IsAdmin}"
+                          Hint="Off: the list of the OADM release. Only the public CVE list is fetched, nothing about the devices.">
+              <ComboBox ItemsSource="{x:Static settings:SettingsViewModel.VulnerabilityUpdateChoices}" SelectedIndex="{Binding VulnerabilityUpdateIndex}" />
+            </ui:FormField>
+            <ui:FormField Label="Update the list online" IsVisible="{Binding IsOperator}">
+              <TextBlock Text="{Binding VulnerabilityUpdateText}" />
+            </ui:FormField>
+            <ui:FormField Label="List">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <TextBlock Text="{Binding VulnerabilityListText}" VerticalAlignment="Center" />
+                <Button Classes="secondary" Content="Check now" Command="{Binding CheckVulnerabilitiesCommand}" IsVisible="{Binding IsAdmin}" />
+              </StackPanel>
+            </ui:FormField>
+            <TextBlock Text="{Binding VulnerabilityMessage}" Classes.error="{Binding VulnerabilityMessageIsError}"
+                       Classes.secondary="{Binding !VulnerabilityMessageIsError}" TextWrapping="Wrap"
+                       IsVisible="{Binding VulnerabilityMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </c:CollapsibleCard>
+
         <c:CollapsibleCard Title="Server">
           <StackPanel Classes="form">
             <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
@@ -147,7 +169,7 @@
             <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
                     ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
             <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
-            <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="4,0,0,0" Text="Saves Polling, Discovery, Tasks, Security and Server" />
+            <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="4,0,0,0" Text="Saves Polling, Discovery, Tasks, Security, Vulnerabilities and Server" />
           </StackPanel>
           <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
                      TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

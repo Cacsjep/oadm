@@ -253,6 +253,10 @@ used again.
 - **`LicenseService`** (`license.proto`, `docs/spec/licensing.md`): `GetLicense` (every signed-in user), `ImportLicense`
   and `RemoveLicense` (Admin, audited; INVALID_ARGUMENT with the reason), `StartTrial` (Admin, audited, once per server;
   FAILED_PRECONDITION with the reason).
+- **`VulnerabilityService`** (`vulnerabilities.proto`, `docs/spec/vulnerabilities.md`): `Get` (signed in: the list as JSON,
+  the setting, date, source, count), `Upload` (signed in, only while `Vulnerabilities.Update` is "clients", else
+  FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse; a newer list is kept and audited "Updated
+  vulnerability list"), `Refresh` (Admin, only while the setting is "server"; UNAVAILABLE when the internet is not reached).
 - **`SupportService`** (`support.proto`, `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
 - **`BackupService`** (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,

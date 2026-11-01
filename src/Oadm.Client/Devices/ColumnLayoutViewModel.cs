@@ -37,6 +37,18 @@ public sealed class ColumnLayoutViewModel
     /// <summary>The Architecture column ("aarch64"), off until turned on in the column chooser.</summary>
     public const string ArchitectureKey = "architecture";
 
+    /// <summary>The Vulnerabilities column: the Axis CVEs a device may be affected by ("2 · High", docs/spec/vulnerabilities.md).</summary>
+    public const string VulnerabilitiesKey = "vulnerabilities";
+
+    /// <summary>The SoC column ("A8"), off until turned on in the column chooser.</summary>
+    public const string SocKey = "soc";
+
+    /// <summary>The HTTPS column (Enabled / Disabled), off until turned on in the column chooser.</summary>
+    public const string HttpsKey = "https";
+
+    /// <summary>The IEEE 802.1X column (Enabled / Disabled), off until turned on in the column chooser.</summary>
+    public const string Dot1xKey = "dot1x";
+
     /// <summary>The DHCP column (Yes / No), off until turned on in the column chooser.</summary>
     public const string DhcpKey = "dhcp";
 
@@ -50,16 +62,17 @@ public sealed class ColumnLayoutViewModel
         (ComplianceKey, "Compliance"),
         ("mac", "MAC address"),
         ("firmware", "Firmware"),
-        ("soc", "SoC"),
+        (VulnerabilitiesKey, "Vulnerabilities"),
+        (SocKey, "SoC"),
         (ArchitectureKey, "Architecture"),
         ("clock", "Clock"),
         ("tags", "Tags"),
         ("site", "Site"),
         (DhcpKey, "DHCP"),
-        ("https", "HTTPS"),
+        (HttpsKey, "HTTPS"),
         ("certExpires", "Certificate expires"),
         ("certTrust", "Certificate"),
-        ("dot1x", "IEEE 802.1X"),
+        (Dot1xKey, "IEEE 802.1X"),
     ];
 
     private readonly IClientSettingsStore _settings;
@@ -104,8 +117,11 @@ public sealed class ColumnLayoutViewModel
         }
     }
 
-    /// <summary>Every column shows by default except Compliance, Architecture and DHCP (turned on in the column chooser).</summary>
-    public static bool DefaultVisible(string key) => key is not (ComplianceKey or ArchitectureKey or DhcpKey);
+    /// <summary>
+    /// Every column shows by default except Compliance, SoC, Architecture, DHCP, HTTPS and IEEE 802.1X (turned on in the
+    /// column chooser). A layout a client saved keeps its own choice.
+    /// </summary>
+    public static bool DefaultVisible(string key) => key is not (ComplianceKey or SocKey or ArchitectureKey or DhcpKey or HttpsKey or Dot1xKey);
 
     /// <summary>The device grid shows one column per compliance check, persisted per client.</summary>
     public bool ExpandCompliance

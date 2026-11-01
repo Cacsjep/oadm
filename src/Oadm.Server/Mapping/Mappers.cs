@@ -417,6 +417,7 @@ public static class Mappers
             WaitingRetryMinutes = settings.WaitingRetryMinutes,
             AllowBasicOverHttp = settings.AllowBasicOverHttp,
             ClockToleranceSeconds = settings.ClockToleranceSeconds,
+            VulnerabilityUpdate = settings.VulnerabilityUpdate,
             ServerVersion = ServerVersion,
         };
     }
@@ -442,7 +443,8 @@ public static class Mappers
             proto.HasMaxParallelTasksPerPlugin ? proto.MaxParallelTasksPerPlugin : current.MaxParallelTasksPerPlugin,
             proto.HasWaitingRetryMinutes ? proto.WaitingRetryMinutes : current.WaitingRetryMinutes,
             proto.HasAllowBasicOverHttp ? proto.AllowBasicOverHttp : current.AllowBasicOverHttp,
-            proto.HasClockToleranceSeconds ? proto.ClockToleranceSeconds : current.ClockToleranceSeconds);
+            proto.HasClockToleranceSeconds ? proto.ClockToleranceSeconds : current.ClockToleranceSeconds,
+            proto.HasVulnerabilityUpdate ? proto.VulnerabilityUpdate.Trim() : current.VulnerabilityUpdate);
     }
 
     public static Proto.DeviceStatus ToProto(DiscoveredDeviceStatus status) => status switch

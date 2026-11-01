@@ -13,6 +13,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 | `Polling.IntervalSeconds` | unused since 4.8 (the status poll pauses 60 s after each round, docs/spec/main-window.md); still read and written for backups and older clients, not on the Settings page | `polling_interval_seconds = 1` |
 | `Polling.FullRefreshMinutes` | unused since 4.8 (device details are read in rounds with a 10 min pause, docs/spec/main-window.md); still read and written for backups and older clients, not on the Settings page | `full_refresh_minutes = 6` |
 | `Polling.ClockToleranceSeconds` | 2, 1..3600 | Polling "Allowed clock difference (s)", `optional clock_tolerance_seconds = 13`; read live (`ClockTolerance`), see `docs/spec/main-window.md` "Clock" |
+| `Vulnerabilities.Update` | "off", "server", "clients" | Vulnerabilities "Update the list online" (Off, By the server, By the clients), `optional vulnerability_update = 14`; who fetches the list of Axis CVEs online, see `docs/spec/vulnerabilities.md` |
 | `Scan.Parallelism` | 32 | Discovery "Addresses scanned at once", `scan_parallelism = 2` |
 | `Scan.TimeoutMs` | 1500 | Discovery "Scan timeout (ms)" (range scans and the first contact of imported lines), `scan_timeout_ms = 3` |
 | `Discovery.ZeroConfSeconds` | 30, 5..300 | Discovery "Discovery duration (s)": Discovery on the add page ends after this time, `zero_conf_seconds = 8` |

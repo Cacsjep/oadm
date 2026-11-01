@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Makes the base list of Axis CVEs shipped with OADM (src/Oadm.Server/Vulnerabilities/axis-vulnerabilities.json, see
+    docs/spec/vulnerabilities.md): fetches it from NVD and cve.org, or builds it from saved answers. Run before a release.
+    Build helper only, never shipped.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Oadm.Contracts\Oadm.Contracts.csproj" />
+  </ItemGroup>
+</Project>

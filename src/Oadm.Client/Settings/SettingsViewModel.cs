@@ -137,7 +137,8 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public SettingsViewModel(IOadmApi api, ServerConnection connection, ILogger<SettingsViewModel> logger, UserSession? session = null,
         Infrastructure.IClientSettingsStore? clientSettings = null, LiveView.GpuDecodingService? gpu = null, Infrastructure.IUiDispatcher? ui = null,
         LiveView.LiveVideoSettings? video = null, Oadm.Client.Backup.BackupViewModel? backup = null,
-        Licensing.LicenseViewModel? license = null, Oadm.Client.Support.SupportViewModel? support = null)
+        Licensing.LicenseViewModel? license = null, Oadm.Client.Support.SupportViewModel? support = null,
+        Devices.DeviceStore? devices = null)
     {
         License = license;
         Support = support;
@@ -150,6 +151,12 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         _clientSettings = clientSettings;
         _gpu = gpu;
         _ui = ui;
+        if (devices is not null)
+        {
+            AttachVulnerabilities(devices.Vulnerabilities, new Vulnerabilities.VulnerabilityUpdates(
+                api, devices.Vulnerabilities, ui ?? new Infrastructure.ImmediateUiDispatcher()));
+        }
+
         _gpuDecoding = clientSettings?.Current.GpuDecoding ?? true;
         _tellAboutNewVersions = clientSettings?.Current.TellAboutNewVersions ?? true;
         _appearance = clientSettings?.Current.Appearance ?? Oadm.Theme.OadmColors.Current;
@@ -346,6 +353,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             WaitingRetryMinutes = (int)(WaitingRetryMinutes ?? 15),
             MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
             AllowBasicOverHttp = AllowBasicOverHttp,
+            VulnerabilityUpdate = VulnerabilityValue,
             ServerName = ServerName.Trim(),
             ListenUrl = ListenUrl.Trim(),
         };
@@ -353,6 +361,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         {
             IsBusy = true;
             Apply(await _api.SetSettingsAsync(settings, CancellationToken.None).ConfigureAwait(true));
+            await ReadVulnerabilitiesAsync().ConfigureAwait(true); // Check now follows the saved setting
             Validation.Reset(ServerFields);
             ServerMessageIsError = false;
             ServerMessage = "Saved. A changed listen URL takes effect after the server restarts.";
@@ -378,6 +387,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         MaxParallelTasksPerPlugin = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : DefaultParallelTasks; // unset = older server
         WaitingRetryMinutes = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : 15; // unset = older server
         AllowBasicOverHttp = settings.HasAllowBasicOverHttp && settings.AllowBasicOverHttp; // unset = older server (off)
+        VulnerabilityUpdateIndex = VulnerabilityIndexOf(settings.HasVulnerabilityUpdate ? settings.VulnerabilityUpdate : null); // unset = older server
         ServerName = settings.ServerName;
         ListenUrl = settings.ListenUrl;
     }

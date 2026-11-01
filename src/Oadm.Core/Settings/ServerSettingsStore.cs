@@ -75,7 +75,8 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             Read(rows, SettingKeys.TasksMaxParallelPerPlugin, defaults.MaxParallelTasksPerPlugin),
             Read(rows, SettingKeys.DevicesWaitingRetryMinutes, defaults.WaitingRetryMinutes),
             Read(rows, SettingKeys.DevicesAllowBasicOverHttp, defaults.AllowBasicOverHttp),
-            Read(rows, SettingKeys.PollingClockToleranceSeconds, defaults.ClockToleranceSeconds));
+            Read(rows, SettingKeys.PollingClockToleranceSeconds, defaults.ClockToleranceSeconds),
+            Read(rows, SettingKeys.VulnerabilitiesUpdate, defaults.VulnerabilityUpdate));
     }
 
     /// <summary>Validates and writes all Goal 1 settings in one transaction.</summary>
@@ -95,6 +96,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(settings.WaitingRetryMinutes),
             [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(settings.AllowBasicOverHttp),
             [SettingKeys.PollingClockToleranceSeconds] = JsonSerializer.Serialize(settings.ClockToleranceSeconds),
+            [SettingKeys.VulnerabilitiesUpdate] = JsonSerializer.Serialize(settings.VulnerabilityUpdate),
         };
         foreach (var (key, json) in values)
         {
@@ -219,6 +221,14 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
                 }
 
                 break;
+            case SettingKeys.VulnerabilitiesUpdate:
+                if (value.ValueKind != JsonValueKind.String || value.GetString() is not (ServerSettings.VulnerabilityUpdateOff
+                    or ServerSettings.VulnerabilityUpdateServer or ServerSettings.VulnerabilityUpdateClients))
+                {
+                    throw new ArgumentException($"'{key}' must be \"off\", \"server\" or \"clients\".", nameof(valueJson));
+                }
+
+                break;
             case SettingKeys.ServerName:
                 if (value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(value.GetString()))
                 {
@@ -270,6 +280,7 @@ public sealed class ServerSettingsStore(IDbContextFactory<OadmDbContext> dbFacto
             [SettingKeys.DevicesWaitingRetryMinutes] = JsonSerializer.Serialize(d.WaitingRetryMinutes),
             [SettingKeys.DevicesAllowBasicOverHttp] = JsonSerializer.Serialize(d.AllowBasicOverHttp),
             [SettingKeys.PollingClockToleranceSeconds] = JsonSerializer.Serialize(d.ClockToleranceSeconds),
+            [SettingKeys.VulnerabilitiesUpdate] = JsonSerializer.Serialize(d.VulnerabilityUpdate),
         };
     }
 }

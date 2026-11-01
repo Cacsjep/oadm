@@ -48,6 +48,7 @@ public static class AuditActions
     public const string ProLicenseRemoved = "Removed license";
     public const string ProTrialStarted = "Started trial";
     public const string SupportReportCreated = "Created support report";
+    public const string VulnerabilityListUpdated = "Updated vulnerability list";
     public const string ComplianceTurnedOn = "Turned compliance on";
     public const string ComplianceTurnedOff = "Turned compliance off";
     public const string ComplianceCheckCreated = "Created compliance check";

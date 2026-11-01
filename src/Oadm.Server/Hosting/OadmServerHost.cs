@@ -141,6 +141,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Licensing.LicenseGrpcService>();
         app.MapGrpcService<Support.SupportGrpcService>();
+        app.MapGrpcService<Vulnerabilities.VulnerabilityGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
@@ -266,6 +267,12 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<Backup.BackupManager>>()));
         services.AddHostedService<Backup.BackupScheduleHostedService>();
+        // Vulnerabilities (docs/spec/vulnerabilities.md): the list of Axis CVEs; fetched online only when the setting allows.
+        services.AddSingleton(sp => new Vulnerabilities.VulnerabilityStore(
+            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>()));
+        services.TryAddSingleton<Vulnerabilities.IVulnerabilitySource>(sp => new Vulnerabilities.InternetVulnerabilitySource(sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<Vulnerabilities.VulnerabilityUpdater>();
+        services.AddHostedService(sp => sp.GetRequiredService<Vulnerabilities.VulnerabilityUpdater>());
         // Support report (Settings page): the server's logs and a summary without secrets in one ZIP.
         services.AddSingleton(sp => new Support.SupportReport(
             sp.GetRequiredService<OadmPaths>(),

@@ -1039,7 +1039,15 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             int maxParallel = settings.HasMaxParallelTasksPerPlugin ? settings.MaxParallelTasksPerPlugin : _settings.MaxParallelTasksPerPlugin;
             int waitingRetry = settings.HasWaitingRetryMinutes ? settings.WaitingRetryMinutes : _settings.WaitingRetryMinutes;
             bool allowBasic = settings.HasAllowBasicOverHttp ? settings.AllowBasicOverHttp : _settings.AllowBasicOverHttp;
+            string vulnerabilityUpdate = settings.HasVulnerabilityUpdate ? settings.VulnerabilityUpdate
+                : _settings.HasVulnerabilityUpdate ? _settings.VulnerabilityUpdate : "off";
+            if (vulnerabilityUpdate is not ("off" or "server" or "clients"))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "'Vulnerabilities.Update' must be \"off\", \"server\" or \"clients\"."));
+            }
+
             _settings = settings.Clone();
+            _settings.VulnerabilityUpdate = vulnerabilityUpdate;
             _settings.WaitingRetryMinutes = waitingRetry;
             _settings.ClockToleranceSeconds = clockTolerance;
             _settings.AllowBasicOverHttp = allowBasic;

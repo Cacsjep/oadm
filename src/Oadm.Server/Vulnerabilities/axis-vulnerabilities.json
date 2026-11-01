@@ -1,0 +1,1758 @@
+{
+  "updated": "2026-11-01T17:45:04.1057112+00:00",
+  "source": "release",
+  "items": [
+    {
+      "id": "CVE-2026-4757",
+      "published": "2026-08-11T05:52:33.481+00:00",
+      "score": 7.2,
+      "severity": "High",
+      "description": "A VAPIX API parameter had improper input validation which could allow code execution and potentially lead to a privilege escalation. This flaw can only be exploited after authenticating with an administrator-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/41/7d/0f/cve-2026-4757pdf-en-US-543642.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.44"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2026-6505",
+      "published": "2026-08-11T05:49:51.278+00:00",
+      "score": 5.1,
+      "severity": "Medium",
+      "description": "The ACAP framework contains a Time-of-Check to Time-of-Use (TOCTOU) race condition, which could potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/fd/16/ab/cve-2026-6505pdf-en-US-543641.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.44"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-5304",
+      "published": "2026-08-11T05:47:49.075+00:00",
+      "score": 5.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacks input validation, which could potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/21/37/f2/cve-2026-5304pdf-en-US-543644.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.12"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-5303",
+      "published": "2026-08-11T05:45:56.671+00:00",
+      "score": 5.7,
+      "severity": "Medium",
+      "description": "The ACAP framework contains a Time-of-Check to Time-of-Use (TOCTOU) race condition, which could potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/d5/e8/6e/cve-2026-5303pdf-en-US-543643.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.31"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-6181",
+      "published": "2026-08-11T05:38:14.352+00:00",
+      "score": 5.9,
+      "severity": "Medium",
+      "description": "The Device Configuration Framework is vulnerable to an authentication bypass flaw. This flaw can only be exploited after authenticating with a viewer-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/9d/8a/ea/cve-2026-6181pdf-en-US-543646.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.13"
+            },
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.207"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-1185",
+      "published": "2026-05-12T05:49:46.712+00:00",
+      "score": 5.4,
+      "severity": "Medium",
+      "description": "A configuration file on the local file system had improper input validation which could allow code execution and potentially lead to privilege escalation. This vulnerability can only be exploited if an attacker can log in to the Axis device using SSH.",
+      "advisory": "https://www.axis.com/dam/public/69/df/8d/cve-2026-1185pdf-en-US-530733.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.10.36"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-0804",
+      "published": "2026-05-12T05:46:45.26+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacked sufficient input validation, which could allow a path traversal attack leading to potential privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/51/64/ea/cve-2026-0804pdf-en-US-530732.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.10.4"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-0802",
+      "published": "2026-05-12T05:44:59.349+00:00",
+      "score": 6,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacked sufficient input validation, which could allow command injection and potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/67/b8/75/cve-2026-0802pdf-en-US-530731.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.9.33"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-0541",
+      "published": "2026-05-12T05:42:27.982+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "ACAP applications can gain elevated privileges due to improper input validation during the installation process, potentially leading to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/fa/50/c7/cve-2026-0541pdf-en-US-530730.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.9.32"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-11142",
+      "published": "2026-02-10T05:32:19.555+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "The VAPIX API mediaclip.cgi that did not have a sufficient input validation allowing for a possible remote code execution. This flaw can only be exploited after authenticating with an operator- or administrator- privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/18/0e/90/cve-2025-11142pdf-en-US-519291.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.6.54",
+              "lessThanOrEqual": "12.7.35"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2025-9055",
+      "published": "2025-11-11T07:31:00.808+00:00",
+      "score": 6.4,
+      "severity": "Medium",
+      "description": "The VAPIX Edge storage API that allowed a privilege escalation, enabling a VAPIX administrator-privileged user to gain Linux Root privileges. This flaw can only be exploited after authenticating with an administrator-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/23/a3/00/cve-2025-9055pdf-en-US-504219.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.7.31"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-8998",
+      "published": "2025-11-11T07:28:40.933+00:00",
+      "score": 3.1,
+      "severity": "Low",
+      "description": "It was possible to upload files with a specific name to a temporary directory, which may result in process crashes and impact usability. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/f5/62/80/cve-2025-8998pdf-en-US-504374.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.0",
+              "lessThan": "6.50.5.22"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.90"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.124"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.306"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.178"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.7.27"
+            }
+          ]
+        }
+      ],
+      "severityRank": 1
+    },
+    {
+      "id": "CVE-2025-9524",
+      "published": "2025-11-11T07:25:45.754+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "The VAPIX API port.cgi did not have sufficient input validation, which may result in process crashes and impact usability. This vulnerability can only be exploited after authenticating with a viewer- operator- or administrator-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/f1/f0/1e/cve-2025-9524pdf-en-US-504220.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.0",
+              "lessThan": "6.50.5.21"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.89"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.123"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.305"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.177"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.7.11"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-8108",
+      "published": "2025-11-11T07:10:31.421+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file has improper permissions and lacks input validation, which could potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/38/20/aa/cve-2025-8108pdf-en-US-504218.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.7.33"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-6779",
+      "published": "2025-11-11T07:05:51.357+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file has improper permissions, which could allow command injection and potentially lead to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/92/9a/13/cve-2025-6779pdf-en-US-504217.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.40"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-6571",
+      "published": "2025-11-11T07:03:19.709+00:00",
+      "score": 6,
+      "severity": "Medium",
+      "description": "A 3rd-party component exposed its password in process arguments, allowing for low-privileged users to access it.",
+      "advisory": "https://www.axis.com/dam/public/1f/f8/f0/cve-2025-6571pdf-en-US-504216.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.66"
+            },
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.169"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-5452",
+      "published": "2025-11-11T07:00:46.077+00:00",
+      "score": 6.6,
+      "severity": "Medium",
+      "description": "A malicious ACAP application can gain access to admin-level service account credentials used by legitimate ACAP applications, leading to potential privilege escalation of the malicious ACAP application. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/39/ba/8b/cve-2025-5452pdf-en-US-504212.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.69"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-6298",
+      "published": "2025-11-11T06:56:50.533+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "ACAP applications can gain elevated privileges due to improper input validation, potentially leading to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/ef/91/c3/cve-2025-6298pdf-en-US-504215.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.28"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-5718",
+      "published": "2025-11-11T06:52:33.565+00:00",
+      "score": 6.8,
+      "severity": "Medium",
+      "description": "The ACAP Application framework could allow privilege escalation through a symlink attack. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/3c/a4/6a/cve-2025-5718pdf-en-US-504214.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.30"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-5454",
+      "published": "2025-11-11T06:50:19.13+00:00",
+      "score": 6.4,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacked sufficient input validation, which could allow a path traversal attack leading to potential privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/48/ab/82/cve-2025-5454pdf-en-US-504213.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.6.18"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-4645",
+      "published": "2025-11-11T06:45:29.674+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacked sufficient input validation, which could allow for arbitrary code execution. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/69/47/ff/cve-2025-4645pdf-en-US-504211.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0.",
+              "lessThan": "12.6.7"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-30027",
+      "published": "2025-08-12T05:18:26.937+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "An ACAP configuration file lacked sufficient input validation, which could allow for arbitrary code execution. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/ab/9a/a5/cve-2025-30027pdf-en-US-492762.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.36"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-3892",
+      "published": "2025-08-12T05:14:43.655+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "ACAP applications can be executed with elevated privileges, potentially leading to privilege escalation. This vulnerability can only be exploited if the Axis device is configured to allow the installation of unsigned ACAP applications, and if an attacker convinces the victim to install a malicious ACAP application.",
+      "advisory": "https://www.axis.com/dam/public/ae/19/16/cve-2025-3892pdf-en-US-492760.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.5.31"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-0358",
+      "published": "2025-06-02T07:39:50.165+00:00",
+      "score": 8.8,
+      "severity": "High",
+      "description": "During an annual penetration test conducted on behalf of Axis Communication, Truesec discovered a flaw in the VAPIX Device Configuration framework that allowed a privilege escalation, enabling a lower-privileged user to gain administrator privileges.",
+      "advisory": "https://www.axis.com/dam/public/35/90/85/cve-2025-0358pdf-en-US-483809.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.4.0"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2025-0325",
+      "published": "2025-06-02T07:36:55.8+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "A Guard Tour VAPIX API parameter allowed the use of arbitrary values and can be incorrectly called, allowing an attacker to block access to the guard tour configuration page in the web interface of the Axis device.",
+      "advisory": "https://www.axis.com/dam/public/d0/ae/fe/cve-2025-0325pdf-en-US-483808.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.0",
+              "lessThan": "6.50.5.21"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.74"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.100"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.278"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.142"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.4.28"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-0324",
+      "published": "2025-06-02T07:32:56.772+00:00",
+      "score": 9.4,
+      "severity": "Critical",
+      "description": "The VAPIX Device Configuration framework allowed a privilege escalation, enabling a lower-privileged user to gain administrator privileges.",
+      "advisory": "https://www.axis.com/dam/public/04/f3/1c/cve-2025-0324pdf-en-US-483807.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.8.0",
+              "lessThan": "11.11.140"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.33"
+            }
+          ]
+        }
+      ],
+      "severityRank": 4
+    },
+    {
+      "id": "CVE-2025-0361",
+      "published": "2025-04-08T05:38:02.631+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "During an annual penetration test conducted on behalf of Axis Communications, Truesec discovered a flaw in the VAPIX Device Configuration framework that allowed for unauthenticated username enumeration through the VAPIX Device Configuration SSH Management API.",
+      "advisory": "https://www.axis.com/dam/public/f4/9b/13/cve-2025-0361pdf-en-US-474511.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.141"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.56"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-47261",
+      "published": "2025-04-08T05:33:58.782+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "51l3nc3, a member of the AXIS OS Bug Bounty Program, has found that the VAPIX API uploadoverlayimage.cgi did not have sufficient input validation to allow an attacker to upload files to block access to create image overlays in the web interface of the Axis device.",
+      "advisory": "https://www.axis.com/dam/public/18/c5/b2/cve-2024-47261pdf-en-US-474505.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.12.0",
+              "lessThan": "10.12.276"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.141"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.56"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2025-0360",
+      "published": "2025-03-04T05:24:00.72+00:00",
+      "score": 7.8,
+      "severity": "High",
+      "description": "During an annual penetration test conducted on behalf of Axis Communication, Truesec discovered a flaw in the VAPIX Device Configuration framework that could lead to an incorrect user privilege level in the VAPIX service account D-Bus API.",
+      "advisory": "https://www.axis.com/dam/public/b1/fe/46/cve-2025-0360pdf-en-US-466887.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.135"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.2.41"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2025-0359",
+      "published": "2025-03-04T05:21:34.944+00:00",
+      "score": 8.5,
+      "severity": "High",
+      "description": "During an annual penetration test conducted on behalf of Axis Communication, Truesec discovered a flaw in the ACAP Application framework that allowed applications to access restricted D-Bus methods within the framework. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/68/08/c5/cve-2025-0359pdf-en-US-466885.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.135"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.2.52"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2024-47262",
+      "published": "2025-03-04T05:19:09.007+00:00",
+      "score": 5.3,
+      "severity": "Medium",
+      "description": "Dzmitry Lukyanenka, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API param.cgi was vulnerable to a race condition attack allowing for an attacker to block access to the web interface of the Axis device. Other API endpoints or services not making use of param.cgi are not affected. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/a3/18/6e/cve-2024-47262pdf-en-US-466884.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.0",
+              "lessThan": "6.50.5.19"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.66"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.90"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.270"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.127"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.4"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-47260",
+      "published": "2025-03-04T05:17:35.063+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "51l3nc3, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API mediaclip.cgi did not have a sufficient input validation allowing for uploading more audio clips then designed resulting in the Axis device running out of memory. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/1d/d3/ef/cve-2024-47260pdf-en-US-466883.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "9.80.0",
+              "lessThan": "9.80.89"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.270"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.135"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.3.1"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-47259",
+      "published": "2025-03-04T05:15:16.499+00:00",
+      "score": 3.5,
+      "severity": "Low",
+      "description": "Girishunawane, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API dynamicoverlay.cgi did not have a sufficient input validation allowing for a possible command injection leading to being able to transfer files to the Axis device with the purpose to exhaust system resources. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/13/cd/4a/cve-2024-47259pdf-en-US-466882.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.126"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.2.52"
+            }
+          ]
+        }
+      ],
+      "severityRank": 1
+    },
+    {
+      "id": "CVE-2024-8160",
+      "published": "2024-11-26T07:27:32.229+00:00",
+      "score": 3.8,
+      "severity": "Low",
+      "description": "Erik de Jong, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API ftptest.cgi did not have a sufficient input validation allowing for a possible command injection leading to being able to transfer files from/to the Axis device. This flaw can only be exploited after authenticating with an administrator-privileged service account. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/permalink/231071/cve-2024-8160pdf-en-US_InternalID-231071.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.9.0",
+              "lessThan": "10.12.257"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.1.21"
+            }
+          ]
+        }
+      ],
+      "severityRank": 1
+    },
+    {
+      "id": "CVE-2024-8772",
+      "published": "2024-11-26T07:24:27.026+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "51l3nc3, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API managedoverlayimages.cgi was vulnerable to a race condition attack allowing for an attacker to block access to the overlay configuration page in the web interface of the Axis device. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/permalink/231072/cve-2024-8772pdf-en-US_InternalID-231072.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "9.80.0",
+              "lessThan": "9.80.84"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.259"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.118"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.1.28"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-47257",
+      "published": "2024-11-26T07:21:41.556+00:00",
+      "score": 7.5,
+      "severity": "High",
+      "description": "Florent Thi\u00E9ry has found that selected Axis devices were vulnerable to handling certain ethernet frames which could lead to the Axis device becoming unavailable in the network. Axis has released patched AXIS OS versions for the highlighted flaw for products that are still under AXIS OS software support. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/b7/76/b2/cve-2024-47257pdf-en-US-458044.pdf",
+      "affected": [
+        {
+          "model": "Q6128-E",
+          "ranges": [
+            {
+              "track": "6.50"
+            }
+          ]
+        },
+        {
+          "model": "P1428-E",
+          "ranges": [
+            {
+              "track": "6.50"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2024-7784",
+      "published": "2024-09-10T05:14:33.855+00:00",
+      "score": 6.1,
+      "severity": "Medium",
+      "description": "During internal Axis Security Development Model (ASDM) threat-modelling, a flaw was found in the protection for device tampering (commonly known as Secure Boot) in AXIS OS making it vulnerable to a sophisticated attack to bypass this protection. To Axis\u0027 knowledge, there are no known exploits of the vulnerability at this time. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/ba/5f/4e/cve-2024-7784-en-US-448998.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.9.0",
+              "lessThan": "10.12.246"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.80"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.0.40"
+            }
+          ]
+        },
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.80"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.0.47"
+            }
+          ]
+        },
+        {
+          "ranges": [
+            {
+              "from": "10.10.0",
+              "lessThan": "10.12.247"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.85"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.0.47"
+            }
+          ]
+        },
+        {
+          "ranges": [
+            {
+              "from": "11.8.0",
+              "lessThan": "11.11.85"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.0.47"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-6979",
+      "published": "2024-09-10T05:07:42.554+00:00",
+      "score": 6.8,
+      "severity": "Medium",
+      "description": "Amin Aliakbari, member of the AXIS OS Bug Bounty Program, has found a broken access control which would lead to less-privileged operator- and/or viewer accounts having more privileges than designed. The risk of exploitation is very low as it requires complex steps to execute, including knowing of account passwords and social engineering attacks in tricking the administrator to perform specific configurations on operator- and/or viewer-privileged accounts. Axis has released patched AXIS OS a version for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/c3/44/5b/cve-2024-6979-en-US-448997.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.11.0",
+              "lessThan": "11.11.94"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-6173",
+      "published": "2024-09-10T05:03:35.854+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "51l3nc3, member of the AXIS OS Bug Bounty Program, has found that a Guard Tour VAPIX API parameter allowed the use of arbitrary values allowing for an attacker to block access to the guard tour configuration page in the web interface of the Axis device. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/5a/87/a2/cve-2024-6173-en-US-458042.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50",
+              "lessThan": "11.11"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-6509",
+      "published": "2024-09-10T04:58:28.559+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Marinus Pfund, member of the AXIS OS Bug Bounty Program, has found the VAPIX API alwaysmulti.cgi was vulnerable for file globbing which could lead to resource exhaustion of the Axis device. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/f6/c6/f5/cve-2024-6509-en-US-458043.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.0",
+              "lessThan": "6.50.5.19"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.59"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.78"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.249"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.93"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-0067",
+      "published": "2024-09-10T04:54:45.733+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "Marinus Pfund, member of the AXIS OS Bug Bounty Program, has found the VAPIX API ledlimit.cgi was vulnerable for path traversal attacks allowing to list folder/file names on the local file system of the Axis device. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/c7/d0/91/cve-2024-0067-en-US-448994.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "8.40",
+              "lessThan": "11.11"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-0066",
+      "published": "2024-06-18T06:10:25.8+00:00",
+      "score": 5.3,
+      "severity": "Medium",
+      "description": "Johan Fagerstr\u00F6m, member of the AXIS OS Bug Bounty Program, has found that a O3C feature may expose sensitive traffic between the client (Axis device) and (O3C) server. If O3C is not being used this flaw does not apply. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/03/49/2c/cve-2024-0066-en-US-442553.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "5.51",
+              "lessThan": "11.10"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-0055",
+      "published": "2024-03-19T06:39:24.1+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX APIs mediaclip.cgi and playclip.cgi was vulnerable for file globbing which could lead to a resource exhaustion attack. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/c4/00/c5/cve-2024-0055-en-US-432117.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.12",
+              "lessThan": "10.12.228"
+            },
+            {
+              "from": "10.12.0",
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.9.53"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2024-0054",
+      "published": "2024-03-19T06:35:15.078+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX APIs local_list.cgi, create_overlay.cgi and irissetup.cgi was vulnerable for file globbing which could lead to a resource exhaustion attack. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/76/f3/1d/cve-2024-0054-en-US-432116.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50",
+              "lessThan": "11.9"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2023-5800",
+      "published": "2024-02-05T05:20:38.668+00:00",
+      "score": 5.4,
+      "severity": "Medium",
+      "description": "Vintage, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API create_overlay.cgi did not have a sufficient input validation allowing for a possible remote code execution. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/89/d9/99/cve-2023-5800-en-US-424339.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "9.80",
+              "lessThan": "9.80.55"
+            },
+            {
+              "from": "10.12",
+              "lessThan": "10.12.220"
+            },
+            {
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.8.61"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2023-5677",
+      "published": "2024-02-05T05:20:24.483+00:00",
+      "score": 6.3,
+      "severity": "Medium",
+      "description": "Brandon Rothel from QED Secure Solutions and Sam Hanson of Dragos have found that the VAPIX API tcptest.cgi did not have a sufficient input validation allowing for a possible remote code execution. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account. The impact of exploiting this vulnerability is lower with operator-privileges compared to administrator-privileges service accounts. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/0a/47/d1/cve-2023-5677-en-US-483444.pdf",
+      "affected": [
+        {
+          "model": "M3024-LVE",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "M3025-VE",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "M7014",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "M7016",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "P1214-E",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "P7214",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "P7216",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "Q7401",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "Q7404",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "Q7414",
+          "ranges": [
+            {
+              "lessThan": "5.51.7.7"
+            }
+          ]
+        },
+        {
+          "model": "Q7424-R MK II",
+          "ranges": [
+            {
+              "lessThan": "5.51.3.9"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2023-5553",
+      "published": "2023-11-21T06:59:42.711+00:00",
+      "score": 7.6,
+      "severity": "High",
+      "description": "During internal Axis Security Development Model (ASDM) threat-modelling, a flaw was found in the protection for device tampering (commonly known as Secure Boot) in AXIS OS making it vulnerable to a sophisticated attack to bypass this protection. To Axis\u0027 knowledge, there are no known exploits of the vulnerability at this time. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/0a/66/25/cve-2023-5553-en-US-417789.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.12",
+              "lessThan": "10.12.213"
+            },
+            {
+              "from": "10.8",
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.7.57"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21418",
+      "published": "2023-11-21T06:56:09.221+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API irissetup.cgi was vulnerable to path traversal attacks that allows for file deletion. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account. The impact of exploiting this vulnerability is lower with operator service accounts and limited to non-system files compared to administrator-privileges. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/49/93/55/cve-2023-21418-en-US-417792.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "8.40",
+              "lessThan": "8.40.35"
+            },
+            {
+              "from": "9.80",
+              "lessThan": "9.80.49"
+            },
+            {
+              "from": "10.12",
+              "lessThan": "10.12.213"
+            },
+            {
+              "lessThan": "6.50.5.15"
+            },
+            {
+              "lessThan": "8.40"
+            },
+            {
+              "from": "8.41",
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.7.57"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21417",
+      "published": "2023-11-21T06:53:06.158+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API manageoverlayimage.cgi was vulnerable to path traversal attacks that allows for file/folder deletion. This flaw can only be exploited after authenticating with an operator- or administrator- privileged service account. The impact of exploiting this vulnerability is lower with operator service accounts and limited to non-system files compared to administrator-privileges. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/2a/82/12/cve-2023-21417-en-US-417791.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "9.80",
+              "lessThan": "9.80.49"
+            },
+            {
+              "from": "10.12",
+              "lessThan": "10.12.208"
+            },
+            {
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.7.57"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21416",
+      "published": "2023-11-21T06:49:12.027+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API dynamicoverlay.cgi was vulnerable to a Denial-of-Service attack allowing for an attacker to block access to the overlay configuration page in the web interface of the Axis device. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account however the impact is equal. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/35/2a/a6/cve-2023-21416-en-US-417790.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.12",
+              "lessThan": "10.12.213"
+            },
+            {
+              "lessThan": "10.12"
+            },
+            {
+              "from": "10.13",
+              "lessThan": "11.7.57"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21415",
+      "published": "2023-10-16T06:24:13.381+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Sandro Poppi, member of the AXIS OS Bug Bounty Program, has found that the VAPIX API overlay_del.cgi is vulnerable to path traversal attacks that allows for file deletion. This flaw can only be exploited after authenticating with an operator- or administrator-privileged service account. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/b6/55/e2/cve-2023-21415pdf-en-US-416245.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50.2",
+              "lessThan": "6.50.5.2"
+            },
+            {
+              "from": "8.40",
+              "lessThan": "8.40.35"
+            },
+            {
+              "from": "9.80",
+              "lessThan": "9.80.47"
+            },
+            {
+              "from": "10.12",
+              "lessThan": "10.12.206"
+            },
+            {
+              "from": "6.50.5.3",
+              "lessThan": "6.50.5.14"
+            },
+            {
+              "from": "11.0.81",
+              "lessThan": "11.6.94"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2023-21414",
+      "published": "2023-10-16T06:18:06.428+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "NCC Group has found a flaw during the annual internal penetration test ordered by Axis Communications. The protection for device tampering (commonly known as Secure Boot) contains a flaw which provides an opportunity for a sophisticated attack to bypass this protection. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/45/3c/a1/cve-2023-21414pdf-en-US-412758.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.11.55",
+              "lessThan": "10.12.206"
+            },
+            {
+              "from": "11.0.89",
+              "lessThan": "11.6.94"
+            },
+            {
+              "lessThan": "11.6.94"
+            },
+            {
+              "from": "10.11.55",
+              "lessThan": "10.12.206"
+            },
+            {
+              "from": "11.0.89",
+              "lessThan": "11.6.94"
+            }
+          ]
+        },
+        {
+          "model": "A8207-VE MK II",
+          "ranges": [
+            {
+              "lessThan": "11.6"
+            }
+          ]
+        },
+        {
+          "model": "Q3527-LVE",
+          "ranges": [
+            {
+              "from": "10.11",
+              "lessThan": "11.6"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21413",
+      "published": "2023-10-16T06:08:33.349+00:00",
+      "score": 9.1,
+      "severity": "Critical",
+      "description": "GoSecure on behalf of Genetec Inc. has found a flaw that allows for a remote code execution during the installation of ACAP applications on the Axis device. The application handling service in AXIS OS was vulnerable to command injection allowing an attacker to run arbitrary code. Axis has released patched AXIS OS versions for the highlighted flaw. Please refer to the Axis security advisory for more information and solution.",
+      "advisory": "https://www.axis.com/dam/public/ad/ff/83/cve-2023-21413pdf-en-US-412755.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "10.5.0",
+              "lessThan": "10.12.199"
+            },
+            {
+              "from": "11.0.89",
+              "lessThan": "11.6.94"
+            }
+          ]
+        }
+      ],
+      "severityRank": 4
+    },
+    {
+      "id": "CVE-2023-21406",
+      "published": "2023-07-25T07:38:13.757+00:00",
+      "score": 7.1,
+      "severity": "High",
+      "description": "Ariel Harush and Roy Hodir from OTORIO have found a flaw in the AXIS A1001 when communicating over OSDP. A heap-based buffer overflow was found in the pacsiod process which is handling the OSDP communication allowing to write outside of the allocated buffer. By appending invalid data to an OSDP message it was possible to write data beyond the heap allocated buffer. The data written outside the buffer could be used to execute arbitrary code. lease refer to the Axis security advisory for more information, mitigation and affected products and software versions.",
+      "advisory": "https://www.axis.com/dam/public/1b/21/5f/cve-2023-21406-en-US-407245.pdf",
+      "affected": [
+        {
+          "model": "A1001",
+          "ranges": [
+            {
+              "lessThanOrEqual": "1.65.4"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2023-21405",
+      "published": "2023-07-25T07:34:36.652+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Knud from Fraktal.fi has found a flaw in some Axis Network Door Controllers and Axis Network Intercoms when communicating over OSDP, highlighting that the OSDP message parser crashes the pacsiod process, causing a temporary unavailability of the door-controlling functionalities meaning that doors cannot be opened or closed. No sensitive or customer data can be extracted as the Axis device is not further compromised. Please refer to the Axis security advisory for more information, mitigation and affected products and software versions.",
+      "advisory": "https://www.axis.com/dam/public/7f/3a/ed/cve-2023-21405-en-US-407244.pdf",
+      "affected": [
+        {
+          "model": "A1001",
+          "ranges": [
+            {
+              "lessThanOrEqual": "1.65.4"
+            }
+          ]
+        },
+        {
+          "model": "A1210-B",
+          "ranges": [
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.6.16.0"
+            }
+          ]
+        },
+        {
+          "model": "A1601",
+          "ranges": [
+            {
+              "lessThanOrEqual": "1.84.4"
+            },
+            {
+              "lessThanOrEqual": "10.12.171.0"
+            },
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.6.16.0"
+            }
+          ]
+        },
+        {
+          "model": "A1610",
+          "ranges": [
+            {
+              "lessThanOrEqual": "10.12.171.0"
+            },
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.6.16.0"
+            }
+          ]
+        },
+        {
+          "model": "A1610-B",
+          "ranges": [
+            {
+              "lessThanOrEqual": "10.12.171.0"
+            },
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.6.16.0"
+            }
+          ]
+        },
+        {
+          "model": "A8207-VE",
+          "ranges": [
+            {
+              "lessThanOrEqual": "10.12.178"
+            },
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.5.53"
+            }
+          ]
+        },
+        {
+          "model": "A8207-VE MK II",
+          "ranges": [
+            {
+              "lessThanOrEqual": "10.12.178"
+            },
+            {
+              "from": "11.0",
+              "lessThanOrEqual": "11.5.53"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2023-21404",
+      "published": "2023-05-08T00:00:00+00:00",
+      "score": 5.3,
+      "severity": "Medium",
+      "description": "AXIS OS 11.0.X - 11.3.x use a static RSA key in legacy LUA-components to protect Axis-specific source code. The static RSA key is not used in any other secure communication nor can it be used to compromise the device or any customer data.",
+      "advisory": "https://www.axis.com/dam/public/07/0a/20/cve-2023-21404-en-US-398426.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "11.0.89",
+              "lessThan": "11.4.52"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2017-20049",
+      "published": "2022-06-15T17:35:25+00:00",
+      "score": 9.8,
+      "severity": "Critical",
+      "description": "A vulnerability, was found in legacy Axis devices such as P3225 and M3005. This affects an unknown part of the component CGI Script. The manipulation leads to improper privilege management. It is possible to initiate the attack remotely.",
+      "advisory": "https://www.axis.com/dam/public/df/f3/dd/cve-2017-20049-en-US-376956.pdf",
+      "affected": [
+        {
+          "model": "P1204",
+          "ranges": [
+            {
+              "lessThanOrEqual": "5.50.4"
+            }
+          ]
+        },
+        {
+          "model": "P3225",
+          "ranges": [
+            {
+              "lessThanOrEqual": "6.30.1"
+            }
+          ]
+        },
+        {
+          "model": "P3367",
+          "ranges": [
+            {
+              "lessThanOrEqual": "6.10.1.2"
+            }
+          ]
+        },
+        {
+          "model": "M3045",
+          "ranges": [
+            {
+              "lessThanOrEqual": "6.15.4.1"
+            }
+          ]
+        },
+        {
+          "model": "M3005",
+          "ranges": [
+            {
+              "lessThanOrEqual": "5.50.5.7"
+            }
+          ]
+        },
+        {
+          "model": "M3007",
+          "ranges": [
+            {
+              "lessThanOrEqual": "6.30.1.1"
+            }
+          ]
+        }
+      ],
+      "severityRank": 4
+    },
+    {
+      "id": "CVE-2021-31988",
+      "published": "2021-10-05T21:48:03+00:00",
+      "score": 8.8,
+      "severity": "High",
+      "description": "A user controlled parameter related to SMTP test functionality is not correctly validated making it possible to add the Carriage Return and Line Feed (CRLF) control characters and include arbitrary SMTP headers in the generated test email.",
+      "advisory": "https://www.axis.com/files/tech_notes/CVE-2021-31988.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50",
+              "lessThan": "6.50.5.5"
+            },
+            {
+              "from": "8.40",
+              "lessThan": "8.40.4.3"
+            },
+            {
+              "from": "9.80",
+              "lessThan": "9.80.3.5"
+            },
+            {
+              "lessThan": "6.50"
+            },
+            {
+              "from": "6.51",
+              "lessThan": "8.40"
+            },
+            {
+              "from": "8.41",
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.7"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2021-31987",
+      "published": "2021-10-05T21:46:45+00:00",
+      "score": 7.5,
+      "severity": "High",
+      "description": "A user controlled parameter related to SMTP test functionality is not correctly validated making it possible to bypass blocked network recipients.",
+      "advisory": "https://www.axis.com/files/tech_notes/CVE-2021-31987.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50",
+              "lessThan": "6.50.5.5"
+            },
+            {
+              "from": "8.40",
+              "lessThan": "8.40.4.3"
+            },
+            {
+              "from": "9.80",
+              "lessThan": "9.80.3.5"
+            },
+            {
+              "lessThan": "6.50"
+            },
+            {
+              "from": "6.51",
+              "lessThan": "8.40"
+            },
+            {
+              "from": "8.41",
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.8"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2021-31986",
+      "published": "2021-10-05T21:45:24+00:00",
+      "score": 6.8,
+      "severity": "Medium",
+      "description": "User controlled parameters related to SMTP notifications are not correctly validated. This can lead to a buffer overflow resulting in crashes and data leakage.",
+      "advisory": "https://www.axis.com/files/tech_notes/CVE-2021-31986.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "6.50",
+              "lessThan": "6.50.5.5"
+            },
+            {
+              "from": "8.40",
+              "lessThan": "8.40.4.3"
+            },
+            {
+              "from": "9.80",
+              "lessThan": "9.80.3.5"
+            },
+            {
+              "lessThan": "6.50"
+            },
+            {
+              "from": "6.51",
+              "lessThan": "8.40"
+            },
+            {
+              "from": "8.41",
+              "lessThan": "9.80"
+            },
+            {
+              "from": "9.81",
+              "lessThan": "10.7"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    }
+  ]
+}

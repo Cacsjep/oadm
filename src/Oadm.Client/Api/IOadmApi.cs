@@ -205,6 +205,16 @@ public interface IOadmApi
     /// <summary>Removes an upload that is not needed (e.g. a backup whose restore was cancelled).</summary>
     Task DeleteUploadAsync(string fileId, CancellationToken ct) => Task.CompletedTask;
 
+    // VulnerabilityService (docs/spec/vulnerabilities.md)
+    /// <summary>The server's list of Axis CVEs and how it is kept up to date.</summary>
+    Task<VulnerabilityListReply> GetVulnerabilitiesAsync(CancellationToken ct) => Task.FromResult(new VulnerabilityListReply());
+
+    /// <summary>Hands the server a list this client fetched (setting "clients").</summary>
+    Task<VulnerabilityListReply> UploadVulnerabilitiesAsync(string listJson, CancellationToken ct) => throw new NotSupportedException();
+
+    /// <summary>The server fetches the list now (setting "server").</summary>
+    Task<VulnerabilityListReply> RefreshVulnerabilitiesAsync(CancellationToken ct) => throw new NotSupportedException();
+
     // SettingsService
     Task<ServerSettings> GetSettingsAsync(CancellationToken ct);
     Task<ServerSettings> SetSettingsAsync(ServerSettings settings, CancellationToken ct);
