@@ -414,8 +414,8 @@ header .social-icons::after {
 	position: absolute;
 	top: 50%;
 	left: 50%;
-	width: 60px;
-	height: 60px;
+	width: 54px;
+	height: 54px;
 	display: grid;
 	place-items: center;
 	border: 0;
@@ -439,8 +439,8 @@ header .social-icons::after {
 }
 
 .intro-play svg {
-	width: 26px;
-	height: 26px;
+	width: 24px;
+	height: 24px;
 	margin-left: 3px; /* the triangle looks centered */
 	fill: currentColor;
 }
@@ -451,13 +451,13 @@ header .social-icons::after {
 
 @media (max-width: 640px) {
 	.intro-play {
-		width: 48px;
-		height: 48px;
+		width: 44px;
+		height: 44px;
 	}
 
 	.intro-play svg {
-		width: 20px;
-		height: 20px;
+		width: 18px;
+		height: 18px;
 	}
 }
 
