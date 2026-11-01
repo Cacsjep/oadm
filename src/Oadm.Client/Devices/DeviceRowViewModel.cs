@@ -103,6 +103,7 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SdkCategory))]
     [NotifyPropertyChangedFor(nameof(HasLiveVideo))]
+    [NotifyPropertyChangedFor(nameof(OffersLiveView))]
     public partial DeviceCategory Category { get; private set; }
     [ObservableProperty] public partial string? ProductType { get; private set; }
 
@@ -124,10 +125,17 @@ public sealed partial class DeviceRowViewModel : ObservableObject, IDeviceInfo, 
     [ObservableProperty] public partial string CategoryTooltip { get; private set; } = "";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasLiveVideo))]
+    [NotifyPropertyChangedFor(nameof(OffersLiveView))]
     public partial bool HasVideo { get; private set; }
 
     /// <summary>The device sends live video: <see cref="HasVideo"/> or a security radar (its radar picture).</summary>
     public bool HasLiveVideo => HasVideo || Category == DeviceCategory.Radar;
+
+    /// <summary>
+    /// The grid's live preview is offered: <see cref="HasLiveVideo"/>, or the category is not known yet (the stream tells).
+    /// A property of the row, so the icon follows a category that arrives after the row (a device just added).
+    /// </summary>
+    public bool OffersLiveView => HasLiveVideo || Category == DeviceCategory.Unknown;
     /// <summary>VAPIX API list from the server's last full refresh; task plugin dialogs check compatibility with it.</summary>
     public IReadOnlyList<Oadm.Sdk.Vapix.DeviceApi> Apis { get; private set; } = [];
     [ObservableProperty] public partial DateTime? CertNotAfterUtc { get; private set; }

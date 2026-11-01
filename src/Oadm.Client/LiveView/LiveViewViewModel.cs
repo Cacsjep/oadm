@@ -133,15 +133,10 @@ public static class LiveViewDefaults
 /// </summary>
 public static class LiveViewSupport
 {
-    public static Avalonia.Data.Converters.FuncValueConverter<DeviceRowViewModel?, bool> IsSupportedConverter { get; } =
-        new(row => row is not null && IsSupported(row));
-
+    /// <summary><see cref="DeviceRowViewModel.OffersLiveView"/> (the grid binds that property, so it follows the category).</summary>
     public static bool IsSupported(DeviceRowViewModel row)
     {
         ArgumentNullException.ThrowIfNull(row);
-
-        // The category comes from the device (basicdeviceinfo ProdType). Until it is known, allow
-        // live view and let the stream tell.
-        return row.HasLiveVideo || row.Category == Oadm.Contracts.V1.DeviceCategory.Unknown;
+        return row.OffersLiveView;
     }
 }

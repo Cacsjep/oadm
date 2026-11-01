@@ -88,7 +88,8 @@ web UI.
   stops the stream; another device's icon switches. Removing the shown device closes it. The icon
   cell has a hover state and the tooltip "Live preview"; devices without live video are disabled
   (`LiveViewSupport.IsSupported`: the row's `HasLiveVideo`, its `HasVideo` or category Radar (the radar picture), see [data-model.md](data-model.md); a device
-  whose category is still Unknown is allowed and the stream tells).
+  whose category is still Unknown is allowed and the stream tells; the grid binds `DeviceRowViewModel.OffersLiveView`, so the
+  icon follows a category that arrives after the row, e.g. right after an add).
 - Sources: `ListSources` returns every `Image.I<n>` that is not disabled as camera `n+1` with its
   `Image.I<n>.Name` (view areas on single-sensor cameras, sensors and quad view on multisensor
   cameras, inputs on encoders), each with every resolution it lists (all aspects; the client picks, see above). With more than one source the live

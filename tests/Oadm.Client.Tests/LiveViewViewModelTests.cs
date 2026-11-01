@@ -127,4 +127,23 @@ public sealed class LiveViewViewModelTests : IDisposable
         device.HasVideo = category is DeviceCategory.Camera or DeviceCategory.Encoder or DeviceCategory.Intercom;
         Assert.Equal(expected, LiveViewSupport.IsSupported(new DeviceRowViewModel(device)));
     }
+
+    [Fact]
+    public void The_live_preview_follows_a_category_that_arrives_after_the_row()
+    {
+        // A device just added is stored first, its category a moment later: the grid's icon must follow.
+        var device = TestSupport.Device("x", "ACCC8E2477F4", "10.0.0.9", "A1001");
+        device.Category = DeviceCategory.Unknown;
+        var row = new DeviceRowViewModel(device);
+        Assert.True(row.OffersLiveView);
+        var changed = new List<string?>();
+        row.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        var known = device.Clone();
+        known.Category = DeviceCategory.DoorController;
+        row.Update(known);
+
+        Assert.False(row.OffersLiveView);
+        Assert.Contains(nameof(DeviceRowViewModel.OffersLiveView), changed);
+    }
 }
