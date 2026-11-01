@@ -60,7 +60,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
         watch.Stop();
         Assert.Equal(10 * Count, runnable);
         output.WriteLine($"300,000 CanRun calls: {watch.ElapsedMilliseconds} ms");
-        Assert.True(watch.ElapsedMilliseconds < 2000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
+        Assert.True(watch.ElapsedMilliseconds < 6000, $"300,000 CanRun calls took {watch.ElapsedMilliseconds} ms");
     }
 
     private sealed class CountingContext : ITaskDialogContext

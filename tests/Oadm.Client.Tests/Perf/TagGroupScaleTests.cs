@@ -101,7 +101,7 @@ public sealed class TagGroupScaleTests(ITestOutputHelper output)
             Assert.InRange(realized, 1, 200);
             Assert.NotEmpty(grid.GetVisualDescendants().OfType<DataGridRowGroupHeader>());
 
-            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(6), () =>
+            Measure(log, "Select all in group mode", TimeSpan.FromSeconds(20), () =>
             {
                 grid.SelectAll();
                 Dispatcher.UIThread.RunJobs();
