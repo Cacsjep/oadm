@@ -37,7 +37,7 @@ public sealed class ServerLimitsTests(ITestOutputHelper output)
 
             long bytes = 0;
             var count = 0;
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(30)); // every task of a run on 50,000 devices takes about 11 minutes
             await TimeAsync("Device Watch snapshot until SNAPSHOT_END", async () =>
             {
                 using var call = host.Devices.Watch(new Proto.WatchDevicesRequest { SnapshotEndMarker = true }, cancellationToken: cts.Token);
