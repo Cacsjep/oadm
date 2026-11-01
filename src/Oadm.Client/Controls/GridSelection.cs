@@ -1,6 +1,7 @@
 using System.Collections;
 
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls;
 
 using Oadm.Client.Infrastructure;
@@ -44,8 +45,11 @@ public static class GridSelection
         return new Resume(grid);
     }
 
-    /// <summary>Hands the grid's selection to the view model in one step (after the view changed it without mirroring).</summary>
-    public static void Sync(DataGrid grid)
+    /// <summary>
+    /// Hands the grid's selection to the view model in one step (after the view changed it without mirroring);
+    /// <paramref name="selected"/>: the rows the view just selected, when it knows them.
+    /// </summary>
+    public static void Sync(DataGrid grid, IEnumerable? selected = null)
     {
         ArgumentNullException.ThrowIfNull(grid);
         if (GetSelectedItems(grid) is not { } target)
@@ -53,17 +57,33 @@ public static class GridSelection
             return;
         }
 
+        selected ??= SelectedOf(grid);
         if (target is IResettableList resettable)
         {
-            resettable.ResetTo(grid.SelectedItems);
+            resettable.ResetTo(selected);
             return;
         }
 
         target.Clear();
-        foreach (object? item in grid.SelectedItems)
+        foreach (object? item in selected)
         {
             target.Add(item);
         }
+    }
+
+    /// <summary>
+    /// The grid's selected rows. In a grouped view the grid finds each selected row by walking its group from the start
+    /// (quadratic: 100,000 selected rows took 12 s): with every row selected the rows themselves are the selection.
+    /// </summary>
+    internal static IEnumerable SelectedOf(DataGrid grid)
+    {
+        if (grid.ItemsSource is DataGridCollectionView { Filter: null, SourceCollection: { } rows } view
+            && ((IDataGridCollectionView)view).IsGrouping && grid.SelectedItems.Count == view.Count)
+        {
+            return rows;
+        }
+
+        return grid.SelectedItems;
     }
 
     private sealed class Resume(DataGrid grid) : IDisposable
@@ -113,7 +133,7 @@ public static class GridSelection
         // state); a resettable target takes the grid's selection in one step instead.
         if (target is IResettableList resettable && e.AddedItems.Count + e.RemovedItems.Count > 1)
         {
-            resettable.ResetTo(grid.SelectedItems);
+            resettable.ResetTo(SelectedOf(grid));
             return;
         }
 

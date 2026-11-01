@@ -30,8 +30,9 @@ public partial class DevicesView : UserControl
     }
 
     /// <summary>
-    /// Selections from this size on are taken off the grid while it sorts or regroups and put back after: the grid keeps a
-    /// selection row by row, so sorting 30,000 selected rows took 2 s and regrouping them 14 s.
+    /// Selections from this size on are taken off the grid while it sorts or regroups and put back after: after a sort or
+    /// regroup the grid looks up every selected row in the whole list (quadratic: sorting 30,000 selected rows took 4 s,
+    /// 60,000 took 24 s; regrouping 30,000 took 14 s).
     /// </summary>
     public const int LargeSelection = 1_000;
 
@@ -48,9 +49,11 @@ public partial class DevicesView : UserControl
 
     private int GridRowCount => _viewModel is not { } vm ? 0 : vm.GroupByTag ? vm.TagGrouping.Rows.Count : vm.FilteredDevices.Count;
 
+    private System.Collections.IEnumerable? GridRows => _viewModel is not { } vm ? null : vm.GroupByTag ? vm.TagGrouping.Rows : vm.FilteredDevices;
+
     /// <summary>
-    /// A sort with a large selection takes the grid about 2 s at 30,000 selected rows (it keeps the selection row by row):
-    /// the ring shows first, then the column sorts.
+    /// A sort with a large selection: the ring shows first, the selection comes off the grid, the column sorts and the
+    /// selection goes back (the view model keeps its selection meanwhile).
     /// </summary>
     private void OnSorting(object? sender, DataGridColumnEventArgs e)
     {
@@ -68,20 +71,104 @@ public partial class DevicesView : UserControl
         // After the grid's sort event: sorting (or changing the selection) inside it takes the grid's slow path.
         e.Handled = true;
         var column = e.Column;
-        Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = RunBusyAsync("Sorting", () =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = RunBusyAsync("Sorting", async () =>
         {
-            // The grid raises the sort event again for this sort (also after it returned): that one is let through. Cleared
-            // after the sort in any case, so a sort that raised nothing never makes the next one skip the ring.
-            _ownSort = true;
+            var selection = TakeSelectionOff();
             try
             {
+                // The grid raises the sort event again for this sort, in a job of its own: that one is let through. Cleared
+                // after the sort in any case, so a sort that raised nothing never makes the next one skip the ring.
+                _ownSort = true;
                 column.Sort();
+                await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(static () => { }, Avalonia.Threading.DispatcherPriority.Background);
             }
             finally
             {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() => _ownSort = false, Avalonia.Threading.DispatcherPriority.Background);
+                _ownSort = false;
+                selection.PutBack(GridRows);
             }
         }));
+    }
+
+    /// <summary>
+    /// Takes a large selection off the grid without telling the view model; <see cref="TakenSelection.PutBack"/> selects
+    /// the same rows again in the grid's current rows and hands the result to the view model. Every row selected is told
+    /// by the count alone: in a grouped view the grid finds each selected row by walking its group from the start.
+    /// </summary>
+    private TakenSelection TakeSelectionOff()
+    {
+        int rows = DeviceGrid.ItemsSource switch
+        {
+            DataGridCollectionView view => view.Count,
+            System.Collections.ICollection list => list.Count,
+            _ => int.MaxValue,
+        };
+        bool all = DeviceGrid.SelectedItems.Count >= rows;
+        var keep = all ? null : DeviceGrid.SelectedItems.Cast<object>().ToHashSet();
+        var paused = GridSelection.Pause(DeviceGrid);
+        DeviceGrid.SelectedItems.Clear();
+        return new TakenSelection(DeviceGrid, keep, paused);
+    }
+
+    /// <summary>
+    /// A selection taken off the grid (<paramref name="keep"/> null: every row). Putting it back: every row in one step;
+    /// otherwise row by row (the grid looks up each row it adds in the whole list), in the plain grid from the smaller side
+    /// (in a grouped view removing a row makes the grid walk the whole selection). Across a switch of group by tag the
+    /// devices stay selected: every tag row of a selected device, every device of a selected tag row.
+    /// </summary>
+    private sealed class TakenSelection(DataGrid grid, HashSet<object>? keep, IDisposable paused)
+    {
+        private readonly HashSet<DeviceRowViewModel> _devices = keep is null ? [] : [.. DeviceTagGrouping.DistinctDevices(keep)];
+        private readonly bool _fromGroups = keep?.Any(o => o is DeviceTagRow) == true;
+
+        private bool Kept(object row) => row switch
+        {
+            DeviceTagRow tagRow => _fromGroups ? keep!.Contains(tagRow) : _devices.Contains(tagRow.Row),
+            DeviceRowViewModel device => _devices.Contains(device),
+            _ => keep!.Contains(row),
+        };
+
+        public void PutBack(System.Collections.IEnumerable? rows)
+        {
+            List<object> current = rows is null ? [] : [.. rows.Cast<object>()];
+            List<object> selected = [];
+            try
+            {
+                if (keep is null)
+                {
+                    grid.SelectAll();
+                    selected = current;
+                    return;
+                }
+
+                var kept = current.ConvertAll(Kept);
+                selected = [.. current.Where((_, i) => kept[i])];
+                if (selected.Count == current.Count && current.Count > 0)
+                {
+                    grid.SelectAll();
+                }
+                else if (selected.Count * 2 > current.Count && grid.ItemsSource is not DataGridCollectionView)
+                {
+                    grid.SelectAll();
+                    foreach (var row in current.Where((_, i) => !kept[i]))
+                    {
+                        grid.SelectedItems.Remove(row);
+                    }
+                }
+                else
+                {
+                    foreach (var row in selected)
+                    {
+                        grid.SelectedItems.Add(row);
+                    }
+                }
+            }
+            finally
+            {
+                paused.Dispose();
+                GridSelection.Sync(grid, selected); // the view model gets the selection of the current rows
+            }
+        }
     }
 
     /// <summary>Ctrl+A while grouped by tag on many rows takes about 2 s at 30,000 devices: the ring shows meanwhile.</summary>
@@ -95,7 +182,14 @@ public partial class DevicesView : UserControl
     }
 
     /// <summary>Shows the ring over the grid, lets it paint, then runs <paramref name="action"/> on the UI thread.</summary>
-    internal async Task RunBusyAsync(string text, Action action)
+    internal Task RunBusyAsync(string text, Action action) => RunBusyAsync(text, () =>
+    {
+        action();
+        return Task.CompletedTask;
+    });
+
+    /// <summary>Shows the ring over the grid, lets it paint, then runs <paramref name="action"/> on the UI thread until it ends.</summary>
+    internal async Task RunBusyAsync(string text, Func<Task> action)
     {
         GridBusy.Text = text;
         GridBusy.IsVisible = true;
@@ -103,8 +197,18 @@ public partial class DevicesView : UserControl
         BusyRuns++;
         try
         {
-            await Task.Delay(BusyPaintDelay); // one frame with the ring before the UI thread is busy
-            action();
+            // One frame with the ring before the UI thread is busy; without a delay (tests) still after the current job, so
+            // the work sees what the job still changes (a second items source when group by tag turns on).
+            if (BusyPaintDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(BusyPaintDelay);
+            }
+            else
+            {
+                await Task.Yield();
+            }
+
+            await action();
         }
         finally
         {
@@ -114,44 +218,37 @@ public partial class DevicesView : UserControl
     }
 
     /// <summary>
-    /// The grouped rows were rebuilt (tags changed) while many rows are selected: regrouping them in place takes the grid
-    /// 14 s at 30,000 devices. This handler runs before the grid's collection view: the grid gets a new view at once
-    /// (no selection), then the selection comes back with the ring meanwhile.
+    /// The grouped rows were rebuilt (tags changed, group by tag turned on) while many rows are selected: regrouping them in
+    /// place takes the grid 14 s at 30,000 devices. This handler runs before the grid's collection view: the grid gets a new
+    /// view at once (the selection taken off first), then the selection comes back with the ring meanwhile.
     /// </summary>
     private void OnGroupRowsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
-        if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Reset || _viewModel?.GroupByTag != true
-            || DeviceGrid.SelectedItems.Count < LargeSelection || TopLevel.GetTopLevel(this) is not WindowBase { IsVisible: true })
+        if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset && _viewModel?.GroupByTag == true)
         {
+            ReplaceItemsSource(onlyLargeSelection: true);
+        }
+    }
+
+    /// <summary>
+    /// A new items source. With a large selection it comes off first and goes back after with the ring: the grid would
+    /// look up every selected row in the whole new view. <paramref name="onlyLargeSelection"/>: nothing to do otherwise.
+    /// </summary>
+    private void ReplaceItemsSource(bool onlyLargeSelection = false)
+    {
+        if (DeviceGrid.SelectedItems.Count < LargeSelection || TopLevel.GetTopLevel(this) is not WindowBase { IsVisible: true })
+        {
+            if (!onlyLargeSelection)
+            {
+                ApplyItemsSource();
+            }
+
             return;
         }
 
-        var all = DeviceGrid.SelectedItems.Count >= GridRowCount;
-        var keep = all ? null : DeviceGrid.SelectedItems.Cast<object>().ToHashSet();
-        var paused = GridSelection.Pause(DeviceGrid);
-        ApplyItemsSource(); // a new view before the old one regroups: the grid lets go of the selected rows at once
-        _ = RunBusyAsync("Selecting", () =>
-        {
-            try
-            {
-                if (all)
-                {
-                    DeviceGrid.SelectAll();
-                }
-                else
-                {
-                    foreach (var row in _viewModel?.TagGrouping.Rows.Where(r => keep!.Contains(r)) ?? [])
-                    {
-                        DeviceGrid.SelectedItems.Add(row);
-                    }
-                }
-            }
-            finally
-            {
-                paused.Dispose();
-                GridSelection.Sync(DeviceGrid); // the view model gets the selection of the new rows
-            }
-        });
+        var selection = TakeSelectionOff();
+        ApplyItemsSource();
+        _ = RunBusyAsync("Selecting", () => selection.PutBack(GridRows));
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -242,7 +339,7 @@ public partial class DevicesView : UserControl
     {
         if (e.PropertyName == nameof(DevicesViewModel.GroupByTag))
         {
-            ApplyItemsSource();
+            ReplaceItemsSource();
         }
         else if (e.PropertyName is nameof(DevicesViewModel.ExpandCompliance) or nameof(DevicesViewModel.HasCompliance) or nameof(DevicesViewModel.ComplianceColumnOn))
         {
@@ -275,7 +372,7 @@ public partial class DevicesView : UserControl
     {
         if (_viewModel?.GroupByTag == true)
         {
-            ApplyItemsSource();
+            ReplaceItemsSource();
         }
     }
 

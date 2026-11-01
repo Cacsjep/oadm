@@ -54,6 +54,42 @@ public sealed class DeviceGridBusyTests : IDisposable
         }, CancellationToken.None);
     }
 
+    [Theory]
+    [InlineData(1_100)] // fewer than half selected: put back row by row
+    [InlineData(2_500)] // more than half: all selected, then the others taken off
+    public async Task A_sort_keeps_exactly_a_large_partial_selection(int selected)
+    {
+        await HeadlessSession.Shared.Dispatch(() =>
+        {
+            using var f = new DevicesFixture();
+            f.SeedDevices([.. ClientScale.MakeDevices(3_000)]);
+            var view = new DevicesView { DataContext = f.Devices };
+            var window = new Window { Width = 1440, Height = 900, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
+            var chosen = f.Devices.FilteredDevices.Where((_, i) => i % 7 != 1).Take(selected).ToList();
+            foreach (var row in chosen)
+            {
+                grid.SelectedItems.Add(row);
+            }
+
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(selected, f.Devices.SelectedDevices.Count);
+
+            grid.Columns.First(c => c.Header as string == "Model").Sort(ListSortDirection.Descending);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(1, view.BusyRuns);
+            var expected = chosen.Select(r => r.Id).Order(StringComparer.Ordinal).ToList();
+            Assert.Equal(expected, f.Devices.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.Equal(expected, grid.SelectedItems.Cast<DeviceRowViewModel>().Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.Equal("Row.Model", Assert.Single(grid.CollectionView!.SortDescriptions).PropertyPath);
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
     [Fact]
     public async Task A_small_selection_sorts_at_once_without_the_ring()
     {
@@ -103,6 +139,45 @@ public sealed class DeviceGridBusyTests : IDisposable
             Assert.Equal(selected, vm.SelectedDevices.Count);
             Assert.Equal(vm.TagGrouping.Rows.Count, grid.SelectedItems.Count);
             Assert.IsType<Avalonia.Collections.DataGridCollectionView>(grid.ItemsSource);
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Group_by_tag_turned_on_keeps_the_selected_devices()
+    {
+        await HeadlessSession.Shared.Dispatch(() =>
+        {
+            using var f = new DevicesFixture();
+            f.Store.Tags.Reset(TagNames.Select((n, i) => new DeviceTag { Name = n, Color = (TagColor)(i + 1), Defined = true }));
+            var devices = Tagged(DevicesView.LargeSelection * 2, version: 0);
+            foreach (var d in devices.Where((_, i) => i % 2 == 0))
+            {
+                d.Tags.Add("Second tag"); // two tag rows for every other device
+            }
+
+            f.SeedDevices([.. devices]);
+            var vm = f.Devices;
+            var view = new DevicesView { DataContext = vm };
+            var window = new Window { Width = 1440, Height = 900, Content = view };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            var grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
+            var chosen = vm.FilteredDevices.Take(DevicesView.LargeSelection + 100).ToList();
+            foreach (var row in chosen)
+            {
+                grid.SelectedItems.Add(row);
+            }
+
+            Dispatcher.UIThread.RunJobs();
+
+            vm.GroupByTag = true;
+            Dispatcher.UIThread.RunJobs();
+
+            var expected = chosen.Select(r => r.Id).Order(StringComparer.Ordinal).ToList();
+            Assert.Equal(expected, vm.SelectedDevices.Select(r => r.Id).Order(StringComparer.Ordinal));
+            Assert.Equal(vm.TagGrouping.Rows.Count(r => chosen.Contains(r.Row)), grid.SelectedItems.Count); // every tag row of them
             window.Close();
             return Task.CompletedTask;
         }, CancellationToken.None);
