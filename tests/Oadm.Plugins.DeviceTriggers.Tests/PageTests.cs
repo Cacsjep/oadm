@@ -150,6 +150,7 @@ public sealed class PageTests(ITestOutputHelper output)
         Assert.Equal([new TriggerFilter("port", "3")], saved.Filters);
         Assert.Equal("Port number: 3", saved.FilterText);
         Assert.Equal(["port", "active"], saved.Values);
+        Assert.Equal(["port"], saved.SourceValues); // the source item: a value only in event rules
         Assert.Equal([a.Id, offline.Id], saved.DeviceIds);
     }
 

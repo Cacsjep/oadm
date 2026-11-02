@@ -121,7 +121,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   5 px down: "This server has no users yet.", "First connection to <server>", "You have V4.5.0"), the form in
   `Border.heroBody` with the labels above the inputs (`ui:FormField LabelAbove`, 4 px gap), and the buttons in
   `Border.heroFooter` (`ui:DialogFooter`). Login: dots on both sides of the logo (none above or below), an icon inside
-  the server, user name and password fields (`ui:OadmIcon.fieldIcon`), no refresh button (Try again sits in the server
+  the server (`ui:LeadingIcon`), user name and password fields (`ui:OadmIcon.fieldIcon inner`), no refresh button (Try again sits in the server
   problem, Log in connects first anyway); while it connects an accent line slides across the top of the footer
   (`ProgressBar.busyLine`) and the text "Logging in to <server>" shows right in the footer, Log in is hidden. A problem that stops the login is a `tc:Callout` directly below its field: server not
   reachable (error, Try again), certificate changed or not trusted (warning, Forget server), login locked (error, below
@@ -151,11 +151,15 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `IconLabel`: every icon + text row (navigation rail, dialogs).
 - `ToolbarButton` (every toolbar button) and `ToolbarSeparator`; `ToolbarOverflowPanel`: every row of toolbar buttons,
   what does not fit goes behind its own More button; the search box stays outside it.
-- `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` (with `inner` inside a text box) puts an icon
-  into an input (the login's server, user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and puts a
-  `fieldIcon` at its left inside (the input gets class `leadingIcon`, room for it); the field checks of event rules
+- `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` with `inner` puts an icon into a text box
+  through its `InnerLeftContent` (the login's user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and
+  puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,
+  `ui|LeadingIcon > TextBox` give the input room for it); the login's server box, the field checks of event rules
   (`Icon.squareA`, `Icon.squareFunction`, `Icon.squareB`: A f B); class `accent` gives the icon the accent colour (the
-  operator's f, decided 2026-11-02).
+  operator's f, decided 2026-11-02). The check row is `Grid.checkRow`: star columns capped at `Oadm.CheckFieldWidth`,
+  `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth` (the event select above the checks spans the three, its info icon and
+  the checks' remove icon share the last column, `SharedSizeGroup` CheckEnd), so the row keeps those widths and shrinks
+  on a narrow window; each input is a label-less `ui:FormField` (`wide inline`) so leaving it shows its error.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.

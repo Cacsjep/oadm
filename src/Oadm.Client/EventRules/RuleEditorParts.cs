@@ -186,8 +186,12 @@ public sealed partial class DayToggle(DayOfWeek day) : ObservableObject
     [ObservableProperty] public partial bool IsChecked { get; set; }
 }
 
-/// <summary>A value of the event a check can compare, with its kind: "Temperature (number)".</summary>
-public sealed record CheckFieldOption(string Name, string DisplayName, EventValueKind Kind)
+/// <summary>
+/// A value of the event a check can compare, with its kind: "Temperature (number)". A stored check keeps its value also
+/// when the event no longer offers it for checks: <see cref="Declared"/> false (the event lacks it) or
+/// <see cref="Checkable"/> false (a value only, allowed for an older equals filter left unchanged).
+/// </summary>
+public sealed record CheckFieldOption(string Name, string DisplayName, EventValueKind Kind, bool Checkable = true, bool Declared = true)
 {
     public string Text => DisplayName + Kind switch
     {
@@ -199,6 +203,12 @@ public sealed record CheckFieldOption(string Name, string DisplayName, EventValu
     /// <summary>The checkable fields of an event (<c>no_filter</c> false).</summary>
     public static IReadOnlyList<CheckFieldOption> Of(EventTypeEntry? type) =>
         type is null ? [] : [.. type.Fields.Where(f => !f.NoFilter).Select(f => new CheckFieldOption(f.Name, f.DisplayName, KindOf(f.Kind)))];
+
+    /// <summary>The value of a stored check the event does not offer for checks: a value only, or one it lacks.</summary>
+    public static CheckFieldOption Stored(string name, EventTypeEntry? type) =>
+        type?.Fields.FirstOrDefault(f => f.Name == name) is { } field
+            ? new CheckFieldOption(field.Name, field.DisplayName, KindOf(field.Kind), Checkable: !field.NoFilter)
+            : new CheckFieldOption(name, name, EventValueKind.Text, Checkable: false, Declared: false);
 
     public static EventValueKind KindOf(EventFieldKind kind) => kind switch
     {
@@ -218,19 +228,31 @@ public sealed record CheckOperatorOption(RuleCheckOperator Op, string Text)
 
 /// <summary>
 /// One check of an event condition: Field (a value of the event), Operator (by the field's kind) and Value (hidden for
-/// yes / no). Its errors show below its inputs (<see cref="ValidatingViewModel"/>).
+/// yes / no). Its errors show below its inputs (<see cref="ValidatingViewModel"/>). A stored check is never dropped: one on
+/// a value the event no longer offers, or one beyond <see cref="RuleChecks.MaxPerCondition"/>, shows its error below the
+/// Field at once and blocks the step until it is removed or fixed. An older equals filter (<see cref="RuleCheck.IsLegacy"/>)
+/// left unchanged is saved as it was and checked as leniently as the server does.
 /// </summary>
 public sealed partial class CheckViewModel : ValidatingViewModel
 {
     private readonly Action<CheckViewModel> _remove;
     private readonly Action _changed;
+    private readonly RuleCheck? _legacy;
+    private readonly (string? Field, RuleCheckOperator? Op, string Value) _initialState;
+    private bool _tooMany;
 
-    internal CheckViewModel(IReadOnlyList<CheckFieldOption> fields, RuleCheck? initial, Action<CheckViewModel> remove, Action changed)
+    internal CheckViewModel(IReadOnlyList<CheckFieldOption> fields, RuleCheck? initial, Action<CheckViewModel> remove, Action changed, EventTypeEntry? type = null)
     {
         _remove = remove;
         _changed = changed;
+        if (initial is not null && !fields.Any(f => f.Name == initial.Field))
+        {
+            fields = [.. fields, CheckFieldOption.Stored(initial.Field, type)];
+        }
+
         Fields = fields;
-        SelectedField = initial is null ? (fields.Count > 0 ? fields[0] : null) : fields.FirstOrDefault(f => f.Name == initial.Field);
+        SelectedField = initial is null ? (fields.Count > 0 ? fields[0] : null) : fields.First(f => f.Name == initial.Field);
+        var wrongOperator = false;
         if (initial is not null)
         {
             var op = initial.Op;
@@ -240,19 +262,28 @@ public sealed partial class CheckViewModel : ValidatingViewModel
                 op = RuleChecks.IsYes(initial.Value) == (op == RuleCheckOperator.Eq) ? RuleCheckOperator.Yes : RuleCheckOperator.No;
             }
 
-            SelectedOperator = Operators.FirstOrDefault(o => o.Op == op) ?? (Operators.Count > 0 ? Operators[0] : null);
+            // A stored operator that no longer fits the value's kind is not replaced by another one: "Choose how to compare.".
+            SelectedOperator = Operators.FirstOrDefault(o => o.Op == op);
+            wrongOperator = SelectedOperator is null;
             Value = initial.Value;
+            _legacy = initial.IsLegacy ? initial.Clone() : null;
         }
 
+        _initialState = State;
         Validation
-            .Rule(nameof(SelectedField), () => SelectedField is null ? "Choose a value of the event." : null)
-            .Rule(nameof(SelectedOperator), () => SelectedOperator is null ? "Choose how to compare." : null)
-            .Rule(nameof(Value), () => SelectedField is null || SelectedOperator is null ? null
+            .Rule(nameof(SelectedField), () => FieldProblem)
+            .Rule(nameof(SelectedOperator), () => SelectedOperator is null && !IsUnchangedLegacy ? "Choose how to compare." : null)
+            .Rule(nameof(Value), () => SelectedField is null || SelectedOperator is null || IsUnchangedLegacy ? null
                 : RuleChecks.ValueProblem(SelectedOperator.Op, SelectedField.Kind, Value));
         Validation.Validate();
+        if (SelectedField is { Declared: false } or { Checkable: false } || wrongOperator)
+        {
+            // A stored check that no longer fits says so when the dialog opens.
+            Validation.ShowAll(nameof(SelectedField), nameof(SelectedOperator));
+        }
     }
 
-    /// <summary>The checkable values of the condition's event.</summary>
+    /// <summary>The checkable values of the condition's event (and the stored value of this check).</summary>
     [ObservableProperty] public partial IReadOnlyList<CheckFieldOption> Fields { get; private set; }
 
     [ObservableProperty]
@@ -273,8 +304,50 @@ public sealed partial class CheckViewModel : ValidatingViewModel
     /// <summary>The first problem of the check (shown or not), for the step's Next tooltip.</summary>
     public string? Problem => Validation.FirstError;
 
+    /// <summary>An older equals filter as it was stored: saved back unchanged.</summary>
+    public bool IsUnchangedLegacy => _legacy is not null && State == _initialState;
+
+    private (string? Field, RuleCheckOperator? Op, string Value) State => (SelectedField?.Name, SelectedOperator?.Op, (Value ?? string.Empty).Trim());
+
+    private string? FieldProblem
+    {
+        get
+        {
+            if (SelectedField is null)
+            {
+                return "Choose a value of the event.";
+            }
+
+            if (!SelectedField.Declared || (!SelectedField.Checkable && !IsUnchangedLegacy))
+            {
+                return RuleChecks.NoSuchValueText;
+            }
+
+            return _tooMany ? RuleChecks.TooManyText : null;
+        }
+    }
+
     /// <summary>Next or Save was tried: every error of the check shows.</summary>
     public void ShowAllErrors() => Validation.ShowAll();
+
+    /// <summary>The condition has more checks than allowed and this one is beyond the limit (<see cref="RuleChecks.TooMany"/>).</summary>
+    internal void SetTooMany(bool value)
+    {
+        if (_tooMany == value)
+        {
+            return;
+        }
+
+        _tooMany = value;
+        if (value)
+        {
+            Validation.ShowAll(nameof(SelectedField));
+        }
+        else
+        {
+            Validation.Validate();
+        }
+    }
 
     /// <summary>
     /// The event of the condition changed: the check keeps its field when the new event has it (true), else it goes.
@@ -298,17 +371,20 @@ public sealed partial class CheckViewModel : ValidatingViewModel
         return true;
     }
 
-    public RuleCheck ToCheck() => new()
+    /// <summary>The check as edited; an older equals filter left unchanged as it was stored (<see cref="RuleCheck.IsLegacy"/>).</summary>
+    public RuleCheck ToCheck() => IsUnchangedLegacy ? _legacy!.Clone() : Edited();
+
+    /// <summary>"Temperature &gt; 40", "Door is yes" (as the row shows it).</summary>
+    public string Summary() => SelectedField is null
+        ? string.Empty
+        : RuleChecks.Describe(Edited(), SelectedField.DisplayName, SelectedField.Kind);
+
+    private RuleCheck Edited() => new()
     {
         Field = SelectedField?.Name ?? string.Empty,
         Op = SelectedOperator?.Op ?? RuleCheckOperator.Eq,
-        Value = NeedsValue ? Value.Trim() : string.Empty,
+        Value = NeedsValue ? (Value ?? string.Empty).Trim() : string.Empty,
     };
-
-    /// <summary>"Temperature &gt; 40", "Door is yes".</summary>
-    public string Summary() => SelectedField is null
-        ? string.Empty
-        : RuleChecks.Describe(ToCheck(), SelectedField.DisplayName, SelectedField.Kind);
 
     [RelayCommand]
     private void Remove() => _remove(this);
@@ -317,9 +393,15 @@ public sealed partial class CheckViewModel : ValidatingViewModel
     {
         var kind = value?.Kind ?? EventValueKind.Text;
         var op = SelectedOperator?.Op;
-        Operators = [.. RuleChecks.OperatorsFor(kind).Select(o => new CheckOperatorOption(o, RuleChecks.Text(o, kind)))];
+        Operators = [.. RuleChecks.OperatorsFor(kind).Select(o => new CheckOperatorOption(o, RuleChecks.Label(o, kind)))];
         SelectedOperator = Operators.FirstOrDefault(o => o.Op == op) ?? (Operators.Count > 0 ? Operators[0] : null);
+        _changed?.Invoke();
     }
+
+    // Any edit can turn an older filter into a check: the condition counts its checks again (the limit).
+    partial void OnSelectedOperatorChanged(CheckOperatorOption? value) => _changed?.Invoke();
+
+    partial void OnValueChanged(string value) => _changed?.Invoke();
 
     /// <summary>After the rules ran (not before): the dialog's Next and its tooltip follow the check's errors.</summary>
     protected override void OnValidationChanged() => _changed();

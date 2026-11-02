@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
@@ -9,6 +10,7 @@ using Oadm.Client.Devices;
 using Oadm.Client.EventRules;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Client.Tests;
@@ -41,7 +43,7 @@ public sealed class EventRuleChecksTests : IDisposable
         condition.AddCheckCommand.Execute(null);
         var check = condition.Checks[^1];
         check.SelectedField = check.Fields.Single(f => f.Name == field);
-        check.SelectedOperator = check.Operators.Single(o => o.Text == op);
+        check.SelectedOperator = check.Operators.Single(o => o.Text == op || RuleChecks.Text(o.Op, check.SelectedField!.Kind) == op); // ">" or "> greater than"
         check.Value = value;
         return check;
     }
@@ -63,8 +65,8 @@ public sealed class EventRuleChecksTests : IDisposable
         Assert.Equal("Sensor", check.SelectedField!.DisplayName); // the first value, ready to fill in
         Assert.Equal(["equals", "does not equal", "contains", "starts with"], check.Operators.Select(o => o.Text));
         check.SelectedField = check.Fields.Single(f => f.Name == "temperature");
-        Assert.Equal(["=", "≠", ">", "≥", "<", "≤"], check.Operators.Select(o => o.Text));
-        Assert.Equal("=", check.SelectedOperator!.Text); // equals stays equals
+        Assert.Equal(["= equals", "≠ does not equal", "> greater than", "≥ greater than or equal", "< less than", "≤ less than or equal"], check.Operators.Select(o => o.Text));
+        Assert.Equal("= equals", check.SelectedOperator!.Text); // equals stays equals
         check.SelectedField = check.Fields.Single(f => f.Name == "heater");
         Assert.Equal(["is yes", "is no"], check.Operators.Select(o => o.Text));
         Assert.False(check.NeedsValue); // no value box for yes / no
@@ -116,7 +118,7 @@ public sealed class EventRuleChecksTests : IDisposable
         trigger.AddCheckCommand.Execute(null);
         var check = trigger.Checks[0];
         check.SelectedField = check.Fields.Single(f => f.Name == "temperature");
-        check.SelectedOperator = check.Operators.Single(o => o.Text == ">");
+        check.SelectedOperator = check.Operators.Single(o => o.Text == "> greater than");
 
         Assert.Null(check.ErrorOf(nameof(CheckViewModel.Value))); // untouched: no error yet
         Assert.Equal("Check 1: Enter a value.", editor.StepProblem);
@@ -157,7 +159,7 @@ public sealed class EventRuleChecksTests : IDisposable
         Choose(trigger, "oadm.device-triggers.sample-gate"); // has "active", no object ID
         var kept = Assert.Single(trigger.Checks);
         Assert.Equal(("active", "is yes"), (kept.SelectedField!.Name, kept.SelectedOperator!.Text));
-        Assert.Equal(["Port (number)", "Active (yes or no)"], kept.Fields.Select(f => f.Text));
+        Assert.Equal(["Active (yes or no)"], kept.Fields.Select(f => f.Text)); // the port is a value only
 
         Choose(trigger, "oadm.device.unreachable");
         Assert.Empty(trigger.Checks);
@@ -166,23 +168,132 @@ public sealed class EventRuleChecksTests : IDisposable
     });
 
     [Fact]
-    public Task An_older_rule_with_equals_filters_opens_with_checks() => _ui.RunAsync(async () =>
+    public Task An_older_rule_with_equals_filters_opens_with_checks_and_saves_them_unchanged() => _ui.RunAsync(async () =>
     {
         var json = $$$"""
             {"id":"{{{Guid.NewGuid()}}}","name":"Old","enabled":true,
              "conditions":[{"kind":"event","eventTypeId":"{{{FakeOadmApi.FakeTemperatureTrigger}}}","devices":{"mode":"all"},"data":{"sensor":"Housing","heater":"true"}}],
              "actions":[]}
             """;
-        var (api, editor) = await CreateAsync(new RuleDetail { DefinitionJson = json, Summary = new RuleSummary { Name = "Old" } });
+        var (api, editor) = await CreateAsync(Detail(json));
         var checks = editor.Conditions[0].Checks;
         Assert.Equal(
             [("sensor", "equals", "Housing"), ("heater", "is yes", "")], // "true" on a yes / no value: is yes
             checks.Select(c => (c.SelectedField!.Name, c.SelectedOperator!.Text, c.NeedsValue ? c.Value : "")));
-        Assert.Equal(
-            [("sensor", RuleCheckOperator.Eq, "Housing"), ("heater", RuleCheckOperator.Yes, "")],
-            editor.ToDefinition().Conditions[0].Checks.Select(c => (c.Field, c.Op, c.Value)));
+        Assert.All(checks, c => Assert.True(c.IsUnchangedLegacy));
+
+        // Left as they were: saved back as the older filters (the server checks them as before).
+        var condition = editor.ToDefinition().Conditions[0];
+        Assert.Empty(condition.Checks);
+        Assert.Equal(new Dictionary<string, string> { ["sensor"] = "Housing", ["heater"] = "true" }, condition.Data);
+
+        // A changed filter becomes a check; the other stays an older filter.
+        checks[0].Value = "Lens";
+        condition = editor.ToDefinition().Conditions[0];
+        Assert.Equal(("sensor", RuleCheckOperator.Eq, "Lens", false), (condition.Checks.Single().Field, condition.Checks[0].Op, condition.Checks[0].Value, condition.Checks[0].IsLegacy));
+        Assert.Equal(new Dictionary<string, string> { ["heater"] = "true" }, condition.Data);
+        checks[0].Value = "Housing"; // back as it was: the older filter again
+        Assert.Empty(editor.ToDefinition().Conditions[0].Checks);
         api.Dispose();
     });
+
+    [Fact]
+    public Task A_stored_check_the_event_no_longer_offers_stays_and_says_so() => _ui.RunAsync(async () =>
+    {
+        // "port" is a value only now and "humidity" is gone; a new check on either is refused by the server.
+        var json = $$$"""
+            {"id":"{{{Guid.NewGuid()}}}","name":"Stale","enabled":true,
+             "conditions":[{"kind":"event","eventTypeId":"oadm.device-triggers.sample-gate","devices":{"mode":"all"},
+               "checks":[{"field":"port","op":"eq","value":"1"},{"field":"humidity","op":"gt","value":"80"},{"field":"active","op":"gt","value":"1"}]}],
+             "actions":[]}
+            """;
+        var (api, editor) = await CreateAsync(Detail(json));
+        var checks = editor.Conditions[0].Checks;
+        Assert.Equal(3, checks.Count); // nothing is dropped
+        Assert.Equal(["port", "humidity", "active"], checks.Select(c => c.SelectedField!.Name));
+        Assert.Equal(RuleChecks.NoSuchValueText, checks[0].ErrorOf(nameof(CheckViewModel.SelectedField))); // shown at once
+        Assert.Equal("The event no longer has this value.", checks[1].ErrorOf(nameof(CheckViewModel.SelectedField)));
+        Assert.Equal("humidity (text)", checks[1].SelectedField!.Text);
+        Assert.Null(checks[2].SelectedOperator); // ">" no longer fits a yes / no value: not replaced by another one
+        Assert.Equal("Choose how to compare.", checks[2].ErrorOf(nameof(CheckViewModel.SelectedOperator)));
+        Assert.Equal("Check 1: The event no longer has this value.", editor.Conditions[0].Problem);
+        Assert.False(editor.CanOpen(RuleEditorViewModel.OverviewStep)); // no Save until it is fixed
+
+        // The user fixes or removes them.
+        checks[2].SelectedOperator = checks[2].Operators.Single(o => o.Text == "is yes");
+        Assert.Null(checks[2].Problem);
+        checks[0].SelectedField = checks[0].Fields.Single(f => f.Name == "active");
+        Assert.Null(checks[0].ErrorOf(nameof(CheckViewModel.SelectedField)));
+        checks[1].RemoveCommand.Execute(null);
+        Assert.Null(editor.Conditions[0].Problem);
+        api.Dispose();
+    });
+
+    [Fact]
+    public Task Stored_checks_beyond_five_stay_and_say_so() => _ui.RunAsync(async () =>
+    {
+        var six = string.Join(",", Enumerable.Range(0, 6).Select(i => $$"""{"field":"temperature","op":"gt","value":"{{i}}"}"""));
+        var json = $$$"""
+            {"id":"{{{Guid.NewGuid()}}}","name":"Many","enabled":true,
+             "conditions":[{"kind":"event","eventTypeId":"{{{FakeOadmApi.FakeTemperatureTrigger}}}","devices":{"mode":"all"},"checks":[{{{six}}}]}],
+             "actions":[]}
+            """;
+        var (api, editor) = await CreateAsync(Detail(json));
+        var checks = editor.Conditions[0].Checks;
+        Assert.Equal(6, checks.Count);
+        Assert.All(checks.Take(5), c => Assert.Null(c.Problem));
+        Assert.Equal("At most 5 checks.", checks[5].ErrorOf(nameof(CheckViewModel.SelectedField))); // below the Field, at once
+        Assert.Equal("Check 6: At most 5 checks.", editor.Conditions[0].Problem);
+        Assert.False(editor.Conditions[0].AddCheckCommand.CanExecute(null));
+
+        checks[0].RemoveCommand.Execute(null);
+        Assert.Equal(5, checks.Count);
+        Assert.All(checks, c => Assert.Null(c.Problem));
+        Assert.Null(editor.Conditions[0].Problem);
+        api.Dispose();
+    });
+
+    [Fact]
+    public Task Six_older_filters_left_as_they_were_need_no_change() => _ui.RunAsync(async () =>
+    {
+        // Older rules had no limit: six untouched filters save; a changed one counts them all.
+        var data = string.Join(",", new[] { "a", "b", "c", "sensor", "temperature", "heater" }.Select(f => "\"" + f + "\":\"1\""));
+        var json = $$$"""
+            {"id":"{{{Guid.NewGuid()}}}","name":"Old","enabled":true,
+             "conditions":[{"kind":"event","eventTypeId":"{{{FakeOadmApi.FakeTemperatureTrigger}}}","devices":{"mode":"all"},"data":{{{{data}}}}}],
+             "actions":[]}
+            """;
+        var (api, editor) = await CreateAsync(Detail(json));
+        var checks = editor.Conditions[0].Checks;
+        Assert.Equal(6, checks.Count);
+        // a, b, c are not values of the event: the server refuses them as before, so they say so.
+        Assert.All(checks.Take(3), c => Assert.Equal(RuleChecks.NoSuchValueText, c.ErrorOf(nameof(CheckViewModel.SelectedField))));
+        Assert.Null(checks[5].Problem); // six older filters: no limit while they stay as they were
+
+        checks[3].Value = "Lens"; // a change: now a new check next to five older filters
+        Assert.Equal(RuleChecks.TooManyText, checks[5].ErrorOf(nameof(CheckViewModel.SelectedField)));
+        checks[3].Value = "1";
+        Assert.Null(checks[5].Problem);
+        api.Dispose();
+    });
+
+    [Fact]
+    public Task A_check_without_a_value_never_throws() => _ui.RunAsync(async () =>
+    {
+        var (api, editor) = await CreateAsync();
+        var trigger = editor.Conditions[0];
+        Choose(trigger, FakeOadmApi.FakeTemperatureTrigger);
+        var check = AddCheck(trigger, "temperature", ">");
+        check.Value = null!; // a text box can hand back null
+        Assert.Equal(string.Empty, check.ToCheck().Value);
+        Assert.Equal("Temperature > ", check.Summary());
+        check.ShowAllErrors();
+        Assert.Equal("Enter a value.", check.ErrorOf(nameof(CheckViewModel.Value)));
+        Assert.NotNull(editor.ToDefinition());
+        api.Dispose();
+    });
+
+    private static RuleDetail Detail(string json) => new() { DefinitionJson = json, Summary = new RuleSummary { Name = "Rule" } };
 
     [Fact]
     public Task The_checks_render_below_the_event_and_in_the_overview() => _ui.RunAsync(async () =>
@@ -202,6 +313,7 @@ public sealed class EventRuleChecksTests : IDisposable
             AddCheck(trigger, "temperature", ">", "40");
             AddCheck(trigger, "heater", "is no");
             AddCheck(trigger, "sensor", "starts with", "Housing");
+            AddCheck(trigger, "temperature", "≤", "60");
             editor.AddEventConditionCommand.Execute(null);
             var and = editor.Conditions[1];
             Choose(and, "oadm.device-triggers.sample-gate");
@@ -211,9 +323,24 @@ public sealed class EventRuleChecksTests : IDisposable
             Assert.Contains("Add check", texts);
             Assert.Contains("Temperature (number)", texts);
             Assert.Contains("is no", texts);
-            Assert.Equal(4, dialog.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && ToolTip.GetTip(b) as string == "Remove check"));
-            Assert.Equal(2, dialog.GetVisualDescendants().OfType<TextBox>().Count(b => b.IsEffectivelyVisible && b.PlaceholderText == "Value")); // no box for yes / no
+            Assert.Contains("> greater than", texts); // a number operator: its symbol and words
+            Assert.Equal(5, dialog.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && ToolTip.GetTip(b) as string == "Remove check"));
+            Assert.Equal(3, dialog.GetVisualDescendants().OfType<TextBox>().Count(b => b.IsEffectivelyVisible && b.PlaceholderText == "Value")); // no box for yes / no
+
+            // The longest operator fits its select without being cut.
+            var longest = dialog.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && t.Text == "≤ less than or equal");
+            var free = new TextBlock { Text = longest.Text, FontFamily = longest.FontFamily, FontSize = longest.FontSize, FontWeight = longest.FontWeight };
+            free.Measure(Size.Infinity);
+            Assert.True(free.DesiredSize.Width <= longest.Bounds.Width + 0.5, $"\"{longest.Text}\" needs {free.DesiredSize.Width} px, has {longest.Bounds.Width} px.");
             Capture(dialog, outDir, "event-rules-checks.png");
+
+            // The operator list shows the same words.
+            var operators = longest.GetVisualAncestors().OfType<ComboBox>().First();
+            operators.IsDropDownOpen = true;
+            Pump();
+            Capture(dialog, outDir, "event-rules-checks-operators.png");
+            operators.IsDropDownOpen = false;
+            Pump();
 
             trigger.Checks[0].Value = "hot";
             Pump();
@@ -231,10 +358,68 @@ public sealed class EventRuleChecksTests : IDisposable
             Pump();
             Assert.True(editor.IsOverviewStep);
             Assert.Equal(
-                "Device triggers: Housing temperature · All devices · Temperature > 40, Heater on is no, Sensor starts with Housing",
+                "Device triggers: Housing temperature · All devices · Temperature > 40, Heater on is no, Sensor starts with Housing, Temperature ≤ 60",
                 editor.Overview.Single(l => l.Label == "When").Text);
             Assert.EndsWith("Active is yes", editor.Overview.Single(l => l.Label == "And").Text, StringComparison.Ordinal);
             Capture(dialog, outDir, "event-rules-checks-overview.png");
+            dialog.Close();
+            api.Dispose();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    });
+
+    [Fact]
+    public Task Leaving_an_empty_value_shows_its_error_and_a_narrow_window_keeps_the_row_in_its_card() => _ui.RunAsync(async () =>
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var (api, editor) = await CreateAsync();
+            var dialog = new RuleEditorWindow();
+            dialog.Attach(editor);
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            editor.Name = "Housing too warm";
+            editor.NextCommand.Execute(null);
+            var trigger = editor.Conditions[0];
+            Choose(trigger, FakeOadmApi.FakeTemperatureTrigger);
+            var check = AddCheck(trigger, "temperature", ">");
+            AddCheck(trigger, "heater", "is no");
+            Pump();
+
+            // Each input of a check is a label-less form field: leaving the empty value says so below it.
+            var box = dialog.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.PlaceholderText == "Value");
+            Assert.NotNull(box.FindAncestorOfType<FormField>());
+            Assert.All(dialog.GetVisualDescendants().OfType<LeadingIcon>().Where(i => i.IsEffectivelyVisible), i => Assert.IsType<FormField>(i.Parent));
+            box.Focus();
+            Pump();
+            Assert.Null(check.ErrorOf(nameof(CheckViewModel.Value)));
+            dialog.GetVisualDescendants().OfType<ComboBox>().First(c => c.IsEffectivelyVisible && c.PlaceholderText == "Value of the event").Focus();
+            Pump();
+            Assert.Equal("Enter a value.", check.ErrorOf(nameof(CheckViewModel.Value)));
+            Assert.Contains("Enter a value.", Texts(dialog));
+            Capture(dialog, outDir, "event-rules-checks-left-empty.png");
+
+            // Narrow windows: the event select and the check rows shrink and stay inside the When row (at 700 px the
+            // former fixed widths ran out of it).
+            var card = box.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("ruleItem"));
+            foreach (var width in new[] { 900, 700 })
+            {
+                dialog.Width = width;
+                Pump();
+                var rows = card.GetVisualDescendants().OfType<Grid>().Where(g => g.IsEffectivelyVisible && g.Classes.Contains("checkRow")).ToList();
+                Assert.Equal(3, rows.Count); // the event select and two checks
+                foreach (var cell in rows.SelectMany(r => r.Children).Where(c => c.IsVisible))
+                {
+                    var right = cell.TranslatePoint(new Point(cell.Bounds.Width, 0), card);
+                    Assert.NotNull(right);
+                    Assert.True(right.Value.X <= card.Bounds.Width, $"{width} px: a cell of a check row ends at {right.Value.X}, the When row at {card.Bounds.Width}.");
+                }
+
+                Capture(dialog, outDir, $"event-rules-checks-{width}.png");
+            }
+
             dialog.Close();
             api.Dispose();
             return true;

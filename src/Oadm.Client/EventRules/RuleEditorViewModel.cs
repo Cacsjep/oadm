@@ -46,17 +46,15 @@ public sealed partial class ConditionViewModel : ObservableObject
         From = initial?.Schedule?.From ?? "08:00";
         To = initial?.Schedule?.To ?? "18:00";
         SelectedEventType = EventTypes.FirstOrDefault(t => t.Id == initial?.EventTypeId);
-        var initialChecks = initial is null ? []
-            : initial.Checks.Concat(initial.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value }));
-        foreach (var check in initialChecks.Take(RuleChecks.MaxPerCondition))
+        // Every stored check comes back as a row, also one the event no longer offers and one beyond the limit: the row
+        // says what is wrong, nothing is dropped without the user (older equals filters too, RuleCondition.AllChecks).
+        foreach (var check in initial?.AllChecks() ?? [])
         {
-            if (CheckFields.Any(f => f.Name == check.Field))
-            {
-                Checks.Add(NewCheck(check));
-            }
+            Checks.Add(new CheckViewModel(CheckFields, check, RemoveCheck, _owner.Revalidate, SelectedEventType?.Entry));
         }
 
         RefreshChecks();
+        Refresh();
     }
 
     public RuleConditionKind Kind { get; }
@@ -95,7 +93,7 @@ public sealed partial class ConditionViewModel : ObservableObject
     public bool CanAddCheck => Checks.Count < RuleChecks.MaxPerCondition && CheckFields.Count > 0;
 
     /// <summary>Why "Add check" is disabled (null while it is not).</summary>
-    public string? AddCheckTip => Checks.Count < RuleChecks.MaxPerCondition ? null : string.Create(CultureInfo.InvariantCulture, $"At most {RuleChecks.MaxPerCondition} checks.");
+    public string? AddCheckTip => Checks.Count < RuleChecks.MaxPerCondition ? null : RuleChecks.TooManyText;
 
     [RelayCommand(CanExecute = nameof(CanAddCheck))]
     private void AddCheck()
@@ -108,7 +106,7 @@ public sealed partial class ConditionViewModel : ObservableObject
         }
     }
 
-    private CheckViewModel NewCheck(RuleCheck? initial) => new(CheckFields, initial, RemoveCheck, _owner.Revalidate);
+    private CheckViewModel NewCheck(RuleCheck? initial) => new(CheckFields, initial, RemoveCheck, _owner.Revalidate, SelectedEventType?.Entry);
 
     private void RemoveCheck(CheckViewModel check)
     {
@@ -206,21 +204,40 @@ public sealed partial class ConditionViewModel : ObservableObject
 
     partial void OnToChanged(string value) => _owner.Revalidate();
 
-    internal void Refresh() => OnPropertyChanged(nameof(Error));
-
-    internal RuleCondition ToCondition() => IsSchedule
-        ? new RuleCondition
+    /// <summary>The condition's error, and which checks are beyond the limit (the server's rule, <see cref="RuleChecks.TooMany"/>).</summary>
+    internal void Refresh()
+    {
+        var tooMany = RuleChecks.TooMany([.. Checks.Select(c => c.ToCheck())]);
+        for (var i = 0; i < Checks.Count; i++)
         {
-            Kind = RuleConditionKind.Schedule,
-            Schedule = new RuleSchedule { Days = [.. Days.Where(d => d.IsChecked).Select(d => d.Day)], From = From.Trim(), To = To.Trim() },
+            Checks[i].SetTooMany(tooMany && i >= RuleChecks.MaxPerCondition);
         }
-        : new RuleCondition
+
+        OnPropertyChanged(nameof(Error));
+    }
+
+    internal RuleCondition ToCondition()
+    {
+        if (IsSchedule)
+        {
+            return new RuleCondition
+            {
+                Kind = RuleConditionKind.Schedule,
+                Schedule = new RuleSchedule { Days = [.. Days.Where(d => d.IsChecked).Select(d => d.Day)], From = From.Trim(), To = To.Trim() },
+            };
+        }
+
+        // Older equals filters left unchanged go back to Data as they were stored; every other check is a check.
+        var checks = Checks.Select(c => c.ToCheck()).ToList();
+        return new RuleCondition
         {
             Kind = RuleConditionKind.Event,
             EventTypeId = SelectedEventType?.Id,
             Devices = ShowSelector ? Selector.ToSelector() : new DeviceSelector { Mode = DeviceSelectorMode.All },
-            Checks = [.. Checks.Select(c => c.ToCheck())],
+            Checks = [.. checks.Where(c => !c.IsLegacy)],
+            Data = checks.Where(c => c.IsLegacy).GroupBy(c => c.Field, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Value, StringComparer.Ordinal),
         };
+    }
 
     /// <summary>One line for the overview: "Input ports: Digital input · All devices · Temperature &gt; 40, Door is yes".</summary>
     internal string Summary()

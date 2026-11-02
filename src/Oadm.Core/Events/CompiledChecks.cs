@@ -29,24 +29,14 @@ public sealed class CompiledChecks
     public static CompiledChecks Compile(RuleCondition condition, EventTypeInfo? type)
     {
         ArgumentNullException.ThrowIfNull(condition);
-        if (condition.Checks.Count == 0 && condition.Data.Count == 0)
+        var all = condition.AllChecks();
+        if (all.Count == 0)
         {
             return None;
         }
 
         var kinds = type?.DataFields.GroupBy(f => f.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().Kind, StringComparer.Ordinal);
-        var checks = new List<Check>(condition.Checks.Count + condition.Data.Count);
-        foreach (var check in condition.Checks)
-        {
-            checks.Add(Check.From(check.Field, check.Op, check.Value, kinds));
-        }
-
-        foreach (var (field, value) in condition.Data)
-        {
-            checks.Add(Check.From(field, RuleCheckOperator.Eq, value, kinds));
-        }
-
-        return new CompiledChecks([.. checks]);
+        return new CompiledChecks([.. all.Select(check => Check.From(check.Field, check.Op, check.Value, kinds))]);
     }
 
     /// <summary>Whether every check holds for the values of an event.</summary>
@@ -88,9 +78,15 @@ public sealed class CompiledChecks
             var kind = kinds is not null && kinds.TryGetValue(field, out var k) ? k : EventValueKind.Text;
             var text = value?.Trim() ?? string.Empty;
             var numeric = RuleChecks.IsNumeric(op, kind);
-            var number = 0d;
-            // A number check whose own value is no number never holds (the server refuses it; a stored rule may be older).
-            var valid = !numeric || RuleChecks.TryParseNumber(text, out number);
+            var isNumber = RuleChecks.TryParseNumber(text, out var number);
+            if (numeric && op == RuleCheckOperator.Eq && !isNumber)
+            {
+                // = on a number value with a text (an older equals filter): compared as text, as before field checks.
+                numeric = false;
+            }
+
+            // Any other number check whose own value is no number never holds (the server refuses it; a stored rule may be older).
+            var valid = !numeric || isNumber;
             return new Check(field, op, numeric, text, number, valid);
         }
 
@@ -105,7 +101,8 @@ public sealed class CompiledChecks
             {
                 if (!RuleChecks.TryParseNumber(actual, out var value))
                 {
-                    return false;
+                    // = falls back to text when the event's value is no number ("n/a" = "n/a"); every other number check fails.
+                    return _op == RuleCheckOperator.Eq && string.Equals(actual.Trim(), _text, StringComparison.OrdinalIgnoreCase);
                 }
 
                 return _op switch

@@ -63,9 +63,10 @@ public sealed partial class FakeOadmApi
             person.Fields.Add(new EventFieldInfo { Name = field, DisplayName = label, Kind = kind });
         }
 
-        // Device trigger values can be checked in a rule; the reason of a lost connection is a value only.
+        // Device trigger data values can be checked in a rule; the source item (port) and the reason of a lost connection are
+        // values only.
         var gate = catalog.EventTypes.Single(t => t.Id == "oadm.device-triggers.sample-gate");
-        gate.Fields.Add(new EventFieldInfo { Name = "port", DisplayName = "Port", Kind = EventFieldKind.EventFieldNumber });
+        gate.Fields.Add(new EventFieldInfo { Name = "port", DisplayName = "Port", Kind = EventFieldKind.EventFieldNumber, NoFilter = true });
         gate.Fields.Add(new EventFieldInfo { Name = "active", DisplayName = "Active", Kind = EventFieldKind.EventFieldYesNo });
         var temperature = new EventTypeEntry
         {

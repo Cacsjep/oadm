@@ -365,7 +365,9 @@ public sealed class DeviceTriggersTests
             [("port", "Port number", EventValueKind.Number), ("active", "Active", EventValueKind.YesNo)],
             types[0].DataFields.Select(f => (f.Name, f.DisplayName, f.Kind)));
         Assert.Equal(("reason", EventValueKind.Text), (types[1].DataFields.Single().Name, types[1].DataFields.Single().Kind));
-        Assert.All(types[0].DataFields, f => Assert.True(f.Filter)); // the device values can be checked in a rule
+        // The data values can be checked in a rule; the source item (port) stays a value only: on Any port the event carries
+        // the port that turned on last, a check on it would turn the rule on and off while the trigger stays on.
+        Assert.Equal([("port", false), ("active", true)], types[0].DataFields.Select(f => (f.Name, f.Filter)));
         Assert.False(types[1].DataFields.Single().Filter); // the reason of a lost connection is a value only
         Assert.All(types, t => Assert.Equal([a.Id], t.DeviceIds)); // the devices that can send it (Dashboards offers only these)
 
@@ -376,6 +378,18 @@ public sealed class DeviceTriggersTests
         await rig.Plugin.InvokeAsync(DeviceTriggersMethods.Delete, TriggerJson.Serialize(new IdRequest(trigger.Id)), CancellationToken.None);
         Assert.Equal(["Gate open (copy)", "Gate open (copy): connection lost"], rig.Plugin.EventTypes.Select(t => t.DisplayName));
         Assert.Contains(DeviceTriggersPlugin.SettingsKey, rig.Settings.Values.Keys);
+    }
+
+    [Fact]
+    public void A_trigger_saved_before_it_knew_its_source_items_has_values_only()
+    {
+        // Triggers saved before OADM 4.9 do not say which values are source items: none can be checked until saved again.
+        var old = Fixture.VirtualInputTrigger("Gate open", [Guid.NewGuid()]) with { SourceValues = null };
+        Assert.All(DeviceTriggersPlugin.TypesOf(old).First().DataFields, f => Assert.False(f.Filter));
+
+        // A one-shot trigger: its source (channel) is a value only, its data value can be checked.
+        var tampering = Fixture.TamperingTrigger("Tampering", [Guid.NewGuid()]) with { SourceValues = ["channel"] };
+        Assert.Equal([("channel", false), ("tampering", true)], DeviceTriggersPlugin.TypesOf(tampering).First().DataFields.Select(f => (f.Name, f.Filter)));
     }
 
     [Fact]

@@ -37,8 +37,7 @@ public static class RuleTexts
     public static string Checks(RuleCondition condition, EventTypeInfo? type)
     {
         ArgumentNullException.ThrowIfNull(condition);
-        return string.Join(", ", condition.Checks
-            .Concat(condition.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value }))
+        return string.Join(", ", condition.AllChecks()
             .Select(check =>
             {
                 var field = type?.DataFields.FirstOrDefault(f => string.Equals(f.Name, check.Field, StringComparison.Ordinal));

@@ -58,12 +58,19 @@
                       <TextBlock Grid.Column="0" Classes="sectionTitle" Text="{Binding Title}" VerticalAlignment="Top" Margin="0,6,0,0" />
                       <StackPanel Grid.Column="1" Spacing="8">
                         <!-- Event -->
-                        <StackPanel Spacing="8" IsVisible="{Binding IsEvent}">
-                          <!-- As wide as a check row (Field + Operator + Value), the info icon right after it -->
-                          <Grid ColumnDefinitions="696,Auto" ColumnSpacing="6" HorizontalAlignment="Left">
-                            <ComboBox ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
+                        <StackPanel Spacing="8" IsVisible="{Binding IsEvent}" Grid.IsSharedSizeScope="True">
+                          <!-- As wide as a check row: the same three columns (theme widths at most, narrower on small windows),
+                               the info icon right after them; the last column is shared with the remove icon of the checks -->
+                          <Grid Classes="checkRow">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckFieldWidth}" />
+                              <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckOperatorWidth}" />
+                              <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckValueWidth}" />
+                              <ColumnDefinition Width="Auto" SharedSizeGroup="CheckEnd" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.ColumnSpan="3" ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
                                       HorizontalAlignment="Stretch" />
-                            <ui:InfoIcon Grid.Column="1" Text="{Binding EventDescription}" />
+                            <ui:InfoIcon Grid.Column="3" Text="{Binding EventDescription}" HorizontalAlignment="Left" />
                           </Grid>
                           <Panel IsVisible="{Binding ShowSelector}">
                             <vm:DeviceSelectorView DataContext="{Binding Selector}" />
@@ -75,21 +82,34 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                               <DataTemplate x:DataType="vm:CheckViewModel">
-                                <Grid ColumnDefinitions="280,184,220,Auto" ColumnSpacing="6" HorizontalAlignment="Left">
-                                  <!-- Reads like A f B: the event's value, how it is compared, the value it is compared with -->
-                                  <ui:LeadingIcon Icon="{StaticResource Icon.squareA}">
-                                    <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
-                                              HorizontalAlignment="Stretch" VerticalAlignment="Top" />
-                                  </ui:LeadingIcon>
-                                  <ui:LeadingIcon Grid.Column="1" Classes="accent" Icon="{StaticResource Icon.squareFunction}">
-                                    <ComboBox ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
-                                              HorizontalAlignment="Stretch" VerticalAlignment="Top" />
-                                  </ui:LeadingIcon>
-                                  <ui:LeadingIcon Grid.Column="2" Icon="{StaticResource Icon.squareB}" IsVisible="{Binding NeedsValue}">
-                                    <TextBox Text="{Binding Value}" PlaceholderText="Value" MaxLength="200" VerticalAlignment="Top" />
-                                  </ui:LeadingIcon>
+                                <Grid Classes="checkRow">
+                                  <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckFieldWidth}" />
+                                    <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckOperatorWidth}" />
+                                    <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckValueWidth}" />
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="CheckEnd" />
+                                  </Grid.ColumnDefinitions>
+                                  <!-- Reads like A f B: the event's value, how it is compared, the value it is compared with. Each input
+                                       is a label-less ui:FormField: leaving it shows its error below it (an empty Value: "Enter a value.") -->
+                                  <ui:FormField Classes="wide inline">
+                                    <ui:LeadingIcon Icon="{StaticResource Icon.squareA}">
+                                      <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
+                                                HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                    </ui:LeadingIcon>
+                                  </ui:FormField>
+                                  <ui:FormField Grid.Column="1" Classes="wide inline">
+                                    <ui:LeadingIcon Classes="accent" Icon="{StaticResource Icon.squareFunction}">
+                                      <ComboBox ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
+                                                HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                    </ui:LeadingIcon>
+                                  </ui:FormField>
+                                  <ui:FormField Grid.Column="2" Classes="wide inline" IsVisible="{Binding NeedsValue}">
+                                    <ui:LeadingIcon Icon="{StaticResource Icon.squareB}">
+                                      <TextBox Text="{Binding Value}" PlaceholderText="Value" MaxLength="200" VerticalAlignment="Top" />
+                                    </ui:LeadingIcon>
+                                  </ui:FormField>
                                   <Button Grid.Column="3" Classes="toolbar iconOnly" ToolTip.Tip="Remove check" VerticalAlignment="Top"
-                                          Command="{Binding RemoveCommand}">
+                                          HorizontalAlignment="Left" Command="{Binding RemoveCommand}">
                                     <ui:OadmIcon Data="{StaticResource Icon.remove}" />
                                   </Button>
                                 </Grid>

@@ -118,7 +118,7 @@ public sealed class OldFirmwareEvents : IEventSource
 - **Devices.** `DeviceIds` on the type lists the devices that can send it now (null: any device); raise `EventTypesChanged`
   when they change. Dashboards offers only these devices for a widget.
 - **Fields.** An `EventField` has a name, a label, `Kind` (`EventValueKind`: `Text`, `Number`, `YesNo`; what the value
-  holds: the operators of a check in a rule, the widget of a dashboard) and `Filter` (default true; false = a value only: a placeholder, no
+  holds: the operators of a check in a rule, the widget of a dashboard; without it, `Type` `Number` gives a number) and `Filter` (default true; false = a value only: a placeholder, no
   check in the rule dialog, for counts and names that are only for display).
 - **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule or a subscriber uses the type;
   skip work nobody needs.

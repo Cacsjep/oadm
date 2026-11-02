@@ -126,6 +126,14 @@ public sealed record TriggerDefinition
     /// <summary>Label and kind of each of <see cref="Values"/> (triggers saved before have none: text).</summary>
     public IReadOnlyList<TriggerValue> ValueFields { get; init; } = [];
 
+    /// <summary>
+    /// The names of <see cref="Values"/> that say which source sent the event (port, channel, disk: the source items of the
+    /// event). Value only in event rules: on Any source the event carries the source that turned on last, so a check on it
+    /// would turn the rule on and off while the trigger stays on (the trigger narrows itself). Null: saved before OADM 4.9,
+    /// every value is a value only until the trigger is saved again.
+    /// </summary>
+    public IReadOnlyList<string>? SourceValues { get; init; }
+
     /// <summary>Devices chosen one by one (plus <see cref="Tags"/> or <see cref="AllDevices"/>).</summary>
     public IReadOnlyList<Guid> DeviceIds { get; init; } = [];
 

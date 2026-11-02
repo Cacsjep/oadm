@@ -39,9 +39,11 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `EventSubscriptionTests`. First user: Dashboards ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
   `EventTypeInfo.DeviceIds`: the devices that can send the event (Device triggers: each trigger's devices now, types changed
   again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo; proto `EventFieldInfo.kind = 5`) says what a
-  value holds and which operators its checks offer; `EventField.Filter` false = a value only (placeholder, no check in the
-  rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every value checkable, the kind from the
-  device's declared type; the reason of "connection lost" is a value only.
+  value holds and which operators its checks offer; a field that declares no kind gets it from `EventField.Type` (Number =
+  number, Text and Choice = text). `EventField.Filter` false = a value only (placeholder, no check in the
+  rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare their data items checkable, the kind from the
+  device's declared type; their source items (port, channel: `TriggerDefinition.SourceValues`) and the reason of
+  "connection lost" are values only.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
@@ -146,14 +148,22 @@ event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "act
   (number)"; a new check starts with the first one), Operator (by kind) and Value (hidden for yes / no), and a remove icon. The three inputs carry an icon inside at their left
   (`ui:LeadingIcon`), so a check reads like an equation A f B: `Icon.squareA` (the event's value), `Icon.squareFunction`
   (Lucide "square-function", the comparison), `Icon.squareB` (the value it is compared with); A and B drawn in its style.
-  Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
+  Each input is a label-less `ui:FormField` (leaving an empty Value shows "Enter a value."); the widths come from the theme
+  (`Oadm.CheckFieldWidth`, `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth`, `Grid.checkRow`), the event select spans
+  them, and the row shrinks on a narrow window. The Operator select and its list show a number operator as its symbol
+  and words (`RuleChecks.Label`: "= equals", "≠ does not equal", "> greater than", "≥ greater than or equal", "< less
+  than", "≤ less than or equal", decided 2026-11-02); the overview and the rules list keep the short form ("Temperature >
+  40", `RuleChecks.Text`). Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
   keeps the checks whose value the new event has (same name), the others go. The overview line names the checks
   ("Temperature > 40, Door is yes"); so does the When column of the rules list (`RuleTexts.Checks`: "Reading (all
   devices, Temperature > 40)").
-- **Operators by `EventField.Kind`** (`RuleChecks.OperatorsFor`, texts `RuleChecks.Text`):
-  - Text: equals, does not equal, contains, starts with (case-insensitive, as the older filter).
+- **Operators by `EventField.Kind`** (`RuleChecks.OperatorsFor`, texts `RuleChecks.Text`; a field without a declared
+  kind takes it from `EventField.Type`: Number = number, Text and Choice = text, e.g. the VLAN of the 802.1X server):
+  - Text: equals, does not equal, contains, starts with (case-insensitive, as the older filter). Choice fields are text;
+    their `Values` are not offered as a list for the value yet.
   - Number: = ≠ > ≥ < ≤ (no between: a range is two checks on the same field). Values in invariant culture ("21.5",
-    finite only); a value that does not parse is a validation error. = and ≠ compare numbers ("40" = "40.0").
+    finite only); a value that does not parse is a validation error. = and ≠ compare numbers ("40" = "40.0"); = falls
+    back to text when one side is no number (older filters), every other number check then fails.
   - YesNo: is yes, is no (no value box). The event's "true"/"1"/"yes" (any case) count as yes; any other value it sent
     counts as no.
 - **Engine**: all checks of a row must hold. Stateful event: the condition is on while the event is on and its latest
@@ -163,17 +173,32 @@ event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "act
   a state set by `ReplaceStates` alone has no values. `CompiledChecks` compiles a condition's checks once per rule (and
   again when the event types change, `Runtime.Refresh`) with the field kinds and the parsed numbers; evaluation adds no
   per-rule scans.
-- **Which fields**: `EventField.Filter` true. Device triggers make their values checkable; values that are only for
-  display (counts of Any device, the site name and address of site events, reasons) stay value only.
-- **Stored rules**: `RuleCondition.Data` (equals filters) becomes "equals" checks when a rule is read
-  (`RuleDefinition.FromJson` → `RuleCondition.MoveDataToChecks`; the engine, the validator and the texts also read
-  `Data` entries of a rule built in code as equals checks); the field `RuleCondition.Checks` (`RuleCheck`
-  `[{"field","op","value"}]`, `RuleCheckOperator` ops `eq`, `ne`, `contains`, `startsWith`, `gt`, `ge`, `lt`, `le`,
-  `yes`, `no`). The dialog opens an older equals filter on a yes / no value as "is yes" / "is no". The server validates
-  them (`RuleValidator`, shared rules `RuleChecks.Problem`): at most 5 ("The trigger: at most 5 checks."), a declared
-  field of the event ("... has no value ..."), checkable ("... cannot be checked."), an op of its kind ("... cannot be
-  compared with ...") and a value (a number for number checks, at most 200 characters); an unknown op makes the rule
-  unreadable (InvalidArgument).
+- **Which fields**: `EventField.Filter` true. Device triggers make their data values checkable; values that are only for
+  display (counts of Any device, the site name and address of site events, reasons) stay value only, and so do the
+  source items of a device trigger (port, channel): on Any source its event carries the source that turned on last, so
+  "Port = 1" would turn the rule off and on while port 1 stays on (the trigger narrows itself; decided 2026-11-02).
+- **Stored rules**: the field `RuleCondition.Checks` (`RuleCheck` `[{"field","op","value"}]`, `RuleCheckOperator` ops
+  `eq`, `ne`, `contains`, `startsWith`, `gt`, `ge`, `lt`, `le`, `yes`, `no`); JSON nulls ("data": null, "checks": null,
+  a null check, a null value) read as empty (`RuleDefinition.FromJson`), so a broken rule is refused (InvalidArgument),
+  never an internal error. The engine, the validator, the texts and the dialog read every check through
+  `RuleCondition.AllChecks()`: the checks, then each older equals filter of `RuleCondition.Data` as an "equals" check
+  marked `RuleCheck.IsLegacy` (never stored).
+- **Older equals filters** (`Data`, rules from before 4.9) keep working and saving unchanged (decided 2026-11-02): they
+  stay in `Data` (the dialog writes a filter back there while the user leaves it as it was, `CheckViewModel.IsUnchangedLegacy`;
+  a filter the user changes becomes a check); the server only needs a value the event declares (as before: a value only,
+  "on" on a yes / no value, text on a number value all save); they have no limit of their own (`RuleChecks.TooMany`: more
+  than 5 only counts once a condition has a new check); they compare text as before (case-insensitive), except that = on
+  a number value compares numbers when both sides are numbers ("40" = "40.0"; also for new checks, a text that is no
+  number falls back to text). The dialog opens a filter on a yes / no value as "is yes" / "is no".
+- **Validation** of new checks (`RuleValidator`, shared rules `RuleChecks.Problem`): at most 5 ("The trigger: at most 5
+  checks.", `RuleChecks.TooManyText` "At most 5 checks."), a value of the event that can be checked (else
+  `RuleChecks.NoSuchValueText` "The event no longer has this value.": "The trigger: Site: the event no longer has this
+  value."), an op of its kind ("... cannot be compared with ...") and a value (a number for number checks, at most 200
+  characters); an unknown op makes the rule unreadable (InvalidArgument).
+- **Opening a stored rule** never drops a check: one on a value the event no longer offers (or of an event that is gone)
+  stays as a row with "The event no longer has this value." below its Field, one beyond the limit with "At most 5
+  checks.", an operator that no longer fits the value's kind with "Choose how to compare."; these show when the dialog
+  opens and block Next and Save until the user removes or fixes the row.
 - **Not part of it**: OR between checks (a second rule), hysteresis, comparing two fields, checks on schedules.
 - **Tests**: `tests/Oadm.Core.Tests/Events/FieldCheckTests` (each operator per kind, missing field, not a number, the
   stored JSON and old `Data` filters), `FieldCheckRuleTests` (value changes of a stateful event turning the rule on and
