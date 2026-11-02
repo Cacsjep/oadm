@@ -28,9 +28,11 @@ public sealed class TaskDialogContext : ITaskDialogContext
     /// <param name="tasks">The client's task mirror: with it the dialog can run its task itself (<see cref="CanRunTasks"/>).</param>
     /// <param name="hasAllDevices">Whether the user may reach every device (<see cref="Shell.UserSession.HasAllDevices"/>); null: true.</param>
     /// <param name="startView">The part of the dialog a page asked to open on (<see cref="StartView"/>); null: its usual start.</param>
+    /// <param name="myAxis">The user's MyAxis sign-in (<see cref="MyAxis"/>); null: none.</param>
     public TaskDialogContext(IOadmApi api, string pluginId, Func<string, bool>? has = null, Func<IReadOnlyList<IDeviceInfo>>? allDevices = null, TaskStore? tasks = null,
-        Func<bool>? hasAllDevices = null, string? startView = null)
+        Func<bool>? hasAllDevices = null, string? startView = null, IMyAxisSignIn? myAxis = null)
     {
+        MyAxis = myAxis;
         StartView = string.IsNullOrWhiteSpace(startView) ? null : startView;
         _hasAllDevices = hasAllDevices;
         _tasks = tasks;
@@ -51,6 +53,8 @@ public sealed class TaskDialogContext : ITaskDialogContext
     public string PluginId { get; }
 
     public string? StartView { get; }
+
+    public IMyAxisSignIn? MyAxis { get; }
 
     public bool CanRunTasks => _tasks is not null;
 
