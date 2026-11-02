@@ -2385,6 +2385,10 @@
     <Setter Property="VerticalAlignment" Value="Top" />
     <Setter Property="Margin" Value="11,9,0,0" />
   </Style>
+  <!-- ui:LeadingIcon with class accent: the icon in the accent colour (the operator of a field check) -->
+  <Style Selector="ui|LeadingIcon.accent ui|OadmIcon.fieldIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
   <Style Selector="ui|OadmIcon.fieldIcon.inner">
     <Setter Property="Margin" Value="7,0,0,0" />
   </Style>

@@ -80,7 +80,7 @@
                                     <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
                                               HorizontalAlignment="Stretch" VerticalAlignment="Top" />
                                   </ui:LeadingIcon>
-                                  <ui:LeadingIcon Grid.Column="1" Icon="{StaticResource Icon.squareFunction}">
+                                  <ui:LeadingIcon Grid.Column="1" Classes="accent" Icon="{StaticResource Icon.squareFunction}">
                                     <ComboBox ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
                                               HorizontalAlignment="Stretch" VerticalAlignment="Top" />
                                   </ui:LeadingIcon>
