@@ -342,6 +342,16 @@ public sealed class EventRuleChecksTests : IDisposable
             operators.IsDropDownOpen = false;
             Pump();
 
+            // A text value has its own operators.
+            var textOperators = dialog.GetVisualDescendants().OfType<TextBlock>()
+                .Single(t => t.IsEffectivelyVisible && t.Text == "starts with").GetVisualAncestors().OfType<ComboBox>().First();
+            textOperators.IsDropDownOpen = true;
+            Pump();
+            Assert.Contains("does not equal", Texts(dialog));
+            Capture(dialog, outDir, "event-rules-checks-operators-text.png");
+            textOperators.IsDropDownOpen = false;
+            Pump();
+
             trigger.Checks[0].Value = "hot";
             Pump();
             Assert.Contains("Enter a number, e.g. 21.5.", Texts(dialog));
