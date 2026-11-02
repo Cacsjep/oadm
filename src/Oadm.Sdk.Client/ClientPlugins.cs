@@ -79,6 +79,27 @@ public interface ITaskDialogContext
     /// context menu, older hosts): the dialog's usual start. A dialog ignores names it does not know.
     /// </summary>
     string? StartView => null;
+
+    /// <summary>
+    /// The user's MyAxis sign-in (SDK 0.9.0, docs/spec/myaxis.md), e.g. for downloads from axis.com. Null on older hosts.
+    /// </summary>
+    IMyAxisSignIn? MyAxis => null;
+}
+
+/// <summary>The current user's MyAxis sign-in as the client knows it (SDK 0.9.0).</summary>
+public interface IMyAxisSignIn
+{
+    /// <summary>Whether the user is signed in now.</summary>
+    bool IsSignedIn { get; }
+
+    /// <summary>Raised on the UI thread when <see cref="IsSignedIn"/> changed.</summary>
+    event EventHandler? Changed;
+
+    /// <summary>
+    /// Opens the MyAxis sign-in window over <paramref name="owner"/>; true once the user is signed in (also when they
+    /// already were), false when they closed the window or sign-in is not available on this computer.
+    /// </summary>
+    Task<bool> SignInAsync(Avalonia.Controls.Window owner);
 }
 
 /// <summary>UI page of a core plugin, shown in the navigation rail.</summary>
