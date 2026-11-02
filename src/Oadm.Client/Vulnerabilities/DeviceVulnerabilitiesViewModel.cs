@@ -10,10 +10,10 @@ using Oadm.Contracts.Vulnerabilities;
 namespace Oadm.Client.Vulnerabilities;
 
 /// <summary>
-/// The "Vulnerabilities" window of the selected devices (context menu, docs/spec/vulnerabilities.md): every CVE once, worst
-/// first, with the level, score, fixed versions, the full description and a link to Axis' advisory; with several devices also
+/// The "Vulnerabilities" window of the selected devices (context menu, docs/spec/vulnerabilities.md): every CVE once per kind,
+/// worst first, the possible ones last, with the level, score, fixed versions, the full description and a link to Axis' advisory; with several devices also
 /// how many it affects and which (tooltip). A snapshot taken when it opens. The devices are grouped by their shared
-/// <see cref="DeviceVulnerabilities"/> first (one per model and firmware): 100,000 selected devices cost one pass.
+/// <see cref="DeviceVulnerabilities"/> first (one per model, firmware and chip): 100,000 selected devices cost one pass.
 /// </summary>
 public sealed partial class DeviceVulnerabilitiesViewModel : ObservableObject
 {
@@ -47,14 +47,15 @@ public sealed partial class DeviceVulnerabilitiesViewModel : ObservableObject
             members.Add(device);
         }
 
-        var perCve = new Dictionary<string, Aggregate>(StringComparer.Ordinal);
+        // One row per CVE and kind: a CVE certain on some devices and possible on others has a row for each.
+        var perCve = new Dictionary<(string Id, bool Possible), Aggregate>();
         foreach (var (found, members) in groups)
         {
             foreach (var item in found.Items)
             {
-                if (!perCve.TryGetValue(item.Vulnerability.Id, out var aggregate))
+                if (!perCve.TryGetValue((item.Vulnerability.Id, item.Possible), out var aggregate))
                 {
-                    perCve[item.Vulnerability.Id] = aggregate = new Aggregate(item.Vulnerability);
+                    perCve[(item.Vulnerability.Id, item.Possible)] = aggregate = new Aggregate(item.Vulnerability, item.Possible);
                 }
 
                 aggregate.Add(item.FixedIn, members);
@@ -62,12 +63,19 @@ public sealed partial class DeviceVulnerabilitiesViewModel : ObservableObject
         }
 
         Rows = [.. perCve.Values
-            .OrderByDescending(a => a.Vulnerability.SeverityRank)
+            .OrderBy(a => a.Possible)
+            .ThenByDescending(a => a.Vulnerability.SeverityRank)
             .ThenByDescending(a => a.Vulnerability.Score ?? 0)
             .ThenByDescending(a => a.Count)
             .ThenByDescending(a => a.Vulnerability.Id, StringComparer.Ordinal)
-            .Select(a => new VulnerabilityRowViewModel(a.Vulnerability, a.FixedInText(), a.Count, ShowDevices ? a.DevicesTip() : null, OpenAdvisoryCommand))];
-        CountText = Rows.Count == 1 ? "1 CVE" : string.Create(CultureInfo.InvariantCulture, $"{Rows.Count:N0} CVEs");
+            .Select(a => new VulnerabilityRowViewModel(a.Vulnerability, a.FixedInText(), a.Count, ShowDevices ? a.DevicesTip() : null,
+                OpenAdvisoryCommand, a.Possible))];
+        var certain = perCve.Keys.Where(k => !k.Possible).Select(k => k.Id).ToHashSet(StringComparer.Ordinal);
+        int possible = perCve.Keys.Count(k => k.Possible && !certain.Contains(k.Id));
+        var possibleText = string.Create(CultureInfo.InvariantCulture, $"{possible:N0} possible");
+        CountText = certain.Count == 0 && possible > 0 ? possibleText
+            : (certain.Count == 1 ? "1 CVE" : string.Create(CultureInfo.InvariantCulture, $"{certain.Count:N0} CVEs"))
+                + (possible > 0 ? ", " + possibleText : "");
         DeviceText = devices.Count == 1
             ? Label(devices[0])
             : string.Create(CultureInfo.InvariantCulture, $"{affected:N0} of {devices.Count:N0} selected devices");
@@ -102,14 +110,16 @@ public sealed partial class DeviceVulnerabilitiesViewModel : ObservableObject
     private static string Label(DeviceRowViewModel device) =>
         string.Join(" · ", new[] { device.Model, device.DisplayAddress, device.FirmwareVersion }.Where(t => !string.IsNullOrWhiteSpace(t)));
 
-    /// <summary>One CVE over the selected devices: the fixed versions, the count and the first names.</summary>
-    private sealed class Aggregate(Vulnerability vulnerability)
+    /// <summary>One CVE (certain or possible) over the selected devices: the fixed versions, the count and the first names.</summary>
+    private sealed class Aggregate(Vulnerability vulnerability, bool possible)
     {
         private readonly HashSet<string> _fixedIn = new(StringComparer.Ordinal);
         private readonly List<DeviceRowViewModel> _named = [];
         private bool _noFix;
 
         public Vulnerability Vulnerability { get; } = vulnerability;
+
+        public bool Possible { get; } = possible;
 
         public int Count { get; private set; }
 
@@ -128,12 +138,21 @@ public sealed partial class DeviceVulnerabilitiesViewModel : ObservableObject
             _named.AddRange(devices.Take(MaxDeviceNames - _named.Count));
         }
 
-        /// <summary>"6.50.5.19, 11.11.93", lowest first; "Not listed" when a device's track has none.</summary>
+        /// <summary>
+        /// "6.50.5.19, 11.11.93", lowest first; "Not listed" when a device's track has none; a possible one "11.11 (check the
+        /// advisory for your LTS)".
+        /// </summary>
         public string FixedInText()
         {
             var versions = _fixedIn.Order(Comparer<string>.Create(static (a, b) =>
                 FirmwareVersion.TryParse(a, out var x) && FirmwareVersion.TryParse(b, out var y) ? x.CompareTo(y) : string.CompareOrdinal(a, b)));
-            return string.Join(", ", _noFix ? versions.Append(VulnerabilityRowViewModel.NotListed) : versions);
+            var text = string.Join(", ", versions);
+            if (Possible && text.Length > 0)
+            {
+                text = DeviceVulnerabilities.FixedText(text, possible: true);
+            }
+
+            return _noFix ? (text.Length > 0 ? text + ", " : "") + VulnerabilityRowViewModel.NotListed : text;
         }
 
         public string DevicesTip()
@@ -152,20 +171,22 @@ public sealed class VulnerabilityRowViewModel
     /// <summary>The fixed version when the device's track has none.</summary>
     public const string NotListed = "Not listed";
 
+    /// <param name="possible">A possible match (<see cref="DeviceVulnerability.Possible"/>): level "Possibly affected", muted.</param>
     public VulnerabilityRowViewModel(Vulnerability vulnerability, string fixedIn, int deviceCount = 1, string? devicesTip = null,
-        IAsyncRelayCommand<VulnerabilityRowViewModel?>? openAdvisory = null)
+        IAsyncRelayCommand<VulnerabilityRowViewModel?>? openAdvisory = null, bool possible = false)
     {
         ArgumentNullException.ThrowIfNull(vulnerability);
         ArgumentNullException.ThrowIfNull(fixedIn);
         var v = vulnerability;
         Id = v.Id;
-        Level = v.Severity.Length > 0 ? v.Severity : "Unrated";
-        IsSevere = v.SeverityRank >= 3;
-        IsModerate = v.SeverityRank == 2;
-        IsMinor = v.SeverityRank <= 1;
+        IsPossible = possible;
+        Level = possible ? DeviceVulnerabilities.PossibleLevel : v.Severity.Length > 0 ? v.Severity : "Unrated";
+        IsSevere = !possible && v.SeverityRank >= 3;
+        IsModerate = !possible && v.SeverityRank == 2;
+        IsMinor = !possible && v.SeverityRank <= 1;
         Score = v.Score;
         ScoreText = v.Score is { } score ? score.ToString("0.0", CultureInfo.InvariantCulture) : "";
-        SortKey = (v.SeverityRank * 1000) + (int)Math.Round((v.Score ?? 0) * 10);
+        SortKey = (possible ? 0 : 10_000) + (v.SeverityRank * 1000) + (int)Math.Round((v.Score ?? 0) * 10);
         FixedIn = fixedIn.Length > 0 ? fixedIn : NotListed;
         DeviceCount = deviceCount;
         DeviceCountText = deviceCount.ToString("N0", CultureInfo.InvariantCulture);
@@ -186,11 +207,14 @@ public sealed class VulnerabilityRowViewModel
 
     public bool IsMinor { get; }
 
+    /// <summary>A possible match: the level muted, after the certain ones.</summary>
+    public bool IsPossible { get; }
+
     public double? Score { get; }
 
     public string ScoreText { get; }
 
-    /// <summary>The level, then the score (sorting the Level column).</summary>
+    /// <summary>Certain before possible, then the level, then the score (sorting the Level column).</summary>
     public int SortKey { get; }
 
     /// <summary>The first fixed version of each affected device's track ("6.50.5.19, 11.11.93"), or "Not listed".</summary>

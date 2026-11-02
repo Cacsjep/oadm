@@ -17,6 +17,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Fixed
 
 - Vulnerabilities: a CVE of one chip, such as ARTPEC-8, no longer shows on devices with another chip.
+- Vulnerabilities: on an LTS track, a CVE whose fix for that track is only in the advisory shows as possible and is not counted.
 
 ## [4.8.0] - 2026-11-01
 

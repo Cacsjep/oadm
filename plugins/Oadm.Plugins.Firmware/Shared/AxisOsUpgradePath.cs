@@ -14,7 +14,8 @@ public static class AxisOsUpgradePath
 {
     /// <summary>
     /// The LTS tracks (major, minor) with their LTS year, oldest first: the product-specific support tracks 6.50, 8.40 and 9.80
-    /// (no year, "PSS 9.80" on axis.com), then 10.12 (LTS 2022), 11.11 (LTS 2024), 12.11 (LTS 2026).
+    /// (no year, "PSS 9.80" on axis.com), then 10.12 (LTS 2022), 11.11 (LTS 2024), 12.11 (LTS 2026). The same list as the
+    /// host's <c>Oadm.Contracts.Vulnerabilities.AxisOsTracks.Lts</c> (plugins do not reference it); a new LTS goes into both.
     /// </summary>
     public static IReadOnlyList<(int Major, int Minor, int? Year)> LtsTracks { get; } =
         [(6, 50, null), (8, 40, null), (9, 80, null), (10, 12, 2022), (11, 11, 2024), (12, 11, 2026)];

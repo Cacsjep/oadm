@@ -28,7 +28,7 @@ import vulnerabilities from '../../../assets/screens/client-vulnerabilities-wind
 | Certificate | Trusted, Self-signed, Untrusted or Expired. |
 | Clock | OK, or an amber warning icon when the device clock differs from the OADM server by more than the allowed clock difference in **Settings** (2 s by default) or NTP is not synced. Hover it to see how far. The export has the difference. |
 | Compliance | The worst result of the [compliance checks](../compliance/). Off by default. |
-| Vulnerabilities | The published Axis CVEs the device's firmware may be affected by: the count and the worst severity, red for High and Critical, amber for Medium. Hover it for each CVE and the firmware that fixes it on the device's track. See [Vulnerabilities](#vulnerabilities). |
+| Vulnerabilities | The published Axis CVEs the device's firmware may be affected by: the count and the worst severity, red for High and Critical, amber for Medium, and the possible ones apart, for example +3 possible. Hover it for each CVE and the firmware that fixes it on the device's track. See [Vulnerabilities](#vulnerabilities). |
 | Architecture | The processor type, for example aarch64. Off by default. |
 
 Click a header to sort. Choose columns with the columns button right of the toolbar. Order and widths are kept per
@@ -79,10 +79,16 @@ OADM knows the published Axis CVEs of AXIS OS and other Axis device firmware. It
 version and chip, so a device "may be affected": whether the affected feature is in use is not known.
 
 - **Vulnerabilities column**: the count and the worst level of the device, for example 2 · High. Hover it for each CVE.
-- **Search**: type a CVE ID, for example CVE-2024-6509, to see the devices it may affect.
+  Possible ones are not counted: they show as +3 possible.
+- **Search**: type a CVE ID, for example CVE-2024-6509, to see the devices it may affect, possible ones included.
 - **Vulnerabilities window**: right-click one or more devices and choose **Vulnerabilities**. Each CVE is listed once,
   worst first, with its level, score, the firmware that fixes it, the full description and **Advisory**, the Axis
-  security advisory. With several devices, **Devices** says how many of them it affects; hover the number to see which.
+  security advisory. Possible ones come last. With several devices, **Devices** says how many of them it affects; hover
+  the number to see which.
+
+**Possibly affected**: the device runs an LTS track, for example 10.12, and the CVE lists only a fix on a newer track.
+Axis often fixes LTS tracks too, with a version only the advisory names. Open **Advisory** to see the fixed version for
+your LTS.
 
 **Fixed in** is the first fixed version on the device's firmware track. When Axis lists no fix for that track, it is the
 first fixed version of a newer track. Upgrade to that version or later.

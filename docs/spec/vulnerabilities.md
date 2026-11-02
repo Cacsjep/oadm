@@ -59,27 +59,42 @@ limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64
 
 ## Devices page
 
-- Column **Vulnerabilities** (column chooser, on by default, after Firmware): "2 · High" (count and the highest severity),
-  empty when none is known. `ui:StatusChip` red for High and Critical, amber for Medium, plain text for Low or unrated.
-  Sorting by it puts the highest severity and the most CVEs at one end.
-- The cell's tooltip (`VulnerabilityTip`, built when it opens, none for a device without CVEs) lists the CVEs worst first in
-  three aligned columns: the id, the level (only the level colored: Critical and High red, Medium amber, Low plain) and
-  "fixed in 11.11.93" (the end of the range of the device's track); at most 12 rows, then "and 17 more". Its own ToolTip,
+- Column **Vulnerabilities** (column chooser, on by default, after Firmware): "2 · High" (count and the highest severity of
+  the certain matches), empty when none is known. `ui:StatusChip` red for High and Critical, amber for Medium, plain text
+  for Low or unrated. Possible matches (see Matching) are not counted and set no level: a muted "+3 possible" after it, or
+  "3 possible" alone. Sorting by it: highest certain severity, then the most certain CVEs, then the most possible ones; a
+  device with only possible ones sorts below every device with a certain one.
+- The cell's tooltip (`VulnerabilityTip`, built when it opens, none for a device without CVEs) lists the CVEs worst first,
+  the possible ones last, in three aligned columns: the id, the level (only the level colored: Critical and High red,
+  Medium amber, Low plain, "Possibly affected" muted) and "fixed in 11.11.93" (the end of the range of the device's track;
+  a possible one "fixed in 11.11 (check the advisory for your LTS)"); at most 12 rows, then "and 17 more". Its own ToolTip,
   wider than the theme's text tooltips (640 px), with the theme's look.
-- Context menu **Vulnerabilities** (shield-alert icon, after Tags): only when a selected device has known CVEs, never an
-  empty window. The window (`DeviceVulnerabilitiesWindow`, one card) names the device (model, address, firmware) or says
-  "3 of 5 selected devices", gives the count, and lists every CVE once, worst first: CVE, Level (the column's chips), Score,
+- Context menu **Vulnerabilities** (shield-alert icon, after Tags): only when a selected device has known CVEs, certain or
+  possible, never an empty window. The window (`DeviceVulnerabilitiesWindow`, one card) names the device (model, address,
+  firmware) or says "3 of 5 selected devices", gives the count ("2 CVEs, 3 possible"; "3 possible" without certain ones),
+  and lists every CVE once per kind, worst first, the possible ones last (a CVE certain on some selected devices and
+  possible on others has a row for each, each with its devices): CVE, Level (the column's chips; "Possibly affected" a
+  neutral chip), Score,
   Fixed in (the fixed version of each affected device's track, lowest first, "Not listed" without one), Devices (several
   devices only: how many it affects, the first 12 in its tooltip, then "and 5 more"), the full description (wraps, no line
   limit: `TextBlock.cellText.fullText`) and an "Advisory" link (https only, opens the browser). A snapshot taken when it
   opens; the selection is grouped by its shared per-model-firmware-and-chip result first (one pass at 100,000 devices).
-- Search: a CVE id ("CVE-2024-6509", any case) shows the devices it may affect.
+- Search: a CVE id ("CVE-2024-6509", any case) shows the devices it may affect, certain and possible.
 - Matching: model and firmware version against the ranges, numbers compared part by part (6.50.5.19, 11.11.93,
   12.10.36; text after the numbers ignored). Ranges for every AXIS OS device apply from 5.0 on: devices with their own
   firmware line (door controllers on 1.x such as the A1001) only match ranges naming their model. An entry with `socs`
   matches only devices with one of those chips (the device's `Soc`, compared short, upper case, letters and digits only); a
-  device whose chip is not known yet may be affected and matches. Done in the client per model, firmware and chip and cached
-  (100,000 devices share a few dozen versions): a new list for 100,000 devices about 80 ms, a search by CVE about 70 ms. "May be affected": the ranges do not say whether the affected feature is in use.
+  device whose chip is not known yet may be affected and matches.
+- Possible matches (`DeviceVulnerability.Possible`): the records often give one range for every track ("6.50 - 11.10",
+  fixed in 11.11) while Axis fixed the LTS tracks later with builds only the advisory names (10.12.249, 9.80.78, ...;
+  OADM reads no advisory: data only from the CVE records and NVD). A match of an every-AXIS OS entry is possible when the
+  device runs an LTS track (`AxisOsTracks.Lts`: 6.50, 8.40, 9.80, 10.12, 11.11, 12.11; the same list as the firmware
+  plugin's `AxisOsUpgradePath.LtsTracks`) below the track of the range's end. It stays certain when the range ends right
+  after the device's track (a whole track named: "10.11 - 10.12" is below 10.13) and for ranges of a model. When an entry
+  has ranges ending on the device's LTS track (its own fix), only those count: a later build of that track is not affected.
+  A certain match of a CVE wins over a possible one (a model's own entry).
+- Done in the client per model, firmware and chip and cached
+  (100,000 devices share a few dozen versions): a new list for 100,000 devices about 100 ms, a search by CVE about 70 ms. "May be affected": the ranges do not say whether the affected feature is in use.
 
 ## Where
 
@@ -98,9 +113,9 @@ limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64
 `tests/Oadm.Server.Tests/Vulnerabilities`: the feed from recorded answers (`Fixtures/Vulnerabilities`: six cve.org records
 and the NVD page: exact ranges, free text with NVD's ranges, models, a track list, Camera Station left out, a chip with NVD's
 repeated and single-model ranges; `Platforms/`: exact ranges per chip), every text form, model codes, platforms as chips, the
-version compare, the matcher (worst first, fixed build, 5.0 rule, chips and an unknown chip, cache), the list's limits; the store
+version compare, the matcher (worst first, fixed build, 5.0 rule, chips and an unknown chip, possible on an LTS track, cache), the list's limits; the store
 (newest wins across a restart, broken file, newer release); the service (modes, permissions, audit, no outgoing call while
-off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text, sort and tooltip, rows following
-a new list, a firmware update and a chip, the CVE search, the Settings card, the context menu entry and the window
+off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text with possible ones, sort and tooltip, rows following
+a new list, a firmware update and a chip, the CVE search (possible too), the Settings card, the context menu entry and the window with possible rows
 (`DeviceVulnerabilitiesWindowTests`); headless screenshots (`VulnerabilityHeadlessTests`,
 `OADM_SCREENSHOT_DEVICES` renders a JSON list of real devices); Perf at 100,000 devices.
