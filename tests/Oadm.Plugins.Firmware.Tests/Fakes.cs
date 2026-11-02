@@ -94,6 +94,9 @@ internal sealed class RecordingContext : ITaskExecutionContext
     public ICorePlugin? Owner => null;
     public IUploadedFiles Files { get; }
 
+    /// <summary>The MyAxis downloads of the user who started the task; null: the host offers none.</summary>
+    public IAxisDownloads? AxisDownloads { get; set; }
+
     public void ReportProgress(int percent, string? message = null) => Reports.Add((percent, message));
 
     public void PlanSteps(params string[] names) => Steps.Plan(names);

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
+using Oadm.Plugins.Firmware.Online;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
@@ -51,15 +52,22 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public const string PluginId = FirmwarePermissions.TaskPluginId;
     public const string StatusQuery = "status";
 
+    /// <summary>Query: the versions on axis.com of the models of the selection (<see cref="OnlineLookupRequest"/> -> <see cref="OnlineLookupResult"/>).</summary>
+    public const string OnlineQuery = "online";
+
+    /// <summary>Query: the file of one version on axis.com (<see cref="OnlineVersionRequest"/> -> <see cref="OnlineFileInfo"/> or null).</summary>
+    public const string OnlineVersionQuery = "onlineVersion";
+
     private readonly FirmwareTaskTimings _timings;
     private readonly TimeProvider _time;
+    private readonly OnlineFirmwareLookup _online;
 
     public FirmwareTaskPlugin()
         : this(new FirmwareTaskTimings(), TimeProvider.System)
     {
     }
 
-    public FirmwareTaskPlugin(FirmwareTaskTimings timings, TimeProvider timeProvider)
+    public FirmwareTaskPlugin(FirmwareTaskTimings timings, TimeProvider timeProvider, IAxisSite? axisSite = null)
     {
         ArgumentNullException.ThrowIfNull(timings);
         ArgumentNullException.ThrowIfNull(timeProvider);
@@ -68,6 +76,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentOutOfRangeException.ThrowIfLessThan(timings.CommitAttempts, 1);
         _timings = timings;
         _time = timeProvider;
+        _online = new OnlineFirmwareLookup(axisSite ?? AxisSite.Instance);
     }
 
     public string Id => PluginId;
@@ -156,6 +165,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string CheckCompatibility = "Check compatibility";
         public const string ReadDeviceInfo = "Read device info";
         public const string ValidateFile = "Validate file";
+        public const string Download = "Download firmware";
         public const string ReadFirmwareStatus = "Read firmware status";
         public const string Upload = "Upload firmware";
         public const string Install = "Install firmware";
@@ -166,7 +176,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string WaitBeforeRetry = "Wait before retrying the commit";
 
         public static readonly string[] Planned =
-            [CheckCompatibility, ReadDeviceInfo, ValidateFile, ReadFirmwareStatus, Upload, Install, WaitForDevice, VerifyVersion, ReadCommitState, Commit];
+            [CheckCompatibility, ReadDeviceInfo, ValidateFile, Download, ReadFirmwareStatus, Upload, Install, WaitForDevice, VerifyVersion, ReadCommitState, Commit];
     }
 
     public async Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct)
@@ -180,6 +190,12 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
+            // Versions from axis.com download with the MyAxis sign-in of the user who started the run.
+            if (payload.AllOnline().Count > 0 && ctx.AxisDownloads is not { HasSession: true })
+            {
+                throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
+            }
+
             if (device.Status != DeviceStatus.Ok)
             {
                 throw new InvalidOperationException($"The device status is {device.Status}; firmware is only installed on devices with status OK. Nothing was changed.");
@@ -197,8 +213,10 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             step.Complete($"AXIS {info.ProdNbr}, AXIS OS {info.Version}");
         }
 
-        UploadedFile file;
+        UploadedFile? file = null;
+        OnlineFileInfo? onlineFile = null;
         FirmwareImageInfo image;
+        long size;
         string? pathAdvice = null;
         using (var step = ctx.BeginStep(Steps.ValidateFile))
         {
@@ -212,9 +230,19 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 images.Add(FirmwareImageInspector.Inspect(f.FileName ?? found.Name, found.Size));
             }
 
+            // A version from axis.com: the server reads its file (URL, size, SHA-256) from axis.com itself.
+            var online = payload.AllOnline();
+            var onlineIndex = FirmwareCompatibility.FindOnline(info.ProdNbr, info.Version, online);
+            var onlineImages = online.Select(o => OnlineFirmware.ImageOf(o, 0)).ToList();
+            if (onlineIndex >= 0)
+            {
+                onlineFile = await ReadOnlineFileAsync(online[onlineIndex], ct).ConfigureAwait(false);
+                onlineImages[onlineIndex] = OnlineFirmware.ImageOf(online[onlineIndex], onlineFile.Size);
+            }
+
             // AXIS OS 13 and later refuse the upgrade for an unsigned or undeclared application: checked before the upload.
             IReadOnlyList<InstalledApp>? apps = null;
-            if (images.Any(i => i.Version?.Major >= InstalledAppRules.FromMajor))
+            if (images.Any(i => i.Version?.Major >= InstalledAppRules.FromMajor) || (onlineIndex >= 0 && onlineImages[onlineIndex].Version?.Major >= InstalledAppRules.FromMajor))
             {
                 apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
                 if (apps is null)
@@ -223,17 +251,30 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 }
             }
 
-            var (index, check) = FirmwareCompatibility.Choose(info.ProdNbr, info.Version, images, payload.FactoryDefaultMode, payload.AllowDowngrade, apps);
-            if (index < 0)
+            var (chosenOnline, index, check) = FirmwareCompatibility.ChooseWithOnline(info.ProdNbr, info.Version, online, onlineImages, images,
+                payload.FactoryDefaultMode, payload.AllowDowngrade, apps);
+            if (chosenOnline < 0 && index < 0)
             {
                 step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
                 SkipRemaining(ctx, FirmwareCompatibility.NoFileForModel);
                 return;
             }
 
-            file = files[index];
-            image = images[index];
-            ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
+            if (chosenOnline >= 0)
+            {
+                image = onlineImages[chosenOnline] with { FileName = onlineFile!.FileName };
+                size = onlineFile.Size;
+                ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; AXIS OS {onlineFile.Version} from {onlineFile.Url} ({size} bytes, SHA-256 {onlineFile.Sha256}): {check.Message}"));
+            }
+            else
+            {
+                onlineFile = null;
+                file = files[index];
+                image = images[index];
+                size = file.Size;
+                ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
+            }
+
             if (check.IsNoOp)
             {
                 step.Warn($"Already up to date: the device runs {info.Version}. Nothing was installed.");
@@ -258,9 +299,102 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 pathAdvice = note;
             }
 
-            step.Complete(Invariant($"{image.FileName}, {file.Size / (1024 * 1024)} MB: {check.Message}"));
+            step.Complete(Invariant($"{image.FileName}, {size / (1024 * 1024)} MB: {check.Message}"));
         }
 
+        // The version from axis.com, downloaded by the host with the user's MyAxis sign-in; disposed after the upload.
+        AxisDownloadedFile? downloaded = null;
+        try
+        {
+            if (onlineFile is null)
+            {
+                ctx.SkipStep(Steps.Download, OnlineFirmware.FileChosenText);
+            }
+            else
+            {
+                downloaded = await DownloadAsync(ctx, onlineFile, ct).ConfigureAwait(false);
+                size = downloaded.Length;
+            }
+
+            await InstallAsync(ctx, payload, info, file, downloaded, image, size, pathAdvice, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (downloaded is not null)
+            {
+                await downloaded.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>The file of an online entry as axis.com lists it now; refused when it is no longer there.</summary>
+    private async Task<OnlineFileInfo> ReadOnlineFileAsync(FirmwareOnline entry, CancellationToken ct)
+    {
+        try
+        {
+            return await _online.FindVersionAsync(entry.Source, entry.Product, entry.Version, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"AXIS OS {entry.Version} for {entry.Product} is no longer on axis.com. Nothing was changed.");
+        }
+        catch (AxisSiteException ex)
+        {
+            throw new InvalidOperationException(OnlineFirmware.UnreachableText + " Nothing was changed.", ex);
+        }
+    }
+
+    /// <summary>"Download firmware": the host's download with progress in MB; its refusals end the task (nothing was changed).</summary>
+    private static async Task<AxisDownloadedFile> DownloadAsync(ITaskExecutionContext ctx, OnlineFileInfo online, CancellationToken ct)
+    {
+        using var step = ctx.BeginStep(Steps.Download);
+        var downloads = ctx.AxisDownloads ?? throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
+        var totalMb = online.Size / (1024 * 1024);
+        var lastPercent = -1;
+        var progress = new SyncProgress(received =>
+        {
+            var percent = (int)Math.Clamp(100 * (double)received / Math.Max(1, online.Size), 0, 100);
+            if (percent != lastPercent)
+            {
+                lastPercent = percent;
+                step.ReportProgress(percent, Invariant($"{received / (1024 * 1024)} of {totalMb} MB"));
+            }
+        });
+
+        ctx.Log(TaskLogLevel.Info, $"Downloading {online.Url} (SHA-256 {online.Sha256}).");
+        AxisDownloadedFile result;
+        try
+        {
+            result = await downloads.DownloadAsync(new Uri(online.Url), online.Sha256, online.Size, progress, ct).ConfigureAwait(false);
+        }
+        catch (AxisDownloadException ex)
+        {
+            throw new InvalidOperationException(NothingChanged(ex.Message), ex);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(NothingChanged(ex.Message), ex);
+        }
+
+        step.Complete(result.FromCache
+            ? "From the cache, checksum matches axis.com"
+            : Invariant($"{result.Length / (1024 * 1024)} MB from axis.com, checksum matches"));
+        return result;
+    }
+
+    private static string NothingChanged(string message)
+    {
+        var text = message.Trim();
+        return text.EndsWith("Nothing was changed.", StringComparison.Ordinal) ? text : text.TrimEnd('.') + ". Nothing was changed.";
+    }
+
+    /// <summary>Calls back on the reporting thread (the step reports itself), unlike <see cref="Progress{T}"/>.</summary>
+    private sealed class SyncProgress(Action<long> report) : IProgress<long>
+    {
+        public void Report(long value) => report(value);
+    }
+
+    /// <summary>From the status check before the upload to the commit.</summary>
+    private async Task InstallAsync(ITaskExecutionContext ctx, FirmwarePayload payload, BasicDeviceInfo info, UploadedFile? file,
+        AxisDownloadedFile? downloaded, FirmwareImageInfo image, long size, string? pathAdvice, CancellationToken ct)
+    {
         var fwmgr = new FwmgrClient(ctx.Vapix);
         using (var step = ctx.BeginStep(Steps.ReadFirmwareStatus))
         {
@@ -275,7 +409,10 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
 
         // 2. Upload. From here on the device may change.
-        var newVersionText = await UploadAsync(ctx, fwmgr, file, image, payload.FactoryDefaultMode, info.Version, pathAdvice, ct).ConfigureAwait(false);
+        Func<CancellationToken, Task<Stream>> open = downloaded is not null
+            ? _ => Task.FromResult(downloaded.OpenRead())
+            : token => ctx.Files.OpenReadAsync(file!.Id, token);
+        var newVersionText = await UploadAsync(ctx, fwmgr, open, size, image, payload.FactoryDefaultMode, info.Version, pathAdvice, ct).ConfigureAwait(false);
         var expected = AxisOsVersion.TryParse(newVersionText) ?? image.Version;
         var old = AxisOsVersion.TryParse(info.Version);
 
@@ -337,6 +474,11 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
+        if (string.Equals(method, OnlineQuery, StringComparison.Ordinal) || string.Equals(method, OnlineVersionQuery, StringComparison.Ordinal))
+        {
+            return await QueryOnlineAsync(method, payloadJson, ct).ConfigureAwait(false);
+        }
+
         if (!string.Equals(method, StatusQuery, StringComparison.Ordinal))
         {
             throw new NotSupportedException($"Unknown query '{method}'.");
@@ -353,6 +495,44 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var status = await new FwmgrClient(ctx.Vapix).GetStatusAsync(ct).ConfigureAwait(false);
         var apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
         return (ToInfo(status, api.Version, info) with { Applications = apps }).ToJson();
+    }
+
+    /// <summary>
+    /// "online" and "onlineVersion": public pages of axis.com only, never the queried device (the host needs one device of
+    /// the user's view to run a query). No answer from axis.com: "online" says Unreachable, "onlineVersion" fails with
+    /// "axis.com could not be reached.".
+    /// </summary>
+    private async Task<string?> QueryOnlineAsync(string method, string? payloadJson, CancellationToken ct)
+    {
+        try
+        {
+            if (string.Equals(method, OnlineQuery, StringComparison.Ordinal))
+            {
+                var request = Deserialize<OnlineLookupRequest>(payloadJson);
+                return (await _online.LookupAsync(request.Models ?? [], ct).ConfigureAwait(false)).ToJson();
+            }
+
+            var version = Deserialize<OnlineVersionRequest>(payloadJson);
+            var file = await _online.FindVersionAsync(version.Source, version.Product, version.Version, ct).ConfigureAwait(false);
+            return file?.ToJson();
+        }
+        catch (AxisSiteException ex)
+        {
+            throw new InvalidOperationException(OnlineFirmware.UnreachableText, ex);
+        }
+    }
+
+    private static T Deserialize<T>(string? json)
+    {
+        try
+        {
+            return (string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, FirmwarePayload.JsonOptions))
+                ?? throw new ArgumentException("The query needs a payload.");
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("The query payload is not valid.", ex);
+        }
     }
 
     public static FirmwareStatusInfo ToInfo(FwmgrStatus status, string? fwmgrVersion, BasicDeviceInfo? info)
@@ -375,8 +555,10 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         };
     }
 
-    private async Task<string?> UploadAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, UploadedFile file, FirmwareImageInfo image, FactoryDefaultMode mode, string oldVersion,
-        string? pathAdvice, CancellationToken ct)
+    /// <param name="open">Opens the image (the uploaded file, or the file the host downloaded from axis.com).</param>
+    /// <param name="size">Its size in bytes.</param>
+    private async Task<string?> UploadAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, Func<CancellationToken, Task<Stream>> open, long size, FirmwareImageInfo image,
+        FactoryDefaultMode mode, string oldVersion, string? pathAdvice, CancellationToken ct)
     {
         // Settings kept: OADM commits after verifying; if OADM never does, the device rolls back by itself.
         // Factory default: the device commits when it has started, because OADM's credentials are gone.
@@ -385,14 +567,14 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             : new FwmgrUpgradeOptions(mode, "started", "never");
 
         using var step = ctx.BeginStep(Steps.Upload);
-        var totalMb = file.Size / (1024 * 1024);
+        var totalMb = size / (1024 * 1024);
         var lastPercent = -1;
         using var content = new FirmwareStreamContent(
-            token => ctx.Files.OpenReadAsync(file.Id, token),
-            file.Size,
+            open,
+            size,
             sent =>
             {
-                var percent = (int)(100 * (double)sent / Math.Max(1, file.Size));
+                var percent = (int)(100 * (double)sent / Math.Max(1, size));
                 if (percent != lastPercent)
                 {
                     lastPercent = percent;
@@ -414,7 +596,7 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             var path = pathAdvice is null ? string.Empty : " " + pathAdvice;
             throw new InvalidOperationException($"{ex.Message} The device still runs {oldVersion}.{path}", ex);
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested && content.BytesSent == file.Size
+        catch (Exception ex) when (!ct.IsCancellationRequested && content.BytesSent == size
             && ex is HttpRequestException or IOException or TaskCanceledException)
         {
             // The whole image went out but the answer was lost (the device may already reboot). Verify by version.

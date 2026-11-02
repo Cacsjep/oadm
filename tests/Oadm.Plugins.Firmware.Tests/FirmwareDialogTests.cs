@@ -49,9 +49,20 @@ internal sealed class FakeDialogContext : ITaskDialogContext
     /// <summary>When set, status queries wait for it (tests that look at the rows while they are read).</summary>
     public TaskCompletionSource? StatusGate { get; set; }
 
+    /// <summary>Answers the queries "online" and "onlineVersion" (README "Firmware online"); null: not offered.</summary>
+    public Func<string, string?, CancellationToken, Task<string?>>? Online { get; set; }
+
+    /// <summary>The MyAxis sign-in of the user; null: an older host.</summary>
+    public IMyAxisSignIn? MyAxis { get; set; }
+
     public async Task<string?> QueryAsync(Guid deviceId, string method, string? payloadJson, CancellationToken ct)
     {
         Queries.Add(method);
+        if (method != "status")
+        {
+            return Online is { } online ? await online(method, payloadJson, ct) : throw new NotSupportedException("Unknown query.");
+        }
+
         if (StatusGate is { } gate)
         {
             await gate.Task.WaitAsync(ct);
@@ -115,7 +126,8 @@ public sealed class FirmwareDialogViewModelTests
         using var vm = Create();
 
         Assert.Equal(4, vm.Devices.Count);
-        Assert.Equal("No file selected", vm.FileName);
+        Assert.All(vm.ModelRows, r => Assert.Null(r.SelectedChoice)); // every row shows Choose file
+        Assert.Equal(DialogViewModel.NothingChosenText, vm.StartBlockedReason);
         Assert.False(vm.StartCommand.CanExecute(null));
         Assert.All(vm.Devices, d => Assert.Equal("Choose a file", d.VerdictText));
         Assert.Equal(ClientMode.None, vm.SelectedMode.Mode);
@@ -129,9 +141,11 @@ public sealed class FirmwareDialogViewModelTests
 
         await vm.SelectFileAsync("C:\\fw\\P3265-V_12_11_77.bin", CancellationToken.None);
 
-        Assert.Equal("P3265-V_12_11_77.bin", vm.FileName);
-        Assert.Contains("87.0 MB", vm.FileDetails, StringComparison.Ordinal);
-        Assert.Contains("for P3265-V, AXIS OS 12.11.77", vm.FileDetails, StringComparison.Ordinal);
+        // The file goes to both P3265-V rows (on 12 and on 11); the Q6135-LE row keeps Choose file.
+        Assert.Equal(["P3265-V", "P3265-V", "Q6135-LE"], vm.ModelRows.Select(r => r.Model));
+        Assert.Equal("P3265-V_12_11_77.bin", vm.ModelRows[0].ChosenFile!.Image.FileName);
+        Assert.Equal("P3265-V_12_11_77.bin", vm.ModelRows[1].SelectedChoice!.Text);
+        Assert.Null(vm.ModelRows[2].SelectedChoice);
         Assert.Null(vm.FileError);
         // 11.11.160 -> 12.11.77 leaves the LTS track 11.11: an upgrade with a note (OADM cannot tell whether 11.11.160 is its latest).
         Assert.Equal(ClientVerdict.Upgrade, vm.Devices[0].Check!.Verdict);
@@ -143,10 +157,18 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Null(vm.PathWarning);
         Assert.False(vm.HasBreakingChanges);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[1].Check!.Verdict);
-        Assert.Equal(ClientVerdict.WrongProduct, vm.Devices[2].Check!.Verdict);
+        Assert.Equal(ClientVerdict.NoFileForModel, vm.Devices[2].Check!.Verdict); // its row has no file
         Assert.True(vm.Devices[2].IsError);
         Assert.Equal(ClientVerdict.DowngradeBlocked, vm.Devices[3].Check!.Verdict);
         Assert.Equal("1 of 4 devices will be updated, 1 already up to date, 2 not possible.", vm.Summary);
+
+        // A file of another model chosen for a row: its devices say Wrong product.
+        await vm.ChooseFileForAsync(vm.ModelRows[2]);
+        Assert.Equal(ClientVerdict.NoFileForModel, vm.Devices[2].Check!.Verdict); // the picker was cancelled
+        var files = new FakeFileSource { Picked = "C:\\fw\\P3265-V_12_11_77.bin" };
+        using var other = new DialogViewModel(new FakeDialogContext(), Devices, files);
+        await other.ChooseFileForAsync(other.ModelRows[2]);
+        Assert.Equal(ClientVerdict.WrongProduct, other.Devices[2].Check!.Verdict);
         Assert.Equal(ClientDirection.Upgrade, vm.Direction());
         Assert.True(vm.StartCommand.CanExecute(null));
     }
@@ -238,7 +260,9 @@ public sealed class FirmwareDialogViewModelTests
         await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
         Assert.Contains("smaller than 1 MB", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
-        Assert.Equal(vm.FileError, vm.FileRowError); // at the file row
+        Assert.Equal(vm.FileError, vm.ModelRows[0].Error); // below the row's field
+        Assert.True(vm.ModelRows[0].HasErrors);
+        Assert.Equal([vm.FileError], vm.ModelRows[0].GetErrors("SelectedChoice").Cast<string>());
         Assert.Equal(vm.FileError, vm.StartBlockedReason); // and the Upgrade tooltip says why
 
         await vm.SelectFileAsync("C:\\missing\\a.bin", CancellationToken.None);
@@ -255,8 +279,7 @@ public sealed class FirmwareDialogViewModelTests
 
         await vm.SelectFilesAsync(["C:\\fw\\P3265-V_12_11_77.bin", "C:\\fw\\M3215-LVE_12_11_147.bin", "C:\\fw\\Q6135-LE_12_11_77.bin"], CancellationToken.None);
 
-        Assert.Equal("3 files", vm.FileName);
-        Assert.Contains("P3265-V 12.11.77, M3215-LVE 12.11.147, Q6135-LE 12.11.77", vm.FileDetails, StringComparison.Ordinal);
+        Assert.Equal(["P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin", "Q6135-LE_12_11_77.bin"], vm.ModelRows.Select(r => r.ChosenFile!.Image.FileName));
         Assert.Null(vm.FileError);
         Assert.True(vm.Devices[2].WillInstall); // Q6135-LE gets its own file
 
@@ -295,14 +318,21 @@ public sealed class FirmwareDialogViewModelTests
     }
 
     [Fact]
-    public async Task Browse_uses_the_picker()
+    public async Task Choose_file_of_a_row_uses_the_picker_for_that_row()
     {
         var files = new FakeFileSource { Picked = "P3265-V_12_11_77.bin" };
         using var vm = Create(files: files);
+        var row = vm.ModelRows[1]; // P3265-V on 11
 
-        await vm.BrowseCommand.ExecuteAsync(null);
+        // "Choose file" is the last entry; choosing it opens the picker and the field shows the file.
+        Assert.Equal("Choose file", row.Choices[^1].Text);
+        row.SelectedChoice = row.Choices[^1];
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.ChosenFile is not null, "the picked file is the row's choice");
 
-        Assert.Equal("P3265-V_12_11_77.bin", vm.FileName);
+        Assert.Equal("P3265-V_12_11_77.bin", row.SelectedChoice!.Text);
+        Assert.Equal("Choose file", row.Choices[^1].Text); // still offered to choose another
+        Assert.Null(vm.ModelRows[0].SelectedChoice); // the other rows keep theirs
+        Assert.True(vm.Devices[0].WillInstall); // the device on 11.11.160
     }
 
     [Fact]
@@ -352,7 +382,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.False(closed);
         Assert.Null(vm.Result);
         Assert.Contains("disk full", vm.Error, StringComparison.Ordinal);
-        Assert.Equal(vm.Error, vm.FileRowError); // shown at the file row, not below the options
+        Assert.True(vm.HasError); // shown below the upload progress
         Assert.True(vm.StartCommand.CanExecute(null));
         Assert.Null(vm.StartBlockedReason);
     }
@@ -368,7 +398,7 @@ public sealed class FirmwareDialogViewModelTests
 
         var start = vm.StartCommand.ExecuteAsync(null);
         Assert.True(vm.IsUploading);
-        Assert.False(vm.BrowseCommand.CanExecute(null));
+        Assert.False(vm.StartCommand.CanExecute(null));
         vm.CancelCommand.Execute(null);
         await start;
 
@@ -441,6 +471,14 @@ public sealed class ThemeTestApp : Application
     }
 }
 
+/// <summary>One Avalonia headless session per test process (its UI dispatcher is process-wide).</summary>
+internal static class HeadlessSession
+{
+    private static readonly Lazy<HeadlessUnitTestSession> Session = new(() => HeadlessUnitTestSession.StartNew(typeof(ThemeTestEntry)));
+
+    public static HeadlessUnitTestSession Shared => Session.Value;
+}
+
 public static class ThemeTestEntry
 {
     public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<ThemeTestApp>()
@@ -456,7 +494,7 @@ public sealed class FirmwareDialogHeadlessTests
     public async Task Dialog_renders_with_host_theme()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var session = HeadlessUnitTestSession.StartNew(typeof(ThemeTestEntry));
+        var session = HeadlessSession.Shared;
 
         var rows = await session.Dispatch(async () =>
         {

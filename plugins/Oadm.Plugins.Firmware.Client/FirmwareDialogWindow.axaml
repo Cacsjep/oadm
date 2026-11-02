@@ -2,24 +2,63 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:fw="using:Oadm.Plugins.Firmware.Client"
+        xmlns:fws="using:Oadm.Plugins.Firmware"
         x:Class="Oadm.Plugins.Firmware.Client.FirmwareDialogWindow"
         x:DataType="fw:FirmwareDialogViewModel"
         Title="{Binding Title}"
-        Width="1040" Height="760" MinWidth="820" MinHeight="560"
+        Width="1040" Height="920" MinWidth="820" MinHeight="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
   <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+  <Grid RowDefinitions="Auto,*,*,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <!-- File -->
+    <!-- Firmware: one row per model and track, a version from axis.com or a chosen file -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <StackPanel>
-        <ui:CardHeader Title="Firmware file" Description="AXIS OS file (.bin), one per model. Each device checks its file before installing." />
-        <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileRowError}" Command="{Binding BrowseCommand}" />
-      </StackPanel>
+      <Grid RowDefinitions="Auto,Auto,Auto,*">
+        <ui:CardHeader Title="Firmware" Description="A version from axis.com or a file (.bin) per model. Each device checks its file before installing." />
+        <!-- Command buttons left (they set every row), the MyAxis sign-in right -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <ui:ToolbarButton IconKey="check" Text="Recommended" Command="{Binding RecommendedCommand}" ToolTip.Tip="Newest version on each device's track" />
+            <ui:ToolbarButton IconKey="shield" Text="Latest LTS" Command="{Binding LatestLtsCommand}" />
+            <ui:ToolbarButton IconKey="zap" Text="Latest active" Command="{Binding LatestActiveCommand}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowSignIn}">
+            <TextBlock VerticalAlignment="Center" Text="{x:Static fws:OnlineFirmware.SignInText}" />
+            <ui:ToolbarButton IconKey="user" Text="Sign in to MyAxis" Command="{Binding SignInCommand}" />
+          </StackPanel>
+        </Grid>
+        <StackPanel Grid.Row="2">
+          <ui:ProgressRow Margin="0,0,0,8" Value="{Binding LookupProgress}" Text="{Binding LookupStatus}" IsVisible="{Binding IsLookingUp}" />
+          <TextBlock Classes="warning" Margin="0,0,0,8" Text="{x:Static fws:OnlineFirmware.UnreachableText}" IsVisible="{Binding OnlineUnreachable}" />
+        </StackPanel>
+        <DataGrid x:Name="ModelsGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding ModelRows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareModelRow" />
+            <DataGridTextColumn Header="Devices" Width="110" Binding="{Binding DevicesText}" x:DataType="fw:FirmwareModelRow" />
+            <DataGridTextColumn Header="Firmware now" Width="170" Binding="{Binding FirmwareNow}" x:DataType="fw:FirmwareModelRow" />
+            <DataGridTemplateColumn Header="Version" Width="2*">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="fw:FirmwareModelRow">
+                  <StackPanel Margin="10,6" Spacing="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <ComboBox Classes="grouped" Width="260" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}"
+                                VerticalAlignment="Top" PlaceholderText="Choose file" />
+                      <ui:ProgressRing VerticalAlignment="Top" IsVisible="{Binding IsChecking}" />
+                      <ui:StatusChip VerticalAlignment="Top" IsOk="True" Text="{Binding Status}" IsVisible="{Binding HasStatus}" />
+                    </StackPanel>
+                    <!-- A refused choice shows directly below the field (the row's INotifyDataErrorInfo); this line is no error -->
+                    <TextBlock Classes="warning small" TextWrapping="Wrap" Text="{Binding Notice}" IsVisible="{Binding HasNotice}" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
     </Border>
 
     <!-- Devices -->
@@ -76,6 +115,7 @@
           <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
           <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
           <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />
+          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
         </StackPanel>
       </StackPanel>
     </Border>

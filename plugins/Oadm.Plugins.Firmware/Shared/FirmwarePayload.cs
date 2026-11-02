@@ -28,6 +28,17 @@ public enum FirmwareDirection
 /// <summary>One uploaded firmware file of the payload.</summary>
 public sealed record FirmwareFile(string FileId, string? FileName);
 
+/// <summary>
+/// One version from axis.com of the payload (README "Firmware online"): for the devices of <see cref="Product"/> whose
+/// AXIS OS major is <see cref="FromMajor"/> (the dialog row of that model and track; null for devices with an unknown
+/// version). The server reads the URL, size and SHA-256 from axis.com itself.
+/// </summary>
+/// <param name="Source">"MPQT" or "PACS".</param>
+/// <param name="Product">The product folder on axis.com ("P3265-V").</param>
+/// <param name="Version">"12.11.147".</param>
+/// <param name="FromMajor">The major version of the row's devices.</param>
+public sealed record FirmwareOnline(string Source, string Product, string Version, int? FromMajor);
+
 /// <summary>Payload of the "Upgrade firmware" task, written by the dialog.</summary>
 public sealed record FirmwarePayload
 {
@@ -40,8 +51,15 @@ public sealed record FirmwarePayload
     /// <summary>Several files (one per model): each device installs the file for its product. Null with one file.</summary>
     public IReadOnlyList<FirmwareFile>? Files { get; init; }
 
-    /// <summary><see cref="Files"/>, or the one file.</summary>
-    public IReadOnlyList<FirmwareFile> AllFiles() => Files is { Count: > 0 } files ? files : [new FirmwareFile(FileId ?? string.Empty, FileName)];
+    /// <summary><see cref="Files"/>, or the one file; empty when only versions from axis.com were chosen.</summary>
+    public IReadOnlyList<FirmwareFile> AllFiles() =>
+        Files is { Count: > 0 } files ? files : FileId is null && FileName is null ? [] : [new FirmwareFile(FileId ?? string.Empty, FileName)];
+
+    /// <summary>Versions from axis.com, one per model and track (README "Firmware online"); null without.</summary>
+    public IReadOnlyList<FirmwareOnline>? Online { get; init; }
+
+    /// <summary><see cref="Online"/>, never null.</summary>
+    public IReadOnlyList<FirmwareOnline> AllOnline() => Online ?? [];
 
     public FactoryDefaultMode FactoryDefaultMode { get; init; } = FactoryDefaultMode.None;
 
@@ -58,7 +76,8 @@ public sealed record FirmwarePayload
     /// </summary>
     public string TaskName()
     {
-        var versions = AllFiles().Select(f => FirmwareImageInspector.ParseFileName(f.FileName).Version?.Text).Distinct().ToList();
+        var versions = AllFiles().Select(f => FirmwareImageInspector.ParseFileName(f.FileName).Version?.Text)
+            .Concat(AllOnline().Select(o => AxisOsVersion.TryParse(o.Version)?.Text)).Distinct().ToList();
         var version = versions.Count == 1 ? versions[0] : null;
         var name = versions.Count > 1
             ? Direction == FirmwareDirection.Downgrade ? "Downgrade firmware" : "Upgrade firmware"
@@ -102,9 +121,19 @@ public sealed record FirmwarePayload
             throw new ArgumentException("The task payload is not valid. Nothing was changed.", nameof(json), ex);
         }
 
-        if (payload is null || payload.AllFiles().Any(f => string.IsNullOrWhiteSpace(f.FileId)))
+        if (payload is null || payload.AllFiles().Any(f => string.IsNullOrWhiteSpace(f.FileId))
+            || (payload.AllFiles().Count == 0 && payload.AllOnline().Count == 0))
         {
             throw new ArgumentException("No firmware file was selected. Nothing was changed.", nameof(json));
+        }
+
+        foreach (var online in payload.AllOnline())
+        {
+            if (online is null || !OnlineFirmware.IsValidSource(online.Source) || !OnlineFirmware.IsValidProduct(online.Product)
+                || OnlineListing.ParseVerTxt(online.Version) is null)
+            {
+                throw new ArgumentException("The firmware version from axis.com is not valid. Nothing was changed.", nameof(json));
+            }
         }
 
         if (!Enum.IsDefined(payload.FactoryDefaultMode))
