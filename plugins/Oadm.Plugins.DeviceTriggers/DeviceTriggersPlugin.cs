@@ -335,14 +335,17 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
         // The values (placeholders for the actions) one per line below the text, as the info icon of the rule dialog shows it.
         var values = trigger.Values.Count == 0 ? string.Empty : "\n\nValues:\n" + string.Join("\n", trigger.Values.Select(v => "• {" + v + "}"));
         var declared = trigger.ValueFields.ToDictionary(f => f.Name, StringComparer.Ordinal);
+        // The data values can be checked in a rule; the source items stay values only (TriggerDefinition.SourceValues).
+        var sources = trigger.SourceValues?.ToHashSet(StringComparer.Ordinal);
+        bool Checkable(string value) => sources is not null && !sources.Contains(value);
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.TypeId(trigger.Id),
             trigger.Name,
             DeviceTriggersPluginInfo.EventGroup,
             trigger.Stateful ? EventKind.Stateful : EventKind.Stateless,
             Fields: [.. trigger.Values.Select(v => declared.TryGetValue(v, out var f)
-                ? new EventField(v, string.IsNullOrWhiteSpace(f.DisplayName) ? v : f.DisplayName) { Kind = f.Kind }
-                : new EventField(v, v))])
+                ? new EventField(v, string.IsNullOrWhiteSpace(f.DisplayName) ? v : f.DisplayName) { Kind = f.Kind, Filter = Checkable(v) }
+                : new EventField(v, v) { Filter = Checkable(v) })])
         {
             Description = what + "." + values,
             DeviceIds = devices,
@@ -416,6 +419,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             Filters = [.. (incoming.Filters ?? []).Where(f => !string.IsNullOrEmpty(f.Name) && !string.IsNullOrEmpty(f.Value)).DistinctBy(f => f.Name)],
             Values = [.. (incoming.Values ?? []).Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.Ordinal)],
             ValueFields = [.. (incoming.ValueFields ?? []).Where(f => f is not null && !string.IsNullOrWhiteSpace(f.Name) && Enum.IsDefined(f.Kind)).DistinctBy(f => f.Name)],
+            SourceValues = incoming.SourceValues is null ? null : [.. incoming.SourceValues.Where(v => !string.IsNullOrWhiteSpace(v)).Distinct(StringComparer.Ordinal)],
             FilterText = incoming.FilterText ?? string.Empty,
             EventName = incoming.EventName ?? string.Empty,
             Id = stored?.Id ?? (incoming.Id == Guid.Empty || Triggers.Any(t => t.Id == incoming.Id) ? Guid.Empty : incoming.Id),

@@ -364,6 +364,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             FilterText = string.Join(", ", filters.Select(f => $"{f.Label}: {f.Selected.Text}")),
             Values = [.. e.Sources.Concat(e.Data).Select(i => i.Name).Distinct(StringComparer.Ordinal)],
             ValueFields = [.. e.Sources.Concat(e.Data).DistinctBy(i => i.Name).Select(i => new TriggerValue(i.Name, i.DisplayName, i.Kind))],
+            SourceValues = [.. e.Sources.Select(i => i.Name).Distinct(StringComparer.Ordinal)],
             DeviceIds = [.. _explicit],
             Tags = [.. _tags],
             AllDevices = _allDevices,
