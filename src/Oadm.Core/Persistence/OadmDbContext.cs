@@ -39,6 +39,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<Compliance.ComplianceCheckEntity> ComplianceChecks => Set<Compliance.ComplianceCheckEntity>();
     public DbSet<Compliance.ComplianceResultEntity> ComplianceResults => Set<Compliance.ComplianceResultEntity>();
     public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
+    public DbSet<MyAxis.MyAxisSessionEntity> MyAxisSessions => Set<MyAxis.MyAxisSessionEntity>();
 
     private static readonly ValueConverter<DateTime, DateTime> UtcConverter =
         new(v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(), v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
@@ -269,6 +270,17 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.Property(a => a.Target).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.Property(a => a.Detail).IsRequired().HasMaxLength(AuditLog.MaxTextLength);
             e.HasIndex(a => a.TimeUtc);
+        });
+
+        modelBuilder.Entity<MyAxis.MyAxisSessionEntity>(e =>
+        {
+            // docs/spec/myaxis.md: one row per user, gone with the user; never in a backup (BackupArchive).
+            e.ToTable("MyAxisSessions");
+            e.HasKey(s => s.UserId);
+            e.Property(s => s.UserId).ValueGeneratedNever();
+            e.Property(s => s.SignedInUtc).HasConversion(UtcConverter);
+            e.Property(s => s.LastAcceptedUtc).HasConversion(UtcConverter);
+            e.HasOne<UserEntity>().WithOne().HasForeignKey<MyAxis.MyAxisSessionEntity>(s => s.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Sites.Site>(e =>

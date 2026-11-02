@@ -585,6 +585,13 @@
   <Style Selector="Ellipse.problemDot.error">
     <Setter Property="Fill" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
+  <!-- The dot on an icon-only button (the title bar's MyAxis when the sign-in expired): top right, clicks go to the button -->
+  <Style Selector="Ellipse.problemDot.corner">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="0,4,4,0" />
+    <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
   <!-- No status dot on the device icon: the Status column already says it -->
   <Style Selector="Ellipse.statusDot">
     <Setter Property="IsVisible" Value="False" />
@@ -840,6 +847,11 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentDisabledBrush}" />
   </Style>
   <!-- Flat danger entries: toolbar buttons (Delete all) and row links (Delete, Release) in red text, no fill -->
+  <!-- A state shown by an icon-only button (the title bar's MyAxis while signed in): its icon in the OK colour, also on hover -->
+  <Style Selector="Button.toolbar.ok ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+
   <Style Selector="Button.toolbar.danger">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />

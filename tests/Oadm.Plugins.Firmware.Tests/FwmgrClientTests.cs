@@ -191,7 +191,7 @@ public sealed class FwmgrClientTests
         using var content = new FirmwareStreamContent(_ => Task.FromResult<Stream>(new MemoryStream(new byte[100])), 200);
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => content.CopyToAsync(new MemoryStream()));
-        Assert.IsType<IOException>(ex.InnerException);
+        Assert.IsType<FirmwareFileChangedException>(ex.InnerException);
     }
 
     private sealed class CapturingHandler(string json, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler

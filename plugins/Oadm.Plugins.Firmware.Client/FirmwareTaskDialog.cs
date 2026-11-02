@@ -23,12 +23,30 @@ public sealed class FirmwareTaskDialog : ITaskPluginDialog
 
         var window = new FirmwareDialogWindow();
         using var vm = new FirmwareDialogViewModel(ctx, devices, new StorageFirmwareFileSource(window));
+        if (ctx.MyAxis is { } myAxis)
+        {
+            vm.SignInHandler = () => myAxis.SignInAsync(window);
+        }
+
         window.DataContext = vm;
         using var cts = new CancellationTokenSource();
         window.Closed += (_, _) => cts.Cancel();
         _ = LoadStatusSafeAsync(vm, cts.Token);
+        _ = LoadOnlineSafeAsync(vm, cts.Token);
         var payload = await window.ShowDialog<string?>(owner).ConfigureAwait(true);
         return payload is null ? null : new TaskDialogResult(payload, vm.RunDevices);
+    }
+
+    private static async Task LoadOnlineSafeAsync(FirmwareDialogViewModel vm, CancellationToken ct)
+    {
+        try
+        {
+            await vm.LoadOnlineAsync(ct).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // dialog closed
+        }
     }
 
     private static async Task LoadStatusSafeAsync(FirmwareDialogViewModel vm, CancellationToken ct)

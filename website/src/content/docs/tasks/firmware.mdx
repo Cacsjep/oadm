@@ -7,29 +7,49 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/firmware-dialog.png';
 
-**Upgrade firmware** installs AXIS OS on the selected devices. OADM uploads the file, waits for the restart, checks
-the new version and commits it. It is in the context menu under **Maintenance** and in the toolbar.
+**Upgrade firmware** installs AXIS OS on the selected devices: a version from axis.com or a file you chose. OADM sends it
+to each device, waits for the restart, checks the new version and commits it. It is in the context menu under **Maintenance** and in the toolbar.
 
-<Image src={shot} alt="The Upgrade firmware dialog with the file, the options and the device table" class="screen" />
+<Image src={shot} alt="The Upgrade firmware dialog with a version per device and the options below" class="screen" />
 
 ## Run it
 
 <Steps>
 
-1. Download the AXIS OS file for each model from axis.com. Keep the original file name, for example
-   `P3265-V_12_11_77.bin`: OADM reads the product and version from it.
-2. Select the devices, right-click and choose **Maintenance** > **Upgrade firmware**.
-3. Choose the file, or several files, one per model. The dialog shows the size, product and AXIS OS version. Each
-   device gets the file for its model.
-4. Check the device table. The **Result** column says per device what will happen, for example **Upgrade**,
+1. Select the devices, right-click and choose **Maintenance** > **Upgrade firmware**.
+2. In the device table, the **Version** of each device is a version from axis.com or **Choose file** for a file of your
+   own. **Set versions** at the top right of the table sets every device at once. Keep the original file name, for example
+   `P3265-V_12_11_77.bin`: OADM reads the product and version from it. A file chosen for one device is set for every device
+   of that model; change single devices afterwards if needed.
+3. Check the **Result** column. It says per device what will happen, for example **Upgrade**,
    **Up to date**, **No file**, **Wrong product** or **Downgrade blocked**.
-5. Choose the **Factory default** option and, if needed, **Allow downgrade to an older AXIS OS version (requires a
-   factory default)**.
-6. Click **Upgrade**. The files are uploaded to the OADM server once, then a task starts per device.
+4. Choose the **Factory default** option and, if needed, **Allow downgrade (requires a factory default)**.
+5. Click **Upgrade**. Chosen files are uploaded to the OADM server once, versions from axis.com are downloaded by the
+   server, then a task starts per device.
 
 </Steps>
 
 Devices that are already up to date, have no file for their model or are refused get no task.
+
+## Versions from axis.com
+
+OADM lists the AXIS OS versions axis.com offers for the model of each device, grouped as on axis.com: the active track (for example
+"AXIS OS 13"), "LTS 2026 · 12.11", "LTS 2024 · 11.11" and older ones. **Set versions** at the top right of the table sets every device; choosing in one device's **Version** changes only
+that device:
+
+| Set versions | Version |
+|---|---|
+| Recommended | The newest version of the line the devices run now: 11.11 stays on 11.11. |
+| Latest LTS | The newest LTS version of the model. |
+| Latest active | The newest version of the active track, or the newest version when the model has none. |
+
+Downloads from axis.com need your MyAxis account. Click **Sign in to MyAxis** in the dialog or in the title bar. Signed
+in, the dialog opens with **Recommended**. Not signed in, every device starts on **Choose file** and the versions show for
+information. Each user signs in with their own account; the server downloads with the account of the user who starts the
+upgrade, checks the file against the checksum on axis.com and keeps it 7 days for the next run.
+
+A model axis.com does not list (for example P12-MkIII) offers **Choose file** only. When axis.com cannot be reached, the
+dialog says so and every device keeps **Choose file**.
 
 ## Options
 
@@ -73,8 +93,11 @@ count.
 
 ## Steps
 
-Check compatibility, Read device info, Validate file, Read firmware status, Upload firmware, Install firmware, Wait for
-the device to come back, Verify version, Read commit state, Commit firmware.
+Check compatibility, Read device info, Validate file, Download firmware, Read firmware status, Upload firmware, Install
+firmware, Wait for the device to come back, Verify version, Read commit state, Commit firmware.
+
+**Download firmware** shows the progress, for example "68 of 225 MB". It is skipped for a file you chose. When your
+MyAxis sign-in has expired, the task ends before the device changes: sign in again and run it again.
 
 The device waits up to 30 minutes for the commit. If OADM never confirms the new version, the device rolls back to the
 old firmware by itself. After a factory default the device commits by itself and the task ends with a warning: set a

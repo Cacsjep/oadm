@@ -32,6 +32,12 @@ public enum FirmwareVerdict
 
     /// <summary>AXIS OS 13 or later and an installed application that is unsigned or does not declare it: the device would refuse.</summary>
     AppsBlock = 9,
+
+    /// <summary>A version from axis.com was chosen without a MyAxis sign-in (dialog only).</summary>
+    SignInNeeded = 10,
+
+    /// <summary>The chosen version from axis.com is no longer listed (dialog only).</summary>
+    NotListed = 11,
 }
 
 public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
@@ -62,7 +68,7 @@ public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
 public static class FirmwareCompatibility
 {
     /// <summary>The downgrade checkbox of the dialog as the refusals name it (its label without the hint in brackets).</summary>
-    public const string AllowDowngradeName = "Allow downgrade to an older AXIS OS version";
+    public const string AllowDowngradeName = "Allow downgrade";
 
     /// <param name="apps">The device's installed applications (<see cref="InstalledAppRules"/>); null when not read.</param>
     public static FirmwareCheck Evaluate(string? deviceModel, string? deviceVersion, FirmwareImageInfo image, FactoryDefaultMode mode, bool allowDowngrade,
@@ -166,6 +172,113 @@ public static class FirmwareCompatibility
             ? (unnamed, Evaluate(deviceModel, deviceVersion, images[unnamed], mode, allowDowngrade, apps))
             : (-1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
     }
+
+    /// <summary>
+    /// The version from axis.com of <paramref name="online"/> that names no devices for a device (README "Firmware online"):
+    /// the entry for its product and its AXIS OS major, else the entry for its product made for devices of unknown version;
+    /// -1 when none.
+    /// </summary>
+    public static int FindOnline(string? deviceModel, string? deviceVersion, IReadOnlyList<FirmwareOnline> online)
+    {
+        ArgumentNullException.ThrowIfNull(online);
+        var major = AxisOsVersion.TryParse(deviceVersion)?.Major;
+        var unknown = -1;
+        for (var i = 0; i < online.Count; i++)
+        {
+            if (online[i].Devices is not null || !OnlineFirmware.Matches(online[i].Product, deviceModel))
+            {
+                continue;
+            }
+
+            if (online[i].FromMajor == major)
+            {
+                return i;
+            }
+
+            if (online[i].FromMajor is null && unknown < 0)
+            {
+                unknown = i;
+            }
+        }
+
+        return unknown;
+    }
+
+    /// <summary>
+    /// The firmware for one device of a run (the task, and the tests that hold the dialog to it), README "Payload":
+    /// <list type="number">
+    /// <item>a version from axis.com that names the device (its product must be the device's model);</item>
+    /// <item>a chosen file that names the device;</item>
+    /// <item>a version from axis.com for its product and AXIS OS major (<see cref="FindOnline"/>);</item>
+    /// <item>a chosen file that names no device, by its product as in <see cref="Choose"/> (next to other choices a single
+    /// such file is only for its own product).</item>
+    /// </list>
+    /// <c>Online</c> or <c>File</c> is the index taken (into <paramref name="online"/> or <paramref name="files"/>), the
+    /// other -1; both -1: no file for this model.
+    /// </summary>
+    public static (int Online, int File, FirmwareCheck Check) ChooseFor(Guid deviceId, string? deviceModel, string? deviceVersion,
+        IReadOnlyList<FirmwareOnline> online, IReadOnlyList<FirmwareImageInfo> onlineImages, IReadOnlyList<FirmwareFile> files,
+        IReadOnlyList<FirmwareImageInfo> fileImages, FactoryDefaultMode mode, bool allowDowngrade, IReadOnlyList<InstalledApp>? apps = null)
+    {
+        ArgumentNullException.ThrowIfNull(online);
+        ArgumentNullException.ThrowIfNull(onlineImages);
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(fileImages);
+        for (var i = 0; i < online.Count; i++)
+        {
+            if (online[i].Devices?.Contains(deviceId) == true)
+            {
+                return (i, -1, EvaluateOnline(online[i], onlineImages[i], deviceModel, deviceVersion, mode, allowDowngrade, apps));
+            }
+        }
+
+        for (var i = 0; i < files.Count; i++)
+        {
+            if (files[i].Devices?.Contains(deviceId) == true)
+            {
+                return (-1, i, Evaluate(deviceModel, deviceVersion, fileImages[i], mode, allowDowngrade, apps));
+            }
+        }
+
+        var index = FindOnline(deviceModel, deviceVersion, online);
+        if (index >= 0)
+        {
+            return (index, -1, Evaluate(deviceModel, deviceVersion, onlineImages[index], mode, allowDowngrade, apps));
+        }
+
+        var byProduct = new List<int>();
+        for (var i = 0; i < files.Count; i++)
+        {
+            if (files[i].Devices is null)
+            {
+                byProduct.Add(i);
+            }
+        }
+
+        if (byProduct.Count == 0)
+        {
+            return (-1, -1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
+        }
+
+        // The old payload (only files by product): one file is for every device; next to other choices only for its product.
+        var alone = byProduct.Count == 1 && online.Count == 0 && files.Count == 1;
+        var images = byProduct.Select(i => fileImages[i]).ToList();
+        var (file, check) = Choose(deviceModel, deviceVersion, alone || images.Count > 1 ? images : [images[0], NoImage], mode, allowDowngrade, apps);
+        return (-1, file < 0 ? -1 : byProduct[file], check);
+    }
+
+    /// <summary>A version from axis.com for a device: refused when it is for another product, else the decision table.</summary>
+    public static FirmwareCheck EvaluateOnline(FirmwareOnline entry, FirmwareImageInfo image, string? deviceModel, string? deviceVersion,
+        FactoryDefaultMode mode, bool allowDowngrade, IReadOnlyList<InstalledApp>? apps = null)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return !string.IsNullOrWhiteSpace(deviceModel) && !OnlineFirmware.Matches(entry.Product, deviceModel)
+            ? new FirmwareCheck(FirmwareVerdict.WrongProduct, $"The file is for {entry.Product}, the device is {NormalizeProduct(deviceModel)}.")
+            : Evaluate(deviceModel, deviceVersion, image, mode, allowDowngrade, apps);
+    }
+
+    /// <summary>A rejected placeholder: makes <see cref="Choose"/> match a single file by product.</summary>
+    private static readonly FirmwareImageInfo NoImage = new(string.Empty, 0, null, null, "none");
 
     /// <summary>"AXIS P3265-V" and "p3265-v" match "P3265-V".</summary>
     public static bool ProductMatches(string fileProduct, string deviceModel) =>

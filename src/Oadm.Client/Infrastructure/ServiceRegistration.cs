@@ -187,6 +187,13 @@ public static class ServiceRegistration
             Help.EmbeddedBrowser.Check,
             sp.GetRequiredService<IUrlLauncher>(),
             sp.GetRequiredService<ILogger<HelpWindowViewModel>>()));
+        // MyAxis: the user's sign-in, read on every connect (title bar button, task dialogs).
+        services.AddSingleton(sp => new MyAxis.MyAxisAccount(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<ILogger<MyAxis.MyAxisAccount>>(),
+            sp.GetRequiredService<ServerConnection>(),
+            sp.GetRequiredService<UserSession>(),
+            sp.GetRequiredService<IUiDispatcher>()));
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();
     }

@@ -78,6 +78,11 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   ValueJson (valid JSON). A plugin's records (`IPluginRecords`, `DbPluginRecords`): one row per record, a plugin sees
   only its own; batch writes are one transaction (existing rows read 500 keys at a time). 60,000 rows written in about
   4 s, one changed in about 10 ms (`PluginRecordsTests`, Perf). Used by PKI (with the EST and 802.1X servers).
+- `MyAxisSessionEntity` (table MyAxisSessions, migration `MyAxisSessions`, [myaxis.md](myaxis.md)): one row per user, key
+  UserId (foreign key to Users, cascade delete: gone with the user), EncryptedSession (AES-256-GCM with the master key,
+  associated data "OADM MyAxis session <user id>"; null once axis.com refused it), SignedInUtc, LastAcceptedUtc (the sign-in
+  check or the last download), Expired (axis.com refused the kept session; the row goes on Sign out, Expired clears on a
+  new sign-in). Removed from every backup copy (with a `VACUUM`), like `AuthTokens`.
 - Other tables live with their feature: `Users`, `Roles`, `AuthTokens`, `AuditEntries` ([security.md](security.md)),
   `Sites`, `RemovedSites` ([sites.md](sites.md)), `EventRules`, `EventRuleStates`, `EventLogEntries`
   ([event-rules.md](event-rules.md)).

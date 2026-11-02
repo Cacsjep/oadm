@@ -38,6 +38,7 @@
     <Compile Include="..\Shared\FakeSiteTransport.cs" Link="Shared\FakeSiteTransport.cs" />
     <Compile Include="..\Shared\RecordingStreams.cs" Link="Shared\RecordingStreams.cs" />
     <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+    <Compile Include="..\Shared\FakeAxisCom.cs" Link="Shared\FakeAxisCom.cs" />
     <!-- The node's test fakes (network cards, DNS, connectors) and the loopback HTTPS device of the routing tests. -->
     <Compile Include="..\Oadm.SiteNode.Tests\Support\Fakes.cs" Link="Sites\NodeFakes.cs" />
     <Compile Include="..\Oadm.Core.Tests\Sites\LoopbackDevice.cs" Link="Sites\LoopbackDevice.cs" />

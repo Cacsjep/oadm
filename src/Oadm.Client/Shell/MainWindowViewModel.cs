@@ -66,8 +66,10 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Compliance.ComplianceViewModel? compliance = null,
         Sites.SitesViewModel? sites = null,
         IUiDispatcher? ui = null,
-        Func<HelpWindowViewModel>? help = null)
+        Func<HelpWindowViewModel>? help = null,
+        MyAxis.MyAxisAccount? myAxis = null)
     {
+        MyAxis = myAxis;
         _liveVideo = liveVideo;
         _help = help;
         _ui = ui;
@@ -182,6 +184,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>The logged-in user (title bar, with Log out).</summary>
     public UserSession Session { get; }
+
+    /// <summary>The user's MyAxis sign-in (title bar button left of Help); null: none in this client.</summary>
+    public MyAxis.MyAxisAccount? MyAxis { get; }
 
     /// <summary>First letter of the user name, upper case: the avatar at the bottom of the rail.</summary>
     public string UserInitial => string.IsNullOrEmpty(Session.UserName)

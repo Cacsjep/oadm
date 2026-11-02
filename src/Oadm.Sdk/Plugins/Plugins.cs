@@ -333,6 +333,12 @@ public interface ITaskExecutionContext
     /// </summary>
     Task<IReadOnlySet<string>> ManagedAddressesAsync(IReadOnlyCollection<string> addresses, CancellationToken ct) =>
         Task.FromResult<IReadOnlySet<string>>(new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Files from axis.com with the MyAxis sign-in of the user who started the task (SDK 0.9.0, docs/spec/myaxis.md). Null
+    /// on older hosts and for tasks the system started.
+    /// </summary>
+    IAxisDownloads? AxisDownloads => null;
 }
 
 /// <summary>The device answering at an address is not the expected one (different or missing serial number).</summary>
@@ -683,7 +689,7 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.8.0";
+    public const string Version = "0.9.0";
 
     /// <summary>
     /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.5). Users with a device group may call only

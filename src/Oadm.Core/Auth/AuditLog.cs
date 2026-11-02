@@ -49,6 +49,8 @@ public static class AuditActions
     public const string ProTrialStarted = "Started trial";
     public const string SupportReportCreated = "Created support report";
     public const string VulnerabilityListUpdated = "Updated vulnerability list";
+    public const string MyAxisSignedIn = "Signed in to MyAxis";
+    public const string MyAxisSignedOut = "Signed out of MyAxis";
     public const string ComplianceTurnedOn = "Turned compliance on";
     public const string ComplianceTurnedOff = "Turned compliance off";
     public const string ComplianceCheckCreated = "Created compliance check";

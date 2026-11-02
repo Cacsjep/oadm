@@ -14,7 +14,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Dialogs;
 
-public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? session = null, Devices.DeviceStore? store = null, Tasks.TaskStore? tasks = null) : IDialogService, IUrlLauncher, IClipboardService
+public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? session = null, Devices.DeviceStore? store = null, Tasks.TaskStore? tasks = null, MyAxis.MyAxisAccount? myAxis = null) : IDialogService, IUrlLauncher, IClipboardService
 {
     public async Task ShowMessageAsync(string title, string message)
     {
@@ -292,7 +292,7 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         }
 
         var context = new TaskDialogContext(api, dialog.PluginId, session is null ? null : session.Has, store is null ? null : () => [.. store.Devices], tasks,
-            session is null ? null : () => session.HasAllDevices, startView);
+            session is null ? null : () => session.HasAllDevices, startView, myAxis);
         return await dialog.ShowForDevicesAsync(context, devices, owner).ConfigureAwait(true);
     }
 

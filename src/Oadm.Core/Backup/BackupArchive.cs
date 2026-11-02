@@ -73,7 +73,7 @@ public sealed record RestoreOutcome
 
 /// <summary>
 /// The backup content and the restore swap. A backup holds the database (a consistent copy by <c>VACUUM INTO</c>, without the
-/// login sessions), <c>master.key</c> (every stored password and plugin secret is encrypted with it; inside the encrypted
+/// login sessions and MyAxis sign-ins), <c>master.key</c> (every stored password and plugin secret is encrypted with it; inside the encrypted
 /// body only) and the plugins' working folders. A restore is staged first and applied by the next start, before the
 /// database is opened (<see cref="ApplyPending"/>); the replaced files are kept in <c>restore/previous-*</c>.
 /// </summary>
@@ -201,7 +201,8 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
     }
 
     /// <summary>
-    /// Removes the login sessions from the copy (a restored server never resumes an old login) and counts what it holds.
+    /// Removes the login sessions and the MyAxis sign-ins from the copy (a restored server never resumes an old login; a
+    /// MyAxis session never leaves the server) and counts what it holds.
     /// Plain SQL by table name: a database of an older OADM may not have every table yet (counted 0).
     /// </summary>
     private static async Task<BackupCounts> PrepareCopyAsync(string copy, CancellationToken ct)
@@ -211,6 +212,8 @@ public sealed partial class BackupArchive(OadmPaths paths, ILogger<BackupArchive
         {
             await connection.OpenAsync(ct).ConfigureAwait(false);
             await ExecuteAsync(connection, "DELETE FROM AuthTokens", ct).ConfigureAwait(false);
+            await ExecuteAsync(connection, "DELETE FROM MyAxisSessions", ct).ConfigureAwait(false); // docs/spec/myaxis.md: never in a backup
+            await ExecuteAsync(connection, "VACUUM", ct).ConfigureAwait(false); // no deleted page keeps an old blob
             return await CountAsync(connection, ct).ConfigureAwait(false);
         }
     }

@@ -12,8 +12,33 @@ namespace Oadm.Plugins.Firmware;
 /// </summary>
 public static class AxisOsUpgradePath
 {
-    /// <summary>The LTS tracks (major, minor), oldest first: product-specific 6.50, 8.40, 9.80, then 10.12 (2022), 11.11 (2024), 12.11 (2026).</summary>
-    public static IReadOnlyList<(int Major, int Minor)> LtsTracks { get; } = [(6, 50), (8, 40), (9, 80), (10, 12), (11, 11), (12, 11)];
+    /// <summary>
+    /// The LTS tracks (major, minor) with their LTS year, oldest first: the product-specific support tracks 6.50, 8.40 and 9.80
+    /// (no year, "PSS 9.80" on axis.com), then 10.12 (LTS 2022), 11.11 (LTS 2024), 12.11 (LTS 2026).
+    /// </summary>
+    public static IReadOnlyList<(int Major, int Minor, int? Year)> LtsTracks { get; } =
+        [(6, 50, null), (8, 40, null), (9, 80, null), (10, 12, 2022), (11, 11, 2024), (12, 11, 2026)];
+
+    /// <summary>Whether (major, minor) is one of <see cref="LtsTracks"/>.</summary>
+    public static bool IsLtsTrack(int major, int minor) => LtsTracks.Any(t => t.Major == major && t.Minor == minor);
+
+    /// <summary>
+    /// The track name as axis.com writes it: "LTS 2024 · 11.11", "PSS 9.80"; null when (major, minor) is not an LTS track.
+    /// </summary>
+    public static string? LtsName(int major, int minor)
+    {
+        foreach (var t in LtsTracks)
+        {
+            if (t.Major == major && t.Minor == minor)
+            {
+                return t.Year is { } year
+                    ? string.Create(CultureInfo.InvariantCulture, $"LTS {year} · {major}.{minor}")
+                    : string.Create(CultureInfo.InvariantCulture, $"PSS {major}.{minor}");
+            }
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// The versions to install before <paramref name="target"/> ("the latest AXIS OS 11.11"), oldest first; empty when
@@ -31,7 +56,7 @@ public static class AxisOsUpgradePath
 
         var from = Track(current);
         var to = Track(target);
-        var jumped = LtsTracks.Where(lts => Compare(lts, from) > 0 && Compare(lts, to) < 0).Select(Name).ToList();
+        var jumped = LtsTracks.Select(t => (t.Major, t.Minor)).Where(lts => Compare(lts, from) > 0 && Compare(lts, to) < 0).Select(Name).ToList();
         if (jumped.Count > 0 && IsLts(from))
         {
             jumped.Insert(0, Name(from));
@@ -72,7 +97,7 @@ public static class AxisOsUpgradePath
 
     private static (int Major, int Minor) Track(AxisOsVersion version) => (version.Major, version.Minor);
 
-    private static bool IsLts((int Major, int Minor) track) => LtsTracks.Contains(track);
+    private static bool IsLts((int Major, int Minor) track) => IsLtsTrack(track.Major, track.Minor);
 
     private static int Compare((int Major, int Minor) a, (int Major, int Minor) b) =>
         a.Major != b.Major ? a.Major.CompareTo(b.Major) : a.Minor.CompareTo(b.Minor);

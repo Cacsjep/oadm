@@ -1,0 +1,29 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// The caller's own MyAxis sign-in (docs/spec/myaxis.md). The server keeps the session cookie per user, encrypted; it is
+// never sent back. Every signed-in user, always only their own sign-in.
+service MyAxisService {
+  // Whether the caller is signed in.
+  rpc Get (Empty) returns (MyAxisStateReply);
+  // Keeps the session after axis.com accepted it (audited). INVALID_ARGUMENT for anything but one pair
+  // "axis_connect_session_sid=<value>"; FAILED_PRECONDITION "MyAxis did not accept the sign-in. Try again." when axis.com
+  // refuses it; UNAVAILABLE when axis.com cannot be reached.
+  rpc SignIn (MyAxisSignInRequest) returns (MyAxisStateReply);
+  // Deletes the caller's session (audited). Always succeeds.
+  rpc SignOut (Empty) returns (MyAxisStateReply);
+}
+
+message MyAxisStateReply {
+  bool signed_in = 1;
+  google.protobuf.Timestamp signed_in_at = 2;   // set while signed in
+  bool expired = 3;                             // axis.com refused the last kept session (cleared by SignIn or SignOut)
+}
+
+message MyAxisSignInRequest {
+  string session = 1;                           // "axis_connect_session_sid=<value>" (the one Cookie header the server sends
+                                                // to axis.com; at most 4,096 characters), a secret: never logged
+}

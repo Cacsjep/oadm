@@ -114,6 +114,9 @@ public sealed class FakeTaskContext : ITaskExecutionContext
     private static global::System.Net.IPAddress? ParseAddress(string? text) =>
         global::System.Net.IPAddress.TryParse(text?.Trim().Trim('[', ']'), out var ip) ? ip : null;
 
+    /// <summary>Downloads from axis.com (a <see cref="FakeAxisDownloads"/>); null = a host without them or a system task.</summary>
+    public IAxisDownloads? AxisDownloads { get; set; }
+
     /// <inheritdoc />
     public void PlanSteps(params string[] names) => Steps.Plan(names);
 

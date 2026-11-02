@@ -586,6 +586,13 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task DeleteUploadAsync(string fileId, CancellationToken ct) =>
         await C.Files.DeleteAsync(new FileIdRequest { FileId = fileId }, cancellationToken: ct);
 
+    public async Task<MyAxisStateReply> GetMyAxisAsync(CancellationToken ct) => await C.MyAxis.GetAsync(new Empty(), cancellationToken: ct);
+
+    public async Task<MyAxisStateReply> SignInMyAxisAsync(string session, CancellationToken ct) =>
+        await C.MyAxis.SignInAsync(new MyAxisSignInRequest { Session = session }, cancellationToken: ct);
+
+    public async Task<MyAxisStateReply> SignOutMyAxisAsync(CancellationToken ct) => await C.MyAxis.SignOutAsync(new Empty(), cancellationToken: ct);
+
     public async Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => await C.License.GetLicenseAsync(new Empty(), cancellationToken: ct);
 
     public Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) =>
@@ -743,6 +750,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public VulnerabilityService.VulnerabilityServiceClient Vulnerabilities { get; } = new(channel);
         public BackupService.BackupServiceClient Backup { get; } = new(channel);
         public LicenseService.LicenseServiceClient License { get; } = new(channel);
+        public MyAxisService.MyAxisServiceClient MyAxis { get; } = new(channel);
         public SupportService.SupportServiceClient Support { get; } = new(channel);
         public SiteService.SiteServiceClient Sites { get; } = new(channel);
     }

@@ -47,7 +47,7 @@ public sealed class FirmwareStreamContent : HttpContent
 
                 if (BytesSent + read > _length)
                 {
-                    throw new IOException("The firmware file is larger than announced; it changed during the upload.");
+                    throw new FirmwareFileChangedException("The firmware file is larger than announced; it changed during the upload.");
                 }
 
                 await stream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
@@ -58,7 +58,7 @@ public sealed class FirmwareStreamContent : HttpContent
 
         if (BytesSent != _length)
         {
-            throw new IOException("The firmware file is shorter than announced; it changed during the upload.");
+            throw new FirmwareFileChangedException("The firmware file is shorter than announced; it changed during the upload.");
         }
     }
 
@@ -66,5 +66,23 @@ public sealed class FirmwareStreamContent : HttpContent
     {
         length = _length;
         return true;
+    }
+}
+
+/// <summary>The image did not have the announced length while it was sent (<see cref="FirmwareStreamContent"/>).</summary>
+public sealed class FirmwareFileChangedException : IOException
+{
+    public FirmwareFileChangedException()
+    {
+    }
+
+    public FirmwareFileChangedException(string message)
+        : base(message)
+    {
+    }
+
+    public FirmwareFileChangedException(string message, Exception innerException)
+        : base(message, innerException)
+    {
     }
 }

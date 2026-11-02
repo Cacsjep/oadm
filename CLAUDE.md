@@ -40,7 +40,7 @@ src/
   Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice, FakeSettings,
                        FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext,
                        FakeDeviceScopes, FakeSites, FakeHostRules, FakePluginJobs, FakePluginServices, FakeProtectedTags,
-                       FakeStreamProbes, PluginCanary, TaskPluginCanaryHost
+                       FakeStreamProbes, FakeAxisDownloads, PluginCanary, TaskPluginCanaryHost
   Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK
                        references without copies, plugin.json from properties, the plugin folder; Oadm.Plugin.Repo.* for
                        plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
@@ -230,7 +230,7 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
   settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
-- **[MyAxis sign-in](docs/spec/myaxis.md)** (spec, not built): each user signs in to their own MyAxis account (title
+- **[MyAxis sign-in](docs/spec/myaxis.md)** (server built, not verified with a real MyAxis account): each user signs in to their own MyAxis account (title
   bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
   server, sent only to axis.com, never to plugins; Upgrade firmware downloads AXIS OS with it (Recommended, Latest LTS,
   Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
@@ -392,7 +392,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     `ui:ToolbarButton` / `Button.toolbar`, icon + text, the icon in the accent colour, the text neutral, no background.
     Never a filled button there (`ToolbarButton.IsPrimary` no longer fills).
   - **Icon-only buttons** (close, ⋯, copy, reveal, row actions): the text colour, the accent only on hover, always a
-    tooltip; never coloured, never filled. Only disabled buttons are dimmed.
+    tooltip; never coloured, never filled. Only disabled buttons are dimmed. One exception: the title bar's MyAxis cloud
+    is green (`Button.toolbar.ok`) while the user is signed in.
   - **Filled accent** `Button.primary`: only the one main action of a dialog or form (Save, Create in a dialog, Enable,
     Next, OK). `Button.secondary` for its other actions (Cancel, Turn off, Choose file, Import in a form).
 - One accent button per view (no exception: the device choice button is a command button in a page toolbar and a

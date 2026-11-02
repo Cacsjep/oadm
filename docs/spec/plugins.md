@@ -55,7 +55,8 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
   `DeviceIdentityException` and the record stays; see "Following moved devices" in `docs/spec/discovery.md` and the PKI
-  tasks), `Network` (`IDeviceNetwork`), `Caller`, `ManagedAddressesAsync` (below).
+  tasks), `Network` (`IDeviceNetwork`), `Caller`, `ManagedAddressesAsync` (below), `AxisDownloads` (SDK 0.9.0, files from
+  axis.com with the starting user's MyAxis sign-in, null for system tasks; `docs/spec/myaxis.md` "For plugins").
 - `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or
   running; `AnyActiveAsync(ids)`: whether any of them is, on `call.Tasks` of a group user for the tasks of the user's
   devices whoever started them; `GetOutcomeAsync(id)` (SDK 0.7.0, DIM null): how an ended task ended, `TaskOutcome`
@@ -320,11 +321,11 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.8.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.9.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.8.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.8.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.9.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.9.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
