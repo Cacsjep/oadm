@@ -59,7 +59,8 @@
                       <StackPanel Grid.Column="1" Spacing="8">
                         <!-- Event -->
                         <StackPanel Spacing="8" IsVisible="{Binding IsEvent}">
-                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                          <!-- As wide as a check row (Field + Operator + Value), the info icon right after it -->
+                          <Grid ColumnDefinitions="696,Auto" ColumnSpacing="6" HorizontalAlignment="Left">
                             <ComboBox ItemsSource="{Binding EventTypes}" SelectedItem="{Binding SelectedEventType}" PlaceholderText="Choose an event"
                                       HorizontalAlignment="Stretch" />
                             <ui:InfoIcon Grid.Column="1" Text="{Binding EventDescription}" />
