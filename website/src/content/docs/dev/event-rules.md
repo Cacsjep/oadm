@@ -113,7 +113,7 @@ public sealed class OldFirmwareEvents : IEventSource
   with `SetState`, or `ReplaceStates` again whenever that is easier: the server works out what changed.
 - **Values.** The `data` of `SetState` and `Fire` are the event's values; `ReplaceStates` carries none, so publish with
   `SetState` when actions need values. Actions use them as placeholders (`{version}`), conditions can
-  check the declared `EventField`s ("Temperature > 40", SDK 0.10.0: `RuleCondition.Checks`); a check on a value the
+  check the declared `EventField`s ("Temperature > 40", SDK 0.9.0: `RuleCondition.Checks`); a check on a value the
   event did not send fails, so a state set by `ReplaceStates` alone never passes one.
 - **Devices.** `DeviceIds` on the type lists the devices that can send it now (null: any device); raise `EventTypesChanged`
   when they change. Dashboards offers only these devices for a widget.

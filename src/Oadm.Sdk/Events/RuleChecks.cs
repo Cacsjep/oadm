@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace Oadm.Sdk.Events;
 
-/// <summary>How a field check compares an event value (SDK 0.10.0). JSON: eq, ne, contains, startsWith, gt, ge, lt, le, yes, no.</summary>
+/// <summary>How a field check compares an event value (SDK 0.9.0). JSON: eq, ne, contains, startsWith, gt, ge, lt, le, yes, no.</summary>
 public enum RuleCheckOperator
 {
     /// <summary>Text: equals (case-insensitive). Number: =.</summary>
@@ -37,7 +37,7 @@ public enum RuleCheckOperator
 }
 
 /// <summary>
-/// One check of an event condition on a value of its event (SDK 0.10.0): "temperature" <see cref="RuleCheckOperator.Gt"/>
+/// One check of an event condition on a value of its event (SDK 0.9.0): "temperature" <see cref="RuleCheckOperator.Gt"/>
 /// "40". All checks of a condition must hold; a value the event did not send fails.
 /// </summary>
 public sealed class RuleCheck
@@ -55,7 +55,7 @@ public sealed class RuleCheck
     public RuleCheck Clone() => new() { Field = Field, Op = Op, Value = Value };
 }
 
-/// <summary>The rules of field checks shared by the server and the rule dialog (SDK 0.10.0).</summary>
+/// <summary>The rules of field checks shared by the server and the rule dialog (SDK 0.9.0).</summary>
 public static class RuleChecks
 {
     /// <summary>Most checks per event condition.</summary>

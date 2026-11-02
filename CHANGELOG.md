@@ -5,17 +5,11 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [Unreleased]
-
-### Added
-
-- Event rules: check the values of an event, such as a temperature above 40.
-- Plugin SDK 0.10.0.
-
 ## [4.9.0] - 2026-11-02
 
 ### Added
 
+- Event rules: check the values of an event, such as a temperature above 40.
 - Online Upgrade firmware: Choose a version from axis.com per device (Recommended, Latest LTS, Latest active); the server downloads it with your MyAxis sign-in.
 - Devices list: Vulnerabilities in the context menu lists the CVEs of the selected devices with the full description and a link to the Axis advisory.
 - Plugin SDK 0.9.0.

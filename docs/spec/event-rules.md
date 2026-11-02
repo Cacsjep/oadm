@@ -137,7 +137,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 ## Field checks
 
-Decisions of 2026-11-02, built the same day (SDK 0.10.0). An event condition ("When" or "And" row) can check the values its
+Decisions of 2026-11-02, built the same day (SDK 0.9.0, OADM 4.9.0). An event condition ("When" or "And" row) can check the values its
 event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "active".
 
 - **Dialog**: **Add check** on each event row (command button `ui:ToolbarButton`, shown while the event has values to

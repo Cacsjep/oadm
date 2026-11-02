@@ -105,7 +105,7 @@ public sealed class RuleCondition
     public Dictionary<string, string> Data { get; set; } = [];
 
     /// <summary>
-    /// The checks on the event's values (SDK 0.10.0), at most <see cref="RuleChecks.MaxPerCondition"/>; all must hold.
+    /// The checks on the event's values (SDK 0.9.0), at most <see cref="RuleChecks.MaxPerCondition"/>; all must hold.
     /// JSON <c>[{"field","op","value"}]</c>.
     /// </summary>
     public List<RuleCheck> Checks { get; set; } = [];
@@ -124,7 +124,7 @@ public sealed class RuleCondition
         Schedule = Schedule?.Clone(),
     };
 
-    /// <summary>Turns the older equals filters of <see cref="Data"/> into <see cref="RuleCheckOperator.Eq"/> checks (SDK 0.10.0).</summary>
+    /// <summary>Turns the older equals filters of <see cref="Data"/> into <see cref="RuleCheckOperator.Eq"/> checks (SDK 0.9.0).</summary>
     public void MoveDataToChecks()
     {
         foreach (var (field, value) in Data)
