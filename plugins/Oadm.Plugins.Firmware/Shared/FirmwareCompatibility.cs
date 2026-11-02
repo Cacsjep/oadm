@@ -32,6 +32,9 @@ public enum FirmwareVerdict
 
     /// <summary>AXIS OS 13 or later and an installed application that is unsigned or does not declare it: the device would refuse.</summary>
     AppsBlock = 9,
+
+    /// <summary>A version from axis.com was chosen without a MyAxis sign-in (dialog only).</summary>
+    SignInNeeded = 10,
 }
 
 public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
@@ -166,6 +169,72 @@ public static class FirmwareCompatibility
             ? (unnamed, Evaluate(deviceModel, deviceVersion, images[unnamed], mode, allowDowngrade, apps))
             : (-1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
     }
+
+    /// <summary>
+    /// The version from axis.com of <paramref name="online"/> for a device (README "Firmware online"): the entry for its
+    /// product and its AXIS OS major, else the entry for its product made for devices of unknown version; -1 when none.
+    /// </summary>
+    public static int FindOnline(string? deviceModel, string? deviceVersion, IReadOnlyList<FirmwareOnline> online)
+    {
+        ArgumentNullException.ThrowIfNull(online);
+        var major = AxisOsVersion.TryParse(deviceVersion)?.Major;
+        var unknown = -1;
+        for (var i = 0; i < online.Count; i++)
+        {
+            if (!OnlineFirmware.Matches(online[i].Product, deviceModel))
+            {
+                continue;
+            }
+
+            if (online[i].FromMajor == major)
+            {
+                return i;
+            }
+
+            if (online[i].FromMajor is null && unknown < 0)
+            {
+                unknown = i;
+            }
+        }
+
+        return unknown;
+    }
+
+    /// <summary>
+    /// The firmware for a device when versions from axis.com and chosen files are mixed (the dialog preview and the task):
+    /// the online entry for the device (<see cref="FindOnline"/>, judged with <paramref name="onlineImages"/>), else the
+    /// chosen file for its product as in <see cref="Choose"/> (with online entries a single file is only for its own
+    /// product, as with <paramref name="matchByProduct"/>: the dialog for a device whose row has no choice of its own).
+    /// <c>Online</c> or <c>File</c> is the index taken, the other -1; both -1: no file for this model.
+    /// <paramref name="onlineIndex"/>: the result of <see cref="FindOnline"/> when the caller looked it up already (the
+    /// dialog, by an index of its rows for 100,000 devices).
+    /// </summary>
+    public static (int Online, int File, FirmwareCheck Check) ChooseWithOnline(string? deviceModel, string? deviceVersion,
+        IReadOnlyList<FirmwareOnline> online, IReadOnlyList<FirmwareImageInfo> onlineImages, IReadOnlyList<FirmwareImageInfo> files,
+        FactoryDefaultMode mode, bool allowDowngrade, IReadOnlyList<InstalledApp>? apps = null, bool matchByProduct = false, int? onlineIndex = null)
+    {
+        ArgumentNullException.ThrowIfNull(online);
+        ArgumentNullException.ThrowIfNull(onlineImages);
+        ArgumentNullException.ThrowIfNull(files);
+        var index = onlineIndex ?? FindOnline(deviceModel, deviceVersion, online);
+        if (index >= 0)
+        {
+            return (index, -1, Evaluate(deviceModel, deviceVersion, onlineImages[index], mode, allowDowngrade, apps));
+        }
+
+        if (files.Count == 0)
+        {
+            return (-1, -1, new FirmwareCheck(FirmwareVerdict.NoFileForModel, NoFileForModel));
+        }
+
+        var (file, check) = (online.Count > 0 || matchByProduct) && files.Count == 1
+            ? Choose(deviceModel, deviceVersion, [files[0], NoImage], mode, allowDowngrade, apps)
+            : Choose(deviceModel, deviceVersion, files, mode, allowDowngrade, apps);
+        return (-1, file, check);
+    }
+
+    /// <summary>A rejected placeholder: makes <see cref="Choose"/> match a single file by product.</summary>
+    private static readonly FirmwareImageInfo NoImage = new(string.Empty, 0, null, null, "none");
 
     /// <summary>"AXIS P3265-V" and "p3265-v" match "P3265-V".</summary>
     public static bool ProductMatches(string fileProduct, string deviceModel) =>
