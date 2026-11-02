@@ -171,7 +171,7 @@ must never break.
   tested in a separate process first), the shared live video component, zoom, focus, PTZ, RTSP port.
 - **[Device tags](docs/spec/tags.md)**, **[Compliance](docs/spec/compliance.md)** (off by default, read only, Not checked
   for devices that are not Ok), **[Event rules](docs/spec/event-rules.md)** (events and actions from plugins, the engine,
-  limits, the log; field checks on event values, spec), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
+  limits, the log; field checks on event values: at most 5 per condition, all must hold), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
   parallelism per plugin).
 - **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of device firmware, Vulnerabilities column ("2 · High")
   and search by CVE id, matched by model, firmware and chip in the client; data only from the CVE records and NVD (never
