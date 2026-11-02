@@ -74,6 +74,8 @@
             </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
+        <!-- Judging or setting 100,000 devices: the ring over the table from the first moment -->
+        <ui:LoadingOverlay Grid.Row="3" Text="{Binding BusyText}" IsVisible="{Binding IsBusy}" />
         <!-- A problem of the whole file choice, directly below the table -->
         <TextBlock Grid.Row="4" Classes="error" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding FileError}" IsVisible="{Binding HasFileError}" />
         <TextBlock Grid.Row="5" Classes="warning" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding PathWarning}" IsVisible="{Binding HasPathWarning}" />

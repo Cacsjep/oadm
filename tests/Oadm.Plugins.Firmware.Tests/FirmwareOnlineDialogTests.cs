@@ -183,6 +183,40 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
+    public async Task A_large_selection_sets_and_judges_behind_the_ring_with_the_buttons_waiting()
+    {
+        Device[] devices = [new("10.0.1.1", "Q1800-LE", "11.11.200"), new("10.0.1.2", "Q1800-LE", "12.11.100"), new("10.0.1.3", "Q1800-LE", "13.0.88")];
+        using var vm = new DialogViewModel(Context(ActiveSite()), devices, new FakeFileSource()) { BackgroundFrom = 1, BusyPaintDelay = TimeSpan.Zero };
+        await vm.LoadOnlineAsync(CancellationToken.None);
+        Assert.False(vm.IsBusy);
+
+        var run = vm.LatestLtsCommand.ExecuteAsync(null);
+        Assert.True(vm.IsBusy); // from the first moment, before any device changed
+        Assert.Equal("Setting the versions", vm.BusyText);
+        Assert.False(vm.RecommendedCommand.CanExecute(null));
+        Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.Equal("Setting the versions.", vm.StartBlockedReason);
+        await run;
+
+        Assert.False(vm.IsBusy);
+        Assert.Equal(["12.11.147", "12.11.147", "12.11.147"], vm.Devices.Select(Chosen));
+        Assert.Equal("Downgrade blocked", vm.Devices[2].VerdictText);
+
+        // The options judge every device again the same way.
+        vm.AllowDowngrade = true;
+        Assert.True(vm.IsBusy);
+        Assert.Equal("Checking the devices", vm.BusyText);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !vm.IsBusy, "the devices were judged");
+        Assert.Equal("Downgrade blocked", vm.Devices[2].VerdictText); // still no factory default
+        Assert.Contains("requires a factory default", vm.Devices[2].Message, StringComparison.Ordinal);
+
+        // One device's choice judges that device only, at once.
+        vm.Devices[0].SelectedChoice = vm.Devices[0].Choices.Single(c => c.Text == "13.1.20");
+        Assert.False(vm.IsBusy);
+        Assert.Equal("Not recommended", vm.Devices[0].VerdictText);
+    }
+
+    [Fact]
     public async Task Not_signed_in_every_device_starts_on_Choose_file_and_a_version_asks_to_sign_in()
     {
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true }, signedIn: false);
@@ -378,16 +412,19 @@ public sealed class FirmwareOnlineScaleTests
             .ToArray();
 
         var watch = Stopwatch.StartNew();
-        using var vm = new DialogViewModel(FirmwareOnlineDialogTests.Context(site), devices, new FakeFileSource());
+        using var vm = new DialogViewModel(FirmwareOnlineDialogTests.Context(site), devices, new FakeFileSource()) { BusyPaintDelay = TimeSpan.Zero };
         var build = watch.ElapsedMilliseconds;
         watch.Restart();
         await vm.LoadOnlineAsync(CancellationToken.None); // ends with Recommended for every device
         var lookup = watch.ElapsedMilliseconds;
         watch.Restart();
-        vm.LatestLtsCommand.Execute(null);
-        vm.LatestActiveCommand.Execute(null);
-        vm.RecommendedCommand.Execute(null);
+        var busy = false;
+        vm.PropertyChanged += (_, e) => busy |= e.PropertyName == nameof(DialogViewModel.IsBusy) && vm.IsBusy;
+        await vm.LatestLtsCommand.ExecuteAsync(null);
+        await vm.LatestActiveCommand.ExecuteAsync(null);
+        await vm.RecommendedCommand.ExecuteAsync(null);
         var rules = watch.ElapsedMilliseconds;
+        Assert.True(busy); // the ring showed while the buttons ran (off the UI thread)
         watch.Restart();
         vm.Devices[50_000].SelectedChoice = vm.Devices[50_000].Choices.First(c => c.Text == "12.11.147");
         var one = watch.ElapsedMilliseconds;

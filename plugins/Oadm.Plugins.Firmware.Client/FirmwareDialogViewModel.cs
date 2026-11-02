@@ -185,6 +185,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>Why Upgrade is disabled (its tooltip); null when it is enabled or an upload runs.</summary>
     public string? StartBlockedReason =>
         IsUploading ? null
+        : IsBusy ? BusyText + "."
         : IsLookingUp ? LookupText + "."
         : FileError is not null ? FileError
         : _checking.Count > 0 ? "Checking the version on axis.com."
@@ -284,7 +285,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         await Task.WhenAll(rows.Select(row => ReadStatusAsync(row, ct))).ConfigureAwait(true);
-        Evaluate();
+        await RefreshAsync().ConfigureAwait(true);
     }
 
     /// <summary>Reads the status of a row the grid shows, once; re-evaluates that row and the summary.</summary>
@@ -432,55 +433,163 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             HasOnline = _models.Values.Any(m => m.IsListed);
         }
 
-        if (IsSignedIn)
-        {
-            ApplyRule(OnlineFirmware.Recommended, onlyUnchosen: true);
-        }
-        else
-        {
-            Evaluate();
-        }
+        await (IsSignedIn ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true) : RefreshAsync()).ConfigureAwait(true);
     }
 
     /// <summary>Every device: the newest version on its own track.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private void Recommended() => ApplyRule(OnlineFirmware.Recommended, onlyUnchosen: false);
+    private Task RecommendedAsync() => ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: false);
 
     /// <summary>Every device: the newest LTS track of its model.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private void LatestLts() => ApplyRule((model, _) => OnlineFirmware.LatestLts(model), onlyUnchosen: false);
+    private Task LatestLtsAsync() => ApplyRuleAsync((model, _) => OnlineFirmware.LatestLts(model), onlyUnchosen: false);
 
     /// <summary>Every device: the active track of its model, else its newest version.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private void LatestActive() => ApplyRule((model, _) => OnlineFirmware.LatestActive(model), onlyUnchosen: false);
+    private Task LatestActiveAsync() => ApplyRuleAsync((model, _) => OnlineFirmware.LatestActive(model), onlyUnchosen: false);
 
-    private bool CanApplyRule() => HasOnline && !IsLookingUp && !IsUploading;
+    private bool CanApplyRule() => HasOnline && !IsLookingUp && !IsUploading && !IsBusy;
 
-    /// <summary>One pass over the devices: the rule per model and major is computed once (100,000 devices).</summary>
-    private void ApplyRule(Func<OnlineModel, int?, string?> rule, bool onlyUnchosen)
+    /// <summary>
+    /// Sets the rule's version on every device: one pass, the rule computed once per model and AXIS OS major. From
+    /// <see cref="BackgroundFrom"/> devices it runs off the UI thread behind the busy ring (HARD RULE loading feedback: the
+    /// three buttons take about 0.6 s each at 100,000 devices); only setting the results touches the rows on the UI thread.
+    /// </summary>
+    private Task ApplyRuleAsync(Func<OnlineModel, int?, string?> rule, bool onlyUnchosen)
     {
-        var picks = new Dictionary<(string, int?), GroupedChoice?>();
-        foreach (var row in Devices)
+        if (Devices.Count < BackgroundFrom)
         {
+            SetPicks(Picks([.. Devices], rule, onlyUnchosen));
+            Evaluate();
+            return Task.CompletedTask;
+        }
+
+        return RunBusyAsync(SettingText, async () =>
+        {
+            FirmwareDeviceRow[] rows = [.. Devices];
+            SetPicks(await Task.Run(() => Picks(rows, rule, onlyUnchosen)).ConfigureAwait(true));
+            await JudgeAllAsync().ConfigureAwait(true);
+        });
+
+        void SetPicks(GroupedChoice?[] picks)
+        {
+            for (var i = 0; i < picks.Length && i < Devices.Count; i++)
+            {
+                if (picks[i] is { } choice)
+                {
+                    Devices[i].SetChoice(choice);
+                }
+            }
+        }
+    }
+
+    /// <summary>The rule's choice per device (null: unchanged); reads the rows only.</summary>
+    private static GroupedChoice?[] Picks(FirmwareDeviceRow[] rows, Func<OnlineModel, int?, string?> rule, bool onlyUnchosen)
+    {
+        var picks = new GroupedChoice?[rows.Length];
+        var perTrack = new Dictionary<(string, int?), GroupedChoice?>();
+        for (var i = 0; i < rows.Length; i++)
+        {
+            var row = rows[i];
             if (row.ModelChoices is not { Online: { IsListed: true } online } model || (onlyUnchosen && row.SelectedChoice is not null))
             {
                 continue;
             }
 
             var key = (model.Key, AxisOsVersion.TryParse(row.CurrentVersion)?.Major);
-            if (!picks.TryGetValue(key, out var choice))
+            if (!perTrack.TryGetValue(key, out var choice))
             {
                 choice = model.Version(rule(online, key.Major));
-                picks[key] = choice;
+                perTrack[key] = choice;
             }
 
-            if (choice is not null)
-            {
-                row.SetChoice(choice);
-            }
+            picks[i] = choice;
         }
 
-        Evaluate();
+        return picks;
+    }
+
+    public const string SettingText = "Setting the versions";
+    public const string CheckingText = "Checking the devices";
+
+    /// <summary>From this many devices, judging all of them runs off the UI thread behind the busy ring.</summary>
+    public int BackgroundFrom { get; set; } = 2_000;
+
+    /// <summary>The time the ring gets to paint before the work starts (tests: zero).</summary>
+    public TimeSpan BusyPaintDelay { get; set; } = TimeSpan.FromMilliseconds(30);
+
+    /// <summary>True while all devices are judged or set: the ring over the table, the buttons and Upgrade wait.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RecommendedCommand), nameof(LatestLtsCommand), nameof(LatestActiveCommand), nameof(StartCommand))]
+    public partial bool IsBusy { get; private set; }
+
+    [ObservableProperty]
+    public partial string? BusyText { get; private set; }
+
+    private readonly SemaphoreSlim _busyGate = new(1, 1);
+
+    /// <summary>Shows the ring (one frame to paint), then runs <paramref name="work"/>; one run at a time.</summary>
+    private async Task RunBusyAsync(string text, Func<Task> work)
+    {
+        await _busyGate.WaitAsync().ConfigureAwait(true);
+        BusyText = text;
+        IsBusy = true;
+        OnPropertyChanged(nameof(StartBlockedReason));
+        try
+        {
+            if (BusyPaintDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(BusyPaintDelay).ConfigureAwait(true);
+            }
+            else
+            {
+                await Task.Yield();
+            }
+
+            await work().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsBusy = false;
+            BusyText = null;
+            _busyGate.Release();
+            OnPropertyChanged(nameof(StartBlockedReason));
+        }
+    }
+
+    /// <summary>Judges every device again: at once for a small selection, else off the UI thread behind the ring.</summary>
+    private Task RefreshAsync()
+    {
+        if (Devices.Count < BackgroundFrom)
+        {
+            Evaluate();
+            return Task.CompletedTask;
+        }
+
+        return RunBusyAsync(CheckingText, JudgeAllAsync);
+    }
+
+    /// <summary>The decision table for every device on the thread pool (pure: reads the rows), then the results on the UI thread.</summary>
+    private async Task JudgeAllAsync()
+    {
+        FirmwareDeviceRow[] rows = [.. Devices];
+        var chosen = 0;
+        foreach (var row in rows)
+        {
+            chosen += row.SelectedChoice is null ? 0 : 1;
+        }
+
+        var state = new JudgeState(chosen, IsSignedIn, SelectedMode.Mode, AllowDowngrade, new Dictionary<string, OnlineFileInfo?>(_checked, StringComparer.Ordinal));
+        var results = await Task.Run(() => rows.Select(r => Judge(r, state)).ToArray()).ConfigureAwait(true);
+        _chosenCount = chosen;
+        for (var i = 0; i < rows.Length; i++)
+        {
+            rows[i].Image = results[i].Image;
+            rows[i].Check = results[i].Check;
+        }
+
+        FileError = _selectError;
+        UpdateSummary();
     }
 
     [RelayCommand]
@@ -505,14 +614,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         IsSignedIn = signedIn;
-        if (signedIn && _lookupDone)
-        {
-            ApplyRule(OnlineFirmware.Recommended, onlyUnchosen: true);
-        }
-        else
-        {
-            Evaluate();
-        }
+        _ = signedIn && _lookupDone ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true) : RefreshAsync();
     }
 
     /// <summary>The user chose in one device's field: only that device changes.</summary>
@@ -529,7 +631,30 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             _ = CheckVersionAsync(row, online, older);
         }
 
-        Evaluate();
+        EvaluateOne(row);
+    }
+
+    /// <summary>
+    /// One device changed: only it is judged and the summary counted (100,000 devices: no pass of the decision table over
+    /// all of them), except when it is the first or the last choice ("No file" of the others changes).
+    /// </summary>
+    private void EvaluateOne(FirmwareDeviceRow row)
+    {
+        var chosen = 0;
+        foreach (var d in Devices)
+        {
+            chosen += d.SelectedChoice is null ? 0 : 1;
+        }
+
+        if ((chosen == 0) != (_chosenCount == 0))
+        {
+            _ = RefreshAsync();
+            return;
+        }
+
+        _chosenCount = chosen;
+        EvaluateRow(row);
+        UpdateSummary();
     }
 
     private static string CheckKey(OnlineModel online, string version) => online.Source + "/" + online.Product + "/" + version;
@@ -571,7 +696,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             _checked[key] = info;
         }
 
-        Evaluate();
+        await RefreshAsync().ConfigureAwait(true);
     }
 
     /// <summary>"Choose file" of a device: one local .bin for that device; the same file can then be chosen for others.</summary>
@@ -601,7 +726,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
-        Evaluate();
+        EvaluateOne(row);
     }
 
     /// <summary>Uses a file for every device of its model without the picker (tests, drag and drop).</summary>
@@ -671,7 +796,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             }
         }
 
-        Evaluate();
+        await RefreshAsync().ConfigureAwait(true);
     }
 
     private string? _selectError;
@@ -819,10 +944,10 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     {
         OnPropertyChanged(nameof(ModeWarning));
         OnPropertyChanged(nameof(HasModeWarning));
-        Evaluate();
+        _ = RefreshAsync();
     }
 
-    partial void OnAllowDowngradeChanged(bool value) => Evaluate();
+    partial void OnAllowDowngradeChanged(bool value) => _ = RefreshAsync();
 
     public void Dispose()
     {
@@ -862,53 +987,59 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         UpdateSummary();
     }
 
-    /// <summary>The device's own choice through the decision table; a device without one says "No file" once others have one.</summary>
     private void EvaluateRow(FirmwareDeviceRow row)
     {
-        row.Image = null;
+        var (check, image) = Judge(row, new JudgeState(_chosenCount, IsSignedIn, SelectedMode.Mode, AllowDowngrade, _checked));
+        row.Image = image;
+        row.Check = check;
+    }
+
+    /// <summary>What <see cref="Judge"/> needs besides the row; a copy, so it can run off the UI thread.</summary>
+    private sealed record JudgeState(int Chosen, bool SignedIn, FactoryDefaultMode Mode, bool AllowDowngrade, IReadOnlyDictionary<string, OnlineFileInfo?> Checked);
+
+    /// <summary>
+    /// The device's own choice through the decision table; a device without one says "No file" once others have one. Pure:
+    /// reads the row and <paramref name="state"/>, changes nothing.
+    /// </summary>
+    private static (FirmwareCheck? Check, FirmwareImageInfo? Image) Judge(FirmwareDeviceRow row, JudgeState state)
+    {
         var choice = row.SelectedChoice?.Value;
         if (choice is null)
         {
-            row.Check = _chosenCount == 0 ? null : new FirmwareCheck(FirmwareVerdict.NoFileForModel, FirmwareCompatibility.NoFileForModel);
-            return;
+            return (state.Chosen == 0 ? null : new FirmwareCheck(FirmwareVerdict.NoFileForModel, FirmwareCompatibility.NoFileForModel), null);
         }
 
         if (!row.Supported)
         {
-            row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "This device's firmware cannot be updated from OADM.");
-            return;
+            return (new FirmwareCheck(FirmwareVerdict.InvalidFile, "This device's firmware cannot be updated from OADM."), null);
         }
 
         if (choice is FileChoice file)
         {
-            row.Image = file.Image;
-            row.Check = FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, file.Image, SelectedMode.Mode, AllowDowngrade, row.Apps);
-            return;
+            return (FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, file.Image, state.Mode, state.AllowDowngrade, row.Apps), file.Image);
         }
 
         var version = (OnlineChoice)choice;
-        if (!IsSignedIn)
+        if (!state.SignedIn)
         {
-            row.Check = new FirmwareCheck(FirmwareVerdict.SignInNeeded, OnlineFirmware.SignInText);
-            return;
+            return (new FirmwareCheck(FirmwareVerdict.SignInNeeded, OnlineFirmware.SignInText), null);
         }
 
         var online = row.ModelChoices!.Online!;
         long? size = version.Version.Size;
-        if (size is null && _checked.TryGetValue(CheckKey(online, version.Version.Version), out var info))
+        if (size is null && state.Checked.TryGetValue(CheckKey(online, version.Version.Version), out var info))
         {
             if (info is null)
             {
-                row.Check = new FirmwareCheck(FirmwareVerdict.NotListed, $"AXIS OS {version.Version.Version} is no longer on axis.com.");
-                return;
+                return (new FirmwareCheck(FirmwareVerdict.NotListed, $"AXIS OS {version.Version.Version} is no longer on axis.com."), null);
             }
 
             size = info.Size;
         }
 
         var entry = new FirmwareOnline(online.Source ?? OnlineFirmware.Mpqt, online.Product ?? row.Model, version.Version.Version, null);
-        row.Image = OnlineFirmware.ImageOf(entry, size ?? 0);
-        row.Check = FirmwareCompatibility.EvaluateOnline(entry, row.Image, row.Model, row.CurrentVersion, SelectedMode.Mode, AllowDowngrade, row.Apps);
+        var image = OnlineFirmware.ImageOf(entry, size ?? 0);
+        return (FirmwareCompatibility.EvaluateOnline(entry, image, row.Model, row.CurrentVersion, state.Mode, state.AllowDowngrade, row.Apps), image);
     }
 
     private void UpdateSummary()
