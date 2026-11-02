@@ -61,7 +61,15 @@ message EventFieldInfo {
   string name = 1;
   string display_name = 2;
   repeated string values = 3;
-  bool no_filter = 4;            // a value only: a placeholder, no filter box in the rule dialog
+  bool no_filter = 4;            // a value only: a placeholder, no check in the rule dialog
+  EventFieldKind kind = 5;       // what the value holds: the operators of its checks
+}
+
+// EventValueKind of the SDK.
+enum EventFieldKind {
+  EVENT_FIELD_TEXT = 0;
+  EVENT_FIELD_NUMBER = 1;
+  EVENT_FIELD_YES_NO = 2;
 }
 
 message EventTypeEntry {

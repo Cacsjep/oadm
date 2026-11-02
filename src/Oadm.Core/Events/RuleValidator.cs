@@ -146,12 +146,10 @@ public static class RuleValidator
             return $"{position}: only the first condition can be an event that happens once.";
         }
 
-        foreach (var key in condition.Data.Keys)
+        var checkProblem = CheckChecks(condition, type, position);
+        if (checkProblem is not null)
         {
-            if (!type.Info.DataFields.Any(f => string.Equals(f.Name, key, StringComparison.Ordinal)))
-            {
-                return $"{position}: {type.Info.DisplayName} has no value \"{key}\".";
-            }
+            return checkProblem;
         }
 
         if (!type.DeviceScope)
@@ -166,6 +164,39 @@ public static class RuleValidator
             DeviceSelectorMode.Devices or DeviceSelectorMode.Tags when condition.Devices.IsEmptyChoice => $"{position}: choose at least one device or tag.",
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// The field checks (and older equals filters): at most <see cref="RuleChecks.MaxPerCondition"/>, each on a checkable
+    /// field of the event, with an operator of its kind and a value of at most <see cref="RuleChecks.MaxValueLength"/>.
+    /// </summary>
+    private static string? CheckChecks(RuleCondition condition, CatalogEventType type, string position)
+    {
+        if (condition.Checks.Count + condition.Data.Count > RuleChecks.MaxPerCondition)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{position}: at most {RuleChecks.MaxPerCondition} checks.");
+        }
+
+        var fields = type.Info.DataFields;
+        foreach (var check in condition.Checks.Concat(condition.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value })))
+        {
+            if (check is null || !Enum.IsDefined(check.Op))
+            {
+                return $"{position}: a check is not valid.";
+            }
+
+            if (!fields.Any(f => string.Equals(f.Name, check.Field, StringComparison.Ordinal)))
+            {
+                return $"{position}: {type.Info.DisplayName} has no value \"{check.Field}\".";
+            }
+
+            if (RuleChecks.Problem(check, fields) is { } problem)
+            {
+                return $"{position}: {problem}";
+            }
+        }
+
+        return null;
     }
 
     private static string? CheckSchedule(RuleSchedule? schedule, string position)

@@ -26,10 +26,24 @@ public static class RuleTexts
             var type = catalog.FindEventType(condition.EventTypeId);
             var name = type?.Info.DisplayName ?? condition.EventTypeId ?? "?";
             var scope = type is { DeviceScope: false } ? string.Empty : Selector(condition.Devices, deviceName, sameDevice: "same device");
-            parts.Add((i == 0 ? name : "and " + Lower(name)) + (scope.Length == 0 ? string.Empty : $" ({scope})"));
+            var details = string.Join(", ", new[] { scope, Checks(condition, type?.Info) }.Where(t => t.Length > 0));
+            parts.Add((i == 0 ? name : "and " + Lower(name)) + (details.Length == 0 ? string.Empty : $" ({details})"));
         }
 
         return string.Join(" · ", parts);
+    }
+
+    /// <summary>The field checks of an event condition: "Temperature &gt; 40, Door is yes" (empty without checks).</summary>
+    public static string Checks(RuleCondition condition, EventTypeInfo? type)
+    {
+        ArgumentNullException.ThrowIfNull(condition);
+        return string.Join(", ", condition.Checks
+            .Concat(condition.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value }))
+            .Select(check =>
+            {
+                var field = type?.DataFields.FirstOrDefault(f => string.Equals(f.Name, check.Field, StringComparison.Ordinal));
+                return RuleChecks.Describe(check, field?.DisplayName ?? check.Field, field?.Kind ?? EventValueKind.Text);
+            }));
     }
 
     /// <summary>"Set output: Pulse output 1 for 5 s on 10.0.0.70 · Run VAPIX command: Restart".</summary>

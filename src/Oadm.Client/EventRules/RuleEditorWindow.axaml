@@ -67,15 +67,31 @@
                           <Panel IsVisible="{Binding ShowSelector}">
                             <vm:DeviceSelectorView DataContext="{Binding Selector}" />
                           </Panel>
-                          <ItemsControl ItemsSource="{Binding Filters}">
+                          <!-- Checks on the event's values (at most 5): Field, Operator, Value, remove; errors below each input -->
+                          <ItemsControl ItemsSource="{Binding Checks}" IsVisible="{Binding HasChecks}">
+                            <ItemsControl.ItemsPanel>
+                              <ItemsPanelTemplate><StackPanel Spacing="6" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
-                              <DataTemplate x:DataType="vm:FilterFieldViewModel">
-                                <ui:FormField Label="{Binding Label}" Hint="Optional">
-                                  <TextBox Text="{Binding Value}" />
-                                </ui:FormField>
+                              <DataTemplate x:DataType="vm:CheckViewModel">
+                                <Grid ColumnDefinitions="2*,160,2*,Auto" ColumnSpacing="6">
+                                  <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                  <ComboBox Grid.Column="1" ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                  <TextBox Grid.Column="2" Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding NeedsValue}"
+                                           MaxLength="200" VerticalAlignment="Top" />
+                                  <Button Grid.Column="3" Classes="toolbar iconOnly" ToolTip.Tip="Remove check" VerticalAlignment="Top"
+                                          Command="{Binding RemoveCommand}">
+                                    <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                                  </Button>
+                                </Grid>
                               </DataTemplate>
                             </ItemsControl.ItemTemplate>
                           </ItemsControl>
+                          <ui:ToolbarButton Text="Add check" IconKey="add" HorizontalAlignment="Left" Command="{Binding AddCheckCommand}"
+                                            IsVisible="{Binding ShowAddCheck}"
+                                            ToolTip.Tip="{Binding AddCheckTip}" ToolTip.ShowOnDisabled="True" />
                         </StackPanel>
                         <!-- Schedule -->
                         <StackPanel Spacing="8" IsVisible="{Binding IsSchedule}">

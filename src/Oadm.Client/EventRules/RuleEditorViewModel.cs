@@ -46,10 +46,17 @@ public sealed partial class ConditionViewModel : ObservableObject
         From = initial?.Schedule?.From ?? "08:00";
         To = initial?.Schedule?.To ?? "18:00";
         SelectedEventType = EventTypes.FirstOrDefault(t => t.Id == initial?.EventTypeId);
-        foreach (var filter in Filters)
+        var initialChecks = initial is null ? []
+            : initial.Checks.Concat(initial.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value }));
+        foreach (var check in initialChecks.Take(RuleChecks.MaxPerCondition))
         {
-            filter.Value = initial?.Data.GetValueOrDefault(filter.Name) ?? string.Empty;
+            if (CheckFields.Any(f => f.Name == check.Field))
+            {
+                Checks.Add(NewCheck(check));
+            }
         }
+
+        RefreshChecks();
     }
 
     public RuleConditionKind Kind { get; }
@@ -74,7 +81,61 @@ public sealed partial class ConditionViewModel : ObservableObject
 
     public string? EventDescription => SelectedEventType?.Entry.Description is { Length: > 0 } text ? text : null;
 
-    public ObservableCollection<FilterFieldViewModel> Filters { get; } = [];
+    /// <summary>The checks on the event's values ("Temperature &gt; 40"), at most <see cref="RuleChecks.MaxPerCondition"/>.</summary>
+    public ObservableCollection<CheckViewModel> Checks { get; } = [];
+
+    /// <summary>The values of the chosen event a check can compare.</summary>
+    public IReadOnlyList<CheckFieldOption> CheckFields { get; private set; } = [];
+
+    /// <summary>"Add check" shows for events with values to check.</summary>
+    public bool ShowAddCheck => IsEvent && CheckFields.Count > 0;
+
+    public bool HasChecks => Checks.Count > 0;
+
+    public bool CanAddCheck => Checks.Count < RuleChecks.MaxPerCondition && CheckFields.Count > 0;
+
+    /// <summary>Why "Add check" is disabled (null while it is not).</summary>
+    public string? AddCheckTip => Checks.Count < RuleChecks.MaxPerCondition ? null : string.Create(CultureInfo.InvariantCulture, $"At most {RuleChecks.MaxPerCondition} checks.");
+
+    [RelayCommand(CanExecute = nameof(CanAddCheck))]
+    private void AddCheck()
+    {
+        if (CanAddCheck)
+        {
+            Checks.Add(NewCheck(null));
+            RefreshChecks();
+            _owner.Revalidate();
+        }
+    }
+
+    private CheckViewModel NewCheck(RuleCheck? initial) => new(CheckFields, initial, RemoveCheck, _owner.Revalidate);
+
+    private void RemoveCheck(CheckViewModel check)
+    {
+        Checks.Remove(check);
+        RefreshChecks();
+        _owner.Revalidate();
+    }
+
+    private void RefreshChecks()
+    {
+        OnPropertyChanged(nameof(CheckFields));
+        OnPropertyChanged(nameof(ShowAddCheck));
+        OnPropertyChanged(nameof(HasChecks));
+        OnPropertyChanged(nameof(CanAddCheck));
+        OnPropertyChanged(nameof(AddCheckTip));
+        AddCheckCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Next or Save was tried: the errors of the condition and its checks show.</summary>
+    internal void ShowAllErrors()
+    {
+        ShowErrors = true;
+        foreach (var check in Checks)
+        {
+            check.ShowAllErrors();
+        }
+    }
 
     public ObservableCollection<DayToggle> Days { get; } = [];
 
@@ -86,10 +147,14 @@ public sealed partial class ConditionViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(Error))]
     public partial bool ShowErrors { get; set; }
 
-    /// <summary>The condition's problem, shown below it once edited or after a save attempt.</summary>
-    public string? Error => ShowErrors ? Problem : null;
+    /// <summary>The condition's own problem, shown below it once edited or after a save attempt (a check shows its own).</summary>
+    public string? Error => ShowErrors ? OwnProblem : null;
 
-    public string? Problem
+    /// <summary>The first problem of the condition or of one of its checks ("Check 2: Enter a value.").</summary>
+    public string? Problem => OwnProblem ?? Checks.Select((c, i) => c.Problem is { } p ? string.Create(CultureInfo.InvariantCulture, $"Check {i + 1}: {p}") : null)
+        .FirstOrDefault(p => p is not null);
+
+    private string? OwnProblem
     {
         get
         {
@@ -122,14 +187,17 @@ public sealed partial class ConditionViewModel : ObservableObject
 
     partial void OnSelectedEventTypeChanged(EventTypeOption? value)
     {
-        Filters.Clear();
-        foreach (var field in value?.Entry.Fields.Where(f => !f.NoFilter) ?? [])
+        // A check keeps going while the new event has its value; the others go.
+        CheckFields = CheckFieldOption.Of(value?.Entry);
+        foreach (var check in Checks.ToList())
         {
-            var filter = new FilterFieldViewModel(field);
-            filter.PropertyChanged += (_, _) => _owner.Revalidate();
-            Filters.Add(filter);
+            if (!check.SetFields(CheckFields))
+            {
+                Checks.Remove(check);
+            }
         }
 
+        RefreshChecks();
         ShowErrors = true;
         _owner.Revalidate();
     }
@@ -151,10 +219,10 @@ public sealed partial class ConditionViewModel : ObservableObject
             Kind = RuleConditionKind.Event,
             EventTypeId = SelectedEventType?.Id,
             Devices = ShowSelector ? Selector.ToSelector() : new DeviceSelector { Mode = DeviceSelectorMode.All },
-            Data = Filters.Where(f => f.Value.Trim().Length > 0).ToDictionary(f => f.Name, f => f.Value.Trim()),
+            Checks = [.. Checks.Select(c => c.ToCheck())],
         };
 
-    /// <summary>One line for the overview: "Input ports: Digital input · Chosen devices: 10.0.0.48 · port = 1".</summary>
+    /// <summary>One line for the overview: "Input ports: Digital input · All devices · Temperature &gt; 40, Door is yes".</summary>
     internal string Summary()
     {
         if (IsSchedule)
@@ -169,7 +237,11 @@ public sealed partial class ConditionViewModel : ObservableObject
             parts.Add(Selector.Summary());
         }
 
-        parts.AddRange(Filters.Where(f => f.Value.Trim().Length > 0).Select(f => $"{f.Label} = {f.Value.Trim()}"));
+        if (Checks.Count > 0)
+        {
+            parts.Add(string.Join(", ", Checks.Select(c => c.Summary())));
+        }
+
         return string.Join(" · ", parts);
     }
 
@@ -595,7 +667,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
             case WhenStep:
                 foreach (var condition in Conditions)
                 {
-                    condition.ShowErrors = true;
+                    condition.ShowAllErrors();
                 }
 
                 break;
@@ -674,7 +746,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         Validation.ShowAll();
         foreach (var condition in Conditions)
         {
-            condition.ShowErrors = true;
+            condition.ShowAllErrors();
         }
 
         foreach (var action in RuleActions)

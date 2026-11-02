@@ -43,7 +43,7 @@ public enum EventValueKind
     YesNo = 2,
 }
 
-/// <summary>A data field an event carries ("detection" = "blur"); a rule can filter on it (equals).</summary>
+/// <summary>A data field an event carries ("detection" = "blur"); a rule can check it (<see cref="RuleCheck"/>).</summary>
 /// <param name="Name">The key in the event's data, also its placeholder ({port}).</param>
 /// <param name="DisplayName">What the rule dialog shows.</param>
 /// <param name="Type">How a condition compares it.</param>
@@ -53,7 +53,7 @@ public sealed record EventField(string Name, string DisplayName, EventFieldType 
     /// <summary>The kind of value as declared; <see cref="EventValueKind.Text"/> when not known.</summary>
     public EventValueKind Kind { get; init; }
 
-    /// <summary>False: a value only (a placeholder, a dashboard value), no filter in the rule dialog. Default true.</summary>
+    /// <summary>False: a value only (a placeholder, a dashboard value), no check in the rule dialog. Default true.</summary>
     public bool Filter { get; init; } = true;
 }
 

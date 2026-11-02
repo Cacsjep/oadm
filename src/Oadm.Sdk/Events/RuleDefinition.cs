@@ -98,8 +98,17 @@ public sealed class RuleCondition
     /// <summary>The devices whose event counts.</summary>
     public DeviceSelector Devices { get; set; } = new();
 
-    /// <summary>Optional filter: every listed event data field must equal its value.</summary>
+    /// <summary>
+    /// Older rules: every listed event data field must equal its value (case-insensitive). Read as
+    /// <see cref="RuleCheckOperator.Eq"/> checks (<see cref="MoveDataToChecks"/>, done by <see cref="RuleDefinition.FromJson"/>).
+    /// </summary>
     public Dictionary<string, string> Data { get; set; } = [];
+
+    /// <summary>
+    /// The checks on the event's values (SDK 0.10.0), at most <see cref="RuleChecks.MaxPerCondition"/>; all must hold.
+    /// JSON <c>[{"field","op","value"}]</c>.
+    /// </summary>
+    public List<RuleCheck> Checks { get; set; } = [];
 
     /// <summary>The time window of a schedule condition.</summary>
     public RuleSchedule? Schedule { get; set; }
@@ -111,8 +120,20 @@ public sealed class RuleCondition
         EventTypeId = EventTypeId,
         Devices = Devices.Clone(),
         Data = new Dictionary<string, string>(Data),
+        Checks = [.. Checks.Select(c => c.Clone())],
         Schedule = Schedule?.Clone(),
     };
+
+    /// <summary>Turns the older equals filters of <see cref="Data"/> into <see cref="RuleCheckOperator.Eq"/> checks (SDK 0.10.0).</summary>
+    public void MoveDataToChecks()
+    {
+        foreach (var (field, value) in Data)
+        {
+            Checks.Add(new RuleCheck { Field = field, Op = RuleCheckOperator.Eq, Value = value });
+        }
+
+        Data.Clear();
+    }
 }
 
 /// <summary>
@@ -207,7 +228,18 @@ public sealed class RuleDefinition
     /// <summary>The rule as JSON.</summary>
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
-    /// <summary>Throws <see cref="JsonException"/> for text that is not a rule.</summary>
-    public static RuleDefinition FromJson(string json) =>
-        JsonSerializer.Deserialize<RuleDefinition>(json, Json) ?? throw new JsonException("Not a rule.");
+    /// <summary>
+    /// Throws <see cref="JsonException"/> for text that is not a rule. Older equals filters (<see cref="RuleCondition.Data"/>)
+    /// come back as checks.
+    /// </summary>
+    public static RuleDefinition FromJson(string json)
+    {
+        var rule = JsonSerializer.Deserialize<RuleDefinition>(json, Json) ?? throw new JsonException("Not a rule.");
+        foreach (var condition in rule.Conditions)
+        {
+            condition.MoveDataToChecks();
+        }
+
+        return rule;
+    }
 }

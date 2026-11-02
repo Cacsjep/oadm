@@ -41,7 +41,7 @@ public sealed partial class FakeOadmApi
             ("oadm.device.certificate-expired", "Certificate expired", "Certificates", "PKI", ""),
             (FakePersonTrigger, "Person in the yard", "Device triggers", "Device triggers", "AXIS Object Analytics › Scenario 1.\n\nValues:\n• {active}"),
             (FakePersonTrigger + ".lost", "Person in the yard: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s.\n\nValues:\n• {reason}"),
-            ("oadm.device-triggers.sample-gate", "Gate contact", "Device triggers", "Device triggers", "Device › Input ports › Digital input port · Port: Port 1 (0).\n\nValues:\n• {port}\n• {state}"),
+            ("oadm.device-triggers.sample-gate", "Gate contact", "Device triggers", "Device triggers", "Device › Input ports › Digital input port · Port: Port 1 (0).\n\nValues:\n• {port}\n• {active}"),
             ("oadm.device-triggers.sample-gate.lost", "Gate contact: connection lost", "Device triggers", "Device triggers", "No events of this trigger from the device for 30 s.\n\nValues:\n• {reason}"),
         ];
         foreach (var (id, name, group, source, description) in types)
@@ -54,9 +54,31 @@ public sealed partial class FakeOadmApi
 
         var person = catalog.EventTypes.Single(t => t.Id == FakePersonTrigger);
         person.Description = "AXIS Object Analytics › Scenario 1.\n\nValues:\n• {active}\n• {objectId}\n• {classTypes}\n• {triggerTime}";
-        foreach (var (field, label) in new[] { ("active", "Active"), ("objectId", "Object ID"), ("classTypes", "Class types"), ("triggerTime", "Trigger time") })
+        foreach (var (field, label, kind) in new[]
         {
-            person.Fields.Add(new EventFieldInfo { Name = field, DisplayName = label });
+            ("active", "Active", EventFieldKind.EventFieldYesNo), ("objectId", "Object ID", EventFieldKind.EventFieldNumber),
+            ("classTypes", "Class types", EventFieldKind.EventFieldText), ("triggerTime", "Trigger time", EventFieldKind.EventFieldText),
+        })
+        {
+            person.Fields.Add(new EventFieldInfo { Name = field, DisplayName = label, Kind = kind });
+        }
+
+        // Device trigger values can be checked in a rule; the reason of a lost connection is a value only.
+        var gate = catalog.EventTypes.Single(t => t.Id == "oadm.device-triggers.sample-gate");
+        gate.Fields.Add(new EventFieldInfo { Name = "port", DisplayName = "Port", Kind = EventFieldKind.EventFieldNumber });
+        gate.Fields.Add(new EventFieldInfo { Name = "active", DisplayName = "Active", Kind = EventFieldKind.EventFieldYesNo });
+        var temperature = new EventTypeEntry
+        {
+            Id = FakeTemperatureTrigger, DisplayName = "Housing temperature", Group = "Device triggers", Stateful = true, DeviceScope = true, Available = true,
+            SourceName = "Device triggers", Description = "Device › Temperature sensor › Temperature.\n\nValues:\n• {sensor}\n• {temperature}\n• {heater}",
+        };
+        temperature.Fields.Add(new EventFieldInfo { Name = "sensor", DisplayName = "Sensor", Kind = EventFieldKind.EventFieldText });
+        temperature.Fields.Add(new EventFieldInfo { Name = "temperature", DisplayName = "Temperature", Kind = EventFieldKind.EventFieldNumber });
+        temperature.Fields.Add(new EventFieldInfo { Name = "heater", DisplayName = "Heater on", Kind = EventFieldKind.EventFieldYesNo });
+        catalog.EventTypes.Add(temperature);
+        foreach (var lost in catalog.EventTypes.Where(t => t.Id.EndsWith(".lost", StringComparison.Ordinal)))
+        {
+            lost.Fields.Add(new EventFieldInfo { Name = "reason", DisplayName = "Reason", NoFilter = true });
         }
 
         var output = new ActionEntry
@@ -184,6 +206,9 @@ public sealed partial class FakeOadmApi
 
     /// <summary>The sample device trigger of the fake event rules.</summary>
     internal const string FakePersonTrigger = "oadm.device-triggers.sample-person";
+
+    /// <summary>A sample device trigger with a number, a text and a yes / no value (field checks).</summary>
+    internal const string FakeTemperatureTrigger = "oadm.device-triggers.sample-temperature";
 
     private static readonly ActionChoiceEntry[] FakeCommands =
     [

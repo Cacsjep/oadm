@@ -43,7 +43,7 @@ public sealed class EventGrpcService(
                 Available = type.Available,
                 SourceName = type.SourceName,
             };
-            entry.Fields.AddRange(type.Info.DataFields.Select(f => new Proto.EventFieldInfo { Name = f.Name, DisplayName = f.DisplayName, Values = { f.Values ?? [] }, NoFilter = !f.Filter }));
+            entry.Fields.AddRange(type.Info.DataFields.Select(f => new Proto.EventFieldInfo { Name = f.Name, DisplayName = f.DisplayName, Values = { f.Values ?? [] }, NoFilter = !f.Filter, Kind = ToProto(f.Kind) }));
             catalog.EventTypes.Add(entry);
         }
 
@@ -253,6 +253,14 @@ public sealed class EventGrpcService(
         entry.Fields.AddRange((Safe(() => plugin.Fields) ?? []).Select(ToProto));
         return entry;
     }
+
+    /// <summary>The kind of an event value: the operators its checks offer.</summary>
+    internal static Proto.EventFieldKind ToProto(EventValueKind kind) => kind switch
+    {
+        EventValueKind.Number => Proto.EventFieldKind.EventFieldNumber,
+        EventValueKind.YesNo => Proto.EventFieldKind.EventFieldYesNo,
+        _ => Proto.EventFieldKind.EventFieldText,
+    };
 
     /// <summary>A setting of an action or a compliance check as the client draws it.</summary>
     internal static Proto.ActionFieldEntry ToProto(ActionField field)

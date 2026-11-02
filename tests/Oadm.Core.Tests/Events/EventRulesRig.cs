@@ -31,6 +31,12 @@ internal sealed class EventRulesRig : IAsyncDisposable
     public const string Pulse = "test.pulse";
     public const string ServerFlag = "test.server-flag";
 
+    /// <summary>A stateful event with a text, a number, a yes / no and a value-only field (field checks).</summary>
+    public const string Reading = "test.reading";
+
+    /// <summary>A one-shot event with the fields of <see cref="Reading"/>.</summary>
+    public const string ReadingSent = "test.reading-sent";
+
     private TestDatabase _db = null!;
     private bool _stopped;
     private Oadm.Core.Sites.ISiteStates? _sites;
@@ -238,6 +244,16 @@ public sealed class FakeSource : ICorePlugin, IEventSource
         new(EventRulesRig.Input, "Input active", "Test", EventKind.Stateful, Fields: [new EventField("port", "Port")]),
         new(EventRulesRig.Pulse, "Button pressed", "Test", EventKind.Stateless),
         new(EventRulesRig.ServerFlag, "Server flag", "Test", EventKind.Stateful, EventScope.Server),
+        new(EventRulesRig.Reading, "Reading", "Test", EventKind.Stateful, Fields: ReadingFields),
+        new(EventRulesRig.ReadingSent, "Reading sent", "Test", EventKind.Stateless, Fields: ReadingFields),
+    ];
+
+    private static readonly EventField[] ReadingFields =
+    [
+        new EventField("state", "State"),
+        new EventField("temperature", "Temperature") { Kind = EventValueKind.Number },
+        new EventField("door", "Door") { Kind = EventValueKind.YesNo },
+        new EventField("site", "Site") { Filter = false },
     ];
 
     public Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;

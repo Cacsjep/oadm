@@ -8,6 +8,7 @@ import { Image } from 'astro:assets';
 import page from '../../../assets/screens/event-rules-page.png';
 import editor from '../../../assets/screens/event-rules-editor-when.png';
 import overview from '../../../assets/screens/event-rules-editor-overview.png';
+import checks from '../../../assets/screens/event-rules-checks.png';
 import httpAction from '../../../assets/screens/event-rules-http-action.png';
 import emailAction from '../../../assets/screens/event-rules-email-action-2.png';
 
@@ -32,6 +33,7 @@ and the event log.
 
 3. **When**: choose the event, then the devices with **Choose devices**: all devices, or any mix of tags and single
    devices. A tag also covers devices you tag later. Add more conditions if you need them. They all must hold:
+   - **Add check**: a value of the event, for example Temperature > 40. See [Check the values](#check-the-values).
    - **Add event**: another event, on the same device or on any device you choose. Example: blur, and the camera is
      reachable.
    - **Add schedule**: weekdays and a time window. Example: Monday to Friday, 08:00 to 18:00.
@@ -59,6 +61,22 @@ and the event log.
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.
+
+## Check the values
+
+Many events carry values, for example the temperature of a sensor or the port of an input. **Add check** below the event
+compares one of them. The event counts only while all its checks hold, up to five per event.
+
+| Value | Checks |
+|---|---|
+| Text | equals, does not equal, contains, starts with (upper and lower case do not matter) |
+| Number | =, ≠, >, ≥, <, ≤. Write decimals with a point: 21.5. For a range add two checks, Temperature ≥ 20 and Temperature < 30 |
+| Yes or no | is yes, is no |
+
+While the event is on, every new value is checked again: a temperature that rises above 40 turns the rule on, and when it
+falls back the rule turns off. An event that does not send the value never passes the check.
+
+<Image src={checks} alt="An event with three checks: Temperature > 40, Heater on is no, Sensor starts with Housing" class="screen" />
 
 ## Actions
 

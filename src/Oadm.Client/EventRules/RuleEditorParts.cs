@@ -9,6 +9,7 @@ using Oadm.Contracts.V1;
 using Oadm.Sdk.Actions;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 
@@ -185,14 +186,143 @@ public sealed partial class DayToggle(DayOfWeek day) : ObservableObject
     [ObservableProperty] public partial bool IsChecked { get; set; }
 }
 
-/// <summary>An optional filter on an event value ("port" = "1").</summary>
-public sealed partial class FilterFieldViewModel(EventFieldInfo field) : ObservableObject
+/// <summary>A value of the event a check can compare, with its kind: "Temperature (number)".</summary>
+public sealed record CheckFieldOption(string Name, string DisplayName, EventValueKind Kind)
 {
-    public string Name { get; } = field.Name;
+    public string Text => DisplayName + Kind switch
+    {
+        EventValueKind.Number => " (number)",
+        EventValueKind.YesNo => " (yes or no)",
+        _ => " (text)",
+    };
 
-    public string Label { get; } = field.DisplayName;
+    /// <summary>The checkable fields of an event (<c>no_filter</c> false).</summary>
+    public static IReadOnlyList<CheckFieldOption> Of(EventTypeEntry? type) =>
+        type is null ? [] : [.. type.Fields.Where(f => !f.NoFilter).Select(f => new CheckFieldOption(f.Name, f.DisplayName, KindOf(f.Kind)))];
+
+    public static EventValueKind KindOf(EventFieldKind kind) => kind switch
+    {
+        EventFieldKind.EventFieldNumber => EventValueKind.Number,
+        EventFieldKind.EventFieldYesNo => EventValueKind.YesNo,
+        _ => EventValueKind.Text,
+    };
+
+    public override string ToString() => Text;
+}
+
+/// <summary>A comparison of a check: "equals", "&gt;", "is yes".</summary>
+public sealed record CheckOperatorOption(RuleCheckOperator Op, string Text)
+{
+    public override string ToString() => Text;
+}
+
+/// <summary>
+/// One check of an event condition: Field (a value of the event), Operator (by the field's kind) and Value (hidden for
+/// yes / no). Its errors show below its inputs (<see cref="ValidatingViewModel"/>).
+/// </summary>
+public sealed partial class CheckViewModel : ValidatingViewModel
+{
+    private readonly Action<CheckViewModel> _remove;
+    private readonly Action _changed;
+
+    internal CheckViewModel(IReadOnlyList<CheckFieldOption> fields, RuleCheck? initial, Action<CheckViewModel> remove, Action changed)
+    {
+        _remove = remove;
+        _changed = changed;
+        Fields = fields;
+        SelectedField = initial is null ? (fields.Count > 0 ? fields[0] : null) : fields.FirstOrDefault(f => f.Name == initial.Field);
+        if (initial is not null)
+        {
+            var op = initial.Op;
+            if (SelectedField?.Kind == EventValueKind.YesNo && op is RuleCheckOperator.Eq or RuleCheckOperator.Ne)
+            {
+                // An older equals filter on a yes / no value ("true"): "is yes" / "is no".
+                op = RuleChecks.IsYes(initial.Value) == (op == RuleCheckOperator.Eq) ? RuleCheckOperator.Yes : RuleCheckOperator.No;
+            }
+
+            SelectedOperator = Operators.FirstOrDefault(o => o.Op == op) ?? (Operators.Count > 0 ? Operators[0] : null);
+            Value = initial.Value;
+        }
+
+        Validation
+            .Rule(nameof(SelectedField), () => SelectedField is null ? "Choose a value of the event." : null)
+            .Rule(nameof(SelectedOperator), () => SelectedOperator is null ? "Choose how to compare." : null)
+            .Rule(nameof(Value), () => SelectedField is null || SelectedOperator is null ? null
+                : RuleChecks.ValueProblem(SelectedOperator.Op, SelectedField.Kind, Value));
+        Validation.Validate();
+    }
+
+    /// <summary>The checkable values of the condition's event.</summary>
+    [ObservableProperty] public partial IReadOnlyList<CheckFieldOption> Fields { get; private set; }
+
+    [ObservableProperty]
+    public partial CheckFieldOption? SelectedField { get; set; }
+
+    /// <summary>The comparisons of the chosen field's kind.</summary>
+    [ObservableProperty] public partial IReadOnlyList<CheckOperatorOption> Operators { get; private set; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NeedsValue))]
+    public partial CheckOperatorOption? SelectedOperator { get; set; }
 
     [ObservableProperty] public partial string Value { get; set; } = string.Empty;
+
+    /// <summary>False for "is yes" / "is no": no value box.</summary>
+    public bool NeedsValue => SelectedOperator is null || RuleChecks.NeedsValue(SelectedOperator.Op);
+
+    /// <summary>The first problem of the check (shown or not), for the step's Next tooltip.</summary>
+    public string? Problem => Validation.FirstError;
+
+    /// <summary>Next or Save was tried: every error of the check shows.</summary>
+    public void ShowAllErrors() => Validation.ShowAll();
+
+    /// <summary>
+    /// The event of the condition changed: the check keeps its field when the new event has it (true), else it goes.
+    /// </summary>
+    internal bool SetFields(IReadOnlyList<CheckFieldOption> fields)
+    {
+        var field = fields.FirstOrDefault(f => f.Name == SelectedField?.Name);
+        if (field is null)
+        {
+            return false;
+        }
+
+        var op = SelectedOperator?.Op;
+        Fields = fields;
+        SelectedField = field;
+        if (op is { } kept && Operators.FirstOrDefault(o => o.Op == kept) is { } same)
+        {
+            SelectedOperator = same;
+        }
+
+        return true;
+    }
+
+    public RuleCheck ToCheck() => new()
+    {
+        Field = SelectedField?.Name ?? string.Empty,
+        Op = SelectedOperator?.Op ?? RuleCheckOperator.Eq,
+        Value = NeedsValue ? Value.Trim() : string.Empty,
+    };
+
+    /// <summary>"Temperature &gt; 40", "Door is yes".</summary>
+    public string Summary() => SelectedField is null
+        ? string.Empty
+        : RuleChecks.Describe(ToCheck(), SelectedField.DisplayName, SelectedField.Kind);
+
+    [RelayCommand]
+    private void Remove() => _remove(this);
+
+    partial void OnSelectedFieldChanged(CheckFieldOption? value)
+    {
+        var kind = value?.Kind ?? EventValueKind.Text;
+        var op = SelectedOperator?.Op;
+        Operators = [.. RuleChecks.OperatorsFor(kind).Select(o => new CheckOperatorOption(o, RuleChecks.Text(o, kind)))];
+        SelectedOperator = Operators.FirstOrDefault(o => o.Op == op) ?? (Operators.Count > 0 ? Operators[0] : null);
+    }
+
+    /// <summary>After the rules ran (not before): the dialog's Next and its tooltip follow the check's errors.</summary>
+    protected override void OnValidationChanged() => _changed();
 }
 
 /// <summary>
