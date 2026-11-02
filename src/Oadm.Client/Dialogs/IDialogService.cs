@@ -59,6 +59,9 @@ public interface IDialogService
     /// <summary>A dialog of the Sites page (Bind, Rename, Replace with, Remove site); true when done.</summary>
     Task<bool> ShowSiteFormAsync(Oadm.Client.Sites.SiteFormViewModel form) => Task.FromResult(false);
 
+    /// <summary>The CVEs of one device (context menu "Vulnerabilities").</summary>
+    Task ShowDeviceVulnerabilitiesAsync(Oadm.Client.Vulnerabilities.DeviceVulnerabilitiesViewModel vulnerabilities) => Task.CompletedTask;
+
     /// <summary>The window dialogs open on (active window, else the main window); null without a desktop.</summary>
     Avalonia.Controls.Window? Owner { get; }
 

@@ -140,6 +140,19 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task ShowDeviceVulnerabilitiesAsync(Vulnerabilities.DeviceVulnerabilitiesViewModel vulnerabilities)
+    {
+        ArgumentNullException.ThrowIfNull(vulnerabilities);
+        if (CurrentOwner() is not { } owner)
+        {
+            return;
+        }
+
+        var window = new Vulnerabilities.DeviceVulnerabilitiesWindow();
+        window.Attach(vulnerabilities);
+        await window.ShowDialog(owner).ConfigureAwait(true);
+    }
+
     public async Task<bool> ShowRtspPortAsync(Devices.RtspPortViewModel rtspPort)
     {
         ArgumentNullException.ThrowIfNull(rtspPort);

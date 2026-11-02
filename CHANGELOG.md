@@ -7,6 +7,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+### Added
+
+- Devices list: Vulnerabilities in the context menu lists the CVEs of the selected devices with the full description and a link to the Axis advisory.
+
 ## [4.8.0] - 2026-11-01
 
 ### Added

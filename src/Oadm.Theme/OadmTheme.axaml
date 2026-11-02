@@ -1327,6 +1327,11 @@
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
+  <!-- Text a grid shows in full (the description of a CVE): wraps without a line limit -->
+  <Style Selector="DataGrid.wrapRows DataGridCell TextBlock.cellText.fullText">
+    <Setter Property="MaxLines" Value="0" />
+    <Setter Property="TextTrimming" Value="None" />
+  </Style>
   <Style Selector="DataGridRow.muted">
     <Setter Property="Opacity" Value="0.45" />
   </Style>

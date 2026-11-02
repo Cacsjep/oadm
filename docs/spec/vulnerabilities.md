@@ -54,6 +54,13 @@ limits (5,000 CVEs, 2 MB, valid ids and versions). The card shows the count, the
   three aligned columns: the id, the level (only the level colored: Critical and High red, Medium amber, Low plain) and
   "fixed in 11.11.93" (the end of the range of the device's track); at most 12 rows, then "and 17 more". Its own ToolTip,
   wider than the theme's text tooltips (640 px), with the theme's look.
+- Context menu **Vulnerabilities** (shield-alert icon, after Tags): only when a selected device has known CVEs, never an
+  empty window. The window (`DeviceVulnerabilitiesWindow`, one card) names the device (model, address, firmware) or says
+  "3 of 5 selected devices", gives the count, and lists every CVE once, worst first: CVE, Level (the column's chips), Score,
+  Fixed in (the fixed version of each affected device's track, lowest first, "Not listed" without one), Devices (several
+  devices only: how many it affects, the first 12 in its tooltip, then "and 5 more"), the full description (wraps, no line
+  limit: `TextBlock.cellText.fullText`) and an "Advisory" link (https only, opens the browser). A snapshot taken when it
+  opens; the selection is grouped by its shared per-model-and-firmware result first (one pass at 100,000 devices).
 - Search: a CVE id ("CVE-2024-6509", any case) shows the devices it may affect.
 - Matching: model and firmware version against the ranges, numbers compared part by part (6.50.5.19, 11.11.93,
   12.10.36; text after the numbers ignored). Ranges for every AXIS OS device apply from 5.0 on: devices with their own
@@ -70,7 +77,8 @@ limits (5,000 CVEs, 2 MB, valid ids and versions). The card shows the count, the
   is "server"), `VulnerabilityUpdater` (the daily fetch by the server, `IVulnerabilitySource`).
 - `src/Oadm.Client/Vulnerabilities`: `VulnerabilityCatalog` (the client's copy, the per-row match), `VulnerabilityUpdates`
   (the fetch by the clients), `ServerConnection`'s loop (at connect, then hourly); the column, the search, the Settings card
-  (`SettingsViewModel.Vulnerabilities.cs`); fake mode serves the base list.
+  (`SettingsViewModel.Vulnerabilities.cs`), the context menu entry and its window (`DeviceVulnerabilitiesViewModel`,
+  `DeviceVulnerabilitiesWindow`); fake mode serves the base list.
 
 ## Tests
 
@@ -79,5 +87,6 @@ and the NVD page: exact ranges, free text with NVD's ranges, models, a track lis
 model codes, the version compare, the matcher (worst first, fixed build, 5.0 rule, cache), the list's limits; the store
 (newest wins across a restart, broken file, newer release); the service (modes, permissions, audit, no outgoing call while
 off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text, sort and tooltip, rows following
-a new list and a firmware update, the CVE search, the Settings card; headless screenshots (`VulnerabilityHeadlessTests`,
+a new list and a firmware update, the CVE search, the Settings card, the context menu entry and the window
+(`DeviceVulnerabilitiesWindowTests`); headless screenshots (`VulnerabilityHeadlessTests`,
 `OADM_SCREENSHOT_DEVICES` renders a JSON list of real devices); Perf at 100,000 devices.

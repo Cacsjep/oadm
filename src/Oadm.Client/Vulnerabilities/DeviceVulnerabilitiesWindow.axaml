@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.Vulnerabilities"
+        x:Class="Oadm.Client.Vulnerabilities.DeviceVulnerabilitiesWindow"
+        x:DataType="vm:DeviceVulnerabilitiesViewModel"
+        Title="Vulnerabilities"
+        Width="1100" Height="640" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- One device's CVEs: title bar, one card (the device and the count, the list), footer. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Vulnerabilities" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,*">
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+          <TextBlock Classes="secondary" TextWrapping="Wrap" Text="{Binding DeviceText}" />
+          <TextBlock Grid.Column="1" Classes="secondary" Margin="16,0,0,0" Text="{Binding CountText}" />
+        </Grid>
+
+        <DataGrid x:Name="VulnerabilityGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True"
+                  SelectionMode="Single">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="CVE" Binding="{Binding Id}" Width="150" MinWidth="140" />
+            <DataGridTemplateColumn Header="Level" Width="100" MinWidth="90" SortMemberPath="SortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:VulnerabilityRowViewModel">
+                  <Panel>
+                    <TextBlock Classes="cellText" Text="{Binding Level}" IsVisible="{Binding IsMinor}" />
+                    <ui:StatusChip Text="{Binding Level}" IsVisible="{Binding IsModerate}" IsWarning="True" />
+                    <ui:StatusChip Text="{Binding Level}" IsVisible="{Binding IsSevere}" IsError="True" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Binding="{Binding ScoreText}" Width="86" MinWidth="80" SortMemberPath="Score" CellStyleClasses="number">
+              <DataGridTextColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Score" />
+              </DataGridTextColumn.Header>
+            </DataGridTextColumn>
+            <DataGridTemplateColumn Header="Fixed in" Width="130" MinWidth="100" SortMemberPath="FixedIn">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:VulnerabilityRowViewModel">
+                  <TextBlock Classes="cellText fullText" Text="{Binding FixedIn}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Tag="devices" Width="104" MinWidth="96" SortMemberPath="DeviceCount" CellStyleClasses="number">
+              <DataGridTemplateColumn.Header>
+                <TextBlock Classes="numberHeader" Text="Devices" />
+              </DataGridTemplateColumn.Header>
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:VulnerabilityRowViewModel">
+                  <TextBlock Classes="cellText" Text="{Binding DeviceCountText}" ToolTip.Tip="{Binding DevicesTip}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Description" Width="*" MinWidth="300" SortMemberPath="Description">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:VulnerabilityRowViewModel">
+                  <TextBlock Classes="cellText fullText" Text="{Binding Description}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="" Width="96" MinWidth="90" CanUserSort="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:VulnerabilityRowViewModel">
+                  <Button Classes="link" Content="Advisory" IsVisible="{Binding HasAdvisory}" Margin="10,6"
+                          Command="{Binding OpenAdvisory}" CommandParameter="{Binding}" ToolTip.Tip="Axis security advisory" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}" />
+  </Grid>
+</Window>

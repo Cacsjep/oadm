@@ -60,6 +60,7 @@ public sealed partial class DevicesViewModel : ObservableObject
     private bool _selectionNeedsLogin;
     private bool _selectionNeedsPassword;
     private bool _selectionNeedsCertificate;
+    private bool _selectionHasVulnerabilities;
 
     public DevicesViewModel(
         DeviceStore store,
@@ -119,6 +120,7 @@ public sealed partial class DevicesViewModel : ObservableObject
                 TagGrouping.Rebuild(FilteredDevices);
             }
         };
+        store.Vulnerabilities.Changed += (_, _) => OnSelectedStatusMayHaveChanged(); // a new list: the menu entry follows
         store.Tags.Changed += (_, _) =>
         {
             if (GroupByTag)
@@ -403,6 +405,21 @@ public sealed partial class DevicesViewModel : ObservableObject
 
         var dialog = new DeviceTagsViewModel(_api, _store.Tags, [.. SelectedDevices], _store.Devices, Can(HostPermissionKeys.TagsManage) && (_session?.HasAllDevices ?? true), _dialogs.ConfirmAsync);
         await _dialogs.ShowDeviceTagsAsync(dialog).ConfigureAwait(true);
+    }
+
+    /// <summary>The context menu entry of a device with known CVEs.</summary>
+    public const string VulnerabilitiesMenuHeader = "Vulnerabilities";
+
+    /// <summary>The CVEs of the selected devices, with their descriptions and advisories.</summary>
+    [RelayCommand]
+    private async Task ShowVulnerabilitiesAsync()
+    {
+        if (!SelectionHasVulnerabilities())
+        {
+            return;
+        }
+
+        await _dialogs.ShowDeviceVulnerabilitiesAsync(new Vulnerabilities.DeviceVulnerabilitiesViewModel([.. SelectedDevices], _launcher)).ConfigureAwait(true);
     }
 
     /// <summary>The context menu's submenu of OADM's own settings for the selected devices.</summary>
@@ -780,6 +797,13 @@ public sealed partial class DevicesViewModel : ObservableObject
             ContextMenuEntries.Add(new MenuEntryViewModel { Header = "Tags", IconKey = "tag", Command = EditTagsCommand });
         }
 
+        // Only when a selected device has known CVEs: no entry that opens an empty window.
+        _selectionHasVulnerabilities = SelectionHasVulnerabilities();
+        if (_selectionHasVulnerabilities)
+        {
+            ContextMenuEntries.Add(new MenuEntryViewModel { Header = VulnerabilitiesMenuHeader, IconKey = "shieldAlert", Command = ShowVulnerabilitiesCommand });
+        }
+
         IReadOnlyList<TaskPluginInfo> plugins = _catalog.Plugins;
         if (!_catalog.IsLoaded)
         {
@@ -845,11 +869,13 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private bool SelectionNeedsCertificate() => SelectedDevices.Any(d => d.ContractStatus == DeviceStatus.CertificateChanged);
 
+    private bool SelectionHasVulnerabilities() => SelectedDevices.Any(d => d.Vulnerabilities.Any);
+
     /// <summary>A device changed: the "Log in" entry follows the status of the selected devices (O(selection), rebuilt only on a change).</summary>
     private void OnSelectedStatusMayHaveChanged()
     {
         if (SelectedDevices.Count > 0 && (SelectionNeedsLogin() != _selectionNeedsLogin || SelectionNeedsPassword() != _selectionNeedsPassword
-            || SelectionNeedsCertificate() != _selectionNeedsCertificate))
+            || SelectionNeedsCertificate() != _selectionNeedsCertificate || SelectionHasVulnerabilities() != _selectionHasVulnerabilities))
         {
             RebuildContextMenu();
         }

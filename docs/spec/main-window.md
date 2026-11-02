@@ -33,7 +33,7 @@ Layout, top to bottom:
    leaves or enters it leaves or enters the grid ([device-scope.md](device-scope.md)).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
-   interface, Refresh, **Log in**, **Set password**, **Trust new certificate**, **Tags**), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
+   interface, Refresh, **Log in**, **Set password**, **Trust new certificate**, **Tags**, **Vulnerabilities** when a selected device has known CVEs), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
    Users users, Video video, others plugin; a group is a submenu even with one entry)
    holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
