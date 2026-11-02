@@ -314,7 +314,7 @@ view model (files per model, a device without a file, two files for one model) a
 online: `OnlineListingTests` and `OnlineLookupTests` from the recorded pages in `Fixtures/Online` (2026-11-02, trimmed
 roots; `FakeAxisSite` makes up other version folders), `OnlineRulesTests` (match, tracks, the three rules),
 `OnlineTaskTests` (a test-local `FakeAxisDownloads`), `FirmwareOnlineDialogTests` (the dialog against the plugin's real
-queries), a Perf test with 100,000 devices and headless screenshots (signed in with Recommended, signed out).
+queries), a Perf test with 100,000 devices, headless screenshots (signed in with Recommended, signed out) and the opt-in `OnlineLiveTests` (`OADM_AXIS_LIVE=1`, `Category=Live`: the real listings of axis.com, read only).
 
 Never run against hardware: upload, commit, any factory default. Still to verify on a test device: numeric
 `autoRollback` as a JSON string (`"30"`), the exact answer timing of `upgrade` (before or after flashing), anonymous

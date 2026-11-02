@@ -219,6 +219,29 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
+    public async Task A_failed_query_shows_that_axis_com_could_not_be_reached()
+    {
+        // The server's query fails (an error status of the host, an answer the dialog cannot read): never a silent dialog.
+        foreach (var answer in new Func<string, string?, CancellationToken, Task<string?>>[]
+        {
+            (_, _, _) => throw new InvalidOperationException("Status(StatusCode=\"Unavailable\")"),
+            (_, _, _) => Task.FromResult<string?>("{not json"),
+            (_, _, _) => Task.FromResult<string?>(null),
+        })
+        {
+            var ctx = Context(new FakeAxisSite());
+            ctx.Online = answer;
+            using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+
+            await vm.LoadOnlineAsync(CancellationToken.None);
+
+            Assert.True(vm.OnlineUnreachable);
+            Assert.False(vm.IsLookingUp);
+            Assert.Contains("online", ctx.Queries);
+        }
+    }
+
+    [Fact]
     public async Task An_older_version_is_checked_when_chosen()
     {
         var site = new FakeAxisSite { MakeVersionFolders = true };

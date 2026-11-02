@@ -562,6 +562,12 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                 LookupStatus = string.Create(CultureInfo.InvariantCulture, $"{LookupText}, {read:N0} of {models.Count:N0} models");
             }
         }
+#pragma warning disable CA1031 // Never a silent dialog: any failure of the lookup shows "axis.com could not be reached."
+        catch (Exception) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            OnlineUnreachable = true;
+        }
         finally
         {
             _lookupDone = true;
