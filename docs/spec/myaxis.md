@@ -92,8 +92,8 @@ Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a t
 - **Cache**: `<datafolder>/axis-downloads/`, kept 7 days after the last use and at most 5 GB in all (the oldest go
   first, never a file in use). Its SHA-256 is checked before every use; a mismatch deletes it. Only a signed-in user's task
   uses it.
-- **Size and checksum**: the download stops when it grows 2 % + 1 MB over the listed size; a different size or SHA-256
-  fails with "The download did not match the checksum on axis.com. Nothing was changed." and nothing is kept.
+- **Size and checksum**: the download stops when it grows 2 % + 1 MB over the listed size; a size more than 1 % (at
+  least 64 KB) off the listed one (the listings round it, "225.5M"; `AxisDownloadTexts.SizeFits`) or another SHA-256 fails with "The download did not match the checksum on axis.com. Nothing was changed." and nothing is kept.
 - **No connection**: "The firmware could not be downloaded from axis.com (<short reason>). Nothing was changed." (no
   connection to axis.com, axis.com was not found, no answer in time, the connection was lost, axis.com answered 404).
   axis.com has 60 s for the headers and between two reads of the body.

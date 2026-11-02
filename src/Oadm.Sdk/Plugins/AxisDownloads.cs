@@ -13,7 +13,7 @@ public interface IAxisDownloads
 
     /// <summary>
     /// The file at <paramref name="uri"/>, from the cache or downloaded now. <paramref name="sha256"/> is the hex SHA-256 and
-    /// <paramref name="size"/> the size in bytes as listed on axis.com. <paramref name="progress"/> gets the bytes received
+    /// <paramref name="size"/> the size in bytes as listed on axis.com (rounded there: <see cref="AxisDownloadTexts.SizeFits"/>). <paramref name="progress"/> gets the bytes received
     /// so far (also while another task's download of the same file runs). Throws <see cref="ArgumentException"/> for a URL
     /// outside the two download folders and <see cref="AxisDownloadException"/> with the message for the user when the
     /// download fails (no or expired sign-in, network, size or checksum). The file stays until the returned handle is
@@ -93,6 +93,13 @@ public static class AxisDownloadTexts
 
     /// <summary>The file had another size or SHA-256 than listed; nothing was kept.</summary>
     public const string Mismatch = "The download did not match the checksum on axis.com. Nothing was changed.";
+
+    /// <summary>
+    /// Whether <paramref name="actual"/> bytes fit the size axis.com lists. The listings round it ("225.5M"), so the size
+    /// may differ by 1 % (at least 64 KB); the SHA-256 is the exact check.
+    /// </summary>
+    public static bool SizeFits(long actual, long listed) =>
+        Math.Abs(actual - listed) <= Math.Max(listed / 100, 64 * 1024);
 
     /// <summary>axis.com could not be reached or refused the file; <paramref name="reason"/> is short ("no connection to axis.com").</summary>
     public static string NotDownloaded(string reason) =>

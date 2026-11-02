@@ -84,7 +84,7 @@ public sealed class FakeAxisDownloads : IAxisDownloads, IDisposable
             throw new AxisDownloadException(AxisDownloadTexts.NotDownloaded("axis.com answered 404"));
         }
 
-        if (content.LongLength != size || !string.Equals(Convert.ToHexStringLower(SHA256.HashData(content)), sha256?.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (!AxisDownloadTexts.SizeFits(content.LongLength, size) || !string.Equals(Convert.ToHexStringLower(SHA256.HashData(content)), sha256?.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             throw new AxisDownloadException(AxisDownloadTexts.Mismatch);
         }

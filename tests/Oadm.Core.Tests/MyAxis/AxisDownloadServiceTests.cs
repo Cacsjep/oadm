@@ -378,7 +378,7 @@ public sealed class AxisDownloadServiceTests : IAsyncLifetime, IDisposable
 
         Assert.Equal(0, fake.OpenHandles);
         await Assert.ThrowsAsync<ArgumentException>(() => fake.DownloadAsync(new Uri("https://example.com/ftp/pub_soft/MPQT/a.bin"), sha, 1, null, CancellationToken.None));
-        Assert.Equal(AxisDownloadTexts.Mismatch, (await Assert.ThrowsAsync<AxisDownloadException>(() => fake.DownloadAsync(FileUri, sha, 1, null, CancellationToken.None))).Message);
+        Assert.Equal(AxisDownloadTexts.Mismatch, (await Assert.ThrowsAsync<AxisDownloadException>(() => fake.DownloadAsync(FileUri, sha, Content.Length + 1_000_000, null, CancellationToken.None))).Message);
         fake.Expire();
         Assert.Equal(AxisDownloadTexts.Expired, (await Assert.ThrowsAsync<AxisDownloadException>(() => fake.DownloadAsync(FileUri, sha, Content.Length, null, CancellationToken.None))).Message);
         Assert.False(fake.HasSession);

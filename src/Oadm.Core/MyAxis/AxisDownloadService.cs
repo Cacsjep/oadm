@@ -224,7 +224,9 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
         }
     }
 
-    /// <summary>The cached file when it is there with the right size and SHA-256 (checked now); a mismatch deletes it.</summary>
+    private static bool SizeFits(long actual, long listed) => AxisDownloadTexts.SizeFits(actual, listed);
+
+    /// <summary>The cached file when it is there with a fitting size and the SHA-256 (checked now); a mismatch deletes it.</summary>
     private async Task<AxisDownloadedFile?> TryCachedAsync(string sha, long size, bool fromCache, CancellationToken ct)
     {
         Acquire(sha);
@@ -238,7 +240,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
                 return null;
             }
 
-            if (new FileInfo(file).Length != size || !string.Equals(await HashAsync(file, ct).ConfigureAwait(false), sha, StringComparison.Ordinal))
+            if (!SizeFits(new FileInfo(file).Length, size) || !string.Equals(await HashAsync(file, ct).ConfigureAwait(false), sha, StringComparison.Ordinal))
             {
                 LogCacheMismatch(sha);
                 TryDeleteFolder(folder);
@@ -321,7 +323,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
                     throw new AxisDownloadException(AxisDownloadTexts.NotDownloaded(AxisComClient.Reason(response)));
             }
 
-            if (response.Content.Headers.ContentLength is { } announced && announced != size)
+            if (response.Content.Headers.ContentLength is { } announced && !SizeFits(announced, size))
             {
                 throw new AxisDownloadException(AxisDownloadTexts.Mismatch);
             }
@@ -374,7 +376,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
             throw new AxisDownloadException(AxisDownloadTexts.NotDownloaded("the connection was lost"), ex);
         }
 
-        if (received != size || !string.Equals(actual, sha, StringComparison.Ordinal))
+        if (!SizeFits(received, size) || !string.Equals(actual, sha, StringComparison.Ordinal))
         {
             LogDownloadMismatch(uri, received, size);
             throw new AxisDownloadException(AxisDownloadTexts.Mismatch);
@@ -395,7 +397,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
             {
                 File.Move(download.TempPath, final, overwrite: true);
             }
-            catch (IOException) when (File.Exists(final) && new FileInfo(final).Length == size)
+            catch (IOException) when (File.Exists(final) && SizeFits(new FileInfo(final).Length, size))
             {
                 // The same file came by another URL and is read right now: that copy is kept.
             }
