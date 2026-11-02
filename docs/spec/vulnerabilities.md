@@ -26,9 +26,12 @@ grid columns), read only, nothing is ever written to a device.
   id, published, CVSS score and severity (the CNA's, else the ADP's, else NVD's), the English description, the Axis advisory
   link (a reference on axis.com) and the affected firmware (`model` or every AXIS OS device, ranges with `from`, `lessThan`
   or `lessThanOrEqual`, or a whole `track`). A CVE without a matchable range is kept out.
-- **Base list:** `src/Oadm.Server/Vulnerabilities/axis-vulnerabilities.json` (about 60 CVEs, 60 KB), embedded, refreshed
-  before every release with `tools/Oadm.Vulnerabilities` (online, or `--nvd <answer> --records <folder>` from saved answers;
-  prints what it left out or took from NVD). Every installation knows the CVEs up to its release.
+- **Base list:** `src/Oadm.Server/Vulnerabilities/axis-vulnerabilities.json` (about 60 CVEs, 60 KB), embedded, made by
+  `tools/Oadm.Vulnerabilities` (online, or `--nvd <answer> --records <folder>` from saved answers; prints what it left out
+  or took from NVD; `--if-changed` keeps the file when only the date would change, `--summary <file>` writes the added,
+  changed and removed CVEs). The weekly workflow `.github/workflows/vulnerabilities.yml` runs it and opens a pull request
+  when a CVE changed; merged before a release, never fetched during the release build (a tag always ships the list on
+  main). Every installation knows the CVEs up to its release.
 
 ## Update online (opt-in)
 

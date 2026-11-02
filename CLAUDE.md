@@ -148,7 +148,7 @@ must never break.
   `THIRD-PARTY-NOTICES.txt`; terms of use accepted on the first client start; installers MSI (Windows x64), .deb
   (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb; one
   workflow `release.yml` on tags `v*.*.*` (tests on three OS, installers, smoke, release, NuGet; a `-rc.N` tag is a
-  pre-release); `pr.yml` for pull requests; every Action pinned by hash; the website (Astro Starlight, oadm.app).
+  pre-release); `pr.yml` for pull requests; `vulnerabilities.yml` weekly (pull request with the new base list of Axis CVEs); every Action pinned by hash; the website (Astro Starlight, oadm.app).
   Never Native AOT or trimming for the host apps; never `Assembly.Location`; FFmpeg LGPL builds only.
 - **[gRPC services](docs/spec/grpc.md)**: every service and method, its role and errors. Every call needs the token in
   the metadata except `AuthService.Status`, `Login`, `CreateFirstAdmin`; every method has a rule in `AccessPolicy`.

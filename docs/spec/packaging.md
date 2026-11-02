@@ -150,7 +150,11 @@ when the jobs it needs passed:
 Other workflows: `pr.yml` builds and unit-tests every pull request on Linux (check "tests ubuntu-latest", the same filter
 and blame options, artifact `test-results`); changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release
 and Pages workflows skip CodeQL and the .NET build and tests (`pr.yml` still reports its required check, with the steps
-skipped). `codeql.yml` runs CodeQL (C#) on pushes to main, pull requests and weekly. `pages.yml` deploys the website.
+skipped); started by hand or by `vulnerabilities.yml` (workflow_dispatch) it always builds and tests. `codeql.yml` runs
+CodeQL (C#) on pushes to main, pull requests and weekly. `pages.yml` deploys the website. `vulnerabilities.yml` makes the
+base list of Axis CVEs again every Monday (and by hand) and opens or updates the pull request from `chore/vulnerability-list`
+when a CVE changed, then starts `pr.yml` on that branch (a pull request opened with the workflow's token starts no
+workflow); it needs "Allow GitHub Actions to create and approve pull requests" in the repository's Actions settings.
 Plugin SDK packaging: `docs/spec/plugins.md` "Loading and packaging" and `website/src/content/docs/dev/plugin-sdk.md`.
 
 ## Supply chain and security

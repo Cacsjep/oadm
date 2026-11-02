@@ -1,0 +1,59 @@
+name: vulnerabilities
+
+# Weekly: makes the base list of Axis CVEs again (tools/Oadm.Vulnerabilities, docs/spec/vulnerabilities.md) and opens or
+# updates the pull request "vulnerability list" when a CVE was added, removed or changed; nothing when only the date
+# would change. A pull request opened with the workflow's token does not start pr.yml by itself, so this workflow starts it
+# on the branch (the required check of main). Never during a release build: a release ships the list that is on main.
+on:
+  schedule:
+    - cron: '23 5 * * 1' # Mondays 05:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vulnerabilities
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # the branch
+      pull-requests: write # the pull request
+      actions: write # starts pr.yml on the branch
+    env:
+      BRANCH: chore/vulnerability-list
+      LIST: src/Oadm.Server/Vulnerabilities/axis-vulnerabilities.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true # pushes the branch
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: make the list
+        run: dotnet run --project tools/Oadm.Vulnerabilities -c Release -- --if-changed --summary "$RUNNER_TEMP/summary.md"
+      - name: open or update the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- "$LIST"; then
+            echo "No CVE changed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add "$LIST"
+          git commit -m "chore(vulnerabilities): update the base list of Axis CVEs"
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base main --head "$BRANCH" --title "chore(vulnerabilities): update the base list of Axis CVEs" \
+              --body-file "$RUNNER_TEMP/summary.md"
+          else
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/summary.md"
+          fi
+          gh workflow run pr.yml --ref "$BRANCH"
