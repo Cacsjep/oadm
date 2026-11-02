@@ -23,9 +23,10 @@ grid columns), read only, nothing is ever written to a device.
   3. Without NVD's ranges the free text is read as it stands; an open end ("or later") is left out (it would hit every
      current device). A track end ("10.5 – 11.5") means the whole track (below 11.6).
 - NVD configurations "running on" exactly one hardware model (`AND` with one `cpe:2.3:h:axis:<model>`) are that model's range,
-  never every AXIS OS device; a configuration with several models (the devices of a chip) stays AXIS OS-wide. NVD's ranges
-  taken for the record's AXIS OS entry keep that entry's chips; NVD's single-model ranges come along once and only for models
-  the record does not name itself (its own entry wins).
+  never every AXIS OS device, its `axis_os` range cut around the LTS tracks NVD fixes apart (for that model or every
+  device); a configuration with several models (the devices of a chip) stays AXIS OS-wide. NVD's ranges taken for the
+  record's AXIS OS entry keep that entry's chips; NVD's single-model ranges come along once and only for models the record
+  does not give ranges of its own (its own entry wins; one left out for free text or an open end does not count).
 - Chips: an entry's `platforms` (cve.org) limit it to those chips, short like the SoC column ("ARTPEC 8" and "ARTPEC-8" are
   `A8`, "Ambarella CV25" is `CV25`, "i.MX6 SX" stays). A platform without a digit ("Linux") is no chip and limits nothing.
 - One entry per model and chips, each range once: NVD repeats ranges per configuration, and a record can name a product
