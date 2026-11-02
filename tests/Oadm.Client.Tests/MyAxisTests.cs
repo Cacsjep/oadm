@@ -700,6 +700,7 @@ public sealed class MyAxisTests
             await account.RefreshAsync(CancellationToken.None);
             Render();
             Assert.Equal("Sign in to MyAxis again", ToolTip.GetTip(button));
+            Assert.DoesNotContain("ok", button.Classes);
             Assert.True(main.FindControl<Avalonia.Controls.Shapes.Ellipse>("TitleMyAxisWarning")!.IsEffectivelyVisible);
             SaveTitleBar(main, outDir, "expired");
 
@@ -708,6 +709,7 @@ public sealed class MyAxisTests
             await account.OpenCommand.ExecuteAsync(null);
             Render();
             Assert.Equal("Signed in to MyAxis", ToolTip.GetTip(button));
+            Assert.Contains("ok", button.Classes); // the cloud in the OK colour while signed in
             Assert.False(main.FindControl<Avalonia.Controls.Shapes.Ellipse>("TitleMyAxisWarning")!.IsVisible);
             var popup = main.FindControl<Popup>("TitleMyAxisFlyout")!;
             Assert.True(popup.IsOpen);
