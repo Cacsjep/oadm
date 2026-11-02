@@ -575,6 +575,9 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>The time the ring gets to paint before the work starts (tests: zero).</summary>
     public TimeSpan BusyPaintDelay { get; set; } = TimeSpan.FromMilliseconds(30);
 
+    /// <summary>Tests: awaited after the ring shows and before the work starts, so the busy state can be checked.</summary>
+    internal Func<Task>? BusyHold { get; set; }
+
     /// <summary>True while all devices are judged or set: the ring over the table, the buttons and Upgrade wait.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RecommendedCommand), nameof(LatestLtsCommand), nameof(LatestActiveCommand), nameof(StartCommand))]
@@ -601,6 +604,11 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             else
             {
                 await Task.Yield();
+            }
+
+            if (BusyHold is { } hold)
+            {
+                await hold().ConfigureAwait(true);
             }
 
             await work().ConfigureAwait(true);

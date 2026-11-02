@@ -266,6 +266,8 @@ public sealed class FirmwareOnlineDialogTests
         using var vm = new DialogViewModel(Context(ActiveSite()), devices, new FakeFileSource()) { BackgroundFrom = 1, BusyPaintDelay = TimeSpan.Zero };
         await vm.LoadOnlineAsync(CancellationToken.None);
         Assert.False(vm.IsBusy);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.BusyHold = () => gate.Task; // the work waits until the busy state was checked
 
         var run = vm.LatestLtsCommand.ExecuteAsync(null);
         Assert.True(vm.IsBusy); // from the first moment, before any device changed
@@ -273,17 +275,23 @@ public sealed class FirmwareOnlineDialogTests
         Assert.False(vm.RecommendedCommand.CanExecute(null));
         Assert.False(vm.StartCommand.CanExecute(null));
         Assert.Equal("Setting the versions.", vm.StartBlockedReason);
+        gate.SetResult();
         await run;
+        vm.BusyHold = null;
 
         Assert.False(vm.IsBusy);
         Assert.Equal(["12.11.147", "12.11.147", "12.11.147"], vm.Devices.Select(Chosen));
         Assert.Equal("Downgrade blocked", vm.Devices[2].VerdictText);
 
         // The options judge every device again the same way.
+        var judging = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        vm.BusyHold = () => judging.Task;
         vm.AllowDowngrade = true;
         Assert.True(vm.IsBusy);
         Assert.Equal("Checking the devices", vm.BusyText);
+        judging.SetResult();
         await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !vm.IsBusy, "the devices were judged");
+        vm.BusyHold = null;
         Assert.Equal("Downgrade blocked", vm.Devices[2].VerdictText); // still no factory default
         Assert.Contains("requires a factory default", vm.Devices[2].Message, StringComparison.Ordinal);
 
