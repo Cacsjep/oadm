@@ -1,6 +1,6 @@
 # MyAxis sign-in
 
-Status: **built, not verified with a real MyAxis account** (server side; the client follows).
+Status: **built**, verified 2026-11-02 on Windows with a real MyAxis account (WebKitGTK glue on Linux not yet).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -132,11 +132,13 @@ offer Sign in to MyAxis.
   4,096 characters; sent exactly so as the one `Cookie` header.
 - `SignOut`: deletes it.
 
-## Not verified
+## Verified
 
-No MyAxis account was used for the build. Known from a working browser extension and rs4a: axis.com answers HEAD on a
-.bin, and a sign-in lasts about 4 weeks. To check with a real account: that the login returns to `axis_destination`,
-the listings' format (the server reads the `href`s of the HTML listing), and the WebKitGTK glue on Ubuntu 24.04.
+2026-11-02 on Windows (WebView2) with a real MyAxis account: the login returns to `axis_destination`, the session cookie
+is read and accepted, a wrong one-time code or password shows Axis's own page, the listings parse, a firmware download
+passes the checksum (the listings round sizes, hence `SizeFits`) and two M3206-LVE were upgraded to 10.12.363. HEAD on a
+.bin works; a sign-in lasts about 4 weeks (from the cookie's expiry). Still to check: the WebKitGTK glue on Ubuntu 24.04
+(client README) and macOS (WKWebView).
 
 ## Not part of it
 

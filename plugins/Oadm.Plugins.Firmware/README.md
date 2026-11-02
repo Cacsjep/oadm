@@ -182,8 +182,8 @@ with several files also `"files":[{"fileId","fileName","devices"}]`, with versio
 
 ## Firmware online
 
-Status: built 2026-11-02, not verified with a real MyAxis account (the host's sign-in and downloads are built in parallel;
-the plugin is tested against fakes and recorded listing pages). Decisions of 2026-11-02 (a clean-room build; the version
+Status: built 2026-11-02 and verified 2026-11-02 on Windows with a real MyAxis account: the lookup, the download and the upgrade of
+two M3206-LVE to 10.12.363; tested against fakes and recorded listing pages. Decisions of 2026-11-02 (a clean-room build; the version
 parked on 2026-10-29 is not reused). Each model of the selection
 gets a version from axis.com or a chosen file; the server downloads the versions with the MyAxis sign-in of the user who
 starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).

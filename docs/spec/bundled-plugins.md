@@ -54,7 +54,7 @@ the version and commits it.
 - AXIS OS 13 and later: a device with an installed application that is unsigned or does not declare the target version
   (bundled ones excepted, README "Installed applications") is "Apps block it" and gets no task; the task checks again
   before the upload and refuses with "Nothing was changed.".
-- Firmware online (built, not verified with a real MyAxis account; README "Firmware online"): one device table, per
+- Firmware online (built, verified 2026-11-02 on Windows with a real MyAxis account; README "Firmware online"): one device table, per
   device a version from axis.com (Recommended = newest on its own track, Latest LTS, Latest active) or a
   chosen file; choosing on one device changes only that device; the lookup reads only the selected models' public listings (query `online`, 8 models at a time, no
   cache); the server reads URL, size and SHA-256 from axis.com itself and downloads with the starting user's MyAxis

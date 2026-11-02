@@ -174,7 +174,9 @@ must never break.
   limits, the log), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
   parallelism per plugin).
 - **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of device firmware, Vulnerabilities column ("2 · High")
-  and search by CVE id, matched by model and firmware in the client; a base list ships with every release, the online update
+  and search by CVE id, matched by model, firmware and chip in the client; data only from the CVE records and NVD (never
+  advisory PDFs or HTML); a match on an LTS track the record gives no fix for is "possible", shown apart and not counted
+  ("+3 possible"); a base list ships with every release, the online update
   is opt-in ("Update the list online": Off by default, By the server, By the clients) and never sends device data.
 - **[Plugin system](docs/spec/plugins.md)**: task and core plugins, SDK and client SDK, loading, plugins on and off,
   licenses, plugin documentation (every plugin has its `README.md`). New SDK members are default interface members.
@@ -230,7 +232,7 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
   settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
-- **[MyAxis sign-in](docs/spec/myaxis.md)** (server built, not verified with a real MyAxis account): each user signs in to their own MyAxis account (title
+- **[MyAxis sign-in](docs/spec/myaxis.md)** (built; verified 2026-11-02 on Windows with a real MyAxis account, WebKitGTK glue not yet): each user signs in to their own MyAxis account (title
   bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
   server, sent only to axis.com, never to plugins; Upgrade firmware downloads AXIS OS with it (Recommended, Latest LTS,
   Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
