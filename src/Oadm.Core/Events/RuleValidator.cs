@@ -167,27 +167,30 @@ public static class RuleValidator
     }
 
     /// <summary>
-    /// The field checks (and older equals filters): at most <see cref="RuleChecks.MaxPerCondition"/>, each on a checkable
-    /// field of the event, with an operator of its kind and a value of at most <see cref="RuleChecks.MaxValueLength"/>.
+    /// The field checks (and older equals filters, <see cref="RuleCondition.AllChecks"/>): at most
+    /// <see cref="RuleChecks.MaxPerCondition"/>, each on a checkable field of the event, with an operator of its kind and a
+    /// value of at most <see cref="RuleChecks.MaxValueLength"/> (<see cref="RuleChecks.Problem"/>). Older equals filters
+    /// that are left unchanged are checked as before field checks: a value the event declares, no limit of their own.
     /// </summary>
     private static string? CheckChecks(RuleCondition condition, CatalogEventType type, string position)
     {
-        if (condition.Checks.Count + condition.Data.Count > RuleChecks.MaxPerCondition)
+        var checks = condition.AllChecks();
+        if (RuleChecks.TooMany(checks))
         {
-            return string.Create(CultureInfo.InvariantCulture, $"{position}: at most {RuleChecks.MaxPerCondition} checks.");
+            return $"{position}: {Lower(RuleChecks.TooManyText)}";
         }
 
         var fields = type.Info.DataFields;
-        foreach (var check in condition.Checks.Concat(condition.Data.Select(d => new RuleCheck { Field = d.Key, Op = RuleCheckOperator.Eq, Value = d.Value })))
+        foreach (var check in checks)
         {
-            if (check is null || !Enum.IsDefined(check.Op))
+            if (!Enum.IsDefined(check.Op))
             {
                 return $"{position}: a check is not valid.";
             }
 
-            if (!fields.Any(f => string.Equals(f.Name, check.Field, StringComparison.Ordinal)))
+            if (check.Field.Length == 0)
             {
-                return $"{position}: {type.Info.DisplayName} has no value \"{check.Field}\".";
+                return $"{position}: choose a value of the event.";
             }
 
             if (RuleChecks.Problem(check, fields) is { } problem)
@@ -198,6 +201,8 @@ public static class RuleValidator
 
         return null;
     }
+
+    private static string Lower(string text) => char.ToLowerInvariant(text[0]) + text[1..];
 
     private static string? CheckSchedule(RuleSchedule? schedule, string position)
     {

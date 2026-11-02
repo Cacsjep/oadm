@@ -68,7 +68,7 @@ public sealed class RuleStoreTests
     [InlineData("bad-time", "Condition 2: enter the times as HH:mm, e.g. 08:00.")]
     [InlineData("bad-number", "Record test.no-device: Count: Must be 1 to 10.")]
     [InlineData("event-device-on-server-trigger", "Record test.on-device: the trigger is not about a device; choose the devices.")]
-    [InlineData("unknown-data", "The trigger: Blur detected has no value \"x\".")]
+    [InlineData("unknown-data", "The trigger: x: the event no longer has this value.")]
     public async Task TheServerRefusesRulesThatCannotWork(string kind, string expected)
     {
         await using var rig = await EventRulesRig.StartAsync();

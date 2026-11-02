@@ -42,17 +42,35 @@ public enum RuleCheckOperator
 /// </summary>
 public sealed class RuleCheck
 {
-    /// <summary>The name of the event's data field (<see cref="EventField.Name"/>).</summary>
-    public string Field { get; set; } = string.Empty;
+    private string _field = string.Empty;
+    private string _value = string.Empty;
+
+    /// <summary>The name of the event's data field (<see cref="EventField.Name"/>); null reads as empty.</summary>
+    public string Field
+    {
+        get => _field;
+        set => _field = value ?? string.Empty;
+    }
 
     /// <summary>How the value is compared; it must fit the field's <see cref="EventField.Kind"/>.</summary>
     public RuleCheckOperator Op { get; set; }
 
-    /// <summary>The value to compare with (numbers in invariant culture, "21.5"); empty for yes / no.</summary>
-    public string Value { get; set; } = string.Empty;
+    /// <summary>The value to compare with (numbers in invariant culture, "21.5"); empty for yes / no; null reads as empty.</summary>
+    public string Value
+    {
+        get => _value;
+        set => _value = value ?? string.Empty;
+    }
+
+    /// <summary>
+    /// An older equals filter of <see cref="RuleCondition.Data"/> read as a check (<see cref="RuleCondition.AllChecks"/>): it
+    /// is checked as leniently as before field checks (<see cref="RuleChecks.Problem"/>). Never stored.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsLegacy { get; init; }
 
     /// <summary>A copy.</summary>
-    public RuleCheck Clone() => new() { Field = Field, Op = Op, Value = Value };
+    public RuleCheck Clone() => new() { Field = Field, Op = Op, Value = Value, IsLegacy = IsLegacy };
 }
 
 /// <summary>The rules of field checks shared by the server and the rule dialog (SDK 0.9.0).</summary>
@@ -63,6 +81,22 @@ public static class RuleChecks
 
     /// <summary>Longest value of a check.</summary>
     public const int MaxValueLength = 200;
+
+    /// <summary>A check on a value the event does not have (any more), or not one a check can compare.</summary>
+    public const string NoSuchValueText = "The event no longer has this value.";
+
+    /// <summary>More than <see cref="MaxPerCondition"/> checks on one condition.</summary>
+    public static readonly string TooManyText = string.Create(CultureInfo.InvariantCulture, $"At most {MaxPerCondition} checks.");
+
+    /// <summary>
+    /// Whether the checks of a condition are too many: more than <see cref="MaxPerCondition"/>, unless every one is an older
+    /// equals filter (<see cref="RuleCheck.IsLegacy"/>: rules of older versions had no limit and keep working unchanged).
+    /// </summary>
+    public static bool TooMany(IReadOnlyCollection<RuleCheck> checks)
+    {
+        ArgumentNullException.ThrowIfNull(checks);
+        return checks.Count > MaxPerCondition && checks.Any(c => !c.IsLegacy);
+    }
 
     private static readonly RuleCheckOperator[] TextOperators = [RuleCheckOperator.Eq, RuleCheckOperator.Ne, RuleCheckOperator.Contains, RuleCheckOperator.StartsWith];
 
@@ -129,21 +163,23 @@ public static class RuleChecks
     /// <summary>
     /// The problem of one check against the fields of its event, or null: the field must be one of the event's checkable
     /// fields (<see cref="EventField.Filter"/>), the operator must fit its kind, the value must be there (a number for
-    /// number checks) and at most <see cref="MaxValueLength"/> characters long.
+    /// number checks) and at most <see cref="MaxValueLength"/> characters long. An older equals filter
+    /// (<see cref="RuleCheck.IsLegacy"/>) only needs a value the event declares, as before field checks.
+    /// "Temperature: enter a number, e.g. 21.5."
     /// </summary>
     public static string? Problem(RuleCheck check, IReadOnlyList<EventField> fields)
     {
         ArgumentNullException.ThrowIfNull(check);
         ArgumentNullException.ThrowIfNull(fields);
         var field = fields.FirstOrDefault(f => string.Equals(f.Name, check.Field, StringComparison.Ordinal));
-        if (field is null)
+        if (field is null || (!field.Filter && !check.IsLegacy))
         {
-            return $"The event has no value \"{check.Field}\".";
+            return Named(field?.DisplayName ?? check.Field, NoSuchValueText);
         }
 
-        if (!field.Filter)
+        if (check.IsLegacy)
         {
-            return $"{field.DisplayName} cannot be checked.";
+            return null;
         }
 
         if (!Fits(check.Op, field.Kind))
@@ -151,10 +187,11 @@ public static class RuleChecks
             return $"{field.DisplayName} cannot be compared with \"{Text(check.Op, field.Kind)}\".";
         }
 
-        return ValueProblem(check.Op, field.Kind, check.Value) is { } problem
-            ? field.DisplayName + ": " + char.ToLowerInvariant(problem[0]) + problem[1..]
-            : null;
+        return ValueProblem(check.Op, field.Kind, check.Value) is { } problem ? Named(field.DisplayName, problem) : null;
     }
+
+    /// <summary>"Temperature: enter a value." from "Temperature" and "Enter a value.".</summary>
+    private static string Named(string name, string problem) => name + ": " + char.ToLowerInvariant(problem[0]) + problem[1..];
 
     /// <summary>The problem of the value of a check, or null (also the rule of the value box of the dialog).</summary>
     public static string? ValueProblem(RuleCheckOperator op, EventValueKind kind, string? value)

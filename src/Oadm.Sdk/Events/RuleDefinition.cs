@@ -99,8 +99,8 @@ public sealed class RuleCondition
     public DeviceSelector Devices { get; set; } = new();
 
     /// <summary>
-    /// Older rules: every listed event data field must equal its value (case-insensitive). Read as
-    /// <see cref="RuleCheckOperator.Eq"/> checks (<see cref="MoveDataToChecks"/>, done by <see cref="RuleDefinition.FromJson"/>).
+    /// Older rules: every listed event data field must equal its value (case-insensitive). Kept as they are (an unchanged
+    /// older rule saves as before) and read as <see cref="RuleCheckOperator.Eq"/> checks by <see cref="AllChecks"/>.
     /// </summary>
     public Dictionary<string, string> Data { get; set; } = [];
 
@@ -124,15 +124,43 @@ public sealed class RuleCondition
         Schedule = Schedule?.Clone(),
     };
 
-    /// <summary>Turns the older equals filters of <see cref="Data"/> into <see cref="RuleCheckOperator.Eq"/> checks (SDK 0.9.0).</summary>
-    public void MoveDataToChecks()
+    /// <summary>
+    /// Every check of the condition (SDK 0.9.0): <see cref="Checks"/>, then the older equals filters of <see cref="Data"/>
+    /// as <see cref="RuleCheckOperator.Eq"/> checks marked <see cref="RuleCheck.IsLegacy"/>. The engine, the validation, the
+    /// texts and the rule dialog read checks only through this.
+    /// </summary>
+    public IReadOnlyList<RuleCheck> AllChecks()
     {
-        foreach (var (field, value) in Data)
+        var checks = new List<RuleCheck>((Checks?.Count ?? 0) + (Data?.Count ?? 0));
+        foreach (var check in Checks ?? [])
         {
-            Checks.Add(new RuleCheck { Field = field, Op = RuleCheckOperator.Eq, Value = value });
+            if (check is not null)
+            {
+                checks.Add(check);
+            }
         }
 
-        Data.Clear();
+        foreach (var (field, value) in Data ?? [])
+        {
+            checks.Add(new RuleCheck { Field = field, Op = RuleCheckOperator.Eq, Value = value, IsLegacy = true });
+        }
+
+        return checks;
+    }
+
+    /// <summary>JSON nulls ("data": null, "checks": null, a null check) read as empty.</summary>
+    internal void Normalize()
+    {
+        Devices ??= new DeviceSelector();
+        Devices.DeviceIds ??= [];
+        Devices.Tags ??= [];
+        Data ??= [];
+        foreach (var key in Data.Where(d => d.Value is null).Select(d => d.Key).ToList())
+        {
+            Data[key] = string.Empty;
+        }
+
+        Checks = [.. (Checks ?? []).Where(c => c is not null)];
     }
 }
 
@@ -229,15 +257,28 @@ public sealed class RuleDefinition
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
     /// <summary>
-    /// Throws <see cref="JsonException"/> for text that is not a rule. Older equals filters (<see cref="RuleCondition.Data"/>)
-    /// come back as checks.
+    /// Throws <see cref="JsonException"/> for text that is not a rule. JSON nulls of lists and objects read as empty (a null
+    /// condition or action is left out); older equals filters stay in <see cref="RuleCondition.Data"/>.
     /// </summary>
     public static RuleDefinition FromJson(string json)
     {
         var rule = JsonSerializer.Deserialize<RuleDefinition>(json, Json) ?? throw new JsonException("Not a rule.");
+        rule.Name ??= string.Empty;
+        rule.Conditions = [.. (rule.Conditions ?? []).Where(c => c is not null)];
         foreach (var condition in rule.Conditions)
         {
-            condition.MoveDataToChecks();
+            condition.Normalize();
+        }
+
+        rule.Actions = [.. (rule.Actions ?? []).Where(a => a is not null)];
+        foreach (var action in rule.Actions)
+        {
+            action.ActionId ??= string.Empty;
+            action.Targets ??= new DeviceSelector { Mode = DeviceSelectorMode.EventDevice };
+            action.Targets.DeviceIds ??= [];
+            action.Targets.Tags ??= [];
+            action.Settings ??= [];
+            action.StoredSecretFields ??= [];
         }
 
         return rule;

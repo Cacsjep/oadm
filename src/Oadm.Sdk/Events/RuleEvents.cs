@@ -21,7 +21,7 @@ public enum EventScope
     Server = 1,
 }
 
-/// <summary>Type of an event data field, for the condition filter of a rule.</summary>
+/// <summary>Type of an event data field; it gives <see cref="EventField.Kind"/> when the field declares no kind.</summary>
 public enum EventFieldType
 {
     /// <summary>Any text.</summary>
@@ -50,8 +50,17 @@ public enum EventValueKind
 /// <param name="Values">The choices of a <see cref="EventFieldType.Choice"/> field.</param>
 public sealed record EventField(string Name, string DisplayName, EventFieldType Type = EventFieldType.Text, IReadOnlyList<string>? Values = null)
 {
-    /// <summary>The kind of value as declared; <see cref="EventValueKind.Text"/> when not known.</summary>
-    public EventValueKind Kind { get; init; }
+    private readonly EventValueKind? _kind;
+
+    /// <summary>
+    /// The kind of value: as declared, else from <see cref="Type"/> (<see cref="EventFieldType.Number"/> = number, any other
+    /// type = text). It picks the operators of a rule's checks and a dashboard's widget.
+    /// </summary>
+    public EventValueKind Kind
+    {
+        get => _kind ?? (Type == EventFieldType.Number ? EventValueKind.Number : EventValueKind.Text);
+        init => _kind = value;
+    }
 
     /// <summary>False: a value only (a placeholder, a dashboard value), no check in the rule dialog. Default true.</summary>
     public bool Filter { get; init; } = true;

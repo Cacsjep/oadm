@@ -122,14 +122,55 @@ public sealed class EventServiceTests
         var sixth = await RefusedAsync(Rule([.. Enumerable.Repeat(gt, 6)]));
         Assert.Equal((StatusCode.InvalidArgument, "The trigger: at most 5 checks."), (sixth.StatusCode, sixth.Status.Detail));
         Assert.Equal("The trigger: Door cannot be compared with \">\".", (await RefusedAsync(Rule(new RuleCheck { Field = "door", Op = RuleCheckOperator.Gt, Value = "1" }))).Status.Detail);
-        Assert.Equal("The trigger: Reading has no value \"humidity\".", (await RefusedAsync(Rule(new RuleCheck { Field = "humidity", Op = RuleCheckOperator.Eq, Value = "1" }))).Status.Detail);
-        Assert.Equal("The trigger: Site cannot be checked.", (await RefusedAsync(Rule(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "North" }))).Status.Detail);
+        Assert.Equal("The trigger: humidity: the event no longer has this value.", (await RefusedAsync(Rule(new RuleCheck { Field = "humidity", Op = RuleCheckOperator.Eq, Value = "1" }))).Status.Detail);
+        Assert.Equal("The trigger: Site: the event no longer has this value.", (await RefusedAsync(Rule(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "North" }))).Status.Detail);
         var unknownOp = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRuleAsync(new Proto.SaveRuleRequest
         {
             DefinitionJson = Rule(gt).ToJson().Replace("\"op\":\"gt\"", "\"op\":\"between\"", StringComparison.Ordinal),
         }));
         Assert.Equal(StatusCode.InvalidArgument, unknownOp.StatusCode);
         Assert.Single((await events.ListRulesAsync(new Proto.Empty())).Rules);
+
+        // An older client's equals filter on a value only still saves (as before field checks).
+        var older = Rule();
+        older.Conditions[0].Data = new Dictionary<string, string> { ["site"] = "North", ["door"] = "true" };
+        var olderSaved = RuleDefinition.FromJson((await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = older.ToJson() })).DefinitionJson);
+        Assert.Equal(2, olderSaved.Conditions[0].Data.Count);
+    }
+
+    [Theory]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"data\":null", null)]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"checks\":null", null)]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"checks\":[null]", null)]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"checks\":[{\"field\":\"door\",\"op\":\"yes\",\"value\":null}]", null)] // yes / no needs no value
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"data\":{\"site\":null}", null)]
+    [InlineData("\"devices\":null", null)]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"checks\":[{\"field\":\"temperature\",\"op\":\"gt\",\"value\":null}]", "The trigger: Temperature: enter a value.")]
+    [InlineData("\"devices\":{\"mode\":\"all\"},\"checks\":[{\"field\":null,\"op\":\"eq\",\"value\":\"1\"}]", "The trigger: choose a value of the event.")]
+    public async Task JsonNullsInAConditionAreSavedOrRefusedNeverAnInternalError(string part, string? refusal)
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var action = new NotifyAction();
+        host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.notify", "1.0", null) { DisplayName = "Notify" });
+        host.Get<PluginRegistry>().RegisterCorePlugin(new ReadingSource(), new PluginOrigin("test.readings", "1.0", null) { DisplayName = "Readings" });
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+        var request = new Proto.SaveRuleRequest
+        {
+            DefinitionJson = $$$"""
+                {"name":"Nulls","enabled":true,
+                 "conditions":[{"kind":"event","eventTypeId":"{{{ReadingSource.TypeId}}}",{{{part}}}}],
+                 "actions":[{"actionId":"{{{action.Id}}}","settings":{"message":"x"}}]}
+                """,
+        };
+        if (refusal is null)
+        {
+            var saved = RuleDefinition.FromJson((await events.SaveRuleAsync(request)).DefinitionJson);
+            Assert.Equal("Nulls", saved.Name);
+            return;
+        }
+
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRuleAsync(request));
+        Assert.Equal((StatusCode.InvalidArgument, refusal), (refused.StatusCode, refused.Status.Detail));
     }
 
     /// <summary>A core plugin with one stateful event that has a number, a yes / no and a value-only field.</summary>

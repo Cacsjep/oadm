@@ -96,7 +96,7 @@ public sealed class FieldCheckRuleTests
     }
 
     [Fact]
-    public async Task OlderEqualsFiltersStillWorkAndAreStoredAsChecks()
+    public async Task OlderEqualsFiltersStillWorkAndAreStoredAsTheyWere()
     {
         await using var rig = await EventRulesRig.StartAsync();
         var io = await rig.AddDeviceAsync("10.0.0.70");
@@ -106,9 +106,8 @@ public sealed class FieldCheckRuleTests
         var saved = await rig.SaveAsync(rule);
 
         var stored = Assert.Single(await rig.Store.ListAsync(CancellationToken.None)).Definition;
-        var check = Assert.Single(stored.Conditions[0].Checks);
-        Assert.Equal(("port", RuleCheckOperator.Eq, "1"), (check.Field, check.Op, check.Value));
-        Assert.Empty(stored.Conditions[0].Data);
+        Assert.Empty(stored.Conditions[0].Checks);
+        Assert.Equal(new Dictionary<string, string> { ["port"] = "1" }, stored.Conditions[0].Data);
         Assert.Equal("Input active (all devices, Port equals 1)", RuleTexts.Conditions(stored, rig.Catalog, _ => null));
 
         rig.Publisher.SetState(EventRulesRig.Input, io.Id, true, new Dictionary<string, string> { ["port"] = "2" });
@@ -117,6 +116,35 @@ public sealed class FieldCheckRuleTests
         rig.Publisher.SetState(EventRulesRig.Input, io.Id, true, new Dictionary<string, string> { ["port"] = "1" });
         await rig.SettleAsync();
         Assert.Equal([(ActionEdge.TurnedOn, (Guid?)io.Id)], rig.OnDevice.Edges);
+        Assert.NotEqual(Guid.Empty, saved.Id);
+    }
+
+    [Fact]
+    public async Task AnUnchangedOlderRuleSavesAsBefore()
+    {
+        // Before field checks a rule could hold any number of equals filters, also on values only and on yes / no values.
+        await using var rig = await EventRulesRig.StartAsync();
+        var rule = EventRulesRig.Rule(EventRulesRig.Reading, rig.OnEventDevice());
+        rule.Conditions[0].Data = new Dictionary<string, string>
+        {
+            ["site"] = "North", ["door"] = "on", ["temperature"] = "high", ["state"] = "a", ["site2"] = "x", ["site3"] = "y",
+        };
+        Assert.Equal("The trigger: site2: the event no longer has this value.", RuleValidator.FirstProblem(rule, rig.Catalog)); // undeclared: refused as before
+        rule.Conditions[0].Data.Remove("site2");
+        rule.Conditions[0].Data.Remove("site3");
+        Assert.Null(RuleValidator.FirstProblem(rule, rig.Catalog)); // value only, "on" on yes / no, text on a number: as before
+
+        // New checks next to older filters: all count for the limit, and the new ones are checked strictly.
+        rule.Conditions[0].Checks = [Check("state", RuleCheckOperator.Ne, "b"), Check("temperature", RuleCheckOperator.Gt, "0")];
+        Assert.Equal("The trigger: at most 5 checks.", RuleValidator.FirstProblem(rule, rig.Catalog));
+        rule.Conditions[0].Checks = [Check("site", RuleCheckOperator.Eq, "North")];
+        Assert.Equal("The trigger: Site: the event no longer has this value.", RuleValidator.FirstProblem(rule, rig.Catalog));
+        rule.Conditions[0].Checks = [];
+
+        // The JSON of an older client keeps working through the store.
+        var json = RuleDefinition.FromJson(rule.ToJson());
+        var saved = await rig.SaveAsync(json);
+        Assert.Equal(4, Assert.Single(await rig.Store.ListAsync(CancellationToken.None)).Definition.Conditions[0].Data.Count);
         Assert.NotEqual(Guid.Empty, saved.Id);
     }
 
@@ -133,13 +161,13 @@ public sealed class FieldCheckRuleTests
 
         Assert.Null(Problem([.. Enumerable.Range(0, RuleChecks.MaxPerCondition).Select(i => Check("temperature", RuleCheckOperator.Gt, i.ToString(System.Globalization.CultureInfo.InvariantCulture)))]));
         Assert.Equal("The trigger: at most 5 checks.", Problem([.. Enumerable.Range(0, 6).Select(_ => Check("temperature", RuleCheckOperator.Gt, "1"))]));
-        Assert.Equal("The trigger: Reading has no value \"humidity\".", Problem(Check("humidity", RuleCheckOperator.Gt, "1")));
+        Assert.Equal("The trigger: humidity: the event no longer has this value.", Problem(Check("humidity", RuleCheckOperator.Gt, "1")));
         Assert.Equal("The trigger: Door cannot be compared with \">\".", Problem(Check("door", RuleCheckOperator.Gt, "1")));
         Assert.Equal("The trigger: Temperature cannot be compared with \"contains\".", Problem(Check("temperature", RuleCheckOperator.Contains, "4")));
         Assert.Equal("The trigger: State cannot be compared with \"is yes\".", Problem(Check("state", RuleCheckOperator.Yes)));
         Assert.Equal("The trigger: Temperature: enter a number, e.g. 21.5.", Problem(Check("temperature", RuleCheckOperator.Le, "hot")));
         Assert.Equal("The trigger: State: at most 200 characters.", Problem(Check("state", RuleCheckOperator.Eq, new string('a', 201))));
-        Assert.Equal("The trigger: Site cannot be checked.", Problem(Check("site", RuleCheckOperator.Eq, "North")));
+        Assert.Equal("The trigger: Site: the event no longer has this value.", Problem(Check("site", RuleCheckOperator.Eq, "North")));
         Assert.Equal("The trigger: a check is not valid.", Problem(Check("state", (RuleCheckOperator)42, "x")));
 
         var sixth = EventRulesRig.Rule(EventRulesRig.Reading, rig.OnEventDevice());

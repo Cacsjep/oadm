@@ -105,21 +105,24 @@ public sealed class FieldCheckTests
     }
 
     [Fact]
-    public void OlderEqualsFiltersAreReadAsEqualsChecksAndStoredAsChecks()
+    public void OlderEqualsFiltersStayInDataAndAreReadAsEqualsChecks()
     {
         var old = """
             {"name":"Gate","enabled":true,"conditions":[{"kind":"event","eventTypeId":"test.input","devices":{"mode":"all"},"data":{"port":"1"}}],"actions":[]}
             """;
         var rule = RuleDefinition.FromJson(old);
-        var check = Assert.Single(rule.Conditions[0].Checks);
-        Assert.Equal(("port", RuleCheckOperator.Eq, "1"), (check.Field, check.Op, check.Value));
-        Assert.Empty(rule.Conditions[0].Data);
+        Assert.Empty(rule.Conditions[0].Checks);
+        var check = Assert.Single(rule.Conditions[0].AllChecks());
+        Assert.Equal(("port", RuleCheckOperator.Eq, "1", true), (check.Field, check.Op, check.Value, check.IsLegacy));
 
-        var json = rule.ToJson();
-        var stored = JsonNode.Parse(json)!["conditions"]![0]!;
-        Assert.Equal("""[{"field":"port","op":"eq","value":"1"}]""", stored["checks"]!.ToJsonString());
-        var again = RuleDefinition.FromJson(json);
-        Assert.Equal(("port", RuleCheckOperator.Eq, "1"), (again.Conditions[0].Checks[0].Field, again.Conditions[0].Checks[0].Op, again.Conditions[0].Checks[0].Value));
+        // An unchanged older rule is stored as it was: the filter stays an older one (checked as leniently as before).
+        var stored = JsonNode.Parse(rule.ToJson())!["conditions"]![0]!;
+        Assert.Equal("""{"port":"1"}""", stored["data"]!.ToJsonString());
+        Assert.Equal("[]", stored["checks"]!.ToJsonString());
+
+        // Checks first, then the older filters.
+        rule.Conditions[0].Checks.Add(new RuleCheck { Field = "state", Op = RuleCheckOperator.Ne, Value = "x" });
+        Assert.Equal([("state", false), ("port", true)], rule.Conditions[0].AllChecks().Select(c => (c.Field, c.IsLegacy)));
 
         // Every operator has its short name in the stored JSON.
         var ops = Enum.GetValues<RuleCheckOperator>();
@@ -127,6 +130,60 @@ public sealed class FieldCheckTests
         var names = JsonNode.Parse(all.ToJson())!["conditions"]![0]!["checks"]!.AsArray().Select(c => c!["op"]!.GetValue<string>());
         Assert.Equal(["eq", "ne", "contains", "startsWith", "gt", "ge", "lt", "le", "yes", "no"], names);
         Assert.Equal(ops, RuleDefinition.FromJson(all.ToJson()).Conditions[0].Checks.Select(c => c.Op));
+    }
+
+    [Theory]
+    [InlineData("""{"name":"R","conditions":[{"kind":"event","eventTypeId":"test.reading","data":null,"checks":null}],"actions":null}""")]
+    [InlineData("""{"name":"R","conditions":[{"kind":"event","eventTypeId":"test.reading","devices":null,"checks":[null,{"field":"state","op":"eq","value":null}],"data":{"state":null}}]}""")]
+    [InlineData("""{"name":null,"conditions":[null],"actions":[null,{"actionId":null,"targets":null,"settings":null,"storedSecretFields":null}]}""")]
+    public void JsonNullsReadAsEmpty(string json)
+    {
+        var rule = RuleDefinition.FromJson(json);
+        Assert.NotNull(rule.Name);
+        Assert.NotNull(rule.Actions);
+        Assert.All(rule.Actions, a => Assert.NotNull(a.Targets));
+        foreach (var condition in rule.Conditions)
+        {
+            Assert.NotNull(condition.Devices);
+            Assert.All(condition.AllChecks(), c => Assert.Equal(string.Empty, c.Value)); // a null value reads as empty
+            CompiledChecks.Compile(condition, Reading).Pass(new Dictionary<string, string>());
+            Assert.NotNull(RuleTexts.Checks(condition, Reading));
+        }
+
+        Assert.Equal(string.Empty, new RuleCheck { Field = null!, Value = null! }.Field + new RuleCheck { Value = null! }.Value);
+    }
+
+    [Fact]
+    public void AnEqualsCheckOnANumberComparesNumbersElseText()
+    {
+        // Both numbers: compared as numbers. Else as text, so an older text filter on a number value still matches.
+        Assert.True(Pass("temperature", RuleCheckOperator.Eq, "40", "40.0"));
+        Assert.True(Pass("temperature", RuleCheckOperator.Eq, "n/a", "N/A"));
+        Assert.False(Pass("temperature", RuleCheckOperator.Eq, "n/a", "40"));
+        Assert.False(Pass("temperature", RuleCheckOperator.Eq, "40", "n/a"));
+
+        var legacy = new RuleCondition { Data = new Dictionary<string, string> { ["temperature"] = "high", ["door"] = "TRUE", ["site"] = "A" } };
+        var checks = CompiledChecks.Compile(legacy, Reading);
+        // An older filter on a yes / no value and on a value only compares text, as before field checks.
+        Assert.True(checks.Pass(new Dictionary<string, string> { ["temperature"] = "High", ["door"] = "true", ["site"] = "a" }));
+        Assert.False(checks.Pass(new Dictionary<string, string> { ["temperature"] = "High", ["door"] = "1", ["site"] = "a" }));
+    }
+
+    [Fact]
+    public void AFieldWithoutAKindTakesItFromItsType()
+    {
+        Assert.Equal(EventValueKind.Number, new EventField("vlan", "VLAN", EventFieldType.Number).Kind);
+        Assert.Equal(EventValueKind.Text, new EventField("kind", "Kind", EventFieldType.Choice, ["New", "Renewal"]).Kind);
+        Assert.Equal(EventValueKind.Text, new EventField("state", "State").Kind);
+        Assert.Equal(EventValueKind.YesNo, new EventField("on", "On", EventFieldType.Number) { Kind = EventValueKind.YesNo }.Kind); // declared wins
+        Assert.Equal(EventValueKind.Text, new EventField("n", "N", EventFieldType.Number) { Kind = EventValueKind.Text }.Kind); // also Text declared
+        Assert.NotEqual(new EventField("n", "N", EventFieldType.Number), new EventField("n", "N", EventFieldType.Number) { Kind = EventValueKind.Text });
+
+        // The operators follow: a Number type offers number checks and = compares numbers.
+        var type = new EventTypeInfo("test.vlan", "VLAN", "Test", EventKind.Stateless, Fields: [new EventField("vlan", "VLAN", EventFieldType.Number)]);
+        Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "vlan", Op = RuleCheckOperator.Gt, Value = "10" }, type.DataFields));
+        var condition = new RuleCondition { Checks = [new RuleCheck { Field = "vlan", Op = RuleCheckOperator.Eq, Value = "10" }] };
+        Assert.True(CompiledChecks.Compile(condition, type).Pass(new Dictionary<string, string> { ["vlan"] = "10.0" }));
     }
 
     [Fact]
@@ -149,7 +206,23 @@ public sealed class FieldCheckTests
         Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "state", Op = RuleCheckOperator.Eq, Value = new string('x', 200) }, fields));
         Assert.Equal("Door cannot be compared with \"contains\".", RuleChecks.Problem(new RuleCheck { Field = "door", Op = RuleCheckOperator.Contains, Value = "1" }, fields));
         Assert.Equal("State cannot be compared with \">\".", RuleChecks.Problem(new RuleCheck { Field = "state", Op = RuleCheckOperator.Gt, Value = "1" }, fields));
-        Assert.Equal("Site cannot be checked.", RuleChecks.Problem(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "A" }, fields));
+        // A value only, and one the event lacks: one phrase (the rule dialog shows it below the Field).
+        Assert.Equal("Site: the event no longer has this value.", RuleChecks.Problem(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "A" }, fields));
+        Assert.Equal("port: the event no longer has this value.", RuleChecks.Problem(new RuleCheck { Field = "port", Op = RuleCheckOperator.Eq, Value = "1" }, fields));
+        Assert.Equal("The event no longer has this value.", RuleChecks.NoSuchValueText);
         Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "door", Op = RuleCheckOperator.No }, fields)); // no value needed
+
+        // An older equals filter is checked as before field checks: a value the event declares, nothing else.
+        Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "A", IsLegacy = true }, fields));
+        Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "door", Op = RuleCheckOperator.Eq, Value = "on", IsLegacy = true }, fields));
+        Assert.Null(RuleChecks.Problem(new RuleCheck { Field = "temperature", Op = RuleCheckOperator.Eq, Value = "high", IsLegacy = true }, fields));
+        Assert.Equal("port: the event no longer has this value.", RuleChecks.Problem(new RuleCheck { Field = "port", Op = RuleCheckOperator.Eq, Value = "1", IsLegacy = true }, fields));
+
+        // More than 5: too many, unless all are older equals filters (they had no limit).
+        var legacy = Enumerable.Range(0, 6).Select(i => new RuleCheck { Field = "f" + i, IsLegacy = true }).ToList();
+        Assert.False(RuleChecks.TooMany(legacy));
+        Assert.True(RuleChecks.TooMany([.. legacy, new RuleCheck { Field = "state" }]));
+        Assert.False(RuleChecks.TooMany([.. legacy.Take(4), new RuleCheck { Field = "state" }]));
+        Assert.Equal("At most 5 checks.", RuleChecks.TooManyText);
     }
 }
