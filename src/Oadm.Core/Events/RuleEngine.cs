@@ -545,21 +545,19 @@ public sealed partial class RuleEngine : IAsyncDisposable
         return set;
     }
 
-    private bool IsOn(string typeId, Guid device, Dictionary<string, string> filter)
+    /// <summary>Whether the condition's event is on for the device and its latest values pass the condition's checks.</summary>
+    private bool IsOn(ConditionRuntime condition, Guid device)
     {
-        if (!_on.TryGetValue(typeId, out var set) || !set.TryGetValue(device, out var data))
+        if (!_on.TryGetValue(condition.TypeId, out var set) || !set.TryGetValue(device, out var data))
         {
             return false;
         }
 
-        return Matches(data, filter);
+        return condition.Checks.Pass(data);
     }
 
     private static bool SameData(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b) =>
         a.Count == b.Count && a.All(e => b.TryGetValue(e.Key, out var value) && string.Equals(value, e.Value, StringComparison.Ordinal));
-
-    private static bool Matches(IReadOnlyDictionary<string, string> data, Dictionary<string, string> filter) =>
-        filter.Count == 0 || filter.All(f => data.TryGetValue(f.Key, out var value) && string.Equals(value, f.Value, StringComparison.OrdinalIgnoreCase));
 
     private void OnTypeChanged(string typeId, IReadOnlyCollection<Guid> devices)
     {
@@ -626,7 +624,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
             return false;
         }
 
-        return shared && IsOn(runtime.TriggerTypeId, subject, runtime.Trigger.Condition.Data) && SubjectHold(runtime, subject);
+        return shared && IsOn(runtime.Trigger, subject) && SubjectHold(runtime, subject);
     }
 
     /// <summary>
@@ -656,12 +654,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
             var typeId = condition.TypeId;
             if (condition.Type is { DeviceScope: false })
             {
-                if (!IsOn(typeId, Guid.Empty, condition.Condition.Data))
+                if (!IsOn(condition, Guid.Empty))
                 {
                     return false;
                 }
             }
-            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(condition, e.Key) && Matches(e.Value, condition.Condition.Data)))
+            else if (!_on.TryGetValue(typeId, out var set) || !set.Any(e => Selects(condition, e.Key) && condition.Checks.Pass(e.Value)))
             {
                 return false;
             }
@@ -675,7 +673,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         foreach (var condition in runtime.Others)
         {
-            if (condition.PerSubject && !IsOn(condition.TypeId, subject, condition.Condition.Data))
+            if (condition.PerSubject && !IsOn(condition, subject))
             {
                 return false;
             }
@@ -764,7 +762,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 logged = true;
             }
 
-            if ((type.DeviceScope && !Selects(runtime.Trigger, device)) || !Matches(data ?? EmptyData, runtime.Trigger.Condition.Data)
+            if ((type.DeviceScope && !Selects(runtime.Trigger, device)) || !runtime.Trigger.Checks.Pass(data ?? EmptyData)
                 || !SharedHold(runtime) || !SubjectHold(runtime, device))
             {
                 continue;
@@ -1295,9 +1293,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
             foreach (var other in Others)
             {
                 other.Type = other.Condition.Kind == RuleConditionKind.Event ? catalog.FindEventType(other.TypeId) : null;
+                other.Checks = CompiledChecks.Compile(other.Condition, other.Type?.Info);
             }
 
-            if (catalog.FindEventType(TriggerTypeId) is { } trigger)
+            var trigger = catalog.FindEventType(TriggerTypeId);
+            Trigger.Checks = CompiledChecks.Compile(Trigger.Condition, trigger?.Info);
+            if (trigger is not null)
             {
                 Stateful = trigger.Stateful;
                 TriggerScope = trigger.Info.Scope;
@@ -1323,6 +1324,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
         /// <summary>The event type as the catalog knows it (null: not declared now); set by <see cref="Runtime.Refresh"/>.</summary>
         public CatalogEventType? Type { get; set; }
+
+        /// <summary>The condition's field checks, compiled with the kinds of its event's fields by <see cref="Runtime.Refresh"/>.</summary>
+        public CompiledChecks Checks { get; set; } = CompiledChecks.None;
 
         /// <summary>An event condition on "the same device" as the trigger (a server event never is).</summary>
         public bool PerSubject =>

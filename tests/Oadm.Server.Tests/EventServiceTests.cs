@@ -91,6 +91,78 @@ public sealed class EventServiceTests
     }
 
     [Fact]
+    public async Task FieldChecksReachTheClientWithTheirKindsAndTheServerRefusesWrongOnes()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var action = new NotifyAction();
+        host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.notify", "1.0", null) { DisplayName = "Notify" });
+        host.Get<PluginRegistry>().RegisterCorePlugin(new ReadingSource(), new PluginOrigin("test.readings", "1.0", null) { DisplayName = "Readings" });
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+
+        var type = Assert.Single((await events.GetCatalogAsync(new Proto.Empty())).EventTypes, t => t.Id == ReadingSource.TypeId);
+        Assert.Equal(
+            [("temperature", Proto.EventFieldKind.EventFieldNumber, false), ("door", Proto.EventFieldKind.EventFieldYesNo, false), ("site", Proto.EventFieldKind.EventFieldText, true)],
+            type.Fields.Select(f => (f.Name, f.Kind, f.NoFilter)));
+
+        RuleDefinition Rule(params RuleCheck[] checks) => new()
+        {
+            Name = "Too warm",
+            Enabled = true,
+            Conditions = [new RuleCondition { Kind = RuleConditionKind.Event, EventTypeId = ReadingSource.TypeId, Devices = new DeviceSelector { Mode = DeviceSelectorMode.All }, Checks = [.. checks] }],
+            Actions = [new RuleAction { ActionId = action.Id, Settings = new JsonObject { ["message"] = "{temperature}" } }],
+        };
+        async Task<RpcException> RefusedAsync(RuleDefinition rule) =>
+            await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = rule.ToJson() }));
+
+        var gt = new RuleCheck { Field = "temperature", Op = RuleCheckOperator.Gt, Value = "40" };
+        var saved = await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = Rule(gt, new RuleCheck { Field = "door", Op = RuleCheckOperator.Yes }).ToJson() });
+        Assert.Equal("Reading (all devices, Temperature > 40, Door is yes)", saved.Summary.ConditionsText);
+        Assert.Equal(2, RuleDefinition.FromJson(saved.DefinitionJson).Conditions[0].Checks.Count);
+
+        var sixth = await RefusedAsync(Rule([.. Enumerable.Repeat(gt, 6)]));
+        Assert.Equal((StatusCode.InvalidArgument, "The trigger: at most 5 checks."), (sixth.StatusCode, sixth.Status.Detail));
+        Assert.Equal("The trigger: Door cannot be compared with \">\".", (await RefusedAsync(Rule(new RuleCheck { Field = "door", Op = RuleCheckOperator.Gt, Value = "1" }))).Status.Detail);
+        Assert.Equal("The trigger: Reading has no value \"humidity\".", (await RefusedAsync(Rule(new RuleCheck { Field = "humidity", Op = RuleCheckOperator.Eq, Value = "1" }))).Status.Detail);
+        Assert.Equal("The trigger: Site cannot be checked.", (await RefusedAsync(Rule(new RuleCheck { Field = "site", Op = RuleCheckOperator.Eq, Value = "North" }))).Status.Detail);
+        var unknownOp = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRuleAsync(new Proto.SaveRuleRequest
+        {
+            DefinitionJson = Rule(gt).ToJson().Replace("\"op\":\"gt\"", "\"op\":\"between\"", StringComparison.Ordinal),
+        }));
+        Assert.Equal(StatusCode.InvalidArgument, unknownOp.StatusCode);
+        Assert.Single((await events.ListRulesAsync(new Proto.Empty())).Rules);
+    }
+
+    /// <summary>A core plugin with one stateful event that has a number, a yes / no and a value-only field.</summary>
+    private sealed class ReadingSource : ICorePlugin, IEventSource
+    {
+        public const string TypeId = "test.readings.reading";
+
+        public string Id => "test.readings";
+
+        public string DisplayName => "Readings";
+
+        public string? IconKey => null;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
+        [
+            new(TypeId, "Reading", "Readings", EventKind.Stateful, Fields:
+            [
+                new EventField("temperature", "Temperature") { Kind = EventValueKind.Number },
+                new EventField("door", "Door") { Kind = EventValueKind.YesNo },
+                new EventField("site", "Site") { Filter = false },
+            ]),
+        ];
+
+        public Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(null);
+    }
+
+    [Fact]
     public async Task SendTestRunsTheActionOnceWithSampleValuesAndTheStoredPasswordAndIsAdminOnly()
     {
         await using var host = await TestServerHost.StartAsync();
