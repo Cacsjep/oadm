@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
@@ -9,6 +10,7 @@ using Oadm.Client.Devices;
 using Oadm.Client.EventRules;
 using Oadm.Client.Infrastructure;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Client.Tests;
@@ -41,7 +43,7 @@ public sealed class EventRuleChecksTests : IDisposable
         condition.AddCheckCommand.Execute(null);
         var check = condition.Checks[^1];
         check.SelectedField = check.Fields.Single(f => f.Name == field);
-        check.SelectedOperator = check.Operators.Single(o => o.Text == op);
+        check.SelectedOperator = check.Operators.Single(o => o.Text == op || RuleChecks.Text(o.Op, check.SelectedField!.Kind) == op); // ">" or "> greater than"
         check.Value = value;
         return check;
     }
@@ -63,8 +65,8 @@ public sealed class EventRuleChecksTests : IDisposable
         Assert.Equal("Sensor", check.SelectedField!.DisplayName); // the first value, ready to fill in
         Assert.Equal(["equals", "does not equal", "contains", "starts with"], check.Operators.Select(o => o.Text));
         check.SelectedField = check.Fields.Single(f => f.Name == "temperature");
-        Assert.Equal(["=", "≠", ">", "≥", "<", "≤"], check.Operators.Select(o => o.Text));
-        Assert.Equal("=", check.SelectedOperator!.Text); // equals stays equals
+        Assert.Equal(["= equals", "≠ does not equal", "> greater than", "≥ greater than or equal", "< less than", "≤ less than or equal"], check.Operators.Select(o => o.Text));
+        Assert.Equal("= equals", check.SelectedOperator!.Text); // equals stays equals
         check.SelectedField = check.Fields.Single(f => f.Name == "heater");
         Assert.Equal(["is yes", "is no"], check.Operators.Select(o => o.Text));
         Assert.False(check.NeedsValue); // no value box for yes / no
@@ -116,7 +118,7 @@ public sealed class EventRuleChecksTests : IDisposable
         trigger.AddCheckCommand.Execute(null);
         var check = trigger.Checks[0];
         check.SelectedField = check.Fields.Single(f => f.Name == "temperature");
-        check.SelectedOperator = check.Operators.Single(o => o.Text == ">");
+        check.SelectedOperator = check.Operators.Single(o => o.Text == "> greater than");
 
         Assert.Null(check.ErrorOf(nameof(CheckViewModel.Value))); // untouched: no error yet
         Assert.Equal("Check 1: Enter a value.", editor.StepProblem);
@@ -311,6 +313,7 @@ public sealed class EventRuleChecksTests : IDisposable
             AddCheck(trigger, "temperature", ">", "40");
             AddCheck(trigger, "heater", "is no");
             AddCheck(trigger, "sensor", "starts with", "Housing");
+            AddCheck(trigger, "temperature", "≤", "60");
             editor.AddEventConditionCommand.Execute(null);
             var and = editor.Conditions[1];
             Choose(and, "oadm.device-triggers.sample-gate");
@@ -320,9 +323,24 @@ public sealed class EventRuleChecksTests : IDisposable
             Assert.Contains("Add check", texts);
             Assert.Contains("Temperature (number)", texts);
             Assert.Contains("is no", texts);
-            Assert.Equal(4, dialog.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && ToolTip.GetTip(b) as string == "Remove check"));
-            Assert.Equal(2, dialog.GetVisualDescendants().OfType<TextBox>().Count(b => b.IsEffectivelyVisible && b.PlaceholderText == "Value")); // no box for yes / no
+            Assert.Contains("> greater than", texts); // a number operator: its symbol and words
+            Assert.Equal(5, dialog.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && ToolTip.GetTip(b) as string == "Remove check"));
+            Assert.Equal(3, dialog.GetVisualDescendants().OfType<TextBox>().Count(b => b.IsEffectivelyVisible && b.PlaceholderText == "Value")); // no box for yes / no
+
+            // The longest operator fits its select without being cut.
+            var longest = dialog.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && t.Text == "≤ less than or equal");
+            var free = new TextBlock { Text = longest.Text, FontFamily = longest.FontFamily, FontSize = longest.FontSize, FontWeight = longest.FontWeight };
+            free.Measure(Size.Infinity);
+            Assert.True(free.DesiredSize.Width <= longest.Bounds.Width + 0.5, $"\"{longest.Text}\" needs {free.DesiredSize.Width} px, has {longest.Bounds.Width} px.");
             Capture(dialog, outDir, "event-rules-checks.png");
+
+            // The operator list shows the same words.
+            var operators = longest.GetVisualAncestors().OfType<ComboBox>().First();
+            operators.IsDropDownOpen = true;
+            Pump();
+            Capture(dialog, outDir, "event-rules-checks-operators.png");
+            operators.IsDropDownOpen = false;
+            Pump();
 
             trigger.Checks[0].Value = "hot";
             Pump();
@@ -340,10 +358,68 @@ public sealed class EventRuleChecksTests : IDisposable
             Pump();
             Assert.True(editor.IsOverviewStep);
             Assert.Equal(
-                "Device triggers: Housing temperature · All devices · Temperature > 40, Heater on is no, Sensor starts with Housing",
+                "Device triggers: Housing temperature · All devices · Temperature > 40, Heater on is no, Sensor starts with Housing, Temperature ≤ 60",
                 editor.Overview.Single(l => l.Label == "When").Text);
             Assert.EndsWith("Active is yes", editor.Overview.Single(l => l.Label == "And").Text, StringComparison.Ordinal);
             Capture(dialog, outDir, "event-rules-checks-overview.png");
+            dialog.Close();
+            api.Dispose();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    });
+
+    [Fact]
+    public Task Leaving_an_empty_value_shows_its_error_and_a_narrow_window_keeps_the_row_in_its_card() => _ui.RunAsync(async () =>
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var (api, editor) = await CreateAsync();
+            var dialog = new RuleEditorWindow();
+            dialog.Attach(editor);
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            editor.Name = "Housing too warm";
+            editor.NextCommand.Execute(null);
+            var trigger = editor.Conditions[0];
+            Choose(trigger, FakeOadmApi.FakeTemperatureTrigger);
+            var check = AddCheck(trigger, "temperature", ">");
+            AddCheck(trigger, "heater", "is no");
+            Pump();
+
+            // Each input of a check is a label-less form field: leaving the empty value says so below it.
+            var box = dialog.GetVisualDescendants().OfType<TextBox>().Single(t => t.IsEffectivelyVisible && t.PlaceholderText == "Value");
+            Assert.NotNull(box.FindAncestorOfType<FormField>());
+            Assert.All(dialog.GetVisualDescendants().OfType<LeadingIcon>().Where(i => i.IsEffectivelyVisible), i => Assert.IsType<FormField>(i.Parent));
+            box.Focus();
+            Pump();
+            Assert.Null(check.ErrorOf(nameof(CheckViewModel.Value)));
+            dialog.GetVisualDescendants().OfType<ComboBox>().First(c => c.IsEffectivelyVisible && c.PlaceholderText == "Value of the event").Focus();
+            Pump();
+            Assert.Equal("Enter a value.", check.ErrorOf(nameof(CheckViewModel.Value)));
+            Assert.Contains("Enter a value.", Texts(dialog));
+            Capture(dialog, outDir, "event-rules-checks-left-empty.png");
+
+            // Narrow windows: the event select and the check rows shrink and stay inside the When row (at 700 px the
+            // former fixed widths ran out of it).
+            var card = box.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("ruleItem"));
+            foreach (var width in new[] { 900, 700 })
+            {
+                dialog.Width = width;
+                Pump();
+                var rows = card.GetVisualDescendants().OfType<Grid>().Where(g => g.IsEffectivelyVisible && g.Classes.Contains("checkRow")).ToList();
+                Assert.Equal(3, rows.Count); // the event select and two checks
+                foreach (var cell in rows.SelectMany(r => r.Children).Where(c => c.IsVisible))
+                {
+                    var right = cell.TranslatePoint(new Point(cell.Bounds.Width, 0), card);
+                    Assert.NotNull(right);
+                    Assert.True(right.Value.X <= card.Bounds.Width, $"{width} px: a cell of a check row ends at {right.Value.X}, the When row at {card.Bounds.Width}.");
+                }
+
+                Capture(dialog, outDir, $"event-rules-checks-{width}.png");
+            }
+
             dialog.Close();
             api.Dispose();
             return true;

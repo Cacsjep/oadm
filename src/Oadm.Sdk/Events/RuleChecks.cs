@@ -152,6 +152,22 @@ public static class RuleChecks
         _ => op.ToString(),
     };
 
+    /// <summary>
+    /// The operator in the Operator select of the rule dialog and its list: a number operator as its symbol and words
+    /// ("= equals", "≠ does not equal", "&gt; greater than", "≥ greater than or equal", "&lt; less than", "≤ less than or
+    /// equal"), every other one as <see cref="Text"/>.
+    /// </summary>
+    public static string Label(RuleCheckOperator op, EventValueKind kind) => op switch
+    {
+        RuleCheckOperator.Eq when kind == EventValueKind.Number => "= " + Text(op, EventValueKind.Text),
+        RuleCheckOperator.Ne when kind == EventValueKind.Number => "≠ " + Text(op, EventValueKind.Text),
+        RuleCheckOperator.Gt => "> greater than",
+        RuleCheckOperator.Ge => "≥ greater than or equal",
+        RuleCheckOperator.Lt => "< less than",
+        RuleCheckOperator.Le => "≤ less than or equal",
+        _ => Text(op, kind),
+    };
+
     /// <summary>The check in one short phrase: "Temperature &gt; 40", "Door is yes", "State equals active".</summary>
     public static string Describe(RuleCheck check, string fieldName, EventValueKind kind)
     {

@@ -393,7 +393,7 @@ public sealed partial class CheckViewModel : ValidatingViewModel
     {
         var kind = value?.Kind ?? EventValueKind.Text;
         var op = SelectedOperator?.Op;
-        Operators = [.. RuleChecks.OperatorsFor(kind).Select(o => new CheckOperatorOption(o, RuleChecks.Text(o, kind)))];
+        Operators = [.. RuleChecks.OperatorsFor(kind).Select(o => new CheckOperatorOption(o, RuleChecks.Label(o, kind)))];
         SelectedOperator = Operators.FirstOrDefault(o => o.Op == op) ?? (Operators.Count > 0 ? Operators[0] : null);
         _changed?.Invoke();
     }

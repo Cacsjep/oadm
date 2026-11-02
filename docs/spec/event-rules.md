@@ -148,7 +148,12 @@ event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "act
   (number)"; a new check starts with the first one), Operator (by kind) and Value (hidden for yes / no), and a remove icon. The three inputs carry an icon inside at their left
   (`ui:LeadingIcon`), so a check reads like an equation A f B: `Icon.squareA` (the event's value), `Icon.squareFunction`
   (Lucide "square-function", the comparison), `Icon.squareB` (the value it is compared with); A and B drawn in its style.
-  Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
+  Each input is a label-less `ui:FormField` (leaving an empty Value shows "Enter a value."); the widths come from the theme
+  (`Oadm.CheckFieldWidth`, `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth`, `Grid.checkRow`), the event select spans
+  them, and the row shrinks on a narrow window. The Operator select and its list show a number operator as its symbol
+  and words (`RuleChecks.Label`: "= equals", "≠ does not equal", "> greater than", "≥ greater than or equal", "< less
+  than", "≤ less than or equal", decided 2026-11-02); the overview and the rules list keep the short form ("Temperature >
+  40", `RuleChecks.Text`). Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
   keeps the checks whose value the new event has (same name), the others go. The overview line names the checks
   ("Temperature > 40, Door is yes"); so does the When column of the rules list (`RuleTexts.Checks`: "Reading (all
   devices, Temperature > 40)").
