@@ -323,7 +323,7 @@ public sealed class ViewModelTests
             await StoppedAsync(ctx, rig);
             Assert.Equal(0, rig.Vapix.Requests % 2); // two cameras per check
             Assert.DoesNotContain(rig.Plugin.Monitor!.Snapshot(withRows: true).Rows, r => r.DeviceId == c.Id);
-            Assert.All(ctx.Payloads.Where((_, i) => ctx.Calls[i] == ImageHealthMethods.Check), p => Assert.DoesNotContain(c.Id.ToString(), p!, StringComparison.Ordinal));
+            Assert.All(ctx.Recorded().Where(r => r.Method == ImageHealthMethods.Check), r => Assert.DoesNotContain(c.Id.ToString(), r.Payload!, StringComparison.Ordinal));
         }
         finally
         {

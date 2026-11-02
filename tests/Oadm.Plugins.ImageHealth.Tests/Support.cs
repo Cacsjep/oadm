@@ -165,6 +165,15 @@ internal sealed class PluginPageContext(ImageHealthPlugin plugin, PluginEventHub
 
     public List<string?> Payloads { get; } = [];
 
+    /// <summary>The calls so far with their payloads, copied under the lock (a page call may still be running).</summary>
+    public (string Method, string? Payload)[] Recorded()
+    {
+        lock (Calls)
+        {
+            return [.. Calls.Zip(Payloads)];
+        }
+    }
+
     public IReadOnlyList<IDeviceInfo> Devices => devices is null ? [] : [.. devices.Items];
 
     public Dictionary<string, string> LocalSettings { get; } = [];
