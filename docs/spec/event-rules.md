@@ -18,6 +18,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Loops | Actions never fire events themselves; a device an action changes may send an event later, which the dead time keeps bounded. |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions; one-shot events missed while the server was down are not replayed. |
+| Field checks | Spec, not built (2026-11-02): at most 5 checks per event condition on the event's values (field, operator by kind, value), all must hold; see "Field checks". |
 | Roles | Permissions "See event rules" (rules and the log; operators by default), "Change event rules" (create, change, copy, turn on / off, delete, test an action; audited "Created / Changed / Deleted / Turned ... event rule") and "Delete the event log". |
 | Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
 
@@ -132,3 +133,30 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 - **Tests**: `tests/Oadm.Core.Tests/Events` (the engine with a fake clock), `tests/Oadm.Server.Tests/EventServiceTests`,
   `tests/Oadm.Plugins.Outputs.Tests` (+ opt-in `OutputHardwareWriteTests`), `tests/Oadm.Plugins.Notifications.Tests`,
   `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (5,000 devices).
+
+## Field checks (spec, not built)
+
+Decisions of 2026-11-02. An event condition ("When" or "And" row) can check the values its event carries, e.g. a device
+trigger's `temperature` > 40 or `state` equals "active".
+
+- **Dialog**: **Add check** on each event row (command button), at most **5** checks per row; each check is one row with
+  Field (the event's fields that may be checked), Operator and Value, and a remove icon. Errors directly below the check
+  (form rule). The overview line names the checks ("Temperature > 40, Door is yes").
+- **Operators by `EventField.Kind`**:
+  - Text: equals, does not equal, contains, starts with (case-insensitive, as today's filter).
+  - Number: = ≠ > ≥ < ≤ (no between: a range is two checks on the same field). Values in invariant culture ("21.5"); a
+    value that does not parse is a validation error.
+  - YesNo: is yes, is no (no value box). The event's "true"/"1"/"yes" count as yes.
+- **Engine**: all checks of a row must hold. Stateful event: the condition is on while the event is on and its latest
+  values pass; every value change is checked again (a temperature crossing 40 turns the rule on and off). One-shot event:
+  the checks run on the values of that event. A field the event did not send, or a value that is no number for a number
+  check, fails the check. Checks are evaluated per event without per-rule scans (the rule's checks are compiled once).
+- **Which fields**: `EventField.Filter` true. Device triggers make their values checkable (today all value only); values
+  that are only for display (counts of Any device, the site name) stay value only.
+- **Stored rules**: `RuleCondition.Data` (equals filters) becomes "equals" checks when a rule is read; new field
+  `RuleCondition.Checks` (`[{"field","op","value"}]`, ops `eq`, `ne`, `contains`, `startsWith`, `gt`, `ge`, `lt`, `le`,
+  `yes`, `no`). The server validates them (field of the event, op fits the kind, at most 5, value length 200).
+- **Not part of it**: OR between checks (a second rule), hysteresis, comparing two fields, checks on schedules.
+- **Tests**: each operator per kind, missing field, not a number, value changes of a stateful event turning the rule on and
+  off, one-shot events, old `Data` filters read as checks, validation (6th check refused), the dialog rows headless with
+  screenshots, a Perf test with many rules and checks per event.
