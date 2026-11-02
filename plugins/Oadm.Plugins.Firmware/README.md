@@ -171,8 +171,9 @@ The Firmware column is refreshed by the status query: read for the first 50 devi
 when the grid shows them, at most 4 queries at a time; a row shows the chip "Reading" until its query answered.
 
 Options below the table in one row: Factory default none (default) / soft / hard (label left of the select, normal form
-spacing) and "Allow downgrade (requires a factory default)" next to it, the warnings below. **Upgrade** is enabled when at
-least one device would install. The dialog narrows the devices (`ShowForDevicesAsync`): tasks start only for the devices
+spacing) and "Allow downgrade (requires a factory default)" next to it, the warnings below. The footer button names the devices
+that will install ("Upgrade 1 device", "Upgrade 4,812 devices") and is enabled when at least one would; else it says
+"Upgrade" and its tooltip says why. The dialog narrows the devices (`ShowForDevicesAsync`): tasks start only for the devices
 that install a file, none for devices already up to date, without a file for their model or refused (Wrong product,
 Downgrade blocked). It uploads the files with `ITaskDialogContext.UploadAsync` (only those a device installs, one after
 the other, one progress bar, cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`,
@@ -262,7 +263,8 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225 MB from
   axis.com, checksum matches"). It runs after Validate file (the decision table first: nothing is downloaded for a device
   that is up to date or refused) and before Read firmware status. An `AxisDownloadException` ends the task with its
-  message (ending with "Nothing was changed."); the file is uploaded with `AxisDownloadedFile.OpenRead` and the handle is
+  message (ending with "Nothing was changed."); the file is uploaded with `AxisDownloadedFile.OpenRead` and its real `Length` (never the rounded size of the
+  listing, which only goes to the host's download) and the handle is
   disposed after the upload, also when it fails. Sites: the server sends
   it through the node like a chosen file.
 
@@ -286,7 +288,10 @@ Pending).
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back: Failed |
 | Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts with "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." Commit firmware asks again every 10 s for up to **5 min** (`BootWait`), not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password, check the address) |
 
-Failure messages say what the device runs now and what happens next: upload refused or interrupted ("still runs X"),
+Failure messages say what the device runs now and what happens next: upload refused or interrupted ("The upload was
+interrupted after 120 of 225 MB: the connection to the device was lost. The device still runs X."; the reason in plain
+words: the firmware file changed while it was sent, the device did not answer in time, the connection was lost; the
+exception only in the server log),
 did not restart, did not come back (with the auto-rollback time or the hard-reset address hint), rolled back, not
 committed ("rolls back to X by itself 30 minutes after booting unless the firmware is committed"). If the upload answer
 is lost after the whole body was sent (the device may already reboot), the task goes on and decides by the version after

@@ -240,6 +240,38 @@ public sealed class OnlineTaskTests : IDisposable
     }
 
     [Fact]
+    public async Task The_upload_announces_the_real_length_of_the_download_never_the_listed_size()
+    {
+        // axis.com lists 225.5M (rounded); the downloaded file has its own real length (here 2 MB).
+        var (ctx, device) = Setup();
+        _downloads.Content = Fixture.Image(size: 2 * 1024 * 1024 + 123);
+
+        await Run(ctx, Online());
+
+        Assert.Equal(236_453_888, Assert.Single(_downloads.Calls).Size); // the listed size goes to the host only
+        Assert.Equal(_downloads.Content, device.UploadedBytes); // all of it, nothing announced that was not sent
+        Assert.StartsWith("2 MB, device accepted", StepRun.Detail(ctx.Steps, FirmwareTaskPlugin.Steps.Upload), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("changed", "the firmware file changed while it was sent")]
+    [InlineData("timeout", "the device did not answer in time")]
+    [InlineData("reset", "the connection to the device was lost")]
+    [InlineData("other", "the connection to the device was lost")]
+    public void An_interrupted_upload_says_why_in_plain_words(string kind, string expected)
+    {
+        Exception ex = kind switch
+        {
+            "changed" => new HttpRequestException("Error while copying content to a stream.", new FirmwareFileChangedException("The firmware file is shorter than announced; it changed during the upload.")),
+            "timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 1200 seconds elapsing.", new TimeoutException()),
+            "reset" => new HttpRequestException("Error while copying content to a stream.", new IOException("Unable to write data to the transport connection.", new System.Net.Sockets.SocketException(10054))),
+            _ => new IOException("Unable to read data from the transport connection."),
+        };
+
+        Assert.Equal(expected, FirmwareTaskPlugin.UploadFailure(ex));
+    }
+
+    [Fact]
     public void The_payload_carries_versions_and_keeps_the_old_shape()
     {
         var online = FirmwarePayload.Parse(Online());

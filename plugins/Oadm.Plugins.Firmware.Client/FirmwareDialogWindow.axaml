@@ -95,7 +95,7 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="Upgrade" Command="{Binding StartCommand}" IsDefault="True"
+      <Button Classes="primary" Content="{Binding StartText}" Command="{Binding StartCommand}" IsDefault="True"
               ToolTip.Tip="{Binding StartBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

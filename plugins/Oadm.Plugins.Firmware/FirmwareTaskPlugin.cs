@@ -47,7 +47,7 @@ public sealed record FirmwareTaskTimings
 /// "Upgrade firmware..." task: installs an uploaded AXIS OS image through the fwmgr API, waits for the
 /// device to restart, verifies the new version and commits it. See README.md for the decision table.
 /// </summary>
-public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
+public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 {
     public const string PluginId = FirmwarePermissions.TaskPluginId;
     public const string StatusQuery = "status";
@@ -606,16 +606,44 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             && ex is HttpRequestException or IOException or TaskCanceledException)
         {
             // The whole image went out but the answer was lost (the device may already reboot). Verify by version.
-            ctx.Log(TaskLogLevel.Warning, "The upload completed but the device's answer was lost: " + ex.Message + " Checking the version after the restart.");
+            LogUploadError(ctx.Logger, ex);
+            ctx.Log(TaskLogLevel.Warning, "The upload completed but the device's answer was lost (" + UploadFailure(ex) + "). Checking the version after the restart.");
             step.Complete("Image sent; the device's answer was lost, the version is checked after the restart");
             return null;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or IOException or TaskCanceledException)
         {
+            // The plain reason for the task; the exception with its .NET texts only in the server log.
+            LogUploadError(ctx.Logger, ex);
             throw new InvalidOperationException(
-                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {totalMb} MB ({ex.Message}). The device still runs {oldVersion}."), ex);
+                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {totalMb} MB: {UploadFailure(ex)}. The device still runs {oldVersion}."), ex);
         }
     }
+
+    /// <summary>
+    /// Why an upload broke off, in plain words (CLAUDE.md Wording: no .NET texts in the task): the image changed while it
+    /// was sent, the device did not answer in time, or the connection was lost.
+    /// </summary>
+    internal static string UploadFailure(Exception ex)
+    {
+        for (var e = (Exception?)ex; e is not null; e = e.InnerException)
+        {
+            switch (e)
+            {
+                case FirmwareFileChangedException:
+                    return "the firmware file changed while it was sent";
+                case TimeoutException or TaskCanceledException:
+                    return "the device did not answer in time";
+                case System.Net.Sockets.SocketException:
+                    return "the connection to the device was lost";
+            }
+        }
+
+        return "the connection to the device was lost";
+    }
+
+    [Microsoft.Extensions.Logging.LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Warning, Message = "Upgrade firmware: the upload to the device broke off")]
+    private static partial void LogUploadError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
 
     /// <summary>
     /// Two steps sharing one timeout: "Install firmware" waits until the device goes offline to restart

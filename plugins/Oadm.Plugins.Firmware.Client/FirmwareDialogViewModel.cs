@@ -228,6 +228,17 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     public bool HasError => Error is not null;
 
+    /// <summary>The number of devices that will install (kept with the evaluation, not counted per read).</summary>
+    private int _installCount;
+
+    /// <summary>"Upgrade 4,812 devices"; "Upgrade" while no device would install.</summary>
+    public string StartText => _installCount switch
+    {
+        0 => "Upgrade",
+        1 => "Upgrade 1 device",
+        _ => string.Create(CultureInfo.InvariantCulture, $"Upgrade {_installCount:N0} devices"),
+    };
+
     /// <summary>Why Upgrade is disabled (its tooltip); null when it is enabled or an upload runs.</summary>
     public string? StartBlockedReason =>
         IsUploading ? null
@@ -236,7 +247,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         : FileError is not null ? FileError
         : _checking.Count > 0 ? "Checking the version on axis.com."
         : _chosenCount == 0 ? NothingChosenText
-        : !Devices.Any(d => d.WillInstall) ? "None of the selected devices can install the chosen firmware (see Result)."
+        : _installCount == 0 ? "None of the selected devices can install the chosen firmware (see Result)."
         : null;
 
 
@@ -1143,6 +1154,18 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     private void UpdateSummary()
     {
+        var install = 0;
+        foreach (var row in Devices)
+        {
+            install += row.WillInstall ? 1 : 0;
+        }
+
+        if (install != _installCount)
+        {
+            _installCount = install;
+            OnPropertyChanged(nameof(StartText));
+        }
+
         OnPropertyChanged(nameof(PathWarning));
         OnPropertyChanged(nameof(HasPathWarning));
         if (_chosenCount == 0)

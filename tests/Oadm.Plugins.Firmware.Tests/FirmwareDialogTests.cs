@@ -173,6 +173,26 @@ public sealed class FirmwareDialogViewModelTests
     }
 
     [Fact]
+    public async Task The_button_names_how_many_devices_install()
+    {
+        using var vm = Create();
+        Assert.Equal("Upgrade", vm.StartText);
+
+        await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
+        Assert.Equal("Upgrade 1 device", vm.StartText);
+
+        Device[] many = [.. Enumerable.Range(0, 4812).Select(i => new Device($"10.1.{i / 256}.{i % 256}", "P3265-V", "11.11.160"))];
+        using var big = new DialogViewModel(new FakeDialogContext(), many, new FakeFileSource()) { BusyPaintDelay = TimeSpan.Zero };
+        await big.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
+        Assert.Equal("Upgrade 4,812 devices", big.StartText);
+
+        await vm.SelectFileAsync("Q6135-LE_10_12_1.bin", CancellationToken.None);
+        Assert.Equal("Upgrade", vm.StartText); // nobody installs: disabled, the tooltip says why
+        Assert.False(vm.StartCommand.CanExecute(null));
+        Assert.NotNull(vm.StartBlockedReason);
+    }
+
+    [Fact]
     public async Task An_upgrade_to_axis_os_13_shows_one_line_with_the_axis_guide()
     {
         Device[] devices =
