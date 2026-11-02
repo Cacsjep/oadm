@@ -112,7 +112,9 @@ Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a t
   axis.com has 60 s for the headers and between two reads of the body.
 - **Texts**: `AxisDownloadTexts` of the SDK (`Oadm.Sdk.Plugins`), the same for the host and `FakeAxisDownloads`.
 - **Cache layout**: `axis-downloads/<sha256>/<file name of the URL>`, partial downloads in `axis-downloads/tmp/`; the last
-  use is the file's modification time. A sweep at the server's start and after every download.
+  use is the file's modification time. A sweep at the server's start and after every download; it walks the folder
+  without holding up downloads and tasks, and each delete checks again (under the lock) that no task uses the file and,
+  for an old one, that it was not used meanwhile.
 - A download that another user's task started and that fails because that user's sign-in expired is started again with
   the waiting user's own session. A task the system started gets no `AxisDownloads` (null).
 - Testing: `FakeAxisDownloads` of `Oadm.Sdk.Testing` (files by URL, `Expire()`, `Failure`), `FakeTaskContext.AxisDownloads`.

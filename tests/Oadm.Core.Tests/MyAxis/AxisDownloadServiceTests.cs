@@ -195,6 +195,41 @@ public sealed class AxisDownloadServiceTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task ASweepChecksEachDeleteAgainSoAUseDuringTheWalkKeepsTheFile()
+    {
+        var anna = await AnnaAsync();
+        await using (await anna.DownloadAsync(FileUri, Sha, Content.Length, null, CancellationToken.None))
+        {
+        }
+
+        var folder = Path.Combine(CacheDirectory, Sha);
+        var file = Directory.EnumerateFiles(folder).Single();
+        _time.Advance(TimeSpan.FromDays(8));
+
+        Action<string>? during = null;
+        using var sweeper = new AxisDownloadService(CacheDirectory, _sessions, new AxisComClient(_axis, _time), _time)
+        {
+            BeforeSweepDelete = sha => during?.Invoke(sha),
+        };
+
+        // A task takes the file after the walk found it too old: it stays.
+        during = sweeper.Acquire;
+        sweeper.Sweep();
+        Assert.True(File.Exists(file));
+        sweeper.Release(Sha);
+
+        // A task used it and let it go meanwhile: it stays too.
+        during = _ => File.SetLastWriteTimeUtc(file, _time.GetUtcNow().UtcDateTime);
+        sweeper.Sweep();
+        Assert.True(File.Exists(file));
+
+        during = null;
+        _time.Advance(TimeSpan.FromDays(8));
+        sweeper.Sweep();
+        Assert.False(Directory.Exists(folder));
+    }
+
+    [Fact]
     public async Task TheCacheKeepsAtMostItsLimitTheOldestGoFirstNeverOneInUse()
     {
         Assert.Equal(5L * 1024 * 1024 * 1024, AxisDownloadService.DefaultMaxBytes);

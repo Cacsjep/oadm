@@ -65,24 +65,22 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
     /// <summary>
     /// Removes what the cache no longer keeps: partial downloads of no running download, files unused for
     /// <see cref="KeepFor"/>, then the oldest until it holds at most <see cref="MaxBytes"/>; never a file in use. Called at
-    /// the server's start and after every download.
+    /// the server's start and after every download. The folder is walked without the lock (downloads and tasks go on);
+    /// each delete checks again under it that nothing uses the file.
     /// </summary>
     public void Sweep()
     {
-        lock (_gate)
+        try
         {
-            try
-            {
-                SweepLocked();
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                LogSweepFailed(ex);
-            }
+            SweepFiles();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogSweepFailed(ex);
         }
     }
 
-    private void SweepLocked()
+    private void SweepFiles()
     {
         if (!System.IO.Directory.Exists(Directory))
         {
@@ -92,19 +90,20 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
         var temp = Path.Combine(Directory, TempFolder);
         if (System.IO.Directory.Exists(temp))
         {
-            var active = _downloads.Values.Select(d => d.TempPath).ToHashSet(StringComparer.Ordinal);
-            foreach (var file in System.IO.Directory.EnumerateFiles(temp))
+            foreach (var file in System.IO.Directory.EnumerateFiles(temp).ToList())
             {
-                if (!active.Contains(file))
+                lock (_gate)
                 {
-                    TryDeleteFile(file);
+                    if (!_downloads.Values.Any(d => string.Equals(d.TempPath, file, StringComparison.Ordinal)))
+                    {
+                        TryDeleteFile(file);
+                    }
                 }
             }
         }
 
-        var now = _time.GetUtcNow().UtcDateTime;
         var kept = new List<(string Sha, string Folder, long Length, DateTime LastUse)>();
-        foreach (var folder in System.IO.Directory.EnumerateDirectories(Directory))
+        foreach (var folder in System.IO.Directory.EnumerateDirectories(Directory).ToList())
         {
             var sha = Path.GetFileName(folder);
             if (!IsSha256(sha))
@@ -115,15 +114,20 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
             var file = System.IO.Directory.EnumerateFiles(folder).FirstOrDefault();
             if (file is null)
             {
-                TryDeleteFolder(folder);
+                lock (_gate)
+                {
+                    if (!_inUse.ContainsKey(sha))
+                    {
+                        TryDeleteFolder(folder); // a download that is moving its file in holds the folder
+                    }
+                }
+
                 continue;
             }
 
             var info = new FileInfo(file);
-            var inUse = _inUse.ContainsKey(sha);
-            if (!inUse && now - info.LastWriteTimeUtc >= KeepFor)
+            if (_time.GetUtcNow().UtcDateTime - info.LastWriteTimeUtc >= KeepFor && TryDeleteUnused(sha, folder, file, checkAge: true))
             {
-                TryDeleteFolder(folder);
                 continue;
             }
 
@@ -138,10 +142,35 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
                 break;
             }
 
-            if (!_inUse.ContainsKey(entry.Sha) && TryDeleteFolder(entry.Folder))
+            if (TryDeleteUnused(entry.Sha, entry.Folder, null, checkAge: false))
             {
                 total -= entry.Length;
             }
+        }
+    }
+
+    /// <summary>
+    /// Deletes a cached file's folder when nothing uses it, checked under the lock (Acquire waits for the delete); with
+    /// <paramref name="checkAge"/> also only when it is still unused for <see cref="KeepFor"/> (a task may have used it since
+    /// the walk).
+    /// </summary>
+    private bool TryDeleteUnused(string sha, string folder, string? file, bool checkAge)
+    {
+        BeforeSweepDelete?.Invoke(sha);
+        lock (_gate)
+        {
+            if (_inUse.ContainsKey(sha))
+            {
+                return false;
+            }
+
+            if (checkAge && file is not null && File.Exists(file)
+                && _time.GetUtcNow().UtcDateTime - File.GetLastWriteTimeUtc(file) < KeepFor)
+            {
+                return false;
+            }
+
+            return TryDeleteFolder(folder);
         }
     }
 
@@ -442,7 +471,10 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
 
     private static bool IsSha256(string value) => value.Length == 64 && value.All(char.IsAsciiHexDigitLower);
 
-    private void Acquire(string sha)
+    /// <summary>Called after the walk, before a cached file's delete is checked (tests: a use in between).</summary>
+    internal Action<string>? BeforeSweepDelete { get; init; }
+
+    internal void Acquire(string sha)
     {
         lock (_gate)
         {
@@ -450,7 +482,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
         }
     }
 
-    private void Release(string sha)
+    internal void Release(string sha)
     {
         lock (_gate)
         {
