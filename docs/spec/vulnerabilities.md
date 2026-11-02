@@ -22,10 +22,19 @@ grid columns), read only, nothing is ever written to a device.
      `<model>_firmware` product only that model.
   3. Without NVD's ranges the free text is read as it stands; an open end ("or later") is left out (it would hit every
      current device). A track end ("10.5 – 11.5") means the whole track (below 11.6).
+- NVD configurations "running on" exactly one hardware model (`AND` with one `cpe:2.3:h:axis:<model>`) are that model's range,
+  never every AXIS OS device; a configuration with several models (the devices of a chip) stays AXIS OS-wide. NVD's ranges
+  taken for the record's AXIS OS entry keep that entry's chips; NVD's single-model ranges come along once and only for models
+  the record does not name itself (its own entry wins).
+- Chips: an entry's `platforms` (cve.org) limit it to those chips, short like the SoC column ("ARTPEC 8" and "ARTPEC-8" are
+  `A8`, "Ambarella CV25" is `CV25`, "i.MX6 SX" stays). A platform without a digit ("Linux") is no chip and limits nothing.
+- One entry per model and chips, each range once: NVD repeats ranges per configuration, and a record can name a product
+  twice.
 - OADM's format (`VulnerabilityList`, JSON): the list's date, where it came from (`release`, `server`, `client`) and per CVE:
   id, published, CVSS score and severity (the CNA's, else the ADP's, else NVD's), the English description, the Axis advisory
   link (a reference on axis.com) and the affected firmware (`model` or every AXIS OS device, ranges with `from`, `lessThan`
-  or `lessThanOrEqual`, or a whole `track`). A CVE without a matchable range is kept out.
+  or `lessThanOrEqual`, or a whole `track`, and optional `socs`: the chips it is limited to). A CVE without a matchable range
+  is kept out. New fields are optional: older clients ignore them (a list with `socs` still reads, without the chip limit).
 - **Base list:** `src/Oadm.Server/Vulnerabilities/axis-vulnerabilities.json` (about 60 CVEs, 60 KB), embedded, made by
   `tools/Oadm.Vulnerabilities` (online, or `--nvd <answer> --records <folder>` from saved answers; prints what it left out
   or took from NVD; `--if-changed` keeps the file when only the date would change, `--summary <file>` writes the added,
@@ -46,7 +55,7 @@ Server setting `Vulnerabilities.Update`, Settings card **Vulnerabilities** ("Upd
 No device data leaves the network: the calls only read the public CVE list. The server keeps the newest list
 (`vulnerabilities.json` in the data folder; a newer release's base list wins over an older stored one, a broken file falls
 back to the base list), refuses an upload older than the one it has and one that does not parse or is larger than the
-limits (5,000 CVEs, 2 MB, valid ids and versions). The card shows the count, the list's date and where it came from.
+limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64 characters per entry, none empty). The card shows the count, the list's date and where it came from.
 
 ## Devices page
 
@@ -63,13 +72,14 @@ limits (5,000 CVEs, 2 MB, valid ids and versions). The card shows the count, the
   Fixed in (the fixed version of each affected device's track, lowest first, "Not listed" without one), Devices (several
   devices only: how many it affects, the first 12 in its tooltip, then "and 5 more"), the full description (wraps, no line
   limit: `TextBlock.cellText.fullText`) and an "Advisory" link (https only, opens the browser). A snapshot taken when it
-  opens; the selection is grouped by its shared per-model-and-firmware result first (one pass at 100,000 devices).
+  opens; the selection is grouped by its shared per-model-firmware-and-chip result first (one pass at 100,000 devices).
 - Search: a CVE id ("CVE-2024-6509", any case) shows the devices it may affect.
 - Matching: model and firmware version against the ranges, numbers compared part by part (6.50.5.19, 11.11.93,
   12.10.36; text after the numbers ignored). Ranges for every AXIS OS device apply from 5.0 on: devices with their own
-  firmware line (door controllers on 1.x such as the A1001) only match ranges naming their model. Done in the client per
-  model and firmware and cached (100,000 devices share a few dozen versions): a new list for 100,000 devices about 50 ms,
-  a search by CVE about 70 ms. "May be affected": the ranges do not say whether the affected feature is in use.
+  firmware line (door controllers on 1.x such as the A1001) only match ranges naming their model. An entry with `socs`
+  matches only devices with one of those chips (the device's `Soc`, compared short, upper case, letters and digits only); a
+  device whose chip is not known yet may be affected and matches. Done in the client per model, firmware and chip and cached
+  (100,000 devices share a few dozen versions): a new list for 100,000 devices about 80 ms, a search by CVE about 70 ms. "May be affected": the ranges do not say whether the affected feature is in use.
 
 ## Where
 
@@ -86,10 +96,11 @@ limits (5,000 CVEs, 2 MB, valid ids and versions). The card shows the count, the
 ## Tests
 
 `tests/Oadm.Server.Tests/Vulnerabilities`: the feed from recorded answers (`Fixtures/Vulnerabilities`: six cve.org records
-and the NVD page: exact ranges, free text with NVD's ranges, models, a track list, Camera Station left out), every text form,
-model codes, the version compare, the matcher (worst first, fixed build, 5.0 rule, cache), the list's limits; the store
+and the NVD page: exact ranges, free text with NVD's ranges, models, a track list, Camera Station left out, a chip with NVD's
+repeated and single-model ranges; `Platforms/`: exact ranges per chip), every text form, model codes, platforms as chips, the
+version compare, the matcher (worst first, fixed build, 5.0 rule, chips and an unknown chip, cache), the list's limits; the store
 (newest wins across a restart, broken file, newer release); the service (modes, permissions, audit, no outgoing call while
 off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text, sort and tooltip, rows following
-a new list and a firmware update, the CVE search, the Settings card, the context menu entry and the window
+a new list, a firmware update and a chip, the CVE search, the Settings card, the context menu entry and the window
 (`DeviceVulnerabilitiesWindowTests`); headless screenshots (`VulnerabilityHeadlessTests`,
 `OADM_SCREENSHOT_DEVICES` renders a JSON list of real devices); Perf at 100,000 devices.
