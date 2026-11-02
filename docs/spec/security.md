@@ -12,6 +12,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   page): Admin only, every reveal in the audit log, refused while no user exists. Credentials typed for a login (RetryAuth,
   the context menu's "Log in") or a first password travel only client -> server.
 - Never log passwords or digest headers.
+- MyAxis sessions ([myaxis.md](myaxis.md), spec): per user, encrypted like device passwords with the user id as associated
+  data, never in a gRPC answer, a log or a backup; sent only to www.axis.com.
 
 ## TLS
 

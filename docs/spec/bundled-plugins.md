@@ -54,8 +54,9 @@ the version and commits it.
 - AXIS OS 13 and later: a device with an installed application that is unsigned or does not declare the target version
   (bundled ones excepted, README "Installed applications") is "Apps block it" and gets no task; the task checks again
   before the upload and refuses with "Nothing was changed.".
-- Firmware online (spec, not built; README "Firmware online"): how the newest version of each major of a model is found
-  on the public listings of www.axis.com/ftp; the downloads need a MyAxis login, so nothing is downloaded by OADM.
+- Firmware online (spec, not built; README "Firmware online"): per model a version from axis.com (Recommended = newest
+  on its own track, Latest LTS, Latest active) or a chosen file; the server downloads with the starting user's MyAxis
+  sign-in ([myaxis.md](myaxis.md)), checks the SHA-256 of axis.com and keeps the file 7 days (at most 5 GB).
 
 ## Network settings and Assign IP address
 

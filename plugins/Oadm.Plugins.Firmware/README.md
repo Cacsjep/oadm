@@ -169,8 +169,9 @@ with several files also `"files":[{"fileId","fileName"}]`.
 
 ## Firmware online (spec, not built)
 
-Researched with the maintainer 2026-10-29, parked: a built version (sign-in through the user's MyAxis session cookie) was
-dropped as too fragile. What stays is how to find the firmware of a model on the Axis download site.
+Decisions of 2026-11-02 (a clean-room build; the version parked on 2026-10-29 is not reused). Each model of the selection
+gets a version from axis.com or a chosen file; the server downloads the versions with the MyAxis sign-in of the user who
+starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
 
 - **Where.** The public listings `https://www.axis.com/ftp/pub_soft/MPQT/` (cameras) and `.../PACS/` (audio, access
   control, intercoms, I/O, switches; a product in both is taken from MPQT): one folder per product, in it one folder per
@@ -186,14 +187,41 @@ dropped as too fragile. What stays is how to find the firmware of a model on the
   newest major ends on an LTS minor has no active track (C1410 on 11.11). A version only in `latest/` (named by
   `ver.txt`, P1455-LE 11.11.212) counts with the `latest/` file. Latest is what `ver.txt` names, else the version with
   the .bin of `latest/`, else the highest. Versions without a .bin, a SHA-256 or a size of at least 1 MB are left out.
-- **Lookup.** Only the models of the selected devices, never the whole site: both root listings, then per model its
-  folder, `latest/`, `ver.txt` and the newest folder of each track; at most 8 models at a time, no cache (the site
-  changes during the day). Each page 0.1 to 0.15 s; measured 2026-10-29: 5 models 1 s, 50 models 3 s, 100 models 5 s.
+- **Lookup.** The server, query `online` (read only, public pages, no sign-in needed). Only the models of the selected
+  devices, never the whole site: both root listings, then per model its folder, `latest/`, `ver.txt` and the newest
+  folder of each track; at most 8 models at a time, no cache (the site changes during the day). Each page 0.1 to 0.15 s;
+  measured 2026-10-29: 5 models 1 s, 50 models 3 s, 100 models 5 s. The answer lists every version folder of each track
+  (newest first); the size and SHA-256 of an older version are read when it is chosen (query `onlineVersion`). No answer
+  from axis.com: "axis.com could not be reached." above the table, the rows keep Choose file.
+- **Track names** as on axis.com: the active track "AXIS OS 13", "LTS 2026 · 12.11", "LTS 2024 · 11.11", "LTS 2022 ·
+  10.12", "PSS 9.80", "PSS 8.40", "PSS 6.50" (`AxisOsUpgradePath.LtsTracks` gets the LTS year).
 - **Downloads need a login.** Every .bin below `/ftp/pub_soft/` answers `302` to `/my-axis/login`; the listings and
-  `ver.txt` are public. A download by OADM would need the user's MyAxis session (cookie `axis_connect_session_sid`, not
-  a public Axis API), which is why the built version was dropped.
+  `ver.txt` are public. OADM downloads with the MyAxis sign-in of the user who starts the run, through the host
+  (`ctx.AxisDownloads`); the plugin never sees the session.
+- **Dialog.** The file row becomes a table with one row per model and track of the selected devices ("P3265-V", "11.11",
+  "4 devices"): Model, Devices, Firmware now, **Version**. Version is a select grouped by track names, every version of
+  the model newest first, and as the last entry **Choose file** (a local .bin for that row, checked as today). Above the
+  table, command buttons that set every row:
+  - **Recommended**: the newest version on the row's own track (11.11 stays 11.11, the active track stays active, 9.80
+    stays 9.80); a track axis.com no longer lists for the model: its newest LTS.
+  - **Latest LTS**: the newest LTS track of the model.
+  - **Latest active**: the model's active track; a model without one (it ends on an LTS) gets its newest version.
+  A row whose devices already run the chosen version shows "Up to date"; a row the model is not listed for (P12-MkIII)
+  offers Choose file only. Signed in, the dialog opens with Recommended; not signed in, every row starts on Choose
+  file, the versions show for information, choosing one says "Sign in to MyAxis to download from axis.com." with
+  **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`). The decision table, the upgrade path advice and the
+  apps check apply unchanged: an online version is a file with a known product and version.
+- **Payload.** Per row either `fileId` (uploaded as today, only chosen files) or `online` (`product`, `version`); the
+  server reads that version's folder itself for the URL, size and SHA-256 and never takes them from the client. The run
+  is refused with "Sign in to MyAxis to download from axis.com." when a row is online and the user has no session.
+- **Download firmware** (task step before Upload firmware, Skipped "A file was chosen." for a chosen file): the host's
+  `DownloadAsync` with progress ("68 of 225 MB", the step's percent); tasks of the same file share one download, a second
+  run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"). Sites: the server sends
+  it through the node like a chosen file.
 
 ## Task steps
+
+Online files add "Download firmware" before Upload firmware ("Firmware online" above).
 
 Every device request and every wait is a named step (`FirmwareTaskPlugin.Steps`, all planned up front and shown as
 Pending).

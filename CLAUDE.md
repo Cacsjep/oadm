@@ -230,6 +230,10 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
   settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
+- **[MyAxis sign-in](docs/spec/myaxis.md)** (spec, not built): each user signs in to their own MyAxis account (title
+  bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
+  server, sent only to axis.com, never to plugins; Upgrade firmware downloads AXIS OS with it (Recommended, Latest LTS,
+  Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
 - **[Self update](docs/spec/self-update.md)** (spec, not built): Install now in the new version dialog updates the server
   and the Administrator's client with their own installers run silently by the same program in update mode
   (no extra app); Administrators only, stable releases only, SHA-256 of the release, never during a task; the server keeps
