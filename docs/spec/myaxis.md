@@ -27,18 +27,22 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 ## In the client
 
 - **Button**: an icon-only `ui:ToolbarButton` (`TitleMyAxis`) in the title bar, directly left of Help, styled like Help.
-  Every logged-in user sees it. Tooltip "Sign in to MyAxis"; signed in: "Signed in to MyAxis"; expired: "Sign in to
+  Every logged-in user sees it; hidden while the server has no MyAxis sign-in (an older server). Tooltip "Sign in to MyAxis"; signed in: "Signed in to MyAxis"; expired: "Sign in to
   MyAxis again" with a warning dot.
 - **Signed in**: a click opens a small flyout: "Signed in to MyAxis since 2 Nov 2026" and **Sign out**.
 - **Sign-in window**: `MyAxis/MyAxisSignInWindow`, an OADM window (about 520 x 720) with the embedded browser
   (`NativeWebView` of Avalonia.Controls.WebView, the package of Help and Web View), never the pop-up `NativeWebDialog`
   (on Linux it has no way to the cookies). Start page
-  `https://www.axis.com/my-axis/login?axis_destination=https%3A%2F%2Fwww.axis.com%2F`.
+  `https://www.axis.com/my-axis/login?axis_destination=https%3A%2F%2Fwww.axis.com%2Fftp%2Fpub_soft%2F` (a light page to
+  return to). Links that open a new window open in the same one; no developer tools.
 - After each page that finished loading on `www.axis.com` outside `/my-axis/login` (also with a language prefix such as
-  `/en-us/my-axis/login`) the window reads the cookies of `https://www.axis.com`. With `axis_connect_session_sid` it
+  `/en-us/my-axis/login`; pages of the login hosts such as `auth.axis.com` never count) the window reads the cookies of `https://www.axis.com`. With `axis_connect_session_sid` it
   sends `name=value` to the server (`MyAxisService.SignIn`) and shows "Checking the sign-in" until the server answers;
-  accepted: the window closes, refused: "MyAxis did not accept the sign-in. Try again." and the login page again.
-- The browser keeps nothing on disk: WebView2 InPrivate, WKWebView a non-persistent store, WPE and WebKitGTK ephemeral.
+  accepted: the window closes. The cookie can come a moment before axis.com finished the sign-in: a refusal (or no
+  cookie yet) is tried again up to 6 times, 500 ms apart, before "MyAxis did not accept the sign-in. Try again." and the
+  login page again. The client learns of an expired sign-in when it connects and when the button is clicked.
+- The browser keeps nothing on disk: WebView2 InPrivate, WKWebView a non-persistent store, WebKitGTK ephemeral, WPE a
+  temporary folder deleted when the window closes (the package has no ephemeral option for WPE).
 - No embedded browser (the Help texts `EmbeddedBrowserTexts`) or no way to the cookies: the button's window says
   "Sign-in is not available here." and Upgrade firmware works with chosen files only.
 
