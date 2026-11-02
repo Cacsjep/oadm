@@ -95,7 +95,10 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 
 Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a task.
 
-- `HasSession`: whether the user who started the task is signed in.
+- `HasSession`: whether the user who started the task is signed in. The server reads it once per run and keeps it for a
+  minute (`RunAxisDownloads`, then it reads again: a sign-in during a long run counts), not once per device; the devices of
+  a run share one `AxisDownloads`, so an expired sign-in found by one is seen by all. A read that fails is logged and the
+  run's tasks get no `AxisDownloads` (null): a task that does not use it never fails for it.
 - `DownloadAsync(uri, sha256, size, progress, ct)`: the file, from the cache or downloaded with that user's session.
   Refused for any URL outside the two download folders above. One download per URL at a time: tasks that need the same
   file wait for it and see the same progress.

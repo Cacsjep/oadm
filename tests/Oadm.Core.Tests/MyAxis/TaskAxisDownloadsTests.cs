@@ -48,16 +48,88 @@ public sealed class TaskAxisDownloadsTests : DeviceGroupTestBase
         Assert.Equal([anna.UserId], _source.Users);
     }
 
+    [Fact]
+    public async Task TheSignInIsReadOncePerRunNotPerDevice()
+    {
+        var devices = new List<Guid>();
+        for (var i = 0; i < 5; i++)
+        {
+            devices.Add((await AddDeviceAsync($"ACCC8E00001{i}")).Id);
+        }
+
+        var seen = new ConcurrentQueue<IAxisDownloads?>();
+        Assert.True(_registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.dl", (ctx, _, _) =>
+            {
+                seen.Enqueue(ctx.AxisDownloads);
+                return Task.CompletedTask;
+            }),
+            new PluginOrigin("test.t.dl", "1.0.0", null) { MinSdkVersion = SdkInfo.Version }));
+        var anna = CallerOf(await Users.AddAsync("anna", "pw", BuiltInRoles.OperatorId, DeviceScope.All, Ct));
+        await using var engine = Engine();
+
+        await engine.RunAsync("t.dl", await (await Views.ForAsync(anna, Ct)).GetAsync(devices, Ct), null, TaskCaller.Of(anna), Ct);
+        await Eventually.TrueAsync(() => seen.Count == 5, "every device ran");
+
+        Assert.All(seen, d => Assert.Same(_source.Given, d));
+        Assert.Single(_source.Users);
+    }
+
+    [Fact]
+    public async Task ASignInThatCannotBeReadNeverFailsATask()
+    {
+        var device = await AddDeviceAsync("ACCC8E000001");
+        var seen = new ConcurrentQueue<IAxisDownloads?>();
+        Assert.True(_registry.RegisterTaskPlugin(
+            new DelegateTaskPlugin("t.dl", (ctx, _, _) =>
+            {
+                seen.Enqueue(ctx.AxisDownloads);
+                return Task.CompletedTask;
+            }),
+            new PluginOrigin("test.t.dl", "1.0.0", null) { MinSdkVersion = SdkInfo.Version }));
+        var anna = CallerOf(await Users.AddAsync("anna", "pw", BuiltInRoles.OperatorId, DeviceScope.All, Ct));
+        _source.Fails = true;
+        await using var engine = Engine();
+
+        var ids = await engine.RunAsync("t.dl", await (await Views.ForAsync(anna, Ct)).GetAsync([device.Id], Ct), null, TaskCaller.Of(anna), Ct);
+        await engine.WaitForCompletionAsync(ids[0], Ct).WaitAsync(TimeSpan.FromSeconds(30), Ct);
+
+        Assert.Equal(TaskState.Done, (await Db.Get<EfTaskStore>().GetAsync(ids[0], Ct))!.State);
+        Assert.Null(Assert.Single(seen));
+    }
+
+    [Fact]
+    public async Task ARunReadsTheSignInAgainAfterAMinute()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 11, 2, 10, 0, 0, TimeSpan.Zero));
+        var runs = new RunAxisDownloads(_source, time, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
+        var batch = Guid.NewGuid();
+        var user = Guid.NewGuid();
+
+        Assert.Same(_source.Given, await runs.ForAsync(batch, user, Ct));
+        Assert.Same(_source.Given, await runs.ForAsync(batch, user, Ct));
+        Assert.Single(_source.Users);
+
+        await runs.ForAsync(Guid.NewGuid(), user, Ct); // another run reads for itself
+        Assert.Equal(2, _source.Users.Count);
+
+        time.Advance(RunAxisDownloads.KeepFor);
+        await runs.ForAsync(batch, user, Ct); // a sign-in during a long run counts
+        Assert.Equal(3, _source.Users.Count);
+    }
+
     private sealed class RecordingSource : IAxisDownloadSource
     {
         public IAxisDownloads Given { get; } = new NoDownloads();
 
         public ConcurrentQueue<Guid> Users { get; } = new();
 
+        public bool Fails { get; set; }
+
         public Task<IAxisDownloads> ForUserAsync(Guid userId, CancellationToken ct)
         {
             Users.Enqueue(userId);
-            return Task.FromResult(Given);
+            return Fails ? Task.FromException<IAxisDownloads>(new InvalidOperationException("database is locked")) : Task.FromResult(Given);
         }
     }
 
