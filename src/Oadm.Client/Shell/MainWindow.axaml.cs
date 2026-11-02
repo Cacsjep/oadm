@@ -47,6 +47,10 @@ public partial class MainWindow : Window
             _vm.MyRoleRequested -= OnMyRoleRequested;
             _vm.HelpWindowRequested -= OnHelpWindowRequested;
             _vm.CloseHelpRequested -= OnCloseHelpRequested;
+            if (_vm.MyAxis is { } oldMyAxis)
+            {
+                oldMyAxis.SignInRequested -= OnMyAxisSignInRequested;
+            }
         }
 
         _vm = vm;
@@ -57,6 +61,10 @@ public partial class MainWindow : Window
             vm.MyRoleRequested += OnMyRoleRequested;
             vm.HelpWindowRequested += OnHelpWindowRequested;
             vm.CloseHelpRequested += OnCloseHelpRequested;
+            if (vm.MyAxis is { } myAxis)
+            {
+                myAxis.SignInRequested += OnMyAxisSignInRequested;
+            }
         }
     }
 
@@ -64,6 +72,9 @@ public partial class MainWindow : Window
 
     /// <summary>"Your role": a modal dialog over the main window.</summary>
     private void OnMyRoleRequested(object? sender, MyRoleViewModel role) => _ = new MyRoleWindow { DataContext = role }.ShowDialog(this);
+
+    /// <summary>The MyAxis button while signed out: the sign-in window over this window.</summary>
+    private void OnMyAxisSignInRequested(object? sender, EventArgs e) => _ = ((MyAxis.MyAxisAccount)sender!).SignInAsync(this);
 
     private void OnClosePluginWindowsRequested(object? sender, string? pluginId) => ClosePluginWindows(pluginId);
 

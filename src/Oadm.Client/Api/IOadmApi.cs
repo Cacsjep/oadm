@@ -352,6 +352,15 @@ public interface IOadmApi
     /// </summary>
     Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no support report.");
 
+    // MyAxisService (docs/spec/myaxis.md): every logged-in user, always the caller's own sign-in. Default: a server
+    // without it (the title bar hides the button on UNIMPLEMENTED).
+    Task<MyAxisStateReply> GetMyAxisAsync(CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no MyAxis sign-in."));
+
+    /// <summary>Keeps the session after axis.com accepted it ("axis_connect_session_sid=&lt;value&gt;", a secret: never logged).</summary>
+    Task<MyAxisStateReply> SignInMyAxisAsync(string session, CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no MyAxis sign-in."));
+
+    Task<MyAxisStateReply> SignOutMyAxisAsync(CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no MyAxis sign-in."));
+
     // LicenseService (Settings page, card License): every signed-in user reads; Import and Remove are Administrator only
     Task<ProLicenseState> GetLicenseAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no license.");
 

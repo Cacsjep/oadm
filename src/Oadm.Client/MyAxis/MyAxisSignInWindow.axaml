@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:myaxis="using:Oadm.Client.MyAxis"
+        x:Class="Oadm.Client.MyAxis.MyAxisSignInWindow"
+        x:DataType="myaxis:MyAxisSignInViewModel"
+        Title="{x:Static myaxis:MyAxisSignInViewModel.WindowTitle}"
+        Width="520" Height="720" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Axis's own login page in the embedded browser (the code-behind creates it). The user types the password and code
+       there, OADM never sees them. Checking: the overlay; refused: one error line above the login page. -->
+  <Grid RowDefinitions="Auto,Auto,*">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static myaxis:MyAxisSignInViewModel.WindowTitle}" />
+    <ui:StatusChip Grid.Row="1" x:Name="Refused" IsError="True" Text="{Binding ErrorText}" IsVisible="{Binding HasError}"
+                   MaxLines="3" HorizontalAlignment="Left" Margin="16,0,16,8" />
+    <Panel Grid.Row="2">
+      <Panel x:Name="BrowserHost" IsVisible="{Binding ShowsBrowser}" />
+      <ui:StatusChip x:Name="NotAvailable" IsError="True" Text="{Binding NotAvailableText}" IsVisible="{Binding IsNotAvailable}"
+                     MaxLines="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
+      <ui:LoadingOverlay x:Name="Checking" Text="{x:Static myaxis:MyAxisSignInViewModel.CheckingText}" IsVisible="{Binding IsChecking}" />
+    </Panel>
+  </Grid>
+</Window>

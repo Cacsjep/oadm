@@ -9,6 +9,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
+- Sign in to your MyAxis account from the title bar.
 - Devices list: Vulnerabilities in the context menu lists the CVEs of the selected devices with the full description and a link to the Axis advisory.
 - Plugin SDK 0.9.0.
 
