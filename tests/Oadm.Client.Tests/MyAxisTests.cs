@@ -280,6 +280,21 @@ public sealed class MyAxisTests
     }
 
     [Fact]
+    public async Task A_wrong_code_or_password_shows_the_page_of_Axis_not_the_connection_error()
+    {
+        var (signIn, _) = NewSignIn(Substitute.For<IOadmApi>(), new FakeTimeProvider());
+        var cookies = new FakeCookies(_ => []);
+        var otpPage = new Uri("https://auth.axis.com/authn/authentication/email-wcode/enter-otp");
+
+        await signIn.PageLoadedAsync(MyAxisPages.StartAddress, cookies, CancellationToken.None);
+        await signIn.PageLoadedAsync(otpPage, cookies, CancellationToken.None, succeeded: false); // Axis answers 4xx
+
+        Assert.Null(signIn.LoadErrorText);
+        Assert.True(signIn.IsBrowserVisible);
+        Assert.Equal(0, cookies.Reads);
+    }
+
+    [Fact]
     public async Task The_session_cookie_after_the_login_is_sent_and_the_window_closes()
     {
         var api = Substitute.For<IOadmApi>();

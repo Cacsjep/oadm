@@ -180,6 +180,7 @@ public sealed partial class MyAxisSignInViewModel : ObservableObject
         if (succeeded)
         {
             LoadErrorText = null;
+            _reachedAxis = true;
         }
 
         var reads = MyAxisPages.ReadsCookies(page);
@@ -196,7 +197,9 @@ public sealed partial class MyAxisSignInViewModel : ObservableObject
                 _signingIn = false;
             }
 
-            if (!succeeded && !IsChecking)
+            // Once axis.com answered, a "failed" page is its own answer (a wrong one-time code or password comes with an
+            // HTTP error status): the user reads Axis's message. Only a failure before any answer means not reachable.
+            if (!succeeded && !IsChecking && !_reachedAxis)
             {
                 LoadErrorText = MyAxisTexts.NotReachable;
             }
@@ -213,6 +216,9 @@ public sealed partial class MyAxisSignInViewModel : ObservableObject
 
         await CheckAsync(cookies, ct).ConfigureAwait(true);
     }
+
+    /// <summary>Whether a page of axis.com loaded at least once in this window.</summary>
+    private bool _reachedAxis;
 
     /// <summary>The load error's Try again: the login page once more.</summary>
     [RelayCommand]

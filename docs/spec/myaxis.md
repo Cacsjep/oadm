@@ -47,8 +47,9 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
   download listing never shows), through the cookie read and the retries, then "Checking the sign-in" while the server
   answers, until the window closes. A refusal loads the login page again under "Loading MyAxis".
 - A page that fails to load (or does not finish within 30 s, `TimeProvider`) shows "axis.com could not be reached. Check
-  the internet connection." with **Try again** (the start page again) in place of the browser. A failed page after the
-  login still reads the cookies.
+  the internet connection." with **Try again** (the start page again) in place of the browser. Only until axis.com answered once: the browser
+  reports Axis's own error pages (a wrong one-time code or password) as failed, so later the page stays visible with
+  Axis's message; the 30 s limit still applies. A failed page after the login still reads the cookies.
 - The browser keeps nothing on disk: WebView2 InPrivate, WKWebView a non-persistent store, WebKitGTK ephemeral, WPE a
   temporary folder deleted when the window closes (the package has no ephemeral option for WPE).
 - No embedded browser (the Help texts `EmbeddedBrowserTexts`) or no way to the cookies: the button's window says
