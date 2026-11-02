@@ -13,7 +13,7 @@ const feature = (name: string, text: string): Line => ({ html: `${name}<small>${
 // The sequence, in order.
 const scenes: Line[] = [
 	// The opening claim, larger than the other scenes.
-	{ html: '<span class="m-hero">Open source<br /><em>AXIS device management.</em></span><small>Built by Professionals. For Professionals.</small>', seconds: 4.5 },
+	{ html: '<span class="m-hero">Open source<br /><em>AXIS device management.</em></span><small>For installers and integrators who manage Axis devices.</small>', seconds: 4.5 },
 	line('Your own tools.<br /><em>As plugins.</em>'),
 	{ html: 'Most features are <em>plugins.</em><small>Turn the optional ones on or off.</small>', seconds: 2.7 },
 	feature('VAPIX Commander', 'Any VAPIX command, rolled out to hundreds of devices.'),
@@ -48,7 +48,7 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 ---
 
 <div class="motion not-content" data-motion={config} role="img"
-	aria-label="Open source AXIS device management. Built by Professionals. For Professionals. VAPIX Commander, event rules, device triggers, Action Rule Editor, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live preview, Live View, Edge Recording Export and tags.">
+	aria-label="Open source AXIS device management. For installers and integrators who manage Axis devices. VAPIX Commander, event rules, device triggers, Action Rule Editor, snapshot report, hardening scan, DHCP and NTP server, Metadata Monitor, Image Health Dashboard, I/O Monitor, Web View, live preview, Live View, Edge Recording Export and tags.">
 	{timed.map((scene) => (
 		<div class="m-line" data-scene>
 			<span class="m-measure" set:html={scene.html} />
@@ -121,64 +121,14 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 	const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
 	const easeIn = 'cubic-bezier(0.55, 0, 0.75, 0.2)';
 
-	/** How the slices come in and go, one kind per scene in turn. */
-	type Kind = 'side' | 'vertical' | 'wipe' | 'halves' | 'zoom' | 'diagonal';
-	const KINDS: Kind[] = ['side', 'vertical', 'wipe', 'halves', 'zoom', 'diagonal'];
-
-	/** The upper slices come from the left, the lower ones from the right. */
-	const half = (i: number) => (i < SLICES / 2 ? -1 : 1);
-
-	type Band = (left: number, right: number) => string;
-	type Frames = [number, Keyframe][];
-
-	/** The entry frames of one slice, from begin until just before begin + 0.75 (the resting frame follows). */
-	function entry(kind: Kind, i: number, side: number, begin: number, rest: Keyframe, band: Band): Frames {
-		switch (kind) {
-			case 'side':
-			case 'vertical':
-			case 'halves':
-			case 'diagonal': {
-				// Blur and letter spacing are done early: the end of the move is a plain glide, no last sharpening.
-				const from = kind === 'vertical' ? `translate(0, ${side * 40}%) scale(1)`
-					: kind === 'diagonal' ? `translate(${side * 6}%, ${-side * 30}%) scale(1)`
-					: `translate(${(kind === 'halves' ? half(i) : side) * 9}%, 0) scale(1)`;
-				return [
-					[begin, { ...rest, transform: from, opacity: 0, filter: 'blur(10px)', letterSpacing: '0.1em', easing: ease }],
-					[begin + 0.45, { filter: 'blur(0)', letterSpacing: '-0.02em' }],
-				];
-			}
-			case 'wipe':
-				// Each band is uncovered from the left out of a light blur.
-				return [
-					[begin, { ...rest, clipPath: band(-20, 120), filter: 'blur(6px)', opacity: 0.4, easing: ease }],
-					[begin + 0.4, { filter: 'blur(0)', opacity: 1 }],
-					[begin + 0.6, { clipPath: band(-20, -20) }],
-				];
-			case 'zoom':
-				// From slightly larger out of a blur; blur done early.
-				return [
-					[begin, { ...rest, transform: `translate(0, 0) scale(${1.35 - i * 0.03})`, opacity: 0, filter: 'blur(12px)', easing: ease }],
-					[begin + 0.45, { filter: 'blur(0)' }],
-				];
-		}
+	/** The entry frames of one slice: a short fade and rise, ending at begin + 0.75 in the resting state. */
+	function entry(begin: number, rest: Keyframe): [number, Keyframe][] {
+		return [[begin, { ...rest, transform: 'translate(0, 12%) scale(1)', opacity: 0, easing: ease }]];
 	}
 
-	/** The exit frames of one slice, after its resting frame at leave. */
-	function exit(kind: Kind, i: number, side: number, leave: number, band: Band): Frames {
-		switch (kind) {
-			case 'side':
-				return [[leave + 0.35, { transform: `translate(${-side * 5}%, 0) scale(1)`, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.04em' }]];
-			case 'halves':
-				return [[leave + 0.35, { transform: `translate(${-half(i) * 5}%, 0) scale(1)`, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.04em' }]];
-			case 'diagonal':
-				return [[leave + 0.35, { transform: `translate(${-side * 4}%, ${side * 20}%) scale(1)`, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.04em' }]];
-			case 'vertical':
-				return [[leave + 0.35, { transform: `translate(0, ${-side * 25}%) scale(1)`, opacity: 0, filter: 'blur(8px)', letterSpacing: '0.04em' }]];
-			case 'wipe':
-				return [[leave + 0.35, { clipPath: band(120, -20), filter: 'blur(4px)', opacity: 0.6 }]];
-			case 'zoom':
-				return [[leave + 0.35, { transform: 'translate(0, 0) scale(0.9)', opacity: 0, filter: 'blur(8px)' }]];
-		}
+	/** The exit frames of one slice after its resting frame at leave: a short fade, slightly up. */
+	function exit(leave: number): [number, Keyframe][] {
+		return [[leave + 0.35, { transform: 'translate(0, -8%) scale(1)', opacity: 0 }]];
 	}
 
 	function start(root: HTMLElement) {
@@ -198,11 +148,10 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 		};
 
 		/**
-		 * A centered line: slices come in out of a blur while the letters pull together, sideways from alternating sides
-		 * or (every other scene) from above and below. Once all are in place the whole text stands in for them until they
-		 * leave, so the settled text has no seams.
+		 * A centered line: its slices fade and rise into place one after the other (a small stagger), the same way in every
+		 * scene. Once all are in place the whole text stands in for them until they leave, so the settled text has no seams.
 		 */
-		const line = (el: HTMLElement, s: Scene, index: number) => {
+		const line = (el: HTMLElement, s: Scene) => {
 			const whole = el.querySelector<HTMLElement>('.m-measure')!;
 			const html = whole.innerHTML;
 			const settled = s.at + (SLICES - 1) * 0.045 + 0.75;
@@ -223,7 +172,6 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 			el.appendChild(full);
 			const crisp = { filter: 'blur(0)', letterSpacing: '-0.02em', transform: 'translate(0, 0) scale(1)', textShadow: 'none' };
 			track(full, swap(0, 1).map(([t, frame]) => [t, { ...crisp, ...frame }]));
-			const kind = KINDS[index % KINDS.length];
 			for (let i = 0; i < SLICES; i++) {
 				const slice = document.createElement('span');
 				slice.className = 'm-slice';
@@ -233,23 +181,22 @@ const config = JSON.stringify({ loop, scenes: timed.map(({ at, until }) => ({ at
 				const band = (left: number, right: number) => `inset(${top}% ${right}% ${bottom}% ${left}%)`;
 				slice.style.clipPath = band(-20, -20);
 				el.appendChild(slice);
-				const side = i % 2 === 0 ? -1 : 1;
 				const begin = s.at + i * 0.045;
 				const leave = leaving + i * 0.03;
 				// Every kind ends its entry at begin + 0.75 in the resting state, which the swap needs.
 				const rest: Keyframe = { transform: 'translate(0, 0) scale(1)', opacity: 1, filter: 'blur(0)', letterSpacing: '-0.02em', textShadow: 'none', clipPath: band(-20, -20) };
 				track(slice, [
-					...entry(kind, i, side, begin, rest, band),
+					...entry(begin, rest),
 					[begin + 0.75, rest],
 					...swap(1, 0),
 					[leave, { ...rest, easing: easeIn }],
-					...exit(kind, i, side, leave, band),
+					...exit(leave),
 				]);
 			}
 		};
 
 		const elements = root.querySelectorAll<HTMLElement>('[data-scene]');
-		config.scenes.forEach((scene, i) => line(elements[i], scene, i));
+		config.scenes.forEach((scene, i) => line(elements[i], scene));
 
 		const hold = (seconds: number) =>
 			all.forEach((a) => {
