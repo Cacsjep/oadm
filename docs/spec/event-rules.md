@@ -18,7 +18,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Loops | Actions never fire events themselves; a device an action changes may send an event later, which the dead time keeps bounded. |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions; one-shot events missed while the server was down are not replayed. |
-| Field checks | Spec, not built (2026-11-02): at most 5 checks per event condition on the event's values (field, operator by kind, value), all must hold; see "Field checks". |
+| Field checks | At most 5 checks per event condition on the event's values (field, operator by kind, value), all must hold; see "Field checks". |
 | Roles | Permissions "See event rules" (rules and the log; operators by default), "Change event rules" (create, change, copy, turn on / off, delete, test an action; audited "Created / Changed / Deleted / Turned ... event rule") and "Delete the event log". |
 | Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
 
@@ -38,9 +38,10 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   and `TypesChanged` (a source changed its types, a plugin turned on or off; unhooked when the plugin stops). Tests
   `EventSubscriptionTests`. First user: Dashboards ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
   `EventTypeInfo.DeviceIds`: the devices that can send the event (Device triggers: each trigger's devices now, types changed
-  again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo) says what a value holds; `EventField.Filter` false = a value
-  only (placeholder, no filter box in the rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every
-  value this way, the kind from the device's declared type.
+  again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo; proto `EventFieldInfo.kind = 5`) says what a
+  value holds and which operators its checks offer; `EventField.Filter` false = a value only (placeholder, no check in the
+  rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare every value checkable, the kind from the
+  device's declared type; the reason of "connection lost" is a value only.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
@@ -113,7 +114,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   newest 10,000, live through `WatchLog`, read and watched again after a drop with the rules' backoff (1, 2, 4 ... 15 s);
   errors of rule actions stand below the rules list, errors reading the log below the log). Rule dialog `RuleEditorWindow` (`RuleEditorViewModel`), a wizard with
   the steps as a segmented switch (a step opens when every step before it is complete): **1 Rule** (Name and Turned on in
-  one row, Limits), **2 When** (Conditions: "When" / "And" rows, Add event, Add schedule, day toggles), **3 Then** (Actions:
+  one row, Limits), **2 When** (Conditions: "When" / "And" rows with Add check (see "Field checks"), Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices have **Send test** with
   the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
@@ -134,29 +135,48 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `tests/Oadm.Plugins.Outputs.Tests` (+ opt-in `OutputHardwareWriteTests`), `tests/Oadm.Plugins.Notifications.Tests`,
   `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (5,000 devices).
 
-## Field checks (spec, not built)
+## Field checks
 
-Decisions of 2026-11-02. An event condition ("When" or "And" row) can check the values its event carries, e.g. a device
-trigger's `temperature` > 40 or `state` equals "active".
+Decisions of 2026-11-02, built the same day (SDK 0.10.0). An event condition ("When" or "And" row) can check the values its
+event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "active".
 
-- **Dialog**: **Add check** on each event row (command button), at most **5** checks per row; each check is one row with
-  Field (the event's fields that may be checked), Operator and Value, and a remove icon. Errors directly below the check
-  (form rule). The overview line names the checks ("Temperature > 40, Door is yes").
-- **Operators by `EventField.Kind`**:
-  - Text: equals, does not equal, contains, starts with (case-insensitive, as today's filter).
-  - Number: = ≠ > ≥ < ≤ (no between: a range is two checks on the same field). Values in invariant culture ("21.5"); a
-    value that does not parse is a validation error.
-  - YesNo: is yes, is no (no value box). The event's "true"/"1"/"yes" count as yes.
+- **Dialog**: **Add check** on each event row (command button `ui:ToolbarButton`, shown while the event has values to
+  check), at most **5** checks per row (then disabled, tooltip "At most 5 checks."); each check is one row
+  (`CheckViewModel`, a `ValidatingViewModel`) with Field (the event's checkable values with their kind: "Temperature
+  (number)"; a new check starts with the first one), Operator (by kind) and Value (hidden for yes / no), and a remove icon.
+  Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
+  keeps the checks whose value the new event has (same name), the others go. The overview line names the checks
+  ("Temperature > 40, Door is yes"); so does the When column of the rules list (`RuleTexts.Checks`: "Reading (all
+  devices, Temperature > 40)").
+- **Operators by `EventField.Kind`** (`RuleChecks.OperatorsFor`, texts `RuleChecks.Text`):
+  - Text: equals, does not equal, contains, starts with (case-insensitive, as the older filter).
+  - Number: = ≠ > ≥ < ≤ (no between: a range is two checks on the same field). Values in invariant culture ("21.5",
+    finite only); a value that does not parse is a validation error. = and ≠ compare numbers ("40" = "40.0").
+  - YesNo: is yes, is no (no value box). The event's "true"/"1"/"yes" (any case) count as yes; any other value it sent
+    counts as no.
 - **Engine**: all checks of a row must hold. Stateful event: the condition is on while the event is on and its latest
-  values pass; every value change is checked again (a temperature crossing 40 turns the rule on and off). One-shot event:
-  the checks run on the values of that event. A field the event did not send, or a value that is no number for a number
-  check, fails the check. Checks are evaluated per event without per-rule scans (the rule's checks are compiled once).
-- **Which fields**: `EventField.Filter` true. Device triggers make their values checkable (today all value only); values
-  that are only for display (counts of Any device, the site name) stay value only.
-- **Stored rules**: `RuleCondition.Data` (equals filters) becomes "equals" checks when a rule is read; new field
-  `RuleCondition.Checks` (`[{"field","op","value"}]`, ops `eq`, `ne`, `contains`, `startsWith`, `gt`, `ge`, `lt`, `le`,
-  `yes`, `no`). The server validates them (field of the event, op fits the kind, at most 5, value length 200).
+  values pass; every value change is checked again (a temperature crossing 40 turns the rule on and off; an event that
+  ends turns it off whatever its values). One-shot event: the checks run on the values of that event. A field the event
+  did not send (also for "does not equal" and "is no"), or a value that is no number for a number check, fails the check;
+  a state set by `ReplaceStates` alone has no values. `CompiledChecks` compiles a condition's checks once per rule (and
+  again when the event types change, `Runtime.Refresh`) with the field kinds and the parsed numbers; evaluation adds no
+  per-rule scans.
+- **Which fields**: `EventField.Filter` true. Device triggers make their values checkable; values that are only for
+  display (counts of Any device, the site name and address of site events, reasons) stay value only.
+- **Stored rules**: `RuleCondition.Data` (equals filters) becomes "equals" checks when a rule is read
+  (`RuleDefinition.FromJson` → `RuleCondition.MoveDataToChecks`; the engine, the validator and the texts also read
+  `Data` entries of a rule built in code as equals checks); the field `RuleCondition.Checks` (`RuleCheck`
+  `[{"field","op","value"}]`, `RuleCheckOperator` ops `eq`, `ne`, `contains`, `startsWith`, `gt`, `ge`, `lt`, `le`,
+  `yes`, `no`). The dialog opens an older equals filter on a yes / no value as "is yes" / "is no". The server validates
+  them (`RuleValidator`, shared rules `RuleChecks.Problem`): at most 5 ("The trigger: at most 5 checks."), a declared
+  field of the event ("... has no value ..."), checkable ("... cannot be checked."), an op of its kind ("... cannot be
+  compared with ...") and a value (a number for number checks, at most 200 characters); an unknown op makes the rule
+  unreadable (InvalidArgument).
 - **Not part of it**: OR between checks (a second rule), hysteresis, comparing two fields, checks on schedules.
-- **Tests**: each operator per kind, missing field, not a number, value changes of a stateful event turning the rule on and
-  off, one-shot events, old `Data` filters read as checks, validation (6th check refused), the dialog rows headless with
-  screenshots, a Perf test with many rules and checks per event.
+- **Tests**: `tests/Oadm.Core.Tests/Events/FieldCheckTests` (each operator per kind, missing field, not a number, the
+  stored JSON and old `Data` filters), `FieldCheckRuleTests` (value changes of a stateful event turning the rule on and
+  off, a further condition, one-shot events, old filters through the store, validation with the 6th check refused),
+  `EventServiceTests` (kinds in the catalog, refusals over gRPC), `tests/Oadm.Client.Tests/EventRuleChecksTests` (the
+  dialog rows, errors, event change, an older rule; headless screenshots `event-rules-checks*.png`), the Perf test
+  `FieldCheckScaleTests` (500 rules with 5 checks, 20,000 value changes of 1,000 devices: about 3,300 events per second,
+  budget 60 s).

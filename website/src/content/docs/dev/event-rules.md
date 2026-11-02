@@ -113,12 +113,13 @@ public sealed class OldFirmwareEvents : IEventSource
   with `SetState`, or `ReplaceStates` again whenever that is easier: the server works out what changed.
 - **Values.** The `data` of `SetState` and `Fire` are the event's values; `ReplaceStates` carries none, so publish with
   `SetState` when actions need values. Actions use them as placeholders (`{version}`), conditions can
-  filter on the declared `EventField`s.
+  check the declared `EventField`s ("Temperature > 40", SDK 0.10.0: `RuleCondition.Checks`); a check on a value the
+  event did not send fails, so a state set by `ReplaceStates` alone never passes one.
 - **Devices.** `DeviceIds` on the type lists the devices that can send it now (null: any device); raise `EventTypesChanged`
   when they change. Dashboards offers only these devices for a widget.
 - **Fields.** An `EventField` has a name, a label, `Kind` (`EventValueKind`: `Text`, `Number`, `YesNo`; what the value
-  holds, so a dashboard picks the right widget) and `Filter` (default true; false = a value only: a placeholder, no
-  filter box in the rule dialog).
+  holds: the operators of a check in a rule, the widget of a dashboard) and `Filter` (default true; false = a value only: a placeholder, no
+  check in the rule dialog, for counts and names that are only for display).
 - **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule or a subscriber uses the type;
   skip work nobody needs.
 - **Types that change.** A source whose types the user creates (Device triggers) implements `IDynamicEventSource` and
