@@ -26,11 +26,10 @@
 
         <ui:FormField Label="Server" LabelAbove="True">
           <StackPanel>
-            <Panel>
+            <ui:LeadingIcon Icon="{DynamicResource Icon.server}">
               <ComboBox x:Name="ServerBox" IsEditable="True" Text="{Binding ServerAddress}" ItemsSource="{Binding RecentServers}"
-                        PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" Padding="34,0,0,0" />
-              <ui:OadmIcon Classes="fieldIcon" Data="{DynamicResource Icon.server}" />
-            </Panel>
+                        PlaceholderText="localhost:5080" IsEnabled="{Binding !IsBusy}" HorizontalAlignment="Stretch" />
+            </ui:LeadingIcon>
             <tc:Callout Kind="{Binding ServerProblemKind}" Title="{Binding ServerProblemTitle}" Text="{Binding ServerProblem}"
                         IsVisible="{Binding ServerProblem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
               <tc:Callout.Action>
