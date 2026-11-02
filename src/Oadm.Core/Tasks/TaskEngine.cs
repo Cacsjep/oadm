@@ -1013,6 +1013,9 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             }
             else
             {
+                var axisDownloads = task.Caller is { } starter && _options.AxisDownloads is { } downloads
+                    ? await downloads.ForUserAsync(starter.UserId, ct).ConfigureAwait(false)
+                    : null;
                 var vapix = await _vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
                 var context = new TaskExecutionContext(
                     task.Id,
@@ -1030,6 +1033,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                     Caller = ownerView is not null && task.Caller is { } owner
                         ? new TaskCallContext(owner, ownerView, _vapix, ForView(ownerView, owner))
                         : null,
+                    AxisDownloads = axisDownloads,
                 };
                 steps = context.Steps;
                 task.AttachSteps(steps);

@@ -1,6 +1,6 @@
 # MyAxis sign-in
 
-Status: **spec, not built**.
+Status: **built, not verified with a real MyAxis account** (server side; the client follows).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -11,7 +11,8 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 ## Rules that never break
 
 1. **OADM never sees the MyAxis password or one-time code.** The user types them on Axis's own page in OADM's sign-in
-   window. OADM keeps only the session cookie `axis_connect_session_sid` of www.axis.com.
+   window. OADM keeps only the session cookie `axis_connect_session_sid` of www.axis.com. That one cookie is enough for
+   the firmware downloads: the MIT tool rs4a (`crates/authentication`, `crates/firmware-inventory`) sends only it.
 2. **Per OADM user.** Each user has their own sign-in; no user sees, uses or ends another user's sign-in, an
    Administrator included. A download always uses the session of the user who started the task.
 3. **Kept on the server, encrypted.** The session is a secret like a device password (AES-256-GCM with the master key,
@@ -57,13 +58,24 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 
 ## On the server
 
-- **Sign-in check**: before keeping a session, the server asks axis.com for the headers of one firmware file (the
-  `latest/` .bin of the first product in the MPQT listing) with the session and no redirect. 2xx: kept. Anything else:
-  refused, nothing kept.
+- **Sign-in check**: before keeping a session, the server asks axis.com for the headers (HEAD) of one firmware file (the
+  `latest/` .bin of the first product in the MPQT listing; both listings are read with the session too) and follows no
+  redirect. 2xx: kept. Anything else: refused, nothing kept; no answer at all: UNAVAILABLE. The client may try again a
+  moment later (the cookie can come before axis.com finished the sign-in); the server checks once per call.
+- **Not accepted** (sign-in check and downloads): 401, 403, or a 3xx whose `Location` is a login page (a path with
+  `/login`, or a host `login.*`, `*.login.*` such as `eu.login.connect.axis.com`, or `auth.*`). Another 3xx is not
+  followed either: a download fails with "axis.com answered 302" and the session stays.
+- **Code**: `Oadm.Core.MyAxis` (`MyAxisCookies` the validation, `MyAxisSessionStore`, `AxisComClient` the HTTP calls and
+  the URL allowlist `AxisDownloadUrls`, `AxisDownloadService` the cache); `Oadm.Server.MyAxis` (`MyAxisGrpcService`,
+  `AxisComHandler` the one `SocketsHttpHandler`, `AxisDownloadSweep` at the start). Tests give `AxisComClient` a fake
+  handler (`tests/Shared/FakeAxisCom.cs`); no unit test reaches the network.
 - **Storage**: one row per user (`MyAxisSessions`: user id, the encrypted session with the user id as associated data,
-  signed in at, last accepted at); a new EF migration. Deleted on Sign out, with the user, and when axis.com refuses it.
-- **Expired**: a firmware download answered with 3xx (the login page), 401 or 403 deletes the user's session; the task
+  signed in at, last accepted at, expired); EF migration `MyAxisSessions`. Deleted on Sign out, with the user (foreign
+  key, cascade), and when axis.com refuses it (the row stays with expired set and no session, so the button shows it).
+  Removed from every backup copy.
+- **Expired**: a firmware download answered with a 3xx to a login page, 401 or 403 deletes the user's session; the task
   fails with "Your MyAxis sign-in has expired. Sign in to MyAxis again. Nothing was changed." and the button shows it.
+  A sign-in lasts about 4 weeks: `axis_connect_session_sid` expires about 27 days after the sign-in.
 
 ## For plugins
 
@@ -78,24 +90,34 @@ Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a t
   uses it.
 - **Size and checksum**: the download stops when it grows 2 % + 1 MB over the listed size; a different size or SHA-256
   fails with "The download did not match the checksum on axis.com. Nothing was changed." and nothing is kept.
+- **No connection**: "The firmware could not be downloaded from axis.com (<short reason>). Nothing was changed." (no
+  connection to axis.com, axis.com was not found, no answer in time, the connection was lost, axis.com answered 404).
+  axis.com has 60 s for the headers and between two reads of the body.
+- **Texts**: `AxisDownloadTexts` of the SDK (`Oadm.Sdk.Plugins`), the same for the host and `FakeAxisDownloads`.
+- **Cache layout**: `axis-downloads/<sha256>/<file name of the URL>`, partial downloads in `axis-downloads/tmp/`; the last
+  use is the file's modification time. A sweep at the server's start and after every download.
+- A download that another user's task started and that fails because that user's sign-in expired is started again with
+  the waiting user's own session. A task the system started gets no `AxisDownloads` (null).
+- Testing: `FakeAxisDownloads` of `Oadm.Sdk.Testing` (files by URL, `Expire()`, `Failure`), `FakeTaskContext.AxisDownloads`.
 
 Client SDK: `ITaskDialogContext.MyAxis` with `IsSignedIn` and `SignInAsync()` (opens the sign-in window), so a dialog can
 offer Sign in to MyAxis.
 
 ## gRPC
 
-`MyAxisService` ([grpc.md](grpc.md) once built), every logged-in user, always the caller's own session:
+`MyAxisService` ([grpc.md](grpc.md)), every logged-in user, always the caller's own session:
 
 - `Get`: signed in or not, since when, expired.
-- `SignIn` (session): the check above, then kept. `INVALID_ARGUMENT` for anything but one pair
-  `axis_connect_session_sid=<visible ASCII without ; , " \ or spaces>`, at most 4,096 characters.
+- `SignIn` (session): the check above, then kept. `INVALID_ARGUMENT` "The MyAxis sign-in could not be read. Try again."
+  for anything but one pair `axis_connect_session_sid=<visible ASCII without ; , " \ or spaces>` (not empty), at most
+  4,096 characters; sent exactly so as the one `Cookie` header.
 - `SignOut`: deletes it.
 
 ## Not verified
 
-No MyAxis account was used for this spec. To check on the first build: that the login returns to `axis_destination`,
-that axis.com answers a HEAD request on a .bin (a 405 would read as "not accepted", then use a GET of the first byte),
-how long a session lasts, and the WebKitGTK glue on Ubuntu 24.04.
+No MyAxis account was used for the build. Known from a working browser extension and rs4a: axis.com answers HEAD on a
+.bin, and a sign-in lasts about 4 weeks. To check with a real account: that the login returns to `axis_destination`,
+the listings' format (the server reads the `href`s of the HTML listing), and the WebKitGTK glue on Ubuntu 24.04.
 
 ## Not part of it
 

@@ -682,6 +682,28 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("EventRuleStates", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.MyAxis.MyAxisSessionEntity", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("EncryptedSession")
+                        .HasColumnType("BLOB");
+
+                    b.Property<bool>("Expired")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastAcceptedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SignedInUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("MyAxisSessions", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.Persistence.TaskDeviceResultEntity", b =>
                 {
                     b.Property<Guid>("TaskId")
@@ -1040,6 +1062,15 @@ namespace Oadm.Core.Persistence.Migrations
                     b.HasOne("Oadm.Core.Events.EventRuleEntity", null)
                         .WithMany()
                         .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Oadm.Core.MyAxis.MyAxisSessionEntity", b =>
+                {
+                    b.HasOne("Oadm.Core.Auth.UserEntity", null)
+                        .WithOne()
+                        .HasForeignKey("Oadm.Core.MyAxis.MyAxisSessionEntity", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

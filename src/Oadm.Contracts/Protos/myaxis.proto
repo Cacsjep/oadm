@@ -24,5 +24,6 @@ message MyAxisStateReply {
 }
 
 message MyAxisSignInRequest {
-  string session = 1;                           // "axis_connect_session_sid=<value>", a secret: never logged
+  string session = 1;                           // "axis_connect_session_sid=<value>" (the one Cookie header the server sends
+                                                // to axis.com; at most 4,096 characters), a secret: never logged
 }

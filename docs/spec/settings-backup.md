@@ -83,7 +83,7 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
   AES-256-GCM with its own nonce and the associated data SHA-256(header) | chunk number | last flag (no reordering, cutting
   or header change unnoticed). The key check names a wrong password apart from a damaged file. Passwords 8..256 characters.
 - **Content** (`BackupArchive`): `manifest.json` (counts per area, plugin packages, plugin data folders), `oadm.db` (a
-  consistent `VACUUM INTO` copy without the login sessions), `master.key` (only inside the encrypted body; a backup restores
+  consistent `VACUUM INTO` copy without the login sessions and MyAxis sign-ins), `master.key` (only inside the encrypted body; a backup restores
   on another computer and every stored password and plugin secret stays readable), `plugin-data/**` (files in use skipped).
   Not in it: the server's TLS certificate (the target keeps its own), `install.json` (this installation's ID and the OADM
   PRO trials started here, so a running trial never moves to another computer, `docs/spec/licensing.md` "Trial"), uploads,

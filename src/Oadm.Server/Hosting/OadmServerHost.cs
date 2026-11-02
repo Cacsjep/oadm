@@ -142,6 +142,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Licensing.LicenseGrpcService>();
         app.MapGrpcService<Support.SupportGrpcService>();
         app.MapGrpcService<Vulnerabilities.VulnerabilityGrpcService>();
+        app.MapGrpcService<MyAxis.MyAxisGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
         if (app.Environment.IsDevelopment())
@@ -273,6 +274,17 @@ public static partial class OadmServerHost
         services.TryAddSingleton<Vulnerabilities.IVulnerabilitySource>(sp => new Vulnerabilities.InternetVulnerabilitySource(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<Vulnerabilities.VulnerabilityUpdater>();
         services.AddHostedService(sp => sp.GetRequiredService<Vulnerabilities.VulnerabilityUpdater>());
+        // MyAxis (docs/spec/myaxis.md): each user's sign-in, encrypted; downloads from axis.com for tasks, cached 7 days.
+        services.AddSingleton<Core.MyAxis.MyAxisSessionStore>();
+        services.TryAddSingleton(sp => new Core.MyAxis.AxisComClient(
+            MyAxis.AxisComHandler.Create(), sp.GetRequiredService<TimeProvider>(), "OADM-Server/" + Mapping.Mappers.ServerVersion));
+        services.AddSingleton(sp => new Core.MyAxis.AxisDownloadService(
+            Path.Combine(sp.GetRequiredService<OadmPaths>().DataDirectory, "axis-downloads"),
+            sp.GetRequiredService<Core.MyAxis.MyAxisSessionStore>(),
+            sp.GetRequiredService<Core.MyAxis.AxisComClient>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<Core.MyAxis.AxisDownloadService>>()));
+        services.AddHostedService<MyAxis.AxisDownloadSweep>();
         // Support report (Settings page): the server's logs and a summary without secrets in one ZIP.
         services.AddSingleton(sp => new Support.SupportReport(
             sp.GetRequiredService<OadmPaths>(),
@@ -311,6 +323,7 @@ public static partial class OadmServerHost
             {
                 MaxParallelTasksPerPluginSource = () => parallelism.Current,
                 Networks = sp.GetRequiredService<Core.Sites.DeviceNetworks>(),
+                AxisDownloads = sp.GetRequiredService<Core.MyAxis.AxisDownloadService>(),
             };
         });
         services.AddSingleton(sp =>

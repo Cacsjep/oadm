@@ -257,6 +257,12 @@ used again.
   the setting, date, source, count), `Upload` (signed in, only while `Vulnerabilities.Update` is "clients", else
   FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse; a newer list is kept and audited "Updated
   vulnerability list"), `Refresh` (Admin, only while the setting is "server"; UNAVAILABLE when the internet is not reached).
+- **`MyAxisService`** (`myaxis.proto`, `docs/spec/myaxis.md`; every signed-in user, always the caller's own sign-in, an
+  Administrator included): `Get` (signed in, since when, expired), `SignIn` (INVALID_ARGUMENT for anything but one pair
+  `axis_connect_session_sid=<value>` of at most 4,096 characters; the sign-in check with axis.com, then kept and audited
+  "Signed in to MyAxis"; FAILED_PRECONDITION "MyAxis did not accept the sign-in. Try again."; UNAVAILABLE "MyAxis could
+  not be reached. Check the server's internet access."), `SignOut` (deletes it, audited "Signed out of MyAxis" when there
+  was one; always succeeds). The session never comes back in an answer.
 - **`SupportService`** (`support.proto`, `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
 - **`BackupService`** (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,

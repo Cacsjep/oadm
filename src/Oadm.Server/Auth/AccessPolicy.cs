@@ -189,6 +189,10 @@ public static class AccessPolicy
         ["/oadm.v1.VulnerabilityService/Get"] = AccessRule.SignedIn,
         ["/oadm.v1.VulnerabilityService/Upload"] = AccessRule.SignedIn, // only while the setting is "clients"; audited
         ["/oadm.v1.VulnerabilityService/Refresh"] = AccessRule.Admin,
+        // MyAxis (docs/spec/myaxis.md): every user, always only the caller's own sign-in; Administrators included.
+        ["/oadm.v1.MyAxisService/Get"] = AccessRule.SignedIn,
+        ["/oadm.v1.MyAxisService/SignIn"] = AccessRule.SignedIn, // audited, the session never
+        ["/oadm.v1.MyAxisService/SignOut"] = AccessRule.SignedIn, // audited
         ["/oadm.v1.SettingsService/Set"] = AccessRule.Admin.ForAllDevices(),
         ["/oadm.v1.SettingsService/ListCredentials"] = AccessRule.Admin.ForAllDevices(), // never for users with a group
         ["/oadm.v1.SettingsService/AddCredential"] = AccessRule.Admin.ForAllDevices(),

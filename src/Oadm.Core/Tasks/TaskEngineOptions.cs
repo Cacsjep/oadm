@@ -28,6 +28,12 @@ public sealed class TaskEngineOptions
     /// <summary>The routes of the devices for <c>ITaskExecutionContext.Network</c>; null = the server's own network only.</summary>
     public Sites.DeviceNetworks? Networks { get; set; }
 
+    /// <summary>
+    /// The downloads from axis.com of a user's task (<c>ITaskExecutionContext.AxisDownloads</c>, docs/spec/myaxis.md); null =
+    /// none. Tasks the system started never get one.
+    /// </summary>
+    public MyAxis.IAxisDownloadSource? AxisDownloads { get; set; }
+
     /// <summary>Minimum time between two persisted progress messages of one device. Default 1 s.</summary>
     public TimeSpan ProgressPersistInterval { get; set; } = TimeSpan.FromSeconds(1);
 }

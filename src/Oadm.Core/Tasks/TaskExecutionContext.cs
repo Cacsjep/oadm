@@ -50,6 +50,9 @@ internal sealed partial class TaskExecutionContext : ITaskExecutionContext
     /// <summary>The user who started the task, with the user's current view; null for tasks the system started.</summary>
     public ICallContext? Caller { get; init; }
 
+    /// <summary>Downloads from axis.com with the MyAxis sign-in of the user who started the task; null for system tasks.</summary>
+    public IAxisDownloads? AxisDownloads { get; init; }
+
     /// <summary>Replaced by <see cref="UpdateCredentialsAsync"/> with a client using the new credentials.</summary>
     public IVapixClient Vapix => Volatile.Read(ref _vapix);
 
