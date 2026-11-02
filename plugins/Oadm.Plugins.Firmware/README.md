@@ -159,6 +159,9 @@ buttons above the table set every device. A device without a choice shows "No fi
 another device has one. A chosen file is judged per device in its Result (Invalid file, Wrong product). Files given
 together (`SelectFilesAsync`, drag and drop and tests) go to the devices of their model; a refused file or two files for
 one product ("Two files are for P3265-V. Choose one file per model.") show directly below the table and block Upgrade.
+From 2,000 selected devices (`BackgroundFrom`), the buttons, the options and the end of the lookup judge every device
+off the UI thread behind a ring over the table ("Setting the versions", "Checking the devices"; the buttons and Upgrade
+wait); at 100,000 devices the three buttons take about 1 s each. One device's choice judges only that device.
 
 The Firmware column is refreshed by the status query: read for the first 50 devices when the dialog opens, for other rows
 when the grid shows them, at most 4 queries at a time; a row shows the chip "Reading" until its query answered.
