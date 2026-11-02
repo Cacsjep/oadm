@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - Devices list: Vulnerabilities in the context menu lists the CVEs of the selected devices with the full description and a link to the Axis advisory.
+- Plugin SDK 0.9.0.
 
 ## [4.8.0] - 2026-11-01
 

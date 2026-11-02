@@ -81,3 +81,20 @@ public sealed class AxisDownloadException : Exception
     /// <summary>True when the user must sign in to MyAxis (again).</summary>
     public bool NeedsSignIn { get; init; }
 }
+
+/// <summary>The messages of <see cref="AxisDownloadException"/> (docs/spec/myaxis.md), one phrase each, for hosts and fakes.</summary>
+public static class AxisDownloadTexts
+{
+    /// <summary>The user who started the task is not signed in to MyAxis.</summary>
+    public const string SignIn = "Sign in to MyAxis to download from axis.com.";
+
+    /// <summary>axis.com no longer accepted the user's sign-in; the host deleted it.</summary>
+    public const string Expired = "Your MyAxis sign-in has expired. Sign in to MyAxis again. Nothing was changed.";
+
+    /// <summary>The file had another size or SHA-256 than listed; nothing was kept.</summary>
+    public const string Mismatch = "The download did not match the checksum on axis.com. Nothing was changed.";
+
+    /// <summary>axis.com could not be reached or refused the file; <paramref name="reason"/> is short ("no connection to axis.com").</summary>
+    public static string NotDownloaded(string reason) =>
+        $"The firmware could not be downloaded from axis.com ({reason}). Nothing was changed.";
+}
