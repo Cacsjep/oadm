@@ -111,7 +111,7 @@ public sealed class FirmwareOnlineDialogTests
         Assert.Equal("11.11.160 → 11.11.238", vm.Devices[0].Message);
         Assert.Equal("Up to date", vm.Devices[3].VerdictText);
         Assert.Equal("No file", vm.Devices[5].VerdictText);
-        Assert.Equal("3 of 6 devices will be updated, 2 already up to date, 1 not possible.", vm.Summary);
+        Assert.Equal([true, true, true, false, false, false], vm.Devices.Select(d => d.WillInstall));
 
         await vm.StartCommand.ExecuteAsync(null);
 
@@ -301,6 +301,59 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
+    public async Task Signing_in_in_the_dialog_sets_Recommended_like_opening_it_signed_in()
+    {
+        var ctx = Context(new FakeAxisSite { MakeVersionFolders = true }, signedIn: false);
+        using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+        var myAxis = (FakeMyAxis)ctx.MyAxis!;
+        vm.SignInHandler = () => Task.FromResult(myAxis.SignIn());
+        await vm.LoadOnlineAsync(CancellationToken.None);
+
+        await vm.SignInCommand.ExecuteAsync(null);
+
+        Assert.True(vm.ShowRules);
+        Assert.Equal("Recommended", vm.SelectedRule?.Name);
+        Assert.Equal(["11.11.238", "11.11.238", "12.11.147", "12.11.147", "11.11.238", null], vm.Devices.Select(Chosen));
+    }
+
+    [Fact]
+    public async Task Signing_in_after_a_version_was_tried_still_shows_Recommended()
+    {
+        var ctx = Context(new FakeAxisSite { MakeVersionFolders = true }, signedIn: false);
+        using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+        await vm.LoadOnlineAsync(CancellationToken.None);
+        vm.Devices[0].SelectedChoice = vm.Devices[0].Choices.First(c => c.Text == "11.11.220");
+
+        ((FakeMyAxis)ctx.MyAxis!).SignIn(); // signed in elsewhere: the title bar while the dialog is open
+
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => vm.SelectedRule is not null, "the select shows Recommended");
+        Assert.Equal("Recommended", vm.SelectedRule!.Name);
+        Assert.Equal("11.11.220", Chosen(vm.Devices[0])); // a version chosen by hand stays
+        Assert.Equal("11.11.238", Chosen(vm.Devices[1]));
+    }
+
+    [Fact]
+    public async Task Signing_in_reads_axis_com_again_when_the_lookup_failed()
+    {
+        var site = new FakeAxisSite { MakeVersionFolders = true, Down = true };
+        var ctx = Context(site, signedIn: false);
+        using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+        var myAxis = (FakeMyAxis)ctx.MyAxis!;
+        vm.SignInHandler = () => Task.FromResult(myAxis.SignIn());
+        await vm.LoadOnlineAsync(CancellationToken.None);
+        Assert.True(vm.OnlineUnreachable);
+
+        site.Down = false;
+        await vm.SignInCommand.ExecuteAsync(null);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => vm.SelectedRule is not null, "the lookup ran again and set Recommended");
+
+        Assert.False(vm.OnlineUnreachable);
+        Assert.True(vm.ShowRules);
+        Assert.Equal("11.11.238", Chosen(vm.Devices[0]));
+        Assert.Equal(2, ctx.Queries.Count(q => q == "online"));
+    }
+
+    [Fact]
     public async Task An_older_host_without_MyAxis_offers_chosen_files_only()
     {
         using var vm = new DialogViewModel(Context(new FakeAxisSite { MakeVersionFolders = true }, signedIn: null), Selection(), new FakeFileSource());
@@ -383,16 +436,20 @@ public sealed class FirmwareOnlineDialogTests
         await vm.ChooseFileForAsync(vm.Devices[1]);
         Assert.Equal("Q6135-LE_12_11_77.bin", vm.Devices[1].SelectedChoice!.Text);
         Assert.True(vm.Devices[1].WillInstall);
-        Assert.Equal("No file", vm.Devices[2].VerdictText); // only that device
+        Assert.Equal("Q6135-LE_12_11_77.bin", vm.Devices[2].SelectedChoice!.Text); // every Q6135-LE
+        vm.Devices[2].SelectedChoice = vm.Devices[2].Choices[^1]; // Choose file again: picks the same file
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => vm.Devices[2].ChosenFile is not null, "the file stays");
+        Assert.Equal("P3265-V", vm.Devices[0].Model);
+        Assert.Equal("11.11.238", Chosen(vm.Devices[0])); // the other model is untouched
 
         await vm.StartCommand.ExecuteAsync(null);
 
         Assert.Equal(["C:\\fw\\Q6135-LE_12_11_77.bin"], ctx.Uploads); // only the chosen file
         var payload = ServerPayload.Parse(vm.Result);
         Assert.Equal("Q6135-LE_12_11_77.bin", payload.FileName);
-        Assert.Null(Assert.Single(payload.AllFiles()).Devices); // every Q6135-LE of the run takes it: by product (the other one does not run)
+        Assert.Null(Assert.Single(payload.AllFiles()).Devices); // every Q6135-LE takes it: by product
         Assert.Equal(("11.11.238", 11), (Assert.Single(payload.AllOnline()).Version, payload.AllOnline()[0].FromMajor));
-        Assert.Equal([devices[0].Id, devices[1].Id], vm.RunDevices);
+        Assert.Equal([devices[0].Id, devices[1].Id, devices[2].Id], vm.RunDevices);
         ServerAgrees(vm);
     }
 
@@ -485,7 +542,7 @@ public sealed class FirmwareOnlineScaleTests
         Assert.Same(vm.Devices[0].Choices, vm.Devices[models].Choices); // one list per model
         Assert.Empty(files);
         Assert.True(online.Count <= models * versions.Length + 1, $"{online.Count} payload entries"); // per product and major, one named device
-        Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {DeviceLimits.MaxDevices:N0} devices will be updated"), vm.Summary, StringComparison.Ordinal);
+        Assert.Contains(vm.Devices, d => d.WillInstall);
         var message = $"rows {build} ms, lookup of {models} models with Recommended {lookup} ms, three buttons {rules} ms, one device {one} ms";
         Console.WriteLine(message);
         Assert.True(build < 3_000, message); // measured 120 ms

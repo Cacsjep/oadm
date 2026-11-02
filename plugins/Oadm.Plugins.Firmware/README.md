@@ -153,8 +153,10 @@ ones were allowed report `SignatureStatus="Unknown"`; Axis applications `Signed`
 
 One table of the selected devices (virtualized, up to 100,000): Address, Model, Firmware, **Version**, Result (with
 tooltip), Details. Version is the select of that device: the versions axis.com lists for its model grouped by track
-(details in "Firmware online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin` for
-that device). The list is one per model and shared by its devices. Choosing on one device changes only that device; the
+(details in "Firmware online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin`: it
+is set for every device of that model, devices of other models are untouched; a device changed by hand later keeps its
+own choice). The list is one per model and shared by its devices. The card header has no summary line; the Result of
+each device says what happens. Choosing on one device changes only that device; the
 select **Set versions** right in the header of the device card (same row as the title) sets every device. The right of
 that header shows either that select (signed in and the versions of axis.com arrived; hidden while the lookup runs and
 when it failed) or the command button **Sign in to MyAxis** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
@@ -238,7 +240,9 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   axis.com, 40 of 120 models" and Upgrade waits. Signed in, the dialog opens with Recommended; not signed in, every
   device starts on Choose file, the versions show for information, choosing one says "Sign in to MyAxis to download from
   axis.com." in its Result, and the header has the button **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`);
-  signing in sets Recommended on the devices without a choice (the select shows Recommended when no device had one). The decision table, the upgrade path advice and the apps
+  after a sign-in (in the dialog or elsewhere while it is open) the dialog reads axis.com again when it had not or
+  failed (with its progress line), then sets Recommended on every device without a choice and the select shows
+  Recommended, like opening the dialog signed in. The decision table, the upgrade path advice and the apps
   check apply unchanged: an online version is a file with a known product and version.
 - **Payload.** Per device either a chosen file or a version from axis.com; the server reads that version's folder itself
   for the URL, size and SHA-256 and never takes them from the client. Small in the usual case (the select):

@@ -239,8 +239,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         : !Devices.Any(d => d.WillInstall) ? "None of the selected devices can install the chosen firmware (see Result)."
         : null;
 
-    [ObservableProperty]
-    public partial string Summary { get; set; } = NothingChosenText;
 
     public string? ModeWarning => SelectedMode.Mode switch
     {
@@ -421,6 +419,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         var models = Devices.Select(d => d.Model).Where(m => OnlineFirmware.Normalize(m).Length > 0)
             .DistinctBy(OnlineFirmware.Normalize, StringComparer.Ordinal).ToList();
         IsLookingUp = true;
+        OnlineUnreachable = false;
         LookupProgress = 0;
         LookupStatus = LookupText;
         try
@@ -479,8 +478,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             HasOnline = _models.Values.Any(m => m.IsListed);
         }
 
-        var none = !Devices.Any(d => d.SelectedChoice is not null);
-        await (IsSignedIn ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, none ? Rules[0] : null) : RefreshAsync()).ConfigureAwait(true);
+        await (IsSignedIn ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, Rules[0]) : RefreshAsync()).ConfigureAwait(true);
     }
 
     /// <summary>Every device: the newest version on its own track.</summary>
@@ -662,7 +660,35 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         IsSignedIn = signedIn;
-        _ = signedIn && _lookupDone ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, Devices.Any(d => d.SelectedChoice is not null) ? null : Rules[0]) : RefreshAsync();
+        if (!signedIn)
+        {
+            _ = RefreshAsync();
+        }
+        else if (IsLookingUp)
+        {
+            // The running lookup ends with Recommended (signed in by then).
+        }
+        else if (!_lookupDone || OnlineUnreachable || !HasOnline)
+        {
+            _ = LoadOnlineAgainAsync(); // not read yet or axis.com did not answer: read it now, with its progress line
+        }
+        else
+        {
+            // Like opening the dialog signed in: Recommended on every device without a choice, the select shows it.
+            _ = ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, Rules[0]);
+        }
+    }
+
+    private async Task LoadOnlineAgainAsync()
+    {
+        try
+        {
+            await LoadOnlineAsync(_lifetime.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // dialog closed
+        }
     }
 
     /// <summary>The user chose in one device's field: only that device changes.</summary>
@@ -748,7 +774,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         await RefreshAsync().ConfigureAwait(true);
     }
 
-    /// <summary>"Choose file" of a device: one local .bin for that device; the same file can then be chosen for others.</summary>
+    /// <summary>"Choose file" of a device: one local .bin for every device of that model (in the select of each).</summary>
     public async Task ChooseFileForAsync(FirmwareDeviceRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -763,10 +789,11 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
+        GroupedChoice choice;
         try
         {
             var size = await _files.GetSizeAsync(paths[0], _lifetime.Token).ConfigureAwait(true);
-            row.SetChoice(model.AddFile(new FileChoice(paths[0], FirmwareImageInspector.Inspect(paths[0], size))));
+            choice = model.AddFile(new FileChoice(paths[0], FirmwareImageInspector.Inspect(paths[0], size)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -775,7 +802,30 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
-        EvaluateOne(row);
+        // The file goes to every device of that model (other models untouched); a device changed by hand later keeps its own.
+        if (Devices.Count < BackgroundFrom)
+        {
+            SetForModel();
+            Evaluate();
+            return;
+        }
+
+        await RunBusyAsync(SettingText, async () =>
+        {
+            SetForModel();
+            await JudgeAllAsync().ConfigureAwait(true);
+        }).ConfigureAwait(true);
+
+        void SetForModel()
+        {
+            foreach (var device in Devices)
+            {
+                if (ReferenceEquals(device.ModelChoices, model))
+                {
+                    device.SetChoice(choice);
+                }
+            }
+        }
     }
 
     /// <summary>Uses a file for every device of its model without the picker (tests, drag and drop).</summary>
@@ -1097,29 +1147,20 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(HasPathWarning));
         if (_chosenCount == 0)
         {
-            Summary = NothingChosenText;
             _breakingChangesGuide = null;
             BreakingChangesNotice = null;
         }
         else
         {
-            int install = 0, upToDate = 0;
             var breakingMajor = 0;
             foreach (var row in Devices)
             {
                 if (row.WillInstall || row.Check?.Verdict == FirmwareVerdict.AppsBlock)
                 {
-                    install += row.WillInstall ? 1 : 0;
                     breakingMajor = Math.Max(breakingMajor, BreakingMajor(row));
-                }
-                else if (row.Check?.IsNoOp == true)
-                {
-                    upToDate++;
                 }
             }
 
-            var skipped = Devices.Count - install - upToDate;
-            Summary = string.Create(CultureInfo.InvariantCulture, $"{install:N0} of {Devices.Count:N0} {(Devices.Count == 1 ? "device" : "devices")} will be updated, {upToDate:N0} already up to date, {skipped:N0} not possible.");
             _breakingChangesGuide = breakingMajor > 0 ? BreakingChangesGuides[breakingMajor] : null;
             BreakingChangesNotice = breakingMajor > 0 ? string.Create(CultureInfo.InvariantCulture, $"AXIS OS {breakingMajor} has breaking changes.") : null;
         }

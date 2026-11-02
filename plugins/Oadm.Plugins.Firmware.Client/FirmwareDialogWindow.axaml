@@ -20,7 +20,7 @@
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
         <!-- Right in the header: the select that sets every device (signed in, versions arrived) or Sign in to MyAxis -->
-        <ui:CardHeader Title="Devices" Description="{Binding Summary}">
+        <ui:CardHeader Title="Devices">
           <ComboBox Width="200" ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" PlaceholderText="{x:Static fw:FirmwareDialogViewModel.SetVersionsText}"
                     IsVisible="{Binding ShowRules}" IsEnabled="{Binding !IsBusy}" />
           <ui:ToolbarButton IconKey="user" Text="Sign in to MyAxis" Command="{Binding SignInCommand}" IsVisible="{Binding ShowSignIn}" />
@@ -32,7 +32,7 @@
         <DataGrid x:Name="DevicesGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Address" Width="120" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
-            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />
+            <DataGridTextColumn Header="Model" Width="130" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTemplateColumn Header="Firmware" Width="110" SortMemberPath="CurrentVersion">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
@@ -58,7 +58,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <!-- The reason is the important part: the widest column, two lines -->
-            <DataGridTemplateColumn Header="Details" Width="2*" SortMemberPath="Message">
+            <DataGridTemplateColumn Header="Details" Width="*" SortMemberPath="Message">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
                   <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxLines="2" Margin="10,6" ToolTip.Tip="{Binding Message}" />

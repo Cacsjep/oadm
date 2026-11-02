@@ -159,7 +159,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal(ClientVerdict.NoFileForModel, vm.Devices[2].Check!.Verdict); // its row has no file
         Assert.True(vm.Devices[2].IsError);
         Assert.Equal(ClientVerdict.DowngradeBlocked, vm.Devices[3].Check!.Verdict);
-        Assert.Equal("1 of 4 devices will be updated, 1 already up to date, 2 not possible.", vm.Summary);
+        Assert.Equal([true, false, false, false], vm.Devices.Select(d => d.WillInstall));
 
         // A file of another model chosen for a row: its devices say Wrong product.
         await vm.ChooseFileForAsync(vm.Devices[2]);
@@ -229,7 +229,6 @@ public sealed class FirmwareDialogViewModelTests
         Assert.False(vm.Devices[0].WillInstall);
         Assert.Equal("12.11.147 → 13.0.88. Face Verifier: not signed. Update or remove it with Applications (ACAP) first.", vm.Devices[0].Message);
         Assert.Equal("Upgrade", vm.Devices[1].VerdictText); // only a bundled application
-        Assert.Equal("1 of 2 devices will be updated, 0 already up to date, 1 not possible.", vm.Summary);
         Assert.True(vm.HasBreakingChanges);
     }
 
@@ -316,7 +315,7 @@ public sealed class FirmwareDialogViewModelTests
     }
 
     [Fact]
-    public async Task Choose_file_of_a_device_uses_the_picker_for_that_device_only()
+    public async Task Choose_file_of_a_device_sets_the_file_for_every_device_of_its_model()
     {
         var files = new FakeFileSource { Picked = "C:\\fw\\P3265-V_12_11_77.bin" };
         var ctx = new FakeDialogContext();
@@ -329,14 +328,15 @@ public sealed class FirmwareDialogViewModelTests
         await Oadm.Sdk.Testing.Eventually.TrueAsync(() => device.ChosenFile is not null, "the picked file is the device's choice");
 
         Assert.Equal("P3265-V_12_11_77.bin", device.SelectedChoice!.Text);
-        Assert.Null(vm.Devices[1].SelectedChoice); // the other devices keep theirs
-        Assert.Equal("No file", vm.Devices[1].VerdictText);
+        Assert.Null(vm.Devices[2].SelectedChoice); // the Q6135-LE is untouched
+        Assert.Equal("P3265-V_12_11_77.bin", vm.Devices[1].SelectedChoice!.Text); // every P3265-V takes the file
+        Assert.Equal("Up to date", vm.Devices[1].VerdictText);
         Assert.True(device.WillInstall);
 
-        // The same file is now in the list of every P3265-V; choosing it for a second device uploads it once.
+        // In every P3265-V's list; one file is uploaded once for all of them.
         var second = vm.Devices[3];
         Assert.Same(device.Choices, second.Choices);
-        second.SelectedChoice = second.Choices.Single(c => c.Text == "P3265-V_12_11_77.bin");
+        Assert.Equal("P3265-V_12_11_77.bin", second.SelectedChoice!.Text);
         vm.AllowDowngrade = true;
         vm.SelectedMode = vm.Modes[1];
         Assert.True(second.WillInstall); // a downgrade with a factory default
