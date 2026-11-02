@@ -26,18 +26,25 @@ public enum FirmwareDirection
 }
 
 /// <summary>One uploaded firmware file of the payload.</summary>
-public sealed record FirmwareFile(string FileId, string? FileName);
+/// <param name="FileId">The upload's id.</param>
+/// <param name="FileName">The file name as chosen (product and version are read from it).</param>
+/// <param name="Devices">
+/// The devices this file is for (chosen per device in the dialog); null: every device of its product (the file name tells
+/// it), as before.
+/// </param>
+public sealed record FirmwareFile(string FileId, string? FileName, IReadOnlyList<Guid>? Devices = null);
 
 /// <summary>
-/// One version from axis.com of the payload (README "Firmware online"): for the devices of <see cref="Product"/> whose
-/// AXIS OS major is <see cref="FromMajor"/> (the dialog row of that model and track; null for devices with an unknown
-/// version). The server reads the URL, size and SHA-256 from axis.com itself.
+/// One version from axis.com of the payload (README "Firmware online"): for the listed <see cref="Devices"/>, or without a
+/// list for every device of <see cref="Product"/> whose AXIS OS major is <see cref="FromMajor"/> (null: devices with an
+/// unknown version) that no listed entry names. The server reads the URL, size and SHA-256 from axis.com itself.
 /// </summary>
 /// <param name="Source">"MPQT" or "PACS".</param>
 /// <param name="Product">The product folder on axis.com ("P3265-V").</param>
 /// <param name="Version">"12.11.147".</param>
-/// <param name="FromMajor">The major version of the row's devices.</param>
-public sealed record FirmwareOnline(string Source, string Product, string Version, int? FromMajor);
+/// <param name="FromMajor">The major version of the devices it is for, when it lists none.</param>
+/// <param name="Devices">The devices it is for; null: by product and major.</param>
+public sealed record FirmwareOnline(string Source, string Product, string Version, int? FromMajor, IReadOnlyList<Guid>? Devices = null);
 
 /// <summary>Payload of the "Upgrade firmware" task, written by the dialog.</summary>
 public sealed record FirmwarePayload

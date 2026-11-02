@@ -126,7 +126,7 @@ public sealed class FirmwareDialogViewModelTests
         using var vm = Create();
 
         Assert.Equal(4, vm.Devices.Count);
-        Assert.All(vm.ModelRows, r => Assert.Null(r.SelectedChoice)); // every row shows Choose file
+        Assert.All(vm.Devices, d => Assert.Null(d.SelectedChoice)); // every device shows Choose file
         Assert.Equal(DialogViewModel.NothingChosenText, vm.StartBlockedReason);
         Assert.False(vm.StartCommand.CanExecute(null));
         Assert.All(vm.Devices, d => Assert.Equal("Choose a file", d.VerdictText));
@@ -141,11 +141,10 @@ public sealed class FirmwareDialogViewModelTests
 
         await vm.SelectFileAsync("C:\\fw\\P3265-V_12_11_77.bin", CancellationToken.None);
 
-        // The file goes to both P3265-V rows (on 12 and on 11); the Q6135-LE row keeps Choose file.
-        Assert.Equal(["P3265-V", "P3265-V", "Q6135-LE"], vm.ModelRows.Select(r => r.Model));
-        Assert.Equal("P3265-V_12_11_77.bin", vm.ModelRows[0].ChosenFile!.Image.FileName);
-        Assert.Equal("P3265-V_12_11_77.bin", vm.ModelRows[1].SelectedChoice!.Text);
-        Assert.Null(vm.ModelRows[2].SelectedChoice);
+        // The file goes to every P3265-V; the Q6135-LE keeps Choose file.
+        Assert.Equal("P3265-V_12_11_77.bin", vm.Devices[0].ChosenFile!.Image.FileName);
+        Assert.Equal("P3265-V_12_11_77.bin", vm.Devices[3].SelectedChoice!.Text);
+        Assert.Null(vm.Devices[2].SelectedChoice);
         Assert.Null(vm.FileError);
         // 11.11.160 -> 12.11.77 leaves the LTS track 11.11: an upgrade with a note (OADM cannot tell whether 11.11.160 is its latest).
         Assert.Equal(ClientVerdict.Upgrade, vm.Devices[0].Check!.Verdict);
@@ -163,11 +162,11 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal("1 of 4 devices will be updated, 1 already up to date, 2 not possible.", vm.Summary);
 
         // A file of another model chosen for a row: its devices say Wrong product.
-        await vm.ChooseFileForAsync(vm.ModelRows[2]);
+        await vm.ChooseFileForAsync(vm.Devices[2]);
         Assert.Equal(ClientVerdict.NoFileForModel, vm.Devices[2].Check!.Verdict); // the picker was cancelled
         var files = new FakeFileSource { Picked = "C:\\fw\\P3265-V_12_11_77.bin" };
         using var other = new DialogViewModel(new FakeDialogContext(), Devices, files);
-        await other.ChooseFileForAsync(other.ModelRows[2]);
+        await other.ChooseFileForAsync(other.Devices[2]);
         Assert.Equal(ClientVerdict.WrongProduct, other.Devices[2].Check!.Verdict);
         Assert.Equal(ClientDirection.Upgrade, vm.Direction());
         Assert.True(vm.StartCommand.CanExecute(null));
@@ -260,9 +259,8 @@ public sealed class FirmwareDialogViewModelTests
         await vm.SelectFileAsync("P3265-V_12_11_77.bin", CancellationToken.None);
         Assert.Contains("smaller than 1 MB", vm.FileError, StringComparison.Ordinal);
         Assert.False(vm.StartCommand.CanExecute(null));
-        Assert.Equal(vm.FileError, vm.ModelRows[0].Error); // below the row's field
-        Assert.True(vm.ModelRows[0].HasErrors);
-        Assert.Equal([vm.FileError], vm.ModelRows[0].GetErrors("SelectedChoice").Cast<string>());
+        Assert.True(vm.HasFileError); // directly below the table
+        Assert.Equal("Invalid file", vm.Devices[0].VerdictText); // and in the device's Result
         Assert.Equal(vm.FileError, vm.StartBlockedReason); // and the Upgrade tooltip says why
 
         await vm.SelectFileAsync("C:\\missing\\a.bin", CancellationToken.None);
@@ -279,7 +277,7 @@ public sealed class FirmwareDialogViewModelTests
 
         await vm.SelectFilesAsync(["C:\\fw\\P3265-V_12_11_77.bin", "C:\\fw\\M3215-LVE_12_11_147.bin", "C:\\fw\\Q6135-LE_12_11_77.bin"], CancellationToken.None);
 
-        Assert.Equal(["P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin", "Q6135-LE_12_11_77.bin"], vm.ModelRows.Select(r => r.ChosenFile!.Image.FileName));
+        Assert.Equal(["P3265-V_12_11_77.bin", "P3265-V_12_11_77.bin", "Q6135-LE_12_11_77.bin", "P3265-V_12_11_77.bin"], vm.Devices.Select(d => d.ChosenFile!.Image.FileName));
         Assert.Null(vm.FileError);
         Assert.True(vm.Devices[2].WillInstall); // Q6135-LE gets its own file
 
@@ -318,21 +316,37 @@ public sealed class FirmwareDialogViewModelTests
     }
 
     [Fact]
-    public async Task Choose_file_of_a_row_uses_the_picker_for_that_row()
+    public async Task Choose_file_of_a_device_uses_the_picker_for_that_device_only()
     {
-        var files = new FakeFileSource { Picked = "P3265-V_12_11_77.bin" };
-        using var vm = Create(files: files);
-        var row = vm.ModelRows[1]; // P3265-V on 11
+        var files = new FakeFileSource { Picked = "C:\\fw\\P3265-V_12_11_77.bin" };
+        var ctx = new FakeDialogContext();
+        using var vm = Create(ctx, files);
+        var device = vm.Devices[0]; // P3265-V on 11.11.160
 
         // "Choose file" is the last entry; choosing it opens the picker and the field shows the file.
-        Assert.Equal("Choose file", row.Choices[^1].Text);
-        row.SelectedChoice = row.Choices[^1];
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.ChosenFile is not null, "the picked file is the row's choice");
+        Assert.Equal("Choose file", device.Choices[^1].Text);
+        device.SelectedChoice = device.Choices[^1];
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => device.ChosenFile is not null, "the picked file is the device's choice");
 
-        Assert.Equal("P3265-V_12_11_77.bin", row.SelectedChoice!.Text);
-        Assert.Equal("Choose file", row.Choices[^1].Text); // still offered to choose another
-        Assert.Null(vm.ModelRows[0].SelectedChoice); // the other rows keep theirs
-        Assert.True(vm.Devices[0].WillInstall); // the device on 11.11.160
+        Assert.Equal("P3265-V_12_11_77.bin", device.SelectedChoice!.Text);
+        Assert.Null(vm.Devices[1].SelectedChoice); // the other devices keep theirs
+        Assert.Equal("No file", vm.Devices[1].VerdictText);
+        Assert.True(device.WillInstall);
+
+        // The same file is now in the list of every P3265-V; choosing it for a second device uploads it once.
+        var second = vm.Devices[3];
+        Assert.Same(device.Choices, second.Choices);
+        second.SelectedChoice = second.Choices.Single(c => c.Text == "P3265-V_12_11_77.bin");
+        vm.AllowDowngrade = true;
+        vm.SelectedMode = vm.Modes[1];
+        Assert.True(second.WillInstall); // a downgrade with a factory default
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal(["C:\\fw\\P3265-V_12_11_77.bin"], ctx.Uploads);
+        var payload = Oadm.Plugins.Firmware.FirmwarePayload.Parse(vm.Result);
+        var file = Assert.Single(payload.AllFiles());
+        Assert.Null(file.Devices); // every P3265-V that installs takes it: by product, as before
+        Assert.Equal([device.Device.Id, second.Device.Id], vm.RunDevices);
     }
 
     [Fact]

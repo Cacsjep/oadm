@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Sdk.Client;
-using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Firmware.Client;
@@ -26,77 +26,10 @@ public sealed record FactoryDefaultModeOption(FactoryDefaultMode Mode, string La
     public override string ToString() => Label;
 }
 
-/// <summary>One selected device in the dialog table.</summary>
-public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableObject
-{
-    public IDeviceInfo Device { get; } = device;
-
-    public string Address => Device.Address;
-
-    public string Model => Device.Model ?? string.Empty;
-
-    /// <summary>The chosen file this device installs (index into the dialog's files); -1 when none fits.</summary>
-    internal int FileIndex { get; set; } = -1;
-
-    /// <summary>The version from axis.com this device installs (index into the dialog's online entries); -1 when none.</summary>
-    internal int OnlineIndex { get; set; } = -1;
-
-    /// <summary>The firmware row of the device's model and track.</summary>
-    internal FirmwareModelRow? ModelRow { get; set; }
-
-    [ObservableProperty]
-    public partial string? CurrentVersion { get; set; } = device.FirmwareVersion;
-
-    /// <summary>True while the status query of this row runs (the Firmware cell shows "Reading").</summary>
-    [ObservableProperty]
-    public partial bool IsReadingStatus { get; set; }
-
-    /// <summary>False when the device does not offer fwmgr 1.x (from the status query).</summary>
-    [ObservableProperty]
-    public partial bool Supported { get; set; } = true;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(VerdictText), nameof(Message), nameof(IsOk), nameof(IsWarn), nameof(IsError), nameof(WillInstall))]
-    public partial FirmwareCheck? Check { get; set; }
-
-    public string VerdictText => Check?.Verdict switch
-    {
-        null => "Choose a file",
-        FirmwareVerdict.Upgrade => Check.PathAdvice is null ? "Upgrade" : "Not recommended",
-        FirmwareVerdict.DeviceValidates => "Device checks",
-        FirmwareVerdict.AlreadyUpToDate => "Up to date",
-        FirmwareVerdict.Downgrade => "Downgrade",
-        FirmwareVerdict.DowngradeBlocked => "Downgrade blocked",
-        FirmwareVerdict.WrongProduct => "Wrong product",
-        FirmwareVerdict.InvalidFile => "Invalid file",
-        FirmwareVerdict.UnknownVersionRefused => "Refused",
-        FirmwareVerdict.NoFileForModel => "No file",
-        FirmwareVerdict.AppsBlock => "Apps block it",
-        FirmwareVerdict.SignInNeeded => "Sign in",
-        _ => "Not supported",
-    };
-
-    public string Message => Check?.Message ?? string.Empty;
-
-    public bool IsOk => Check is { Verdict: FirmwareVerdict.Upgrade, PathAdvice: null };
-
-    /// <summary>A downgrade, a file the device checks, or an upgrade off the recommended path (it still runs).</summary>
-    public bool IsWarn => Check?.Verdict is FirmwareVerdict.Downgrade or FirmwareVerdict.DeviceValidates or FirmwareVerdict.SignInNeeded || Check?.PathAdvice is not null;
-
-    public bool IsError => Check is { WillInstall: false, IsNoOp: false } && Check.Verdict != FirmwareVerdict.SignInNeeded;
-
-    public bool WillInstall => Check?.WillInstall == true;
-
-    /// <summary>The device's installed applications from the status query; null until read or when not readable.</summary>
-    internal IReadOnlyList<InstalledApp>? Apps { get; set; }
-
-    /// <summary>The status query was started for this row (preloaded or because the grid showed it).</summary>
-    internal bool StatusRequested { get; set; }
-}
-
 /// <summary>
-/// "Upgrade firmware" dialog: per model and track a version from axis.com or a chosen .bin (README "Firmware online"),
-/// the preview per device, the options; uploads the chosen files to the server and returns the task payload.
+/// "Upgrade firmware" dialog: one table of the selected devices, each with the version from axis.com or the chosen file it
+/// installs (README "Dialog", "Firmware online"), the preview per device and the options; uploads the chosen files to the
+/// server and returns the task payload.
 /// </summary>
 public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposable
 {
@@ -106,22 +39,17 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     private readonly ITaskDialogContext _ctx;
     private readonly IFirmwareFileSource _files;
     private readonly CancellationTokenSource _lifetime = new();
-    private readonly Dictionary<(string Key, int? Major), FirmwareModelRow> _rowsByKey = [];
-    private readonly Dictionary<string, OnlineModel> _onlineByKey = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FirmwareModelChoices> _models = new(StringComparer.Ordinal);
+
+    /// <summary>Older versions read with <c>onlineVersion</c> ("MPQT/P3265-V/11.11.205"): the file, or null when gone.</summary>
+    private readonly Dictionary<string, OnlineFileInfo?> _checked = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _checking = new(StringComparer.Ordinal);
 
     // Never disposed: status reads still in flight release it after the dialog closed (it has no wait handle).
     private readonly SemaphoreSlim _statusSlots = new(MaxParallelStatusQueries);
     private CancellationTokenSource? _uploadCts;
-    private string? _selectError;
     private bool _lookupDone;
-    private int _bulk;
-    private bool _dirty;
-
-    private List<FileChoice> _fileChoices = [];
-    private FirmwareImageInfo[] _images = [];
-    private List<FirmwareOnline> _online = [];
-    private FirmwareImageInfo[] _onlineImages = [];
-    private Dictionary<(string, int?), int> _onlineIndex = [];
+    private int _chosenCount;
 
     public FirmwareDialogViewModel(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, IFirmwareFileSource files)
     {
@@ -131,6 +59,18 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         _ctx = ctx;
         _files = files;
         Devices = new ObservableCollection<FirmwareDeviceRow>(devices.Select(d => new FirmwareDeviceRow(d)));
+        foreach (var row in Devices)
+        {
+            var key = OnlineFirmware.Normalize(row.Model);
+            if (!_models.TryGetValue(key, out var model))
+            {
+                model = new FirmwareModelChoices(key);
+                _models[key] = model;
+            }
+
+            row.ModelChoices = model;
+            row.Chosen = OnChosen;
+        }
 
         // Only what the user's role allows: a factory default and a downgrade are rights of their own.
         MayFactoryDefault = ctx.Has(Oadm.Sdk.Plugins.PermissionKeys.Task(FirmwarePermissions.TaskPluginId, FirmwarePermissions.FactoryDefault));
@@ -145,7 +85,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             myAxis.Changed += OnMyAxisChanged;
         }
 
-        BuildModelRows();
         Evaluate();
     }
 
@@ -160,8 +99,8 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     public ObservableCollection<FirmwareDeviceRow> Devices { get; }
 
-    /// <summary>One row per model and track of the selected devices.</summary>
-    public RangeObservableCollection<FirmwareModelRow> ModelRows { get; } = [];
+    /// <summary>The choices of a model ("P3265-V"), shared by its devices.</summary>
+    public FirmwareModelChoices? ModelChoices(string model) => _models.GetValueOrDefault(OnlineFirmware.Normalize(model));
 
     private static readonly FactoryDefaultModeOption[] AllModes =
     [
@@ -200,18 +139,24 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     [ObservableProperty]
     public partial string? LookupStatus { get; private set; }
 
-    /// <summary>axis.com did not answer: "axis.com could not be reached." above the table, the rows keep Choose file.</summary>
+    /// <summary>axis.com did not answer: "axis.com could not be reached." above the table, the devices keep Choose file.</summary>
     [ObservableProperty]
     public partial bool OnlineUnreachable { get; private set; }
 
-    /// <summary>Some model is listed on axis.com (the rule buttons have something to set).</summary>
+    /// <summary>Some model is listed on axis.com (the buttons have something to set).</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RecommendedCommand), nameof(LatestLtsCommand), nameof(LatestActiveCommand))]
     public partial bool HasOnline { get; private set; }
 
-    /// <summary>The first problem of a row's choice (a refused file, two files for one model); it blocks Upgrade.</summary>
+    /// <summary>
+    /// A problem of the files given to <see cref="SelectFilesAsync"/> (unreadable, not an AXIS OS image, two for one model),
+    /// shown below the table; it blocks Upgrade. A file chosen for one device is judged in its Result instead.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFileError))]
     public partial string? FileError { get; private set; }
+
+    public bool HasFileError => FileError is not null;
 
     [ObservableProperty]
     public partial FactoryDefaultModeOption SelectedMode { get; set; }
@@ -242,8 +187,8 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         IsUploading ? null
         : IsLookingUp ? LookupText + "."
         : FileError is not null ? FileError
-        : ModelRows.Any(r => r.IsChecking) ? "Checking the version on axis.com."
-        : !AnyChoice ? NothingChosenText
+        : _checking.Count > 0 ? "Checking the version on axis.com."
+        : _chosenCount == 0 ? NothingChosenText
         : !Devices.Any(d => d.WillInstall) ? "None of the selected devices can install the chosen firmware (see Result)."
         : null;
 
@@ -318,8 +263,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>Models per <c>online</c> query (the server's limit; 50 models take about 3 s).</summary>
     public const int OnlineModelsPerQuery = 50;
 
-    private bool AnyChoice => ModelRows.Any(r => r.SelectedChoice is not null);
-
     // ---------------------------------------------------------------- device status
 
     /// <summary>
@@ -341,7 +284,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         await Task.WhenAll(rows.Select(row => ReadStatusAsync(row, ct))).ConfigureAwait(true);
-        RegroupIfMoved(rows);
         Evaluate();
     }
 
@@ -364,15 +306,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return; // dialog closed
         }
 
-        if (RegroupIfMoved([row]))
-        {
-            Evaluate();
-            return;
-        }
-
         EvaluateRow(row);
-        row.ModelRow?.UpdateDevices();
-        UpdateRowStates();
         UpdateSummary();
     }
 
@@ -420,85 +354,12 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
     }
 
-    // ---------------------------------------------------------------- firmware rows
-
-    private static (string Key, int? Major) KeyOf(FirmwareDeviceRow row) =>
-        (OnlineFirmware.Normalize(row.Model), AxisOsVersion.TryParse(row.CurrentVersion)?.Major);
-
-    /// <summary>
-    /// One row per model and AXIS OS major of the selected devices, in one pass. Rows of earlier passes keep their object
-    /// and so their choice; a new row starts on Recommended when signed in and the versions are known.
-    /// </summary>
-    private void BuildModelRows() => Bulk(BuildModelRowsCore);
-
-    private void BuildModelRowsCore()
-    {
-        foreach (var row in _rowsByKey.Values)
-        {
-            row.DeviceRows.Clear();
-        }
-
-        var created = new List<FirmwareModelRow>();
-        foreach (var device in Devices)
-        {
-            var key = KeyOf(device);
-            if (!_rowsByKey.TryGetValue(key, out var row))
-            {
-                row = new FirmwareModelRow(device.Model.Length == 0 ? "Unknown model" : device.Model, key.Major, OnRowChanged, OnChooseFile);
-                _rowsByKey[key] = row;
-                if (_onlineByKey.TryGetValue(key.Key, out var online))
-                {
-                    row.SetOnline(online);
-                }
-
-                created.Add(row);
-            }
-
-            row.DeviceRows.Add(device);
-            device.ModelRow = row;
-        }
-
-        foreach (var empty in _rowsByKey.Where(p => p.Value.DeviceRows.Count == 0).Select(p => p.Key).ToList())
-        {
-            _rowsByKey.Remove(empty);
-        }
-
-        var rows = _rowsByKey.Values
-            .OrderBy(r => r.Model, StringComparer.OrdinalIgnoreCase)
-            .ThenByDescending(r => r.Major ?? -1)
-            .ToList();
-        foreach (var row in rows)
-        {
-            row.UpdateDevices();
-        }
-
-        if (IsSignedIn && _lookupDone)
-        {
-            foreach (var row in created.Where(r => r.SelectedChoice is null && r.Online is { IsListed: true }))
-            {
-                row.SelectVersion(OnlineFirmware.Recommended(row.Online!, row.Major));
-            }
-        }
-
-        ModelRows.ReplaceAll(rows);
-    }
-
-    /// <summary>A device whose status moved it to another major regroups the rows (rare); true when it did.</summary>
-    private bool RegroupIfMoved(IEnumerable<FirmwareDeviceRow> rows)
-    {
-        if (!rows.Any(r => r.ModelRow is { } m && m.Major != KeyOf(r).Major))
-        {
-            return false;
-        }
-
-        BuildModelRows();
-        return true;
-    }
+    // ---------------------------------------------------------------- versions from axis.com
 
     /// <summary>
     /// Reads the versions of the selected models from axis.com through the server (query <c>online</c>,
-    /// <see cref="OnlineModelsPerQuery"/> models a call); the rows fill as the parts answer. Signed in, the rows without a
-    /// choice then get Recommended.
+    /// <see cref="OnlineModelsPerQuery"/> models a call); the select fields fill as the parts answer. Signed in, the devices
+    /// without a choice then get Recommended. Any failure shows "axis.com could not be reached.", never nothing.
     /// </summary>
     public async Task LoadOnlineAsync(CancellationToken ct)
     {
@@ -508,13 +369,13 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
-        var models = _rowsByKey.Values.Where(r => r.Key.Length > 0).Select(r => r.Model).DistinctBy(OnlineFirmware.Normalize, StringComparer.Ordinal).ToList();
+        // One device of the selection for the host (the query reads only axis.com, never that device).
         var queryDevice = (Devices.FirstOrDefault(d => d.Device.Status == DeviceStatus.Ok) ?? Devices[0]).Device.Id;
+        var models = Devices.Select(d => d.Model).Where(m => OnlineFirmware.Normalize(m).Length > 0)
+            .DistinctBy(OnlineFirmware.Normalize, StringComparer.Ordinal).ToList();
         IsLookingUp = true;
         LookupProgress = 0;
         LookupStatus = LookupText;
-        OnPropertyChanged(nameof(StartBlockedReason));
-        StartCommand.NotifyCanExecuteChanged();
         try
         {
             for (var done = 0; done < models.Count; done += OnlineModelsPerQuery)
@@ -530,7 +391,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                 {
                     throw;
                 }
-#pragma warning disable CA1031 // Any failure of the lookup: the rows keep Choose file and the line says so.
+#pragma warning disable CA1031 // Any failure of the lookup: the devices keep Choose file and the line says so.
                 catch (Exception)
 #pragma warning restore CA1031
                 {
@@ -543,31 +404,32 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                     break;
                 }
 
-                Bulk(() =>
+                foreach (var model in result.Models)
                 {
-                    foreach (var model in result.Models)
+                    OnlineUnreachable |= model.Failed;
+                    if (model.IsListed && _models.TryGetValue(OnlineFirmware.Normalize(model.Model), out var choices))
                     {
-                        var key = OnlineFirmware.Normalize(model.Model);
-                        _onlineByKey[key] = model;
-                        OnlineUnreachable |= model.Failed;
-                        foreach (var row in _rowsByKey.Values.Where(r => r.Key == key))
-                        {
-                            row.SetOnline(model);
-                        }
+                        choices.SetOnline(model);
                     }
-                });
+                }
 
                 var read = Math.Min(models.Count, done + part.Count);
                 LookupProgress = 100.0 * read / Math.Max(1, models.Count);
                 LookupStatus = string.Create(CultureInfo.InvariantCulture, $"{LookupText}, {read:N0} of {models.Count:N0} models");
             }
         }
+#pragma warning disable CA1031 // Never a silent dialog: any failure of the lookup shows "axis.com could not be reached."
+        catch (Exception) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            OnlineUnreachable = true;
+        }
         finally
         {
             _lookupDone = true;
             IsLookingUp = false;
             LookupStatus = null;
-            HasOnline = _rowsByKey.Values.Any(r => r.IsListed);
+            HasOnline = _models.Values.Any(m => m.IsListed);
         }
 
         if (IsSignedIn)
@@ -580,32 +442,45 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
     }
 
-    /// <summary>Every row: the newest version on its own track.</summary>
+    /// <summary>Every device: the newest version on its own track.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
     private void Recommended() => ApplyRule(OnlineFirmware.Recommended, onlyUnchosen: false);
 
-    /// <summary>Every row: the newest LTS track of its model.</summary>
+    /// <summary>Every device: the newest LTS track of its model.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
     private void LatestLts() => ApplyRule((model, _) => OnlineFirmware.LatestLts(model), onlyUnchosen: false);
 
-    /// <summary>Every row: the active track of its model, else its newest version.</summary>
+    /// <summary>Every device: the active track of its model, else its newest version.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
     private void LatestActive() => ApplyRule((model, _) => OnlineFirmware.LatestActive(model), onlyUnchosen: false);
 
     private bool CanApplyRule() => HasOnline && !IsLookingUp && !IsUploading;
 
+    /// <summary>One pass over the devices: the rule per model and major is computed once (100,000 devices).</summary>
     private void ApplyRule(Func<OnlineModel, int?, string?> rule, bool onlyUnchosen)
     {
-        Bulk(() =>
+        var picks = new Dictionary<(string, int?), GroupedChoice?>();
+        foreach (var row in Devices)
         {
-            foreach (var row in _rowsByKey.Values)
+            if (row.ModelChoices is not { Online: { IsListed: true } online } model || (onlyUnchosen && row.SelectedChoice is not null))
             {
-                if (row.Online is { IsListed: true } online && (!onlyUnchosen || row.SelectedChoice is null))
-                {
-                    row.SelectVersion(rule(online, row.Major));
-                }
+                continue;
             }
-        });
+
+            var key = (model.Key, AxisOsVersion.TryParse(row.CurrentVersion)?.Major);
+            if (!picks.TryGetValue(key, out var choice))
+            {
+                choice = model.Version(rule(online, key.Major));
+                picks[key] = choice;
+            }
+
+            if (choice is not null)
+            {
+                row.SetChoice(choice);
+            }
+        }
+
+        Evaluate();
     }
 
     [RelayCommand]
@@ -640,74 +515,70 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
     }
 
-    private void OnRowChanged(FirmwareModelRow row)
+    /// <summary>The user chose in one device's field: only that device changes.</summary>
+    private void OnChosen(FirmwareDeviceRow row, GroupedChoice? choice)
     {
-        row.CheckError = null;
-        if (_bulk == 0 && row.OnlineVersion is { Version.Size: null } && IsSignedIn)
+        if (choice?.Value is ChooseFileAction)
         {
-            _ = CheckVersionAsync(row);
+            _ = ChooseFileForAsync(row);
+            return;
         }
 
-        if (_bulk > 0)
+        if (IsSignedIn && row.OnlineVersion is { Version.Size: null } older && row.ModelChoices?.Online is { } online)
         {
-            _dirty = true;
-            return;
+            _ = CheckVersionAsync(row, online, older);
         }
 
         Evaluate();
     }
 
-    /// <summary>An older version of a track: its size and SHA-256 are read when it is chosen (query <c>onlineVersion</c>).</summary>
-    private async Task CheckVersionAsync(FirmwareModelRow row)
+    private static string CheckKey(OnlineModel online, string version) => online.Source + "/" + online.Product + "/" + version;
+
+    /// <summary>An older version of a track: its size and SHA-256 are read once when chosen (query <c>onlineVersion</c>).</summary>
+    private async Task CheckVersionAsync(FirmwareDeviceRow row, OnlineModel online, OnlineChoice chosen)
     {
-        var chosen = row.OnlineVersion;
-        if (chosen is null || row.Online is not { Product: { } product, Source: { } source })
+        var key = CheckKey(online, chosen.Version.Version);
+        if (_checked.ContainsKey(key) || !_checking.Add(key) || online.Product is null || online.Source is null)
         {
             return;
         }
 
-        row.IsChecking = true;
-        string? problem = null;
         OnlineFileInfo? info = null;
+        var gone = false;
         try
         {
-            var request = JsonSerializer.Serialize(new OnlineVersionRequest { Source = source, Product = product, Version = chosen.Version.Version }, FirmwarePayload.JsonOptions);
-            var queryDevice = row.DeviceRows.FirstOrDefault(d => d.Device.Status == DeviceStatus.Ok)?.Device.Id ?? row.DeviceRows[0].Device.Id;
-            info = OnlineFileInfo.FromJson(await _ctx.QueryAsync(queryDevice, FirmwareTaskPluginIds.OnlineVersionQuery, request, _lifetime.Token).ConfigureAwait(true));
-            problem = info is null ? $"AXIS OS {chosen.Version.Version} is no longer on axis.com." : null;
+            var request = JsonSerializer.Serialize(new OnlineVersionRequest { Source = online.Source, Product = online.Product, Version = chosen.Version.Version }, FirmwarePayload.JsonOptions);
+            info = OnlineFileInfo.FromJson(await _ctx.QueryAsync(row.Device.Id, FirmwareTaskPluginIds.OnlineVersionQuery, request, _lifetime.Token).ConfigureAwait(true));
+            gone = info is null;
         }
         catch (OperationCanceledException)
         {
             return; // dialog closed
         }
-#pragma warning disable CA1031 // Shown below the row's field.
+#pragma warning disable CA1031 // Judged in the Result of the devices with that version.
         catch (Exception)
 #pragma warning restore CA1031
         {
-            problem = OnlineFirmware.UnreachableText;
+            OnlineUnreachable = true;
         }
         finally
         {
-            row.IsChecking = false;
+            _checking.Remove(key);
         }
 
-        if (!ReferenceEquals(row.OnlineVersion, chosen) && row.OnlineVersion?.Version.Version != chosen.Version.Version)
+        if (info is not null || gone)
         {
-            return; // the row changed meanwhile
+            _checked[key] = info;
         }
 
-        row.CheckedVersion = info;
-        row.CheckError = problem;
         Evaluate();
     }
 
-    private void OnChooseFile(FirmwareModelRow row) => _ = ChooseFileForAsync(row);
-
-    /// <summary>"Choose file" of a row: one local .bin for that row, checked as today.</summary>
-    public async Task ChooseFileForAsync(FirmwareModelRow row)
+    /// <summary>"Choose file" of a device: one local .bin for that device; the same file can then be chosen for others.</summary>
+    public async Task ChooseFileForAsync(FirmwareDeviceRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        if (IsUploading)
+        if (IsUploading || row.ModelChoices is not { } model)
         {
             return;
         }
@@ -718,25 +589,27 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
-        var path = paths[0];
         try
         {
-            var size = await _files.GetSizeAsync(path, _lifetime.Token).ConfigureAwait(true);
-            row.SelectFile(new FileChoice(path, FirmwareImageInspector.Inspect(path, size)));
+            var size = await _files.GetSizeAsync(paths[0], _lifetime.Token).ConfigureAwait(true);
+            row.SetChoice(model.AddFile(new FileChoice(paths[0], FirmwareImageInspector.Inspect(paths[0], size))));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            row.CheckError = "The file could not be read: " + ex.Message;
-            Evaluate();
+            row.SetChoice(null);
+            row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "The file could not be read: " + ex.Message);
+            return;
         }
+
+        Evaluate();
     }
 
-    /// <summary>Uses a file for every model without the picker (tests, drag and drop).</summary>
+    /// <summary>Uses a file for every device of its model without the picker (tests, drag and drop).</summary>
     public Task SelectFileAsync(string path, CancellationToken ct) => SelectFilesAsync([path], ct);
 
     /// <summary>
-    /// Uses these files (one per model): each row takes the file for its model, else a file whose model the name does not
-    /// tell; two files for one model are refused at that row.
+    /// Uses these files (one per model): each device takes the file for its model, else a file whose model the name does
+    /// not tell; the files chosen before are replaced. Two files for one model or a refused file block Upgrade.
     /// </summary>
     public async Task SelectFilesAsync(IReadOnlyList<string> paths, CancellationToken ct)
     {
@@ -747,7 +620,6 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         Error = null;
-        _selectError = null;
         var chosen = new List<FileChoice>(paths.Count);
         foreach (var path in paths)
         {
@@ -765,23 +637,44 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             }
         }
 
-        Bulk(() =>
+        var rejected = chosen.FirstOrDefault(c => c.Image.IsRejected);
+        var duplicate = chosen.Where(c => c.Image.Product is not null).GroupBy(c => FirmwareCompatibility.NormalizeProduct(c.Image.Product!))
+            .FirstOrDefault(g => g.Count() > 1)?.Key;
+        _selectError = rejected is not null ? (paths.Count == 1 ? string.Empty : rejected.Image.FileName + ": ") + rejected.Image.RejectReason
+            : duplicate is not null ? $"Two files are for {duplicate}. Choose one file per model."
+            : null;
+
+        // Per model once, then one pass over the devices.
+        var forModel = new Dictionary<string, GroupedChoice?>(StringComparer.Ordinal);
+        var unnamed = chosen.FirstOrDefault(c => c.Image.Product is null);
+        foreach (var row in Devices)
         {
-            foreach (var row in _rowsByKey.Values)
+            if (row.ModelChoices is not { } model)
             {
-                var matching = chosen.Where(c => c.Image.Product is { } p && FirmwareCompatibility.ProductMatches(p, row.Model)).ToList();
-                if ((matching.FirstOrDefault() ?? chosen.FirstOrDefault(c => c.Image.Product is null)) is { } file)
-                {
-                    row.SelectFile(file);
-                    row.DuplicateFile = matching.Count > 1;
-                }
-                else
-                {
-                    row.ClearFile(); // these files replace the files chosen before
-                }
+                continue;
             }
-        });
+
+            if (!forModel.TryGetValue(model.Key, out var choice))
+            {
+                var file = chosen.FirstOrDefault(c => c.Image.Product is { } p && FirmwareCompatibility.ProductMatches(p, row.Model)) ?? unnamed;
+                choice = file is null ? null : model.AddFile(file);
+                forModel[model.Key] = choice;
+            }
+
+            if (choice is not null)
+            {
+                row.SetChoice(choice);
+            }
+            else if (row.ChosenFile is not null)
+            {
+                row.SetChoice(null); // these files replace the files chosen before
+            }
+        }
+
+        Evaluate();
     }
+
+    private string? _selectError;
 
     // ---------------------------------------------------------------- start
 
@@ -794,14 +687,11 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             return;
         }
 
-        // Only the files a device installs, in the order chosen; only the versions a device installs.
-        var used = installing.Where(d => d.OnlineIndex < 0 && d.FileIndex >= 0).Select(d => d.FileIndex).Distinct().Order().ToList();
-        var online = installing.Where(d => d.OnlineIndex >= 0).Select(d => d.OnlineIndex).Distinct().Order().Select(i => _online[i]).ToList();
-
+        var (files, online) = PayloadParts(installing);
         Error = null;
         IsUploading = true;
         UploadProgress = 0;
-        UploadText = used.Count > 0 ? "Uploading firmware to the server" : null;
+        UploadText = files.Count > 0 ? "Uploading firmware to the server" : null;
         var uploadCts = new CancellationTokenSource();
         _uploadCts = uploadCts;
         try
@@ -817,15 +707,17 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
                 // The SDK does not specify the unit: accept a fraction (0..1) or a percentage. Several files: one bar.
                 var percent = Math.Clamp(p <= 1.0 ? p * 100 : p, 0, 100);
-                UploadProgress = Math.Clamp(((current * 100) + percent) / Math.Max(1, used.Count), 0, 100);
+                UploadProgress = Math.Clamp(((current * 100) + percent) / Math.Max(1, files.Count), 0, 100);
                 UploadText = string.Create(CultureInfo.InvariantCulture, $"Uploading firmware to the server ({UploadProgress:0} %)");
             });
-            var uploaded = new List<FirmwareFile>(used.Count);
-            for (current = 0; current < used.Count; current++)
+
+            // Each local file once, also when several devices install it.
+            var uploaded = new List<FirmwareFile>(files.Count);
+            for (current = 0; current < files.Count; current++)
             {
-                var choice = _fileChoices[used[current]];
-                var file = await _ctx.UploadAsync(choice.Path, progress, uploadCts.Token).ConfigureAwait(true);
-                uploaded.Add(new FirmwareFile(file.Id, choice.Image.FileName));
+                var (file, devices) = files[current];
+                var info = await _ctx.UploadAsync(file.Path, progress, uploadCts.Token).ConfigureAwait(true);
+                uploaded.Add(new FirmwareFile(info.Id, file.Image.FileName, devices));
             }
 
             RunDevices = [.. installing.Select(d => d.Device.Id)];
@@ -833,7 +725,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             {
                 FileId = uploaded.Count > 0 ? uploaded[0].FileId : null,
                 FileName = uploaded.Count > 0 ? uploaded[0].FileName : null,
-                Files = uploaded.Count > 1 ? uploaded : null,
+                Files = uploaded.Count > 1 || uploaded.Any(u => u.Devices is not null) ? uploaded : null,
                 Online = online.Count > 0 ? online : null,
                 FactoryDefaultMode = SelectedMode.Mode,
                 AllowDowngrade = AllowDowngrade,
@@ -861,6 +753,40 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             _uploadCts = null;
             uploadCts.Dispose();
         }
+    }
+
+    /// <summary>
+    /// The payload of the devices that install (README "Payload"), small in the usual case: per product and AXIS OS major
+    /// the version most of its devices install names no devices (the server takes it by product and major); other versions
+    /// list their devices. A file names no devices when it is for one product and every installing device of that product
+    /// installs it (as before); else it lists its devices. Listed entries win on the server, so the result is per device.
+    /// </summary>
+    internal static (List<(FileChoice File, IReadOnlyList<Guid>? Devices)> Files, List<FirmwareOnline> Online) PayloadParts(IReadOnlyList<FirmwareDeviceRow> installing)
+    {
+        var online = new List<FirmwareOnline>();
+        foreach (var group in installing.Where(d => d.OnlineVersion is not null && d.ModelChoices?.Online is { Product: not null, Source: not null })
+            .GroupBy(d => (Model: d.ModelChoices!, Major: AxisOsVersion.TryParse(d.CurrentVersion)?.Major)))
+        {
+            var source = group.Key.Model.Online!.Source!;
+            var product = group.Key.Model.Online!.Product!;
+            var byVersion = group.GroupBy(d => d.OnlineVersion!.Version.Version).OrderByDescending(g => g.Count()).ToList();
+            online.Add(new FirmwareOnline(source, product, byVersion[0].Key, group.Key.Major));
+            online.AddRange(byVersion.Skip(1).Select(g => new FirmwareOnline(source, product, g.Key, null, [.. g.Select(d => d.Device.Id)])));
+        }
+
+        var installingByProduct = installing.GroupBy(d => FirmwareCompatibility.NormalizeProduct(d.Model)).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var files = new List<(FileChoice, IReadOnlyList<Guid>?)>();
+        foreach (var group in installing.Where(d => d.ChosenFile is not null).GroupBy(d => d.ChosenFile!.Path, StringComparer.Ordinal))
+        {
+            var file = group.First().ChosenFile!;
+            var product = file.Image.Product is { } p ? FirmwareCompatibility.NormalizeProduct(p) : null;
+            var byProduct = product is not null
+                && group.All(d => FirmwareCompatibility.NormalizeProduct(d.Model) == product)
+                && installingByProduct.GetValueOrDefault(product) == group.Count();
+            files.Add((file, byProduct ? null : [.. group.Select(d => d.Device.Id)]));
+        }
+
+        return (files, online);
     }
 
     /// <summary>Upgrade or Downgrade when every device that will install agrees (names the task), else Unknown.</summary>
@@ -918,57 +844,13 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     // ---------------------------------------------------------------- evaluation
 
-    /// <summary>Changes many rows with one evaluation at the end.</summary>
-    private void Bulk(Action change)
-    {
-        _bulk++;
-        try
-        {
-            change();
-        }
-        finally
-        {
-            _bulk--;
-        }
-
-        if (_bulk == 0 && _dirty)
-        {
-            _dirty = false;
-            Evaluate();
-        }
-    }
-
-    /// <summary>One pass over all rows (thousands of devices: no nested loops, one summary).</summary>
+    /// <summary>One pass over all devices (100,000 devices: no nested loops, one summary).</summary>
     private void Evaluate()
     {
-        if (_bulk > 0)
+        _chosenCount = 0;
+        foreach (var row in Devices)
         {
-            _dirty = true;
-            return;
-        }
-
-        // The chosen files (each once) and the chosen versions of the rows (only with a sign-in, only usable ones).
-        _fileChoices = [.. ModelRows.Select(r => r.ChosenFile).OfType<FileChoice>().DistinctBy(f => f.Path, StringComparer.Ordinal)];
-        _images = [.. _fileChoices.Select(f => f.Image)];
-        _online = [];
-        var onlineImages = new List<FirmwareImageInfo>();
-        foreach (var row in ModelRows)
-        {
-            if (IsSignedIn && row.OnlineVersion is { } v && row.Online is { Product: { } product, Source: { } source } && row.CheckError is null)
-            {
-                var entry = new FirmwareOnline(source, product, v.Version.Version, row.Major);
-                _online.Add(entry);
-                onlineImages.Add(OnlineFirmware.ImageOf(entry, v.Version.Size ?? row.CheckedVersion?.Size ?? 0));
-            }
-        }
-
-        _onlineImages = [.. onlineImages];
-
-        // FindOnline by an index: the entry for (model, major), else the one for (model, unknown version); first wins.
-        _onlineIndex = new Dictionary<(string, int?), int>();
-        for (var i = 0; i < _online.Count; i++)
-        {
-            _onlineIndex.TryAdd((OnlineFirmware.Normalize(_online[i].Product), _online[i].FromMajor), i);
+            _chosenCount += row.SelectedChoice is null ? 0 : 1;
         }
 
         foreach (var row in Devices)
@@ -976,71 +858,64 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             EvaluateRow(row);
         }
 
-        UpdateRowStates();
+        FileError = _selectError;
         UpdateSummary();
     }
 
+    /// <summary>The device's own choice through the decision table; a device without one says "No file" once others have one.</summary>
     private void EvaluateRow(FirmwareDeviceRow row)
     {
-        row.OnlineIndex = -1;
-        row.FileIndex = -1;
-        if (row.ModelRow?.OnlineVersion is not null && !IsSignedIn)
+        row.Image = null;
+        var choice = row.SelectedChoice?.Value;
+        if (choice is null)
         {
-            row.Check = new FirmwareCheck(FirmwareVerdict.SignInNeeded, OnlineFirmware.SignInText);
+            row.Check = _chosenCount == 0 ? null : new FirmwareCheck(FirmwareVerdict.NoFileForModel, FirmwareCompatibility.NoFileForModel);
+            return;
         }
-        else if (_images.Length == 0 && _online.Count == 0)
-        {
-            row.Check = null;
-        }
-        else if (!row.Supported)
+
+        if (!row.Supported)
         {
             row.Check = new FirmwareCheck(FirmwareVerdict.InvalidFile, "This device's firmware cannot be updated from OADM.");
-        }
-        else
-        {
-            var key = row.ModelRow?.Key ?? OnlineFirmware.Normalize(row.Model);
-            var index = _onlineIndex.Count == 0 ? -1
-                : _onlineIndex.TryGetValue((key, AxisOsVersion.TryParse(row.CurrentVersion)?.Major), out var exact) ? exact
-                : _onlineIndex.TryGetValue((key, null), out var unknown) ? unknown
-                : -1;
-            var (online, file, check) = FirmwareCompatibility.ChooseWithOnline(row.Model, row.CurrentVersion, _online, _onlineImages, _images, SelectedMode.Mode, AllowDowngrade, row.Apps,
-                matchByProduct: row.ModelRow?.SelectedChoice is null, onlineIndex: index);
-            row.OnlineIndex = online;
-            row.FileIndex = file;
-            row.Check = check;
-        }
-    }
-
-    /// <summary>Per row: the problem of its choice, the sign-in line, "Up to date"; then the first problem for Upgrade.</summary>
-    private void UpdateRowStates()
-    {
-        var byProduct = _fileChoices.Where(f => f.Image.Product is not null && !f.Image.IsRejected)
-            .GroupBy(f => FirmwareCompatibility.NormalizeProduct(f.Image.Product!))
-            .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
-        string? first = _selectError;
-        foreach (var row in ModelRows)
-        {
-            var file = row.ChosenFile;
-            var product = file?.Image.Product is { } p ? FirmwareCompatibility.NormalizeProduct(p) : null;
-            row.Error = file?.Image.RejectReason
-                ?? (row.DuplicateFile || (product is not null && byProduct.Contains(product))
-                    ? $"Two files are for {(product ?? FirmwareCompatibility.NormalizeProduct(row.Model))}. Choose one file per model."
-                    : null)
-                ?? row.CheckError;
-            row.Notice = row.OnlineVersion is not null && !IsSignedIn ? OnlineFirmware.SignInText : null;
-            var upToDate = row.SelectedChoice is not null && row.DeviceRows.Count > 0 && row.DeviceRows.All(d => d.Check?.IsNoOp == true);
-            row.Status = upToDate ? "Up to date" : null;
-            first ??= row.Error;
+            return;
         }
 
-        FileError = first;
+        if (choice is FileChoice file)
+        {
+            row.Image = file.Image;
+            row.Check = FirmwareCompatibility.Evaluate(row.Model, row.CurrentVersion, file.Image, SelectedMode.Mode, AllowDowngrade, row.Apps);
+            return;
+        }
+
+        var version = (OnlineChoice)choice;
+        if (!IsSignedIn)
+        {
+            row.Check = new FirmwareCheck(FirmwareVerdict.SignInNeeded, OnlineFirmware.SignInText);
+            return;
+        }
+
+        var online = row.ModelChoices!.Online!;
+        long? size = version.Version.Size;
+        if (size is null && _checked.TryGetValue(CheckKey(online, version.Version.Version), out var info))
+        {
+            if (info is null)
+            {
+                row.Check = new FirmwareCheck(FirmwareVerdict.NotListed, $"AXIS OS {version.Version.Version} is no longer on axis.com.");
+                return;
+            }
+
+            size = info.Size;
+        }
+
+        var entry = new FirmwareOnline(online.Source ?? OnlineFirmware.Mpqt, online.Product ?? row.Model, version.Version.Version, null);
+        row.Image = OnlineFirmware.ImageOf(entry, size ?? 0);
+        row.Check = FirmwareCompatibility.EvaluateOnline(entry, row.Image, row.Model, row.CurrentVersion, SelectedMode.Mode, AllowDowngrade, row.Apps);
     }
 
     private void UpdateSummary()
     {
         OnPropertyChanged(nameof(PathWarning));
         OnPropertyChanged(nameof(HasPathWarning));
-        if (!AnyChoice)
+        if (_chosenCount == 0)
         {
             Summary = NothingChosenText;
             _breakingChangesGuide = null;
@@ -1073,13 +948,10 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(StartBlockedReason));
     }
 
-    /// <summary>The newest major version with a breaking changes guide this row moves up to, else 0.</summary>
-    private int BreakingMajor(FirmwareDeviceRow row)
+    /// <summary>The newest major version with a breaking changes guide this device moves up to, else 0.</summary>
+    private static int BreakingMajor(FirmwareDeviceRow row)
     {
-        var image = row.OnlineIndex >= 0 && row.OnlineIndex < _onlineImages.Length ? _onlineImages[row.OnlineIndex]
-            : row.FileIndex >= 0 && row.FileIndex < _images.Length ? _images[row.FileIndex]
-            : null;
-        if (image?.Version is not { } target || AxisOsVersion.TryParse(row.CurrentVersion) is not { } current || target.Major <= current.Major)
+        if (row.Image?.Version is not { } target || AxisOsVersion.TryParse(row.CurrentVersion) is not { } current || target.Major <= current.Major)
         {
             return 0;
         }

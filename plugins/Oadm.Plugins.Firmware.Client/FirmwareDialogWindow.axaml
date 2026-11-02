@@ -6,20 +6,21 @@
         x:Class="Oadm.Plugins.Firmware.Client.FirmwareDialogWindow"
         x:DataType="fw:FirmwareDialogViewModel"
         Title="{Binding Title}"
-        Width="1040" Height="920" MinWidth="820" MinHeight="600"
+        Width="1200" Height="820" MinWidth="960" MinHeight="560"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Layout of the add devices wizard: title bar, cards, button row. Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,*,*,Auto,Auto">
+  <!-- Title bar, the devices with the firmware each installs, the options in one row, the button row.
+       Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
-    <!-- Firmware: one row per model and track, a version from axis.com or a chosen file -->
+    <!-- Devices: one table, the version from axis.com or a chosen file per device -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <Grid RowDefinitions="Auto,Auto,Auto,*">
-        <ui:CardHeader Title="Firmware" Description="A version from axis.com or a file (.bin) per model. Each device checks its file before installing." />
-        <!-- Command buttons left (they set every row), the MyAxis sign-in right -->
+      <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
+        <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
+        <!-- Command buttons left (they set every device), the MyAxis sign-in right -->
         <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
           <StackPanel Orientation="Horizontal" Spacing="4">
             <ui:ToolbarButton IconKey="check" Text="Recommended" Command="{Binding RecommendedCommand}" ToolTip.Tip="Newest version on each device's track" />
@@ -35,39 +36,9 @@
           <ui:ProgressRow Margin="0,0,0,8" Value="{Binding LookupProgress}" Text="{Binding LookupStatus}" IsVisible="{Binding IsLookingUp}" />
           <TextBlock Classes="warning" Margin="0,0,0,8" Text="{x:Static fws:OnlineFirmware.UnreachableText}" IsVisible="{Binding OnlineUnreachable}" />
         </StackPanel>
-        <DataGrid x:Name="ModelsGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding ModelRows}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
+        <DataGrid x:Name="DevicesGrid" Grid.Row="3" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareModelRow" />
-            <DataGridTextColumn Header="Devices" Width="110" Binding="{Binding DevicesText}" x:DataType="fw:FirmwareModelRow" />
-            <DataGridTextColumn Header="Firmware now" Width="170" Binding="{Binding FirmwareNow}" x:DataType="fw:FirmwareModelRow" />
-            <DataGridTemplateColumn Header="Version" Width="2*">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="fw:FirmwareModelRow">
-                  <StackPanel Margin="10,6" Spacing="2">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                      <ComboBox Classes="grouped" Width="260" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}"
-                                VerticalAlignment="Top" PlaceholderText="Choose file" />
-                      <ui:ProgressRing VerticalAlignment="Top" IsVisible="{Binding IsChecking}" />
-                      <ui:StatusChip VerticalAlignment="Top" IsOk="True" Text="{Binding Status}" IsVisible="{Binding HasStatus}" />
-                    </StackPanel>
-                    <!-- A refused choice shows directly below the field (the row's INotifyDataErrorInfo); this line is no error -->
-                    <TextBlock Classes="warning small" TextWrapping="Wrap" Text="{Binding Notice}" IsVisible="{Binding HasNotice}" />
-                  </StackPanel>
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-          </DataGrid.Columns>
-        </DataGrid>
-      </Grid>
-    </Border>
-
-    <!-- Devices -->
-    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
-      <Grid RowDefinitions="Auto,*,Auto,Auto">
-        <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
-        <DataGrid x:Name="DevicesGrid" Grid.Row="1" Classes="wrapRows" ItemsSource="{Binding Devices}" IsReadOnly="True" SelectionMode="Single" CanUserReorderColumns="False">
-          <DataGrid.Columns>
-            <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
+            <DataGridTextColumn Header="Address" Width="120" Binding="{Binding Address}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTextColumn Header="Model" Width="*" Binding="{Binding Model}" x:DataType="fw:FirmwareDeviceRow" />
             <DataGridTemplateColumn Header="Firmware" Width="110" SortMemberPath="CurrentVersion">
               <DataGridTemplateColumn.CellTemplate>
@@ -79,7 +50,14 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="Result" Width="170" SortMemberPath="VerdictText">
+            <DataGridTemplateColumn Header="Version" Width="200">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="fw:FirmwareDeviceRow">
+                  <ComboBox Classes="grouped" Margin="6,4" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" PlaceholderText="Choose file" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Result" Width="160" SortMemberPath="VerdictText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
                   <ui:StatusChip Margin="10,0" Text="{Binding VerdictText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarn}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Message}" />
@@ -87,7 +65,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <!-- The reason is the important part: the widest column, two lines -->
-            <DataGridTemplateColumn Header="Details" Width="3*" SortMemberPath="Message">
+            <DataGridTemplateColumn Header="Details" Width="2*" SortMemberPath="Message">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="fw:FirmwareDeviceRow">
                   <TextBlock Text="{Binding Message}" TextWrapping="Wrap" MaxLines="2" Margin="10,6" ToolTip.Tip="{Binding Message}" />
@@ -96,31 +74,32 @@
             </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
-        <TextBlock Grid.Row="2" Classes="warning" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding PathWarning}" IsVisible="{Binding HasPathWarning}" />
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" IsVisible="{Binding HasBreakingChanges}">
+        <!-- A problem of the whole file choice, directly below the table -->
+        <TextBlock Grid.Row="4" Classes="error" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding FileError}" IsVisible="{Binding HasFileError}" />
+        <TextBlock Grid.Row="5" Classes="warning" Margin="0,8,0,0" TextWrapping="Wrap" Text="{Binding PathWarning}" IsVisible="{Binding HasPathWarning}" />
+        <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0" IsVisible="{Binding HasBreakingChanges}">
           <TextBlock Classes="warning" VerticalAlignment="Center" Text="{Binding BreakingChangesNotice}" />
           <Button Classes="link" VerticalAlignment="Center" Content="Read the Axis guide before upgrading" Command="{Binding OpenBreakingChangesCommand}" />
         </StackPanel>
       </Grid>
     </Border>
 
-    <!-- Options -->
-    <Border Grid.Row="3" Classes="card" Margin="16,16,16,0">
-      <StackPanel>
-        <ui:CardHeader Title="Options" />
-        <StackPanel Classes="form">
+    <!-- Options in one row -->
+    <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
+      <StackPanel Classes="form">
+        <StackPanel Orientation="Horizontal" Spacing="24">
           <ui:FormField Label="Factory default" InputWidth="360" IsVisible="{Binding MayFactoryDefault}">
             <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
           </ui:FormField>
-          <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
-          <CheckBox IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
-          <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />
-          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
+          <CheckBox VerticalAlignment="Center" IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
         </StackPanel>
+        <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
+        <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />
+        <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding Error}" IsVisible="{Binding HasError}" />
       </StackPanel>
     </Border>
 
-    <ui:DialogFooter Grid.Row="4" CancelCommand="{Binding CancelCommand}">
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="Upgrade" Command="{Binding StartCommand}" IsDefault="True"
               ToolTip.Tip="{Binding StartBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>

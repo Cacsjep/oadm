@@ -214,6 +214,32 @@ public sealed class OnlineTaskTests : IDisposable
     }
 
     [Fact]
+    public async Task A_version_that_names_the_device_is_its_own_and_must_be_for_its_model()
+    {
+        var device = new FakeDevice();
+        var (ctx, fake) = Setup("11.11.220");
+        var payload = new FirmwarePayload
+        {
+            Online = [new FirmwareOnline("MPQT", "P3265-V", "12.11.147", 11), new FirmwareOnline("MPQT", "P3265-V", "11.11.220", null, [device.Id])],
+        }.ToJson();
+        _site.MakeVersionFolders = true;
+
+        await StepRun.RunAsync(ctx.Steps, () => Plugin().ExecuteAsync(ctx, device, payload, CancellationToken.None));
+
+        Assert.Equal(new Uri("https://www.axis.com/ftp/pub_soft/MPQT/P3265-V/11_11_220/P3265-V_11_11_220.bin"), Assert.Single(_downloads.Calls).Uri);
+        Assert.Equal("P3265-V_11_11_220.bin", fake.UploadedFileName);
+
+        // An entry for another product that names the device is refused before anything is read or written.
+        var (other, otherDevice) = Setup();
+        var wrong = new FirmwarePayload { Online = [new FirmwareOnline("MPQT", "Q6135-LE", "12.11.147", null, [device.Id])] }.ToJson();
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            StepRun.RunAsync(other.Steps, () => Plugin().ExecuteAsync(other, device, wrong, CancellationToken.None)));
+        Assert.Equal("The file is for Q6135-LE, the device is P3265-V. Nothing was changed.", ex.Message);
+        Assert.DoesNotContain("upgrade", otherDevice.Methods);
+        Assert.Single(_downloads.Calls);
+    }
+
+    [Fact]
     public void The_payload_carries_versions_and_keeps_the_old_shape()
     {
         var online = FirmwarePayload.Parse(Online());

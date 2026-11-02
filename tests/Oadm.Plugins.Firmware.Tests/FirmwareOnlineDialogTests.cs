@@ -10,13 +10,14 @@ using Oadm.Plugins.Firmware.Tests;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Devices;
 
-using ClientOnline = fwclient::Oadm.Plugins.Firmware.FirmwareOnline;
-using ClientPayload = fwclient::Oadm.Plugins.Firmware.FirmwarePayload;
 using ClientStatus = fwclient::Oadm.Plugins.Firmware.FirmwareStatusInfo;
 using ClientVerdict = fwclient::Oadm.Plugins.Firmware.FirmwareVerdict;
+using DeviceRow = fwclient::Oadm.Plugins.Firmware.Client.FirmwareDeviceRow;
 using DialogViewModel = fwclient::Oadm.Plugins.Firmware.Client.FirmwareDialogViewModel;
 using DialogWindow = fwclient::Oadm.Plugins.Firmware.Client.FirmwareDialogWindow;
-using ModelRow = fwclient::Oadm.Plugins.Firmware.Client.FirmwareModelRow;
+using ServerCompatibility = Oadm.Plugins.Firmware.FirmwareCompatibility;
+using ServerOnlineFirmware = Oadm.Plugins.Firmware.OnlineFirmware;
+using ServerPayload = Oadm.Plugins.Firmware.FirmwarePayload;
 
 // Own namespace: inside Oadm.Plugins.Firmware.* the server's copies of the shared types would win.
 namespace Oadm.FirmwareDialogTests;
@@ -41,7 +42,7 @@ internal sealed class FakeMyAxis(bool signedIn) : IMyAxisSignIn
     }
 }
 
-/// <summary>The dialog with versions from axis.com: the server's own queries answer from the recorded pages.</summary>
+/// <summary>The dialog with versions from axis.com, one select per device: the server's own queries answer from the recorded pages.</summary>
 public sealed class FirmwareOnlineDialogTests
 {
     private static Device[] Selection() =>
@@ -59,70 +60,92 @@ public sealed class FirmwareOnlineDialogTests
     {
         var plugin = new Oadm.Plugins.Firmware.FirmwareTaskPlugin(new Oadm.Plugins.Firmware.FirmwareTaskTimings(), TimeProvider.System, site);
         var query = new QueryContext(new FakeAxisDevice());
-        var ctx = new FakeDialogContext
+        return new FakeDialogContext
         {
             MyAxis = signedIn is { } s ? new FakeMyAxis(s) : null,
             Online = (method, payload, ct) => plugin.QueryAsync(query, new FakeDevice(), method, payload, ct),
         };
-        return ctx;
     }
 
-    private static ModelRow Row(DialogViewModel vm, string model, int major) => vm.ModelRows.Single(r => r.Model == model && r.Major == major);
+    private static string? Chosen(DeviceRow row) => row.OnlineVersion?.Version.Version;
 
-    private static string? Chosen(ModelRow row) => row.OnlineVersion?.Version.Version;
+    /// <summary>The server, given the payload, takes for every device of the run what the dialog showed.</summary>
+    private static void ServerAgrees(DialogViewModel vm)
+    {
+        var payload = ServerPayload.Parse(vm.Result);
+        var online = payload.AllOnline();
+        var onlineImages = online.Select(o => ServerOnlineFirmware.ImageOf(o, 0)).ToList();
+        var files = payload.AllFiles();
+        var fileImages = files.Select(f => Oadm.Plugins.Firmware.FirmwareImageInspector.Inspect(f.FileName!, 80 * 1024 * 1024)).ToList();
+        foreach (var id in vm.RunDevices)
+        {
+            var row = vm.Devices.Single(d => d.Device.Id == id);
+            var (o, f, _) = ServerCompatibility.ChooseFor(id, row.Model, row.CurrentVersion, online, onlineImages, files, fileImages, Oadm.Plugins.Firmware.FactoryDefaultMode.None, true);
+            var taken = o >= 0 ? online[o].Version : files[f].FileName;
+            Assert.Equal(row.OnlineVersion?.Version.Version ?? row.ChosenFile!.Image.FileName, taken);
+        }
+    }
 
     [Fact]
-    public async Task One_row_per_model_and_track_and_signed_in_it_opens_with_Recommended()
+    public async Task Signed_in_every_device_gets_Recommended_and_the_run_carries_little()
     {
         var devices = Selection();
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });
         using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
-
-        Assert.Equal(["C1410 11", "P12-MkIII 9", "P3265-V 12", "P3265-V 11"], vm.ModelRows.Select(r => r.Model + " " + r.Major));
-        Assert.Equal("2 devices", Row(vm, "P3265-V", 11).DevicesText);
-        Assert.Equal("12.11.77 to 12.11.147", Row(vm, "P3265-V", 12).FirmwareNow);
+        Assert.All(vm.Devices, d => Assert.Null(d.SelectedChoice));
 
         await vm.LoadOnlineAsync(CancellationToken.None);
 
         Assert.False(vm.OnlineUnreachable);
-        Assert.Equal("11.11.238", Chosen(Row(vm, "P3265-V", 11))); // 11.11 stays 11.11
-        Assert.Equal("12.11.147", Chosen(Row(vm, "P3265-V", 12)));
-        Assert.Equal("11.11.238", Chosen(Row(vm, "C1410", 11)));
-        Assert.Equal("Up to date", Row(vm, "C1410", 11).Status);
+        Assert.Equal(["11.11.238", "11.11.238", "12.11.147", "12.11.147", "11.11.238", null], vm.Devices.Select(Chosen));
 
-        // Not listed: Choose file only.
-        var p12 = Row(vm, "P12-MkIII", 9);
-        Assert.False(p12.IsListed);
-        Assert.Equal(["Choose file"], p12.Choices.Select(c => c.Text));
-        Assert.Null(p12.SelectedChoice);
-
-        // The select: the track names as headers, every version newest first, Choose file last.
-        var choices = Row(vm, "P3265-V", 11).Choices;
-        Assert.Equal(["LTS 2026 · 12.11", "LTS 2024 · 11.11", "LTS 2022 · 10.12"], choices.Where(c => c.IsHeader).Select(c => c.Text));
-        Assert.Equal(["12.11.147", "12.11.118"], choices.SkipWhile(c => c.IsHeader).Take(2).Select(c => c.Text));
-        Assert.Equal("Choose file", choices[^1].Text);
+        // One list per model, shared by its devices: the track names as headers, every version newest first, Choose file last.
+        var p = vm.Devices[0].Choices;
+        Assert.Same(p, vm.Devices[3].Choices);
+        Assert.Equal(["LTS 2026 · 12.11", "LTS 2024 · 11.11", "LTS 2022 · 10.12"], p.Where(c => c.IsHeader).Select(c => c.Text));
+        Assert.Equal(["12.11.147", "12.11.118"], p.SkipWhile(c => c.IsHeader).Take(2).Select(c => c.Text));
+        Assert.Equal("Choose file", p[^1].Text);
+        Assert.Equal(["Choose file"], vm.Devices[5].Choices.Select(c => c.Text)); // P12-MkIII is not listed
 
         Assert.Equal("Upgrade", vm.Devices[0].VerdictText);
         Assert.Equal("11.11.160 → 11.11.238", vm.Devices[0].Message);
         Assert.Equal("Up to date", vm.Devices[3].VerdictText);
+        Assert.Equal("No file", vm.Devices[5].VerdictText);
         Assert.Equal("3 of 6 devices will be updated, 2 already up to date, 1 not possible.", vm.Summary);
 
         await vm.StartCommand.ExecuteAsync(null);
 
         Assert.Empty(ctx.Uploads); // nothing to upload: the server downloads
-        var payload = ClientPayload.Parse(vm.Result);
+        var payload = ServerPayload.Parse(vm.Result);
         Assert.Null(payload.FileId);
-        Assert.Equal([new ClientOnline("MPQT", "P3265-V", "12.11.147", 12), new ClientOnline("MPQT", "P3265-V", "11.11.238", 11)], payload.Online!.OrderByDescending(o => o.FromMajor));
+        Assert.All(payload.AllOnline(), o => Assert.Null(o.Devices)); // by product and major: no device ids
+        Assert.Equal(["11.11.238 11", "12.11.147 12"], payload.AllOnline().Select(o => o.Version + " " + o.FromMajor).Order());
         Assert.Equal([devices[0].Id, devices[1].Id, devices[2].Id], vm.RunDevices);
+        Assert.Equal("Upgrade firmware", payload.TaskName()); // two versions, every device upgrades
+        ServerAgrees(vm);
+    }
 
-        // The server picks the same version for every device the run starts on.
-        var server = Oadm.Plugins.Firmware.FirmwarePayload.Parse(vm.Result);
-        Assert.Equal("Upgrade firmware", server.TaskName()); // two versions, every device upgrades
-        foreach (var device in devices.Take(3))
-        {
-            var index = Oadm.Plugins.Firmware.FirmwareCompatibility.FindOnline(device.Model, device.FirmwareVersion, server.AllOnline());
-            Assert.Equal(device.FirmwareVersion!.StartsWith("11.", StringComparison.Ordinal) ? "11.11.238" : "12.11.147", server.AllOnline()[index].Version);
-        }
+    [Fact]
+    public async Task Choosing_a_version_changes_only_that_device()
+    {
+        var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });
+        using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+        await vm.LoadOnlineAsync(CancellationToken.None);
+
+        var one = vm.Devices[1];
+        one.SelectedChoice = one.Choices.Single(c => c.Text == "12.11.147");
+
+        Assert.Equal("12.11.147", Chosen(one));
+        Assert.Equal("11.11.238", Chosen(vm.Devices[0])); // the other device of its model and track keeps its version
+        Assert.Equal("11.11.160 → 12.11.147. Major upgrade. Make sure the device runs the latest AXIS OS 11.11 first.", one.Message);
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        // That device is named in the payload; the others go by product and major.
+        var payload = ServerPayload.Parse(vm.Result);
+        var named = Assert.Single(payload.AllOnline(), o => o.Devices is not null);
+        Assert.Equal(("12.11.147", one.Device.Id), (named.Version, Assert.Single(named.Devices!)));
+        ServerAgrees(vm);
     }
 
     /// <summary>A model with an active track (AXIS OS 13) next to its LTS tracks.</summary>
@@ -136,31 +159,31 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
-    public async Task The_buttons_set_every_row()
+    public async Task The_buttons_set_every_device()
     {
         Device[] devices = [new("10.0.1.1", "Q1800-LE", "11.11.200"), new("10.0.1.2", "Q1800-LE", "12.11.100"), new("10.0.1.3", "Q1800-LE", "13.0.88")];
         using var vm = new DialogViewModel(Context(ActiveSite()), devices, new FakeFileSource());
         Assert.False(vm.RecommendedCommand.CanExecute(null)); // nothing read yet
         await vm.LoadOnlineAsync(CancellationToken.None);
 
-        Assert.Equal(["13.1.20", "12.11.147", "11.11.238"], vm.ModelRows.Select(Chosen)); // Recommended: each row's own track
-        Assert.Equal("AXIS OS 13", vm.ModelRows[0].Choices[0].Text);
+        Assert.Equal(["11.11.238", "12.11.147", "13.1.20"], vm.Devices.Select(Chosen)); // Recommended: each device's own track
+        Assert.Equal("AXIS OS 13", vm.Devices[0].Choices[0].Text);
 
         vm.LatestLtsCommand.Execute(null);
-        Assert.Equal(["12.11.147", "12.11.147", "12.11.147"], vm.ModelRows.Select(Chosen));
+        Assert.Equal(["12.11.147", "12.11.147", "12.11.147"], vm.Devices.Select(Chosen));
         Assert.Equal("Downgrade blocked", vm.Devices[2].VerdictText); // 13.0.88 -> 12.11.147, the decision table applies
 
         vm.LatestActiveCommand.Execute(null);
-        Assert.Equal(["13.1.20", "13.1.20", "13.1.20"], vm.ModelRows.Select(Chosen));
+        Assert.Equal(["13.1.20", "13.1.20", "13.1.20"], vm.Devices.Select(Chosen));
         Assert.Equal("Not recommended", vm.Devices[0].VerdictText); // 11.11 jumps over 12.11: the upgrade path advice
         Assert.True(vm.HasBreakingChanges);
 
         vm.RecommendedCommand.Execute(null);
-        Assert.Equal(["13.1.20", "12.11.147", "11.11.238"], vm.ModelRows.Select(Chosen));
+        Assert.Equal(["11.11.238", "12.11.147", "13.1.20"], vm.Devices.Select(Chosen));
     }
 
     [Fact]
-    public async Task Not_signed_in_every_row_starts_on_Choose_file_and_a_version_asks_to_sign_in()
+    public async Task Not_signed_in_every_device_starts_on_Choose_file_and_a_version_asks_to_sign_in()
     {
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true }, signedIn: false);
         using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
@@ -169,15 +192,15 @@ public sealed class FirmwareOnlineDialogTests
         await vm.LoadOnlineAsync(CancellationToken.None);
 
         Assert.True(vm.ShowSignIn);
-        Assert.All(vm.ModelRows, r => Assert.Null(r.SelectedChoice));
-        Assert.True(Row(vm, "P3265-V", 11).IsListed); // the versions show for information
+        Assert.All(vm.Devices, d => Assert.Null(d.SelectedChoice));
+        Assert.Contains(vm.Devices[0].Choices, c => c.Text == "11.11.220"); // the versions show for information
 
-        var row = Row(vm, "P3265-V", 11);
-        row.SelectedChoice = row.Choices.First(c => c.Text == "11.11.220");
-        Assert.Equal("Sign in to MyAxis to download from axis.com.", row.Notice);
-        Assert.Equal(ClientVerdict.SignInNeeded, vm.Devices[0].Check!.Verdict);
-        Assert.Equal("Sign in", vm.Devices[0].VerdictText);
-        Assert.False(vm.Devices[0].IsError);
+        var device = vm.Devices[0];
+        device.SelectedChoice = device.Choices.First(c => c.Text == "11.11.220");
+        Assert.Equal(ClientVerdict.SignInNeeded, device.Check!.Verdict);
+        Assert.Equal("Sign in", device.VerdictText);
+        Assert.Equal("Sign in to MyAxis to download from axis.com.", device.Message);
+        Assert.False(device.IsError);
         Assert.False(vm.CanStart());
         Assert.DoesNotContain("onlineVersion", ctx.Queries); // read only with a sign-in
 
@@ -186,10 +209,9 @@ public sealed class FirmwareOnlineDialogTests
         Assert.True(vm.IsSignedIn);
         Assert.False(vm.ShowSignIn);
         Assert.Equal(1, myAxis.SignIns);
-        Assert.Equal("11.11.220", Chosen(row)); // the choice stays
-        Assert.Null(row.Notice);
-        Assert.Equal("12.11.147", Chosen(Row(vm, "P3265-V", 12))); // the rows without a choice get Recommended
-        Assert.Equal("11.11.160 → 11.11.220", vm.Devices[0].Message);
+        Assert.Equal("11.11.220", Chosen(device)); // the choice stays
+        Assert.Equal("12.11.147", Chosen(vm.Devices[2])); // the devices without a choice get Recommended
+        Assert.Equal("11.11.160 → 11.11.220", device.Message);
         Assert.True(vm.CanStart());
     }
 
@@ -201,7 +223,7 @@ public sealed class FirmwareOnlineDialogTests
 
         Assert.False(vm.CanSignIn);
         Assert.False(vm.ShowSignIn);
-        Assert.All(vm.ModelRows, r => Assert.Null(r.SelectedChoice));
+        Assert.All(vm.Devices, d => Assert.Null(d.SelectedChoice));
     }
 
     [Fact]
@@ -211,57 +233,82 @@ public sealed class FirmwareOnlineDialogTests
         await vm.LoadOnlineAsync(CancellationToken.None);
 
         Assert.True(vm.OnlineUnreachable);
-        Assert.All(vm.ModelRows, r => Assert.Equal(["Choose file"], r.Choices.Select(c => c.Text)));
+        Assert.All(vm.Devices, d => Assert.Equal(["Choose file"], d.Choices.Select(c => c.Text)));
         Assert.False(vm.RecommendedCommand.CanExecute(null));
 
-        await vm.ChooseFileForAsync(Row(vm, "P3265-V", 11));
+        await vm.ChooseFileForAsync(vm.Devices[0]);
         Assert.True(vm.Devices[0].WillInstall);
     }
 
     [Fact]
-    public async Task An_older_version_is_checked_when_chosen()
+    public async Task A_failed_query_shows_that_axis_com_could_not_be_reached()
+    {
+        // The server's query fails (an error status of the host, an answer the dialog cannot read): never a silent dialog.
+        foreach (var answer in new Func<string, string?, CancellationToken, Task<string?>>[]
+        {
+            (_, _, _) => throw new InvalidOperationException("Status(StatusCode=\"Unavailable\")"),
+            (_, _, _) => Task.FromResult<string?>("{not json"),
+            (_, _, _) => Task.FromResult<string?>(null),
+        })
+        {
+            var ctx = Context(new FakeAxisSite());
+            ctx.Online = answer;
+            using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
+
+            await vm.LoadOnlineAsync(CancellationToken.None);
+
+            Assert.True(vm.OnlineUnreachable);
+            Assert.False(vm.IsLookingUp);
+            Assert.Contains("online", ctx.Queries);
+        }
+    }
+
+    [Fact]
+    public async Task An_older_version_is_checked_once_when_chosen()
     {
         var site = new FakeAxisSite { MakeVersionFolders = true };
         site.Set("/ftp/pub_soft/MPQT/P3265-V/11_11_192/", FakeAxisSite.Listing("/ftp/pub_soft/MPQT/P3265-V/11_11_192/"));
         var ctx = Context(site);
         using var vm = new DialogViewModel(ctx, Selection(), new FakeFileSource());
         await vm.LoadOnlineAsync(CancellationToken.None);
-        var row = Row(vm, "P3265-V", 11);
+        var (a, b) = (vm.Devices[0], vm.Devices[1]);
 
-        row.SelectedChoice = row.Choices.First(c => c.Text == "11.11.205");
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.CheckedVersion is not null, "11.11.205 was read");
-        Assert.Null(row.Error);
-        Assert.True(vm.CanStart());
+        a.SelectedChoice = a.Choices.First(c => c.Text == "11.11.205");
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => ctx.Queries.Contains("onlineVersion") && vm.StartBlockedReason is null, "11.11.205 was read");
+        b.SelectedChoice = b.Choices.First(c => c.Text == "11.11.205");
+        Assert.Equal("Upgrade", b.VerdictText);
+        Assert.Equal(1, ctx.Queries.Count(q => q == "onlineVersion")); // read once for both devices
 
-        row.SelectedChoice = row.Choices.First(c => c.Text == "11.11.192");
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.Error is not null, "11.11.192 is refused");
-        Assert.Equal("AXIS OS 11.11.192 is no longer on axis.com.", row.Error);
-        Assert.Equal(row.Error, vm.FileError);
-        Assert.Equal(row.Error, vm.StartBlockedReason);
-        Assert.Equal(2, ctx.Queries.Count(q => q == "onlineVersion"));
+        a.SelectedChoice = a.Choices.First(c => c.Text == "11.11.192");
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => a.Check?.Verdict == ClientVerdict.NotListed, "11.11.192 is refused");
+        Assert.Equal("AXIS OS 11.11.192 is no longer on axis.com.", a.Message);
+        Assert.Equal("Not on axis.com", a.VerdictText);
+        Assert.False(a.WillInstall);
+        Assert.True(vm.CanStart()); // the other devices still install
     }
 
     [Fact]
     public async Task Versions_and_chosen_files_mix_in_one_run()
     {
-        Device[] devices = [new("10.0.0.48", "P3265-V", "11.11.160"), new("10.0.0.60", "Q6135-LE", "11.11.160")];
+        Device[] devices = [new("10.0.0.48", "P3265-V", "11.11.160"), new("10.0.0.60", "Q6135-LE", "11.11.160"), new("10.0.0.61", "Q6135-LE", "11.11.160")];
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });
         using var vm = new DialogViewModel(ctx, devices, new FakeFileSource { Picked = "C:\\fw\\Q6135-LE_12_11_77.bin" });
         await vm.LoadOnlineAsync(CancellationToken.None);
 
-        var q = Row(vm, "Q6135-LE", 11);
-        Assert.False(q.IsListed); // its pages are not recorded: not listed
-        await vm.ChooseFileForAsync(q);
-        Assert.Equal("Q6135-LE_12_11_77.bin", q.SelectedChoice!.Text);
+        await vm.ChooseFileForAsync(vm.Devices[1]);
+        Assert.Equal("Q6135-LE_12_11_77.bin", vm.Devices[1].SelectedChoice!.Text);
         Assert.True(vm.Devices[1].WillInstall);
+        Assert.Equal("No file", vm.Devices[2].VerdictText); // only that device
 
         await vm.StartCommand.ExecuteAsync(null);
 
         Assert.Equal(["C:\\fw\\Q6135-LE_12_11_77.bin"], ctx.Uploads); // only the chosen file
-        var payload = Oadm.Plugins.Firmware.FirmwarePayload.Parse(vm.Result);
+        var payload = ServerPayload.Parse(vm.Result);
         Assert.Equal("Q6135-LE_12_11_77.bin", payload.FileName);
-        Assert.Equal(new Oadm.Plugins.Firmware.FirmwareOnline("MPQT", "P3265-V", "11.11.238", 11), Assert.Single(payload.AllOnline()));
+        Assert.Null(Assert.Single(payload.AllFiles()).Devices); // every Q6135-LE of the run takes it: by product (the other one does not run)
+        Assert.Equal(("11.11.238", 11), (Assert.Single(payload.AllOnline()).Version, payload.AllOnline()[0].FromMajor));
         Assert.Equal([devices[0].Id, devices[1].Id], vm.RunDevices);
+        ServerAgrees(vm);
     }
 
     [Fact]
@@ -287,36 +334,33 @@ public sealed class FirmwareOnlineDialogTests
         await lookup;
 
         Assert.False(vm.IsLookingUp);
-        Assert.Equal("P3265-V_12_11_77.bin", Row(vm, "P3265-V", 11).SelectedChoice!.Text); // a chosen file stays
-        Assert.Equal("11.11.238", Chosen(Row(vm, "C1410", 11)));
+        Assert.Equal("P3265-V_12_11_77.bin", vm.Devices[0].SelectedChoice!.Text); // a chosen file stays
+        Assert.Equal("11.11.238", Chosen(vm.Devices[4]));
         Assert.True(vm.StartCommand.CanExecute(null));
     }
 
     [Fact]
-    public async Task A_device_whose_status_shows_another_major_moves_to_that_row()
+    public async Task The_status_read_judges_against_the_current_version()
     {
-        Device[] devices = [new("10.0.0.48", "P3265-V", "11.11.160"), new("10.0.0.49", "P3265-V", "12.11.77")];
+        Device[] devices = [new("10.0.0.48", "P3265-V", "11.11.160")];
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });
-        ctx.Status[devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "12.11.118" }.ToJson();
-        ctx.Status[devices[1].Id] = new ClientStatus { Supported = true, ActiveVersion = "12.11.77" }.ToJson();
+        ctx.Status[devices[0].Id] = new ClientStatus { Supported = true, ActiveVersion = "11.11.238" }.ToJson();
         using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
         await vm.LoadOnlineAsync(CancellationToken.None);
-        Assert.Equal(2, vm.ModelRows.Count);
+        Assert.Equal("Upgrade", vm.Devices[0].VerdictText);
 
         await vm.LoadStatusAsync(CancellationToken.None);
 
-        var row = Assert.Single(vm.ModelRows);
-        Assert.Equal((12, "2 devices", "12.11.147"), (row.Major!.Value, row.DevicesText, Chosen(row)));
-        Assert.True(vm.Devices.All(d => d.WillInstall));
+        Assert.Equal("Up to date", vm.Devices[0].VerdictText);
     }
 }
 
-/// <summary>HARD RULE "scale to thousands of devices": the firmware rows of the most selected devices.</summary>
+/// <summary>HARD RULE "scale to thousands of devices": the selects and the buttons with the most selected devices.</summary>
 public sealed class FirmwareOnlineScaleTests
 {
     [Fact]
     [Trait("Category", "Perf")]
-    public async Task Rows_of_100000_devices_are_built_and_set_fast()
+    public async Task Rows_and_the_three_buttons_for_100000_devices_are_fast()
     {
         const int models = 120;
         var names = Enumerable.Range(0, models).Select(i => string.Create(CultureInfo.InvariantCulture, $"M{3000 + i}-LE")).ToList();
@@ -337,22 +381,29 @@ public sealed class FirmwareOnlineScaleTests
         using var vm = new DialogViewModel(FirmwareOnlineDialogTests.Context(site), devices, new FakeFileSource());
         var build = watch.ElapsedMilliseconds;
         watch.Restart();
-        await vm.LoadOnlineAsync(CancellationToken.None);
+        await vm.LoadOnlineAsync(CancellationToken.None); // ends with Recommended for every device
         var lookup = watch.ElapsedMilliseconds;
         watch.Restart();
         vm.LatestLtsCommand.Execute(null);
+        vm.LatestActiveCommand.Execute(null);
         vm.RecommendedCommand.Execute(null);
         var rules = watch.ElapsedMilliseconds;
+        watch.Restart();
+        vm.Devices[50_000].SelectedChoice = vm.Devices[50_000].Choices.First(c => c.Text == "12.11.147");
+        var one = watch.ElapsedMilliseconds;
+        var (files, online) = DialogViewModel.PayloadParts([.. vm.Devices.Where(d => d.WillInstall)]);
 
-        Assert.Equal(models * versions.Length, vm.ModelRows.Count); // one row per model and track
-        Assert.Equal(DeviceLimits.MaxDevices, vm.ModelRows.Sum(r => r.DeviceRows.Count));
-        Assert.All(vm.ModelRows, r => Assert.NotNull(r.OnlineVersion));
+        Assert.All(vm.Devices, d => Assert.NotNull(d.OnlineVersion));
+        Assert.Same(vm.Devices[0].Choices, vm.Devices[models].Choices); // one list per model
+        Assert.Empty(files);
+        Assert.True(online.Count <= models * versions.Length + 1, $"{online.Count} payload entries"); // per product and major, one named device
         Assert.Contains(string.Create(CultureInfo.InvariantCulture, $"of {DeviceLimits.MaxDevices:N0} devices will be updated"), vm.Summary, StringComparison.Ordinal);
-        var message = $"rows {build} ms, lookup of {models} models {lookup} ms, two rules {rules} ms";
+        var message = $"rows {build} ms, lookup of {models} models with Recommended {lookup} ms, three buttons {rules} ms, one device {one} ms";
         Console.WriteLine(message);
-        Assert.True(build < 3_000, message); // measured 240 ms
-        Assert.True(lookup < 6_000, message); // measured 500 ms (fake site)
-        Assert.True(rules < 6_000, message); // measured 490 ms
+        Assert.True(build < 3_000, message); // measured 120 ms
+        Assert.True(lookup < 9_000, message); // measured 870 ms
+        Assert.True(rules < 17_000, message); // measured 1,700 ms
+        Assert.True(one < 3_500, message); // measured 340 ms
     }
 }
 
@@ -373,7 +424,7 @@ public sealed class FirmwareOnlineHeadlessTests
             await vm.LoadOnlineAsync(CancellationToken.None);
             await PumpAsync();
             Capture(window, outDir, "firmware-online-recommended.png");
-            var text = string.Join(",", vm.ModelRows.Select(r => r.SelectedChoice?.Text ?? "-"));
+            var text = string.Join(",", vm.Devices.Select(d => d.SelectedChoice?.Text ?? "-"));
             window.Close();
             vm.Dispose();
 
@@ -382,8 +433,8 @@ public sealed class FirmwareOnlineHeadlessTests
             var second = new DialogWindow { DataContext = signedOut };
             second.Show();
             await signedOut.LoadOnlineAsync(CancellationToken.None);
-            var row = signedOut.ModelRows.First(r => r.IsListed);
-            row.SelectedChoice = row.Choices.First(c => !c.IsHeader);
+            var device = signedOut.Devices[4];
+            device.SelectedChoice = device.Choices.First(c => !c.IsHeader);
             await PumpAsync();
             Assert.True(signedOut.ShowSignIn);
             Capture(second, outDir, "firmware-online-signed-out.png");
@@ -392,7 +443,7 @@ public sealed class FirmwareOnlineHeadlessTests
             return text;
         }, CancellationToken.None);
 
-        Assert.Equal("11.11.238,-,12.11.147,11.11.238", chosen);
+        Assert.Equal("11.11.238,11.11.238,12.11.147,12.11.147,11.11.238,-", chosen);
     }
 
     private static Device[] Shots() =>
