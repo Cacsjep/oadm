@@ -81,7 +81,7 @@ Evaluated per device in the dialog (preview) and again on the server right befor
 | Same version | any | any | **Done with warning** "Already up to date", nothing uploaded |
 | Newer version | none | any | **Upgrade**, settings kept, OADM commits after verifying |
 | Newer version | soft / hard | any | **Upgrade + factory default**, device commits itself |
-| Older version (same or older major line) | any | off | **Refused** "Downgrade X → Y is not allowed. Turn on "Allow downgrade to an older AXIS OS version"." |
+| Older version (same or older major line) | any | off | **Refused** "Downgrade X → Y is not allowed. Turn on "Allow downgrade"." |
 | Older version | none | on | **Refused** "requires a factory default" (the device would answer 409) |
 | Older version | soft / hard | on | **Downgrade + factory default**, device commits itself |
 | Version or product unknown (other file name, device version unknown) | none | any | **Upload**, the device validates the image |
@@ -155,19 +155,21 @@ One table of the selected devices (virtualized, up to 100,000): Address, Model, 
 tooltip), Details. Version is the select of that device: the versions axis.com lists for its model grouped by track
 (details in "Firmware online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin` for
 that device). The list is one per model and shared by its devices. Choosing on one device changes only that device; the
-buttons above the table set every device. A device without a choice shows "No file" ("No file for this model.") once
+select **Set versions** right in the header of the device card (same row as the title) sets every device. The right of
+that header shows either that select (signed in and the versions of axis.com arrived; hidden while the lookup runs and
+when it failed) or the command button **Sign in to MyAxis** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
 another device has one. A chosen file is judged per device in its Result (Invalid file, Wrong product). Files given
 together (`SelectFilesAsync`, drag and drop and tests) go to the devices of their model; a refused file or two files for
 one product ("Two files are for P3265-V. Choose one file per model.") show directly below the table and block Upgrade.
-From 2,000 selected devices (`BackgroundFrom`), the buttons, the options and the end of the lookup judge every device
-off the UI thread behind a ring over the table ("Setting the versions", "Checking the devices"; the buttons and Upgrade
-wait); at 100,000 devices the three buttons take about 1 s each. One device's choice judges only that device.
+From 2,000 selected devices (`BackgroundFrom`), the select, the options and the end of the lookup judge every device
+off the UI thread behind a ring over the table ("Setting the versions", "Checking the devices"; the select and Upgrade
+wait); at 100,000 devices each entry takes about 1 s. One device's choice judges only that device.
 
 The Firmware column is refreshed by the status query: read for the first 50 devices when the dialog opens, for other rows
 when the grid shows them, at most 4 queries at a time; a row shows the chip "Reading" until its query answered.
 
-Options below the table in one row: Factory default none (default) / soft / hard (label left of the select) and
-"Allow downgrade" next to it, the warnings below. **Upgrade** is enabled when at
+Options below the table in one row: Factory default none (default) / soft / hard (label left of the select, normal form
+spacing) and "Allow downgrade (requires a factory default)" next to it, the warnings below. **Upgrade** is enabled when at
 least one device would install. The dialog narrows the devices (`ShowForDevicesAsync`): tasks start only for the devices
 that install a file, none for devices already up to date, without a file for their model or refused (Wrong product,
 Downgrade blocked). It uploads the files with `ITaskDialogContext.UploadAsync` (only those a device installs, one after
@@ -222,8 +224,9 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   `ver.txt` are public. OADM downloads with the MyAxis sign-in of the user who starts the run, through the host
   (`ctx.AxisDownloads`); the plugin never sees the session.
 - **Dialog.** One device table (README "Dialog"); per device a **Version** select grouped by track names, every version
-  of its model newest first, the chosen files and **Choose file** last. Above the table, command buttons that set every
-  device (one pass, the rule computed once per model and AXIS OS major):
+  of its model newest first, the chosen files and **Choose file** last. The select **Set versions** (placeholder) in the header sets every
+  device (one pass, the rule computed once per model and AXIS OS major). It keeps showing its entry until a device is
+  changed by hand, then shows "Set versions" again (`VersionRule`, `SelectedRule`):
   - **Recommended**: the newest version on the device's own track, the track of its AXIS OS major (11.8 and 11.11 are
     both on 11.11; the active track stays active, 9.80 stays 9.80); a track axis.com no longer lists for the model, or a
     device of unknown version: its newest LTS.
@@ -234,11 +237,11 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   ("AXIS OS 11.11.192 is no longer on axis.com."). While the lookup runs, a progress line shows "Reading the versions on
   axis.com, 40 of 120 models" and Upgrade waits. Signed in, the dialog opens with Recommended; not signed in, every
   device starts on Choose file, the versions show for information, choosing one says "Sign in to MyAxis to download from
-  axis.com." in its Result, and the line above the table has **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`);
-  signing in sets Recommended on the devices without a choice. The decision table, the upgrade path advice and the apps
+  axis.com." in its Result, and the header has the button **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`);
+  signing in sets Recommended on the devices without a choice (the select shows Recommended when no device had one). The decision table, the upgrade path advice and the apps
   check apply unchanged: an online version is a file with a known product and version.
 - **Payload.** Per device either a chosen file or a version from axis.com; the server reads that version's folder itself
-  for the URL, size and SHA-256 and never takes them from the client. Small in the usual case (the buttons):
+  for the URL, size and SHA-256 and never takes them from the client. Small in the usual case (the select):
   `"online":[{"source":"MPQT","product":"P3265-V","version":"12.11.147","fromMajor":11}]` is for every device of that
   product and AXIS OS major; a device whose version differs from most of its product and major is named:
   `{"source","product","version","devices":[id]}`. Files keep the old fields (`fileId`, `fileName`, `files`); a file
@@ -326,7 +329,7 @@ online: `OnlineListingTests` and `OnlineLookupTests` from the recorded pages in 
 roots; `FakeAxisSite` makes up other version folders), `OnlineRulesTests` (match, tracks, the three rules),
 `OnlineTaskTests` (a test-local `FakeAxisDownloads`), `FirmwareOnlineDialogTests` (the dialog against the plugin's real
 queries; the server takes for every device of the run what the dialog showed), a Perf test with 100,000 devices (rows,
-lookup, the three buttons, one device's choice), headless screenshots (signed in with Recommended, signed out) and the opt-in `OnlineLiveTests` (`OADM_AXIS_LIVE=1`, `Category=Live`: the real listings of axis.com, read only).
+lookup, the three entries of the select, one device's choice), headless screenshots (signed in with Recommended, signed out) and the opt-in `OnlineLiveTests` (`OADM_AXIS_LIVE=1`, `Category=Live`: the real listings of axis.com, read only).
 
 Never run against hardware: upload, commit, any factory default. Still to verify on a test device: numeric
 `autoRollback` as a JSON string (`"30"`), the exact answer timing of `upgrade` (before or after flashing), anonymous

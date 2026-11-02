@@ -18,13 +18,12 @@ to each device, waits for the restart, checks the new version and commits it. It
 
 1. Select the devices, right-click and choose **Maintenance** > **Upgrade firmware**.
 2. In the device table, the **Version** of each device is a version from axis.com or **Choose file** for a file of your
-   own. The buttons above the table set every device at once. Keep the original file name, for example
+   own. **Set versions** at the top right of the table sets every device at once. Keep the original file name, for example
    `P3265-V_12_11_77.bin`: OADM reads the product and version from it. Once chosen, a file is offered for the other
    devices of that model too.
 3. Check the **Result** column. It says per device what will happen, for example **Upgrade**,
    **Up to date**, **No file**, **Wrong product** or **Downgrade blocked**.
-4. Choose the **Factory default** option and, if needed, **Allow downgrade to an older AXIS OS version (requires a
-   factory default)**.
+4. Choose the **Factory default** option and, if needed, **Allow downgrade (requires a factory default)**.
 5. Click **Upgrade**. Chosen files are uploaded to the OADM server once, versions from axis.com are downloaded by the
    server, then a task starts per device.
 
@@ -35,9 +34,10 @@ Devices that are already up to date, have no file for their model or are refused
 ## Versions from axis.com
 
 OADM lists the AXIS OS versions axis.com offers for the model of each device, grouped as on axis.com: the active track (for example
-"AXIS OS 13"), "LTS 2026 · 12.11", "LTS 2024 · 11.11" and older ones. Three buttons above the table set every device; choosing in one device's **Version** changes only that device:
+"AXIS OS 13"), "LTS 2026 · 12.11", "LTS 2024 · 11.11" and older ones. **Set versions** at the top right of the table sets every device; choosing in one device's **Version** changes only
+that device:
 
-| Button | Version |
+| Set versions | Version |
 |---|---|
 | Recommended | The newest version of the line the devices run now: 11.11 stays on 11.11. |
 | Latest LTS | The newest LTS version of the model. |

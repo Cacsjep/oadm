@@ -19,19 +19,12 @@
     <!-- Devices: one table, the version from axis.com or a chosen file per device -->
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto">
-        <ui:CardHeader Title="Devices" Description="{Binding Summary}" />
-        <!-- Command buttons left (they set every device), the MyAxis sign-in right -->
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
-          <StackPanel Orientation="Horizontal" Spacing="4">
-            <ui:ToolbarButton IconKey="check" Text="Recommended" Command="{Binding RecommendedCommand}" ToolTip.Tip="Newest version on each device's track" />
-            <ui:ToolbarButton IconKey="shield" Text="Latest LTS" Command="{Binding LatestLtsCommand}" />
-            <ui:ToolbarButton IconKey="zap" Text="Latest active" Command="{Binding LatestActiveCommand}" />
-          </StackPanel>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowSignIn}">
-            <TextBlock VerticalAlignment="Center" Text="{x:Static fws:OnlineFirmware.SignInText}" />
-            <ui:ToolbarButton IconKey="user" Text="Sign in to MyAxis" Command="{Binding SignInCommand}" />
-          </StackPanel>
-        </Grid>
+        <!-- Right in the header: the select that sets every device (signed in, versions arrived) or Sign in to MyAxis -->
+        <ui:CardHeader Title="Devices" Description="{Binding Summary}">
+          <ComboBox Width="200" ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" PlaceholderText="{x:Static fw:FirmwareDialogViewModel.SetVersionsText}"
+                    IsVisible="{Binding ShowRules}" IsEnabled="{Binding !IsBusy}" />
+          <ui:ToolbarButton IconKey="user" Text="Sign in to MyAxis" Command="{Binding SignInCommand}" IsVisible="{Binding ShowSignIn}" />
+        </ui:CardHeader>
         <StackPanel Grid.Row="2">
           <ui:ProgressRow Margin="0,0,0,8" Value="{Binding LookupProgress}" Text="{Binding LookupStatus}" IsVisible="{Binding IsLookingUp}" />
           <TextBlock Classes="warning" Margin="0,0,0,8" Text="{x:Static fws:OnlineFirmware.UnreachableText}" IsVisible="{Binding OnlineUnreachable}" />
@@ -90,10 +83,10 @@
     <Border Grid.Row="2" Classes="card" Margin="16,16,16,0">
       <StackPanel Classes="form">
         <StackPanel Orientation="Horizontal" Spacing="24">
-          <ui:FormField Label="Factory default" InputWidth="360" IsVisible="{Binding MayFactoryDefault}">
+          <ui:FormField Label="Factory default" LabelWidth="NaN" InputWidth="360" IsVisible="{Binding MayFactoryDefault}">
             <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode}" />
           </ui:FormField>
-          <CheckBox VerticalAlignment="Center" IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade to an older AXIS OS version (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
+          <CheckBox VerticalAlignment="Center" IsChecked="{Binding AllowDowngrade}" Content="Allow downgrade (requires a factory default)" IsVisible="{Binding MayDowngrade}" />
         </StackPanel>
         <TextBlock Classes="warning" TextWrapping="Wrap" Text="{Binding ModeWarning}" IsVisible="{Binding HasModeWarning}" />
         <ui:ProgressRow Value="{Binding UploadProgress}" Text="{Binding UploadText}" IsVisible="{Binding IsUploading}" />

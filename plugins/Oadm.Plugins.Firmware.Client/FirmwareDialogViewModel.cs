@@ -118,11 +118,54 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     public bool CanSignIn { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowSignIn))]
+    [NotifyPropertyChangedFor(nameof(ShowSignIn), nameof(ShowRules))]
     public partial bool IsSignedIn { get; private set; }
 
-    /// <summary>The line "Sign in to MyAxis to download from axis.com." with its button.</summary>
+    /// <summary>The command button "Sign in to MyAxis" right in the header of the device card (not signed in).</summary>
     public bool ShowSignIn => CanSignIn && !IsSignedIn;
+
+    /// <summary>The select "Set versions" right in the header: signed in and the versions of axis.com arrived.</summary>
+    public bool ShowRules => IsSignedIn && HasOnline && !IsLookingUp && !OnlineUnreachable;
+
+    public const string SetVersionsText = "Set versions";
+
+    /// <summary>The entries of the select "Set versions"; each sets every device.</summary>
+    public IReadOnlyList<VersionRule> Rules { get; } =
+    [
+        new("Recommended", OnlineFirmware.Recommended),
+        new("Latest LTS", (model, _) => OnlineFirmware.LatestLts(model)),
+        new("Latest active", (model, _) => OnlineFirmware.LatestActive(model)),
+    ];
+
+    private VersionRule? _selectedRule;
+
+    /// <summary>
+    /// The rule that set every device; it shows until a device is changed by hand, then the select shows "Set versions"
+    /// again. Choosing one applies it to every device (behind the ring for a large selection).
+    /// </summary>
+    public VersionRule? SelectedRule
+    {
+        get => _selectedRule;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _selectedRule))
+            {
+                OnPropertyChanged();
+                return;
+            }
+
+            _ = ApplyRuleAsync(value.Rule, onlyUnchosen: false, value);
+        }
+    }
+
+    private void ShowRule(VersionRule? rule)
+    {
+        if (!ReferenceEquals(rule, _selectedRule))
+        {
+            _selectedRule = rule;
+            OnPropertyChanged(nameof(SelectedRule));
+        }
+    }
 
     /// <summary>Opens the MyAxis sign-in window (set by the dialog: <c>ITaskDialogContext.MyAxis.SignInAsync(window)</c>).</summary>
     public Func<Task<bool>>? SignInHandler { get; set; }
@@ -130,6 +173,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>True while the versions are read from axis.com.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RecommendedCommand), nameof(LatestLtsCommand), nameof(LatestActiveCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowRules))]
     public partial bool IsLookingUp { get; private set; }
 
     /// <summary>0-100: models read of all.</summary>
@@ -141,11 +185,13 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
     /// <summary>axis.com did not answer: "axis.com could not be reached." above the table, the devices keep Choose file.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRules))]
     public partial bool OnlineUnreachable { get; private set; }
 
     /// <summary>Some model is listed on axis.com (the buttons have something to set).</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RecommendedCommand), nameof(LatestLtsCommand), nameof(LatestActiveCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowRules))]
     public partial bool HasOnline { get; private set; }
 
     /// <summary>
@@ -433,20 +479,21 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
             HasOnline = _models.Values.Any(m => m.IsListed);
         }
 
-        await (IsSignedIn ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true) : RefreshAsync()).ConfigureAwait(true);
+        var none = !Devices.Any(d => d.SelectedChoice is not null);
+        await (IsSignedIn ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, none ? Rules[0] : null) : RefreshAsync()).ConfigureAwait(true);
     }
 
     /// <summary>Every device: the newest version on its own track.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private Task RecommendedAsync() => ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: false);
+    private Task RecommendedAsync() => ApplyRuleAsync(Rules[0].Rule, onlyUnchosen: false, Rules[0]);
 
     /// <summary>Every device: the newest LTS track of its model.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private Task LatestLtsAsync() => ApplyRuleAsync((model, _) => OnlineFirmware.LatestLts(model), onlyUnchosen: false);
+    private Task LatestLtsAsync() => ApplyRuleAsync(Rules[1].Rule, onlyUnchosen: false, Rules[1]);
 
     /// <summary>Every device: the active track of its model, else its newest version.</summary>
     [RelayCommand(CanExecute = nameof(CanApplyRule))]
-    private Task LatestActiveAsync() => ApplyRuleAsync((model, _) => OnlineFirmware.LatestActive(model), onlyUnchosen: false);
+    private Task LatestActiveAsync() => ApplyRuleAsync(Rules[2].Rule, onlyUnchosen: false, Rules[2]);
 
     private bool CanApplyRule() => HasOnline && !IsLookingUp && !IsUploading && !IsBusy;
 
@@ -455,8 +502,9 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <see cref="BackgroundFrom"/> devices it runs off the UI thread behind the busy ring (HARD RULE loading feedback: the
     /// three buttons take about 0.6 s each at 100,000 devices); only setting the results touches the rows on the UI thread.
     /// </summary>
-    private Task ApplyRuleAsync(Func<OnlineModel, int?, string?> rule, bool onlyUnchosen)
+    private Task ApplyRuleAsync(Func<OnlineModel, int?, string?> rule, bool onlyUnchosen, VersionRule? shown = null)
     {
+        ShowRule(shown);
         if (Devices.Count < BackgroundFrom)
         {
             SetPicks(Picks([.. Devices], rule, onlyUnchosen));
@@ -614,12 +662,13 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         }
 
         IsSignedIn = signedIn;
-        _ = signedIn && _lookupDone ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true) : RefreshAsync();
+        _ = signedIn && _lookupDone ? ApplyRuleAsync(OnlineFirmware.Recommended, onlyUnchosen: true, Devices.Any(d => d.SelectedChoice is not null) ? null : Rules[0]) : RefreshAsync();
     }
 
     /// <summary>The user chose in one device's field: only that device changes.</summary>
     private void OnChosen(FirmwareDeviceRow row, GroupedChoice? choice)
     {
+        ShowRule(null); // changed by hand: the select shows "Set versions" again
         if (choice?.Value is ChooseFileAction)
         {
             _ = ChooseFileForAsync(row);
@@ -1112,6 +1161,12 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         OnPropertyChanged(nameof(StartBlockedReason));
         StartCommand.NotifyCanExecuteChanged();
     }
+}
+
+/// <summary>An entry of the select "Set versions": its name and the version it gives a device (model, AXIS OS major).</summary>
+public sealed record VersionRule(string Name, Func<OnlineModel, int?, string?> Rule)
+{
+    public override string ToString() => Name;
 }
 
 /// <summary>Ids shared with the server part (kept here so the client does not reference the server assembly).</summary>

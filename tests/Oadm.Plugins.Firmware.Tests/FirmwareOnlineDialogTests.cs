@@ -183,6 +183,57 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
+    public async Task The_select_sets_every_device_and_shows_its_rule_until_a_device_is_changed_by_hand()
+    {
+        Device[] devices = [new("10.0.1.1", "Q1800-LE", "11.11.200"), new("10.0.1.2", "Q1800-LE", "12.11.100"), new("10.0.1.3", "Q1800-LE", "13.0.88")];
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ctx = Context(ActiveSite());
+        var online = ctx.Online!;
+        ctx.Online = async (method, payload, ct) =>
+        {
+            await gate.Task.WaitAsync(ct);
+            return await online(method, payload, ct);
+        };
+        using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
+        Assert.False(vm.ShowRules); // nothing read yet
+        Assert.False(vm.ShowSignIn); // signed in: the select, never the button
+
+        var lookup = vm.LoadOnlineAsync(CancellationToken.None);
+        Assert.False(vm.ShowRules); // hidden while the lookup runs
+        gate.SetResult();
+        await lookup;
+
+        Assert.True(vm.ShowRules);
+        Assert.Equal(["Recommended", "Latest LTS", "Latest active"], vm.Rules.Select(r => r.Name));
+        Assert.Equal("Recommended", vm.SelectedRule?.Name); // the dialog opened with Recommended
+
+        vm.SelectedRule = vm.Rules[1];
+        Assert.Equal("Latest LTS", vm.SelectedRule?.Name);
+        Assert.Equal(["12.11.147", "12.11.147", "12.11.147"], vm.Devices.Select(Chosen));
+
+        // A device changed by hand: only that device, and the select shows "Set versions" again.
+        vm.Devices[0].SelectedChoice = vm.Devices[0].Choices.Single(c => c.Text == "11.11.238");
+        Assert.Null(vm.SelectedRule);
+        Assert.Equal(["11.11.238", "12.11.147", "12.11.147"], vm.Devices.Select(Chosen));
+        Assert.Equal("Set versions", DialogViewModel.SetVersionsText);
+    }
+
+    [Fact]
+    public async Task Signed_out_or_without_axis_com_there_is_no_select()
+    {
+        using var signedOut = new DialogViewModel(Context(ActiveSite(), signedIn: false), Selection(), new FakeFileSource());
+        await signedOut.LoadOnlineAsync(CancellationToken.None);
+        Assert.False(signedOut.ShowRules);
+        Assert.True(signedOut.ShowSignIn); // the button instead
+
+        using var down = new DialogViewModel(Context(new FakeAxisSite { Down = true }), Selection(), new FakeFileSource());
+        await down.LoadOnlineAsync(CancellationToken.None);
+        Assert.False(down.ShowRules);
+        Assert.False(down.ShowSignIn);
+        Assert.True(down.OnlineUnreachable);
+    }
+
+    [Fact]
     public async Task A_large_selection_sets_and_judges_behind_the_ring_with_the_buttons_waiting()
     {
         Device[] devices = [new("10.0.1.1", "Q1800-LE", "11.11.200"), new("10.0.1.2", "Q1800-LE", "12.11.100"), new("10.0.1.3", "Q1800-LE", "13.0.88")];

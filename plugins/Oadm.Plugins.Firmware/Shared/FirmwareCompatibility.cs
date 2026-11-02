@@ -68,7 +68,7 @@ public sealed record FirmwareCheck(FirmwareVerdict Verdict, string Message)
 public static class FirmwareCompatibility
 {
     /// <summary>The downgrade checkbox of the dialog as the refusals name it (its label without the hint in brackets).</summary>
-    public const string AllowDowngradeName = "Allow downgrade to an older AXIS OS version";
+    public const string AllowDowngradeName = "Allow downgrade";
 
     /// <param name="apps">The device's installed applications (<see cref="InstalledAppRules"/>); null when not read.</param>
     public static FirmwareCheck Evaluate(string? deviceModel, string? deviceVersion, FirmwareImageInfo image, FactoryDefaultMode mode, bool allowDowngrade,
