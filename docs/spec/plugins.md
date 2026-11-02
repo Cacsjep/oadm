@@ -321,11 +321,11 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.9.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.10.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.9.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.9.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.10.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.10.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
