@@ -240,7 +240,8 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
                 return null;
             }
 
-            if (!SizeFits(new FileInfo(file).Length, size) || !string.Equals(await HashAsync(file, ct).ConfigureAwait(false), sha, StringComparison.Ordinal))
+            var length = new FileInfo(file).Length; // the real size; the listing only rounds it
+            if (!SizeFits(length, size) || !string.Equals(await HashAsync(file, ct).ConfigureAwait(false), sha, StringComparison.Ordinal))
             {
                 LogCacheMismatch(sha);
                 TryDeleteFolder(folder);
@@ -258,7 +259,7 @@ public sealed partial class AxisDownloadService : IAxisDownloadSource, IDisposab
 
             keep = true;
             var released = 0;
-            return new AxisDownloadedFile(file, size, fromCache, () =>
+            return new AxisDownloadedFile(file, length, fromCache, () =>
             {
                 if (Interlocked.Exchange(ref released, 1) == 0)
                 {

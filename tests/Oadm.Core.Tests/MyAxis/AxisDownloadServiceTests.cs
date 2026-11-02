@@ -99,6 +99,22 @@ public sealed class AxisDownloadServiceTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task TheHandleHasTheRealLengthNotTheRoundedListedSize()
+    {
+        var anna = await AnnaAsync();
+        var listed = Content.Length + 1000; // axis.com lists "225.5M"
+
+        await using (var first = await anna.DownloadAsync(FileUri, Sha, listed, null, CancellationToken.None))
+        {
+            Assert.Equal(Content.Length, first.Length);
+        }
+
+        await using var second = await anna.DownloadAsync(FileUri, Sha, listed, null, CancellationToken.None);
+        Assert.True(second.FromCache);
+        Assert.Equal(Content.Length, second.Length);
+    }
+
+    [Fact]
     public async Task ADownloadUsesTheStartersSessionOnceAndTheCacheAfterwards()
     {
         var anna = await AnnaAsync();
