@@ -77,7 +77,7 @@ public sealed class MyAxisServiceTests
         }
         finally
         {
-            Directory.Delete(host.DataDirectory, recursive: true);
+            TestServerHost.DeleteDataDirectory(host.DataDirectory);
         }
     }
 

@@ -163,13 +163,18 @@ internal sealed class TestServerHost : IAsyncDisposable
             return;
         }
 
+        DeleteDataDirectory(DataDirectory);
+    }
+
+    /// <summary>Deletes a test data folder, best effort: the rolling log file may still be closing (Windows).</summary>
+    public static void DeleteDataDirectory(string directory)
+    {
         try
         {
-            Directory.Delete(DataDirectory, recursive: true);
+            Directory.Delete(directory, recursive: true);
         }
         catch (IOException)
         {
-            // Best effort; the rolling log file may still be closing.
         }
         catch (UnauthorizedAccessException)
         {
