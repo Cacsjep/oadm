@@ -10,16 +10,23 @@
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
   <!-- Axis's own login page in the embedded browser (the code-behind creates it). The user types the password and code
-       there, OADM never sees them. Checking: the overlay; refused: one error line above the login page. -->
+       there, OADM never sees them. The browser is a native window nothing can be drawn over: it is hidden while the
+       overlay (loading, signing in, checking) or the load error shows. Refused: one error line above the login page. -->
   <Grid RowDefinitions="Auto,Auto,*">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static myaxis:MyAxisSignInViewModel.WindowTitle}" />
     <ui:StatusChip Grid.Row="1" x:Name="Refused" IsError="True" Text="{Binding ErrorText}" IsVisible="{Binding HasError}"
                    MaxLines="3" HorizontalAlignment="Left" Margin="16,0,16,8" />
     <Panel Grid.Row="2">
-      <Panel x:Name="BrowserHost" IsVisible="{Binding ShowsBrowser}" />
+      <Panel x:Name="BrowserHost" IsVisible="{Binding IsBrowserVisible}" />
       <ui:StatusChip x:Name="NotAvailable" IsError="True" Text="{Binding NotAvailableText}" IsVisible="{Binding IsNotAvailable}"
                      MaxLines="8" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" />
-      <ui:LoadingOverlay x:Name="Checking" Text="{x:Static myaxis:MyAxisSignInViewModel.CheckingText}" IsVisible="{Binding IsChecking}" />
+      <StackPanel x:Name="LoadError" IsVisible="{Binding HasLoadError}" Spacing="16" Margin="24"
+                  HorizontalAlignment="Center" VerticalAlignment="Center">
+        <ui:StatusChip IsError="True" Text="{Binding LoadErrorText}" MaxLines="4" HorizontalAlignment="Center" />
+        <Button x:Name="TryAgain" Classes="primary" HorizontalAlignment="Center"
+                Content="{x:Static myaxis:MyAxisTexts.TryAgain}" Command="{Binding TryAgainCommand}" />
+      </StackPanel>
+      <ui:LoadingOverlay x:Name="Overlay" Text="{Binding OverlayText}" IsVisible="{Binding HasOverlay}" />
     </Panel>
   </Grid>
 </Window>

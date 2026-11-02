@@ -318,10 +318,13 @@ public sealed class MyAxisTests
         signIn.NavigateRequested += (_, page) => navigated.Add(page);
 
         var run = signIn.PageLoadedAsync(MyAxisPages.DoneAddress, cookies, CancellationToken.None);
-        Assert.True(signIn.IsChecking); // "Checking the sign-in" from the first moment
+        Assert.True(signIn.IsChecking); // covered from the first moment
+        Assert.Equal("Checking the sign-in", signIn.OverlayText);
+        Assert.False(signIn.IsBrowserVisible);
         for (var attempt = 1; attempt < MyAxisSignInViewModel.Attempts; attempt++)
         {
-            await Eventually.TrueAsync(() => time.Timers == attempt, $"pause {attempt}");
+            // The window's load timer is the first timer, the pauses follow.
+            await Eventually.TrueAsync(() => time.Timers == attempt + 1, $"pause {attempt}");
             Assert.Equal(attempt, cookies.Reads);
             time.Advance(MyAxisSignInViewModel.RetryDelay - TimeSpan.FromMilliseconds(1));
             Assert.Equal(attempt, cookies.Reads); // not before the pause is over
@@ -337,6 +340,12 @@ public sealed class MyAxisTests
         Assert.False(signIn.IsChecking);
         Assert.False(signIn.IsAccepted);
         Assert.Empty(accepted);
+        Assert.Equal("Loading MyAxis", signIn.OverlayText); // the login page again, covered until it is there
+
+        await signIn.PageLoadedAsync(MyAxisPages.StartAddress, cookies, CancellationToken.None);
+        Assert.Null(signIn.OverlayText);
+        Assert.True(signIn.IsBrowserVisible);
+        Assert.True(signIn.HasError); // the refusal stays above the login page
     }
 
     [Fact]
@@ -353,7 +362,7 @@ public sealed class MyAxisTests
         var run = signIn.PageLoadedAsync(MyAxisPages.DoneAddress, cookies, CancellationToken.None);
         for (var reads = 1; reads <= 3; reads++)
         {
-            await Eventually.TrueAsync(() => time.Timers == reads, $"pause {reads}");
+            await Eventually.TrueAsync(() => time.Timers == reads + 1, $"pause {reads}");
             time.Advance(MyAxisSignInViewModel.RetryDelay);
         }
 
@@ -430,8 +439,9 @@ public sealed class MyAxisTests
     // ---- The window and the title bar (headless)
 
     [Fact]
-    public async Task The_window_shows_the_browser_checks_with_the_overlay_and_closes_when_accepted()
+    public async Task The_login_page_loads_under_the_overlay_and_signing_in_covers_the_page_after_the_login()
     {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
             var factory = MyAxisSignInWindow.BrowserFactory;
@@ -447,16 +457,45 @@ public sealed class MyAxisTests
                 var closed = false;
                 window.Closed += (_, _) => closed = true;
                 window.Show();
-                Dispatcher.UIThread.RunJobs();
+                Render();
 
+                // From the first moment: the ring over the hidden browser, no blank page.
                 Assert.Same(browser, window.Browser);
                 Assert.Equal("Sign in to MyAxis", window.Title);
-                var overlay = window.FindControl<LoadingOverlay>("Checking")!;
-                Assert.False(overlay.IsVisible);
-
-                var run = signIn.PageLoadedAsync(MyAxisPages.DoneAddress, new FakeCookies(_ => [Sid()]), CancellationToken.None);
-                Dispatcher.UIThread.RunJobs();
+                var overlay = window.FindControl<LoadingOverlay>("Overlay")!;
+                var host = window.FindControl<Panel>("BrowserHost")!;
                 Assert.True(overlay.IsVisible);
+                Assert.Equal("Loading MyAxis", overlay.Text);
+                Assert.False(host.IsVisible);
+                Save(window.CaptureRenderedFrame(), outDir, $"client-myaxis-loading-{Appearance}.png");
+
+                // The login page is there: the user types on it.
+                var cookies = new FakeCookies(_ => [Sid()]);
+                await signIn.PageLoadedAsync(MyAxisPages.StartAddress, cookies, CancellationToken.None);
+                Render();
+                Assert.False(overlay.IsVisible);
+                Assert.True(host.IsVisible);
+
+                // The next step of the login (another page of the login): loading again, no sign-in yet.
+                var otp = new Uri("https://eu.login.connect.axis.com/login/otp");
+                signIn.NavigationStarting(otp);
+                Render();
+                Assert.Equal("Loading MyAxis", overlay.Text);
+                await signIn.PageLoadedAsync(otp, cookies, CancellationToken.None);
+                Assert.True(signIn.IsBrowserVisible);
+                Assert.Equal(0, cookies.Reads);
+
+                // The login heads back to axis.com: covered before the page shows, through the check.
+                signIn.NavigationStarting(MyAxisPages.DoneAddress);
+                Render();
+                Assert.True(overlay.IsVisible);
+                Assert.Equal("Signing in", overlay.Text);
+                Assert.False(host.IsVisible);
+                Save(window.CaptureRenderedFrame(), outDir, $"client-myaxis-signing-in-{Appearance}.png");
+
+                var run = signIn.PageLoadedAsync(MyAxisPages.DoneAddress, cookies, CancellationToken.None);
+                Render();
+                Assert.False(host.IsVisible); // the download listing never shows
                 Assert.Equal("Checking the sign-in", overlay.Text);
 
                 answer.SetResult(SignedIn());
@@ -465,6 +504,7 @@ public sealed class MyAxisTests
                 Assert.True(closed);
                 Assert.True(browser.IsDisposed);
                 Assert.Null(window.Browser);
+                Assert.True(signIn.HasOverlay); // covered until the window is gone
             }
             finally
             {
@@ -474,6 +514,87 @@ public sealed class MyAxisTests
             return true;
         }, CancellationToken.None);
         Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_page_that_fails_to_load_shows_the_error_with_Try_again()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var factory = MyAxisSignInWindow.BrowserFactory;
+            try
+            {
+                MyAxisSignInWindow.BrowserFactory = _ => new DisposableText();
+                var (signIn, _) = NewSignIn(Substitute.For<IOadmApi>(), new FakeTimeProvider());
+                var navigated = new List<Uri>();
+                signIn.NavigateRequested += (_, page) => navigated.Add(page);
+                var window = new MyAxisSignInWindow { DataContext = signIn };
+                window.Show();
+                Render();
+
+                await signIn.PageLoadedAsync(MyAxisPages.StartAddress, new FakeCookies(_ => []), CancellationToken.None, succeeded: false);
+                Render();
+                var error = window.FindControl<StackPanel>("LoadError")!;
+                Assert.True(error.IsEffectivelyVisible);
+                Assert.Equal("axis.com could not be reached. Check the internet connection.", signIn.LoadErrorText);
+                Assert.False(window.FindControl<LoadingOverlay>("Overlay")!.IsVisible);
+                Assert.False(window.FindControl<Panel>("BrowserHost")!.IsVisible);
+                var tryAgain = window.FindControl<Button>("TryAgain")!;
+                Assert.Equal("Try again", tryAgain.Content);
+                Assert.Contains("primary", tryAgain.Classes);
+                Save(window.CaptureRenderedFrame(), outDir, $"client-myaxis-not-reachable-{Appearance}.png");
+
+                tryAgain.Command!.Execute(null);
+                Render();
+                Assert.Equal([MyAxisPages.StartAddress], navigated);
+                Assert.False(error.IsVisible);
+                Assert.Equal("Loading MyAxis", signIn.OverlayText);
+                window.Close();
+            }
+            finally
+            {
+                MyAxisSignInWindow.BrowserFactory = factory;
+            }
+
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_page_that_does_not_load_in_time_shows_the_error()
+    {
+        var time = new FakeTimeProvider();
+        var (signIn, _) = NewSignIn(Substitute.For<IOadmApi>(), time);
+        Assert.Equal("Loading MyAxis", signIn.OverlayText);
+
+        time.Advance(MyAxisSignInViewModel.LoadTimeout - TimeSpan.FromSeconds(1));
+        Assert.False(signIn.HasLoadError);
+        time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => signIn.HasLoadError, "the load error");
+        Assert.Null(signIn.OverlayText);
+        Assert.False(signIn.IsBrowserVisible);
+
+        // A page that finished in time: no error later.
+        signIn.TryAgainCommand.Execute(null);
+        await signIn.PageLoadedAsync(MyAxisPages.StartAddress, new FakeCookies(_ => []), CancellationToken.None);
+        time.Advance(MyAxisSignInViewModel.LoadTimeout * 2);
+        Assert.False(signIn.HasLoadError);
+        Assert.True(signIn.IsBrowserVisible);
+    }
+
+    [Fact]
+    public async Task A_page_after_the_login_that_fails_to_show_still_signs_in()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.SignInMyAxisAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(SignedIn());
+        var (signIn, _) = NewSignIn(api, new FakeTimeProvider());
+
+        await signIn.PageLoadedAsync(MyAxisPages.DoneAddress, new FakeCookies(_ => [Sid()]), CancellationToken.None, succeeded: false);
+
+        Assert.True(signIn.IsAccepted);
+        Assert.False(signIn.HasLoadError);
     }
 
     [Fact]

@@ -41,6 +41,14 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
   accepted: the window closes. The cookie can come a moment before axis.com finished the sign-in: a refusal (or no
   cookie yet) is tried again up to 6 times, 500 ms apart, before "MyAxis did not accept the sign-in. Try again." and the
   login page again. The client learns of an expired sign-in when it connects and when the button is clicked.
+- The browser is a native window nothing can be drawn over, so it is hidden under a `ui:LoadingOverlay`: "Loading
+  MyAxis" from the first moment until a page finished loading (and during each later page load); "Signing in" from the
+  moment a navigation starts towards a www.axis.com page outside the login paths (before it shows anything, so the
+  download listing never shows), through the cookie read and the retries, then "Checking the sign-in" while the server
+  answers, until the window closes. A refusal loads the login page again under "Loading MyAxis".
+- A page that fails to load (or does not finish within 30 s, `TimeProvider`) shows "axis.com could not be reached. Check
+  the internet connection." with **Try again** (the start page again) in place of the browser. A failed page after the
+  login still reads the cookies.
 - The browser keeps nothing on disk: WebView2 InPrivate, WKWebView a non-persistent store, WebKitGTK ephemeral, WPE a
   temporary folder deleted when the window closes (the package has no ephemeral option for WPE).
 - No embedded browser (the Help texts `EmbeddedBrowserTexts`) or no way to the cookies: the button's window says

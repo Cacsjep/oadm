@@ -48,6 +48,7 @@ internal sealed class MyAxisBrowser : Panel, ICookieSource, IDisposable
                     break;
             }
         };
+        _browser.NavigationStarted += OnNavigationStarted;
         _browser.NavigationCompleted += OnNavigationCompleted;
         _browser.NewWindowRequested += OnNewWindowRequested;
         _vm.NavigateRequested += OnNavigateRequested;
@@ -55,14 +56,21 @@ internal sealed class MyAxisBrowser : Panel, ICookieSource, IDisposable
         _browser.Navigate(MyAxisSignInViewModel.StartAddress);
     }
 
+    /// <summary>Before the page shows: the page after the login is covered at once (the download listing never shows).</summary>
+    private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
+    {
+        if (!_disposed)
+        {
+            _vm.NavigationStarting(e.Request);
+        }
+    }
+
     private void OnNavigationCompleted(object? sender, WebViewNavigationCompletedEventArgs e)
     {
-        if (_disposed || !e.IsSuccess)
+        if (!_disposed)
         {
-            return;
+            _ = _vm.PageLoadedAsync(e.Request ?? _browser.Source, this, _cts.Token, e.IsSuccess);
         }
-
-        _ = _vm.PageLoadedAsync(e.Request ?? _browser.Source, this, _cts.Token);
     }
 
     /// <summary>Links that ask for a new window open in the same one.</summary>
@@ -127,6 +135,7 @@ internal sealed class MyAxisBrowser : Panel, ICookieSource, IDisposable
         _cts.Cancel();
         _cts.Dispose();
         _vm.NavigateRequested -= OnNavigateRequested;
+        _browser.NavigationStarted -= OnNavigationStarted;
         _browser.NavigationCompleted -= OnNavigationCompleted;
         _browser.NewWindowRequested -= OnNewWindowRequested;
         Children.Remove(_browser);
