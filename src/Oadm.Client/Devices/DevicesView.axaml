@@ -160,12 +160,12 @@
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <!-- "2 · High": red for High and Critical, amber for Medium, plain for Low; "+3 possible" muted after it; the CVEs in the tooltip -->
-                    <StackPanel Orientation="Horizontal" Background="Transparent"
+                    <StackPanel Classes="cellParts"
                                 ToolTip.Tip="{Binding Row.Vulnerabilities, Converter={x:Static vuln:VulnerabilityTip.ForCell}}">
-                      <TextBlock Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsMinor}" VerticalAlignment="Center" />
+                      <TextBlock Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsMinor}" />
                       <ui:StatusChip Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsModerate}" IsWarning="True" />
                       <ui:StatusChip Text="{Binding Row.Vulnerabilities.Text}" IsVisible="{Binding Row.Vulnerabilities.IsSevere}" IsError="True" />
-                      <TextBlock Classes="secondary" Text="{Binding Row.Vulnerabilities.PossibleText}" IsVisible="{Binding Row.Vulnerabilities.HasPossible}" VerticalAlignment="Center" />
+                      <TextBlock Classes="secondary" Text="{Binding Row.Vulnerabilities.PossibleText}" IsVisible="{Binding Row.Vulnerabilities.HasPossible}" />
                     </StackPanel>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>
