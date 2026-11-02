@@ -95,7 +95,10 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 
 Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a task.
 
-- `HasSession`: whether the user who started the task is signed in.
+- `HasSession`: whether the user who started the task is signed in. The server reads it once per run and keeps it for a
+  minute (`RunAxisDownloads`, then it reads again: a sign-in during a long run counts), not once per device; the devices of
+  a run share one `AxisDownloads`, so an expired sign-in found by one is seen by all. A read that fails is logged and the
+  run's tasks get no `AxisDownloads` (null): a task that does not use it never fails for it.
 - `DownloadAsync(uri, sha256, size, progress, ct)`: the file, from the cache or downloaded with that user's session.
   Refused for any URL outside the two download folders above. One download per URL at a time: tasks that need the same
   file wait for it and see the same progress.
@@ -109,7 +112,9 @@ Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a t
   axis.com has 60 s for the headers and between two reads of the body.
 - **Texts**: `AxisDownloadTexts` of the SDK (`Oadm.Sdk.Plugins`), the same for the host and `FakeAxisDownloads`.
 - **Cache layout**: `axis-downloads/<sha256>/<file name of the URL>`, partial downloads in `axis-downloads/tmp/`; the last
-  use is the file's modification time. A sweep at the server's start and after every download.
+  use is the file's modification time. A sweep at the server's start and after every download; it walks the folder
+  without holding up downloads and tasks, and each delete checks again (under the lock) that no task uses the file and,
+  for an old one, that it was not used meanwhile.
 - A download that another user's task started and that fails because that user's sign-in expired is started again with
   the waiting user's own session. A task the system started gets no `AxisDownloads` (null).
 - Testing: `FakeAxisDownloads` of `Oadm.Sdk.Testing` (files by URL, `Expire()`, `Failure`), `FakeTaskContext.AxisDownloads`.

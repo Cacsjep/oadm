@@ -1294,6 +1294,12 @@
   <Style Selector="DataGridCell TextBlock.besideChips">
     <Setter Property="Margin" Value="34,0,10,0" />
   </Style>
+  <!-- A cell of several parts side by side (the Vulnerabilities column: the level, then "+3 possible" muted), one tooltip
+       over all of it. The parts keep the cell margins (text and chip 10 on each side): 20 between two parts. -->
+  <Style Selector="DataGridCell StackPanel.cellParts">
+    <Setter Property="Orientation" Value="Horizontal" />
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
   <!-- A value that is only a guess (the 802.1X Sessions tab: the device from the MAC before the certificate decides) -->
   <Style Selector="DataGridCell TextBlock.guess">
     <Setter Property="FontStyle" Value="Italic" />

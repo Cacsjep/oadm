@@ -31,6 +31,7 @@
                     <TextBlock Classes="cellText" Text="{Binding Level}" IsVisible="{Binding IsMinor}" />
                     <ui:StatusChip Text="{Binding Level}" IsVisible="{Binding IsModerate}" IsWarning="True" />
                     <ui:StatusChip Text="{Binding Level}" IsVisible="{Binding IsSevere}" IsError="True" />
+                    <ui:StatusChip Text="{Binding Level}" IsVisible="{Binding IsPossible}" />
                   </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>

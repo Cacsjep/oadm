@@ -14,8 +14,8 @@ namespace Oadm.Client.Tests;
 /// <summary>
 /// The context menu entry "Vulnerabilities" and its window (docs/spec/vulnerabilities.md): only when a selected device has
 /// known CVEs; each CVE once with level, score, fixed versions, the full description and the advisory link; with several
-/// devices how many it affects and which. OADM_SCREENSHOT_DIR writes client-vulnerabilities-window.png and
-/// client-vulnerabilities-window-several.png.
+/// devices how many it affects and which; possible ones last. OADM_SCREENSHOT_DIR writes client-vulnerabilities-window.png,
+/// client-vulnerabilities-window-possible.png and client-vulnerabilities-window-several.png.
 /// </summary>
 public sealed class DeviceVulnerabilitiesWindowTests
 {
@@ -120,6 +120,40 @@ public sealed class DeviceVulnerabilitiesWindowTests
     }
 
     [Fact]
+    public void Possible_cves_come_after_the_certain_ones_with_their_own_rows()
+    {
+        using var f = new DevicesFixture();
+        f.Store.Vulnerabilities.Replace(new VulnerabilityList(DateTimeOffset.UnixEpoch, "release",
+        [
+            Cve("CVE-2024-6173", "Critical", 9.0, "Fixed in 11.11, LTS later.", null, new VersionRange("6.50", "11.11")),
+            Cve("CVE-2024-0001", "Low", 3.1, "A low flaw.", null, new VersionRange("10.12", "10.12.400"), new VersionRange("11.0", "11.11.93")),
+        ]));
+        f.SeedDevices([.. new[] { "10.12.363", "11.8.61" }.Select((fw, i) =>
+        {
+            var device = TestSupport.Device($"{i + 1}", $"ACCC8E0000{i + 1:D2}", $"10.0.0.{i + 1}", "M3206-LVE");
+            device.FirmwareVersion = fw;
+            return device;
+        })]);
+
+        var lts = new DeviceVulnerabilitiesViewModel([f.Store.Devices.Single(d => d.Id == "1")]);
+        Assert.Equal("1 CVE, 1 possible", lts.CountText);
+        Assert.Equal(["CVE-2024-0001", "CVE-2024-6173"], lts.Rows.Select(r => r.Id));
+        var possible = lts.Rows[1];
+        Assert.True(possible.IsPossible);
+        Assert.Equal("Possibly affected", possible.Level);
+        Assert.False(possible.IsSevere || possible.IsModerate || possible.IsMinor);
+        Assert.Equal("11.11 (check the advisory for your LTS)", possible.FixedIn);
+        Assert.True(lts.Rows[0].SortKey > possible.SortKey);
+
+        // Certain on 11.8, possible on 10.12: a row for each, each with its devices.
+        var both = new DeviceVulnerabilitiesViewModel([.. f.Store.Devices]);
+        Assert.Equal("2 CVEs", both.CountText);
+        Assert.Equal(["CVE-2024-6173", "CVE-2024-0001", "CVE-2024-6173"], both.Rows.Select(r => r.Id));
+        Assert.Equal([false, false, true], both.Rows.Select(r => r.IsPossible));
+        Assert.Equal([1, 2, 1], both.Rows.Select(r => r.DeviceCount));
+    }
+
+    [Fact]
     public void The_devices_tooltip_names_the_first_devices_and_counts_the_rest()
     {
         using var f = Fixture([.. Enumerable.Repeat("11.8.61", DeviceVulnerabilitiesViewModel.MaxDeviceNames + 5)]);
@@ -150,6 +184,14 @@ public sealed class DeviceVulnerabilitiesWindowTests
             one.CloseCommand.Execute(null);
             Dispatcher.UIThread.RunJobs();
             Assert.False(window.IsVisible);
+
+            // An S5L on LTS 10.12: only possible CVEs, muted, with the advice to check the advisory.
+            var lts = new DeviceVulnerabilitiesViewModel([rows.Single(d => d.Model == "M3206-LVE")]);
+            Assert.All(lts.Rows, r => Assert.True(r.IsPossible));
+            Assert.Equal($"{lts.Rows.Count} possible", lts.CountText);
+            window = Show(lts, outDir, "client-vulnerabilities-window-possible.png");
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == DeviceVulnerabilities.PossibleLevel);
+            window.Close();
 
             var several = new DeviceVulnerabilitiesViewModel(rows);
             window = Show(several, outDir, "client-vulnerabilities-window-several.png");

@@ -126,6 +126,32 @@ public sealed class FirmwareOnlineDialogTests
     }
 
     [Fact]
+    public async Task Model_names_written_differently_are_one_model_so_the_server_takes_what_the_dialog_shows()
+    {
+        // "P3265-V" and "AXIS P3265-V" are the same product on axis.com: one select list, one entry per product and major.
+        Device[] devices =
+        [
+            new("10.0.0.48", "P3265-V", "11.11.160"),
+            new("10.0.0.49", "P3265-V", "11.11.160"),
+            new("10.0.0.50", "AXIS P3265-V", "11.11.160"),
+            new("10.0.0.51", "AXIS P3265-V", "11.11.160"),
+            new("10.0.0.52", "AXIS P3265-V", "11.11.160"),
+        ];
+        var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });
+        using var vm = new DialogViewModel(ctx, devices, new FakeFileSource());
+        await vm.LoadOnlineAsync(CancellationToken.None);
+        Assert.Same(vm.Devices[0].ModelChoices, vm.Devices[2].ModelChoices);
+        vm.Devices[0].SelectedChoice = vm.Devices[0].Choices.Single(c => c.Text == "12.11.147");
+        vm.Devices[1].SelectedChoice = vm.Devices[1].Choices.Single(c => c.Text == "12.11.147");
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        var online = ServerPayload.Parse(vm.Result).AllOnline();
+        Assert.Single(online, o => o.Devices is null && o.FromMajor == 11);
+        ServerAgrees(vm);
+    }
+
+    [Fact]
     public async Task Choosing_a_version_changes_only_that_device()
     {
         var ctx = Context(new FakeAxisSite { MakeVersionFolders = true });

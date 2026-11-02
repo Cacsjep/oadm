@@ -217,7 +217,8 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
 - **Lookup.** The server, query `online` (read only, public pages, no sign-in needed). Only the models of the selected
   devices, never the whole site: both root listings, then per model its folder, `latest/`, `ver.txt` and the newest
   folder of each track; at most 8 models at a time (`MaxParallelModels`), at most 50 models per query (the dialog asks in parts of 50 and
-  fills the rows part by part), no cache (the site changes during the day). Each page 0.1 to 0.15 s;
+  fills the rows part by part), no cache for the dialog (the site changes during the day; a run keeps its reads 10
+  minutes, see "One run, shared work"). Each page 0.1 to 0.15 s;
   measured 2026-10-29: 5 models 1 s, 50 models 3 s, 100 models 5 s. The answer lists every version folder of each track
   (newest first); the size and SHA-256 of an older version are read when it is chosen (query `onlineVersion`). No answer
   from axis.com: "axis.com could not be reached." above the table, the rows keep Choose file.
@@ -255,9 +256,17 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   be the device's model, else "The file is for Q6135-LE, the device is P3265-V. Nothing was changed."), a file that names
   it, the version of its product and major (`FindOnline`, else the one of unknown version), a file by product (with
   other choices a single file is only for its own product). Source and product are checked (`MPQT` or `PACS`; letters,
-  digits, "-", "_"); the server builds the URL from the listing it read. The run is refused with "Sign in to MyAxis to
-  download from axis.com." when an entry is online and the user has no session (`ctx.AxisDownloads` null or
-  `HasSession` false; checked first in Check compatibility, before any device request).
+  digits, "-", "_"); the server builds the URL from the listing it read. A device that installs a version from axis.com
+  fails with "Sign in to MyAxis to download from axis.com. Nothing was changed." when the user has no session
+  (`ctx.AxisDownloads` null or `HasSession` false), checked in Validate file once its choice is known, before axis.com
+  is asked and before any write; a device that installs a chosen file never needs the sign-in.
+- **One run, shared work** (`FirmwareRunCache`): the device tasks of a run (the same payload text) share the parsed
+  payload and its `FirmwareRunIndex` (which entry names a device, the version per product and major, the files by
+  product: O(1) per device at 100,000 devices) and one read of each version's folder on axis.com (source, product,
+  version; single flight, a failure is shared by the run too). Kept 10 minutes from the first use (`TimeProvider`; a
+  longer run parses and reads again), at most 16 runs. The payload still grows with the devices that deviate from the
+  version of their product and major (about 40 bytes per named device: 100,000 named devices are about 4 MB, below the
+  server's 16 MB message limit); the usual select (Recommended, Latest LTS, Latest active) names none.
 - **Download firmware** (task step before Upload firmware, Skipped "A file was chosen." for a chosen file): the host's
   `DownloadAsync` with progress ("68 of 225 MB", the step's percent); tasks of the same file share one download, a second
   run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225 MB from
@@ -279,7 +288,7 @@ Pending).
 |---|---|
 | Check compatibility | status OK, fresh `getApiList` + `Require("fwmgr", "1.0")`; detail "fwmgr 1.10" |
 | Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
-| Validate file | uploaded files present, the file for the device (`ChooseWithOnline`: its version from axis.com, read again from the listing, else `Choose`), name and size checks (never the content), decision table. No file for this model or already up to date: Warning and all later steps Skipped |
+| Validate file | uploaded files present, the file for the device (`ChooseFor`: its version from axis.com, read again from the listing once per run, after the MyAxis sign-in check, else `Choose`), name and size checks (never the content), decision table. No file for this model or already up to date: Warning and all later steps Skipped |
 | Download firmware | a version from axis.com: the host's download with the user's MyAxis sign-in ("68 of 225 MB"); Skipped "A file was chosen." |
 | Read firmware status | fwmgr `status`: no uncommitted previous upgrade |
 | Upload firmware | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12 of 80 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |

@@ -61,6 +61,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     private readonly FirmwareTaskTimings _timings;
     private readonly TimeProvider _time;
     private readonly OnlineFirmwareLookup _online;
+    private readonly FirmwareRunCache _runs;
 
     public FirmwareTaskPlugin()
         : this(new FirmwareTaskTimings(), TimeProvider.System)
@@ -77,6 +78,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         _timings = timings;
         _time = timeProvider;
         _online = new OnlineFirmwareLookup(axisSite ?? AxisSite.Instance);
+        _runs = new FirmwareRunCache(timeProvider);
     }
 
     public string Id => PluginId;
@@ -184,18 +186,14 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
 
-        // 1. Validate everything before the first request that changes the device.
-        var payload = FirmwarePayload.Parse(payloadJson);
+        // 1. Validate everything before the first request that changes the device. The payload is parsed and indexed once
+        // per run (README "Payload").
+        var run = _runs.For(payloadJson);
+        var payload = run.Payload;
         ctx.PlanSteps(Steps.Planned);
 
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
-            // Versions from axis.com download with the MyAxis sign-in of the user who started the run.
-            if (payload.AllOnline().Count > 0 && ctx.AxisDownloads is not { HasSession: true })
-            {
-                throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
-            }
-
             if (device.Status != DeviceStatus.Ok)
             {
                 throw new InvalidOperationException($"The device status is {device.Status}; firmware is only installed on devices with status OK. Nothing was changed.");
@@ -222,7 +220,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             var files = new List<UploadedFile>();
             var images = new List<FirmwareImageInfo>();
-            foreach (var f in payload.AllFiles())
+            foreach (var f in run.Files)
             {
                 var found = await ctx.Files.FindAsync(f.FileId, ct).ConfigureAwait(false)
                     ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
@@ -231,10 +229,10 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
 
             // The file for this device (README "Payload"): a version from axis.com or a chosen file, by device or by product.
-            var online = payload.AllOnline();
-            var onlineImages = online.Select(o => OnlineFirmware.ImageOf(o, 0)).ToList();
-            var (chosenOnline, index, check) = FirmwareCompatibility.ChooseFor(device.Id, info.ProdNbr, info.Version, online, onlineImages, payload.AllFiles(), images,
-                payload.FactoryDefaultMode, payload.AllowDowngrade);
+            var online = run.Online;
+            var onlineImages = run.OnlineImages;
+            var (chosenOnline, index, check) = FirmwareCompatibility.ChooseFor(device.Id, info.ProdNbr, info.Version, online, onlineImages, run.Files, images,
+                payload.FactoryDefaultMode, payload.AllowDowngrade, runIndex: run.Index);
             if (chosenOnline < 0 && index < 0)
             {
                 step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
@@ -260,10 +258,17 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
             if (chosenOnline >= 0)
             {
-                // A version from axis.com: the server reads its file (URL, size, SHA-256) from axis.com itself.
+                // A version from axis.com: the server reads its file (URL, size, SHA-256) from axis.com itself, once per run, and
+                // downloads it with the MyAxis sign-in of the user who started the run. A device that installs a chosen file
+                // never needs the sign-in.
                 if (check.WillInstall)
                 {
-                    onlineFile = await ReadOnlineFileAsync(online[chosenOnline], ct).ConfigureAwait(false);
+                    if (ctx.AxisDownloads is not { HasSession: true })
+                    {
+                        throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
+                    }
+
+                    onlineFile = await ReadOnlineFileAsync(run, online[chosenOnline], ct).ConfigureAwait(false);
                     image = OnlineFirmware.ImageOf(online[chosenOnline], onlineFile.Size) with { FileName = onlineFile.FileName };
                     size = onlineFile.Size;
                     ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; AXIS OS {onlineFile.Version} from {onlineFile.Url} ({size} bytes, SHA-256 {onlineFile.Sha256}): {check.Message}"));
@@ -334,11 +339,11 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     }
 
     /// <summary>The file of an online entry as axis.com lists it now; refused when it is no longer there.</summary>
-    private async Task<OnlineFileInfo> ReadOnlineFileAsync(FirmwareOnline entry, CancellationToken ct)
+    private async Task<OnlineFileInfo> ReadOnlineFileAsync(FirmwareRun run, FirmwareOnline entry, CancellationToken ct)
     {
         try
         {
-            return await _online.FindVersionAsync(entry.Source, entry.Product, entry.Version, ct).ConfigureAwait(false)
+            return await run.FindVersionAsync(_online, entry, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"AXIS OS {entry.Version} for {entry.Product} is no longer on axis.com. Nothing was changed.");
         }
         catch (AxisSiteException ex)

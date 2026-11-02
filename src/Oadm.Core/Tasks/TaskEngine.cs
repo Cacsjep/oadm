@@ -37,6 +37,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     private readonly ConcurrentDictionary<Guid, RunningTask> _active = new();
     private readonly ConcurrentDictionary<string, PluginSlots> _gates = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly RunAxisDownloads? _axisDownloads;
     private int _disposed;
 
     public TaskEngine(
@@ -70,6 +71,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         _files = uploadedFiles ?? NoUploadedFiles.Instance;
         _time = timeProvider ?? TimeProvider.System;
         _feed = new TaskChangeFeed(_options.ChangeFeedCapacity, _logger);
+        _axisDownloads = _options.AxisDownloads is { } source ? new RunAxisDownloads(source, _time, _logger, _shutdown.Token) : null;
     }
 
     /// <summary>Raised synchronously for every task change. Handlers must be fast and must not throw.</summary>
@@ -1013,8 +1015,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             }
             else
             {
-                var axisDownloads = task.Caller is { } starter && _options.AxisDownloads is { } downloads
-                    ? await downloads.ForUserAsync(starter.UserId, ct).ConfigureAwait(false)
+                var axisDownloads = task.Caller is { } starter && _axisDownloads is { } downloads
+                    ? await downloads.ForAsync(task.BatchId, starter.UserId, ct).ConfigureAwait(false)
                     : null;
                 var vapix = await _vapix.CreateAsync(deviceId, ct).ConfigureAwait(false);
                 var context = new TaskExecutionContext(

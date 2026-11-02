@@ -93,7 +93,7 @@ public sealed class OnlineTaskTests : IDisposable
     [Theory]
     [InlineData(true)] // signed out
     [InlineData(false)] // an older host without downloads
-    public async Task Without_a_MyAxis_session_the_run_is_refused_before_any_request(bool hostHasDownloads)
+    public async Task Without_a_MyAxis_session_a_device_with_a_version_from_axis_com_is_refused_before_any_change(bool hostHasDownloads)
     {
         var (ctx, device) = Setup();
         _downloads.HasSession = false;
@@ -101,10 +101,13 @@ public sealed class OnlineTaskTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, Online()));
 
+        // Checked once the device's own choice is known (a device that installs a chosen file needs no sign-in).
         Assert.Equal("Sign in to MyAxis to download from axis.com. Nothing was changed.", ex.Message);
-        Assert.Equal("Check compatibility: Failed", StepRun.Lines(ctx.Steps)[0]);
-        Assert.Empty(device.Methods);
+        Assert.Equal("Validate file: Failed", StepRun.Lines(ctx.Steps)[2]);
+        Assert.DoesNotContain("upgrade", device.Methods);
+        Assert.DoesNotContain("status", device.Methods);
         Assert.Empty(_downloads.Calls);
+        Assert.Empty(_site.Requests); // axis.com is not asked either
     }
 
     [Theory]

@@ -58,7 +58,8 @@ the version and commits it.
   device a version from axis.com (Recommended = newest on its own track, Latest LTS, Latest active) or a
   chosen file; choosing on one device changes only that device; the lookup reads only the selected models' public listings (query `online`, 8 models at a time, no
   cache); the server reads URL, size and SHA-256 from axis.com itself and downloads with the starting user's MyAxis
-  sign-in ([myaxis.md](myaxis.md), step "Download firmware"; refused without one, before any device request); the
+  sign-in ([myaxis.md](myaxis.md), step "Download firmware"; a device with a version from axis.com is refused without
+  one, before any write; a device with a chosen file never needs it), one read of axis.com per version per run; the
   decision table, upgrade path and apps check apply unchanged.
 
 ## Network settings and Assign IP address

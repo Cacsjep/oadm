@@ -216,44 +216,38 @@ public static class FirmwareCompatibility
     /// <c>Online</c> or <c>File</c> is the index taken (into <paramref name="online"/> or <paramref name="files"/>), the
     /// other -1; both -1: no file for this model.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="runIndex"/>: the run's <see cref="FirmwareRunIndex"/> of the same <paramref name="online"/> and
+    /// <paramref name="files"/>, built once per run (the task's payload cache), so a device costs O(1); without it one is
+    /// built for this call.
+    /// </remarks>
     public static (int Online, int File, FirmwareCheck Check) ChooseFor(Guid deviceId, string? deviceModel, string? deviceVersion,
         IReadOnlyList<FirmwareOnline> online, IReadOnlyList<FirmwareImageInfo> onlineImages, IReadOnlyList<FirmwareFile> files,
-        IReadOnlyList<FirmwareImageInfo> fileImages, FactoryDefaultMode mode, bool allowDowngrade, IReadOnlyList<InstalledApp>? apps = null)
+        IReadOnlyList<FirmwareImageInfo> fileImages, FactoryDefaultMode mode, bool allowDowngrade, IReadOnlyList<InstalledApp>? apps = null,
+        FirmwareRunIndex? runIndex = null)
     {
         ArgumentNullException.ThrowIfNull(online);
         ArgumentNullException.ThrowIfNull(onlineImages);
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(fileImages);
-        for (var i = 0; i < online.Count; i++)
+        var run = runIndex ?? new FirmwareRunIndex(online, files);
+        if (run.OnlineNaming(deviceId) is var named and >= 0)
         {
-            if (online[i].Devices?.Contains(deviceId) == true)
-            {
-                return (i, -1, EvaluateOnline(online[i], onlineImages[i], deviceModel, deviceVersion, mode, allowDowngrade, apps));
-            }
+            return (named, -1, EvaluateOnline(online[named], onlineImages[named], deviceModel, deviceVersion, mode, allowDowngrade, apps));
         }
 
-        for (var i = 0; i < files.Count; i++)
+        if (run.FileNaming(deviceId) is var namedFile and >= 0)
         {
-            if (files[i].Devices?.Contains(deviceId) == true)
-            {
-                return (-1, i, Evaluate(deviceModel, deviceVersion, fileImages[i], mode, allowDowngrade, apps));
-            }
+            return (-1, namedFile, Evaluate(deviceModel, deviceVersion, fileImages[namedFile], mode, allowDowngrade, apps));
         }
 
-        var index = FindOnline(deviceModel, deviceVersion, online);
+        var index = run.OnlineFor(deviceModel, deviceVersion);
         if (index >= 0)
         {
             return (index, -1, Evaluate(deviceModel, deviceVersion, onlineImages[index], mode, allowDowngrade, apps));
         }
 
-        var byProduct = new List<int>();
-        for (var i = 0; i < files.Count; i++)
-        {
-            if (files[i].Devices is null)
-            {
-                byProduct.Add(i);
-            }
-        }
+        var byProduct = run.FilesByProduct;
 
         if (byProduct.Count == 0)
         {
@@ -294,5 +288,83 @@ public static class FirmwareCompatibility
         }
 
         return p.ToUpperInvariant();
+    }
+}
+
+/// <summary>
+/// The choices of one run's payload indexed once (README "Payload"): which entry names a device (the first one, as the
+/// payload lists them), the version from axis.com of each product and AXIS OS major (<see cref="FirmwareCompatibility.FindOnline"/>)
+/// and the files by product. Each lookup is O(1), so a run of 100,000 devices costs the server no per-device scan.
+/// Read only after construction: thread safe.
+/// </summary>
+public sealed class FirmwareRunIndex
+{
+    private readonly Dictionary<Guid, int> _online = [];
+    private readonly Dictionary<Guid, int> _files = [];
+    private readonly Dictionary<(string Product, int? Major), int> _byProduct = [];
+
+    public FirmwareRunIndex(IReadOnlyList<FirmwareOnline> online, IReadOnlyList<FirmwareFile> files)
+    {
+        ArgumentNullException.ThrowIfNull(online);
+        ArgumentNullException.ThrowIfNull(files);
+        for (var i = 0; i < online.Count; i++)
+        {
+            if (online[i].Devices is { } devices)
+            {
+                foreach (var id in devices)
+                {
+                    _online.TryAdd(id, i);
+                }
+            }
+            else if (OnlineFirmware.Normalize(online[i].Product) is { Length: > 0 } product)
+            {
+                _byProduct.TryAdd((product, online[i].FromMajor), i);
+            }
+        }
+
+        var byProduct = new List<int>();
+        for (var i = 0; i < files.Count; i++)
+        {
+            if (files[i].Devices is { } devices)
+            {
+                foreach (var id in devices)
+                {
+                    _files.TryAdd(id, i);
+                }
+            }
+            else
+            {
+                byProduct.Add(i);
+            }
+        }
+
+        FilesByProduct = byProduct;
+    }
+
+    /// <summary>The first version from axis.com that names the device; -1 when none.</summary>
+    public int OnlineNaming(Guid deviceId) => _online.GetValueOrDefault(deviceId, -1);
+
+    /// <summary>The first file that names the device; -1 when none.</summary>
+    public int FileNaming(Guid deviceId) => _files.GetValueOrDefault(deviceId, -1);
+
+    /// <summary>The files that name no device, in payload order.</summary>
+    public IReadOnlyList<int> FilesByProduct { get; }
+
+    /// <summary>
+    /// <see cref="FirmwareCompatibility.FindOnline"/> in O(1): the entry of the device's product and AXIS OS major, else the
+    /// one of its product for devices of unknown version; -1 when none.
+    /// </summary>
+    public int OnlineFor(string? deviceModel, string? deviceVersion)
+    {
+        var product = OnlineFirmware.Normalize(deviceModel);
+        if (product.Length == 0)
+        {
+            return -1;
+        }
+
+        var major = AxisOsVersion.TryParse(deviceVersion)?.Major;
+        return major is not null && _byProduct.TryGetValue((product, major), out var exact) ? exact
+            : _byProduct.TryGetValue((product, null), out var unknown) ? unknown
+            : -1;
     }
 }
