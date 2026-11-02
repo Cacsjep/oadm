@@ -144,7 +144,9 @@ public sealed partial class MyAxisSignInViewModel : ObservableObject
     /// </summary>
     public void NavigationStarting(Uri? page)
     {
-        if (IsAccepted || IsNotAvailable)
+        // WebKitGTK (Avalonia.Controls.WebView 12.1.1) reports every frame here, also the about:blank iframes of Axis's
+        // login pages, and reports a completed load only for the page itself: a frame must never cover the page.
+        if (IsAccepted || IsNotAvailable || !IsWebPage(page))
         {
             return;
         }
@@ -349,9 +351,20 @@ public sealed partial class MyAxisSignInViewModel : ObservableObject
         timer.Dispose();
         _loading = false;
         _signingIn = false;
-        LoadErrorText = MyAxisTexts.NotReachable;
+
+        // Once axis.com answered, a load that never reported back (a frame, a load the page cancelled itself; WebKitGTK
+        // reports neither) is no connection problem: the browser shows what it has.
+        if (!_reachedAxis)
+        {
+            LoadErrorText = MyAxisTexts.NotReachable;
+        }
+
         UpdateOverlay();
     }
+
+    /// <summary>An http(s) page; about:blank, data: and the like are frames, never a page of the login.</summary>
+    private static bool IsWebPage(Uri? page) =>
+        page is { IsAbsoluteUri: true } && (page.Scheme == Uri.UriSchemeHttps || page.Scheme == Uri.UriSchemeHttp);
 
     private void StopLoadTimer()
     {
