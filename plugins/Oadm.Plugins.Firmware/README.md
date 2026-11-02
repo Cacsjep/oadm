@@ -151,21 +151,26 @@ ones were allowed report `SignatureStatus="Unknown"`; Axis applications `Signed`
 
 ## Dialog
 
-The Firmware table has one row per model and AXIS OS major of the selected devices: a version from axis.com or **Choose
-file** (a local `.bin` for that row; details in "Firmware online"). A device without a file for its model shows "No file"
-("No file for this model."). Two files for one product are refused below the field of their row ("Two files are for
-P3265-V. Choose one file per model."), like a refused file (not a `.bin`, smaller than 1 MB).
+One table of the selected devices (virtualized, up to 100,000): Address, Model, Firmware, **Version**, Result (with
+tooltip), Details. Version is the select of that device: the versions axis.com lists for its model grouped by track
+(details in "Firmware online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin` for
+that device). The list is one per model and shared by its devices. Choosing on one device changes only that device; the
+buttons above the table set every device. A device without a choice shows "No file" ("No file for this model.") once
+another device has one. A chosen file is judged per device in its Result (Invalid file, Wrong product). Files given
+together (`SelectFilesAsync`, drag and drop and tests) go to the devices of their model; a refused file or two files for
+one product ("Two files are for P3265-V. Choose one file per model.") show directly below the table and block Upgrade.
 
-Table of the selected devices: Address, Model, Firmware, Result (with tooltip), Details. The Firmware column is refreshed
-by the status query: read for the first 50 devices when the dialog opens, for other rows when the grid shows them, at
-most 4 queries at a time; a row shows the chip "Reading" until its query answered.
+The Firmware column is refreshed by the status query: read for the first 50 devices when the dialog opens, for other rows
+when the grid shows them, at most 4 queries at a time; a row shows the chip "Reading" until its query answered.
 
-Options: Factory default none (default) / soft / hard with warnings, "Allow downgrade". **Upgrade** is enabled when at
+Options below the table in one row: Factory default none (default) / soft / hard (label left of the select) and
+"Allow downgrade" next to it, the warnings below. **Upgrade** is enabled when at
 least one device would install. The dialog narrows the devices (`ShowForDevicesAsync`): tasks start only for the devices
 that install a file, none for devices already up to date, without a file for their model or refused (Wrong product,
 Downgrade blocked). It uploads the files with `ITaskDialogContext.UploadAsync` (only those a device installs, one after
 the other, one progress bar, cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`,
-with several files also `"files":[{"fileId","fileName"}]`, with versions from axis.com also `"online":[...]`.
+with several files also `"files":[{"fileId","fileName","devices"}]`, with versions from axis.com also `"online":[...]`
+("Payload" in "Firmware online"). Each local file is uploaded once, also when several devices install it.
 
 ## Firmware online
 
@@ -176,11 +181,11 @@ gets a version from axis.com or a chosen file; the server downloads the versions
 starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
 
 - **Code.** `Shared/OnlineListing` (the listing rows, sizes, version folders, `ver.txt`), `Shared/OnlineFirmware` (model
-  match, tracks, the three selection rules, the texts, the query contracts), `FirmwareCompatibility.FindOnline` and
-  `ChooseWithOnline` (an online version or a chosen file per device; dialog and server), `Online/AxisSite` (HTTP to the
-  listings only: `www.axis.com`, paths below `/ftp/pub_soft/`, never a .bin, no cookies, no redirects, 15 s and 8 MB per
-  page; a reviewed user of the banned network APIs), `Online/OnlineFirmwareLookup` (the queries), the client's
-  `FirmwareModelRow`.
+  match, tracks, the three selection rules, the texts, the query contracts), `FirmwareCompatibility.ChooseFor` (the file
+  of one device of a run: task, and the tests that hold the dialog to it), `Online/AxisSite` (HTTP to the listings only:
+  `www.axis.com`, paths below `/ftp/pub_soft/`, never a .bin, no cookies, no redirects, 15 s and 8 MB per page; a
+  reviewed user of the banned network APIs), `Online/OnlineFirmwareLookup` (the queries), the client's
+  `FirmwareChoices` (`FirmwareModelChoices`: the shared select list of a model; `FirmwareDeviceRow`).
 - **Where.** The public listings `https://www.axis.com/ftp/pub_soft/MPQT/` (cameras) and `.../PACS/` (audio, access
   control, intercoms, I/O, switches; a product in both is taken from MPQT): one folder per product, in it one folder per
   version (`12_11_147/`) and `latest/` (the newest .bin as `<product>.bin` plus `ver.txt` with its version). Each listing
@@ -198,7 +203,9 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   the .bin of `latest/`, else the highest. Versions without a .bin, a SHA-256 or a size of at least 1 MB are left out (the next version of the track is read
   instead). The .bin of a folder is `<product>_<version>.bin` (`<product>.bin` in `latest/`), else its only .bin. A
   `ver.txt` that is no bare version (a "Page not found" page) counts as none. An older major whose last minor is no LTS
-  is named "AXIS OS 10" (`OnlineTrackKind.Old`).
+  is named "AXIS OS 10" (`OnlineTrackKind.Old`). Only majors 5 and later count (`OnlineFirmware.MinMajor`: Axis firmware
+  5.x and AXIS OS 6 and later); older folders are other firmware (C1410's `1_97_1`, the first firmware of an audio
+  product) and no track.
 - **Lookup.** The server, query `online` (read only, public pages, no sign-in needed). Only the models of the selected
   devices, never the whole site: both root listings, then per model its folder, `latest/`, `ver.txt` and the newest
   folder of each track; at most 8 models at a time (`MaxParallelModels`), at most 50 models per query (the dialog asks in parts of 50 and
@@ -211,34 +218,35 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
 - **Downloads need a login.** Every .bin below `/ftp/pub_soft/` answers `302` to `/my-axis/login`; the listings and
   `ver.txt` are public. OADM downloads with the MyAxis sign-in of the user who starts the run, through the host
   (`ctx.AxisDownloads`); the plugin never sees the session.
-- **Dialog.** The file row becomes a table with one row per model and track of the selected devices ("P3265-V", "11.11",
-  "4 devices"): Model, Devices, Firmware now, **Version**. Version is a select grouped by track names, every version of
-  the model newest first, and as the last entry **Choose file** (a local .bin for that row, checked as today). Above the
-  table, command buttons that set every row:
-  - **Recommended**: the newest version on the row's own track (11.11 stays 11.11, the active track stays active, 9.80
-    stays 9.80); a track axis.com no longer lists for the model: its newest LTS.
-  - **Latest LTS**: the newest LTS track of the model.
+- **Dialog.** One device table (README "Dialog"); per device a **Version** select grouped by track names, every version
+  of its model newest first, the chosen files and **Choose file** last. Above the table, command buttons that set every
+  device (one pass, the rule computed once per model and AXIS OS major):
+  - **Recommended**: the newest version on the device's own track, the track of its AXIS OS major (11.8 and 11.11 are
+    both on 11.11; the active track stays active, 9.80 stays 9.80); a track axis.com no longer lists for the model, or a
+    device of unknown version: its newest LTS.
+  - **Latest LTS**: the newest LTS track of the model; a model without an LTS: its newest version.
   - **Latest active**: the model's active track; a model without one (it ends on an LTS) gets its newest version.
-  A row whose devices already run the chosen version shows "Up to date"; a row the model is not listed for (P12-MkIII)
-  offers Choose file only. Rows are keyed by model and AXIS OS major (the track of the devices: 11.8 and 11.11 are both
-  the 11 row); a device whose status shows another major moves to that row (choices are kept per row). Recommended for a
-  major the model no longer lists (and for devices of unknown version): its newest LTS; Latest LTS of a model without an
-  LTS: its newest version. An older version (no size and SHA-256 in the lookup) is checked with `onlineVersion` when
-  chosen; gone: "AXIS OS 11.11.192 is no longer on axis.com." below its field. While the lookup runs, a progress line
-  shows "Reading the versions on axis.com, 40 of 120 models" and Upgrade waits; signing in later sets Recommended on the
-  rows without a choice. A refused choice shows below its field through the row's `INotifyDataErrorInfo`. Signed in, the dialog opens with Recommended; not signed in, every row starts on Choose
-  file, the versions show for information, choosing one says "Sign in to MyAxis to download from axis.com." with
-  **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`). The decision table, the upgrade path advice and the
-  apps check apply unchanged: an online version is a file with a known product and version.
-- **Payload.** Per row either `fileId` (uploaded as today, only chosen files) or `online` (`product`, `version`); the
-  server reads that version's folder itself for the URL, size and SHA-256 and never takes them from the client. Built:
-  `"online":[{"source":"MPQT","product":"P3265-V","version":"12.11.147","fromMajor":11}]` next to the old file fields
-  (`fileId`, `fileName`, `files`, unchanged); a device takes the entry of its product and AXIS OS major
-  (`FindOnline`, else the entry of unknown version), else a chosen file as before (with online entries a single file is
-  only for its own product). Source and product are checked (`MPQT` or `PACS`; letters, digits, "-", "_"); the server
-  builds the URL from the listing it read. The run
-  is refused with "Sign in to MyAxis to download from axis.com." when a row is online and the user has no session
-  (`ctx.AxisDownloads` null or `HasSession` false; checked first in Check compatibility, before any device request).
+  A model not listed (P12-MkIII) offers Choose file only. An older version (no size and SHA-256 in the lookup) is checked
+  with `onlineVersion` once when chosen (for all devices with that version); gone: the Result says "Not on axis.com"
+  ("AXIS OS 11.11.192 is no longer on axis.com."). While the lookup runs, a progress line shows "Reading the versions on
+  axis.com, 40 of 120 models" and Upgrade waits. Signed in, the dialog opens with Recommended; not signed in, every
+  device starts on Choose file, the versions show for information, choosing one says "Sign in to MyAxis to download from
+  axis.com." in its Result, and the line above the table has **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`);
+  signing in sets Recommended on the devices without a choice. The decision table, the upgrade path advice and the apps
+  check apply unchanged: an online version is a file with a known product and version.
+- **Payload.** Per device either a chosen file or a version from axis.com; the server reads that version's folder itself
+  for the URL, size and SHA-256 and never takes them from the client. Small in the usual case (the buttons):
+  `"online":[{"source":"MPQT","product":"P3265-V","version":"12.11.147","fromMajor":11}]` is for every device of that
+  product and AXIS OS major; a device whose version differs from most of its product and major is named:
+  `{"source","product","version","devices":[id]}`. Files keep the old fields (`fileId`, `fileName`, `files`); a file
+  names its devices (`"devices":[...]`) unless it is for one product and every installing device of that product takes
+  it (then by product, as before). The server takes per device (`ChooseFor`): a version that names it (its product must
+  be the device's model, else "The file is for Q6135-LE, the device is P3265-V. Nothing was changed."), a file that names
+  it, the version of its product and major (`FindOnline`, else the one of unknown version), a file by product (with
+  other choices a single file is only for its own product). Source and product are checked (`MPQT` or `PACS`; letters,
+  digits, "-", "_"); the server builds the URL from the listing it read. The run is refused with "Sign in to MyAxis to
+  download from axis.com." when an entry is online and the user has no session (`ctx.AxisDownloads` null or
+  `HasSession` false; checked first in Check compatibility, before any device request).
 - **Download firmware** (task step before Upload firmware, Skipped "A file was chosen." for a chosen file): the host's
   `DownloadAsync` with progress ("68 of 225 MB", the step's percent); tasks of the same file share one download, a second
   run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225 MB from
@@ -314,7 +322,8 @@ view model (files per model, a device without a file, two files for one model) a
 online: `OnlineListingTests` and `OnlineLookupTests` from the recorded pages in `Fixtures/Online` (2026-11-02, trimmed
 roots; `FakeAxisSite` makes up other version folders), `OnlineRulesTests` (match, tracks, the three rules),
 `OnlineTaskTests` (a test-local `FakeAxisDownloads`), `FirmwareOnlineDialogTests` (the dialog against the plugin's real
-queries), a Perf test with 100,000 devices, headless screenshots (signed in with Recommended, signed out) and the opt-in `OnlineLiveTests` (`OADM_AXIS_LIVE=1`, `Category=Live`: the real listings of axis.com, read only).
+queries; the server takes for every device of the run what the dialog showed), a Perf test with 100,000 devices (rows,
+lookup, the three buttons, one device's choice), headless screenshots (signed in with Recommended, signed out) and the opt-in `OnlineLiveTests` (`OADM_AXIS_LIVE=1`, `Category=Live`: the real listings of axis.com, read only).
 
 Never run against hardware: upload, commit, any factory default. Still to verify on a test device: numeric
 `autoRollback` as a JSON string (`"30"`), the exact answer timing of `upgrade` (before or after flashing), anonymous

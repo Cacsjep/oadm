@@ -110,9 +110,10 @@ public sealed class OnlineRulesTests
     [Fact]
     public void The_newest_major_is_the_active_track_with_all_its_versions()
     {
-        var tracks = OnlineFirmware.BuildTracks(V("13.0.88", "13.1.20", "12.11.147", "12.6.85", "9.80.105", "9.80.3.13.1", "8.40.4", "6.50.2", "10.11.76", "1.97.1"));
+        var tracks = OnlineFirmware.BuildTracks(V("13.0.88", "13.1.20", "12.11.147", "12.6.85", "9.80.105", "9.80.3.13.1", "8.40.4", "6.50.2", "10.11.76", "5.51.7", "1.97.1", "4.2.0"));
 
-        Assert.Equal(["AXIS OS 13", "LTS 2026 · 12.11", "AXIS OS 10", "PSS 9.80", "PSS 8.40", "PSS 6.50", "AXIS OS 1"], tracks.Select(t => t.Name));
+        // Majors below 5 are no AXIS OS or Axis firmware OADM installs (C1410's 1_97_1).
+        Assert.Equal(["AXIS OS 13", "LTS 2026 · 12.11", "AXIS OS 10", "PSS 9.80", "PSS 8.40", "PSS 6.50", "AXIS OS 5"], tracks.Select(t => t.Name));
         Assert.Equal(OnlineTrackKind.Active, tracks[0].Kind);
         Assert.Null(tracks[0].Minor);
         Assert.Equal(["13.1.20", "13.0.88"], tracks[0].Versions.Select(v => v.Version));
@@ -151,7 +152,7 @@ public sealed class OnlineRulesTests
         Assert.Equal("13.1.20", OnlineFirmware.LatestActive(WithActive));
         Assert.Equal("11.11.238", OnlineFirmware.LatestLts(EndsOnLts));
         Assert.Equal("11.11.238", OnlineFirmware.LatestActive(EndsOnLts)); // no active track: its newest version
-        Assert.Equal("1.97.1", OnlineFirmware.Recommended(EndsOnLts, 1)); // its own (old) track
+        Assert.Equal("11.11.238", OnlineFirmware.Recommended(EndsOnLts, 1)); // 1.97 is no track: the newest LTS
     }
 
     [Fact]
@@ -169,27 +170,61 @@ public sealed class OnlineRulesTests
     [Fact]
     public void An_online_version_is_judged_like_a_file_with_product_and_version()
     {
+        var device = Guid.NewGuid();
         FirmwareOnline[] online = [new("MPQT", "P3265-V", "12.11.147", 11)];
         FirmwareImageInfo[] images = [OnlineFirmware.ImageOf(online[0], 236_453_888)];
         var file = FirmwareImageInspector.Inspect("Q6135-LE_12_11_77.bin", 80 * 1024 * 1024);
+        FirmwareFile[] files = [new("q", file.FileName)];
 
-        var upgrade = FirmwareCompatibility.ChooseWithOnline("P3265-V", "11.11.160", online, images, [file], FactoryDefaultMode.None, false);
+        var upgrade = FirmwareCompatibility.ChooseFor(device, "P3265-V", "11.11.160", online, images, files, [file], FactoryDefaultMode.None, false);
         Assert.Equal((0, -1), (upgrade.Online, upgrade.File));
         Assert.Equal(FirmwareVerdict.Upgrade, upgrade.Check.Verdict);
         Assert.NotNull(upgrade.Check.PathNote); // leaves the LTS track 11.11: the upgrade path note applies unchanged
 
-        var same = FirmwareCompatibility.ChooseWithOnline("P3265-V", "11.11.160", [new("MPQT", "P3265-V", "11.11.160", 11)], [OnlineFirmware.ImageOf(new("MPQT", "P3265-V", "11.11.160", 11), 0)], [], FactoryDefaultMode.None, false);
-        Assert.Equal(FirmwareVerdict.AlreadyUpToDate, same.Check.Verdict);
+        FirmwareOnline[] same = [new("MPQT", "P3265-V", "11.11.160", 11)];
+        Assert.Equal(FirmwareVerdict.AlreadyUpToDate, FirmwareCompatibility.ChooseFor(device, "P3265-V", "11.11.160", same, [OnlineFirmware.ImageOf(same[0], 0)], [], [], FactoryDefaultMode.None, false).Check.Verdict);
 
         // A device of another model takes the chosen file for its product; a single file is not for every model here.
-        var q = FirmwareCompatibility.ChooseWithOnline("Q6135-LE", "11.11.160", online, images, [file], FactoryDefaultMode.None, false);
+        var q = FirmwareCompatibility.ChooseFor(device, "Q6135-LE", "11.11.160", online, images, files, [file], FactoryDefaultMode.None, false);
         Assert.Equal((-1, 0, FirmwareVerdict.Upgrade), (q.Online, q.File, q.Check.Verdict));
-        var m = FirmwareCompatibility.ChooseWithOnline("M3215-LVE", "11.11.160", online, images, [file], FactoryDefaultMode.None, false);
+        var m = FirmwareCompatibility.ChooseFor(device, "M3215-LVE", "11.11.160", online, images, files, [file], FactoryDefaultMode.None, false);
         Assert.Equal((-1, -1, FirmwareVerdict.NoFileForModel), (m.Online, m.File, m.Check.Verdict));
 
         // Older: a downgrade is refused like a file.
-        var down = FirmwareCompatibility.ChooseWithOnline("P3265-V", "12.11.160", [new("MPQT", "P3265-V", "11.11.238", 12)], [OnlineFirmware.ImageOf(new("MPQT", "P3265-V", "11.11.238", 12), 0)], [], FactoryDefaultMode.None, false);
-        Assert.Equal(FirmwareVerdict.DowngradeBlocked, down.Check.Verdict);
+        FirmwareOnline[] older = [new("MPQT", "P3265-V", "11.11.238", 12)];
+        Assert.Equal(FirmwareVerdict.DowngradeBlocked, FirmwareCompatibility.ChooseFor(device, "P3265-V", "12.11.160", older, [OnlineFirmware.ImageOf(older[0], 0)], [], [], FactoryDefaultMode.None, false).Check.Verdict);
+    }
+
+    [Fact]
+    public void Entries_that_name_the_device_win()
+    {
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid();
+        FirmwareOnline[] online =
+        [
+            new("MPQT", "P3265-V", "11.11.238", 11),
+            new("MPQT", "P3265-V", "11.11.220", null, [b]),
+            new("MPQT", "Q6135-LE", "11.11.238", null, [c]),
+        ];
+        var images = online.Select(o => OnlineFirmware.ImageOf(o, 0)).ToList();
+        var fileImage = FirmwareImageInspector.Inspect("mine.bin", 80 * 1024 * 1024);
+        FirmwareFile[] files = [new("f", "mine.bin", [a])];
+
+        // a: its own file (the version by product and major comes after); b: its own version; c: a version of another product.
+        Assert.Equal((-1, 0), Pick(a, "P3265-V"));
+        Assert.Equal((1, -1), Pick(b, "P3265-V"));
+        Assert.Equal((0, -1), Pick(Guid.NewGuid(), "P3265-V"));
+        var wrong = FirmwareCompatibility.ChooseFor(c, "P3265-V", "11.11.160", online, images, files, [fileImage], FactoryDefaultMode.None, false);
+        Assert.Equal(FirmwareVerdict.WrongProduct, wrong.Check.Verdict);
+        Assert.Equal("The file is for Q6135-LE, the device is P3265-V.", wrong.Check.Message);
+
+        // A listed file is never taken by product for other devices.
+        Assert.Equal((-1, -1), Pick(Guid.NewGuid(), "M3215-LVE"));
+
+        (int, int) Pick(Guid id, string model)
+        {
+            var r = FirmwareCompatibility.ChooseFor(id, model, "11.11.160", online, images, files, [fileImage], FactoryDefaultMode.None, false);
+            return (r.Online, r.File);
+        }
     }
 }
 
@@ -253,7 +288,7 @@ public sealed class OnlineLookupTests
 
         var model = Assert.Single(result.Models);
         Assert.Equal(("C1410", "PACS"), (model.Product, model.Source));
-        Assert.Equal(["LTS 2024 · 11.11", "LTS 2022 · 10.12", "PSS 9.80", "AXIS OS 1"], model.Tracks.Select(t => t.Name));
+        Assert.Equal(["LTS 2024 · 11.11", "LTS 2022 · 10.12", "PSS 9.80"], model.Tracks.Select(t => t.Name)); // 1_97_1 is no AXIS OS
         Assert.Equal("11.11.238", model.Latest);
         Assert.Equal("10.12.356.2", model.Tracks[1].Newest);
         Assert.Equal("11.11.238", OnlineFirmware.LatestActive(model)); // ends on an LTS: no active track

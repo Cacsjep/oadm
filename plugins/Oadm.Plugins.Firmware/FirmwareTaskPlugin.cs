@@ -230,29 +230,11 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 images.Add(FirmwareImageInspector.Inspect(f.FileName ?? found.Name, found.Size));
             }
 
-            // A version from axis.com: the server reads its file (URL, size, SHA-256) from axis.com itself.
+            // The file for this device (README "Payload"): a version from axis.com or a chosen file, by device or by product.
             var online = payload.AllOnline();
-            var onlineIndex = FirmwareCompatibility.FindOnline(info.ProdNbr, info.Version, online);
             var onlineImages = online.Select(o => OnlineFirmware.ImageOf(o, 0)).ToList();
-            if (onlineIndex >= 0)
-            {
-                onlineFile = await ReadOnlineFileAsync(online[onlineIndex], ct).ConfigureAwait(false);
-                onlineImages[onlineIndex] = OnlineFirmware.ImageOf(online[onlineIndex], onlineFile.Size);
-            }
-
-            // AXIS OS 13 and later refuse the upgrade for an unsigned or undeclared application: checked before the upload.
-            IReadOnlyList<InstalledApp>? apps = null;
-            if (images.Any(i => i.Version?.Major >= InstalledAppRules.FromMajor) || (onlineIndex >= 0 && onlineImages[onlineIndex].Version?.Major >= InstalledAppRules.FromMajor))
-            {
-                apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
-                if (apps is null)
-                {
-                    ctx.Log(TaskLogLevel.Warning, "The installed applications could not be read; the device checks them itself.");
-                }
-            }
-
-            var (chosenOnline, index, check) = FirmwareCompatibility.ChooseWithOnline(info.ProdNbr, info.Version, online, onlineImages, images,
-                payload.FactoryDefaultMode, payload.AllowDowngrade, apps);
+            var (chosenOnline, index, check) = FirmwareCompatibility.ChooseFor(device.Id, info.ProdNbr, info.Version, online, onlineImages, payload.AllFiles(), images,
+                payload.FactoryDefaultMode, payload.AllowDowngrade);
             if (chosenOnline < 0 && index < 0)
             {
                 step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
@@ -260,17 +242,41 @@ public sealed class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 return;
             }
 
+            image = chosenOnline >= 0 ? onlineImages[chosenOnline] : images[index];
+
+            // AXIS OS 13 and later refuse the upgrade for an unsigned or undeclared application: checked before the upload.
+            if (check.WillInstall && image.Version?.Major >= InstalledAppRules.FromMajor)
+            {
+                var apps = await new InstalledAppsReader(ctx.Vapix).TryListAsync(ct).ConfigureAwait(false);
+                if (apps is null)
+                {
+                    ctx.Log(TaskLogLevel.Warning, "The installed applications could not be read; the device checks them itself.");
+                }
+
+                check = chosenOnline >= 0
+                    ? FirmwareCompatibility.EvaluateOnline(online[chosenOnline], image, info.ProdNbr, info.Version, payload.FactoryDefaultMode, payload.AllowDowngrade, apps)
+                    : FirmwareCompatibility.Evaluate(info.ProdNbr, info.Version, image, payload.FactoryDefaultMode, payload.AllowDowngrade, apps);
+            }
+
             if (chosenOnline >= 0)
             {
-                image = onlineImages[chosenOnline] with { FileName = onlineFile!.FileName };
-                size = onlineFile.Size;
-                ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; AXIS OS {onlineFile.Version} from {onlineFile.Url} ({size} bytes, SHA-256 {onlineFile.Sha256}): {check.Message}"));
+                // A version from axis.com: the server reads its file (URL, size, SHA-256) from axis.com itself.
+                if (check.WillInstall)
+                {
+                    onlineFile = await ReadOnlineFileAsync(online[chosenOnline], ct).ConfigureAwait(false);
+                    image = OnlineFirmware.ImageOf(online[chosenOnline], onlineFile.Size) with { FileName = onlineFile.FileName };
+                    size = onlineFile.Size;
+                    ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; AXIS OS {onlineFile.Version} from {onlineFile.Url} ({size} bytes, SHA-256 {onlineFile.Sha256}): {check.Message}"));
+                }
+                else
+                {
+                    size = 0;
+                    ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; AXIS OS {online[chosenOnline].Version} from axis.com: {check.Message}"));
+                }
             }
             else
             {
-                onlineFile = null;
                 file = files[index];
-                image = images[index];
                 size = file.Size;
                 ctx.Log(TaskLogLevel.Info, Invariant($"Device {info.ProdNbr} runs {info.Version}; file {image.FileName} ({file.Size} bytes, SHA-256 {file.Sha256}): {check.Message}"));
             }

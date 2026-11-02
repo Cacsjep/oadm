@@ -138,6 +138,12 @@ public static partial class OnlineFirmware
     /// <summary>The listing of a source ("/ftp/pub_soft/MPQT/").</summary>
     public static string SourcePath(string source) => "/ftp/pub_soft/" + source + "/";
 
+    /// <summary>
+    /// The lowest major version counted as firmware OADM installs: Axis firmware 5.x and AXIS OS 6 and later. Older folders
+    /// (C1410's "1_97_1", the first firmware of an audio product) are no tracks.
+    /// </summary>
+    public const int MinMajor = 5;
+
     public const string SignInText = "Sign in to MyAxis to download from axis.com.";
     public const string UnreachableText = "axis.com could not be reached.";
     public const string FileChosenText = "A file was chosen.";
@@ -182,7 +188,7 @@ public static partial class OnlineFirmware
     public static IReadOnlyList<OnlineTrack> BuildTracks(IEnumerable<AxisOsVersion> versions)
     {
         ArgumentNullException.ThrowIfNull(versions);
-        var byMajor = versions.Distinct().GroupBy(v => v.Major).OrderByDescending(g => g.Key).ToList();
+        var byMajor = versions.Where(v => v.Major >= MinMajor).Distinct().GroupBy(v => v.Major).OrderByDescending(g => g.Key).ToList();
         var tracks = new List<OnlineTrack>(byMajor.Count);
         for (var i = 0; i < byMajor.Count; i++)
         {
