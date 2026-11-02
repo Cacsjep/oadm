@@ -593,6 +593,38 @@ header .social-icons::after {
 	background: color-mix(in srgb, var(--sl-color-accent) 85%, white);
 }
 
+/* The arrow of the Download icon bounces into its tray now and then, faster on hover; still for reduced motion. */
+.downloads .dl-main .dl-arrow {
+	animation: dl-bounce 2.4s ease-in-out infinite;
+}
+
+.downloads .dl-main:hover .dl-arrow {
+	animation-duration: 0.8s;
+}
+
+@keyframes dl-bounce {
+	0%,
+	60%,
+	100% {
+		transform: translateY(0);
+	}
+	70% {
+		transform: translateY(-3px);
+	}
+	80% {
+		transform: translateY(3px);
+	}
+	90% {
+		transform: translateY(-1px);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.downloads .dl-main .dl-arrow {
+		animation: none;
+	}
+}
+
 .downloads .dl-version-text[hidden] {
 	display: none;
 }
@@ -748,6 +780,8 @@ header .social-icons::after {
 	color: var(--sl-color-gray-3);
 	font-size: var(--sl-text-xs);
 	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
 }
 
 .dl-row {

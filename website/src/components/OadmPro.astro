@@ -1,5 +1,5 @@
 ---
-// Landing page: OADM PRO, after "Extend OADM with plugins". Its own panel with an accent edge so it stands apart
+// Landing page: OADM PRO, after "Extend OADM with plugins". Its own panel with a soft violet glow so it stands apart
 // from the free sections; no buy button. The top bar's PRO link jumps here (#pro). A click on a plan, or "Request a custom
 // plugin", opens the quote form: it posts to the support forum.
 // "Start 30-day trial" leads to the License card of the Settings docs (the trial starts in OADM itself, once per server);
@@ -239,7 +239,7 @@ const custom = [
 </script>
 
 <style>
-	/* The PRO panel: an accent edge, so it reads as its own offer. */
+	/* The PRO panel: a violet glow from the top and an accent edge, so it reads as its own offer. */
 	.pro-section {
 		position: relative;
 		display: flex;
@@ -250,6 +250,7 @@ const custom = [
 		padding: 3.5rem clamp(1rem, 4vw, 3rem) 3rem;
 		border: 1px solid color-mix(in srgb, var(--sl-color-accent) 45%, var(--sl-color-gray-5));
 		border-radius: 20px;
+		box-shadow: 0 0 80px -20px color-mix(in srgb, var(--sl-color-accent) 45%, transparent);
 		text-align: center;
 		/* The fixed top bar must not cover the panel after the PRO link. */
 		scroll-margin-top: calc(var(--sl-nav-height) + 1.5rem);
@@ -291,12 +292,20 @@ const custom = [
 		height: 0.45rem;
 		border-radius: 999px;
 		background: var(--sl-color-accent-high);
+		animation: pro-pulse 2s ease-in-out infinite;
+	}
+	@keyframes pro-pulse {
+		0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, var(--sl-color-accent-high) 60%, transparent); }
+		50% { opacity: 0.6; box-shadow: 0 0 0 5px transparent; }
 	}
 	.pro-section .landing-title {
 		font-size: var(--sl-text-4xl);
 	}
 	.pro-word {
-		color: var(--sl-color-accent-high);
+		background: linear-gradient(120deg, var(--sl-color-accent-high), var(--sl-color-accent) 70%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
 	}
 
 	.pro-custom,
@@ -373,7 +382,7 @@ const custom = [
 	}
 
 	/* Plans: name, text, price and list on shared rows (subgrid), so the prices and lists line up across the plans.
-	   The plan under the pointer gets an accent edge and one surface step, nothing more. */
+	   The plan under the pointer lights up with an accent edge, a violet tint and a glow. */
 	.pro-plans {
 		grid-template-rows: repeat(5, auto);
 		align-items: stretch;
@@ -387,14 +396,20 @@ const custom = [
 		padding: 1.5rem 1.4rem;
 		border: 1px solid var(--sl-color-gray-5);
 		border-radius: 16px;
-		background: color-mix(in srgb, var(--sl-color-black) 70%, transparent);
+		background:
+			linear-gradient(180deg, transparent, transparent),
+			color-mix(in srgb, var(--sl-color-black) 70%, transparent);
 		cursor: pointer;
-		transition: border-color 0.2s ease-out, background 0.2s ease-out;
+		transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s, background 0.25s;
 	}
 	.pro-plan:hover,
 	.pro-plan:focus-within {
 		border-color: var(--sl-color-accent);
-		background: var(--sl-color-gray-6);
+		background:
+			linear-gradient(180deg, color-mix(in srgb, var(--sl-color-accent) 18%, transparent), transparent 60%),
+			color-mix(in srgb, var(--sl-color-black) 70%, transparent);
+		box-shadow: 0 10px 40px -12px color-mix(in srgb, var(--sl-color-accent) 60%, transparent);
+		transform: translateY(-4px);
 	}
 	.pro-plan > * {
 		margin: 0;
