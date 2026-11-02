@@ -341,8 +341,8 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             DeviceTriggersPluginInfo.EventGroup,
             trigger.Stateful ? EventKind.Stateful : EventKind.Stateless,
             Fields: [.. trigger.Values.Select(v => declared.TryGetValue(v, out var f)
-                ? new EventField(v, string.IsNullOrWhiteSpace(f.DisplayName) ? v : f.DisplayName) { Kind = f.Kind, Filter = false }
-                : new EventField(v, v) { Filter = false })])
+                ? new EventField(v, string.IsNullOrWhiteSpace(f.DisplayName) ? v : f.DisplayName) { Kind = f.Kind }
+                : new EventField(v, v))])
         {
             Description = what + "." + values,
             DeviceIds = devices,
