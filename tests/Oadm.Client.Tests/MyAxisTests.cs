@@ -600,6 +600,49 @@ public sealed class MyAxisTests
     }
 
     [Fact]
+    public async Task WebKitGtk_frames_and_cancelled_loads_never_cover_the_login_or_say_not_reachable()
+    {
+        // The order WebKitGTK 2.52 reports through Avalonia.Controls.WebView 12.1.1 (a start for every frame and redirect,
+        // a completion only when the page itself commits), recorded on Ubuntu with Axis's login.
+        var time = new FakeTimeProvider();
+        var (signIn, _) = NewSignIn(Substitute.For<IOadmApi>(), time);
+        var cookies = new FakeCookies(_ => []);
+        var login = new Uri("https://auth.axis.com/authn/authentication/html");
+        var optIn = new Uri("https://auth.axis.com/authn/authentication/_action/opt-in/select");
+        var otp = new Uri("https://auth.axis.com/authn/authentication/email-wcode/enter-otp");
+        var blank = new Uri("about:blank");
+
+        signIn.NavigationStarting(MyAxisPages.StartAddress);
+        signIn.NavigationStarting(login);
+        await signIn.PageLoadedAsync(login, cookies, CancellationToken.None);
+        signIn.NavigationStarting(blank); // the login page's iframe
+        Assert.True(signIn.IsBrowserVisible);
+
+        // Log in: the opt-in page posts itself (WebKit cancels that load and reports nothing), then the OTP page.
+        signIn.NavigationStarting(login);
+        signIn.NavigationStarting(optIn);
+        await signIn.PageLoadedAsync(optIn, cookies, CancellationToken.None);
+        signIn.NavigationStarting(optIn);
+        signIn.NavigationStarting(blank);
+        signIn.NavigationStarting(otp);
+        await signIn.PageLoadedAsync(otp, cookies, CancellationToken.None);
+        signIn.NavigationStarting(blank); // the OTP page's iframe
+        Assert.True(signIn.IsBrowserVisible);
+        Assert.Null(signIn.OverlayText);
+
+        time.Advance(MyAxisSignInViewModel.LoadTimeout * 2);
+        Assert.False(signIn.HasLoadError);
+        Assert.True(signIn.IsBrowserVisible);
+
+        // A load that never reports back after axis.com answered: the browser shows again, no connection error.
+        signIn.NavigationStarting(otp);
+        Assert.Equal("Loading MyAxis", signIn.OverlayText);
+        time.Advance(MyAxisSignInViewModel.LoadTimeout);
+        await Eventually.TrueAsync(() => signIn.IsBrowserVisible, "the browser again");
+        Assert.False(signIn.HasLoadError);
+    }
+
+    [Fact]
     public async Task A_page_after_the_login_that_fails_to_show_still_signs_in()
     {
         var api = Substitute.For<IOadmApi>();
