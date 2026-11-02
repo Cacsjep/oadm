@@ -66,7 +66,7 @@ public sealed partial class MyAxisAccount : ObservableObject, IMyAxisSignIn
     public partial bool IsAvailable { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ButtonTip), nameof(HasWarning))]
+    [NotifyPropertyChangedFor(nameof(ButtonTip), nameof(HasWarning), nameof(ButtonIcon))]
     public partial bool IsSignedIn { get; private set; }
 
     /// <summary>axis.com refused the kept session: the button says to sign in again, with a warning dot.</summary>
@@ -85,6 +85,9 @@ public sealed partial class MyAxisAccount : ObservableObject, IMyAxisSignIn
     /// <summary>Sign out runs.</summary>
     [ObservableProperty]
     public partial bool IsBusy { get; private set; }
+
+    /// <summary>The title bar icon: a cloud with a check mark while signed in.</summary>
+    public string ButtonIcon => IsSignedIn ? "cloudCheck" : "cloud";
 
     /// <summary>The button's tooltip.</summary>
     public string ButtonTip => IsSignedIn ? MyAxisTexts.SignedIn : IsExpired ? MyAxisTexts.SignInAgain : MyAxisTexts.SignIn;

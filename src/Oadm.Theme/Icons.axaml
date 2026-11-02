@@ -90,6 +90,8 @@
   <StreamGeometry x:Key="Icon.help">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z M9.09 9a3 3 0 0 1 5.83 1c0 2 -3 3 -3 3 M12 17h0.01</StreamGeometry>
   <!-- Lucide "cloud": the MyAxis account on axis.com (title bar) -->
   <StreamGeometry x:Key="Icon.cloud">M17.5 19H9a7 7 0 1 1 6.71 -9h1.79a4.5 4.5 0 1 1 0 9z</StreamGeometry>
+  <!-- Lucide "cloud-check": signed in to MyAxis (title bar) -->
+  <StreamGeometry x:Key="Icon.cloudCheck">M17 15l-5.5 5.5L9 18 M5 17.743A7 7 0 1 1 15.71 10h1.79a4.5 4.5 0 0 1 1.5 8.742</StreamGeometry>
   <StreamGeometry x:Key="Icon.info">M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0z M12 16v-4 M12 8h0.01</StreamGeometry>
   <!-- Lucide shield-check: certificates / PKI (key stays the credentials icon). -->
   <StreamGeometry x:Key="Icon.shield">M20 13c0 5 -3.5 7.5 -7.66 8.95a1 1 0 0 1 -0.67 -0.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1 -1c2 0 4.5 -1.2 6.24 -2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z M9 12l2 2l4 -4</StreamGeometry>

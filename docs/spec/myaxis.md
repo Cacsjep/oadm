@@ -27,7 +27,7 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 ## In the client
 
 - **Button**: an icon-only `ui:ToolbarButton` (`TitleMyAxis`) in the title bar, directly left of Help, styled like Help.
-  Every logged-in user sees it; hidden while the server has no MyAxis sign-in (an older server). Tooltip "Sign in to MyAxis"; signed in: "Signed in to MyAxis" and the cloud in the OK colour
+  Every logged-in user sees it; hidden while the server has no MyAxis sign-in (an older server). Tooltip "Sign in to MyAxis"; signed in: "Signed in to MyAxis" and a cloud with a check mark (Lucide "cloud-check") in the OK colour
   (theme class `toolbar.ok`, decided 2026-11-02); expired: "Sign in to
   MyAxis again" with a warning dot.
 - **Signed in**: a click opens a small flyout: "Signed in to MyAxis since 2 Nov 2026" and **Sign out**.

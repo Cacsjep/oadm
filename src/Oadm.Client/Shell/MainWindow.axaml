@@ -74,7 +74,7 @@
           <!-- MyAxis: sign in on Axis's page in a window; signed in, a small panel with Sign out. A warning dot when
                axis.com ended the sign-in. -->
           <Panel x:Name="TitleMyAxisHost" IsVisible="{Binding MyAxis.IsAvailable, FallbackValue=False}">
-            <ui:ToolbarButton x:Name="TitleMyAxis" Text="{Binding MyAxis.ButtonTip, FallbackValue=''}" IconKey="cloud" IsIconOnly="True"
+            <ui:ToolbarButton x:Name="TitleMyAxis" Text="{Binding MyAxis.ButtonTip, FallbackValue=''}" IconKey="{Binding MyAxis.ButtonIcon, FallbackValue=cloud}" IsIconOnly="True"
                               Classes.ok="{Binding MyAxis.IsSignedIn, FallbackValue=False}"
                               Command="{Binding MyAxis.OpenCommand, FallbackValue={x:Null}}" />
             <Ellipse x:Name="TitleMyAxisWarning" Classes="problemDot corner" IsVisible="{Binding MyAxis.HasWarning, FallbackValue=False}" />

@@ -710,6 +710,7 @@ public sealed class MyAxisTests
             Render();
             Assert.Equal("Signed in to MyAxis", ToolTip.GetTip(button));
             Assert.Contains("ok", button.Classes); // the cloud in the OK colour while signed in
+            Assert.Equal("cloudCheck", button.IconKey);
             Assert.False(main.FindControl<Avalonia.Controls.Shapes.Ellipse>("TitleMyAxisWarning")!.IsVisible);
             var popup = main.FindControl<Popup>("TitleMyAxisFlyout")!;
             Assert.True(popup.IsOpen);
