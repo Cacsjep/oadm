@@ -143,7 +143,9 @@ event carries, e.g. a device trigger's `temperature` > 40 or `state` equals "act
 - **Dialog**: **Add check** on each event row (command button `ui:ToolbarButton`, shown while the event has values to
   check), at most **5** checks per row (then disabled, tooltip "At most 5 checks."); each check is one row
   (`CheckViewModel`, a `ValidatingViewModel`) with Field (the event's checkable values with their kind: "Temperature
-  (number)"; a new check starts with the first one), Operator (by kind) and Value (hidden for yes / no), and a remove icon.
+  (number)"; a new check starts with the first one), Operator (by kind) and Value (hidden for yes / no), and a remove icon. The three inputs carry an icon inside at their left
+  (`ui:LeadingIcon`), so a check reads like an equation A f B: `Icon.squareA` (the event's value), `Icon.squareFunction`
+  (Lucide "square-function", the comparison), `Icon.squareB` (the value it is compared with); A and B drawn in its style.
   Errors directly below their input; the step's Next names the first one ("Check 1: Enter a value."). Changing the event
   keeps the checks whose value the new event has (same name), the others go. The overview line names the checks
   ("Temperature > 40, Door is yes"); so does the When column of the rules list (`RuleTexts.Checks`: "Reading (all

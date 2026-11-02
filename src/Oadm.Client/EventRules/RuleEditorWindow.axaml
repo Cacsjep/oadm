@@ -74,13 +74,19 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                               <DataTemplate x:DataType="vm:CheckViewModel">
-                                <Grid ColumnDefinitions="2*,160,2*,Auto" ColumnSpacing="6">
-                                  <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
-                                            HorizontalAlignment="Stretch" VerticalAlignment="Top" />
-                                  <ComboBox Grid.Column="1" ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
-                                            HorizontalAlignment="Stretch" VerticalAlignment="Top" />
-                                  <TextBox Grid.Column="2" Text="{Binding Value}" PlaceholderText="Value" IsVisible="{Binding NeedsValue}"
-                                           MaxLength="200" VerticalAlignment="Top" />
+                                <Grid ColumnDefinitions="2*,184,2*,Auto" ColumnSpacing="6">
+                                  <!-- Reads like A f B: the event's value, how it is compared, the value it is compared with -->
+                                  <ui:LeadingIcon Icon="{StaticResource Icon.squareA}">
+                                    <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" PlaceholderText="Value of the event"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                  </ui:LeadingIcon>
+                                  <ui:LeadingIcon Grid.Column="1" Icon="{StaticResource Icon.squareFunction}">
+                                    <ComboBox ItemsSource="{Binding Operators}" SelectedItem="{Binding SelectedOperator}"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Top" />
+                                  </ui:LeadingIcon>
+                                  <ui:LeadingIcon Grid.Column="2" Icon="{StaticResource Icon.squareB}" IsVisible="{Binding NeedsValue}">
+                                    <TextBox Text="{Binding Value}" PlaceholderText="Value" MaxLength="200" VerticalAlignment="Top" />
+                                  </ui:LeadingIcon>
                                   <Button Grid.Column="3" Classes="toolbar iconOnly" ToolTip.Tip="Remove check" VerticalAlignment="Top"
                                           Command="{Binding RemoveCommand}">
                                     <ui:OadmIcon Data="{StaticResource Icon.remove}" />

@@ -152,7 +152,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `ToolbarButton` (every toolbar button) and `ToolbarSeparator`; `ToolbarOverflowPanel`: every row of toolbar buttons,
   what does not fit goes behind its own More button; the search box stays outside it.
 - `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` (with `inner` inside a text box) puts an icon
-  into an input (the login's server, user name and password).
+  into an input (the login's server, user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and puts a
+  `fieldIcon` at its left inside (the input gets class `leadingIcon`, room for it); the field checks of event rules
+  (`Icon.squareA`, `Icon.squareFunction`, `Icon.squareB`: A f B).
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.

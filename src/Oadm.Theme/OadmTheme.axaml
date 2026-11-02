@@ -952,6 +952,10 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,0,8,0" />
   </Style>
+  <!-- ui:LeadingIcon: the input makes room for its fieldIcon (like the login's server box) -->
+  <Style Selector="ComboBox.leadingIcon, TextBox.leadingIcon">
+    <Setter Property="Padding" Value="34,0,8,0" />
+  </Style>
   <!-- Date and time pickers: the height, corners and text size of every input; narrower than Fluent's 296 px default -->
   <Style Selector="DatePicker, TimePicker">
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
@@ -2375,6 +2379,11 @@
     <Setter Property="HorizontalAlignment" Value="Left" />
     <Setter Property="Margin" Value="11,0,0,0" />
     <Setter Property="IsHitTestVisible" Value="False" />
+  </Style>
+  <!-- In ui:LeadingIcon: level with the input's first line, also while a validation error shows below it -->
+  <Style Selector="ui|OadmIcon.fieldIcon.leading">
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="11,9,0,0" />
   </Style>
   <Style Selector="ui|OadmIcon.fieldIcon.inner">
     <Setter Property="Margin" Value="7,0,0,0" />
