@@ -72,9 +72,6 @@ public sealed class AddOnsCardTests
             Assert.Contains("Remove", Visible(window));
             Assert.Contains(plugins.Plugins, p => p.Id == FakeOadmApi.TextRecognitionAddOnId && !p.IsEnabled);
             Assert.Contains("Vision", Visible(window));
-            Assert.Contains("Optional", Visible(window)); // the chip of the package in the plugin list
-            Assert.True(plugins.Plugins.Single(p => p.Id == FakeOadmApi.TextRecognitionAddOnId).IsOptional);
-            Assert.All(plugins.Plugins.Where(p => p.Id != FakeOadmApi.TextRecognitionAddOnId), p => Assert.False(p.IsOptional));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-installed-{appearance}.png");
 

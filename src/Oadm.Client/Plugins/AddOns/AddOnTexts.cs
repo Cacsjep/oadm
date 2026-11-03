@@ -12,9 +12,6 @@ public static class AddOnTexts
 {
     public const string CardTitle = "Optional plugins";
 
-    /// <summary>The chip of an optional plugin in the plugin list.</summary>
-    public const string Optional = "Optional";
-
     /// <summary>The progress row of the first read.</summary>
     public const string Reading = "Reading the optional plugins";
 

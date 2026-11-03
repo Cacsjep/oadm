@@ -485,8 +485,8 @@ restart. Own rail page (not a Settings card); core functionality is always on.
   that has plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`;
   sorted by name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
   always-on packages are not listed; a refused change is undone with the reason below the list. Other clients see a
-  change on their next connect. The package of an optional plugin shows the chip "Optional" next to its name, and the
-  card **Optional plugins** sits below the list (`docs/spec/add-ons.md` "Plugins page"). Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
+  change on their next connect. The card
+  **Optional plugins** sits below the list (`docs/spec/add-ons.md` "Plugins page"). Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
   descriptions; the takeover of the 4.1 choices), `tests/Oadm.Core.Tests/Plugins/MergedPluginsTests` (PKI with three core
   plugins and the ids of 4.1, folders of 4.1 skipped, the takeover from a 4.1 fixture),

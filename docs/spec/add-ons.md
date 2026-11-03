@@ -9,8 +9,8 @@ downloads them from the OADM release on GitHub, and every client gets their clie
 are the vision plugins, which analyse the cameras' pictures on the server (text recognition, `docs/spec/ocr.md`). OADM
 itself stays free of models and inference libraries; no extra installer.
 
-**Name for users: "optional plugins"** (decision 2026-11-03): the card "Optional plugins" on the Plugins page, the chip
-"Optional", audit "Installed optional plugin ...", docs and every UI text. "Add-on" stays the name in code, files, the
+**Name for users: "optional plugins"** (decision 2026-11-03): the card "Optional plugins" on the Plugins page,
+audit "Installed optional plugin ...", docs and every UI text. "Add-on" stays the name in code, files, the
 release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
 
 ## Rules that never break
@@ -96,7 +96,7 @@ release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
   installed, Installing 42 %, Installed), and **Install** or **Remove** (red, with the confirmation "Remove <name>? It
   turns off now. Its settings are kept."). Below the rows: "Optional plugins come from the OADM release on GitHub and are
   checked before they are installed. Clients get them from the server." A server without add-ons hides the card.
-- In the plugin list the package of an installed add-on shows the chip **Optional** next to its name.
+- The plugin list shows an installed add-on like every other plugin, without a mark (decision 2026-11-03: the list stays as it was).
 - Without access to GitHub the row says "The server cannot reach github.com." and Install stays off; the add-on can then
   be put into `<datafolder>/addons/<id>/` by hand from the release ZIP (Help page names the folder).
 
