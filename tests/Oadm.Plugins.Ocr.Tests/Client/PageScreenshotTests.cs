@@ -1,10 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Client;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Ocr.Tests.Client;
 
@@ -35,7 +37,12 @@ public sealed class PageScreenshotTests
                 window.Close();
             }
 
-            var ctx = Samples.Context(Samples.ContainerPicture());
+            // The live video shows a still frame of the gate (the reader's 16:9 picture).
+            var ctx = Samples.Context();
+            ctx.Video!.Still = Samples.ContainerPicture();
+            ctx.Answers[OcrMethods.GetReading] = json => OcrJson.Deserialize<ReaderRequest>(json).ReaderId == "r1"
+                ? Samples.ReplyJson(Samples.GateReading(), Samples.WithCutout(Samples.GateExtras, Samples.ContainerPicture()), null)
+                : "{}";
             using (var vm = new OcrViewModel(ctx) { DecodePicture = Samples.Decode })
             {
                 var view = new OcrView();
@@ -44,31 +51,61 @@ public sealed class PageScreenshotTests
                 view.DataContext = vm;
                 await vm.LoadAsync(CancellationToken.None);
                 var editor = vm.Editor!;
-                editor.SelectedArea = editor.Areas[0];
                 Headless.Pump();
 
-                // Watching, with the areas, the lines and the results with the match's cut-out.
-                Assert.NotNull(editor.Picture);
-                Assert.True(editor.Results[0].HasCutOut);
-                Assert.False(editor.Results[1].HasCutOut); // Any text: no cut-out
-                Assert.IsType<Avalonia.Media.Imaging.CroppedBitmap>(editor.Results[0].CutOut); // cut from the frame by the match box
-
-                // The server's own cut-out wins over cutting the frame.
-                var served = Samples.GateExtras.ToList();
-                served[0] = served[0] with { Cutout = Samples.ContainerPicture() };
-                ctx.Answers[OcrMethods.GetReading] = _ => Samples.ReplyJson(Samples.GateReading(), served, Samples.ContainerPicture());
-                await editor.RefreshReadingAsync(CancellationToken.None);
-                Assert.IsType<Avalonia.Media.Imaging.Bitmap>(editor.Results[0].CutOut);
-                ctx.Answers[OcrMethods.GetReading] = _ => Samples.ReplyJson(Samples.GateReading(), Samples.GateExtras, Samples.ContainerPicture());
-                await editor.RefreshReadingAsync(CancellationToken.None);
-                Headless.Pump();
+                // Watching: the live video with the areas and the lines over it; the form, the areas and the results right of it.
+                var host = view.FindControl<ContentControl>("VideoHost")!;
+                Assert.Same(ctx.Video.Created[^1].View, host.Content);
+                Assert.True(host.IsEffectivelyVisible);
+                Assert.True(editor.Results[0].HasCutOut); // the server's cut-out of the match
+                Assert.False(editor.Results[1].HasCutOut); // Any text: none
                 var picture = view.PictureControl;
                 Assert.True(picture.PictureRect.Width > 100);
                 Assert.Equal(16.0 / 9, picture.PictureRect.Width / picture.PictureRect.Height, 2);
+                Assert.Equal(3, editor.Lines.Count);
+                var fps = view.FindControl<ComboBox>("FpsBox")!;
+                Assert.True(fps.IsEffectivelyVisible);
+                Assert.Equal(1, fps.SelectedItem);
+                Assert.Equal(6, fps.ItemCount);
+                var draw = view.FindControl<ToolbarButton>("DrawAreaButton")!;
+                Assert.True(draw.IsEffectivelyVisible);
+                Assert.Equal("Draw area", draw.Text);
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<ToolbarButton>(), b => b.Text == "Read now");
                 Headless.Capture(window, $"ocr-watching-{suffix}.png");
 
-                // Drawing an area: the hint and the rectangle being dragged.
-                editor.IsDrawing = true;
+                // A selected area: solid, with its handles; a drag on its corner resizes it (Esc cancels a drag).
+                editor.SelectedArea = editor.Areas[0];
+                Headless.Pump();
+                var rect = picture.PictureRect;
+                var corner = new Point(rect.X + ((0.47 + 0.27) * rect.Width), rect.Y + ((0.27 + 0.12) * rect.Height));
+                Assert.Equal((editor.Areas[0], AreaHandle.BottomRight), picture.HitTest(corner));
+                Assert.Equal((editor.Areas[1], AreaHandle.Move), picture.HitTest(new Point(rect.X + (0.5 * rect.Width), rect.Y + (0.44 * rect.Height))));
+                Assert.Equal(((AreaViewModel?)null, AreaHandle.None), picture.HitTest(new Point(rect.X + (0.1 * rect.Width), rect.Y + (0.1 * rect.Height))));
+                Headless.Capture(window, $"ocr-area-selected-{suffix}.png");
+                var before = editor.Areas[0].Box;
+                picture.BeginEdit(editor.Areas[0], AreaHandle.BottomRight, new Point(0.74, 0.39));
+                picture.UpdateEdit(new Point(0.80, 0.45));
+                Assert.Equal(before, editor.Areas[0].Box); // nothing changes before the drag ends
+                picture.Focus();
+                picture.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Escape });
+                Assert.False(picture.IsDragging);
+                Assert.Equal(before, editor.Areas[0].Box);
+                picture.BeginEdit(editor.Areas[0], AreaHandle.BottomRight, new Point(0.74, 0.39));
+                picture.UpdateEdit(new Point(0.80, 0.45));
+                picture.EndEdit();
+                Assert.Equal(0.33, editor.Areas[0].Box.Width, 6);
+                Assert.True(editor.IsDirty);
+
+                // An arrow key nudges the selected area.
+                var x = editor.Areas[0].Box.X;
+                picture.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Left, KeyModifiers = KeyModifiers.Shift });
+                Assert.Equal(x - AreaGeometry.BigNudge, editor.Areas[0].Box.X, 6);
+                editor.Areas[0].Box = before;
+
+                // Drawing an area: the hint and the rectangle being dragged over the live video.
+                editor.SelectedArea = null;
+                draw.Command!.Execute(null);
+                Assert.True(editor.IsDrawing);
                 picture.ShowDrag(new Point(0.12, 0.62), new Point(0.38, 0.76));
                 Headless.Pump();
                 Headless.Capture(window, $"ocr-drawing-{suffix}.png");
@@ -97,16 +134,26 @@ public sealed class PageScreenshotTests
                 Assert.False(editor.SaveCommand.CanExecute(null));
                 Headless.Capture(window, $"ocr-format-error-{suffix}.png");
 
-                // An On demand reader without a reading.
+                // An On action reader without a reading: no frame rate.
                 ctx.ConfirmAnswer = true;
                 lane.FormatText = "A#";
                 await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
                 Headless.Pump();
                 Assert.Equal("Water meter", vm.Editor!.Name);
-                Assert.False(vm.Editor.IsWatching);
-                Headless.Capture(window, $"ocr-on-demand-{suffix}.png");
+                Assert.True(vm.Editor.IsOnAction);
+                Assert.False(view.FindControl<ComboBox>("FpsBox")!.IsEffectivelyVisible);
+                Headless.Capture(window, $"ocr-on-action-{suffix}.png");
                 window.Close();
             }
+
+            // The short message when a reader is set to On action (the host shows it with MessageWindow).
+            var notice = new MessageWindow { Heading = OcrTexts.OnActionNoticeTitle, Message = OcrTexts.OnActionNotice, ConfirmText = "OK", CancelText = null };
+            Oadm.Client.App.ApplyCrispText(notice);
+            notice.Show();
+            Headless.Pump();
+            Assert.False(notice.CancelButton.IsVisible);
+            Headless.Capture(notice, $"ocr-on-action-message-{suffix}.png");
+            notice.Close();
         }, CancellationToken.None);
     }
 }

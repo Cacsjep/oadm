@@ -3,8 +3,8 @@ namespace Oadm.Plugins.Ocr.Model;
 /// <summary>How a reader takes its pictures (docs/spec/ocr.md "Readers").</summary>
 public enum ReaderMode
 {
-    /// <summary>One picture when an event rule runs Read text (or the page's Read now); no stream.</summary>
-    OnDemand = 0,
+    /// <summary>One picture when an event rule runs Read text; no stream (the page's preview aside).</summary>
+    OnAction = 0,
 
     /// <summary>Reads continuously at <see cref="Reader.Fps"/> from the camera's MJPEG stream.</summary>
     Watching = 1,
@@ -61,8 +61,8 @@ public sealed record Reader
     /// <summary>The picture size the reader asks for.</summary>
     public Resolution Resolution { get; init; } = Resolution.Default;
 
-    /// <summary>On demand or Watching.</summary>
-    public ReaderMode Mode { get; init; } = ReaderMode.OnDemand;
+    /// <summary>Watching (new readers) or On action.</summary>
+    public ReaderMode Mode { get; init; } = ReaderMode.Watching;
 
     /// <summary>Frames per second while Watching, one of <see cref="OcrLimits.FpsChoices"/>.</summary>
     public int Fps { get; init; } = OcrLimits.DefaultFps;

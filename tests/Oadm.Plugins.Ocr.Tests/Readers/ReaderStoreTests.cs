@@ -23,7 +23,7 @@ public sealed class ReaderStoreTests
         Assert.Null(saved.OwnerScopeKey); // never from the page, never to the page
         var list = await ocr.ListAsync();
         var row = Assert.Single(list.Readers);
-        Assert.Equal(("Gate 2", ocr.Inside.Id, ReaderMode.OnDemand, ""), (row.Name, row.DeviceId, row.Mode, row.LastText));
+        Assert.Equal(("Gate 2", ocr.Inside.Id, ReaderMode.OnAction, ""), (row.Name, row.DeviceId, row.Mode, row.LastText));
         Assert.Equal([1, 2, 4], list.FpsChoices);
         Assert.Equal(20, list.MaxWatching);
         var got = OcrJson.Deserialize<Reader>(await ocr.CallAsync(OcrMethods.GetReader, new ReaderRequest { ReaderId = saved.Id }));
@@ -42,7 +42,7 @@ public sealed class ReaderStoreTests
         await using var ocr = await OcrHarness.StartAsync();
         var saved = await ocr.SaveAsync(ocr.NewReader());
         ocr.Frames.Single = "MSCU 123456 7";
-        await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = saved.Id });
+        await ocr.ReadOnceAsync(saved.Id);
 
         var renamed = await ocr.SaveAsync(saved with { Name = "Gate 3" });
         Assert.Equal(saved.Id, renamed.Id);
@@ -103,20 +103,20 @@ public sealed class ReaderStoreTests
         await using var ocr = await OcrHarness.StartAsync();
         for (var i = 0; i < OcrLimits.MaxReaders; i++)
         {
-            await ocr.SaveAsync(ocr.NewReader($"Reader {i:00}", i < 20 ? ReaderMode.Watching : ReaderMode.OnDemand));
+            await ocr.SaveAsync(ocr.NewReader($"Reader {i:00}", i < 20 ? ReaderMode.Watching : ReaderMode.OnAction));
         }
 
         var tooMany = await Assert.ThrowsAsync<ArgumentException>(() => ocr.SaveAsync(ocr.NewReader("One more")));
         Assert.Equal("OADM keeps at most 50 readers. Delete one first.", tooMany.Message);
 
-        var onDemand = ocr.Plugin.AllReaders.First(r => r.Mode == ReaderMode.OnDemand);
+        var onDemand = ocr.Plugin.AllReaders.First(r => r.Mode == ReaderMode.OnAction);
         var watching = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(onDemand with { Mode = ReaderMode.Watching }));
-        Assert.Equal(new FieldError(OcrFields.Mode, "At most 20 readers can watch at once. Set another reader to On demand first."), Assert.Single(watching.Errors));
+        Assert.Equal(new FieldError(OcrFields.Mode, "At most 20 readers can watch at once. Set another reader to On action first."), Assert.Single(watching.Errors));
 
-        // A watching reader may be changed; one set to On demand makes room.
+        // A watching reader may be changed; one set to On action makes room.
         var first = ocr.Plugin.AllReaders.First(r => r.Mode == ReaderMode.Watching);
         await ocr.SaveAsync(first with { Fps = 4 });
-        await ocr.SaveAsync(first with { Mode = ReaderMode.OnDemand });
+        await ocr.SaveAsync(first with { Mode = ReaderMode.OnAction });
         await ocr.SaveAsync(onDemand with { Mode = ReaderMode.Watching });
         await Eventually.TrueAsync(() => ocr.Frames.Open == 20, "20 readers watch");
     }
@@ -131,11 +131,11 @@ public sealed class ReaderStoreTests
         }
 
         var list = await ocr.ListAsync();
-        Assert.Equal([1, 2, 4, 8, 15], list.FpsChoices);
+        Assert.Equal([1, 2, 4, 8, 12, 15], list.FpsChoices);
         Assert.Equal(50, list.MaxWatching);
         Assert.Equal(50, list.Readers.Count);
         await Eventually.TrueAsync(() => ocr.Frames.Open == 50, "50 readers watch");
-        Assert.Equal("Choose 1, 2, 4, 8 or 15 frames per second.", ReaderRules.FpsNotAllowed(onGpu: true));
+        Assert.Equal("Choose 1, 2, 4, 8, 12 or 15 frames per second.", ReaderRules.FpsNotAllowed(onGpu: true));
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public sealed class ReaderStoreTests
         var written = ocr.Context.PluginRecords.WrittenRecords;
 
         ocr.Frames.Single = "12345";
-        await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = saved.Id });
+        await ocr.ReadOnceAsync(saved.Id);
         foreach (var text in new[] { "1", "1", "2", "2" })
         {
             await ocr.SendAndWaitAsync(ocr.Inside.Id, text);

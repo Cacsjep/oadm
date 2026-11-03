@@ -10,7 +10,7 @@ namespace Oadm.Plugins.Ocr;
 /// <summary>
 /// The page backend (<see cref="OcrMethods"/>). Device groups (docs/spec/device-scope.md): every method works on the
 /// readers the caller's device scope owns (users with all devices: every reader); another scope's reader answers like an
-/// unknown id; a save takes only a camera of the caller's and the owner's devices; Read now and the last reading need the
+/// unknown id; a save takes only a camera of the caller's and the owner's devices; a preview and the last reading need the
 /// reader's camera in the caller's devices. The work on the cameras runs without the call (<see cref="ReaderRuntime"/>).
 /// </summary>
 public sealed partial class OcrPlugin
@@ -67,11 +67,32 @@ public sealed partial class OcrPlugin
                 return "{}";
             }
 
-            case OcrMethods.ReadNow:
+            case OcrMethods.StartPreview:
             {
-                var reader = Visible(store, caller, payloadJson);
-                await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(ReplyOf(await runtime.ReadOnceAsync(reader, ct).ConfigureAwait(false)));
+                var request = OcrJson.Deserialize<PreviewRequest>(payloadJson);
+                var draft = ReaderRules.PreviewOf(request.Reader ?? throw new ArgumentException("Missing payload.", nameof(payloadJson)), runtime.OnGpu);
+                if (draft.Id.Length > 0 && store.FindVisible(caller, draft.Id) is null)
+                {
+                    throw new ArgumentException(ReaderRules.Gone);
+                }
+
+                await CallDevices.RequireAsync(caller, [draft.DeviceId], ct).ConfigureAwait(false);
+                return OcrJson.Serialize(await runtime.StartPreviewAsync(request.PreviewId, draft, OwnerScope.Of(caller.DeviceScopeKey)).ConfigureAwait(false));
+            }
+
+            case OcrMethods.StopPreview:
+                await runtime.StopPreviewAsync(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey)).ConfigureAwait(false);
+                return "{}";
+
+            case OcrMethods.GetPreview:
+            {
+                if (runtime.PreviewOf(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey)) is not { } preview)
+                {
+                    return OcrJson.Serialize(new ReadingReply());
+                }
+
+                await CallDevices.RequireAsync(caller, [preview.Reader.DeviceId], ct).ConfigureAwait(false);
+                return OcrJson.Serialize(preview.Last is { } last ? ReplyOf(last) with { Jpeg = null } : new ReadingReply());
             }
 
             case OcrMethods.GetReading:
@@ -208,8 +229,8 @@ public sealed partial class OcrPlugin
 
     /// <summary>Whether the last reading still fits: the same camera, source, resolution and areas.</summary>
     private static bool SamePicture(Reader before, Reader now) =>
-        OcrJson.Serialize(before with { Name = string.Empty, Mode = ReaderMode.OnDemand, Fps = 0 })
-        == OcrJson.Serialize(now with { Name = string.Empty, Mode = ReaderMode.OnDemand, Fps = 0 });
+        OcrJson.Serialize(before with { Name = string.Empty, Mode = ReaderMode.OnAction, Fps = 0 })
+        == OcrJson.Serialize(now with { Name = string.Empty, Mode = ReaderMode.OnAction, Fps = 0 });
 
     /// <summary>
     /// Tells the open pages the reader list after a change: users with all devices every reader, the users of each group

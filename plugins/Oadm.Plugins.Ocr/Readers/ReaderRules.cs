@@ -21,7 +21,7 @@ public static class ReaderRules
     public const int MaxWatchingGpu = 50;
 
     /// <summary>The frame rates a watching reader offers on a graphics card.</summary>
-    public static readonly IReadOnlyList<int> FpsChoicesGpu = [1, 2, 4, 8, 15];
+    public static readonly IReadOnlyList<int> FpsChoicesGpu = [1, 2, 4, 8, 12, 15];
 
     /// <summary>The smallest and largest picture side the readers ask for.</summary>
     public const int MinSide = 160;
@@ -44,7 +44,7 @@ public static class ReaderRules
     /// <summary>An area without a name (below the area's name, like the reader's).</summary>
     public const string AreaNameMissing = NameMissing;
 
-    public const string ModeMissing = "Choose On demand or Watching.";
+    public const string ModeMissing = "Choose On action or Watching.";
 
     public const string AreaOutside = "An area lies outside the picture.";
 
@@ -82,15 +82,15 @@ public static class ReaderRules
     /// <summary>Watching readers at most per site (each stream holds one of the site node's large transfers).</summary>
     public const int MaxWatchingPerSite = 4;
 
-    /// <summary>"At most 4 readers can watch at once at the site Building B. Set another reader there to On demand first."</summary>
+    /// <summary>"At most 4 readers can watch at once at the site Building B. Set another reader there to On action first."</summary>
     public static string TooManyWatchingAtSite(string? siteName) => string.Create(
         CultureInfo.InvariantCulture,
-        $"At most {MaxWatchingPerSite} readers can watch at once at the site {(string.IsNullOrWhiteSpace(siteName) ? "of this camera" : siteName)}. Set another reader there to On demand first.");
+        $"At most {MaxWatchingPerSite} readers can watch at once at the site {(string.IsNullOrWhiteSpace(siteName) ? "of this camera" : siteName)}. Set another reader there to On action first.");
 
-    /// <summary>"At most 20 readers can watch at once. Set another reader to On demand first."</summary>
+    /// <summary>"At most 20 readers can watch at once. Set another reader to On action first."</summary>
     public static string TooManyWatching(bool onGpu) => string.Create(
         CultureInfo.InvariantCulture,
-        $"At most {MaxWatching(onGpu)} readers can watch at once. Set another reader to On demand first.");
+        $"At most {MaxWatching(onGpu)} readers can watch at once. Set another reader to On action first.");
 
     /// <summary>"Choose 1, 2 or 4 frames per second."</summary>
     public static string FpsNotAllowed(bool onGpu)
@@ -103,8 +103,56 @@ public static class ReaderRules
     /// <summary>Watching readers at most: 20 on the CPU, 50 on a graphics card.</summary>
     public static int MaxWatching(bool onGpu) => onGpu ? MaxWatchingGpu : OcrLimits.MaxWatching;
 
-    /// <summary>The frame rates: 1, 2, 4 on the CPU; 1, 2, 4, 8, 15 on a graphics card.</summary>
+    /// <summary>The frame rates: 1, 2, 4 on the CPU; 1, 2, 4, 8, 12, 15 on a graphics card.</summary>
     public static IReadOnlyList<int> FpsChoices(bool onGpu) => onGpu ? FpsChoicesGpu : OcrLimits.FpsChoices;
+
+    /// <summary>"At most 8 readers can be shown live at once. Try again when another page closes."</summary>
+    public static readonly string TooManyPreviews = string.Create(
+        CultureInfo.InvariantCulture,
+        $"At most {OcrLimits.MaxPreviews} readers can be shown live at once. Try again when another page closes.");
+
+    /// <summary>A preview that would go beyond what the server reads at once (the watching limits, also per site).</summary>
+    public const string PreviewBusy = "No live results now: OADM already reads as many cameras as it can.";
+
+    /// <summary>
+    /// The reader a preview reads (docs/spec/ocr.md "Page"): the page's draft as far as it can be read now. The camera and the
+    /// resolution must be right (else <see cref="ArgumentException"/> with their text); areas outside the picture are left
+    /// out, a name missing becomes "Area 2", a format with a problem reads any text, a frame rate not offered the default;
+    /// an On action reader previews at <see cref="OcrLimits.PreviewFpsOnAction"/>. No owner: the server sets it.
+    /// </summary>
+    public static Reader PreviewOf(Reader draft, bool onGpu)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        var reader = Normalize(draft);
+        if (reader.DeviceId == Guid.Empty)
+        {
+            throw new ArgumentException(CameraMissing);
+        }
+
+        if (reader.VideoSource < 1)
+        {
+            throw new ArgumentException(SourceMissing);
+        }
+
+        if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide)
+        {
+            throw new ArgumentException(ResolutionMissing);
+        }
+
+        var areas = new List<Area>();
+        foreach (var area in reader.Areas.Where(a => a.Box.IsValid).Take(OcrLimits.MaxAreas))
+        {
+            var name = NameProblem(area.Name) is null ? area.Name : string.Create(CultureInfo.InvariantCulture, $"Area {areas.Count + 1}");
+            var expected = area.Expected.Kind == ExpectedTextKind.Format && FormatProblem(area.Expected.Format) is not null ? ExpectedText.AnyText : area.Expected;
+            areas.Add(area with { Name = name, Expected = expected });
+        }
+
+        var mode = Enum.IsDefined(reader.Mode) ? reader.Mode : ReaderMode.Watching;
+        var fps = mode == ReaderMode.Watching
+            ? FpsChoices(onGpu).Contains(reader.Fps) ? reader.Fps : OcrLimits.DefaultFps
+            : OcrLimits.PreviewFpsOnAction;
+        return reader with { Mode = mode, Fps = fps, Areas = areas };
+    }
 
     /// <summary>The areas a reading has: the reader's own, or the whole picture as one.</summary>
     public static IReadOnlyList<Area> EffectiveAreas(Reader reader)

@@ -24,7 +24,7 @@ public static class OcrInfo
     /// </summary>
     public const string ViewPermissionName = "View text recognition";
 
-    /// <summary>"Change text readers": New, Delete, Save, Read now ("oadm.ocr:change").</summary>
+    /// <summary>"Change text readers": New, Delete, Save ("oadm.ocr:change").</summary>
     public const string ChangePermission = "change";
 
     public const string ChangePermissionName = "Change text readers";
@@ -103,11 +103,25 @@ public static class OcrMethods
     /// <summary><see cref="ReaderRequest"/> -> {}: deletes a reader. Change.</summary>
     public const string DeleteReader = "deleteReader";
 
-    /// <summary><see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: reads one picture now and publishes every area's event. Change.</summary>
-    public const string ReadNow = "readNow";
-
     /// <summary><see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading with its picture (empty without one). View.</summary>
     public const string GetReading = "getReading";
+
+    /// <summary>
+    /// <see cref="PreviewRequest"/> -> <see cref="PreviewReply"/>: starts the page's live preview of a reader (no
+    /// <see cref="PreviewRequest.PreviewId"/>, or one that ended) or keeps it alive and takes the new draft. The preview reads
+    /// at the reader's rate (On action: 1 per second) and publishes no rule events; it ends
+    /// <see cref="Model.OcrLimits.PreviewLease"/> after the last call. View.
+    /// </summary>
+    public const string StartPreview = "startPreview";
+
+    /// <summary><see cref="PreviewRequest"/> (the id only) -> {}: ends the preview. View.</summary>
+    public const string StopPreview = "stopPreview";
+
+    /// <summary><see cref="PreviewRequest"/> (the id only) -> <see cref="ReadingReply"/>: the preview's last reading with the cut-outs, no picture. View.</summary>
+    public const string GetPreview = "getPreview";
+
+    /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
+    public const string PreviewTopic = "preview";
 
     /// <summary>{} -> <see cref="EngineInfo"/>: what reads the pictures and the frame rates it offers. View.</summary>
     public const string GetEngine = "getEngine";
@@ -157,7 +171,7 @@ public sealed record ReaderList
 {
     public IReadOnlyList<ReaderSummary> Readers { get; init; } = [];
 
-    /// <summary>The frame rates a watching reader may use on this server (1, 2, 4 on the CPU; 1, 2, 4, 8, 15 on a GPU).</summary>
+    /// <summary>The frame rates a watching reader may use on this server (1, 2, 4 on the CPU; 1, 2, 4, 8, 12, 15 on a GPU).</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = [];
 
     /// <summary>Watching readers per server at most (20 on the CPU, 50 on a GPU).</summary>
@@ -246,7 +260,7 @@ public sealed record EngineInfo
     /// <summary>The setting "Use the graphics card" (on by default).</summary>
     public bool UseGpu { get; init; } = true;
 
-    /// <summary>The frame rates a watching reader may use now: 1, 2, 4 on the CPU, 1, 2, 4, 8, 15 on a GPU.</summary>
+    /// <summary>The frame rates a watching reader may use now: 1, 2, 4 on the CPU, 1, 2, 4, 8, 12, 15 on a GPU.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
 }
 
@@ -320,6 +334,40 @@ public sealed record AreaDetails
 /// <summary>The live event <see cref="OcrMethods.ReadingTopic"/>.</summary>
 public sealed record ReadingEvent
 {
+    public Reading Reading { get; init; } = new();
+
+    /// <summary>The further values of each area (<see cref="AreaDetails"/> without the cut-outs).</summary>
+    public IReadOnlyList<AreaDetails> Details { get; init; } = [];
+}
+
+/// <summary>
+/// The request of <see cref="OcrMethods.StartPreview"/>, <see cref="OcrMethods.StopPreview"/> and
+/// <see cref="OcrMethods.GetPreview"/>: the preview's id (empty: a new one) and, to start or keep it, the reader as the page
+/// shows it now (saved or not).
+/// </summary>
+public sealed record PreviewRequest
+{
+    public string PreviewId { get; init; } = string.Empty;
+
+    /// <summary>The page's draft; only <see cref="OcrMethods.StartPreview"/> reads it.</summary>
+    public Reader? Reader { get; init; }
+}
+
+/// <summary>The answer of <see cref="OcrMethods.StartPreview"/>.</summary>
+public sealed record PreviewReply
+{
+    /// <summary>The preview's id: the page keeps it alive with it and finds its readings by it.</summary>
+    public string PreviewId { get; init; } = string.Empty;
+
+    /// <summary>Why the preview reads nothing now (the camera, the limits); null while it reads.</summary>
+    public string? Problem { get; init; }
+}
+
+/// <summary>The live event <see cref="OcrMethods.PreviewTopic"/>.</summary>
+public sealed record PreviewEvent
+{
+    public string PreviewId { get; init; } = string.Empty;
+
     public Reading Reading { get; init; } = new();
 
     /// <summary>The further values of each area (<see cref="AreaDetails"/> without the cut-outs).</summary>

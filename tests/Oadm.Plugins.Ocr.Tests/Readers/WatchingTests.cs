@@ -133,8 +133,8 @@ public sealed class WatchingTests
 
         await ocr.SaveAsync(reader with { Fps = 4 });
         await Eventually.TrueAsync(() => ocr.Frames.Rates.Contains(4) && ocr.Frames.Open == 2, "the changed reader watches again");
-        await ocr.SaveAsync(reader with { Fps = 4, Mode = ReaderMode.OnDemand });
-        await Eventually.TrueAsync(() => ocr.Frames.Open == 1, "an On demand reader does not watch");
+        await ocr.SaveAsync(reader with { Fps = 4, Mode = ReaderMode.OnAction });
+        await Eventually.TrueAsync(() => ocr.Frames.Open == 1, "an On action reader does not watch");
 
         await ocr.Plugin.StopAsync(CancellationToken.None);
         Assert.Equal(0, ocr.Frames.Open);
@@ -159,7 +159,7 @@ public sealed class WatchingTests
         }), CancellationToken.None)).Reader!;
 
         Assert.Empty(plugin.Runtime!.Watching);
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => plugin.InvokeAsync(OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = saved.Id }), CancellationToken.None));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => plugin.ReadOnceAsync(plugin.FindReader(saved.Id)!, CancellationToken.None));
         Assert.Equal(ReaderRules.NotInstalled, refused.Message);
     }
 }

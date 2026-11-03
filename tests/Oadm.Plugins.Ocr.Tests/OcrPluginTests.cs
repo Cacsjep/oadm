@@ -50,7 +50,9 @@ public sealed class OcrPluginTests
         Assert.Equal("Change text readers", plugin.Permissions[1].Name);
         Assert.Equal(OcrInfo.ChangePermission, plugin.RequiredPermission(OcrMethods.SaveReader));
         Assert.Equal(OcrInfo.ChangePermission, plugin.RequiredPermission(OcrMethods.DeleteReader));
-        Assert.Equal(OcrInfo.ChangePermission, plugin.RequiredPermission(OcrMethods.ReadNow));
+        Assert.Equal(PermissionKeys.Show, plugin.RequiredPermission(OcrMethods.StartPreview));
+        Assert.Equal(PermissionKeys.Show, plugin.RequiredPermission(OcrMethods.StopPreview));
+        Assert.Equal(PermissionKeys.Show, plugin.RequiredPermission(OcrMethods.GetPreview));
         Assert.Equal(PermissionKeys.Show, plugin.RequiredPermission(OcrMethods.ListReaders));
         Assert.Equal(PermissionKeys.Show, plugin.RequiredPermission(OcrMethods.GetReading));
     }
@@ -114,7 +116,7 @@ public sealed class OcrPluginTests
         Assert.Equal(4, OcrLimits.Workers(8));
         Assert.Equal(new Resolution(1920, 1080), new Reader().Resolution);
         Assert.Equal("1920x1080", Resolution.Default.ToString());
-        Assert.Equal(ReaderMode.OnDemand, new Reader().Mode);
+        Assert.Equal(ReaderMode.Watching, new Reader().Mode); // new readers start watching
         Assert.Equal(ExpectedTextKind.Any, new Area().Expected.Kind);
     }
 
@@ -200,7 +202,7 @@ public sealed class OcrPluginTests
         Assert.Equal(json, OcrJson.Serialize(back));
         Assert.Equal(reply.Reading!.Areas[0].Lines, back.Reading!.Areas[0].Lines);
 
-        var list = new ReaderList { Readers = [new ReaderSummary { Id = "r1", Name = "Gate 2", Mode = ReaderMode.OnDemand, LastText = "MSCU 123456 7" }] };
+        var list = new ReaderList { Readers = [new ReaderSummary { Id = "r1", Name = "Gate 2", Mode = ReaderMode.OnAction, LastText = "MSCU 123456 7" }] };
         Assert.Equal(OcrJson.Serialize(list), OcrJson.Serialize(OcrJson.Deserialize<ReaderList>(OcrJson.Serialize(list))));
     }
 }

@@ -9,7 +9,7 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Ocr.Tests.Events;
 
-/// <summary>The rule action "Read text" and the page's Read now (docs/spec/ocr.md "Events and the rule action").</summary>
+/// <summary>The rule action "Read text" (docs/spec/ocr.md "Events and the rule action").</summary>
 public sealed class ReadTextActionTests
 {
     private static ActionInvocation Invocation(string readerId) => new(
@@ -51,17 +51,17 @@ public sealed class ReadTextActionTests
         ocr.Recognizer.Gate = gate;
         ocr.Frames.Single = "A";
 
-        var readNow = ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id });
-        await Eventually.TrueAsync(() => ocr.Recognizer.Started == 1, "Read now reads");
+        var readNow = ocr.ReadOnceAsync(reader.Id);
+        await Eventually.TrueAsync(() => ocr.Recognizer.Started == 1, "the first reading reads");
         var log = new FakeActionContext();
         await Action(ocr).ExecuteAsync(log, Invocation(reader.Id), CancellationToken.None);
-        var busy = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        var busy = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.ReadOnceAsync(reader.Id));
 
         Assert.Equal([OcrInfo.AlreadyReading], log.Lines);
         Assert.Equal(OcrInfo.AlreadyReading, busy.Message);
         Assert.Equal(1, ocr.Frames.Singles); // nothing queued
         gate.Release();
-        var reply = OcrJson.Deserialize<ReadingReply>(await readNow);
+        var reply = await readNow;
         Assert.Equal("A", Frame.TextOf(reply.Jpeg));
         Assert.Single(ocr.TextRead);
     }
@@ -105,7 +105,7 @@ public sealed class ReadTextActionTests
     }
 
     [Fact]
-    public async Task ReadNowAnswersTheReadingWithItsPicture()
+    public async Task AReadingIsKeptWithItsPictureForThePage()
     {
         await using var ocr = await OcrHarness.StartAsync();
         var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
@@ -114,7 +114,7 @@ public sealed class ReadTextActionTests
         Assert.Null(empty.Jpeg);
         ocr.Frames.Single = "0815";
 
-        var reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        var reply = await ocr.ReadOnceAsync(reader.Id);
 
         Assert.Equal("0815", Assert.Single(reply.Reading!.Areas).Text);
         Assert.Equal("0815", Frame.TextOf(reply.Jpeg));
