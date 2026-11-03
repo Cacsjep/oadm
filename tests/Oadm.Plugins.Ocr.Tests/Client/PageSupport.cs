@@ -256,13 +256,13 @@ internal static class Samples
         _ => DockSign,
     };
 
-    /// <summary>The list as the server (O4) sends it: no frame rate per reader, the problem text, the frame rates offered.</summary>
+    /// <summary>The list as the server sends it: the frame rate and the problem per reader, the frame rates offered.</summary>
     public static string ListJson() => OcrJson.Serialize(new
     {
         readers = new object[]
         {
-            new { id = "r1", name = "Container gate", deviceId = Gate.Id, mode = "Watching", lastText = "MSKU 123456 7", lastTime = Time },
-            new { id = "r3", name = "Dock 4 sign", deviceId = Dock.Id, mode = "Watching", lastText = "DOCK 4", lastTime = Time, problem = "Camera not reachable, trying again in 30 s" },
+            new { id = "r1", name = "Container gate", deviceId = Gate.Id, mode = "Watching", fps = 1, lastText = "MSKU 123456 7", lastTime = Time },
+            new { id = "r3", name = "Dock 4 sign", deviceId = Dock.Id, mode = "Watching", fps = 2, lastText = "DOCK 4", lastTime = Time, problem = "Camera not reachable, trying again in 30 s" },
             new { id = "r2", name = "Water meter", deviceId = Plant.Id, mode = "OnDemand", lastText = "" },
         },
         fpsChoices = new[] { 1, 2, 4, 8, 15 },
@@ -294,7 +294,7 @@ internal static class Samples
         ],
     };
 
-    /// <summary>The details of the gate's areas (the lane's tooSmall is the page's assumption, not sent by O4 yet).</summary>
+    /// <summary>The details of the gate's areas (the lane's lines were too small).</summary>
     public static IReadOnlyList<AreaDetails> GateExtras =>
     [
         new AreaDetails { Area = "Container number", AllMatches = "MSKU 123456 7", MatchBox = new(0.485, 0.29, 0.25, 0.08) },
@@ -303,7 +303,7 @@ internal static class Samples
     ];
 
     /// <summary>
-    /// The reading reply JSON as the server (O4) sends it: <c>{"reading":{...},"jpeg":...,"details":[...]}</c> (the picture as
+    /// The reading reply JSON as the server sends it: <c>{"reading":{...},"jpeg":...,"details":[...]}</c> (the picture as
     /// PNG bytes in the JPEG field: the page decodes either).
     /// </summary>
     public static string ReplyJson(Reading reading, IReadOnlyList<AreaDetails> details, byte[]? picture) =>
@@ -327,12 +327,12 @@ internal static class Samples
         ctx.Answers[OcrMethods.GetReading] = json => OcrJson.Deserialize<ReaderRequest>(json).ReaderId == "r1"
             ? ReplyJson(GateReading(), GateExtras, picture)
             : "{}";
-        ctx.Answers[OcrPageMethods.GetEngine] = _ => OcrJson.Serialize(Engine);
-        ctx.Answers[OcrPageMethods.GetCameraOptions] = _ => OcrJson.Serialize(CameraOptions);
+        ctx.Answers[OcrMethods.GetEngine] = _ => OcrJson.Serialize(Engine);
+        ctx.Answers[OcrMethods.GetCameraOptions] = _ => OcrJson.Serialize(CameraOptions);
         ctx.Answers[OcrMethods.SaveReader] = json =>
         {
             var reader = OcrJson.Deserialize<SaveReaderRequest>(json).Reader;
-            return OcrJson.Serialize(reader with { Id = reader.Id.Length == 0 ? "r9" : reader.Id });
+            return OcrJson.Serialize(new SaveReaderReply { Reader = reader with { Id = reader.Id.Length == 0 ? "r9" : reader.Id } });
         };
         ctx.Answers[OcrMethods.DeleteReader] = _ => "{}";
         return ctx;

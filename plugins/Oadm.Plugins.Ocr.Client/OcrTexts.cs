@@ -15,8 +15,6 @@ public static class OcrTexts
 
     public const string NoAreas = "Draw one area around each text you want to read.";
 
-    public const string TooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
-
     public const string NoReading = "No reading yet";
 
     public const string ReadNowHint = "Read now to see what the reader finds.";
@@ -41,8 +39,6 @@ public static class OcrTexts
 
     public const string SaveFirst = "Save the reader first.";
 
-    public const string MaxAreas = "At most 8 areas.";
-
     public const string NoGpu = "No graphics card found";
 
     /// <summary>"Watching · 2 fps".</summary>
@@ -62,36 +58,4 @@ public static class OcrTexts
 
     /// <summary>"Runs on: CPU (8 cores)".</summary>
     public static string RunsOn(string what) => "Runs on: " + what;
-}
-
-/// <summary>The checks of an area's format on the page (docs/spec/ocr.md "Expected text"); the server checks again.</summary>
-public static class OcrFormat
-{
-    /// <summary>The longest format.</summary>
-    public const int MaxLength = 40;
-
-    /// <summary>The longest reader or area name.</summary>
-    public const int MaxNameLength = 64;
-
-    /// <summary>Why <paramref name="format"/> cannot be used, or null.</summary>
-    public static string? Error(string? format)
-    {
-        var text = format?.Trim() ?? string.Empty;
-        if (text.Length == 0)
-        {
-            return "Enter a format.";
-        }
-
-        if (text.Length > MaxLength)
-        {
-            return string.Create(CultureInfo.InvariantCulture, $"At most {MaxLength} characters.");
-        }
-
-        if (!text.Any(c => c is '#' or 'A' or '*'))
-        {
-            return "A format needs at least one #, A or *.";
-        }
-
-        return text.Any(char.IsControl) ? "Use letters, digits and signs only." : null;
-    }
 }

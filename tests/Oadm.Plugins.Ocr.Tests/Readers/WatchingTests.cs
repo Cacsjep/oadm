@@ -156,10 +156,10 @@ public sealed class WatchingTests
         var device = ctx.Add(new Oadm.Sdk.Testing.FakeDevice { Address = "10.0.0.1" });
         await using var plugin = new OcrPlugin();
         await plugin.StartAsync(ctx, CancellationToken.None);
-        var saved = OcrJson.Deserialize<Reader>(await plugin.InvokeAsync(OcrMethods.SaveReader, OcrJson.Serialize(new SaveReaderRequest
+        var saved = OcrJson.Deserialize<SaveReaderReply>(await plugin.InvokeAsync(OcrMethods.SaveReader, OcrJson.Serialize(new SaveReaderRequest
         {
             Reader = new Reader { Name = "Gate", DeviceId = device.Id, Mode = ReaderMode.Watching },
-        }), CancellationToken.None));
+        }), CancellationToken.None)).Reader!;
 
         Assert.Empty(plugin.Runtime!.Watching);
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => plugin.InvokeAsync(OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = saved.Id }), CancellationToken.None));

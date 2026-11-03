@@ -89,8 +89,8 @@ public sealed class TextReadEventTests
         };
         await using var plugin = new OcrPlugin(parts);
         await plugin.StartAsync(ocr.Context, CancellationToken.None);
-        var reader = OcrJson.Deserialize<Reader>(await ocr.Context.InvokeAsync(plugin, ocr.Context.CallAsAllDevices(), OcrMethods.SaveReader,
-            OcrJson.Serialize(new SaveReaderRequest { Reader = ocr.NewReader(areas: new Area { Name = "Order", Expected = ExpectedText.WithFormat("#####") }) })));
+        var reader = OcrJson.Deserialize<SaveReaderReply>(await ocr.Context.InvokeAsync(plugin, ocr.Context.CallAsAllDevices(), OcrMethods.SaveReader,
+            OcrJson.Serialize(new SaveReaderRequest { Reader = ocr.NewReader(areas: new Area { Name = "Order", Expected = ExpectedText.WithFormat("#####") }) }))).Reader!;
         ocr.Frames.Single = "anything";
 
         var reply = OcrJson.Deserialize<ReadingReply>(await ocr.Context.InvokeAsync(plugin, ocr.Context.CallAsAllDevices(), OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = reader.Id })));

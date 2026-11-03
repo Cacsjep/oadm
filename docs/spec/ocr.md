@@ -120,6 +120,12 @@ Per area: **Any text** (default) or **Format**.
   rate). An On demand reader shows the last reading and Read now.
 - Below the picture the results: Area, Text, Confidence (right-aligned), Matches format, the time.
 - Empty page: "Create a reader to read text from a camera."
+- One contract: the page uses the server part's payloads (`Api/`) and the texts of `ReaderRules`, never copies. The
+  camera's video sources and sizes (largest first) come from `getCameraOptions` (read only, the caller's devices, kept
+  10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
+  (`name`, `camera`, `videoSource`, `resolution`, `mode`, `fps`, `areas`, `areas[i].name|box|format`); the page shows each
+  below its field, the watching limits and the frame rate below Mode. Refusals without a field (reader gone, 50 readers)
+  stay errors in the host's message.
 
 ## Permissions
 
@@ -161,7 +167,9 @@ often, from worse pictures, and never a wrong value reported as sure.
 
 - The plugin picks at start: GPU when the provider loads and a test reading succeeds, else the CPU. Settings card of the
   page: "Runs on: NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8 cores)", and **Use the graphics card** (on by default)
-  to force the CPU.
+  to force the CPU. `getEngine` / `setUseGpu` (change right, audited) answer `{runsOn, gpuAvailable, useGpu, fpsChoices}`;
+  the setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change. Without one: the CPU,
+  no graphics card.
 - On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
   recognition together. Limits on a GPU: frames per second 1, 2, 4, 8 or 15; at most 50 watching readers.
 - Speed targets (measured at the build on the development PC, RTX 5070 Ti): one Search reader over a full HD picture

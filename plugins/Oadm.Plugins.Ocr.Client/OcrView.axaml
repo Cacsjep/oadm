@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.Ocr.Client"
+             xmlns:api="using:Oadm.Plugins.Ocr.Api"
              x:Class="Oadm.Plugins.Ocr.Client.OcrView"
              x:DataType="vm:OcrViewModel"
              ui:PageHeader.Subtitle="Reads text in camera pictures for the event rules.">
@@ -81,7 +82,7 @@
           <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding MayChange}">
             <StackPanel Grid.Column="0" Spacing="8">
               <ui:FormField Classes="wide" Label="Name">
-                <TextBox Text="{Binding Name}" MaxLength="64" />
+                <TextBox Text="{Binding Name}" MaxLength="{x:Static vm:AreaViewModel.MaxNameLength}" />
               </ui:FormField>
               <ui:FormField Classes="wide" Label="Camera" Error="{Binding CameraError}">
                 <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ChooseCameraCommand}"
@@ -93,7 +94,7 @@
                 <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding VideoSources}" SelectedItem="{Binding SelectedSource}"
                           IsEnabled="{Binding !IsLoadingCamera}">
                   <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:CameraSource">
+                    <DataTemplate x:DataType="api:CameraSource">
                       <TextBlock Text="{Binding Name}" />
                     </DataTemplate>
                   </ComboBox.ItemTemplate>
@@ -153,7 +154,7 @@
                       <StackPanel Spacing="6" Margin="0,0,8,16" IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
                           <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
-                            <TextBox Text="{Binding Name}" MaxLength="64" />
+                            <TextBox Text="{Binding Name}" MaxLength="{x:Static vm:AreaViewModel.MaxNameLength}" />
                           </ui:FormField>
                           <Button Grid.Column="1" Classes="toolbar iconOnly" VerticalAlignment="Bottom" ToolTip.Tip="Delete area" CommandParameter="{Binding}"
                                   Command="{Binding $parent[ItemsControl].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
@@ -165,7 +166,7 @@
                           <RadioButton Content="Format" IsChecked="{Binding IsFormat}" />
                         </StackPanel>
                         <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Hint="{x:Static vm:AreaViewModel.FormatHint}" IsVisible="{Binding IsFormat}">
-                          <TextBox Classes="mono" Text="{Binding FormatText}" PlaceholderText="AAAU ###### #" MaxLength="40" />
+                          <TextBox Classes="mono" Text="{Binding FormatText}" PlaceholderText="AAAU ###### #" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}" />
                         </ui:FormField>
                       </StackPanel>
                     </DataTemplate>

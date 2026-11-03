@@ -53,4 +53,11 @@ public sealed record Reading
 /// <summary>What <see cref="ITextRecognizer"/> found in one picture.</summary>
 /// <param name="Resolution">The decoded picture's size.</param>
 /// <param name="LinesPerArea">The lines of each area, in the order of the areas asked for.</param>
-public sealed record RecognizedPicture(Resolution Resolution, IReadOnlyList<IReadOnlyList<TextLine>> LinesPerArea);
+public sealed record RecognizedPicture(Resolution Resolution, IReadOnlyList<IReadOnlyList<TextLine>> LinesPerArea)
+{
+    /// <summary>
+    /// Per area (same order): lines lower than 10 px were left out (docs/spec/ocr.md "Accuracy", small text). Shorter than
+    /// the areas or empty: no such lines.
+    /// </summary>
+    public IReadOnlyList<bool> TooSmallPerArea { get; init; } = [];
+}

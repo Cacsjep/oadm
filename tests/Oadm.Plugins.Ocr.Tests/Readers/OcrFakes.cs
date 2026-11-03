@@ -24,12 +24,38 @@ internal static class Frame
 /// Recognition of the fakes: each area has one line with the picture's text (none for an empty picture). A test can hold
 /// readings at a gate and make the next reading fail.
 /// </summary>
-internal sealed class FakeRecognizer : ITextRecognizer, IRecognizerCapabilities
+internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
 {
     private readonly ConcurrentQueue<string> _read = new();
     private int _started;
+    private bool _gpu;
 
-    public bool OnGpu { get; set; }
+    /// <summary>Reads on a graphics card: one is there (<see cref="GpuAvailable"/>) and the setting allows it.</summary>
+    public bool OnGpu
+    {
+        get => _gpu && UsesGpu;
+        set => _gpu = value;
+    }
+
+    /// <summary>What <see cref="IEngineInfo.RunsOn"/> tells; empty: the plugin names the CPU.</summary>
+    public string RunsOn { get; set; } = string.Empty;
+
+    public bool GpuAvailable => _gpu;
+
+    /// <summary>The last setting the plugin handed over.</summary>
+    public bool UsesGpu { get; private set; } = true;
+
+    /// <summary>How often the plugin handed the setting over.</summary>
+    public int SetUseGpuCalls { get; private set; }
+
+    public void SetUseGpu(bool useGpu)
+    {
+        UsesGpu = useGpu;
+        SetUseGpuCalls++;
+    }
+
+    /// <summary>Per area: lines were too small (handed to the reading as <see cref="RecognizedPicture.TooSmallPerArea"/>).</summary>
+    public IReadOnlyList<bool> TooSmall { get; set; } = [];
 
     /// <summary>When set, every reading waits for it (one release per reading).</summary>
     public SemaphoreSlim? Gate { get; set; }
@@ -61,7 +87,7 @@ internal sealed class FakeRecognizer : ITextRecognizer, IRecognizerCapabilities
         _read.Enqueue(text);
         var count = Math.Max(1, areas.Count);
         var lines = text.Length == 0 ? [] : new[] { new TextLine(text, new RelativeBox(0.1, 0.1, 0.5, 0.1), 90) };
-        return new RecognizedPicture(new Resolution(1920, 1080), [.. Enumerable.Range(0, count).Select(_ => (IReadOnlyList<TextLine>)lines)]);
+        return new RecognizedPicture(new Resolution(1920, 1080), [.. Enumerable.Range(0, count).Select(_ => (IReadOnlyList<TextLine>)lines)]) { TooSmallPerArea = TooSmall };
     }
 }
 
@@ -207,8 +233,12 @@ internal sealed class OcrHarness : IAsyncDisposable
     public Task<string?> CallAsync(string method, object? payload = null, FakeCallContext? caller = null) =>
         Context.InvokeAsync(Plugin, caller ?? Context.CallAsAllDevices(), method, payload is null ? "{}" : OcrJson.Serialize(payload));
 
-    public async Task<Reader> SaveAsync(Reader reader, FakeCallContext? caller = null) =>
-        OcrJson.Deserialize<Reader>(await CallAsync(OcrMethods.SaveReader, new SaveReaderRequest { Reader = reader }, caller));
+    /// <summary>Saves a reader; a refusal of a field throws <see cref="ReaderFieldException"/> with the server's field errors.</summary>
+    public async Task<Reader> SaveAsync(Reader reader, FakeCallContext? caller = null)
+    {
+        var reply = OcrJson.Deserialize<SaveReaderReply>(await CallAsync(OcrMethods.SaveReader, new SaveReaderRequest { Reader = reader }, caller));
+        return reply.Reader ?? throw new ReaderFieldException(reply.Errors);
+    }
 
     public Reader NewReader(string name = "Gate 2", ReaderMode mode = ReaderMode.OnDemand, Guid? device = null, params Area[] areas) => new()
     {

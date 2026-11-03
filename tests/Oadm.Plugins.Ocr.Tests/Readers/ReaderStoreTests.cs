@@ -64,31 +64,36 @@ public sealed class ReaderStoreTests
     {
         await using var ocr = await OcrHarness.StartAsync();
         var whole = new Area { Name = "Number" };
-        var cases = new (Reader Reader, string Text)[]
+        var cases = new (Reader Reader, string Field, string Text)[]
         {
-            (ocr.NewReader(" "), ReaderRules.NameMissing),
-            (ocr.NewReader(new string('x', 65)), ReaderRules.NameTooLong),
-            (ocr.NewReader() with { DeviceId = Guid.Empty }, ReaderRules.CameraMissing),
-            (ocr.NewReader() with { VideoSource = 0 }, ReaderRules.SourceMissing),
-            (ocr.NewReader() with { Resolution = new Resolution(0, 0) }, ReaderRules.ResolutionMissing),
-            (ocr.NewReader() with { Fps = 8 }, "Choose 1, 2 or 4 frames per second."),
-            (ocr.NewReader(areas: [.. Enumerable.Range(1, 9).Select(i => whole with { Name = $"Area {i}" })]), "A reader has at most 8 areas."),
-            (ocr.NewReader(areas: [whole, whole with { Name = "number" }]), "Two areas are named number."),
-            (ocr.NewReader(areas: whole with { Name = "" }), ReaderRules.AreaNameMissing),
-            (ocr.NewReader(areas: whole with { Box = new RelativeBox(0.8, 0, 0.5, 1) }), ReaderRules.AreaOutside),
-            (ocr.NewReader(areas: whole with { Expected = new ExpectedText { Kind = ExpectedTextKind.Format } }), ReaderRules.FormatMissing),
-            (ocr.NewReader(areas: whole with { Expected = ExpectedText.WithFormat("XYZ") }), ReaderRules.FormatWithoutPlaceholder),
+            (ocr.NewReader(" "), "name", ReaderRules.NameMissing),
+            (ocr.NewReader(new string('x', 65)), "name", ReaderRules.NameTooLong),
+            (ocr.NewReader() with { DeviceId = Guid.Empty }, "camera", ReaderRules.CameraMissing),
+            (ocr.NewReader() with { VideoSource = 0 }, "videoSource", ReaderRules.SourceMissing),
+            (ocr.NewReader() with { Resolution = new Resolution(0, 0) }, "resolution", ReaderRules.ResolutionMissing),
+            (ocr.NewReader() with { Mode = (ReaderMode)7 }, "mode", ReaderRules.ModeMissing),
+            (ocr.NewReader() with { Fps = 8 }, "fps", "Choose 1, 2 or 4 frames per second."),
+            (ocr.NewReader(areas: [.. Enumerable.Range(1, 9).Select(i => whole with { Name = $"Area {i}" })]), "areas", "A reader has at most 8 areas."),
+            (ocr.NewReader(areas: [whole, whole with { Name = "number" }]), "areas[1].name", "Two areas are named number."),
+            (ocr.NewReader(areas: whole with { Name = "" }), "areas[0].name", ReaderRules.AreaNameMissing),
+            (ocr.NewReader(areas: whole with { Box = new RelativeBox(0.8, 0, 0.5, 1) }), "areas[0].box", ReaderRules.AreaOutside),
+            (ocr.NewReader(areas: whole with { Expected = new ExpectedText { Kind = ExpectedTextKind.Format } }), "areas[0].format", ReaderRules.FormatMissing),
+            (ocr.NewReader(areas: whole with { Expected = ExpectedText.WithFormat("XYZ") }), "areas[0].format", ReaderRules.FormatWithoutPlaceholder),
         };
 
-        foreach (var (reader, text) in cases)
+        foreach (var (reader, field, text) in cases)
         {
-            var refused = await Assert.ThrowsAsync<ArgumentException>(() => ocr.SaveAsync(reader));
-            Assert.Equal(text, refused.Message);
+            var refused = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(reader));
+            Assert.Equal(new FieldError(field, text), Assert.Single(refused.Errors));
         }
 
+        // Every field's problem at once, each with its key.
+        var all = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(ocr.NewReader(" ") with { DeviceId = Guid.Empty, Areas = [whole with { Name = "" }] }));
+        Assert.Equal(["name", "camera", "areas[0].name"], all.Errors.Select(e => e.Field));
+
         await ocr.SaveAsync(ocr.NewReader());
-        var taken = await Assert.ThrowsAsync<ArgumentException>(() => ocr.SaveAsync(ocr.NewReader("GATE 2")));
-        Assert.Equal("A reader named GATE 2 exists already.", taken.Message);
+        var taken = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(ocr.NewReader("GATE 2")));
+        Assert.Equal(new FieldError(OcrFields.Name, "A reader named GATE 2 exists already."), Assert.Single(taken.Errors));
         Assert.Single(await ocr.Context.PluginRecords.ListAsync(ReaderStore.Collection, CancellationToken.None));
     }
 
@@ -105,8 +110,8 @@ public sealed class ReaderStoreTests
         Assert.Equal("OADM keeps at most 50 readers. Delete one first.", tooMany.Message);
 
         var onDemand = ocr.Plugin.AllReaders.First(r => r.Mode == ReaderMode.OnDemand);
-        var watching = await Assert.ThrowsAsync<ArgumentException>(() => ocr.SaveAsync(onDemand with { Mode = ReaderMode.Watching }));
-        Assert.Equal("At most 20 readers can watch at once. Set another reader to On demand first.", watching.Message);
+        var watching = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(onDemand with { Mode = ReaderMode.Watching }));
+        Assert.Equal(new FieldError(OcrFields.Mode, "At most 20 readers can watch at once. Set another reader to On demand first."), Assert.Single(watching.Errors));
 
         // A watching reader may be changed; one set to On demand makes room.
         var first = ocr.Plugin.AllReaders.First(r => r.Mode == ReaderMode.Watching);

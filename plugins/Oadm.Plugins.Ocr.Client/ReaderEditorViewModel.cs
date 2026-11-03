@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Validation;
@@ -95,9 +96,14 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         _loading = false;
         Areas.CollectionChanged += (_, _) => OnAreasChanged();
+        // Source, resolution and mode have no check of their own on the page: their rules only let an edit clear the
+        // server's refusal below them.
         Validation
             .Rule(nameof(Name), NameError)
-            .Rule(nameof(DeviceId), () => DeviceId == Guid.Empty ? "Choose a camera." : null);
+            .Rule(nameof(DeviceId), () => DeviceId == Guid.Empty ? ReaderRules.CameraMissing : null)
+            .Rule(nameof(SelectedSource), () => null)
+            .Rule(nameof(SelectedResolution), () => null)
+            .Rule(nameof(Mode), () => null);
         Validation.Validate();
         _savedJson = isNew ? string.Empty : Signature();
         UpdateSaveState();
@@ -204,7 +210,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public bool CanAddArea => MayChange && Areas.Count < OcrLimits.MaxAreas;
 
     /// <summary>Why Draw area is off (its tooltip).</summary>
-    public string? DrawBlockedReason => Areas.Count >= OcrLimits.MaxAreas ? OcrTexts.MaxAreas : null;
+    public string? DrawBlockedReason => Areas.Count >= OcrLimits.MaxAreas ? ReaderRules.TooManyAreas : null;
 
     /// <summary>Raised to the picture: areas, selection or lines changed (the overlay draws again).</summary>
     [ObservableProperty]
@@ -302,7 +308,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         CameraOptions? options = null;
         try
         {
-            var json = await _ctx.InvokeAsync(OcrPageMethods.GetCameraOptions, OcrJson.Serialize(new CameraOptionsRequest { DeviceId = DeviceId }), ct)
+            var json = await _ctx.InvokeAsync(OcrMethods.GetCameraOptions, OcrJson.Serialize(new CameraOptionsRequest { DeviceId = DeviceId }), ct)
                 .ConfigureAwait(true);
             options = OcrJson.Deserialize<CameraOptions>(json);
         }
@@ -458,7 +464,13 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         {
             var json = await _ctx.InvokeAsync(OcrMethods.SaveReader, OcrJson.Serialize(new SaveReaderRequest { Reader = ToReader() }), CancellationToken.None)
                 .ConfigureAwait(true);
-            var saved = OcrJson.Deserialize<Reader>(json);
+            var reply = OcrJson.Deserialize<SaveReaderReply>(json);
+            if (reply.Reader is not { } saved)
+            {
+                await ShowRefusalAsync(reply.Errors).ConfigureAwait(true);
+                return;
+            }
+
             Id = saved.Id;
             IsNew = false;
             _savedJson = Signature();
@@ -466,19 +478,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             UpdateSaveState();
             Saved?.Invoke(this, saved);
         }
-#pragma warning disable CA1031 // The server's reason in the host's message.
+#pragma warning disable CA1031 // A refusal without a field (the reader is gone, too many readers): the host's message.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            var message = ServerErrors.Message(ex);
-            if (FieldOf(message) is { } field)
-            {
-                Validation.SetServerError(field, message);
-            }
-            else
-            {
-                await _ctx.ShowMessageAsync("Save reader", message).ConfigureAwait(true);
-            }
+            await _ctx.ShowMessageAsync("Save reader", ServerErrors.Message(ex)).ConfigureAwait(true);
         }
         finally
         {
@@ -486,23 +490,45 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
-    /// <summary>
-    /// The field a refusal of the server belongs to (shown below it): the watching limits below Mode, a name below Name, the
-    /// camera below Camera; null: the host's message.
-    /// </summary>
-    internal static string? FieldOf(string message)
+    /// <summary>The server's field errors, each below its field; one that fits no field in the host's message.</summary>
+    private async Task ShowRefusalAsync(IReadOnlyList<FieldError> errors)
     {
-        if (message.Contains("watch", StringComparison.OrdinalIgnoreCase))
+        var left = errors.Where(e => !ShowFieldError(e)).Select(e => e.Message).Distinct(StringComparer.Ordinal).ToList();
+        if (left.Count > 0 || errors.Count == 0)
         {
-            return nameof(Mode);
+            await _ctx.ShowMessageAsync("Save reader", left.Count > 0 ? string.Join(Environment.NewLine, left) : OcrTexts.NotSaved).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Shows a refusal below the field of its key (<see cref="OcrFields"/>): the watching limits and the frame rate below
+    /// Mode, an area's below the area; false for a key the page has no field for.
+    /// </summary>
+    internal bool ShowFieldError(FieldError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var property = error.Field switch
+        {
+            OcrFields.Name => nameof(Name),
+            OcrFields.Camera => nameof(DeviceId),
+            OcrFields.VideoSource => nameof(SelectedSource),
+            OcrFields.Resolution => nameof(SelectedResolution),
+            OcrFields.Mode or OcrFields.Fps => nameof(Mode),
+            _ => null,
+        };
+        if (property is not null)
+        {
+            Validation.SetServerError(property, error.Message);
+            return true;
         }
 
-        if (message.Contains("name", StringComparison.OrdinalIgnoreCase))
+        if (OcrFields.ParseArea(error.Field) is { } area && area.Index < Areas.Count)
         {
-            return nameof(Name);
+            Areas[area.Index].SetServerError(area.Part, error.Message);
+            return true;
         }
 
-        return message.Contains("camera", StringComparison.OrdinalIgnoreCase) ? nameof(DeviceId) : null;
+        return false;
     }
 
     /// <summary>A refusal of the server about the mode (the watching limits), below Mode.</summary>
@@ -586,7 +612,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     private async Task ApplyReplyJsonAsync(string? json)
     {
         var reply = OcrJson.Deserialize<ReadingReply>(json);
-        var details = OcrJson.Deserialize<ReadingDetails>(json).Details;
+        var details = reply.Details;
         var picture = reply.Jpeg is { Length: > 0 } jpeg ? await _decode(jpeg).ConfigureAwait(true) : null;
         var cutOuts = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         foreach (var detail in details)
@@ -749,6 +775,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     partial void OnFpsChanged(int value)
     {
+        if (!_loading)
+        {
+            Validation.SetServerError(nameof(Mode), null); // another rate: the refusal about it no longer holds
+        }
+
         foreach (var option in FpsOptions)
         {
             option.Refresh();
@@ -834,21 +865,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private string Signature() => OcrJson.Serialize(ToReader() with { Id = string.Empty });
 
-    private string? NameError()
-    {
-        var name = Name.Trim();
-        if (name.Length == 0)
-        {
-            return "Enter a name.";
-        }
-
-        if (name.Length > OcrFormat.MaxNameLength)
-        {
-            return $"At most {OcrFormat.MaxNameLength} characters.";
-        }
-
-        return _readerNameTaken(Id, name) ? "Another reader has this name." : null;
-    }
+    private string? NameError() =>
+        ReaderRules.NameProblem(Name) ?? (_readerNameTaken(Id, Name.Trim()) ? ReaderRules.NameTaken(Name.Trim()) : null);
 
     private static string SourceName(int number) => $"View area {number}";
 }

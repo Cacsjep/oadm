@@ -192,7 +192,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var json = await _ctx.InvokeAsync(OcrPageMethods.GetEngine, "{}", ct).ConfigureAwait(true);
+            var json = await _ctx.InvokeAsync(OcrMethods.GetEngine, "{}", ct).ConfigureAwait(true);
             ApplyEngine(OcrJson.Deserialize<EngineInfo>(json));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -240,7 +240,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var json = await _ctx.InvokeAsync(OcrPageMethods.SetUseGpu, OcrJson.Serialize(new UseGpuRequest { UseGpu = value }), CancellationToken.None)
+            var json = await _ctx.InvokeAsync(OcrMethods.SetUseGpu, OcrJson.Serialize(new UseGpuRequest { UseGpu = value }), CancellationToken.None)
                 .ConfigureAwait(true);
             ApplyEngine(OcrJson.Deserialize<EngineInfo>(json));
         }
@@ -257,8 +257,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     public void ApplyList(string? json)
     {
         var list = OcrJson.Deserialize<ReaderList>(json);
-        var extras = OcrJson.Deserialize<ReaderListExtras>(json);
-        if (extras.FpsChoices is { Count: > 0 } choices)
+        if (list.FpsChoices is { Count: > 0 } choices)
         {
             // The frame rates offered now (more on a GPU) come with the list.
             Engine = Engine with { FpsChoices = choices };
@@ -267,19 +266,17 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         // A change of the readers may lift a refusal of the watching limits.
         Editor?.ClearModeRefusal();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i < list.Readers.Count; i++)
+        foreach (var summary in list.Readers)
         {
-            var summary = list.Readers[i];
-            var extra = extras.Readers.ElementAtOrDefault(i);
             seen.Add(summary.Id);
             var camera = CameraText(summary.DeviceId);
             if (_rows.TryGetValue(summary.Id, out var row))
             {
-                row.Apply(summary, extra, camera);
+                row.Apply(summary, camera);
             }
             else
             {
-                _rows[summary.Id] = new ReaderRow(summary, extra, camera);
+                _rows[summary.Id] = new ReaderRow(summary, camera);
             }
         }
 
@@ -429,7 +426,6 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
             var editor = ShowEditor(OcrJson.Deserialize<Reader>(json), isNew: false);
             editor.Problem = row.Problem;
-            row.Fps = editor.Fps; // the list does not carry the frame rate, the reader's setup does
             IsOpening = false;
             await Task.WhenAll(editor.LoadCameraOptionsAsync(ct), editor.RefreshReadingAsync(ct)).ConfigureAwait(true);
         }
@@ -558,11 +554,10 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     private void OnEditorSaved(object? sender, Reader saved)
     {
-        var summary = new ReaderSummary { Id = saved.Id, Name = saved.Name, DeviceId = saved.DeviceId, Mode = saved.Mode };
-        var extras = new ReaderSummaryExtras { Fps = saved.Fps };
+        var summary = new ReaderSummary { Id = saved.Id, Name = saved.Name, DeviceId = saved.DeviceId, Mode = saved.Mode, Fps = saved.Fps };
         if (_rows.TryGetValue(saved.Id, out var row))
         {
-            row.Apply(summary with { LastText = row.LastText, LastTime = row.LastTime }, extras with { Problem = row.Problem }, CameraText(saved.DeviceId));
+            row.Apply(summary with { LastText = row.LastText, LastTime = row.LastTime, Problem = row.Problem }, CameraText(saved.DeviceId));
             if (row.LastTime is null)
             {
                 row.SetLast(null, null);
@@ -570,7 +565,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         }
         else
         {
-            row = new ReaderRow(summary, extras, CameraText(saved.DeviceId));
+            row = new ReaderRow(summary, CameraText(saved.DeviceId));
             _rows[saved.Id] = row;
             _order.Add(saved.Id);
         }

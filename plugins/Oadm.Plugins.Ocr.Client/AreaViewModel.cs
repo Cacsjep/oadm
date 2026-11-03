@@ -1,6 +1,8 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.Ocr.Client;
@@ -23,7 +25,7 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         FormatText = area.Expected.Format ?? string.Empty;
         Validation
             .Rule(nameof(Name), NameError)
-            .Rule(nameof(FormatText), () => IsFormat ? OcrFormat.Error(FormatText) : null);
+            .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null);
         Validation.Validate();
     }
 
@@ -54,7 +56,12 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    public static string FormatHint => Api.OcrInfo.FormatHint;
+    public static string FormatHint => OcrInfo.FormatHint;
+
+    /// <summary>The longest name and format (the text boxes' limits).</summary>
+    public static int MaxNameLength => ReaderRules.MaxNameLength;
+
+    public static int MaxFormatLength => ReaderRules.MaxFormatLength;
 
     /// <summary>The area as saved.</summary>
     public Area ToArea() => new()
@@ -66,6 +73,13 @@ public sealed partial class AreaViewModel : ValidatingViewModel
 
     /// <summary>The name's rule again after another area's name changed.</summary>
     internal void Revalidate() => Validation.Validate();
+
+    /// <summary>
+    /// A refusal of the server for this area (<see cref="OcrFields.AreaName"/>, <see cref="OcrFields.AreaFormat"/>,
+    /// <see cref="OcrFields.AreaBox"/>): the format's below the format, the others below the name.
+    /// </summary>
+    internal void SetServerError(string part, string message) =>
+        Validation.SetServerError(part == "format" && IsFormat ? nameof(FormatText) : nameof(Name), message);
 
     /// <summary>Every error shows (Save was tried).</summary>
     internal void ShowAllErrors() => Validation.ShowAll();
@@ -79,21 +93,8 @@ public sealed partial class AreaViewModel : ValidatingViewModel
 
     protected override void OnValidationChanged() => ValidityChanged?.Invoke(this, EventArgs.Empty);
 
-    private string? NameError()
-    {
-        var name = Name.Trim();
-        if (name.Length == 0)
-        {
-            return "Enter a name.";
-        }
-
-        if (name.Length > OcrFormat.MaxNameLength)
-        {
-            return $"At most {OcrFormat.MaxNameLength} characters.";
-        }
-
-        return _nameTaken(this, name) ? "Another area has this name." : null;
-    }
+    private string? NameError() =>
+        ReaderRules.NameProblem(Name) ?? (_nameTaken(this, Name.Trim()) ? ReaderRules.AreaNameTaken(Name.Trim()) : null);
 
     partial void OnNameChanged(string value) => Changed?.Invoke(this, EventArgs.Empty);
 

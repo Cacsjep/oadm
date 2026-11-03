@@ -46,6 +46,24 @@ public interface IRecognizerCapabilities
     bool OnGpu { get; }
 }
 
+/// <summary>
+/// Optional next to <see cref="ITextRecognizer"/> (package O1, wired in wave 3): what reads the pictures and the setting
+/// "Use the graphics card" (docs/spec/ocr.md "GPU"). The plugin stores the setting and hands it over at start and on every
+/// change; the recognizer applies it (false: the CPU, <see cref="IRecognizerCapabilities.OnGpu"/> false). Without it the
+/// page shows the CPU and no graphics card.
+/// </summary>
+public interface IEngineInfo : IRecognizerCapabilities
+{
+    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") while it reads, else "CPU (8 cores)".</summary>
+    string RunsOn { get; }
+
+    /// <summary>A graphics card was found and passed the test reading.</summary>
+    bool GpuAvailable { get; }
+
+    /// <summary>Applies the setting "Use the graphics card" (on by default).</summary>
+    void SetUseGpu(bool useGpu);
+}
+
 /// <summary>Cuts the picture of a found value out of a frame (package O1 has the JPEG codec). Optional.</summary>
 public interface IPictureCutter
 {

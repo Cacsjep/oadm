@@ -94,7 +94,10 @@ public static class OcrMethods
     /// <summary><see cref="ReaderRequest"/> -> <see cref="Reader"/>. View.</summary>
     public const string GetReader = "getReader";
 
-    /// <summary><see cref="SaveReaderRequest"/> -> <see cref="Reader"/>: creates (empty id) or changes a reader. Change.</summary>
+    /// <summary>
+    /// <see cref="SaveReaderRequest"/> -> <see cref="SaveReaderReply"/>: creates (empty id) or changes a reader. A check that
+    /// belongs to a field answers with <see cref="SaveReaderReply.Errors"/> (nothing stored); other refusals throw. Change.
+    /// </summary>
     public const string SaveReader = "saveReader";
 
     /// <summary><see cref="ReaderRequest"/> -> {}: deletes a reader. Change.</summary>
@@ -105,6 +108,15 @@ public static class OcrMethods
 
     /// <summary><see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading with its picture (empty without one). View.</summary>
     public const string GetReading = "getReading";
+
+    /// <summary>{} -> <see cref="EngineInfo"/>: what reads the pictures and the frame rates it offers. View.</summary>
+    public const string GetEngine = "getEngine";
+
+    /// <summary><see cref="UseGpuRequest"/> -> <see cref="EngineInfo"/>: "Use the graphics card" on or off (a plugin setting). Change.</summary>
+    public const string SetUseGpu = "setUseGpu";
+
+    /// <summary><see cref="CameraOptionsRequest"/> -> <see cref="CameraOptions"/>: the video sources and picture sizes of one camera (read only). View.</summary>
+    public const string GetCameraOptions = "getCameraOptions";
 
     /// <summary>
     /// Event: <see cref="ReadingEvent"/> after every reading (without the picture; a page that shows the reader fetches it with
@@ -126,6 +138,9 @@ public sealed record ReaderSummary
     public Guid DeviceId { get; init; }
 
     public ReaderMode Mode { get; init; }
+
+    /// <summary>The frame rate while Watching ("Watching · 2 fps").</summary>
+    public int Fps { get; init; } = OcrLimits.DefaultFps;
 
     /// <summary>The value of the first area of the last reading; empty without one.</summary>
     public string LastText { get; init; } = string.Empty;
@@ -161,6 +176,109 @@ public sealed record SaveReaderRequest
     public Reader Reader { get; init; } = new();
 }
 
+/// <summary>The answer of <see cref="OcrMethods.SaveReader"/>: the stored reader, or the field errors of a refused save.</summary>
+public sealed record SaveReaderReply
+{
+    /// <summary>The reader as stored (with its id); null when the save was refused.</summary>
+    public Reader? Reader { get; init; }
+
+    /// <summary>Why the save was refused, per field (<see cref="OcrFields"/>); empty after a save.</summary>
+    public IReadOnlyList<FieldError> Errors { get; init; } = [];
+}
+
+/// <summary>A refusal of the server that belongs to one field of the page.</summary>
+/// <param name="Field">The field's key (<see cref="OcrFields"/>): <c>name</c>, <c>mode</c>, <c>areas[2].format</c>.</param>
+/// <param name="Message">The text shown below the field.</param>
+public sealed record FieldError(string Field, string Message);
+
+/// <summary>The stable keys of <see cref="FieldError.Field"/>: the page shows each error below its field.</summary>
+public static class OcrFields
+{
+    public const string Name = "name";
+
+    public const string Camera = "camera";
+
+    public const string VideoSource = "videoSource";
+
+    public const string Resolution = "resolution";
+
+    /// <summary>The mode and the watching limits.</summary>
+    public const string Mode = "mode";
+
+    public const string Fps = "fps";
+
+    /// <summary>The area list as a whole (too many areas).</summary>
+    public const string Areas = "areas";
+
+    /// <summary><c>areas[i].name</c>.</summary>
+    public static string AreaName(int index) => Area(index, "name");
+
+    /// <summary><c>areas[i].box</c>.</summary>
+    public static string AreaBox(int index) => Area(index, "box");
+
+    /// <summary><c>areas[i].format</c>.</summary>
+    public static string AreaFormat(int index) => Area(index, "format");
+
+    /// <summary>The area index and its part of <c>areas[i].part</c>; null for another key.</summary>
+    public static (int Index, string Part)? ParseArea(string field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        const string Start = "areas[";
+        var close = field.IndexOf("].", StringComparison.Ordinal);
+        return field.StartsWith(Start, StringComparison.Ordinal) && close > Start.Length
+            && int.TryParse(field.AsSpan(Start.Length, close - Start.Length), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var index)
+            ? (index, field[(close + 2)..])
+            : null;
+    }
+
+    private static string Area(int index, string part) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"areas[{index}].{part}");
+}
+
+/// <summary>The answer of <see cref="OcrMethods.GetEngine"/> and <see cref="OcrMethods.SetUseGpu"/> (docs/spec/ocr.md "GPU").</summary>
+public sealed record EngineInfo
+{
+    /// <summary>"NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)": shown as "Runs on: ...".</summary>
+    public string RunsOn { get; init; } = string.Empty;
+
+    /// <summary>A graphics card was found and passed the test reading.</summary>
+    public bool GpuAvailable { get; init; }
+
+    /// <summary>The setting "Use the graphics card" (on by default).</summary>
+    public bool UseGpu { get; init; } = true;
+
+    /// <summary>The frame rates a watching reader may use now: 1, 2, 4 on the CPU, 1, 2, 4, 8, 15 on a GPU.</summary>
+    public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
+}
+
+/// <summary>The request of <see cref="OcrMethods.SetUseGpu"/>.</summary>
+public sealed record UseGpuRequest
+{
+    public bool UseGpu { get; init; }
+}
+
+/// <summary>The request of <see cref="OcrMethods.GetCameraOptions"/>.</summary>
+public sealed record CameraOptionsRequest
+{
+    public Guid DeviceId { get; init; }
+}
+
+/// <summary>A video source of a camera: its number (1 for the first) and its name ("View area 1").</summary>
+public sealed record CameraSource
+{
+    public int Number { get; init; } = 1;
+
+    public string Name { get; init; } = string.Empty;
+}
+
+/// <summary>The answer of <see cref="OcrMethods.GetCameraOptions"/>.</summary>
+public sealed record CameraOptions
+{
+    public IReadOnlyList<CameraSource> VideoSources { get; init; } = [];
+
+    /// <summary>The camera's picture sizes, largest first.</summary>
+    public IReadOnlyList<Resolution> Resolutions { get; init; } = [];
+}
+
 /// <summary>A reading with its picture.</summary>
 public sealed record ReadingReply
 {
@@ -194,6 +312,9 @@ public sealed record AreaDetails
 
     /// <summary>The value's cut-out picture as JPEG (base64 in JSON); only in <see cref="ReadingReply"/>, null without one.</summary>
     public byte[]? Cutout { get; init; }
+
+    /// <summary>Lines lower than 10 px were left out (the page: <see cref="Readers.ReaderRules.TooSmall"/>).</summary>
+    public bool TooSmall { get; init; }
 }
 
 /// <summary>The live event <see cref="OcrMethods.ReadingTopic"/>.</summary>

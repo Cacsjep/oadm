@@ -52,8 +52,8 @@ public sealed class CameraStateTests
             await ocr.SaveAsync(ocr.NewReader($"Crane {i}", ReaderMode.Watching, device: cameras[i].Id));
         }
 
-        var refused = await Assert.ThrowsAsync<ArgumentException>(() => ocr.SaveAsync(ocr.NewReader("Crane 5", ReaderMode.Watching, device: cameras[4].Id)));
-        Assert.Equal("At most 4 readers can watch at once at the site Harbour. Set another reader there to On demand first.", refused.Message);
+        var refused = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(ocr.NewReader("Crane 5", ReaderMode.Watching, device: cameras[4].Id)));
+        Assert.Equal(new FieldError(OcrFields.Mode, "At most 4 readers can watch at once at the site Harbour. Set another reader there to On demand first."), Assert.Single(refused.Errors));
 
         // On demand at the site, and watching on the server's own network, stay possible.
         await ocr.SaveAsync(ocr.NewReader("Crane 5", device: cameras[4].Id));

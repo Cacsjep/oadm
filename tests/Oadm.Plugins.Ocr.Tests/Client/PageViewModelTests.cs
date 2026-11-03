@@ -4,6 +4,7 @@ using Avalonia.Media.Imaging;
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Client;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Ocr.Tests.Client;
@@ -66,8 +67,8 @@ public sealed class PageViewModelTests
     public async Task An_older_server_without_the_page_additions_still_works()
     {
         var ctx = Samples.Context();
-        ctx.Answers.Remove(OcrPageMethods.GetEngine);
-        ctx.Answers.Remove(OcrPageMethods.GetCameraOptions);
+        ctx.Answers.Remove(OcrMethods.GetEngine);
+        ctx.Answers.Remove(OcrMethods.GetCameraOptions);
         ctx.Answers[OcrMethods.ListReaders] = _ => OcrJson.Serialize(new ReaderList
         {
             Readers = [new ReaderSummary { Id = "r1", Name = "Container gate", DeviceId = Samples.Gate.Id, Mode = ReaderMode.Watching }],
@@ -118,8 +119,9 @@ public sealed class PageViewModelTests
     [InlineData("", "Enter a format.")]
     [InlineData("   ", "Enter a format.")]
     [InlineData("1234", "A format needs at least one #, A or *.")]
-    [InlineData("#########################################", "At most 40 characters.")]
-    public void The_format_is_checked(string format, string? error) => Assert.Equal(error, OcrFormat.Error(format));
+    [InlineData("#################################################################", "A format has at most 64 characters.")]
+    [InlineData("##\t#", "Use letters, digits and signs only.")]
+    public void The_format_is_checked_with_the_servers_rule(string format, string? error) => Assert.Equal(error, ReaderRules.FormatProblem(format));
 
     [Fact]
     public async Task A_wrong_format_shows_below_its_field_and_keeps_Save_off()
@@ -156,15 +158,15 @@ public sealed class PageViewModelTests
         var editor = vm.Editor!;
 
         editor.Areas[1].Name = "lane";
-        Assert.Equal("Another area has this name.", editor.Areas[1].ErrorOf(nameof(AreaViewModel.Name)));
+        Assert.Equal(ReaderRules.AreaNameTaken("lane"), editor.Areas[1].ErrorOf(nameof(AreaViewModel.Name)));
         Assert.False(editor.SaveCommand.CanExecute(null));
         editor.Areas[1].Name = "Type";
         Assert.Null(editor.Areas[1].ErrorOf(nameof(AreaViewModel.Name)));
 
         editor.Name = "Water meter";
-        Assert.Equal("Another reader has this name.", editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
+        Assert.Equal(ReaderRules.NameTaken("Water meter"), editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
         editor.Name = " ";
-        Assert.Equal("Enter a name.", editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
+        Assert.Equal(ReaderRules.NameMissing, editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
     }
 
     [Fact]
@@ -288,7 +290,7 @@ public sealed class PageViewModelTests
         Assert.Equal("8 of 8", editor.AreaCountText);
         Assert.False(editor.CanAddArea);
         Assert.False(editor.DrawAreaCommand.CanExecute(null));
-        Assert.Equal(OcrTexts.MaxAreas, editor.DrawBlockedReason);
+        Assert.Equal(ReaderRules.TooManyAreas, editor.DrawBlockedReason);
         Assert.Null(editor.AddArea(new RelativeBox(0.1, 0.1, 0.1, 0.1)));
 
         editor.RemoveAreaCommand.Execute(editor.Areas[^1]);
@@ -404,7 +406,7 @@ public sealed class PageViewModelTests
         using var vm = await LoadedAsync(ctx);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
         var editor = vm.Editor!;
-        ctx.Answers[OcrMethods.SaveReader] = _ => throw new InvalidOperationException(Refusal);
+        ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply { Errors = [new FieldError(OcrFields.Mode, Refusal)] });
 
         editor.IsWatching = true;
         await editor.SaveCommand.ExecuteAsync(null);
@@ -422,7 +424,66 @@ public sealed class PageViewModelTests
         ctx.Answers[OcrMethods.SaveReader] = _ => throw new InvalidOperationException("The server is busy.");
         await editor.SaveCommand.ExecuteAsync(null);
         Assert.Equal("The server is busy.", ctx.Messages.Single().Message);
-        Assert.Equal(nameof(ReaderEditorViewModel.Name), ReaderEditorViewModel.FieldOf("A reader with this name exists."));
+    }
+
+    [Fact]
+    public async Task Each_field_error_of_the_server_shows_below_its_field()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var editor = vm.Editor!;
+        Assert.True(editor.Areas.Count >= 2);
+        editor.Areas[1].IsFormat = true;
+        editor.Areas[1].FormatText = "####";
+        ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply
+        {
+            Errors =
+            [
+                new FieldError(OcrFields.Name, ReaderRules.NameTaken("Container gate")),
+                new FieldError(OcrFields.Camera, "The camera is not in your devices."),
+                new FieldError(OcrFields.VideoSource, ReaderRules.SourceMissing),
+                new FieldError(OcrFields.Resolution, ReaderRules.ResolutionMissing),
+                new FieldError(OcrFields.AreaName(0), ReaderRules.AreaOutside),
+                new FieldError(OcrFields.AreaFormat(1), ReaderRules.FormatWithoutPlaceholder),
+                new FieldError("unknown", "Something else."),
+            ],
+        });
+
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(ReaderRules.NameTaken("Container gate"), editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
+        Assert.Equal("The camera is not in your devices.", editor.CameraError);
+        Assert.Equal(ReaderRules.SourceMissing, editor.ErrorOf(nameof(ReaderEditorViewModel.SelectedSource)));
+        Assert.Equal(ReaderRules.ResolutionMissing, editor.ErrorOf(nameof(ReaderEditorViewModel.SelectedResolution)));
+        Assert.Equal(ReaderRules.AreaOutside, editor.Areas[0].ErrorOf(nameof(AreaViewModel.Name)));
+        Assert.Equal(ReaderRules.FormatWithoutPlaceholder, editor.Areas[1].ErrorOf(nameof(AreaViewModel.FormatText)));
+        Assert.Equal("Something else.", ctx.Messages.Single().Message); // a key without a field: the host's message
+        Assert.False(editor.SaveCommand.CanExecute(null));
+
+        // An edit clears the server's error of its field.
+        editor.Name = "Container gate 2";
+        Assert.Null(editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
+        editor.Areas[1].FormatText = "#####";
+        Assert.Null(editor.Areas[1].ErrorOf(nameof(AreaViewModel.FormatText)));
+    }
+
+    [Fact]
+    public void Field_keys_of_the_areas_are_parsed()
+    {
+        Assert.Equal("areas[3].format", OcrFields.AreaFormat(3));
+        Assert.Equal((3, "format"), OcrFields.ParseArea("areas[3].format"));
+        Assert.Equal((0, "name"), OcrFields.ParseArea(OcrFields.AreaName(0)));
+        Assert.Null(OcrFields.ParseArea("areas"));
+        Assert.Null(OcrFields.ParseArea("areas[x].name"));
+        Assert.Null(OcrFields.ParseArea("name"));
+    }
+
+    [Fact]
+    public void The_page_uses_the_servers_texts()
+    {
+        Assert.Equal(ReaderRules.TooSmall, ResultRow.TooSmallText);
+        Assert.Equal(ReaderRules.MaxNameLength, AreaViewModel.MaxNameLength);
+        Assert.Equal(ReaderRules.MaxFormatLength, AreaViewModel.MaxFormatLength);
     }
 
     [Fact]
@@ -444,7 +505,7 @@ public sealed class PageViewModelTests
     public async Task Use_the_graphics_card_is_saved_at_once()
     {
         var ctx = Samples.Context();
-        ctx.Answers[OcrPageMethods.SetUseGpu] = json => OcrJson.Serialize(new EngineInfo
+        ctx.Answers[OcrMethods.SetUseGpu] = json => OcrJson.Serialize(new EngineInfo
         {
             RunsOn = "CPU (8 cores)",
             GpuAvailable = true,
@@ -454,7 +515,7 @@ public sealed class PageViewModelTests
 
         vm.UseGpu = false;
         await Eventually.TrueAsync(() => vm.RunsOnText == "Runs on: CPU (8 cores)", "the new engine");
-        Assert.Equal("{\"useGpu\":false}", ctx.LastPayloadOf(OcrPageMethods.SetUseGpu));
+        Assert.Equal("{\"useGpu\":false}", ctx.LastPayloadOf(OcrMethods.SetUseGpu));
         Assert.False(vm.UseGpu);
     }
 

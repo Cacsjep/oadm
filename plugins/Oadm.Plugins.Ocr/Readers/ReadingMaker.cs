@@ -26,7 +26,11 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             var lines = i < picture.LinesPerArea.Count ? picture.LinesPerArea[i] : [];
             var (result, detail) = Area(areas[i], lines);
             results.Add(result);
-            details.Add(detail with { Cutout = detail.MatchBox is { } box && cutter is not null ? cutter.Cut(jpeg, box) : null });
+            details.Add(detail with
+            {
+                Cutout = detail.MatchBox is { } box && cutter is not null ? cutter.Cut(jpeg, box) : null,
+                TooSmall = i < picture.TooSmallPerArea.Count && picture.TooSmallPerArea[i],
+            });
         }
 
         var reading = new Reading { ReaderId = reader.Id, Time = taken, Resolution = picture.Resolution, Areas = results };

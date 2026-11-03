@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Events;
 using Oadm.Plugins.Ocr.Model;
@@ -24,6 +26,8 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     private ICorePluginContext? _ctx;
     private ReaderStore? _store;
     private ReaderRuntime? _runtime;
+    private readonly ConcurrentDictionary<Guid, (DateTimeOffset At, CameraOptions Options)> _cameraOptions = new();
+    private volatile bool _useGpu = true;
 
     /// <summary>The plugin as the host loads it. The recognition, matching and frame parts are wired in by the next build step.</summary>
     public OcrPlugin()
@@ -78,7 +82,11 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         await store.LoadAsync(ct).ConfigureAwait(false);
         _ctx = ctx;
         _store = store;
+        _useGpu = await ctx.Settings.GetAsync(UseGpuSetting, ct).ConfigureAwait(false) is not { } stored
+            || !bool.TryParse(stored.Trim(), out var useGpu) || useGpu;
+        _cameraOptions.Clear();
         _runtime = new ReaderRuntime(ctx, _parts, ctx.Logger);
+        _runtime.Engine?.SetUseGpu(_useGpu);
         _runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
         if (ctx.DeviceScopes is { } scopes)
         {
@@ -118,7 +126,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         ? "counts the watching readers per site (a limit of the site node), shows no device data"
         : null;
 
-    public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader;
+    public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu;
 
     /// <summary>The page reads only (Viewer on); changing readers and reading now are a right of their own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
@@ -127,9 +135,9 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers and read now."),
     ];
 
-    /// <summary>New, Delete, Save and Read now: "change"; the rest: "show".</summary>
+    /// <summary>New, Delete, Save, Read now and Use the graphics card: "change"; the rest: "show".</summary>
     public string? RequiredPermission(string method) =>
-        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow ? OcrInfo.ChangePermission : PermissionKeys.Show;
+        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
 
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>

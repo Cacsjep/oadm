@@ -10,11 +10,11 @@ namespace Oadm.Plugins.Ocr.Client;
 /// <summary>A reader in the list: name, mode, camera, last text. Updated in place by id.</summary>
 public sealed partial class ReaderRow : ObservableObject
 {
-    public ReaderRow(ReaderSummary summary, ReaderSummaryExtras? extras, string camera)
+    public ReaderRow(ReaderSummary summary, string camera)
     {
         ArgumentNullException.ThrowIfNull(summary);
         Id = summary.Id;
-        Apply(summary, extras, camera);
+        Apply(summary, camera);
     }
 
     public string Id { get; }
@@ -33,10 +33,10 @@ public sealed partial class ReaderRow : ObservableObject
     [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem))]
     public partial ReaderMode Mode { get; private set; }
 
-    /// <summary>The frame rate while Watching once known (the list does not always carry it; the reader's setup does).</summary>
+    /// <summary>The frame rate while Watching.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeText))]
-    public partial int? Fps { get; set; }
+    public partial int Fps { get; private set; }
 
     /// <summary>The full text of what keeps the reader from reading (the header's chip); null while it reads.</summary>
     [ObservableProperty]
@@ -52,7 +52,7 @@ public sealed partial class ReaderRow : ObservableObject
     /// <summary>On demand / Watching · 2 fps / Not reachable.</summary>
     public string ModeText => IsProblem ? OcrTexts.NotReachable
         : Mode != ReaderMode.Watching ? OcrTexts.OnDemand
-        : Fps is { } fps ? OcrTexts.WatchingAt(fps) : OcrTexts.Watching;
+        : OcrTexts.WatchingAt(Fps);
 
     public bool IsWatching => Mode == ReaderMode.Watching && !IsProblem;
 
@@ -62,15 +62,15 @@ public sealed partial class ReaderRow : ObservableObject
     /// <summary>Name and camera in lower case, for the search.</summary>
     public string SearchText { get; private set; } = string.Empty;
 
-    public void Apply(ReaderSummary summary, ReaderSummaryExtras? extras, string camera)
+    public void Apply(ReaderSummary summary, string camera)
     {
         ArgumentNullException.ThrowIfNull(summary);
         Name = summary.Name;
         DeviceId = summary.DeviceId;
         Camera = camera;
         Mode = summary.Mode;
-        Fps = extras?.Fps ?? Fps;
-        Problem = extras?.Problem;
+        Fps = summary.Fps;
+        Problem = summary.Problem;
         SetLast(summary.LastText, summary.LastTime);
         SearchText = (Name + " " + Camera).ToLowerInvariant();
     }
@@ -140,7 +140,7 @@ public sealed class ResultRow
 
     public bool TooSmall { get; }
 
-    public static string TooSmallText => OcrTexts.TooSmall;
+    public static string TooSmallText => Readers.ReaderRules.TooSmall;
 
     public string Time { get; }
 

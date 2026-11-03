@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
 
 namespace Oadm.Plugins.Ocr.Readers;
@@ -40,7 +41,10 @@ public static class ReaderRules
 
     public const string ResolutionMissing = "Choose a resolution.";
 
-    public const string AreaNameMissing = "Enter a name for each area.";
+    /// <summary>An area without a name (below the area's name, like the reader's).</summary>
+    public const string AreaNameMissing = NameMissing;
+
+    public const string ModeMissing = "Choose On demand or Watching.";
 
     public const string AreaOutside = "An area lies outside the picture.";
 
@@ -49,6 +53,14 @@ public static class ReaderRules
     public static readonly string FormatTooLong = string.Create(CultureInfo.InvariantCulture, $"A format has at most {MaxFormatLength} characters.");
 
     public const string FormatWithoutPlaceholder = "A format needs at least one #, A or *.";
+
+    public const string FormatInvalid = "Use letters, digits and signs only.";
+
+    /// <summary>Lines lower than 10 px were left out of an area (<see cref="AreaDetails.TooSmall"/>).</summary>
+    public const string TooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
+
+    /// <summary>"CPU (8 cores)": what reads without a graphics card.</summary>
+    public static string CpuText(int cores) => string.Create(CultureInfo.InvariantCulture, $"CPU ({cores} {(cores == 1 ? "core" : "cores")})");
 
     public static readonly string TooManyAreas = string.Create(CultureInfo.InvariantCulture, $"A reader has at most {OcrLimits.MaxAreas} areas.");
 
@@ -118,86 +130,85 @@ public static class ReaderRules
     }
 
     /// <summary>The first problem of a normalized reader (<see cref="Normalize"/>), or null.</summary>
-    public static string? Problem(Reader reader, bool onGpu)
+    public static FieldError? Problem(Reader reader, bool onGpu) => Problems(reader, onGpu) is { Count: > 0 } problems ? problems[0] : null;
+
+    /// <summary>Every problem of a normalized reader (<see cref="Normalize"/>), at most one per field; empty when it can be saved.</summary>
+    public static IReadOnlyList<FieldError> Problems(Reader reader, bool onGpu)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        if (reader.Name.Length == 0)
+        var problems = new List<FieldError>();
+        if (NameProblem(reader.Name) is { } name)
         {
-            return NameMissing;
-        }
-
-        if (reader.Name.Length > MaxNameLength || reader.Name.Any(char.IsControl))
-        {
-            return NameTooLong;
+            problems.Add(new(OcrFields.Name, name));
         }
 
         if (reader.DeviceId == Guid.Empty)
         {
-            return CameraMissing;
+            problems.Add(new(OcrFields.Camera, CameraMissing));
         }
 
         if (reader.VideoSource < 1)
         {
-            return SourceMissing;
+            problems.Add(new(OcrFields.VideoSource, SourceMissing));
         }
 
         if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide)
         {
-            return ResolutionMissing;
+            problems.Add(new(OcrFields.Resolution, ResolutionMissing));
         }
 
         if (!Enum.IsDefined(reader.Mode))
         {
-            return "Choose On demand or Watching.";
+            problems.Add(new(OcrFields.Mode, ModeMissing));
         }
 
         if (!FpsChoices(onGpu).Contains(reader.Fps))
         {
-            return FpsNotAllowed(onGpu);
+            problems.Add(new(OcrFields.Fps, FpsNotAllowed(onGpu)));
         }
 
         if (reader.Areas.Count > OcrLimits.MaxAreas)
         {
-            return TooManyAreas;
+            problems.Add(new(OcrFields.Areas, TooManyAreas));
         }
 
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var area in reader.Areas)
+        for (var i = 0; i < reader.Areas.Count; i++)
         {
-            if (AreaProblem(area) is { } problem)
+            var area = reader.Areas[i];
+            if (NameProblem(area.Name) is { } areaName)
             {
-                return problem;
+                problems.Add(new(OcrFields.AreaName(i), areaName));
+            }
+            else if (!names.Add(area.Name))
+            {
+                problems.Add(new(OcrFields.AreaName(i), AreaNameTaken(area.Name)));
             }
 
-            if (!names.Add(area.Name))
+            if (!area.Box.IsValid)
             {
-                return AreaNameTaken(area.Name);
+                problems.Add(new(OcrFields.AreaBox(i), AreaOutside));
+            }
+
+            if (area.Expected.Kind == ExpectedTextKind.Format && FormatProblem(area.Expected.Format) is { } format)
+            {
+                problems.Add(new(OcrFields.AreaFormat(i), format));
             }
         }
 
-        return null;
+        return problems;
     }
 
-    /// <summary>The problem of one area, or null.</summary>
-    public static string? AreaProblem(Area area)
+    /// <summary>The problem of a reader's or an area's name, or null: not empty, at most 64 characters.</summary>
+    public static string? NameProblem(string? name)
     {
-        ArgumentNullException.ThrowIfNull(area);
-        if (string.IsNullOrWhiteSpace(area.Name))
+        var text = name?.Trim() ?? string.Empty;
+        if (text.Length == 0)
         {
-            return AreaNameMissing;
+            return NameMissing;
         }
 
-        if (area.Name.Length > MaxNameLength || area.Name.Any(char.IsControl))
-        {
-            return NameTooLong;
-        }
-
-        if (!area.Box.IsValid)
-        {
-            return AreaOutside;
-        }
-
-        return area.Expected.Kind == ExpectedTextKind.Format ? FormatProblem(area.Expected.Format) : null;
+        return text.Length > MaxNameLength || text.Any(char.IsControl) ? NameTooLong : null;
     }
 
     /// <summary>The problem of a format, or null: not empty, at most 64 characters, at least one #, A or *.</summary>
@@ -209,9 +220,14 @@ public static class ReaderRules
             return FormatMissing;
         }
 
-        if (text.Length > MaxFormatLength || text.Any(char.IsControl))
+        if (text.Length > MaxFormatLength)
         {
             return FormatTooLong;
+        }
+
+        if (text.Any(char.IsControl))
+        {
+            return FormatInvalid;
         }
 
         return text.Any(c => c is '#' or 'A' or '*') ? null : FormatWithoutPlaceholder;

@@ -79,7 +79,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
     /// <summary>
     /// Creates (empty id) or changes a reader for <paramref name="caller"/>: checks the reader, the camera against the caller's
     /// and the owner's devices (<see cref="Oadm.Sdk.Devices.DevicesNotAvailableException"/>, nothing stored), the names and the
-    /// limits; returns the stored reader and the one it replaced (null for a new one). <paramref name="deviceOf"/> finds any
+    /// limits (a check of a field: <see cref="ReaderFieldException"/>); returns the stored reader and the one it replaced (null for a new one). <paramref name="deviceOf"/> finds any
     /// managed camera (system view) for the count of watching readers per site; it shows the caller no device data.
     /// </summary>
     public async Task<(Reader Saved, Reader? Before)> SaveAsync(
@@ -93,9 +93,9 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
         ArgumentNullException.ThrowIfNull(deviceOf);
         ArgumentNullException.ThrowIfNull(incoming);
         var reader = ReaderRules.Normalize(incoming);
-        if (ReaderRules.Problem(reader, onGpu) is { } problem)
+        if (ReaderRules.Problems(reader, onGpu) is { Count: > 0 } problems)
         {
-            throw new ArgumentException(problem);
+            throw new ReaderFieldException(problems);
         }
 
         await _write.WaitAsync(ct).ConfigureAwait(false);
@@ -112,7 +112,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
             if (others.Any(r => string.Equals(OwnerScope.Of(r.OwnerScopeKey), owner, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(r.Name, reader.Name, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new ArgumentException(ReaderRules.NameTaken(reader.Name));
+                throw new ReaderFieldException(OcrFields.Name, ReaderRules.NameTaken(reader.Name));
             }
 
             if (isNew && all.Count >= OcrLimits.MaxReaders)
@@ -123,7 +123,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
             if (reader.Mode == ReaderMode.Watching && before?.Mode != ReaderMode.Watching
                 && others.Count(r => r.Mode == ReaderMode.Watching) >= ReaderRules.MaxWatching(onGpu))
             {
-                throw new ArgumentException(ReaderRules.TooManyWatching(onGpu));
+                throw new ReaderFieldException(OcrFields.Mode, ReaderRules.TooManyWatching(onGpu));
             }
 
             if (reader.Mode == ReaderMode.Watching && await deviceOf(reader.DeviceId, ct).ConfigureAwait(false) is { SiteId: { } site } camera)
@@ -140,7 +140,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
 
                 if (atSite >= ReaderRules.MaxWatchingPerSite)
                 {
-                    throw new ArgumentException(ReaderRules.TooManyWatchingAtSite(camera.SiteName));
+                    throw new ReaderFieldException(OcrFields.Mode, ReaderRules.TooManyWatchingAtSite(camera.SiteName));
                 }
             }
 

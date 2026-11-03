@@ -70,6 +70,9 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// <summary>True while the recognition runs on a graphics card (<see cref="IRecognizerCapabilities"/>).</summary>
     public bool OnGpu => _recognizer is IRecognizerCapabilities { OnGpu: true };
 
+    /// <summary>What the recognition runs on and "Use the graphics card"; null while the recognizer does not tell.</summary>
+    public IEngineInfo? Engine => _recognizer as IEngineInfo;
+
     /// <summary>The ids of the readers with a loop now (tests).</summary>
     public IReadOnlyList<string> Watching
     {
@@ -368,7 +371,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             (areas[i], publish[i]) = watches[i].Add(frameResult);
             details[i] = string.Equals(areas[i].Text, frameResult.Text, StringComparison.Ordinal)
                 ? frameDetails
-                : ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null);
+                : ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null) with { TooSmall = frameDetails.TooSmall };
         }
 
         for (var i = 0; i < watches.Length; i++)
