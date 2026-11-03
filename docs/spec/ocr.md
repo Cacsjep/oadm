@@ -223,7 +223,19 @@ Per area: **Any text** (default) or **Format**.
   narrowest where the form, the format field and the areas fit; labels above their fields). The video gets every pixel
   the two fixed columns leave.
 - Left: the readers (name, camera, mode, last text), **New** and **Delete** (red, with a confirmation); below the list
-  Settings (Runs on, Use the graphics card) and the runtime stats ("Runtime stats").
+  Settings (Runs on, Use the graphics card) and the runtime stats ("Runtime stats"). The "Runs on" text is the server's.
+  - The reader's chip: "Watching · 2 fps" (green), "Watching · 8 fps (reads 5.1)" (orange, slower than set), "On action",
+    or a short red chip per kind of problem with the server's full text as its tooltip (`OcrTexts.ProblemChip`, one
+    phrase per concept): Limit reached (the watching limits, also per site), Login refused (credentials required, no
+    password, Basic only, HTTP 401 and 403), Certificate changed and Site offline (the device list's names), Not reachable
+    (timeouts, no answer, no route), Stream error (no pictures, a resolution or video source not offered, other HTTP
+    errors), Not in device group, Not installed; a text the page does not know: Not reading.
+  - The camera texts ("AXIS Q1798-LE · 10.0.0.48") are kept for the readers' cameras only (at most 50), found in one pass
+    over the devices; a device change reads them again while the page shows, else once when it shows again.
+  - While the list is read a loading overlay ("Reading the readers") covers it; while a reader opens one covers the
+    reader ("Reading the reader"). An open that fails leaves the shown reader and its row selected, the server's reason
+    below the list; New ends every open still on its way (a late answer never replaces the new draft). The page's view
+    model goes with its view (disposed when the view gets another one).
 - The selected reader in two columns, no toolbar row:
   - **Left: the camera's live video**, the shared live video component (`ICorePluginClientContext.LiveVideo`,
     docs/spec/live-view.md) of the reader's camera and video source, with the picture only (no channel switch,
@@ -232,10 +244,12 @@ Per area: **Any text** (default) or **Format**.
     (teal boxes with their text), placed on the reader's resolution centered in the video's space: the same letterboxing
     as the video's picture (Stretch Uniform). The video shows the camera's own picture shape; a resolution of another
     shape than the video source (4:3 on a 16:9 camera) draws the areas on the reader's shape. Without the host's live
-    video (an older OADM) the overlay sits on the dark video surface. Below the video the mode chip ("Watching · 2 fps",
-    "On action" or the reader's problem) and "Last reading 14:32:06" or "Waiting for the first picture.", the reading's
-    note when it has one (warning chip: "More than 30 texts found. ..."), then the **results grid** (Area, Text,
-    Confidence right-aligned, Matches format, the time) in the rest of the column's height.
+    video (an older OADM) the overlay sits on the dark video surface. Below the video the reading's note when it has one
+    (warning chip: "More than 30 texts found. ..."), then the **results grid** (Area, Text, Confidence right-aligned,
+    Matches format, the time) in the rest of the column's height; while there are none "Waiting for the first picture."
+    or why the preview reads nothing. The results, their details and cut-outs belong to the area at the same place in the
+    reader (names may repeat while they are edited). A row shows the value's cut-out only when the server sent one (users
+    with Live view); without one, or one that does not decode, the text alone.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
     nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
     while drawing the drawing hint shows instead.
@@ -244,7 +258,9 @@ Per area: **Any text** (default) or **Format**.
     save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
   - **Stream**: a secondary button (video icon) that opens a small dialog (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
-    as a select of the server's choices (1, 2, 4, 8, 12, 15). OK hands them to the reader (Not
+    as a select of the server's choices (1, 2, 4, 8, 12, 15; the select follows the choices of each reader list and of
+    `getEngine`; a stored rate no longer offered shows as the highest offered below it, the reader Not saved until
+    Save stores it). The camera's choices come from the newest `getCameraOptions` call. OK hands them to the reader (Not
     saved like any edit, the preview and the live video follow); Cancel changes nothing. The field is labelled Stream and spans the column; the
     button itself shows the summary, "Configure · 1920x1080 @ 4 fps" (no rate for On action; no hint below); a refusal of the server for the
     video source, the resolution or the frame rate shows in the summary's place and, in the dialog, below its field.
@@ -253,17 +269,20 @@ Per area: **Any text** (default) or **Format**.
   - **Areas panel**: header Areas left and **New** at the right edge (flat command button, plus icon; it starts drawing on
     the video; tooltip "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. Each
     area in two lines (decision 2026-11-03): the name as plain text (trimmed, the whole name as tooltip; a refusal of the
-    name or the box below it) with Rename and delete at the right; below it, indented, Mode and Format. Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
+    name or the box below it, each under its own key: a rename never clears the box's, a move or resize does) with Rename
+    and delete at the right; below it, indented, Mode and Format. Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
     typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format syntax as its
     tooltip; errors directly below the field. **Rename** (icon only, tag icon, tooltip "Rename") opens a small dialog
     (single operation, one Name field: required, unique in the reader, at most 64 characters, the error below it; Rename
     and Cancel). The rows are a list (`ListBox.areaRows`): the selected area's row is softly highlighted (the hover fill
     and an accent bar on its left edge, so the inputs and a red error stay readable), and selecting a row (or a field in
-    it) selects the area on the video.
-- **Areas on the live video**: New, then a drag draws one (at least 2 % of the picture each way; Esc stops). A
-  press on an area or on its row in the Areas panel selects it: solid with handles at the corners and edge midpoints. A
-  drag inside moves it, a drag on a handle resizes it; both stay inside the picture and keep the drawing minimum
-  (`AreaGeometry`); Esc cancels the drag in progress; the arrow keys move it by 1 % (Shift: 5 %). The cursor shows move
+    it) selects the area on the video. A refusal of the area list as a whole (`areas`: too many areas) shows directly
+    below the area rows (small red text) until the areas change, never in the host's message.
+- **Areas on the live video**: New, then a drag draws one (at least 2 % of the picture each way, `OcrLimits.MinAreaSide`
+  like the server; Esc stops). A press on an area or on its row in the Areas panel selects it: solid with handles at the
+  corners and edge midpoints. A drag inside moves it, a drag on a handle resizes it; on a small area (a side below
+  28 px on screen) a press inside always moves it and its handles are taken just outside it, so it can always be moved.
+  Both stay inside the picture and keep the drawing minimum (`AreaGeometry`); Esc cancels the drag in progress; the arrow keys move it by 1 % (Shift: 5 %). The cursor shows move
   over the body and resize over the handles. Every change marks the reader Not saved like any other edit. Without the
   change right nothing moves. While an area is drawn, moved or resized the found lines are hidden (they belong to the old
   areas); they show again when the drag ends. The drag's end is final: the overlay hands the new box to the reader
@@ -304,7 +323,7 @@ Per area: **Any text** (default) or **Format**.
   10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
   (`name`, `camera`, `videoSource`, `resolution`, `mode`, `fps`, `areas`, `areas[i].name|box|format`); the page shows each
   below its field: the watching limits below Mode, the video source, the resolution and the frame rate below Stream
-  settings. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
+  settings, `areas` below the area rows, an area's name and box below its name, its format below the format. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
 - The preview's calls (permission "View text recognition"):
   - `startPreview` `{"previewId":"9f3c...","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
     `problem` while it reads); with a known `previewId` of the caller it keeps that preview alive and takes the
@@ -582,7 +601,12 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   only the newest reading fetched, moving, resizing and nudging areas held inside the picture, the On action message
   once, new readers watching, the frame rate select; headless screenshots dark and light (the live video as a still
   frame): watching with the results below the video and green stats, the stats orange and red, an area being moved
-  (lines hidden), a reader without an area (dimmed with the hint). Headless tests return a value from
+  (lines hidden), a reader without an area (dimmed with the hint), the problem chips with the area list's refusal, the
+  loading overlays of the list and of a reader. Where the server and the user overtake each other
+  (`PageEdgeCaseTests`): a stored rate no longer offered (Not saved), the choices following the server, the `areas`
+  refusal below the rows, a box refusal through a rename and a move, a failed and a late open, the newest camera
+  options, results by the area's place, readings without cut-outs, the camera texts at 100,000 devices (one pass), the
+  view model leaving its view, a small area moved from inside; each problem's chip (`PageViewModelTests`). Headless tests return a value from
   `Session.Dispatch(async () => ...)`: it has no overload for a plain `Task`, so without one the assertions after the
   first await never reach the test.
 - Runtime safety (`Readers/RuntimeSafetyTests`, `Client/PagePreviewSafetyTests`): a deleted reader stays gone whatever sync
