@@ -156,9 +156,7 @@ public sealed class PageAreasAndStatsTests
         Assert.True(stats.HasStats);
         Assert.True(stats.IsBusy);
         Assert.Equal("Busy: 1 reader reads slower than set", stats.StateText);
-        Assert.Equal(("42 %", "12.3", "85 ms", "3 of 50", "1 of 8", "4", "23 %"),
-            (stats.LoadText, stats.PicturesText, stats.ReadTimeText, stats.WatchingText, stats.PreviewsText, stats.StreamsText, stats.CpuText));
-        Assert.Equal(new SiteRow("Harbour", "2 of 4"), Assert.Single(stats.Sites));
+        Assert.Equal("42 %", stats.LoadText);
         var gate = vm.Readers.Single(r => r.Id == "r1");
         Assert.True(gate.IsSlowWatching);
         Assert.False(gate.IsKeepingUp);

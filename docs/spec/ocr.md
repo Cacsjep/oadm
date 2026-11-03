@@ -261,11 +261,10 @@ after the start). All time through the plugin's `TimeProvider`.
   holds its slot; on a graphics card it is 1, because the recognizer runs its model calls there one at a time on one
   shared set (the time a call holds the card counts). So 100 % means no more model calls fit: on the CPU every worker,
   on a graphics card the card itself never idles.
-- **Numbers**: pictures per second (all readers, previews included); the average reading time (ms per picture, the
-  recognizer's call per picture); readers watching "3 of 50" (the limit of the CPU or the graphics card); previews "1 of
-  8"; camera streams open (watching readers and previews with a stream of their own), per site "Harbour 2 of 4" when
-  sites exist; the OADM server process's CPU ("Server CPU": `Environment.CpuUsage.TotalTime` growth divided by the window
-  times the processor count, cross-platform).
+- **Numbers** (in `getStats` only, never shown on the page: decision 2026-11-03, the traffic light already says whether
+  all is well): pictures per second (all readers, previews included); the average reading time (ms per picture);
+  readers watching and its limit; previews and their limit; camera streams open, per site with the site's limit; the
+  OADM server process's CPU (`Environment.CpuUsage.TotalTime` growth divided by the window times the processor count).
 - **Per reader**: each watching reader's pictures per second over the last 10 s; below 90 % of its rate its list chip
   turns orange: "Watching · 8 fps (reads 5.1)".
 - `getStats` `{}` → the stats (permission "View text recognition"):

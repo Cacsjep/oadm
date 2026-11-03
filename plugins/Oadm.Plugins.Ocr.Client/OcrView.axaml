@@ -64,31 +64,6 @@
               <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Load}" />
               <TextBlock Grid.Column="2" Text="{Binding LoadText}" VerticalAlignment="Center" />
             </Grid>
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
-              <TextBlock Grid.Row="0" Classes="secondary" Text="Pictures per second" />
-              <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PicturesText}" />
-              <TextBlock Grid.Row="1" Classes="secondary" Text="Reading time" />
-              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ReadTimeText}" />
-              <TextBlock Grid.Row="2" Classes="secondary" Text="Readers watching" />
-              <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding WatchingText}" />
-              <TextBlock Grid.Row="3" Classes="secondary" Text="Live previews" />
-              <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PreviewsText}" />
-              <TextBlock Grid.Row="4" Classes="secondary" Text="Camera streams" />
-              <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding StreamsText}" />
-              <!-- The streams per site (a few sites at most). -->
-              <ItemsControl Grid.Row="5" Grid.ColumnSpan="2" ItemsSource="{Binding Sites}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="vm:SiteRow">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,2,0,0">
-                      <TextBlock Classes="secondary" Text="{Binding Name}" TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
-                      <TextBlock Grid.Column="1" Text="{Binding Streams}" />
-                    </Grid>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-              <TextBlock Grid.Row="6" Classes="secondary" Text="Server CPU" />
-              <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CpuText}" />
-            </Grid>
           </StackPanel>
         </StackPanel>
       </Grid>

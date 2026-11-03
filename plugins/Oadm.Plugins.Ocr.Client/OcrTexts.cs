@@ -57,15 +57,6 @@ public static class OcrTexts
     public static string WatchingReads(int fps, double reads) =>
         string.Create(CultureInfo.InvariantCulture, $"{WatchingAt(fps)} (reads {reads:0.0})");
 
-    /// <summary>"3 of 50".</summary>
-    public static string OfLimit(int count, int limit) => string.Create(CultureInfo.InvariantCulture, $"{count} of {limit}");
-
-    /// <summary>"12.3".</summary>
-    public static string Number(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
-
-    /// <summary>"85 ms".</summary>
-    public static string Milliseconds(double ms) => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(ms)} ms");
-
     /// <summary>"2 of 8".</summary>
     public static string AreaCount(int count) => string.Create(CultureInfo.InvariantCulture, $"{count} of {OcrLimits.MaxAreas}");
 
