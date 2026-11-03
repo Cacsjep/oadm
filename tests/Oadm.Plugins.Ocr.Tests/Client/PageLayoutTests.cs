@@ -47,7 +47,17 @@ public sealed class PageLayoutTests
             Assert.Same(column, results.FindAncestorOfType<Grid>());
             Assert.True(Grid.GetRow((Control)results.Parent!) > Grid.GetRow(video));
             Assert.True(results.IsEffectivelyVisible);
-            var statsCard = view.FindControl<StackPanel>("StatsPanel")!.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("card"));
+            // "Use as format" on a result row: the area's format field shows with the made format selected.
+            var link = results.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && Equals(b.Content, OcrTexts.UseAsFormat));
+            link.Command!.Execute(link.CommandParameter);
+            Headless.Pump();
+            var area = vm.Editor!.SelectedArea!;
+            Assert.True(area.IsFormat);
+            var box = view.FocusFormatOf(area)!;
+            Assert.Equal(area.FormatText, box.Text);
+            Assert.Equal(box.Text!.Length, box.SelectionEnd - box.SelectionStart);
+
+            var statsCard =view.FindControl<StackPanel>("StatsPanel")!.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("card"));
             Assert.Equal(0, Grid.GetColumn(statsCard));
             window.Close();
 

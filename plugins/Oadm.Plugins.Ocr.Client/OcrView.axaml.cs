@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 
 using Oadm.Sdk.Client.Controls;
 
@@ -80,13 +81,38 @@ public partial class OcrView : UserControl
         if (_editor is not null)
         {
             _editor.PropertyChanged -= OnEditorPropertyChanged;
+            _editor.FormatSuggested -= OnFormatSuggested;
         }
 
         _editor = editor;
         if (_editor is not null)
         {
             _editor.PropertyChanged += OnEditorPropertyChanged;
+            _editor.FormatSuggested += OnFormatSuggested;
         }
+    }
+
+    /// <summary>"Use as format": the area's format field shows with its text selected, ready to adjust (AAAA to AAAU).</summary>
+    private void OnFormatSuggested(object? sender, AreaViewModel area) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => FocusFormatOf(area), Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>Focuses the format field of <paramref name="area"/> and selects its text (tests call it directly).</summary>
+    internal TextBox? FocusFormatOf(AreaViewModel area)
+    {
+        if (AreaList.ContainerFromItem(area) is not Control container)
+        {
+            return null;
+        }
+
+        container.BringIntoView();
+        var box = container.GetVisualDescendants().OfType<TextBox>().FirstOrDefault(t => t.Name == "FormatBox");
+        if (box is not null)
+        {
+            box.Focus();
+            box.SelectAll();
+        }
+
+        return box;
     }
 
     /// <summary>Draw area on: the picture takes the keys, so Esc stops drawing.</summary>

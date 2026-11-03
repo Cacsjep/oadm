@@ -35,6 +35,9 @@ public static class OcrTexts
 
     public const string NoFormat = "No format";
 
+    /// <summary>The results' link: the read text becomes the area's format.</summary>
+    public const string UseAsFormat = "Use as format";
+
     public const string AnyText = "Any text";
 
     public const string Format = "Format";

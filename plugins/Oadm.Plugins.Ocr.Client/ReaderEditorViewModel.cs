@@ -519,6 +519,28 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
+    /// <summary>Raised after "Use as format": the view selects the area's format field so the user can adjust it.</summary>
+    public event EventHandler<AreaViewModel>? FormatSuggested;
+
+    /// <summary>
+    /// "Use as format" on a result row: the row's text becomes its area's format (<see cref="Matching.TextFormat.FromText"/>),
+    /// the area switches to Format and is selected; the reader is Not saved like after any edit.
+    /// </summary>
+    [RelayCommand]
+    private void UseAsFormat(ResultRow? row)
+    {
+        if (!MayChange || row is not { CanUseAsFormat: true }
+            || Areas.FirstOrDefault(a => string.Equals(a.Name.Trim(), row.Area, StringComparison.OrdinalIgnoreCase)) is not { } area)
+        {
+            return;
+        }
+
+        area.FormatText = Matching.TextFormat.FromText(row.Text);
+        area.IsFormat = true;
+        SelectedArea = area;
+        FormatSuggested?.Invoke(this, area);
+    }
+
     [RelayCommand]
     private void RemoveArea(AreaViewModel? area)
     {
@@ -924,7 +946,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             var detail = details?.FirstOrDefault(d => d.Area == area.Area);
             var hasFormat = formats.TryGetValue(area.Area, out var isFormat) && isFormat;
             IImage? cut = cutOuts is not null && cutOuts.TryGetValue(area.Area, out var served) ? served : null;
-            rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null));
+            rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null, MayChange));
         }
 
         Results.ReplaceAll(rows);

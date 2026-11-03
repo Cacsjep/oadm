@@ -128,6 +128,10 @@ Per area: **Any text** (default) or **Format**.
 - The page shows the matched text's cut-out picture next to its value (in memory only, like the frames).
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
 - The page's field hint: "# digit, A letter, * letter or digit".
+- **Use as format** (a link in a result row's Text, change right only, hidden without text): the read text becomes the
+  area's format (`TextFormat.FromText` in the server part, shared by both: a digit `#`, a letter, umlauts too, `A`, the
+  rest as written; "MSKU 123456 7" gives "AAAA ###### #"), the area switches to Format and is selected with its format
+  field focused and selected to adjust (AAAA to AAAU); Not saved like any edit; the usual format check applies.
 
 ### Runtime safety
 

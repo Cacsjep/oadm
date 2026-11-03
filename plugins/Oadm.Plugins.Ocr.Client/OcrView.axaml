@@ -136,6 +136,9 @@
                                    VerticalAlignment="Center" />
                             <TextBlock Classes="mono" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
                           </StackPanel>
+                          <Button Classes="link" HorizontalAlignment="Left" Content="{x:Static vm:ResultRow.UseAsFormatText}" IsVisible="{Binding CanUseAsFormat}"
+                                  ToolTip.Tip="Turn this text into the area's format" CommandParameter="{Binding}"
+                                  Command="{Binding $parent[DataGrid].((vm:ReaderEditorViewModel)DataContext).UseAsFormatCommand}" />
                           <ui:StatusChip Text="{x:Static vm:ResultRow.TooSmallText}" IsWarning="True" MaxLines="2" IsVisible="{Binding TooSmall}" />
                         </StackPanel>
                       </DataTemplate>
@@ -234,7 +237,7 @@
                             <RadioButton Content="Format" IsChecked="{Binding IsFormat}" />
                           </StackPanel>
                           <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Hint="{x:Static vm:AreaViewModel.FormatHint}" IsVisible="{Binding IsFormat}">
-                            <TextBox Classes="mono" Text="{Binding FormatText}" PlaceholderText="AAAU ###### #" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}" />
+                            <TextBox Name="FormatBox" Classes="mono" Text="{Binding FormatText}" PlaceholderText="AAAU ###### #" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}" />
                           </ui:FormField>
                         </StackPanel>
                       </DataTemplate>
