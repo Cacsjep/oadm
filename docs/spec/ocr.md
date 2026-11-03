@@ -217,11 +217,12 @@ Per area: **Any text** (default) or **Format**.
     saved like any edit, the preview and the live video follow); Cancel changes nothing. Below the button a one-line
     summary in secondary text, "View area 1 · 1920x1080 · 4 fps" (no rate for On action); a refusal of the server for the
     video source, the resolution or the frame rate shows in the summary's place and, in the dialog, below its field.
-  - **Areas panel**: header Areas and **New** (flat command button, plus icon; it starts drawing on the video; tooltip
-    "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. One header row (Area,
-    Mode, Format), then one row per area: the name as plain text (trimmed, the whole name as tooltip; a refusal of the
-    name or the box below it) | Mode | Format | Rename | delete (columns 48, 96, `*`, 28, 28, the same in the header and the
-    rows). Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
+  - **Name and Mode** side by side (decision 2026-11-03): the reader's name, and Mode as a select (Watching, On action).
+    No status line under the video: the reader's state is in the reader list.
+  - **Areas panel**: header Areas left and **New** at the right edge (flat command button, plus icon; it starts drawing on
+    the video; tooltip "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. Each
+    area in two lines (decision 2026-11-03): the name as plain text (trimmed, the whole name as tooltip; a refusal of the
+    name or the box below it) with Rename and delete at the right; below it, indented, Mode and Format. Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
     typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format syntax as its
     tooltip; errors directly below the field. **Rename** (icon only, tag icon, tooltip "Rename") opens a small dialog
     (single operation, one Name field: required, unique in the reader, at most 64 characters, the error below it; Rename

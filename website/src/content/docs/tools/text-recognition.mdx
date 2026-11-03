@@ -37,18 +37,19 @@ A reader is one camera, one video source and up to 8 areas around the texts you 
 
 <Steps>
 
-1. Click **New** and choose the camera.
-2. Enter a **Name**, for example `Gate 2 containers`.
-3. Choose the **Video source** and the **Resolution**. The default is 1920x1080 or the largest below it. Small text needs
-   pixels: choose a higher resolution before you draw larger areas.
-4. Choose the **Mode**: **Watching** reads all the time, **On action** reads one picture when an event rule runs the
-   action **Read text**. See [Watching or On action](#watching-or-on-action).
-5. While Watching, choose the **Frames per second**.
-6. Under **Areas** click **New** and drag a rectangle over the text on the video. Draw one area around each text you
-   want to read.
-7. In the area's row enter a **Name** (`Container number`), choose **Any text** or **Format**, and enter the format if
-   you chose one. See [Formats](#formats).
-8. Watch the results below the video. When they are right, click **Save**.
+1. Click **New** and choose the camera. A reader keeps its camera; for another camera create another reader.
+2. Enter a **Name**, for example `Gate 2 containers`, and choose the **Mode**: **Watching** reads all the time,
+   **On action** reads one picture when an event rule runs the action **Read text**. See
+   [Watching or On action](#watching-or-on-action).
+3. Click **Stream settings** to choose the **Video source**, the **Resolution** and, while Watching, the **Frames per
+   second**. The line below the button shows them, for example `View area 1 · 1920x1080 · 2 fps`. The default resolution
+   is 1920x1080 or the largest below it. Small text needs pixels: choose a higher resolution before you draw larger areas.
+4. Under **Areas** click **New** and drag a rectangle over the text on the video. Draw one area around each text you
+   want to read. Areas are named **Area 1**, **Area 2** and so on; the tag button renames one, for example to
+   `Container number`. Rules see this name.
+5. Below the area's name choose **Any text** or **Format**, and enter the format if you chose one. See
+   [Formats](#formats).
+6. Watch the results below the video. When they are right, click **Save**.
 
 </Steps>
 
@@ -64,7 +65,8 @@ area**.
 - Click an area on the video or its row to select it. Handles appear at its corners and edges.
 - Drag inside the area to move it, drag a handle to resize it. **Esc** cancels the drag.
 - The arrow keys move the selected area a little, with **Shift** more.
-- The bin in the area's row deletes it.
+- The tag button next to an area's name renames it, the bin deletes it. A new area takes the lowest free number, and
+  the others keep theirs.
 - At most 8 areas per reader. Areas stay in place when you change the resolution.
 
 Two ways to place them:

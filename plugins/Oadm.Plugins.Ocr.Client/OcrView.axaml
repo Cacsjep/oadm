@@ -79,8 +79,9 @@
               IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).HasEditor, FallbackValue=False}"
               ColumnDefinitions="*,320" ColumnSpacing="16">
 
-          <!-- The live video with the areas and the lines over it; the mode, the latest reading, its note and the results below it. -->
-          <Grid Grid.Column="0" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
+          <!-- The live video with the areas and the lines over it; the reading's note and the results below it (the reader's
+               state is in the reader list, not repeated here). -->
+          <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" RowSpacing="8">
             <Panel x:Name="VideoPanel">
               <Border Classes="liveViewSurface" />
               <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding HasLiveVideo}" />
@@ -88,14 +89,10 @@
                                  IsDrawing="{Binding IsDrawing}" ShowStartHint="{Binding ShowStartHint}" CanEdit="{Binding MayChange}"
                                  Version="{Binding OverlayVersion}" />
             </Panel>
-            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="8">
-              <ui:StatusChip Text="{Binding ModeChipText}" IsOk="{Binding IsModeOk}" IsError="{Binding IsModeError}" VerticalAlignment="Center" />
-              <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding PictureText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            </Grid>
-            <ui:StatusChip Grid.Row="2" HorizontalAlignment="Left" MaxLines="2" IsWarning="True" Text="{Binding ReadingNote}" IsVisible="{Binding HasReadingNote}" />
+            <ui:StatusChip Grid.Row="1" HorizontalAlignment="Left" MaxLines="2" IsWarning="True" Text="{Binding ReadingNote}" IsVisible="{Binding HasReadingNote}" />
 
             <!-- The results of the latest reading, one row per area, below the video. -->
-            <Panel Grid.Row="3">
+            <Panel Grid.Row="2">
               <DataGrid x:Name="ResultsGrid" Classes="wrapRows" ItemsSource="{Binding Results}" IsReadOnly="True" CanUserSortColumns="False"
                         CanUserReorderColumns="False" CanUserResizeColumns="True" SelectionMode="Single" VerticalAlignment="Top"
                         HeadersVisibility="Column">
@@ -143,15 +140,15 @@
 
             <!-- The form: Name, Mode, Stream settings (their dialog) with the summary or its error below. -->
             <StackPanel Grid.Row="0" Spacing="8" IsEnabled="{Binding MayChange}">
-              <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
-                <TextBox Text="{Binding Name}" MaxLength="{x:Static vm:AreaViewModel.MaxNameLength}" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" LabelAbove="True" Label="Mode" Error="{Binding ModeError}">
-                <StackPanel Classes="inputRow">
-                  <RadioButton Content="Watching" IsChecked="{Binding IsWatching}" />
-                  <RadioButton Content="On action" IsChecked="{Binding IsOnAction}" />
-                </StackPanel>
-              </ui:FormField>
+              <Grid ColumnDefinitions="*,120" ColumnSpacing="8">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="Name" VerticalAlignment="Top">
+                  <TextBox Text="{Binding Name}" MaxLength="{x:Static vm:AreaViewModel.MaxNameLength}" />
+                </ui:FormField>
+                <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="Mode" Error="{Binding ModeError}" VerticalAlignment="Top">
+                  <ComboBox x:Name="ReaderModeBox" ItemsSource="{x:Static vm:ReaderEditorViewModel.ModeChoices}" SelectedItem="{Binding ModeChoice}"
+                            HorizontalAlignment="Stretch" />
+                </ui:FormField>
+              </Grid>
               <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Hint="{Binding StreamSummary}" Error="{Binding StreamError}">
                 <Button x:Name="StreamButton" Classes="secondary" HorizontalAlignment="Left" Command="{Binding EditStreamCommand}">
                   <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{x:Static vm:OcrTexts.StreamSettings}" />
@@ -159,53 +156,51 @@
               </ui:FormField>
             </StackPanel>
 
-            <!-- The Areas header: New (it starts drawing on the video), then the column names of the rows. -->
+            <!-- The Areas header: the title left, New (it starts drawing on the video) at the right edge. -->
             <StackPanel Grid.Row="1" Spacing="6">
-              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <TextBlock Classes="cardTitle subsection" Text="Areas" VerticalAlignment="Center" />
-                <ui:ToolbarButton Grid.Column="1" x:Name="NewAreaButton" IconKey="add" Text="New" HorizontalAlignment="Left"
+                <ui:ToolbarButton Grid.Column="1" x:Name="NewAreaButton" IconKey="add" Text="New"
                                   Command="{Binding NewAreaCommand}" IsVisible="{Binding MayChange}"
                                   ToolTip.Tip="{Binding NewAreaTip}" ToolTip.ShowOnDisabled="True" />
               </Grid>
               <TextBlock Classes="secondary" Text="{x:Static vm:ReaderEditorViewModel.NoAreasText}" TextWrapping="Wrap" IsVisible="{Binding !HasAreas}" />
-              <!-- Inset like the rows (the accent bar's 3 px and the row's padding). -->
-              <Grid x:Name="AreaHeader" ColumnDefinitions="48,96,*,28,28" ColumnSpacing="4" Margin="8,0" IsVisible="{Binding HasAreas}">
-                <TextBlock Grid.Column="0" Classes="fieldLabel" Text="Area" />
-                <TextBlock Grid.Column="1" Classes="fieldLabel" Text="Mode" />
-                <TextBlock Grid.Column="2" Classes="fieldLabel" Text="Format" />
-              </Grid>
             </StackPanel>
 
-            <!-- At most 8 areas, one row each: name | Mode | Format | rename | delete; the selected area's row softly highlighted.
-                 The rows scroll by themselves, so New above stays in reach. -->
+            <!-- At most 8 areas, two lines each: the name with rename and delete at the right; below it, indented, Mode and Format.
+                 The selected area's row softly highlighted. The rows scroll by themselves, so New above stays in reach. -->
             <ListBox Grid.Row="2" x:Name="AreaList" Classes="areaRows" ItemsSource="{Binding Areas}" SelectedItem="{Binding SelectedArea}" SelectionMode="Single"
                      IsVisible="{Binding HasAreas}" KeyboardNavigation.TabNavigation="Continue">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:AreaViewModel">
-                  <Grid ColumnDefinitions="48,96,*,28,28" ColumnSpacing="4">
-                    <ui:FormField Grid.Column="0" Classes="wide" LabelAbove="True" VerticalAlignment="Top" Error="{Binding NameError}">
-                      <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
-                    </ui:FormField>
-                    <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Top"
-                                  IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                      <ComboBox x:Name="ModeBox" ItemsSource="{x:Static vm:AreaViewModel.Modes}" SelectedItem="{Binding Mode}" />
-                    </ui:FormField>
-                    <ui:FormField Grid.Column="2" Classes="wide" LabelAbove="True" VerticalAlignment="Top"
-                                  IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                      <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}" IsEnabled="{Binding IsFormat}"
-                               PlaceholderText="{Binding FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}"
-                               ToolTip.Tip="{x:Static vm:AreaViewModel.FormatHint}" />
-                    </ui:FormField>
-                    <Button Grid.Column="3" x:Name="RenameButton" Classes="toolbar iconOnly" VerticalAlignment="Top" HorizontalAlignment="Center"
-                            ToolTip.Tip="{x:Static vm:OcrTexts.Rename}" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
-                            CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
-                      <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
-                    </Button>
-                    <Button Grid.Column="4" Classes="toolbar iconOnly" VerticalAlignment="Top" HorizontalAlignment="Center" ToolTip.Tip="Delete area"
-                            IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
-                            CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
-                      <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
-                    </Button>
+                  <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                      <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
+                        <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
+                      </ui:FormField>
+                      <Button Grid.Column="1" x:Name="RenameButton" Classes="toolbar iconOnly" VerticalAlignment="Center"
+                              ToolTip.Tip="{x:Static vm:OcrTexts.Rename}" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
+                              CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
+                      </Button>
+                      <Button Grid.Column="2" Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="Delete area"
+                              IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
+                              CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                    <Grid Grid.Row="1" ColumnDefinitions="104,*" ColumnSpacing="4" Margin="12,0,0,0"
+                          IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                      <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Top">
+                        <ComboBox x:Name="ModeBox" ItemsSource="{x:Static vm:AreaViewModel.Modes}" SelectedItem="{Binding Mode}"
+                                  HorizontalAlignment="Stretch" ToolTip.Tip="Mode" />
+                      </ui:FormField>
+                      <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Top">
+                        <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}" IsEnabled="{Binding IsFormat}"
+                                 PlaceholderText="{Binding FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}"
+                                 ToolTip.Tip="{x:Static vm:AreaViewModel.FormatHint}" />
+                      </ui:FormField>
+                    </Grid>
                   </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>

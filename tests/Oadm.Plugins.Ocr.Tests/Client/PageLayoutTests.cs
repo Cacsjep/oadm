@@ -59,24 +59,28 @@ public sealed class PageLayoutTests
             Assert.Contains("secondary", stream.Classes);
             Assert.Equal(OcrTexts.StreamSettings, stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
             Assert.Equal("View area 1 · 1920x1080 · 1 fps", view.FindControl<FormField>("StreamField")!.Hint);
-            Assert.DoesNotContain(settings.GetVisualDescendants().OfType<ComboBox>(), c => c.IsEffectivelyVisible && c.Name != "ModeBox");
+            Assert.DoesNotContain(settings.GetVisualDescendants().OfType<ComboBox>(), c => c.IsEffectivelyVisible && c.Name is not ("ModeBox" or "ReaderModeBox"));
+            // The reader's mode is a select next to the name (decision 2026-11-03).
+            var readerMode = view.FindControl<ComboBox>("ReaderModeBox")!;
+            Assert.Equal(OcrTexts.Watching, readerMode.SelectedItem);
 
-            // The areas header: New (no count); one header row and one row per area: Name | Mode | Format | delete.
+            // No status line under the video: the reader's state is in the reader list.
+            Assert.DoesNotContain(column.Children.OfType<Grid>(), g => g.Children.OfType<StatusChip>().Any());
+
+            // The areas header: New at the right (no count); one entry per area: the name with Rename and Delete in the first
+            // line, Mode and Format indented in the second.
             var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;
             Assert.Equal("New", newArea.Text);
             Assert.Equal(OcrTexts.NewAreaTip, ToolTip.GetTip(newArea));
-            var header = view.FindControl<Grid>("AreaHeader")!;
-            Assert.Equal(["Area", "Mode", "Format"], header.Children.OfType<TextBlock>().Select(t => t.Text));
+            Assert.Equal(1, Grid.GetColumn(newArea));
             var list = view.FindControl<ListBox>("AreaList")!;
             var editorVm = vm.Editor!;
             Assert.Equal(3, editorVm.Areas.Count);
             foreach (var area in editorVm.Areas)
             {
                 var row = (Control)list.ContainerFromItem(area)!;
-                var grid = row.GetVisualDescendants().OfType<Grid>().First(g => g.ColumnDefinitions.Count == 5);
-                Assert.Equal(header.ColumnDefinitions.Select(c => c.Width), grid.ColumnDefinitions.Select(c => c.Width));
-                var fields = grid.Children.OfType<FormField>().ToList();
-                Assert.All(fields, f => Assert.Null(f.Label)); // the header row names them
+                var fields = row.GetVisualDescendants().OfType<FormField>().ToList();
+                Assert.All(fields, f => Assert.Null(f.Label));
                 Assert.Equal(area.Name, Assert.IsType<TextBlock>(fields[0].Input).Text); // the name as plain text, Rename changes it
                 Assert.DoesNotContain(row.GetVisualDescendants().OfType<TextBox>(), t => t.TemplatedParent is null && t.Name != "FormatBox");
                 Assert.Equal(OcrTexts.Rename, ToolTip.GetTip(row.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "RenameButton")));

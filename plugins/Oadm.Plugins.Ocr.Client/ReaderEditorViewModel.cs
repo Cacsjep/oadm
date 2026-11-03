@@ -167,8 +167,18 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial bool IsLoadingCamera { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction))]
+    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction), nameof(ModeChoice))]
     public partial ReaderMode Mode { get; set; }
+
+    /// <summary>The Mode select's choices, in this order.</summary>
+    public static IReadOnlyList<string> ModeChoices { get; } = [OcrTexts.Watching, OcrTexts.OnAction];
+
+    /// <summary>The Mode select: "Watching" or "On action".</summary>
+    public string ModeChoice
+    {
+        get => IsOnAction ? OcrTexts.OnAction : OcrTexts.Watching;
+        set => Mode = value == OcrTexts.OnAction ? ReaderMode.OnAction : ReaderMode.Watching;
+    }
 
     /// <summary>On action: reads only when an event rule runs Read text.</summary>
     public bool IsOnAction
