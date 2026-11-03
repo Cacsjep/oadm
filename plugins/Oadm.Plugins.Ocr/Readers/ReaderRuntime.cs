@@ -200,7 +200,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         try
         {
             var jpeg = await _frames.SingleAsync(FrameRequest.Of(reader), ct).ConfigureAwait(false);
-            var reading = await _maker.ReadAsync(reader, jpeg, ct).ConfigureAwait(false);
+            var reading = await _maker.ReadAsync(reader, jpeg, reuseSource: null, ct).ConfigureAwait(false); // the action: every area read
             Keep(reader, reading);
             for (var i = 0; i < reading.Reading.Areas.Count; i++)
             {
@@ -370,7 +370,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
     /// <summary>A saved watching reader: votes per area and publishes its events (<see cref="LoopAsync"/>).</summary>
     private Task WatchAsync(Reader reader, CancellationToken ct) =>
-        LoopAsync(reader, () => reader, vote: true, (r, reading) =>
+        LoopAsync(reader, () => reader, vote: true, source: reader.Id, (r, reading) =>
         {
             _stats.CountReading(r.Id);
             Keep(r, reading);
@@ -381,9 +381,11 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// reads the slot's frame, one at a time, with the reader <paramref name="current"/> gives at that moment (a preview takes
     /// the page's new areas without opening the stream again). With <paramref name="vote"/> (a saved watching reader) the
     /// areas vote and publish their events; without (a preview) every frame's own result is kept and nothing is published to
-    /// the rules. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped.
+    /// the rules. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped. Areas whose
+    /// pixels have not changed since the last reading of <paramref name="source"/> give that reading again (docs/spec/ocr.md
+    /// "Unchanged areas").
     /// </summary>
-    private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, Action<Reader, ReaderReading> keep, ReaderSlot? slot, CancellationToken ct)
+    private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, string source, Action<Reader, ReaderReading> keep, ReaderSlot? slot, CancellationToken ct)
     {
         var watches = vote ? stream.Areas.Select(_ => new AreaWatch()).ToArray() : null;
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
@@ -406,7 +408,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 var reader = current();
                 try
                 {
-                    var read = await _maker!.ReadAsync(reader, frame, ct).ConfigureAwait(false);
+                    var read = await _maker!.ReadAsync(reader, frame, source, ct).ConfigureAwait(false);
                     keep(reader, watches is null ? read : Vote(reader, read, watches));
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)

@@ -40,6 +40,7 @@ internal sealed class ReaderStats
     private readonly ConcurrentDictionary<string, ReaderCounter> _readers = new(StringComparer.Ordinal);
     private readonly Queue<Snapshot> _samples = new();
     private long _pictures;
+    private long _reused;
     private long _readTicks;
     private DateTimeOffset? _highSince;
 
@@ -59,6 +60,12 @@ internal sealed class ReaderStats
         Interlocked.Increment(ref _pictures);
         Interlocked.Add(ref _readTicks, readTime.Ticks);
     }
+
+    /// <summary>
+    /// A watching reader or preview gave every area's last reading again: no model ran. Counted apart from
+    /// <see cref="CountPicture"/>, so pictures per second and the reading time stay the real readings.
+    /// </summary>
+    public void CountReused() => Interlocked.Increment(ref _reused);
 
     /// <summary>A watching reader's loop started (its rate counts from now).</summary>
     public void ReaderStarted(string readerId) => _readers[readerId] = new ReaderCounter(_time.GetUtcNow());
@@ -88,6 +95,7 @@ internal sealed class ReaderStats
         var sample = new Snapshot(
             now,
             Interlocked.Read(ref _pictures),
+            Interlocked.Read(ref _reused),
             Interlocked.Read(ref _readTicks),
             load?.BusyTime ?? TimeSpan.Zero,
             Math.Max(1, load?.Capacity ?? 1),
@@ -159,6 +167,7 @@ internal sealed class ReaderStats
         }
 
         var pictures = newest.Pictures - oldest.Pictures;
+        var reused = newest.Reused - oldest.Reused;
         var load = (newest.Busy - oldest.Busy).TotalSeconds / (seconds * newest.Capacity) * 100;
         var cpu = (newest.ProcessorTime - oldest.ProcessorTime).TotalSeconds / (seconds * _cores) * 100;
         return new StatsFigures(
@@ -167,7 +176,10 @@ internal sealed class ReaderStats
             pictures > 0 ? TimeSpan.FromTicks(newest.ReadTicks - oldest.ReadTicks).TotalMilliseconds / pictures : 0,
             Math.Clamp(cpu, 0, 100),
             false,
-            new Dictionary<string, (double, bool)>());
+            new Dictionary<string, (double, bool)>())
+        {
+            ReusedPerSecond = reused / seconds,
+        };
     }
 
     private TimeSpan SafeProcessorTime()
@@ -222,6 +234,7 @@ internal sealed class ReaderStats
     private sealed record Snapshot(
         DateTimeOffset Time,
         long Pictures,
+        long Reused,
         long ReadTicks,
         TimeSpan Busy,
         int Capacity,
@@ -242,4 +255,8 @@ internal sealed record StatsFigures(
     double AverageReadMs,
     double ServerCpu,
     bool Overloaded,
-    IReadOnlyDictionary<string, (double Reads, bool Judged)> Rates);
+    IReadOnlyDictionary<string, (double Reads, bool Judged)> Rates)
+{
+    /// <summary>Pictures per second whose areas were all unchanged (their last reading given again, no model ran).</summary>
+    public double ReusedPerSecond { get; init; }
+}

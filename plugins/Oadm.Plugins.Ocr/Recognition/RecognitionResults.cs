@@ -62,11 +62,15 @@ public sealed record RecognitionResult(Resolution Resolution, IReadOnlyList<Area
     /// <summary>More than <see cref="Model.OcrLimits.MaxTextBoxes"/> texts were found; only that many (the strongest) were read.</summary>
     public bool TooManyTexts { get; init; }
 
+    /// <summary>Areas whose last reading was given again (<see cref="RecognitionOptions.ReuseUnchanged"/>): no model ran for them.</summary>
+    public int ReusedAreas { get; init; }
+
     /// <summary>The model type of <see cref="ITextRecognizer"/>.</summary>
     public RecognizedPicture ToPicture() => new(Resolution, Areas.Select(a => (IReadOnlyList<TextLine>)a.Lines.Select(l => l.Line).ToList()).ToList())
     {
         TooSmallPerArea = [.. Areas.Select(a => a.Hint is not null)],
         TooManyTexts = TooManyTexts,
+        ReusedAreas = ReusedAreas,
     };
 }
 

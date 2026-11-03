@@ -253,6 +253,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         return new RecognitionResult(new Resolution(picture.Width, picture.Height), [.. results.Select(r => r!)])
         {
             TooManyTexts = tooMany,
+            ReusedAreas = areas.Count - changed.Count,
         };
     }
 

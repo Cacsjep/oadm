@@ -96,14 +96,15 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 8. **Second reading of a fixed-place area**: an area with a format whose lines gave no match, a strip (at least 1.5
    times wider than tall, up to 960 px), is read once more as one line; the text finder can miss a part of a value (a
    dark drum of a meter), the whole strip often still reads. That reading counts only when its format match holds.
-9. **Unchanged areas** (watching only, `RecognitionOptions.ReuseUnchanged` with the reader as `Source`; never the
-   action's single reading): an area whose pixels have barely changed since its last real reading gives that reading
+9. **Unchanged areas** (watching readers and previews: `RecognitionOptions.ReuseUnchanged` with the reader's id or the
+   preview's own id as `Source`; never the action's single reading): an area whose pixels have barely changed since its last real reading gives that reading
    again without running the models. The print is the mean brightness of cells of about 8 x 8 px (at most 48 x 48
    cells); unchanged means no cell moved by more than 6 of 255 levels and the mean change is at most 1.5 (a changed
    digit moves its cells by tens of levels, compression noise by about one). Compared with the print of the last real
    reading, so a slow drift ends in a new reading too; after 10 uses in a row the area is read anew anyway. Only the
    changed areas of a picture are read. A reading cut at 30 text boxes is never kept (the next picture reads again and
-   carries the note). Prints and readings live in memory only (at most 512 areas).
+   carries the note). Prints and readings live in memory only (at most 512 areas). A picture whose areas were all
+   unchanged runs no model and counts in the runtime stats as "Unchanged pictures per second", not as a picture read.
 
 Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the output read where it lies). On the CPU
 the lines go to the reader in pairs of similar width, each pair a call of its own, so the lines of one picture spread
@@ -281,15 +282,16 @@ after the start). All time through the plugin's `TimeProvider`.
   holds its slot; on a graphics card it is 1, because the recognizer runs its model calls there one at a time on one
   shared set (the time a call holds the card counts). So 100 % means no more model calls fit: on the CPU every worker,
   on a graphics card the card itself never idles.
-- **Numbers**: pictures per second (all readers, previews included); the average reading time (ms per picture, the
-  recognizer's call per picture); readers watching "3 of 50" (the limit of the CPU or the graphics card); previews "1 of
+- **Numbers**: pictures per second (all readers, previews included; pictures whose areas were all unchanged are not
+  counted here); unchanged pictures per second (their last reading given again, no model ran: `ReaderStats.CountReused`,
+  JSON `unchangedPerSecond`); the average reading time (ms per picture read, the recognizer's call per picture); readers watching "3 of 50" (the limit of the CPU or the graphics card); previews "1 of
   8"; camera streams open (watching readers and previews with a stream of their own), per site "Harbour 2 of 4" when
   sites exist; the OADM server process's CPU ("Server CPU": `Environment.CpuUsage.TotalTime` growth divided by the window
   times the processor count, cross-platform).
 - **Per reader**: each watching reader's pictures per second over the last 10 s; below 90 % of its rate its list chip
   turns orange: "Watching · 8 fps (reads 5.1)".
 - `getStats` `{}` → the stats (permission "View text recognition"):
-  `{"state":"Busy","stateText":"Busy: 1 reader reads slower than set","load":42.5,"picturesPerSecond":12.3,"averageReadMs":85,"watching":3,"maxWatching":50,"previews":1,"maxPreviews":8,"streams":4,"sites":[{"name":"Harbour","streams":2,"max":4}],"serverCpu":23.1,"readers":[{"readerId":"9f3c...","fps":8,"reads":5.1,"slow":true}]}`.
+  `{"state":"Busy","stateText":"Busy: 1 reader reads slower than set","load":42.5,"picturesPerSecond":12.3,"unchangedPerSecond":4.5,"averageReadMs":85,"watching":3,"maxWatching":50,"previews":1,"maxPreviews":8,"streams":4,"sites":[{"name":"Harbour","streams":2,"max":4}],"serverCpu":23.1,"readers":[{"readerId":"9f3c...","fps":8,"reads":5.1,"slow":true}]}`.
   Each call keeps the live event `stats` (the same JSON every 2 s) on for the caller's scope for 30 s; the page calls it
   on open and every 10 s, so the event runs only while a page is open.
 - Device groups: a group user sees the counts, sites and readers of their own group only, plus the server-wide load, CPU,

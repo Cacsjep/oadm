@@ -254,7 +254,7 @@ internal sealed partial class ReaderRuntime
         preview.SiteName = camera?.SiteName;
         preview.Problem = null;
         preview.Loop = new WatchLoop(reader, stop, Task.Run(
-            () => LoopAsync(reader, () => preview.Reader, vote: false, (_, reading) => KeepPreview(preview, reading), slot: null, stop.Token),
+            () => LoopAsync(reader, () => preview.Reader, vote: false, source: "preview:" + preview.Id, (_, reading) => KeepPreview(preview, reading), slot: null, stop.Token),
             CancellationToken.None));
     }
 

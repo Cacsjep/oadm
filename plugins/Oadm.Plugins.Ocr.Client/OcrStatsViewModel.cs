@@ -40,6 +40,10 @@ public sealed partial class OcrStatsViewModel : ObservableObject
     [ObservableProperty]
     public partial string PicturesText { get; private set; } = string.Empty;
 
+    /// <summary>"4.5": pictures whose areas had not changed (their last reading given again).</summary>
+    [ObservableProperty]
+    public partial string UnchangedText { get; private set; } = string.Empty;
+
     /// <summary>"85 ms".</summary>
     [ObservableProperty]
     public partial string ReadTimeText { get; private set; } = string.Empty;
@@ -72,6 +76,7 @@ public sealed partial class OcrStatsViewModel : ObservableObject
         Load = Math.Clamp(stats.Load, 0, 100);
         LoadText = OcrTexts.Percent(stats.Load);
         PicturesText = OcrTexts.Number(stats.PicturesPerSecond);
+        UnchangedText = OcrTexts.Number(stats.UnchangedPerSecond);
         ReadTimeText = OcrTexts.Milliseconds(stats.AverageReadMs);
         WatchingText = OcrTexts.OfLimit(stats.Watching, stats.MaxWatching);
         PreviewsText = OcrTexts.OfLimit(stats.Previews, stats.MaxPreviews);

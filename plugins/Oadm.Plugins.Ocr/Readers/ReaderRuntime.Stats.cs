@@ -110,6 +110,7 @@ internal sealed partial class ReaderRuntime
             StateText = text,
             Load = Math.Round(figures.Load, 1),
             PicturesPerSecond = Math.Round(figures.PicturesPerSecond, 1),
+            UnchangedPerSecond = Math.Round(figures.ReusedPerSecond, 1),
             AverageReadMs = Math.Round(figures.AverageReadMs),
             Watching = loops.Count,
             MaxWatching = ReaderRules.MaxWatching(OnGpu),
