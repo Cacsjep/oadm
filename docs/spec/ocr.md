@@ -375,36 +375,62 @@ often, from worse pictures, and never a wrong value reported as sure.
     never freed while it runs; memory pattern off and sequential execution as the DirectML provider asks;
   - CUDA: one session per model takes every size; its memory pool grows by what a call needs
     (`arena_extend_strategy=kSameAsRequested`, not the next power of two).
-  - Expected budget (estimated from the model sizes, to be measured): weights per session 88 MB (text finder), 8 MB
-    (reader), 7 MB (angle model); the text finder's buffers about 0.2 to 0.4 GB per 1024 x 1024 picture of a call. A fixed
-    area (256 to 512 px): about 0.15 GB per text finder session; Search over full HD (6 tiles of 768 x 768): about 1 to
-    1.5 GB; reader and angle sessions together below 0.5 GB. Typical: 1 to 2 GB; worst case (3 text finder sessions of 6
-    tiles of 1024 x 1024): about 5 GB.
+  - Measured (2026-11-03, development PC, RTX 5070 Ti 16 GB, DirectML, the desktop holds 1.5 GB): one text finder
+    session holds about 1.4 KB per input pixel of its call, plus about 0.2 GB:
+
+    | Text finder input | On the card |
+    |---|---|
+    | 1 x 256 x 256 (a small fixed area) | 0.3 GB |
+    | 1 x 512 x 512 | 0.65 GB |
+    | 1 x 768 x 768 | 1.3 GB |
+    | 1 x 1024 x 1024 | 1.7 GB |
+    | 6 x 512 x 512 | 2.4 GB |
+    | 6 x 768 x 768 (Search over full HD) | 5.0 GB |
+    | 2, 4, 6 x 1024 x 1024 (Search over more than full HD) | 3.1, 6.0, 8.6 GB |
+
+    A session is made in 0.5 to 1 s. The benchmark's readers (fixed place, 4 areas) keep 0.7 to 0.9 GB on the card with
+    reader and angle sessions; with a full HD Search 5.7 GB (steady), 7.3 GB at the peak; the accuracy set (69 pictures
+    of many sizes) 7.3 GB at the peak. The cap freed no session while the same cases repeated (2 when Search came in),
+    26 while the accuracy set ran (many picture sizes, 17.6 s for 69 pictures). All sessions were freed 2.5 minutes after
+    the last reading, the card back at the desktop's 1.5 GB with the process still running.
+  - Open: the cap counts sessions, not memory. A Search over a picture larger than full HD makes 1024 x 1024 tiles (QHD:
+    one call of 6, 8.6 GB; 4K: 15 tiles in calls of 6, 6 and 4, 8.6 + 6.0 GB), so one 4K Search reader alone fills a
+    16 GB card, and 3 text finder sessions of Search sizes do too (the driver resets, TDR). Fewer sessions do not fix it
+    (1: a session made anew at every change between a fixed area and a Search; 2: a 4K Search still 14.6 GB). Needed: a
+    budget by input pixels (and fewer tiles per call at 1024).
 - On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
   recognition together. Limits on a GPU: frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
   CPU; 20 fixed-place readers at 4 frames per second on the GPU.
-- Measured (2026-11-03, development PC, 24 cores, RTX 5070 Ti, `RecognitionBenchmarkTests`, Perf; a full HD picture of
-  the coffee box, ms per picture, one after the other; 20 readers: all at once, ms per picture in all):
+- Measured (2026-11-03, development PC, 24 cores, RTX 5070 Ti with nothing else on the card, `RecognitionBenchmarkTests`,
+  Perf; a full HD picture of the coffee box, ms per picture, one after the other; 20 readers: all at once, ms per picture
+  in all):
 
-  | Case | CPU before | CPU now | DirectML (before) |
+  | Case | CPU before | CPU now | DirectML |
   |---|---|---|---|
-  | Fixed place, 1 area | 53 | 31 | 47 |
-  | Reader with 4 areas | 225 | 87 | 94 |
-  | Search, full HD | 643 | 546 | 883 * |
-  | 20 fixed-place readers at once | 16.6 (60 per second) | 10.8 (92 per second) | 25.5 (39 per second) |
-  | Fixed place, unchanged (watching) | 53 | 6 | |
-  | 4 areas, unchanged (watching) | 225 | 16 | |
-  | 20 readers, unchanged (watching) | 16.6 | 1.0 | |
+  | Fixed place, 1 area | 53 | 28 | 26 |
+  | Reader with 4 areas | 225 | 78 | 75 |
+  | Search, full HD | 643 | 471 | 207 (4.8 per second) |
+  | 20 fixed-place readers at once | 16.6 (60 per second) | 10.1 (99 per second) | 14.2 (71 per second) |
+  | Fixed place, unchanged (watching) | 53 | 5 | 5 |
+  | 4 areas, unchanged (watching) | 225 | 13 | 13 |
+  | 20 readers, unchanged (watching) | 16.6 | 1.0 | 1.4 |
 
+  On the graphics card per stage (ms per picture): Search: text finder 130, reader 29, decode 15; fixed place: text
+  finder 11, reader 8. `RecognitionSpeedTests` on the card: Search 211 ms, fixed place 27 ms, 20 readers 56 per second.
   Where the time goes now (CPU, fixed place): decode 2.5, text finder 10, reader 15 ms. Kept: the partial decode (fixed
   place 53 to 38 ms), the angle model only for unsure lines (38 to 30 ms, a reader with 4 areas 197 to 147), the lines
   in pairs (4 areas 147 to 87), unchanged areas, rented buffers (no large objects per picture). Tried and left out:
   ONNX Runtime threads that sleep instead of spinning (20 readers 97 to 76 per second), batches of 1 or 4 lines (no
   better than 2), reusing the line boxes of a changed area (a new line in a small part of the area would be missed
-  until the next search). * DirectML was measured while another OADM server held 10 GB of the card; with the card
-  that full the measurement made the driver reset (TDR), so the DirectML numbers after these changes are open.
-  The CPU goal holds; the GPU's Search goal and 20 readers at 4 per second are still open on the GPU.
+  until the next search). Earlier DirectML runs while another OADM server held 10 GB of the card made the driver reset
+  (TDR); with the card free no reset.
+  The CPU goal holds. On the graphics card the Search goal (10 per second) and 20 readers at 4 per second (80 per
+  second) are still open: Search is 2.3 times faster than the CPU, fixed areas about as fast, and 20 readers at once
+  slower than on the 24-core CPU (the card's calls run one at a time).
+- Accuracy set on the graphics card (server text finder, 2026-11-03): as the CPU baseline in every group except
+  camera-box 75 % exact (CPU 100 %; "NESPRESSO® COMPATIBLE" read without the ®, "DECAF-FEINATO" without the hyphen),
+  hard-receipt-search 50 % (CPU 37.5 %), hard-sign 66.7 % with 4.8 % character errors (CPU 3.2 %).
 
 ## Packaging and dependencies
 

@@ -43,7 +43,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Recognition/Picture.cs` | Partial JPEG decode, cut-outs, model inputs |
 | `Recognition/UnchangedAreas.cs` | The print of each area and its last reading, used again while it barely changes |
 | `Recognition/ModelRunner.cs`, `ModelSet.cs`, `ShapeSessions.cs` | CPU workers (idle sets freed), the graphics card runner, the sessions per input size |
-| `Recognition/GpuSessionBudget.cs` | The graphics card's sessions: at most 6 over all models (3 of the text finder), least recently used out, idle 2 minutes freed |
+| `Recognition/GpuSessionBudget.cs` | The graphics card's sessions: at most 6 over all models (3 of the text finder), least recently used out, idle 2 minutes freed. Measured 2026-11-03 (RTX 5070 Ti): a text finder session holds about 1.4 KB per input pixel (full HD Search 5.0 GB, 6 tiles of 1024 x 1024 8.6 GB); a cap by memory is open (spec "GPU") |
 | `Recognition/StageClock.cs` | Time per stage for the speed measurements |
 | `Recognition/PictureCutter.cs` | The value's cut-out for the page |
 | `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder`, `FrameVote` |
