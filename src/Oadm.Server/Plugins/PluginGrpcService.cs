@@ -21,10 +21,13 @@ namespace Oadm.Server.Plugins;
 /// (<see cref="PluginActivation"/>). Invoke, Download and Watch run with the caller's call (<see cref="PluginCaller"/>: the
 /// user and the user's device view, docs/spec/device-scope.md, Plugins): a user with a device group reaches only packages
 /// built for the call context, never the methods a plugin keeps for users with all devices, and receives only the events
-/// whose audience covers the user.
+/// whose audience covers the user. The add-on methods (docs/spec/add-ons.md) are in src/Oadm.Server/AddOns.
 /// </summary>
-public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views) : Proto.PluginService.PluginServiceBase
+public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, Core.Plugins.AddOns.IAddOnInstaller addOns) : Proto.PluginService.PluginServiceBase
 {
+    /// <summary>The add-on installer (the add-on methods: src/Oadm.Server/AddOns/PluginGrpcService.AddOns.cs).</summary>
+    private readonly Core.Plugins.AddOns.IAddOnInstaller _addOns = addOns;
+
     /// <summary>The caller of the call with the caller's device view.</summary>
     private async Task<PluginCaller> CallerAsync(ServerCallContext context) =>
         new(Auth.AuthInterceptor.CallerOf(context), await views.ForAsync(context).ConfigureAwait(false));

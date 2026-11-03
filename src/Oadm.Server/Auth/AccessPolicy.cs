@@ -183,6 +183,12 @@ public static class AccessPolicy
         ["/oadm.v1.PluginService/SetPackageEnabled"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/SetPackageLicense"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/RemovePackageLicense"] = AccessRule.Admin,
+        // Add-ons (docs/spec/add-ons.md): installing and removing is turning plugins on and off; the list and the client part
+        // are for every client (its pages need the client part).
+        ["/oadm.v1.PluginService/ListAddOns"] = AccessRule.SignedIn,
+        ["/oadm.v1.PluginService/InstallAddOn"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/RemoveAddOn"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/GetAddOnClientPart"] = AccessRule.SignedIn,
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).
         ["/oadm.v1.SettingsService/Get"] = AccessRule.SignedIn,

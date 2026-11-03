@@ -389,6 +389,8 @@ public static partial class OadmServerHost
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
         services.AddSingleton<PluginLicenses>();
+        // Add-ons (docs/spec/add-ons.md): the real installer replaces this one (TryAdd: a test or the host may register its own).
+        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnInstaller, Core.Plugins.AddOns.UnavailableAddOnInstaller>();
         // OADM PRO license (docs/spec/licensing.md): for the server ID plugin licenses use; OADM itself never depends on it.
         services.AddSingleton(sp => new Core.Licensing.ProLicense(
             sp.GetRequiredService<ServerSettingsStore>(),

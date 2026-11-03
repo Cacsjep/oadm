@@ -1,0 +1,9 @@
+{
+  "id": "oadm.ocr",
+  "version": "0.1.0",
+  "minSdkVersion": "0.10.0",
+  "displayName": "Text recognition",
+  "enabledByDefault": false,
+  "description": "Reads text in camera pictures for the event rules.",
+  "siteSupport": "full"
+}

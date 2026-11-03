@@ -586,7 +586,10 @@ public sealed record PluginManifest(
 /// Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Plugins reuse these so related
 /// tasks of different plugins share one submenu; any other non-empty name creates its own submenu.
 /// </summary>
-/// <summary>Groups of the core plugin pages in the client's navigation rail, shown in this order.</summary>
+/// <summary>
+/// Groups of the core plugin pages in the client's navigation rail, shown in this order, except <see cref="Vision"/>
+/// (after <see cref="Monitoring"/>). New values are appended, never renumbered.
+/// </summary>
 public enum CorePluginGroup
 {
     /// <summary>Network services OADM runs for the devices: NTP server, DHCP server.</summary>
@@ -615,6 +618,12 @@ public enum CorePluginGroup
 
     /// <summary>Everything else, the default for third-party plugins.</summary>
     Extensions = 8,
+
+    /// <summary>
+    /// Plugins that analyse the cameras' pictures on the server: Text recognition. Shown in the rail right after
+    /// <see cref="Monitoring"/>, whatever its value. New in SDK 0.11.0: an older client shows it under Extensions.
+    /// </summary>
+    Vision = 9,
 }
 
 /// <summary>Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Related tasks of different plugins share one submenu.</summary>

@@ -1,0 +1,8 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             x:Class="Oadm.Plugins.Ocr.Client.OcrView"
+             ui:PageHeader.Subtitle="Reads text in camera pictures for the event rules.">
+  <!-- Placeholder until the page is built (docs/spec/ocr.md "Page"): the empty page's line. -->
+  <TextBlock Classes="secondary" Text="Create a reader to read text from a camera." />
+</UserControl>

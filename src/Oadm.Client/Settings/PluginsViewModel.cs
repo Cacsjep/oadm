@@ -20,9 +20,9 @@ namespace Oadm.Client.Settings;
 /// </summary>
 public sealed record PluginGroupKey(CorePluginGroup Group)
 {
-    public int Order => (int)Group;
+    public int Order => Shell.RailGroups.Order(Group);
 
-    public override string ToString() => Group.ToString();
+    public override string ToString() => Shell.RailGroups.Title(Group);
 
     /// <summary>The group the server reports ("Monitoring"); unknown or empty is Extensions, like the rail.</summary>
     public static PluginGroupKey Parse(string? group) =>

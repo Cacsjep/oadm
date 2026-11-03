@@ -124,8 +124,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             // event rules.
             _eventRulesItem = new NavItemViewModel(HostPages.EventRules, "Event rules", "zap", eventRules)
             {
-                GroupTitle = CorePluginGroup.Automation.ToString(),
-                GroupOrder = (int)CorePluginGroup.Automation,
+                GroupTitle = RailGroups.Title(CorePluginGroup.Automation),
+                GroupOrder = RailGroups.Order(CorePluginGroup.Automation),
             };
             SyncEventRulesItem();
         }
@@ -944,8 +944,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
             new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
                 page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error, context))
         {
-            GroupTitle = group.ToString(),
-            GroupOrder = (int)group,
+            GroupTitle = RailGroups.Title(group),
+            GroupOrder = RailGroups.Order(group),
             OpenInWindow = OpenPluginWindow,
         });
     }
@@ -1015,7 +1015,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         return true;
     }
 
-    /// <summary>Core plugin pages sorted by group (<see cref="CorePluginGroup"/> order), the server's order inside a group.</summary>
+    /// <summary>Core plugin pages sorted by group (<see cref="RailGroups.Order"/>), the server's order inside a group.</summary>
     private void OrderCorePluginPages()
     {
         var pages = NavItems.Where(n => n.GroupTitle is not null).ToList();

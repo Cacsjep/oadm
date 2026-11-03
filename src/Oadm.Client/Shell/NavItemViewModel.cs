@@ -28,7 +28,7 @@ public sealed partial class NavItemViewModel(string key, string title, string ic
     /// <summary>Core plugin pages: the rail group (<c>CorePluginGroup</c> name, e.g. "Servers"); null for host pages.</summary>
     public string? GroupTitle { get; init; }
 
-    /// <summary>Position of the group in the rail (<c>CorePluginGroup</c> value).</summary>
+    /// <summary>Position of the group in the rail (<see cref="RailGroups.Order"/>).</summary>
     public int GroupOrder { get; init; }
 
     /// <summary>First entry of its group while the rail is expanded: the small group header above it.</summary>

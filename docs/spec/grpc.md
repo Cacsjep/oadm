@@ -195,6 +195,14 @@ used again.
     `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin
     without an active license; reply: the whole list), `SetPackageLicense(id, license)` and `RemovePackageLicense(id)`
     (Admin; reply: the whole list). See `docs/spec/plugins.md` "Plugins on and off" and "Plugin licenses".
+  - Add-ons (`docs/spec/add-ons.md`): `ListAddOns` (any user; `AddOnList` of `AddOnInfo` {id, display_name, description,
+    size_bytes, state, percent, message, version, can_install}, every add-on of the server's version from `AddOnCatalog`),
+    `InstallAddOn(id)` (Admin; stream of `AddOnProgress` {step Download, Check or Install, percent, done, error}, the last
+    message has done or error set; NOT_FOUND unknown add-on; FAILED_PRECONDITION already installed, another install or
+    remove running, or a self update running; audit "Installed add-on"), `RemoveAddOn(id)` (Admin; NOT_FOUND,
+    FAILED_PRECONDITION not installed or a self update running; audit "Removed add-on"; reply: the whole list),
+    `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with path, data, sha256 lowercase hex};
+    NOT_FOUND unknown or not installed). UNIMPLEMENTED while the server has no installer (`IAddOnInstaller`).
 - **`SettingsService`** (`settings.proto`): `Get`, `Set` (field numbers in `docs/spec/settings-backup.md`; 0 or unset keeps
   the stored value; read-only `server_version = 21` and `key_replaced = 20` in both replies), `ListCredentials`,
   `AddCredential(user_name, password)` (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the

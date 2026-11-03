@@ -379,6 +379,8 @@ public sealed partial class CanaryTests
         ["/oadm.v1.FileService/Delete"] = "an upload by id; no device data",
         ["/oadm.v1.PluginService/ListCorePlugins"] = "the plugin pages the role may show",
         ["/oadm.v1.PluginService/ListPackages"] = "the plugin packages",
+        ["/oadm.v1.PluginService/ListAddOns"] = "the add-ons of this version, no device data",
+        ["/oadm.v1.PluginService/GetAddOnClientPart"] = "the files of an add-on's client part, no device data",
         ["/oadm.v1.PluginService/Watch"] = "no device id; events reach a group user only through audiences that cover the user (PluginServiceGroupTests)",
         ["/oadm.v1.SettingsService/Get"] = "server settings, no device data",
         ["/oadm.v1.LicenseService/GetLicense"] = "the license (its device count is an accepted existence leak, docs/spec/device-scope.md)",
