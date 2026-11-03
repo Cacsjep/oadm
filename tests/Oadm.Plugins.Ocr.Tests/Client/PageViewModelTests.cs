@@ -387,7 +387,8 @@ public sealed class PageViewModelTests
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
         await editor.SendPreviewAsync(CancellationToken.None);
-        Assert.Equal("p1", editor.PreviewId);
+        var id = editor.PreviewId!;
+        Assert.Matches("^[0-9a-f]{32}$", id); // the page's own id
         var before = ctx.CallsOf(OcrMethods.GetPreview);
 
         // A fetch that is held: two more readings meanwhile give one more fetch, not two.
@@ -411,7 +412,7 @@ public sealed class PageViewModelTests
         await first;
         Assert.Equal(before + 2, ctx.CallsOf(OcrMethods.GetPreview));
         Assert.Equal("TGHU 765432 1", editor.Results[0].Text);
-        Assert.Equal("{\"previewId\":\"p1\"}", ctx.LastPayloadOf(OcrMethods.GetPreview));
+        Assert.Equal("{\"previewId\":\"" + id + "\"}", ctx.LastPayloadOf(OcrMethods.GetPreview));
 
         // Live: the page's own preview fetches; the readings event updates the list's last text only.
         ctx.AsyncAnswers.Remove(OcrMethods.GetPreview);
@@ -420,7 +421,7 @@ public sealed class PageViewModelTests
         {
             await Eventually.TrueAsync(() => editor.IsPreviewing, "the shown reader is previewed");
             var calls = ctx.CallsOf(OcrMethods.GetPreview);
-            ctx.Push(OcrMethods.PreviewTopic, new PreviewEvent { PreviewId = "p1", Reading = Samples.GateReading("CMAU 111111 1") });
+            ctx.Push(OcrMethods.PreviewTopic, new PreviewEvent { PreviewId = id, Reading = Samples.GateReading("CMAU 111111 1") });
             await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.GetPreview) > calls, "the preview's reading fetched");
 
             // Another page's preview and a saved reader's reading fetch nothing.
@@ -447,7 +448,7 @@ public sealed class PageViewModelTests
         Assert.False(editor.IsPreviewing);
         Assert.Null(editor.PreviewId);
         await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StopPreview) == 1, "the preview ended");
-        Assert.Equal("{\"previewId\":\"p1\"}", ctx.LastPayloadOf(OcrMethods.StopPreview));
+        Assert.Equal("{\"previewId\":\"" + id + "\"}", ctx.LastPayloadOf(OcrMethods.StopPreview));
     }
 
     [Fact]
@@ -461,9 +462,9 @@ public sealed class PageViewModelTests
         vm.Activate();
         try
         {
-            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) == 1 && editor.PreviewId == "p1", "the preview started");
+            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) == 1 && editor.PreviewId is not null, "the preview started");
             var started = OcrJson.Deserialize<PreviewRequest>(ctx.LastPayloadOf(OcrMethods.StartPreview));
-            Assert.Equal(string.Empty, started.PreviewId);
+            Assert.Equal(editor.PreviewId, started.PreviewId); // the page names its preview from the first call
             Assert.Equal("r1", started.Reader!.Id);
             Assert.Equal(3, started.Reader.Areas.Count);
 
@@ -471,7 +472,7 @@ public sealed class PageViewModelTests
             editor.EditArea(editor.Areas[0], AreaHandle.Move, 0.1, 0);
             await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) == 2, "the draft sent");
             var changed = OcrJson.Deserialize<PreviewRequest>(ctx.LastPayloadOf(OcrMethods.StartPreview));
-            Assert.Equal("p1", changed.PreviewId);
+            Assert.Equal(started.PreviewId, changed.PreviewId);
             Assert.Equal(0.57, changed.Reader!.Areas[0].Box.X, 6);
             Assert.True(editor.IsDirty);
 
@@ -485,7 +486,7 @@ public sealed class PageViewModelTests
                 "kept alive");
 
             // A refusal of the server shows where the results are.
-            ctx.Answers[OcrMethods.StartPreview] = _ => OcrJson.Serialize(new PreviewReply { PreviewId = "p1", Problem = ReaderRules.PreviewBusy });
+            ctx.Answers[OcrMethods.StartPreview] = _ => OcrJson.Serialize(new PreviewReply { PreviewId = started.PreviewId, Problem = ReaderRules.PreviewBusy });
             editor.Name = "Gate 3";
             await Eventually.TrueAsync(() => editor.PreviewProblem == ReaderRules.PreviewBusy, "the problem shown");
             ctx.Answers[OcrMethods.StartPreview] = _ => throw new InvalidOperationException(ReaderRules.TooManyPreviews);

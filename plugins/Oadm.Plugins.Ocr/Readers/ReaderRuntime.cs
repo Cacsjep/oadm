@@ -32,6 +32,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly IFrameSource? _frames;
     private readonly ITextRecognizer? _recognizer;
     private readonly ReadingMaker? _maker;
+    private readonly IPictureCutter? _cutter;
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<ReaderReading, IReadOnlyList<AreaDetails>> _cutouts = new();
+    private readonly ConcurrentDictionary<string, (string Signature, DateTimeOffset At)> _published = new(StringComparer.Ordinal);
+    private int _kept;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dictionary<string, WatchLoop> _loops = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderSlot> _slots = new(StringComparer.Ordinal);
@@ -41,28 +45,39 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly ITimer _statsTimer;
     private readonly ReaderStats _stats;
     private readonly TimeProvider _time;
+    private readonly Func<IReadOnlyList<Reader>> _readers;
+    private readonly CancellationTokenSource _stopping = new();
+    private readonly ConcurrentDictionary<Task, byte> _singles = new();
     private volatile Dictionary<string, string> _problems = [];
-    private volatile IReadOnlyList<Reader> _readers = [];
-    private bool _stopped;
+    private volatile bool _stopped;
     private int _dropped;
 
     /// <summary>Frames of watching readers dropped because a single reading of the same reader ran (tests).</summary>
     public int DroppedWhileBusy => Volatile.Read(ref _dropped);
 
-    public ReaderRuntime(ICorePluginContext ctx, ReaderParts parts, ILogger logger)
+    /// <param name="ctx">The plugin's context.</param>
+    /// <param name="parts">The recognition, matcher, pictures and clock.</param>
+    /// <param name="logger">The plugin's log.</param>
+    /// <param name="readers">
+    /// The stored readers as they are now; read under the runtime's lock on every sync, so an older list never wins over a
+    /// newer one (a deleted reader never streams again).
+    /// </param>
+    public ReaderRuntime(ICorePluginContext ctx, ReaderParts parts, ILogger logger, Func<IReadOnlyList<Reader>> readers)
     {
+        _readers = readers ?? throw new ArgumentNullException(nameof(readers));
         ArgumentNullException.ThrowIfNull(parts);
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _frames = parts.Frames?.Invoke(ctx);
+        _cutter = parts.Cutter;
         _recognizer = parts.Recognizer?.Invoke(ctx);
         _stats = new ReaderStats(parts.Time, parts.ProcessorTime, parts.ProcessorCount);
-        _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Cutter, parts.Time, _stats) : null;
+        _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Time, _stats) : null;
         using (ExecutionContext.SuppressFlow())
         {
             _statsTimer = parts.Time.CreateTimer(_ => TickStats(), null, ReaderStats.SampleInterval, ReaderStats.SampleInterval);
-            _recheck = parts.Time.CreateTimer(_ => _ = SyncAsync(_readers), null, RecheckInterval, RecheckInterval);
-            _sweep = parts.Time.CreateTimer(_ => _ = SweepPreviewsAsync(), null, PreviewSweepInterval, PreviewSweepInterval);
+            _recheck = parts.Time.CreateTimer(_ => _ = QuietlyAsync(SyncAsync, "the check of the readers"), null, RecheckInterval, RecheckInterval);
+            _sweep = parts.Time.CreateTimer(_ => _ = QuietlyAsync(SweepPreviewsAsync, "the end of old previews"), null, PreviewSweepInterval, PreviewSweepInterval);
         }
 
         _time = parts.Time;
@@ -104,25 +119,63 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// <summary>Drops everything of a deleted reader (after <see cref="SyncAsync"/> stopped its loop).</summary>
     public void Remove(string readerId)
     {
+        _published.TryRemove(readerId, out _);
         _last.TryRemove(readerId, out _);
         _slots.TryRemove(readerId, out _);
     }
 
     /// <summary>
-    /// Brings the loops in line with <paramref name="readers"/>: a loop for every watching reader with areas that may read (at
-    /// most <see cref="ReaderRules.MaxWatching"/>; text is read only inside areas, so a reader without one opens no stream),
-    /// changed readers start again, the others stop. Runs without the caller.
+    /// Brings the loops in line with the stored readers as they are when the lock is taken: a loop for every watching reader
+    /// with areas that may read (at most <see cref="ReaderRules.MaxWatching"/>; text is read only inside areas, so a reader
+    /// without one opens no stream), changed readers start again, the others stop. Runs without the caller.
     /// </summary>
-    public Task SyncAsync(IReadOnlyList<Reader> readers) => Detached(() => SyncCoreAsync(readers));
+    public Task SyncAsync() => Detached(SyncCoreAsync);
+
+    /// <summary>Background work of a timer or an event: never throws, a failure is logged.</summary>
+    internal async Task QuietlyAsync(Func<Task> work, string what)
+    {
+        try
+        {
+            await work().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (_stopped)
+        {
+        }
+        catch (ObjectDisposedException) when (_stopped)
+        {
+        }
+#pragma warning disable CA1031 // A timer or event callback never throws; the next round tries again.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogBackgroundFailed(_logger, what, ex);
+        }
+    }
 
     /// <summary>
     /// Reads one picture of <paramref name="reader"/> now and publishes every area's event, changed or not. Refuses with
     /// <see cref="OcrInfo.AlreadyReading"/> while a reading of the reader runs (nothing is queued) and with
     /// <see cref="ReaderRules.Off"/> when its camera is not in its owner's devices. Runs without the caller.
     /// </summary>
-    public Task<ReaderReading> ReadOnceAsync(Reader reader, CancellationToken ct) => Detached(async () =>
+    public Task<ReaderReading> ReadOnceAsync(Reader reader, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(reader);
+        if (_stopped)
+        {
+            return Task.FromException<ReaderReading>(new InvalidOperationException(ReaderRules.NotRunning));
+        }
+
+        // Tracked: the stop cancels it and waits for it before the recognizer goes.
+        var task = Detached(() => ReadOnceCoreAsync(reader, ct));
+        _singles.TryAdd(task, 0);
+        _ = task.ContinueWith(t => _singles.TryRemove(t, out _), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return task;
+    }
+
+    private async Task<ReaderReading> ReadOnceCoreAsync(Reader reader, CancellationToken callerCt)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(callerCt, _stopping.Token);
+        var ct = linked.Token;
         if (_maker is null || _frames is null)
         {
             throw new InvalidOperationException(ReaderRules.NotInstalled);
@@ -160,7 +213,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         {
             slot.Exit();
         }
-    });
+    }
 
     /// <summary>Stops every loop and waits for them; no loop starts afterwards.</summary>
     public async Task StopAsync()
@@ -169,6 +222,17 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         try
         {
             _stopped = true;
+            await _stopping.CancelAsync().ConfigureAwait(false);
+            try
+            {
+                await Task.WhenAll(_singles.Keys).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The cancelled single readings end with their own errors; their callers see them.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+
             await _recheck.DisposeAsync().ConfigureAwait(false);
             await _sweep.DisposeAsync().ConfigureAwait(false);
             await _statsTimer.DisposeAsync().ConfigureAwait(false);
@@ -194,7 +258,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 break;
         }
 
-        _sync.Dispose();
+        // _sync and _stopping stay: a late timer or event callback may still take them, and they hold no native handle.
     }
 
     /// <summary>
@@ -219,7 +283,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         return (DeviceMessages.Refusal(camera), camera);
     }
 
-    private async Task SyncCoreAsync(IReadOnlyList<Reader> readers)
+    private async Task SyncCoreAsync()
     {
         await _sync.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
@@ -229,7 +293,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 return;
             }
 
-            _readers = readers;
+            var readers = _readers();
             var problems = new Dictionary<string, string>(StringComparer.Ordinal);
             var wanted = new Dictionary<string, (Reader Reader, IDeviceInfo? Camera)>(StringComparer.Ordinal);
             var perSite = new Dictionary<Guid, int>();
@@ -436,22 +500,65 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             KeepPreview(preview, reading);
         }
 
-        if (_ctx.Events is not { } events)
+        try
         {
-            return;
+            if (_ctx.Events is not { } events || !ShouldPublish(reader.Id, reading.Reading))
+            {
+                return;
+            }
+
+            var json = OcrJson.Serialize(new ReadingEvent
+            {
+                Reading = reading.Reading,
+                Details = [.. reading.Details.Select(d => d with { Cutout = null })],
+            });
+            events.Publish(OcrMethods.ReadingTopic, json, PluginEventAudience.AllDevices);
+            var owner = OwnerScope.Of(reader.OwnerScopeKey);
+            if (owner != ICallContext.AllDevicesScopeKey)
+            {
+                events.Publish(OcrMethods.ReadingTopic, json, PluginEventAudience.DeviceScope(owner));
+            }
+        }
+        finally
+        {
+            Interlocked.Increment(ref _kept);
+        }
+    }
+
+    /// <summary>The readings kept so far, published or not (tests wait on it).</summary>
+    public int KeptReadings => Volatile.Read(ref _kept);
+
+    /// <summary>How often a reader's unchanged reading reaches the pages at most.</summary>
+    public static readonly TimeSpan UnchangedReadingInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// The page hears of a reading when its values changed, else at most every <see cref="UnchangedReadingInterval"/> per
+    /// reader (15 frames per second of 50 readers never flood the open pages).
+    /// </summary>
+    private bool ShouldPublish(string readerId, Reading reading)
+    {
+        var signature = string.Join('\u001f', reading.Areas.Select(a => a.Area + "\u001e" + a.Text)) + "\u001d" + reading.Note;
+        var now = _time.GetUtcNow();
+        if (_published.TryGetValue(readerId, out var last) && last.Signature == signature && now - last.At < UnchangedReadingInterval)
+        {
+            return false;
         }
 
-        var json = OcrJson.Serialize(new ReadingEvent
-        {
-            Reading = reading.Reading,
-            Details = [.. reading.Details.Select(d => d with { Cutout = null })],
-        });
-        events.Publish(OcrMethods.ReadingTopic, json, PluginEventAudience.AllDevices);
-        var owner = OwnerScope.Of(reader.OwnerScopeKey);
-        if (owner != ICallContext.AllDevicesScopeKey)
-        {
-            events.Publish(OcrMethods.ReadingTopic, json, PluginEventAudience.DeviceScope(owner));
-        }
+        _published[readerId] = (signature, now);
+        return true;
+    }
+
+    /// <summary>
+    /// The reply of a reading for the page, with the values' cut-outs: cut once per reading, when a page first asks (never per
+    /// frame), from the reading's picture.
+    /// </summary>
+    public ReadingReply ReplyOf(ReaderReading reading)
+    {
+        ArgumentNullException.ThrowIfNull(reading);
+        var details = _cutouts.GetValue(reading, r => _cutter is null
+            ? r.Details
+            : [.. r.Details.Select(d => d.MatchBox is { } box && d.Cutout is null ? d with { Cutout = _cutter.Cut(r.Jpeg, box) } : d)]);
+        return new ReadingReply { Reading = reading.Reading, Jpeg = reading.Jpeg.ToArray(), Details = details };
     }
 
 
@@ -479,6 +586,9 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             return Task.Run(work, CancellationToken.None);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: {What} failed")]
+    private static partial void LogBackgroundFailed(ILogger logger, string what, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: a reading of the reader {Reader} failed")]
     private static partial void LogReadingFailed(ILogger logger, string reader, Exception ex);

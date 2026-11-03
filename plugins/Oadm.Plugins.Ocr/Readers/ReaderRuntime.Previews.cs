@@ -66,7 +66,10 @@ internal sealed partial class ReaderRuntime
                 }
                 else
                 {
-                    preview = new Preview(Guid.NewGuid().ToString("N"), owner);
+                    // The page's own id (32 hex digits), so it can end a preview whose start answer it never saw; another
+                    // scope's id or any other text gets a new one.
+                    var id = IsPreviewId(previewId) && !_previews.ContainsKey(previewId!) ? previewId! : Guid.NewGuid().ToString("N");
+                    preview = new Preview(id, owner);
                     _previews[preview.Id] = preview;
                 }
 
@@ -135,21 +138,28 @@ internal sealed partial class ReaderRuntime
 
         if (_ctx.Events is not { } events)
         {
+            Interlocked.Increment(ref _keptPreviews);
             return;
         }
 
+        // Only to the scope that started it (all devices: the users with all devices), never to every page.
         var json = OcrJson.Serialize(new PreviewEvent
         {
             PreviewId = preview.Id,
             Reading = reading.Reading,
             Details = [.. reading.Details.Select(d => d with { Cutout = null })],
         });
-        events.Publish(OcrMethods.PreviewTopic, json, PluginEventAudience.AllDevices);
-        if (preview.Owner != Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey)
-        {
-            events.Publish(OcrMethods.PreviewTopic, json, PluginEventAudience.DeviceScope(preview.Owner));
-        }
+        events.Publish(
+            OcrMethods.PreviewTopic,
+            json,
+            preview.Owner == Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey ? PluginEventAudience.AllDevices : PluginEventAudience.DeviceScope(preview.Owner));
+        Interlocked.Increment(ref _keptPreviews); // after the event: a test that waits for the count sees the event
     }
+
+    /// <summary>The readings of previews kept so far (tests wait on it).</summary>
+    public int KeptPreviewReadings => Volatile.Read(ref _keptPreviews);
+
+    private int _keptPreviews;
 
     /// <summary>Every preview again (the saved readers' loops changed). Under <see cref="_sync"/>.</summary>
     private async Task ReconcilePreviewsAsync()
@@ -300,6 +310,9 @@ internal sealed partial class ReaderRuntime
             _sync.Release();
         }
     });
+
+    /// <summary>A preview id a page made: 32 hex digits.</summary>
+    private static bool IsPreviewId(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigit);
 
     /// <summary>The draft reads like the saved reader's loop: the same camera, source, resolution, rate and areas.</summary>
     private static bool SameReading(Reader loop, Reader draft) =>

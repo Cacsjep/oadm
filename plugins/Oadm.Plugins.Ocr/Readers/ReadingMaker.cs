@@ -10,8 +10,11 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// <param name="Jpeg">The picture (memory only).</param>
 public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> Details, ReadOnlyMemory<byte> Jpeg);
 
-/// <summary>Turns one picture into a reading: recognition per area, then the area's value from its lines.</summary>
-internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, IPictureCutter? cutter, TimeProvider time, ReaderStats? stats = null)
+/// <summary>
+/// Turns one picture into a reading: recognition per area, then the area's value from its lines. No cut-outs here: they are
+/// cut only when a page asks for the reading (<see cref="ReaderRuntime.ReplyOf"/>), never per frame.
+/// </summary>
+internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, TimeProvider time, ReaderStats? stats = null)
 {
     /// <summary>Reads <paramref name="jpeg"/> with the areas of <paramref name="reader"/>.</summary>
     public async Task<ReaderReading> ReadAsync(Reader reader, ReadOnlyMemory<byte> jpeg, CancellationToken ct)
@@ -34,11 +37,7 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             var lines = i < picture.LinesPerArea.Count ? picture.LinesPerArea[i] : [];
             var (result, detail) = Area(areas[i], lines);
             results.Add(result);
-            details.Add(detail with
-            {
-                Cutout = detail.MatchBox is { } box && cutter is not null ? cutter.Cut(jpeg, box) : null,
-                TooSmall = i < picture.TooSmallPerArea.Count && picture.TooSmallPerArea[i],
-            });
+            details.Add(detail with { TooSmall = i < picture.TooSmallPerArea.Count && picture.TooSmallPerArea[i] });
         }
 
         var reading = new Reading

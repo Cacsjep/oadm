@@ -85,7 +85,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         _useGpu = await ctx.Settings.GetAsync(UseGpuSetting, ct).ConfigureAwait(false) is not { } stored
             || !bool.TryParse(stored.Trim(), out var useGpu) || useGpu;
         _cameraOptions.Clear();
-        _runtime = new ReaderRuntime(ctx, _parts, ctx.Logger);
+        _runtime = new ReaderRuntime(ctx, _parts, ctx.Logger, () => store.All);
         _runtime.Engine?.SetUseGpu(_useGpu);
         _runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
         if (ctx.DeviceScopes is { } scopes)
@@ -94,7 +94,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         }
 
         EventTypesChanged?.Invoke(this, EventArgs.Empty);
-        await _runtime.SyncAsync(store.All).ConfigureAwait(false);
+        await _runtime.SyncAsync().ConfigureAwait(false);
     }
 
     /// <summary>Stops every reader's loop (also when the plugin is turned off); the readers stay stored.</summary>
@@ -151,17 +151,17 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>A group's rules changed or the group was deleted: its readers follow its devices at once (fail closed).</summary>
     private void OnScopeChanged(object? sender, string scopeKey)
     {
-        if (_runtime is not { } runtime || _store is not { } store)
+        if (_runtime is not { } runtime)
         {
             return;
         }
 
-        _ = SyncAndPublishAsync(runtime, store, scopeKey);
-    }
-
-    private async Task SyncAndPublishAsync(ReaderRuntime runtime, ReaderStore store, string scopeKey)
-    {
-        await runtime.SyncAsync(store.All).ConfigureAwait(false);
-        PublishReaders(scopeKey);
+        _ = runtime.QuietlyAsync(
+            async () =>
+            {
+                await runtime.SyncAsync().ConfigureAwait(false);
+                PublishReaders(scopeKey);
+            },
+            "following a device group's change");
     }
 }

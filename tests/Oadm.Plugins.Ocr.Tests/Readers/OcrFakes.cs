@@ -262,7 +262,7 @@ internal sealed class OcrHarness : IAsyncDisposable
         OcrJson.Deserialize<PreviewReply>(await CallAsync(OcrMethods.StartPreview, new PreviewRequest { PreviewId = previewId ?? string.Empty, Reader = draft }, caller));
 
     /// <summary>The readings told to the pages for previews so far.</summary>
-    public int PreviewReadings => Context.PublishedEvents.Count(e => e.Topic == OcrMethods.PreviewTopic && e.Audience.Kind == Oadm.Sdk.Plugins.PluginEventAudienceKind.AllDevices);
+    public int PreviewReadings => Plugin.Runtime?.KeptPreviewReadings ?? 0;
 
     public async Task<ReaderList> ListAsync(FakeCallContext? caller = null) =>
         OcrJson.Deserialize<ReaderList>(await CallAsync(OcrMethods.ListReaders, caller: caller));
@@ -278,8 +278,8 @@ internal sealed class OcrHarness : IAsyncDisposable
         await Eventually.TrueAsync(() => Readings > before, "the frame was read");
     }
 
-    /// <summary>The readings told to the pages so far (each one after its rule events).</summary>
-    public int Readings => Context.PublishedEvents.Count(e => e.Topic == OcrMethods.ReadingTopic && e.Audience.Kind == Oadm.Sdk.Plugins.PluginEventAudienceKind.AllDevices);
+    /// <summary>The readings of saved readers kept so far (each one after its rule events; the pages hear only of changes and at most 1 per second).</summary>
+    public int Readings => Plugin.Runtime?.KeptReadings ?? 0;
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
 }

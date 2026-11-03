@@ -51,6 +51,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     private bool _fetchAgain;
     private bool _sending;
     private bool _sendAgain;
+    private int _sendGeneration;
+    private long _readSeq;
+    private long _shownSeq;
     private bool _disposed;
     private CancellationTokenSource? _preview;
     private (Guid Device, int Source)? _shown;
@@ -270,7 +273,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     [ObservableProperty]
     public partial string PictureText { get; private set; } = OcrTexts.WaitingForPicture;
 
-    /// <summary>The server's preview of this reader; null while there is none.</summary>
+    /// <summary>
+    /// This page's preview of the reader; null while there is none. The page makes the id itself and sends it with every
+    /// call, so it can always end the preview it started (also one whose start answer it never saw).
+    /// </summary>
     public string? PreviewId { get; private set; }
 
     /// <summary>Why the preview reads nothing now (the camera, the limits); null while it reads.</summary>
@@ -669,6 +675,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             preview.Dispose();
         }
 
+        // A send still on its way never blocks the next start: it belongs to the old generation.
+        _sendGeneration++;
+        _sending = false;
+        _sendAgain = false;
         if (PreviewId is { } id)
         {
             PreviewId = null;
@@ -721,20 +731,24 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
 
         _sending = true;
+        var generation = _sendGeneration;
         try
         {
             do
             {
                 _sendAgain = false;
-                var request = new PreviewRequest { PreviewId = PreviewId ?? string.Empty, Reader = ToReader() };
+                var id = PreviewId ??= Guid.NewGuid().ToString("N");
+                var request = new PreviewRequest { PreviewId = id, Reader = ToReader() };
                 var json = await _ctx.InvokeAsync(OcrMethods.StartPreview, OcrJson.Serialize(request), ct).ConfigureAwait(true);
-                if (_disposed || ct.IsCancellationRequested)
+                var reply = OcrJson.Deserialize<PreviewReply>(json);
+                if (_disposed || ct.IsCancellationRequested || generation != _sendGeneration)
                 {
+                    // Stopped meanwhile: the start may have reached the server after the stop, so end it again.
+                    _ = EndPreviewAsync(reply.PreviewId.Length > 0 ? reply.PreviewId : id);
                     return;
                 }
 
-                var reply = OcrJson.Deserialize<PreviewReply>(json);
-                PreviewId = reply.PreviewId.Length > 0 ? reply.PreviewId : null;
+                PreviewId = reply.PreviewId.Length > 0 ? reply.PreviewId : id;
                 PreviewProblem = reply.Problem;
             }
             while (_sendAgain && !ct.IsCancellationRequested && !_disposed);
@@ -753,7 +767,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
         finally
         {
-            _sending = false;
+            if (generation == _sendGeneration)
+            {
+                _sending = false;
+            }
         }
     }
 
@@ -794,13 +811,14 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
                     return;
                 }
 
+                var seq = ++_readSeq;
                 var json = await _ctx.InvokeAsync(OcrMethods.GetPreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), ct).ConfigureAwait(true);
                 if (_disposed)
                 {
                     return;
                 }
 
-                await ApplyReplyJsonAsync(json).ConfigureAwait(true);
+                await ApplyReplyJsonAsync(json, seq).ConfigureAwait(true);
             }
             while (_fetchAgain && !ct.IsCancellationRequested && !_disposed);
         }
@@ -828,10 +846,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         try
         {
+            var seq = ++_readSeq;
             var json = await _ctx.InvokeAsync(OcrMethods.GetReading, OcrJson.Serialize(new ReaderRequest { ReaderId = Id }), ct).ConfigureAwait(true);
             if (!_disposed && Results.Count == 0)
             {
-                await ApplyReplyJsonAsync(json).ConfigureAwait(true);
+                await ApplyReplyJsonAsync(json, seq).ConfigureAwait(true);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -844,7 +863,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
-    private async Task ApplyReplyJsonAsync(string? json)
+    /// <summary>
+    /// Shows a fetched reading unless a later fetch (<paramref name="seq"/>, in the order the calls started) was shown already:
+    /// the saved reader's last reading never replaces the preview's newer one across the decoding.
+    /// </summary>
+    private async Task ApplyReplyJsonAsync(string? json, long seq)
     {
         var reply = OcrJson.Deserialize<ReadingReply>(json);
         var details = reply.Details;
@@ -857,12 +880,13 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             }
         }
 
-        if (_disposed)
+        if (_disposed || seq < _shownSeq)
         {
             DisposeAll(cutOuts.Values);
             return;
         }
 
+        _shownSeq = seq;
         ApplyReading(reply.Reading, details, cutOuts);
     }
 

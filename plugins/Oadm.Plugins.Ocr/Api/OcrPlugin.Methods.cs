@@ -47,7 +47,7 @@ public sealed partial class OcrPlugin
                     runtime.Forget(saved.Id);
                 }
 
-                await runtime.SyncAsync(store.All).ConfigureAwait(false);
+                await runtime.SyncAsync().ConfigureAwait(false);
                 EventTypesChanged?.Invoke(this, EventArgs.Empty);
                 PublishReaders(saved.OwnerScopeKey, before?.OwnerScopeKey);
                 return OcrJson.Serialize(new SaveReaderReply { Reader = saved with { OwnerScopeKey = null } });
@@ -58,7 +58,7 @@ public sealed partial class OcrPlugin
                 var id = OcrJson.Deserialize<ReaderRequest>(payloadJson).ReaderId;
                 if (await store.DeleteAsync(caller, id, ct).ConfigureAwait(false) is { } deleted)
                 {
-                    await runtime.SyncAsync(store.All).ConfigureAwait(false);
+                    await runtime.SyncAsync().ConfigureAwait(false);
                     runtime.Remove(deleted.Id);
                     EventTypesChanged?.Invoke(this, EventArgs.Empty);
                     PublishReaders(deleted.OwnerScopeKey);
@@ -92,14 +92,14 @@ public sealed partial class OcrPlugin
                 }
 
                 await CallDevices.RequireAsync(caller, [preview.Reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(preview.Last is { } last ? ReplyOf(last) with { Jpeg = null } : new ReadingReply());
+                return OcrJson.Serialize(preview.Last is { } last ? runtime.ReplyOf(last) with { Jpeg = null } : new ReadingReply());
             }
 
             case OcrMethods.GetReading:
             {
                 var reader = Visible(store, caller, payloadJson);
                 await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? ReplyOf(last) : new ReadingReply());
+                return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? runtime.ReplyOf(last) : new ReadingReply());
             }
 
             case OcrMethods.GetStats:
@@ -122,7 +122,7 @@ public sealed partial class OcrPlugin
                 runtime.Engine?.SetUseGpu(useGpu);
 
                 // The limits follow what reads now (watching readers, frame rates).
-                await runtime.SyncAsync(store.All).ConfigureAwait(false);
+                await runtime.SyncAsync().ConfigureAwait(false);
                 PublishReaders([.. store.All.Select(r => r.OwnerScopeKey)]);
                 return OcrJson.Serialize(EngineOf(runtime));
             }
@@ -204,9 +204,6 @@ public sealed partial class OcrPlugin
     /// <summary>The reader of the request if the caller sees it; else <see cref="ReaderRules.Gone"/>, the same for an unknown id.</summary>
     private static Reader Visible(ReaderStore store, ICallContext caller, string? payloadJson) =>
         store.FindVisible(caller, OcrJson.Deserialize<ReaderRequest>(payloadJson).ReaderId) ?? throw new ArgumentException(ReaderRules.Gone);
-
-    private static ReadingReply ReplyOf(ReaderReading reading) =>
-        new() { Reading = reading.Reading, Jpeg = reading.Jpeg.ToArray(), Details = reading.Details };
 
     private static ReaderList ListOf(IEnumerable<Reader> readers, ReaderRuntime runtime) => new()
     {

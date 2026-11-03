@@ -129,6 +129,18 @@ Per area: **Any text** (default) or **Format**.
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
 - The page's field hint: "# digit, A letter, * letter or digit".
 
+### Runtime safety
+
+- Every sync of the readers' loops (a save, a delete, Use the graphics card, a device group's change, the 1-minute check)
+  reads the stored readers under the runtime's lock, never a list taken before it: an older list never wins, a deleted
+  reader never streams or fires again.
+- A stop cancels the single readings of the action Read text and waits for them before the recognition is disposed; a
+  reading asked for afterwards ends "The Text recognition plugin is not running." Timer and event work never throws (a
+  failure is logged); the runtime's locks are never disposed under late callbacks.
+- Cut-outs are cut only when a page asks for a reading (`getReading`, `getPreview`), once per reading, never per frame.
+- The event `reading` reaches the pages only when a reader's values or note change, else at most once a second per reader;
+  a preview's readings go only to the scope that started it.
+
 ## Events and the rule action
 
 - Event **Text read** per reader (folder Text recognition / reader name), stateless, one event per area and reading,
@@ -197,6 +209,12 @@ Per area: **Any text** (default) or **Format**.
     results are.
   - A lease: a preview ends 30 s after its last `startPreview` (checked every 5 s), so a closed client never leaves one
     running; the page ends it with `stopPreview` when it hides the reader or the page.
+  - The page makes the preview's id itself (32 hex digits, new per start) and sends it from the first call, so `stopPreview`
+    can always name it; a start answer that comes after the page left ends that preview once more (the start may have
+    overtaken the stop). A page shown again starts its preview at once (a call still on its way never blocks it). The
+    server keeps a page's id unless another scope uses it; any other text gets an id of the server's.
+  - Fetched readings show in the order their calls started: the saved reader's last reading never replaces a newer
+    preview reading that arrived while it was decoded.
   - Device groups: a preview belongs to the caller's device scope (only that scope's pages hear of it, get or stop it); a
     saved reader of another scope answers like an unknown id; the camera must be in the caller's devices.
   - On open the page shows the saved reader's last reading (`getReading`) until the preview's first one arrives.
@@ -208,7 +226,7 @@ Per area: **Any text** (default) or **Format**.
   below its field, the watching limits and the frame rate below Mode. Refusals without a field (reader gone, 50 readers)
   stay errors in the host's message.
 - The preview's calls (permission "View text recognition"):
-  - `startPreview` `{"previewId":"","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
+  - `startPreview` `{"previewId":"9f3c...","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
     `problem` while it reads); with a known `previewId` of the caller's scope it keeps that preview alive and takes the
     draft, an unknown or ended one starts a new preview. Refusals: the 8 previews, a camera outside the caller's
     devices, another scope's reader.
@@ -375,6 +393,10 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   (lines hidden), a reader without an area (dimmed with the hint). Headless tests return a value from
   `Session.Dispatch(async () => ...)`: it has no overload for a plain `Task`, so without one the assertions after the
   first await never reach the test.
+- Runtime safety (`Readers/RuntimeSafetyTests`, `Client/PagePreviewSafetyTests`): a deleted reader stays gone whatever sync
+  runs late, racing saves and deletes end with the stored readers streaming, a stop cancels and awaits a single reading,
+  cut-outs only on request and once, the `reading` event on change or once a second, a group's preview only to its
+  group, the page's own preview id, a late start answer ended, an older reading never over a newer one.
 - Runtime stats (`Readers/StatsTests`, `FakeTimeProvider`): the 10 s window, the load on the CPU and a graphics card, the
   server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
   live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).

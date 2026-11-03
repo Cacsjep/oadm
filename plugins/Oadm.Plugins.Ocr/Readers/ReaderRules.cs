@@ -56,6 +56,9 @@ public static class ReaderRules
     /// <summary>Lines lower than 10 px were left out of an area (<see cref="AreaDetails.TooSmall"/>).</summary>
     public const string TooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
 
+    /// <summary>A reading asked for while the plugin stops.</summary>
+    public const string NotRunning = "The Text recognition plugin is not running.";
+
     /// <summary>A reading found more than <see cref="OcrLimits.MaxTextBoxes"/> texts (<see cref="Reading.Note"/>).</summary>
     public static readonly string TooManyTexts = string.Create(
         CultureInfo.InvariantCulture,

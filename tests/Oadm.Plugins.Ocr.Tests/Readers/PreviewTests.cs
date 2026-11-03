@@ -114,9 +114,9 @@ public sealed class PreviewTests
         ocr.Time.Advance(TimeSpan.FromSeconds(10));
         await Eventually.TrueAsync(() => ocr.Plugin.Runtime.Previews.Count == 0 && ocr.Frames.Open == 0, "the lease ended");
 
-        // A keep-alive with the old id starts a new preview.
+        // A keep-alive with the ended id starts a new preview under that id (the page's own).
         var reply = await ocr.PreviewAsync(draft, id);
-        Assert.NotEqual(id, reply.PreviewId);
+        Assert.Equal(id, reply.PreviewId);
         Assert.Single(ocr.Plugin.Runtime.Previews);
     }
 
