@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Oadm.Plugins.Ocr.Matching;
@@ -45,6 +46,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The tile size for large areas.</summary>
     public const int TileSize = 960;
 
+    /// <summary>Tiles per text finder call on a graphics card at most (full HD: 6 tiles, one call).</summary>
+    private const int MaxTileBatch = 6;
+
     /// <summary>The overlap of neighbouring tiles.</summary>
     public const double TileOverlap = 0.15;
 
@@ -77,6 +81,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly ModelSet? _gpuSet;
     private readonly LineBatcher? _gpuLines;
     private readonly RecognitionDevice _cpuDevice;
+    private readonly UnchangedAreas _unchanged = new();
     private readonly RecognitionDevice? _gpuDevice;
     private readonly BusyMeter _busy;
     private volatile bool _useGpu = true;
@@ -187,12 +192,17 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         await _pictures.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             // On a pool thread: the caller's thread never carries the work.
             return await Task.Run(
                 async () =>
                 {
-                    using var picture = Picture.Decode(jpeg);
-                    return await ReadWithAsync(picture, areas, runner, ct).ConfigureAwait(false);
+                    var decodeStart = Stopwatch.GetTimestamp();
+                    using var picture = Picture.Decode(jpeg, (w, h) => NeededRegion(areas, w, h));
+                    StageClock.Add(Stage.Decode, decodeStart);
+                    return options.ReuseUnchanged
+                        ? await ReadChangedAsync(picture, areas, runner, options, ct).ConfigureAwait(false)
+                        : await ReadWithAsync(picture, areas, runner, ct).ConfigureAwait(false);
                 },
                 ct).ConfigureAwait(false);
         }
@@ -201,6 +211,53 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             _pictures.Release();
         }
     }
+
+    /// <summary>Reads only the areas whose pixels changed since their last reading; the others give that reading again.</summary>
+    private async Task<RecognitionResult> ReadChangedAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner runner, RecognitionOptions options, CancellationToken ct)
+    {
+        var results = new AreaRecognition?[areas.Count];
+        var keys = new UnchangedAreas.Key[areas.Count];
+        var prints = new float[areas.Count][];
+        var changed = new List<int>();
+        for (var a = 0; a < areas.Count; a++)
+        {
+            var area = areas[a];
+            var rect = PixelRect(area.Box, picture.Width, picture.Height);
+            keys[a] = new UnchangedAreas.Key(options.Source, rect, picture.Width, picture.Height, area.Expected.Kind, area.Expected.Format, options.Accurate, runner is GpuRunner);
+            prints[a] = UnchangedAreas.Print(picture, rect);
+            results[a] = _unchanged.TryReuse(keys[a], prints[a]);
+            if (results[a] is null)
+            {
+                changed.Add(a);
+            }
+        }
+
+        var tooMany = false;
+        if (changed.Count > 0)
+        {
+            var fresh = await ReadWithAsync(picture, [.. changed.Select(a => areas[a])], runner, ct).ConfigureAwait(false);
+            tooMany = fresh.TooManyTexts;
+            for (var i = 0; i < changed.Count; i++)
+            {
+                var a = changed[i];
+                results[a] = fresh.Areas[i];
+
+                // A reading capped at MaxTextBoxes is never kept: the next picture reads again and carries the note again.
+                if (!tooMany)
+                {
+                    _unchanged.Keep(keys[a], prints[a], fresh.Areas[i]);
+                }
+            }
+        }
+
+        return new RecognitionResult(new Resolution(picture.Width, picture.Height), [.. results.Select(r => r!)])
+        {
+            TooManyTexts = tooMany,
+        };
+    }
+
+    /// <summary>The areas whose last reading was used again (tests).</summary>
+    internal UnchangedAreas Unchanged => _unchanged;
 
     private static async Task<RecognitionResult> ReadWithAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner set, CancellationToken ct)
     {
@@ -235,37 +292,40 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             // At most MaxTextBoxes over all areas together, the highest detection scores first (a busy picture never floods
             // the reader); the picture's reading says so.
             (candidates, tooMany) = Strongest(candidates, OcrLimits.MaxTextBoxes);
+            var cutStart = Stopwatch.GetTimestamp();
             foreach (var (a, box) in candidates)
             {
                 lineBitmaps.Add(CutLine(picture, box));
                 lineBoxes.Add((a, box));
             }
 
-            // Upside down lines (a receipt laid the other way round): the angle model names the candidates; each candidate is
-            // read both ways and the reading the reader is surer of wins (the angle model alone turns some coloured print).
-            var turnedOf = new int[lineBitmaps.Count];
-            Array.Fill(turnedOf, -1);
+            StageClock.Add(Stage.CutLines, cutStart);
+
             var own = lineBitmaps.Count;
-            if (own > 0)
+            var scores = own == 0 ? [] : await set.RecognizeAsync(lineBitmaps, ct).ConfigureAwait(false);
+
+            // Upside down lines (a receipt laid the other way round): the angle model names the candidates among the lines not
+            // read surely upright; each candidate is read turned too and the reading the reader is surer of wins (the angle
+            // model alone turns some coloured print).
+            var unsure = Enumerable.Range(0, own).Where(i => !SurelyUpright(scores[i], set.Characters)).ToList();
+            if (unsure.Count > 0)
             {
-                var upsideDown = await set.UpsideDownAsync(lineBitmaps, ct).ConfigureAwait(false);
-                for (var i = 0; i < own; i++)
+                var upsideDown = await set.UpsideDownAsync([.. unsure.Select(i => lineBitmaps[i])], ct).ConfigureAwait(false);
+                var maybeTurned = unsure.Where((_, k) => upsideDown[k] >= UpsideDownCandidate).ToList();
+                if (maybeTurned.Count > 0)
                 {
-                    if (upsideDown[i] >= UpsideDownCandidate)
+                    var turned = maybeTurned.Select(i => Turn180(lineBitmaps[i])).ToList();
+                    lineBitmaps.AddRange(turned);
+                    var turnedScores = await set.RecognizeAsync(turned, ct).ConfigureAwait(false);
+                    for (var k = 0; k < maybeTurned.Count; k++)
                     {
-                        turnedOf[i] = lineBitmaps.Count;
-                        lineBitmaps.Add(Turn180(lineBitmaps[i]));
+                        var i = maybeTurned[k];
+                        if (Sureness(turnedScores[k], set.Characters) > Sureness(scores[i], set.Characters))
+                        {
+                            scores[i] = turnedScores[k];
+                        }
                     }
                 }
-            }
-
-            var allScores = lineBitmaps.Count == 0 ? [] : await set.RecognizeAsync(lineBitmaps, ct).ConfigureAwait(false);
-            var scores = new LineScores[own];
-            for (var i = 0; i < own; i++)
-            {
-                scores[i] = turnedOf[i] >= 0 && Sureness(allScores[turnedOf[i]], set.Characters) > Sureness(allScores[i], set.Characters)
-                    ? allScores[turnedOf[i]]
-                    : allScores[i];
             }
 
             var perArea = new List<RecognizedLine>[areas.Count];
@@ -274,6 +334,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 perArea[a] = [];
             }
 
+            var decodingStart = Stopwatch.GetTimestamp();
             var patterns = areas.Select(a => a.Expected.Kind == ExpectedTextKind.Format ? FormatPattern.Parse(a.Expected.Format) : null).ToArray();
             for (var i = 0; i < scores.Length; i++)
             {
@@ -284,6 +345,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                     perArea[a].Add(line);
                 }
             }
+
+            StageClock.Add(Stage.Decoding, decodingStart);
 
             await ReadWholeAreasAsync(picture, areas, patterns, perArea, set, ct).ConfigureAwait(false);
             for (var a = 0; a < areas.Count; a++)
@@ -377,6 +440,24 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
     }
 
+    /// <summary>
+    /// The part of the picture the areas need (only it is decoded): every area with a margin of <see cref="Margin"/> plus its
+    /// shorter side, enough for the line boxes, which grow past the area's edge by less than a line height.
+    /// </summary>
+    internal static SKRectI NeededRegion(IReadOnlyList<Area> areas, int width, int height)
+    {
+        var region = SKRectI.Empty;
+        foreach (var area in areas)
+        {
+            var rect = PixelRect(area.Box, width, height);
+            var pad = Margin + Math.Min(rect.Width, rect.Height);
+            rect = new SKRectI(rect.Left - pad, rect.Top - pad, rect.Right + pad, rect.Bottom + pad);
+            region = region.IsEmpty ? rect : SKRectI.Union(region, rect);
+        }
+
+        return SKRectI.Intersect(region, new SKRectI(0, 0, width, height));
+    }
+
     /// <summary>The line boxes of an area in picture pixels: in one piece up to <see cref="TileSize"/>, else in tiles.</summary>
     private static async Task<List<RotatedBox>> FindLinesAsync(Picture picture, SKRectI rect, IModelRunner set, CancellationToken ct)
     {
@@ -388,19 +469,22 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             var w = set.DetectionSide((int)MathF.Ceiling(rect.Width * scale) + 2 * Margin);
             var h = set.DetectionSide((int)MathF.Ceiling(rect.Height * scale) + 2 * Margin);
             var matrix = SKMatrix.Concat(SKMatrix.CreateTranslation(Margin, Margin), SKMatrix.Concat(SKMatrix.CreateScale(scale, scale), SKMatrix.CreateTranslation(-rect.Left, -rect.Top)));
+            var inputStart = Stopwatch.GetTimestamp();
             var fill = picture.BorderColor(rect);
             using var bitmap = picture.Render(matrix, w, h, scale, fill, new SKRect(Margin, Margin, Margin + rect.Width * scale, Margin + rect.Height * scale));
-            var input = new float[3 * w * h];
-            Tensors.Write(bitmap, input, 0, h, w, Tensors.ImageNet);
-            var map = await set.DetectAsync(input, 1, h, w, ct).ConfigureAwait(false);
-            return BoxMerger.Merge(DbPostProcess.Boxes(map, w, h).Select(b => b.Map(1 / scale, rect.Left - Margin / scale, rect.Top - Margin / scale)));
+            using var input = PooledFloats.Rent(3 * w * h, clear: false);
+            Tensors.Write(bitmap, input.Array, 0, h, w, Tensors.ImageNet);
+            StageClock.Add(Stage.DetectInput, inputStart);
+            using var map = await set.DetectAsync(input, 1, h, w, ct).ConfigureAwait(false);
+            var boxesStart = Stopwatch.GetTimestamp();
+            var boxes = BoxMerger.Merge(DbPostProcess.Boxes(map.Span, w, h).Select(b => b.Map(1 / scale, rect.Left - Margin / scale, rect.Top - Margin / scale)));
+            StageClock.Add(Stage.DetectBoxes, boxesStart);
+            return boxes;
         }
 
         // Tiles of TileSize at full resolution, overlapping by TileOverlap; all tiles of the area in one call.
-        var (xs, tw) = Tiles(rect.Left, rect.Width);
-        var (ys, th) = Tiles(rect.Top, rect.Height);
-        var tileW = RoundUp32(tw);
-        var tileH = RoundUp32(th);
+        var (xs, tileW) = Tiles(rect.Left, rect.Width, set.DetectionSide);
+        var (ys, tileH) = Tiles(rect.Top, rect.Height, set.DetectionSide);
         var tiles = new List<(int X, int Y)>();
         foreach (var y in ys)
         {
@@ -415,13 +499,23 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var found = new List<RotatedBox>();
         if (set.BatchTiles)
         {
-            // A graphics card: every tile in one call.
-            var input = new float[tiles.Count * 3 * tileSize];
-            Parallel.For(0, tiles.Count, i => picture.WriteTile(input, i, tiles[i].X, tiles[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
-            var maps = await set.DetectAsync(input, tiles.Count, tileH, tileW, ct).ConfigureAwait(false);
-            var perTile = new List<RotatedBox>[tiles.Count];
-            Parallel.For(0, tiles.Count, i => perTile[i] = DbPostProcess.Boxes(maps.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, tiles[i].X, tiles[i].Y)).ToList());
-            found.AddRange(perTile.SelectMany(b => b));
+            // A graphics card: the tiles in calls of up to MaxTileBatch, each call's count in the runner's steps (blank tiles
+            // fill it up), so the input shapes stay few.
+            for (var first = 0; first < tiles.Count; first += MaxTileBatch)
+            {
+                var chunk = tiles.GetRange(first, Math.Min(MaxTileBatch, tiles.Count - first));
+                var batch = set.TileBatch(chunk.Count);
+                var inputStart = Stopwatch.GetTimestamp();
+                using var input = PooledFloats.Rent(batch * 3 * tileSize, clear: batch > chunk.Count);
+                Parallel.For(0, chunk.Count, i => picture.WriteTile(input.Array, i, chunk[i].X, chunk[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
+                StageClock.Add(Stage.DetectInput, inputStart);
+                using var maps = await set.DetectAsync(input, batch, tileH, tileW, ct).ConfigureAwait(false);
+                var boxesStart = Stopwatch.GetTimestamp();
+                var perTile = new List<RotatedBox>[chunk.Count];
+                Parallel.For(0, chunk.Count, i => perTile[i] = DbPostProcess.Boxes(maps.Array.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, chunk[i].X, chunk[i].Y)).ToList());
+                found.AddRange(perTile.SelectMany(b => b));
+                StageClock.Add(Stage.DetectBoxes, boxesStart);
+            }
         }
         else
         {
@@ -429,10 +523,15 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             var calls = tiles.Select(tile => Task.Run(
                 async () =>
                 {
-                    var input = new float[3 * tileSize];
-                    picture.WriteTile(input, 0, tile.X, tile.Y, tileW, tileH, rect, fillColor, Tensors.ImageNet);
-                    var map = await set.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
-                    return DbPostProcess.Boxes(map, tileW, tileH).Select(b => b.Map(1, tile.X, tile.Y)).ToList();
+                    var inputStart = Stopwatch.GetTimestamp();
+                    using var input = PooledFloats.Rent(3 * tileSize, clear: false);
+                    picture.WriteTile(input.Array, 0, tile.X, tile.Y, tileW, tileH, rect, fillColor, Tensors.ImageNet);
+                    StageClock.Add(Stage.DetectInput, inputStart);
+                    using var map = await set.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
+                    var boxesStart = Stopwatch.GetTimestamp();
+                    var boxes = DbPostProcess.Boxes(map.Span, tileW, tileH).Select(b => b.Map(1, tile.X, tile.Y)).ToList();
+                    StageClock.Add(Stage.DetectBoxes, boxesStart);
+                    return boxes;
                 },
                 ct));
             foreach (var boxes in await Task.WhenAll(calls).ConfigureAwait(false))
@@ -447,18 +546,25 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>
     /// The tiles along one side: as few as cover it with tiles of at most <see cref="TileSize"/> pixels overlapping by at least
     /// <see cref="TileOverlap"/>, all of one size (a multiple of 32) and spread evenly, so no pixel is read more often than
-    /// needed (1920 x 1080: 3 x 2 tiles of 736 x 608).
+    /// needed (1920 x 1080: 3 x 2 tiles of 736 x 608). <paramref name="side"/> turns a size into the text finder's input side
+    /// (DirectML: in steps); a stepped tile overlaps its neighbours more, never pads.
     /// </summary>
-    /// <returns>The left (or top) edges and the tile size.</returns>
-    internal static (List<int> Starts, int Size) Tiles(int start, int length)
+    /// <returns>The left (or top) edges and the tile size (the text finder's input side).</returns>
+    internal static (List<int> Starts, int Size) Tiles(int start, int length, Func<int, int>? side = null)
     {
+        side ??= RoundUp32;
         if (length <= TileSize)
         {
-            return ([start], length);
+            return ([start], side(length));
         }
 
         var n = (int)Math.Ceiling((length - TileOverlap * TileSize) / (TileSize * (1 - TileOverlap)));
-        var size = Math.Min(TileSize, RoundUp32((int)Math.Ceiling(length / (n - (n - 1) * TileOverlap))));
+        var size = side(Math.Min(TileSize, RoundUp32((int)Math.Ceiling(length / (n - (n - 1) * TileOverlap)))));
+        if (size >= length)
+        {
+            return ([start], size);
+        }
+
         var step = (length - size) / (double)(n - 1);
         var starts = new List<int>(n);
         for (var i = 0; i < n; i++)
@@ -495,6 +601,39 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var line = picture.Render(matrix, outW, ModelSet.LineHeight, Math.Min(scale, scaleX), SKColors.Black);
         Levels.Stretch(line, Levels.LineContrast);
         return line;
+    }
+
+    /// <summary>Characters that read as another plausible character upside down (6 and 9, n and u, digits that look like letters).</summary>
+    private const string Turnable = "0123456789HINOSXZMWnuoszxlpdbqhy-.,:;/'\" ";
+
+    /// <summary>
+    /// True when a line is read surely the right way up, so the angle model is not needed: at least 3 characters, every one
+    /// at least 90 % likely, and at least 2 of them letters that turned upside down read as nothing plausible (a line of digits
+    /// such as a meter always asks the angle model).
+    /// </summary>
+    internal static bool SurelyUpright(LineScores scores, CharacterList characters)
+    {
+        var chars = CtcDecoder.Greedy(scores, characters);
+        if (chars.Count < 3)
+        {
+            return false;
+        }
+
+        var telling = 0;
+        foreach (var c in chars)
+        {
+            if (c.Probability < 0.9f)
+            {
+                return false;
+            }
+
+            if (c.Text.Length == 1 && char.IsLetter(c.Text[0]) && !Turnable.Contains(c.Text[0], StringComparison.Ordinal))
+            {
+                telling++;
+            }
+        }
+
+        return telling >= 2;
     }
 
     /// <summary>How sure the reader is of a line: the mean probability of its characters, less for fewer than 3 characters.</summary>
@@ -547,6 +686,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     internal static int RoundUp32(int value) => Math.Max(32, (value + 31) / 32 * 32);
 
+    /// <summary>
+    /// Waits for the readings in work (at most <see cref="DisposeWait"/>), then frees the models; readings asked for later end
+    /// with <see cref="ObjectDisposedException"/>. A graphics card set still in use after the wait is left to the process
+    /// rather than freed under a running call.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -555,11 +699,39 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
 
         _disposed = true;
-        _gpuLines?.Dispose();
-        _gpuSet?.Dispose();
+        var taken = 0;
+        while (taken < Workers && _pictures.Wait(DisposeWait))
+        {
+            taken++;
+        }
+
+        var idle = taken == Workers;
+        if (_gpuLines?.Stop(DisposeWait) == false)
+        {
+            idle = false;
+        }
+
+        if (idle)
+        {
+            _gpuSet?.Dispose();
+        }
+        else
+        {
+            RecognitionLog.StillReading(_logger);
+        }
+
+        // In-use CPU sets are freed when their call ends.
         _cpu.Dispose();
-        _pictures.Dispose();
+
+        // Readings that waited for a slot get one, see the recognizer disposed and end.
+        if (taken > 0)
+        {
+            _pictures.Release(taken);
+        }
     }
+
+    /// <summary>How long <see cref="Dispose"/> waits for the readings in work.</summary>
+    internal static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(30);
 
     /// <summary>Lines whose mean probability is below the spec's 50 % are dropped (used by <see cref="LineReader"/>).</summary>
     internal static float DropBelow => MinMeanProbability;

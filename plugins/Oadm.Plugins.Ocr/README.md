@@ -14,7 +14,8 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | Load | `max(1, cores / 2)` CPU workers of 2 threads; the limit counts model calls, so an idle server reads the tiles of one picture at once. Per reader one reading at a time, the newest frame wins. |
 | Areas only | Text is read only inside the drawn areas: a reader without an area opens no stream and reads nothing; the action refuses with `ReaderRules.NoAreas`. At most 30 text boxes per reading over all areas (the highest detection scores, `OnnxTextRecognizer.Strongest`); more set `Reading.Note` to `ReaderRules.TooManyTexts`. |
 | Large areas | The fewest tiles that cover the area at up to 960 px each with at least 15 % overlap (full HD: 6 tiles of 736 x 608); boxes found twice and split pieces of one line (meter drums) merged. |
-| Upside down | The angle model only names candidates; a candidate is read both ways and the surer reading wins. |
+| Upside down | The angle model only for lines not read surely upright (every line of digits); it only names candidates, a candidate is read both ways and the surer reading wins. |
+| Speed | Only the part of the JPEG the areas need is decoded; rented model buffers, outputs read in place; CPU lines in pairs over the free workers; DirectML sides and tile batches in steps; while watching an unchanged area gives its last reading again (`RecognitionOptions.ReuseUnchanged`, at most 10 in a row). Numbers: spec "GPU". |
 | Confidence | A line's confidence is the lowest probability of its characters (of its format match when it has one); lines whose mean is below 50 % are dropped. The area's confidence is the lowest of the lines that make its value. |
 | Format | Format-guided CTC decoding (digits where `#`, letters where `A`), the ISO 6346 check digit for `AAAU ###### #`, then `TextMatcher` (look-alikes by position, two neighbouring lines, every match). A fixed-place strip with a format and no match is read once more as one line. |
 | Use as format | `TextFormat.FromText` (server part, used by the page): digits to `#`, letters to `A`, the rest as written; the results' link fills the area's format and selects it. |
@@ -39,6 +40,10 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Readers/AreaWatch.cs` | One area of a watching reader over `FrameVote` |
 | `Readers/ReaderStore.cs`, `ReaderRules.cs` | Stored readers (plugin records, collection `readers`, with the owner scope), checks and texts |
 | `Recognition/OnnxTextRecognizer.cs` | Decode, tiles, text finder, boxes, straighten, angle, read, format decoding; CPU workers and the graphics card |
+| `Recognition/Picture.cs` | Partial JPEG decode, cut-outs, model inputs |
+| `Recognition/UnchangedAreas.cs` | The print of each area and its last reading, used again while it barely changes |
+| `Recognition/ModelRunner.cs`, `ModelSet.cs`, `ShapeSessions.cs` | CPU workers (idle sets freed), the graphics card runner, the sessions per input size |
+| `Recognition/StageClock.cs` | Time per stage for the speed measurements |
 | `Recognition/PictureCutter.cs` | The value's cut-out for the page |
 | `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder`, `FrameVote` |
 | `Frames/` | `VapixFrameSource` (reopen pause 1 s doubling to 1 min, stall 3 s, request 15 s), `MjpegParser` |
@@ -69,7 +74,8 @@ all devices and to the reader's owner scope (a preview: the scope that started i
 ## Tests
 
 `tests/Oadm.Plugins.Ocr.Tests`: `Recognition/` (the real models on the CPU: geometry, decoding, workers, the accuracy set
-with its baseline, the model sources; `RecognitionSpeedTests` is Perf), `Matching/`, `Frames/` (recorded MJPEG,
+with its baseline, the model sources, partial decode, unchanged areas; `RecognitionSpeedTests` and `RecognitionBenchmarkTests`
+are Perf), `Matching/`, `Frames/` (recorded MJPEG,
 `FakeTimeProvider`), `Readers/` and `Events/` (fakes of the parts: watching, the vote, limits, the action, the preview),
 `DeviceGroupTests`, `PageMethodsTests`, `EndToEndTests` (the real parts with recorded pictures), `Client/` (the page with
 a fake live video, moving and resizing areas, the preview's draft,

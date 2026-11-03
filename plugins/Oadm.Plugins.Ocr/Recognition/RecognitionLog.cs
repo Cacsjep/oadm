@@ -13,4 +13,7 @@ internal static partial class RecognitionLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition runs on the CPU: the graphics card could not be used ({Reason})")]
     public static partial void GraphicsCardFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition stopped while a reading was still running: the graphics card's models are left to the process")]
+    public static partial void StillReading(ILogger logger);
 }

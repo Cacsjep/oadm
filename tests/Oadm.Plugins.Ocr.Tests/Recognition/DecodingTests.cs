@@ -55,6 +55,23 @@ public sealed class DecodingTests
     /// <summary>The frames of a text: each character for two frames, a blank after each.</summary>
     internal static string[] Frames(string text) => [.. text.SelectMany(c => new[] { c.ToString(), c.ToString(), "_" })];
 
+    [Theory]
+    [InlineData("ORDER", true)]
+    [InlineData("CAFE", true)]
+    [InlineData("1689", false)]
+    [InlineData("SOS", false)]
+    [InlineData("AE", false)]
+    public void Only_lines_read_surely_upright_skip_the_angle_model(string text, bool upright)
+    {
+        Assert.Equal(upright, OnnxTextRecognizer.SurelyUpright(Scores(Frames(text)), Chars));
+    }
+
+    [Fact]
+    public void An_unsure_character_asks_the_angle_model()
+    {
+        Assert.False(OnnxTextRecognizer.SurelyUpright(Scores("O", "_", "R", "_", "D:0.6", "_", "E", "_", "R"), Chars));
+    }
+
     [Fact]
     public void Best_path_merges_repeats_and_keeps_doubles_split_by_a_blank()
     {

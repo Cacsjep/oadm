@@ -78,6 +78,15 @@ public sealed record RecognitionOptions
 
     /// <summary>The reader's "Accurate": the server models also on the CPU (slower).</summary>
     public bool Accurate { get; init; }
+
+    /// <summary>
+    /// Watching: an area whose pixels have barely changed since its last reading gives that reading again without running the
+    /// models (<see cref="UnchangedAreas"/>). Never for the action's single reading.
+    /// </summary>
+    public bool ReuseUnchanged { get; init; }
+
+    /// <summary>Who reads (the reader's id): areas of different readers never share a reading. Only with <see cref="ReuseUnchanged"/>.</summary>
+    public string Source { get; init; } = string.Empty;
 }
 
 /// <summary>What runs the recognition: a graphics card by its name, or the CPU with its cores.</summary>

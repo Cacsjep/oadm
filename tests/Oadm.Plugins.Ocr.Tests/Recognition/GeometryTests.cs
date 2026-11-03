@@ -113,7 +113,7 @@ public sealed class GeometryTests
     [InlineData(1920, 3, 736)]
     [InlineData(1080, 2, 608)]
     [InlineData(960, 1, 960)]
-    [InlineData(500, 1, 500)]
+    [InlineData(500, 1, 512)]
     [InlineData(3840, 5, 896)]
     public void Tiles_cover_the_side_with_the_fewest_tiles_and_at_least_15_percent_overlap(int length, int count, int size)
     {
@@ -122,8 +122,35 @@ public sealed class GeometryTests
         Assert.Equal(count, starts.Count);
         Assert.Equal(size, tile);
         Assert.True(tile <= OnnxTextRecognizer.TileSize);
-        Assert.Equal(100, starts[0]);
-        Assert.Equal(100 + length, starts[^1] + tile);
+        AssertCovers(100, length, starts, tile);
+    }
+
+    [Theory]
+    [InlineData(1920, 3, 768)]
+    [InlineData(1080, 2, 768)]
+    [InlineData(1000, 2, 768)]
+    [InlineData(3840, 5, 1024)]
+    public void Tiles_in_steps_overlap_more_and_keep_their_count(int length, int count, int size)
+    {
+        int[] steps = [256, 512, 768, 1024];
+
+        var (starts, tile) = OnnxTextRecognizer.Tiles(100, length, s => steps.First(x => x >= s));
+
+        Assert.Equal(count, starts.Count);
+        Assert.Equal(size, tile);
+        AssertCovers(100, length, starts, tile);
+    }
+
+    private static void AssertCovers(int start, int length, List<int> starts, int tile)
+    {
+        Assert.Equal(start, starts[0]);
+        if (starts.Count == 1)
+        {
+            Assert.True(tile >= length);
+            return;
+        }
+
+        Assert.Equal(start + length, starts[^1] + tile);
         for (var i = 1; i < starts.Count; i++)
         {
             Assert.True(starts[i - 1] + tile - starts[i] >= OnnxTextRecognizer.TileOverlap * tile, "overlap");

@@ -6,40 +6,99 @@ namespace Oadm.Plugins.Ocr.Recognition;
 /// A decoded camera picture (SkiaSharp, RGBA) and the cut-outs recognition needs: an area or tile for the text finder, a
 /// line turned level and scaled to the reader's height. Scaling up is bicubic; scaling down by more than half averages
 /// blocks of pixels first, so thin strokes are not lost. Lives in memory only (docs/spec/ocr.md rule 2).
+/// <para>
+/// Only the part of the picture the areas need is decoded (<see cref="Decode"/> with a region: the rows above it skipped, the
+/// rows below never read, the columns outside cut by the JPEG decoder), so a small area costs a fraction of a full decode.
+/// Coordinates stay those of the whole picture; pixels outside the decoded region read as black.
+/// </para>
 /// </summary>
 internal sealed class Picture : IDisposable
 {
     private readonly SKBitmap _bitmap;
     private readonly SKImage _image;
+    private readonly int _left;
+    private readonly int _top;
 
-    private Picture(SKBitmap bitmap)
+    private Picture(SKBitmap bitmap, int width, int height, int left, int top)
     {
         _bitmap = bitmap;
         _image = SKImage.FromBitmap(bitmap);
+        Width = width;
+        Height = height;
+        _left = left;
+        _top = top;
     }
 
-    /// <summary>Width in pixels.</summary>
-    public int Width => _bitmap.Width;
+    /// <summary>Width of the whole picture in pixels.</summary>
+    public int Width { get; }
 
-    /// <summary>Height in pixels.</summary>
-    public int Height => _bitmap.Height;
+    /// <summary>Height of the whole picture in pixels.</summary>
+    public int Height { get; }
 
-    /// <summary>Decodes a JPEG (or any picture SkiaSharp reads).</summary>
+    /// <summary>The decoded part, in picture pixels (the whole picture without a region).</summary>
+    public SKRectI Decoded => new(_left, _top, _left + _bitmap.Width, _top + _bitmap.Height);
+
+    /// <summary>
+    /// Decodes a JPEG (or any picture SkiaSharp reads): the whole picture, or only <paramref name="region"/> of it (given the
+    /// picture's width and height; null or empty: the whole picture).
+    /// </summary>
     /// <exception cref="InvalidDataException">Not a picture.</exception>
-    public static Picture Decode(ReadOnlyMemory<byte> data)
+    public static Picture Decode(ReadOnlyMemory<byte> data, Func<int, int, SKRectI?>? region = null)
     {
         using var skData = SKData.CreateCopy(data.Span);
         using var codec = SKCodec.Create(skData) ?? throw new InvalidDataException("The camera's answer is not a picture.");
-        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-        var bitmap = new SKBitmap(info);
-        var result = codec.GetPixels(info, bitmap.GetPixels());
+        var width = codec.Info.Width;
+        var height = codec.Info.Height;
+        var full = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        var part = region?.Invoke(width, height) is { } r ? SKRectI.Intersect(r, new SKRectI(0, 0, width, height)) : SKRectI.Empty;
+        if (!part.IsEmpty && part.Width * (long)part.Height < width * (long)height * 9 / 10 && DecodePart(codec, full, part) is { } partial)
+        {
+            return new Picture(partial, width, height, part.Left, part.Top);
+        }
+
+        var bitmap = new SKBitmap(full);
+        var result = codec.GetPixels(full, bitmap.GetPixels());
         if (result is not (SKCodecResult.Success or SKCodecResult.IncompleteInput))
         {
             bitmap.Dispose();
             throw new InvalidDataException("The camera's answer is not a picture.");
         }
 
-        return new Picture(bitmap);
+        return new Picture(bitmap, width, height, 0, 0);
+    }
+
+    /// <summary>The rows and columns of <paramref name="part"/> through the line decoder, or null when the codec cannot.</summary>
+    private static SKBitmap? DecodePart(SKCodec codec, SKImageInfo full, SKRectI part)
+    {
+        // The line decoder cuts columns only (the JPEG decoder skips the blocks left and right); rows are skipped above and
+        // never read below.
+        var options = new SKCodecOptions(new SKRectI(part.Left, 0, part.Right, full.Height));
+        if (codec.StartScanlineDecode(full, options) != SKCodecResult.Success || codec.ScanlineOrder != SKCodecScanlineOrder.TopDown)
+        {
+            return null;
+        }
+
+        var bitmap = new SKBitmap(new SKImageInfo(part.Width, part.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        if (part.Top > 0 && !codec.SkipScanlines(part.Top))
+        {
+            bitmap.Dispose();
+            return null;
+        }
+
+        var rows = codec.GetScanlines(bitmap.GetPixels(), part.Height, bitmap.RowBytes);
+        if (rows <= 0)
+        {
+            bitmap.Dispose();
+            return null;
+        }
+
+        if (rows < part.Height)
+        {
+            // A cut-off picture: the rows that never came stay black, as in a full decode of an incomplete JPEG.
+            bitmap.GetPixelSpan()[(rows * bitmap.RowBytes)..].Clear();
+        }
+
+        return bitmap;
     }
 
     /// <summary>
@@ -66,11 +125,12 @@ internal sealed class Picture : IDisposable
                 return target;
             }
 
+            // In the decoded bitmap's pixels.
             var bounds = inverse.MapRect(new SKRect(0, 0, width, height));
-            var x0 = Math.Clamp((int)MathF.Floor(bounds.Left), 0, Width);
-            var y0 = Math.Clamp((int)MathF.Floor(bounds.Top), 0, Height);
-            var x1 = Math.Clamp((int)MathF.Ceiling(bounds.Right), 0, Width);
-            var y1 = Math.Clamp((int)MathF.Ceiling(bounds.Bottom), 0, Height);
+            var x0 = Math.Clamp((int)MathF.Floor(bounds.Left) - _left, 0, _bitmap.Width);
+            var y0 = Math.Clamp((int)MathF.Floor(bounds.Top) - _top, 0, _bitmap.Height);
+            var x1 = Math.Clamp((int)MathF.Ceiling(bounds.Right) - _left, 0, _bitmap.Width);
+            var y1 = Math.Clamp((int)MathF.Ceiling(bounds.Bottom) - _top, 0, _bitmap.Height);
             if (x1 - x0 < k || y1 - y0 < k)
             {
                 return target;
@@ -78,14 +138,14 @@ internal sealed class Picture : IDisposable
 
             using var reduced = Reduce(x0, y0, x1 - x0, y1 - y0, k);
             using var reducedImage = SKImage.FromBitmap(reduced);
-            var m = SKMatrix.Concat(pictureToTarget, SKMatrix.Concat(SKMatrix.CreateTranslation(x0, y0), SKMatrix.CreateScale(k, k)));
+            var m = SKMatrix.Concat(pictureToTarget, SKMatrix.Concat(SKMatrix.CreateTranslation(x0 + _left, y0 + _top), SKMatrix.CreateScale(k, k)));
             canvas.SetMatrix(m);
             canvas.DrawImage(reducedImage, 0, 0, Sampling(scale * k));
         }
         else
         {
             canvas.SetMatrix(pictureToTarget);
-            canvas.DrawImage(_image, 0, 0, Sampling(scale));
+            canvas.DrawImage(_image, _left, _top, Sampling(scale));
         }
 
         canvas.Flush();
@@ -112,10 +172,10 @@ internal sealed class Picture : IDisposable
         var f0 = fill.Blue * s0 - m0;
         var f1 = fill.Green * s1 - m1;
         var f2 = fill.Red * s2 - m2;
-        var left = Math.Max(area.Left, 0);
-        var right = Math.Min(area.Right, Width);
-        var top = Math.Max(area.Top, 0);
-        var bottom = Math.Min(area.Bottom, Height);
+        var left = Math.Max(area.Left, _left);
+        var right = Math.Min(area.Right, _left + _bitmap.Width);
+        var top = Math.Max(area.Top, _top);
+        var bottom = Math.Min(area.Bottom, _top + _bitmap.Height);
         for (var row = 0; row < height; row++)
         {
             var py = y + row;
@@ -126,7 +186,7 @@ internal sealed class Picture : IDisposable
                 var px = x + col;
                 if (rowInside && px >= left && px < right)
                 {
-                    var i = py * stride + px * 4;
+                    var i = (py - _top) * stride + (px - _left) * 4;
                     tensor[o + col] = pixels[i + 2] * s0 - m0;
                     tensor[o + plane + col] = pixels[i + 1] * s1 - m1;
                     tensor[o + 2 * plane + col] = pixels[i] * s2 - m2;
@@ -144,7 +204,7 @@ internal sealed class Picture : IDisposable
     /// <summary>The mean colour of the border pixels of a rectangle (the fill around a cut-out area).</summary>
     public SKColor BorderColor(SKRectI rect)
     {
-        rect = SKRectI.Intersect(rect, new SKRectI(0, 0, Width, Height));
+        rect = SKRectI.Intersect(rect, Decoded);
         if (rect.IsEmpty)
         {
             return SKColors.Gray;
@@ -158,7 +218,7 @@ internal sealed class Picture : IDisposable
             var edge = y == rect.Top || y == rect.Bottom - 1;
             for (var x = rect.Left; x < rect.Right; x += edge ? 1 : Math.Max(1, rect.Width - 1))
             {
-                var i = y * stride + x * 4;
+                var i = (y - _top) * stride + (x - _left) * 4;
                 r += pixels[i];
                 g += pixels[i + 1];
                 b += pixels[i + 2];
@@ -167,6 +227,43 @@ internal sealed class Picture : IDisposable
         }
 
         return new SKColor((byte)(r / n), (byte)(g / n), (byte)(b / n));
+    }
+
+    /// <summary>
+    /// The mean brightness (0 to 255) of <paramref name="columns"/> x <paramref name="rows"/> cells over <paramref name="rect"/>,
+    /// row by row (the print of <see cref="UnchangedAreas"/>); cells outside the decoded part are 0.
+    /// </summary>
+    public float[] CellMeans(SKRectI rect, int columns, int rows)
+    {
+        var sums = new float[columns * rows];
+        var counts = new int[columns * rows];
+        var pixels = _bitmap.GetPixelSpan();
+        var stride = _bitmap.RowBytes;
+        var part = SKRectI.Intersect(rect, Decoded);
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            return sums;
+        }
+
+        for (var y = part.Top; y < part.Bottom; y++)
+        {
+            var row = (int)((y - rect.Top) * (long)rows / rect.Height) * columns;
+            var o = (y - _top) * stride;
+            for (var x = part.Left; x < part.Right; x++)
+            {
+                var cell = row + (int)((x - rect.Left) * (long)columns / rect.Width);
+                var i = o + (x - _left) * 4;
+                sums[cell] += (pixels[i] + 2 * pixels[i + 1] + pixels[i + 2]) * 0.25f;
+                counts[cell]++;
+            }
+        }
+
+        for (var c = 0; c < sums.Length; c++)
+        {
+            sums[c] = counts[c] == 0 ? 0 : sums[c] / counts[c];
+        }
+
+        return sums;
     }
 
     private static SKSamplingOptions Sampling(float scale) =>
