@@ -41,7 +41,7 @@
     <PackageReference Include="Microsoft.AI.DirectML" Version="1.15.4" GeneratePathProperty="true" />
     <None Include="$(PkgMicrosoft_AI_DirectML)\bin\x64-win\DirectML.dll" Link="runtimes\win-x64\native\DirectML.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <!-- DirectML.dll ships outside deps.json: its own license (MICROSOFT SOFTWARE LICENSE TERMS - DIRECTML) goes into the
-         optional plugin's THIRD-PARTY-NOTICES.txt through this item (tools/Oadm.Notices --addon). -->
+         optional plugin's THIRD-PARTY-NOTICES.txt through this item (the addon mode of tools/Oadm.Notices). -->
     <OadmNoticePackage Include="Microsoft.AI.DirectML" Version="1.15.4" />
   </ItemGroup>
   <ItemGroup Condition="'$(OcrRid)' == 'linux-x64'">
