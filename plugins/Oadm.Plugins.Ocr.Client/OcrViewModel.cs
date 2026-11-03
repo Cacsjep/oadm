@@ -125,6 +125,57 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     public EngineInfo Engine { get; private set; } = new();
 
+    /// <summary>The runtime stats below Settings.</summary>
+    public OcrStatsViewModel Stats { get; } = new();
+
+    /// <summary>The clock of the stats' keep-alive (tests pass a fake one).</summary>
+    public TimeProvider StatsTime { get; set; } = TimeProvider.System;
+
+    private Dictionary<string, ReaderRate> _rates = new(StringComparer.Ordinal);
+
+    /// <summary>The runtime stats arrived (getStats, the live event): the panel and each reader's rate.</summary>
+    public void ApplyStats(OcrStats stats)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+        Stats.Apply(stats);
+        _rates = stats.Readers.GroupBy(r => r.ReaderId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var row in _rows.Values)
+        {
+            row.SetRate(_rates.GetValueOrDefault(row.Id));
+        }
+    }
+
+    /// <summary>While the page is shown: the stats now and every keep-alive, so the server sends them live.</summary>
+    private async Task KeepStatsAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var json = await _ctx.InvokeAsync(OcrMethods.GetStats, "{}", ct).ConfigureAwait(true);
+                ApplyStats(OcrJson.Deserialize<OcrStats>(json));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+#pragma warning disable CA1031 // An older server without the stats: the panel stays hidden.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+
+            try
+            {
+                await Task.Delay(OcrLimits.PreviewKeepAlive, StatsTime, ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
     /// <summary>The page is shown: read the list and the engine, watch the events.</summary>
     public void Activate()
     {
@@ -136,6 +187,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         _active = new CancellationTokenSource();
         var token = _active.Token;
         _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        _ = KeepStatsAsync(token);
         Editor?.StartPreview();
         _ = LoadAsync(token);
     }
@@ -288,8 +340,11 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             }
             else
             {
-                _rows[summary.Id] = new ReaderRow(summary, camera);
+                row = new ReaderRow(summary, camera);
+                _rows[summary.Id] = row;
             }
+
+            row.SetRate(_rates.GetValueOrDefault(summary.Id));
         }
 
         foreach (var gone in _rows.Keys.Where(k => !seen.Contains(k)).ToList())
@@ -363,6 +418,9 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
                         row.SetLast(reading.Areas.Count > 0 ? reading.Areas[0].Text : string.Empty, reading.Time);
                     }
 
+                    break;
+                case OcrMethods.StatsTopic:
+                    ApplyStats(OcrJson.Deserialize<OcrStats>(e.PayloadJson));
                     break;
                 case OcrMethods.PreviewTopic:
                     var preview = OcrJson.Deserialize<PreviewEvent>(e.PayloadJson);

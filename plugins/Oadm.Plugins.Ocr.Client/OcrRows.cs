@@ -30,7 +30,7 @@ public sealed partial class ReaderRow : ObservableObject
     public partial string Camera { get; private set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem))]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem), nameof(IsKeepingUp), nameof(IsSlowWatching))]
     public partial ReaderMode Mode { get; private set; }
 
     /// <summary>The frame rate while Watching.</summary>
@@ -40,7 +40,7 @@ public sealed partial class ReaderRow : ObservableObject
 
     /// <summary>The full text of what keeps the reader from reading (the header's chip); null while it reads.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem))]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem), nameof(IsKeepingUp), nameof(IsSlowWatching))]
     public partial string? Problem { get; private set; }
 
     /// <summary>The value of the first area of the last reading, or "No reading yet".</summary>
@@ -49,12 +49,36 @@ public sealed partial class ReaderRow : ObservableObject
 
     public DateTimeOffset? LastTime { get; private set; }
 
-    /// <summary>On action / Watching · 2 fps / Not reachable.</summary>
+    /// <summary>On action / Watching · 2 fps / Watching · 8 fps (reads 5.1) / Not reachable.</summary>
     public string ModeText => IsProblem ? OcrTexts.NotReachable
         : Mode != ReaderMode.Watching ? OcrTexts.OnAction
+        : IsSlow ? OcrTexts.WatchingReads(Fps, Reads ?? 0)
         : OcrTexts.WatchingAt(Fps);
 
     public bool IsWatching => Mode == ReaderMode.Watching && !IsProblem;
+
+    /// <summary>Watching and keeping its frame rate: the green chip.</summary>
+    public bool IsKeepingUp => IsWatching && !IsSlow;
+
+    /// <summary>What the reader read per second over the last 10 s (the runtime stats); null without stats.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeText))]
+    public partial double? Reads { get; private set; }
+
+    /// <summary>Watching below 90 % of its frame rate: the orange chip.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsKeepingUp), nameof(IsSlowWatching))]
+    public partial bool IsSlow { get; private set; }
+
+    /// <summary>The orange chip shows (slow and nothing worse).</summary>
+    public bool IsSlowWatching => IsSlow && IsWatching;
+
+    /// <summary>The runtime stats of this reader (null: not watching now).</summary>
+    public void SetRate(ReaderRate? rate)
+    {
+        Reads = rate?.Reads;
+        IsSlow = rate?.Slow ?? false;
+    }
 
     /// <summary>The server reports a problem (the camera refuses connections), in either mode.</summary>
     public bool IsProblem => !string.IsNullOrEmpty(Problem);

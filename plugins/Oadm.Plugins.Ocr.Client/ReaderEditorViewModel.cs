@@ -205,12 +205,27 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public bool HasAreas => Areas.Count > 0;
 
+    /// <summary>
+    /// No area yet and not drawing: the live video is dimmed with "Start by drawing an area" (text is read only inside
+    /// areas, the preview reads nothing).
+    /// </summary>
+    public bool ShowStartHint => !HasAreas && !IsDrawing;
+
     public static string NoAreasText => OcrTexts.NoAreas;
 
     /// <summary>Draw area is on: the next drag on the live video adds an area.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DrawAreaCommand))]
+    [NotifyPropertyChangedFor(nameof(ShownLines), nameof(ShowStartHint))]
     public partial bool IsDrawing { get; set; }
+
+    /// <summary>An area is being moved or resized on the live video (the lines are hidden meanwhile).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShownLines))]
+    public partial bool IsAdjustingArea { get; private set; }
+
+    /// <summary>The live video's overlay started (true) or ended (false) a move or resize of an area.</summary>
+    public void SetAdjusting(bool adjusting) => IsAdjustingArea = adjusting;
 
     public bool CanAddArea => MayChange && Areas.Count < OcrLimits.MaxAreas;
 
@@ -229,16 +244,27 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>The picture's shape for the overlay: the reader's resolution.</summary>
     public Resolution PictureSize => SelectedResolution;
 
-    /// <summary>The lines of the latest reading, drawn over the live video.</summary>
+    /// <summary>The lines of the latest reading.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShownLines))]
     public partial IReadOnlyList<TextLine> Lines { get; private set; } = [];
+
+    /// <summary>The lines drawn over the live video: none while an area is drawn, moved or resized.</summary>
+    public IReadOnlyList<TextLine> ShownLines => IsDrawing || IsAdjustingArea ? [] : Lines;
+
+    /// <summary>The latest reading's note ("More than 30 texts found. ..."); null without one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasReadingNote))]
+    public partial string? ReadingNote { get; private set; }
+
+    public bool HasReadingNote => !string.IsNullOrEmpty(ReadingNote);
 
     public RangeObservableCollection<ResultRow> Results { get; } = [];
 
     public bool HasResults => Results.Count > 0;
 
-    /// <summary>Below the results while there are none: why the preview reads nothing, else that it waits.</summary>
-    public string ResultsEmptyText => PreviewProblem ?? OcrTexts.WaitingForPicture;
+    /// <summary>Below the results while there are none: why the preview reads nothing, else that it waits (nothing without areas: the video says it).</summary>
+    public string ResultsEmptyText => PreviewProblem ?? (HasAreas ? OcrTexts.WaitingForPicture : string.Empty);
 
     /// <summary>"Last reading 14:32:06" below the live video, or "Waiting for the first picture."</summary>
     [ObservableProperty]
@@ -851,7 +877,14 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
 
         _cutOuts = cutOuts is null ? [] : [.. cutOuts.Values];
+        if (Areas.Count == 0)
+        {
+            // Text is read only inside areas: a reading from before the last area went shows nothing.
+            reading = reading with { Areas = [], Note = null };
+        }
+
         Lines = [.. reading.Areas.SelectMany(a => a.Lines)];
+        ReadingNote = reading.Note;
         PictureText = OcrTexts.LastReading(reading.Time);
 
         var formats = new Dictionary<string, bool>(StringComparer.Ordinal);
@@ -971,8 +1004,19 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private void OnAreasChanged()
     {
+        if (Areas.Count == 0)
+        {
+            // No area, no reading: the lines and results of the last one go, the video shows the start hint.
+            Lines = [];
+            ReadingNote = null;
+            Results.Clear();
+            OnPropertyChanged(nameof(HasResults));
+        }
+
         OnPropertyChanged(nameof(AreaCountText));
         OnPropertyChanged(nameof(HasAreas));
+        OnPropertyChanged(nameof(ShowStartHint));
+        OnPropertyChanged(nameof(ResultsEmptyText));
         OnPropertyChanged(nameof(CanAddArea));
         OnPropertyChanged(nameof(DrawBlockedReason));
         DrawAreaCommand.NotifyCanExecuteChanged();

@@ -9,13 +9,17 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
-/// The Text recognition page. Layout only: the camera picker, the live video overlay's drawing, moving, resizing and nudging
-/// handed to the reader's editor, Esc stops drawing; the view model watches while the view is in the visual tree.
+/// The Text recognition page. Layout only (fixed readers and settings columns, the video takes the rest): the camera picker,
+/// the live video overlay's drawing, moving, resizing and nudging handed to the reader's editor, Esc stops drawing; the view
+/// model watches while the view is in the visual tree.
 /// </summary>
 public partial class OcrView : UserControl
 {
-    /// <summary>The smallest share of the page width each card keeps when the splitter moves.</summary>
-    public const double MinPaneShare = 0.2;
+    /// <summary>The readers column's fixed width (the reader rows and the runtime stats fit).</summary>
+    public const double ReadersWidth = 320;
+
+    /// <summary>The settings column's fixed width (the format field and the areas fit).</summary>
+    public const double SettingsWidth = 320;
 
     private OcrViewModel? _viewModel;
     private ReaderEditorViewModel? _editor;
@@ -23,17 +27,12 @@ public partial class OcrView : UserControl
     public OcrView()
     {
         InitializeComponent();
-        Panes.SizeChanged += (_, e) =>
-        {
-            var min = e.NewSize.Width * MinPaneShare;
-            Panes.ColumnDefinitions[0].MinWidth = min;
-            Panes.ColumnDefinitions[2].MinWidth = min;
-        };
         Picture.AreaDrawn += (_, box) => _editor?.AddArea(box);
         Picture.AreaSelected += (_, area) => _editor?.SelectedArea = area;
         Picture.AreaChanged += (_, change) => _editor?.SetAreaBox(change.Area, change.Box);
         Picture.NudgeRequested += (_, by) => _editor?.NudgeSelected(by.X, by.Y);
         Picture.DrawingCancelled += (_, _) => _editor?.StopDrawing();
+        Picture.AdjustingChanged += (_, adjusting) => _editor?.SetAdjusting(adjusting);
         // A press on an area's row or its field taking the focus: that area is the selected one on the live video.
         AreaList.AddHandler(GotFocusEvent, (_, e) => SelectAreaOf(e.Source));
         AreaList.AddHandler(PointerPressedEvent, (_, e) => SelectAreaOf(e.Source), Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);

@@ -147,8 +147,12 @@ Per area: **Any text** (default) or **Format**.
 
 ## Page
 
-- Left: the readers (name, camera, mode, last text), **New** and **Delete** (red, with a confirmation).
-- The selected reader in two columns (so: readers | live video | settings), no toolbar row:
+- Three columns, no splitter: readers (fixed 320 px) | live video and results (the rest) | settings (fixed 320 px, the
+  narrowest where the form, the format field and the areas fit; labels above their fields). The video gets every pixel
+  the two fixed columns leave.
+- Left: the readers (name, camera, mode, last text), **New** and **Delete** (red, with a confirmation); below the list
+  Settings (Runs on, Use the graphics card) and the runtime stats ("Runtime stats").
+- The selected reader in two columns, no toolbar row:
   - **Left: the camera's live video**, the shared live video component (`ICorePluginClientContext.LiveVideo`,
     docs/spec/live-view.md) of the reader's camera and video source, with the picture only (no channel switch,
     fullscreen, quality switch or controls: nothing sits under the areas or leaves them behind). Over it
@@ -157,18 +161,25 @@ Per area: **Any text** (default) or **Format**.
     as the video's picture (Stretch Uniform). The video shows the camera's own picture shape; a resolution of another
     shape than the video source (4:3 on a 16:9 camera) draws the areas on the reader's shape. Without the host's live
     video (an older OADM) the overlay sits on the dark video surface. Below the video the mode chip ("Watching · 2 fps",
-    "On action" or the reader's problem) and "Last reading 14:32:06" or "Waiting for the first picture."
+    "On action" or the reader's problem) and "Last reading 14:32:06" or "Waiting for the first picture.", the reading's
+    note when it has one (warning chip: "More than 30 texts found. ..."), then the **results grid** (Area, Text,
+    Confidence right-aligned, Matches format, the time) in the rest of the column's height.
+  - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
+    nothing is read (the preview has no stream), no lines, no results. Draw area stays the way to start; while drawing
+    the drawing hint shows instead.
   - **Right, stacked**: the form (Name, Camera, Video source, Resolution, Mode with Watching and On action, Frames per
     second as a select of the server's choices: 1, 2, 4, on a graphics card also 8, 12, 15; only while Watching), the
     **Areas** panel (header: Areas, **Draw area** as a flat command button with its icon, "2 of 8"; per area its name and
-    expected text), the results grid (Area, Text, Confidence right-aligned, Matches format, the time), then the save
-    status left of **Save**. The column scrolls; Save stays at the bottom.
+    expected text), then the save status left of **Save**. The column scrolls; Save stays at the bottom.
 - **Areas on the live video**: Draw area, then a drag draws one (at least 2 % of the picture each way; Esc stops). A
   press on an area or on its row in the Areas panel selects it: solid with handles at the corners and edge midpoints. A
   drag inside moves it, a drag on a handle resizes it; both stay inside the picture and keep the drawing minimum
   (`AreaGeometry`); Esc cancels the drag in progress; the arrow keys move it by 1 % (Shift: 5 %). The cursor shows move
   over the body and resize over the handles. Every change marks the reader Not saved like any other edit. Without the
-  change right nothing moves.
+  change right nothing moves. While an area is drawn, moved or resized the found lines are hidden (they belong to the old
+  areas); they show again when the drag ends. The drag's end is final: the overlay hands the new box to the reader
+  before it lets go of the pointer (releasing the pointer capture cancels a drag still in progress, which made areas
+  snap back), and nothing the preview sends replaces the areas.
 - **Live preview, no Read now**: while the page shows a reader (the page is visible), the server reads it live as a
   preview in both modes, at the reader's rate (On action: 1 per second), so the results follow while areas are set up.
   The page sends its draft as it is (saved or not, a new reader too): on every change and every 10 s as the keep-alive
@@ -354,10 +365,16 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - The preview (`Readers/PreviewTests`): the draft read live without rule events, new areas without a new stream, the
   lease (`FakeTimeProvider`), 8 previews and the watching limit, sharing an unchanged watching reader's stream, device
   groups, what a draft allows.
-- The page (`Client/`): the live video follows camera and source, the preview's draft on every change and the keep-alive,
+- The page (`Client/`): fixed columns without a splitter and the results below the video; a real pointer drag that moves
+  and resizes an area which stays there (`PageLayoutTests`, headless); the lines hidden while an area is drawn or
+  adjusted, the start hint without areas, the reading's note, the stats panel and a slow reader's orange chip
+  (`PageAreasAndStatsTests`); the live video follows camera and source, the preview's draft on every change and the keep-alive,
   only the newest reading fetched, moving, resizing and nudging areas held inside the picture, the On action message
   once, new readers watching, the frame rate select; headless screenshots dark and light (the live video as a still
-  frame).
+  frame): watching with the results below the video and green stats, the stats orange and red, an area being moved
+  (lines hidden), a reader without an area (dimmed with the hint). Headless tests return a value from
+  `Session.Dispatch(async () => ...)`: it has no overload for a plain `Task`, so without one the assertions after the
+  first await never reach the test.
 - Runtime stats (`Readers/StatsTests`, `FakeTimeProvider`): the 10 s window, the load on the CPU and a graphics card, the
   server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
   live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).

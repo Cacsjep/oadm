@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Client;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Ocr.Tests.Client;
@@ -71,7 +72,36 @@ public sealed class PageScreenshotTests
                 Assert.True(draw.IsEffectivelyVisible);
                 Assert.Equal("Draw area", draw.Text);
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<ToolbarButton>(), b => b.Text == "Read now");
+
+                // The runtime stats below Settings: green, the results below the video.
+                vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Ok, ReaderRules.KeepUp, 42));
+                Headless.Pump();
+                Assert.True(view.FindControl<StackPanel>("StatsPanel")!.IsEffectivelyVisible);
+                Assert.True(view.FindControl<DataGrid>("ResultsGrid")!.IsEffectivelyVisible);
                 Headless.Capture(window, $"ocr-watching-{suffix}.png");
+
+                // Orange: a reader reads slower than set (its chip too); red: overloaded.
+                vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Busy, ReaderRules.BusySlow(1), 81,
+                    new ReaderRate { ReaderId = "r1", Fps = 1, Reads = 0.8, Slow = true }));
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == "Watching · 1 fps (reads 0.8)" && c.IsWarning);
+                Headless.Capture(window, $"ocr-stats-busy-{suffix}.png");
+                vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Overloaded, ReaderRules.Overloaded, 99,
+                    new ReaderRate { ReaderId = "r1", Fps = 1, Reads = 0.4, Slow = true }));
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == ReaderRules.Overloaded && c.IsError);
+                Headless.Capture(window, $"ocr-stats-overloaded-{suffix}.png");
+                vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Ok, ReaderRules.KeepUp, 42));
+
+                // Moving an area: the lines are hidden while the drag lasts.
+                picture.BeginEdit(editor.Areas[1], AreaHandle.Move, new Point(0.53, 0.44));
+                picture.UpdateEdit(new Point(0.58, 0.60));
+                Headless.Pump();
+                Assert.Empty(editor.ShownLines);
+                Headless.Capture(window, $"ocr-dragging-{suffix}.png");
+                picture.CancelEdit();
+                Headless.Pump();
+                Assert.Equal(3, editor.ShownLines.Count);
 
                 // A selected area: solid, with its handles; a drag on its corner resizes it (Esc cancels a drag).
                 editor.SelectedArea = editor.Areas[0];
@@ -134,6 +164,14 @@ public sealed class PageScreenshotTests
                 Assert.False(editor.SaveCommand.CanExecute(null));
                 Headless.Capture(window, $"ocr-format-error-{suffix}.png");
 
+                // A reader without an area: the video dimmed with the start hint, no results.
+                await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
+                vm.Editor!.Problem = null;
+                Headless.Pump();
+                Assert.True(vm.Editor.ShowStartHint);
+                Assert.True(view.PictureControl.ShowStartHint);
+                Headless.Capture(window, $"ocr-no-area-{suffix}.png");
+
                 // An On action reader without a reading: no frame rate.
                 ctx.ConfirmAnswer = true;
                 lane.FormatText = "A#";
@@ -154,6 +192,10 @@ public sealed class PageScreenshotTests
             Assert.False(notice.CancelButton.IsVisible);
             Headless.Capture(notice, $"ocr-on-action-message-{suffix}.png");
             notice.Close();
+
+            // A value: the async lambda is then awaited to its end (Dispatch has no overload for a plain Task, so its
+            // assertions after the first await would otherwise never reach the test).
+            return true;
         }, CancellationToken.None);
     }
 }

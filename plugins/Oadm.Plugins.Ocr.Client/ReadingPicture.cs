@@ -19,8 +19,9 @@ public sealed record AreaBoxChange(AreaViewModel Area, RelativeBox Box);
 /// (its shape kept, centered: the same letterboxing as the video below it). While <see cref="IsDrawing"/> a drag draws a
 /// rectangle (<see cref="AreaDrawn"/>); otherwise a press on an area selects it (<see cref="AreaSelected"/>), a drag inside
 /// moves it, a drag on a handle resizes it (<see cref="AreaChanged"/> at the end; Esc cancels the drag), the arrow keys
-/// nudge it (<see cref="NudgeRequested"/>). The geometry rules are <see cref="AreaGeometry"/>; colours and fonts come from
-/// the theme.
+/// nudge it (<see cref="NudgeRequested"/>). While an area is drawn, moved or resized the lines are hidden
+/// (<see cref="AdjustingChanged"/> tells the reader); without areas (<see cref="ShowStartHint"/>) the picture is dimmed with
+/// "Start by drawing an area". The geometry rules are <see cref="AreaGeometry"/>; colours and fonts come from the theme.
 /// </summary>
 public sealed class ReadingPicture : Control
 {
@@ -40,6 +41,10 @@ public sealed class ReadingPicture : Control
     public static readonly StyledProperty<bool> CanEditProperty =
         AvaloniaProperty.Register<ReadingPicture, bool>(nameof(CanEdit), true);
 
+    /// <summary>The reader has no area: the picture is dimmed with <see cref="OcrTexts.StartHint"/>.</summary>
+    public static readonly StyledProperty<bool> ShowStartHintProperty =
+        AvaloniaProperty.Register<ReadingPicture, bool>(nameof(ShowStartHint));
+
     /// <summary>Changes whenever the areas, the selection or the lines changed: the overlay draws again.</summary>
     public static readonly StyledProperty<int> VersionProperty =
         AvaloniaProperty.Register<ReadingPicture, int>(nameof(Version));
@@ -58,7 +63,7 @@ public sealed class ReadingPicture : Control
 
     static ReadingPicture()
     {
-        AffectsRender<ReadingPicture>(AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty);
+        AffectsRender<ReadingPicture>(AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty, ShowStartHintProperty);
         AffectsMeasure<ReadingPicture>(PictureSizeProperty);
         FocusableProperty.OverrideDefaultValue<ReadingPicture>(true);
         ClipToBoundsProperty.OverrideDefaultValue<ReadingPicture>(true);
@@ -78,6 +83,9 @@ public sealed class ReadingPicture : Control
 
     /// <summary>Esc while drawing.</summary>
     public event EventHandler? DrawingCancelled;
+
+    /// <summary>A move or resize started (true) or ended or was cancelled (false): the reader hides the lines meanwhile.</summary>
+    public event EventHandler<bool>? AdjustingChanged;
 
     public Resolution PictureSize
     {
@@ -107,6 +115,12 @@ public sealed class ReadingPicture : Control
     {
         get => GetValue(CanEditProperty);
         set => SetValue(CanEditProperty, value);
+    }
+
+    public bool ShowStartHint
+    {
+        get => GetValue(ShowStartHintProperty);
+        set => SetValue(ShowStartHintProperty, value);
     }
 
     public int Version
@@ -184,6 +198,7 @@ public sealed class ReadingPicture : Control
     internal void BeginEdit(AreaViewModel area, AreaHandle handle, Point start)
     {
         _edit = new EditDrag(area, handle, start, area.Box) { Now = area.Box };
+        AdjustingChanged?.Invoke(this, true);
         InvalidateVisual();
     }
 
@@ -211,13 +226,20 @@ public sealed class ReadingPicture : Control
             AreaChanged?.Invoke(this, new AreaBoxChange(edit.Area, edit.Now));
         }
 
+        AdjustingChanged?.Invoke(this, false);
         InvalidateVisual();
     }
 
-    /// <summary>Esc during a drag: the area stays where it was.</summary>
+    /// <summary>Esc during a drag, or the pointer lost: the area stays where it was.</summary>
     internal void CancelEdit()
     {
+        if (_edit is null)
+        {
+            return;
+        }
+
         _edit = null;
+        AdjustingChanged?.Invoke(this, false);
         InvalidateVisual();
     }
 
@@ -307,9 +329,11 @@ public sealed class ReadingPicture : Control
 
         if (_edit is not null)
         {
+            // End the drag first, then let go of the pointer: releasing the capture raises PointerCaptureLost at once, which
+            // cancels a drag still in progress (the area snapped back to where it was).
             UpdateEdit(ToRelative(e.GetPosition(this)));
-            e.Pointer.Capture(null);
             EndEdit();
+            e.Pointer.Capture(null);
         }
     }
 
@@ -397,7 +421,18 @@ public sealed class ReadingPicture : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         using (context.PushClip(picture))
         {
-            DrawLines(context, picture);
+            if (ShowStartHint && !IsDrawing)
+            {
+                // No area yet: nothing is read; the picture dimmed a little.
+                context.FillRectangle(Tint(Brush("Oadm.VideoDimBrush"), StartDim), picture);
+            }
+
+            // The lines of the latest reading, never while an area is drawn, moved or resized.
+            if (!IsDrawing && _edit is null && _drawStart is null)
+            {
+                DrawLines(context, picture);
+            }
+
             DrawAreas(context, picture);
             if (_drawStart is { } start)
             {
@@ -409,9 +444,16 @@ public sealed class ReadingPicture : Control
 
         if (IsDrawing)
         {
-            DrawHint(context, picture);
+            DrawHint(context, picture, OcrTexts.DrawHint, top: true);
+        }
+        else if (ShowStartHint)
+        {
+            DrawHint(context, picture, OcrTexts.StartHint, top: false);
         }
     }
+
+    /// <summary>The share of the theme's video dim over a picture without areas (slightly darker, the picture still shows).</summary>
+    private const double StartDim = 0.6;
 
     private void DrawLines(DrawingContext context, Rect picture)
     {
@@ -485,11 +527,13 @@ public sealed class ReadingPicture : Control
         }
     }
 
-    private void DrawHint(DrawingContext context, Rect picture)
+    /// <summary>A hint on the theme's overlay: at the top of the picture, or in its middle.</summary>
+    private void DrawHint(DrawingContext context, Rect picture, string hint, bool top)
     {
-        var text = new FormattedText(OcrTexts.DrawHint, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Font("Oadm.FontFamily"),
+        var text = new FormattedText(hint, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Font("Oadm.FontFamily"),
             Number("Oadm.FontSizeBody", 12), Brush("Oadm.TextPrimaryBrush"));
-        var box = new Rect(picture.X + ((picture.Width - text.Width) / 2) - 10, picture.Y + 10, text.Width + 20, text.Height + 10);
+        var y = top ? picture.Y + 10 : picture.Y + ((picture.Height - text.Height - 10) / 2);
+        var box = new Rect(picture.X + ((picture.Width - text.Width) / 2) - 10, y, text.Width + 20, text.Height + 10);
         context.FillRectangle(Brush("Oadm.OverlayBrush"), box, 4);
         context.DrawText(text, new Point(box.X + 10, box.Y + 5));
     }
