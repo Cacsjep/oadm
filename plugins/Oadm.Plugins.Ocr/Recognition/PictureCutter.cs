@@ -12,6 +12,17 @@ public sealed class PictureCutter : IPictureCutter
     /// <summary>The JPEG quality of the cut-outs.</summary>
     private const int Quality = 90;
 
+    /// <summary>The cut-out in picture pixels: the box with a margin of a quarter of its height, inside the picture.</summary>
+    private static SKRectI Rect(RelativeBox box, int width, int height)
+    {
+        var margin = box.Height * height / 4;
+        var left = Math.Clamp((int)Math.Floor(box.X * width - margin), 0, width - 1);
+        var top = Math.Clamp((int)Math.Floor(box.Y * height - margin), 0, height - 1);
+        var right = Math.Clamp((int)Math.Ceiling((box.X + box.Width) * width + margin), left + 1, width);
+        var bottom = Math.Clamp((int)Math.Ceiling((box.Y + box.Height) * height + margin), top + 1, height);
+        return new SKRectI(left, top, right, bottom);
+    }
+
     /// <inheritdoc />
     public byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box)
     {
@@ -22,23 +33,10 @@ public sealed class PictureCutter : IPictureCutter
 
         try
         {
-            using var picture = SKBitmap.Decode(jpeg.Span);
-            if (picture is null)
-            {
-                return null;
-            }
-
-            var margin = box.Height * picture.Height / 4;
-            var left = Math.Clamp((int)Math.Floor(box.X * picture.Width - margin), 0, picture.Width - 1);
-            var top = Math.Clamp((int)Math.Floor(box.Y * picture.Height - margin), 0, picture.Height - 1);
-            var right = Math.Clamp((int)Math.Ceiling((box.X + box.Width) * picture.Width + margin), left + 1, picture.Width);
-            var bottom = Math.Clamp((int)Math.Ceiling((box.Y + box.Height) * picture.Height + margin), top + 1, picture.Height);
-            using var cut = new SKBitmap();
-            if (!picture.ExtractSubset(cut, new SKRectI(left, top, right, bottom)))
-            {
-                return null;
-            }
-
+            // Only the cut-out's rows and columns are decoded (a full HD frame per area per reading cost about 16 ms).
+            using var picture = Picture.Decode(jpeg, (w, h) => Rect(box, w, h));
+            var rect = Rect(box, picture.Width, picture.Height);
+            using var cut = picture.Render(SKMatrix.CreateTranslation(-rect.Left, -rect.Top), rect.Width, rect.Height, 1, SKColors.Black);
             using var image = SKImage.FromBitmap(cut);
             using var data = image.Encode(SKEncodedImageFormat.Jpeg, Quality);
             return data?.ToArray();

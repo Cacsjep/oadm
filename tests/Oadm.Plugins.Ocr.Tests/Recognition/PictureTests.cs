@@ -60,6 +60,25 @@ public sealed class PictureTests
     }
 
     [Fact]
+    public void The_cut_out_is_the_box_with_its_margin_from_a_partial_decode()
+    {
+        var jpeg = Box();
+        var cut = new PictureCutter().Cut(jpeg, new RelativeBox(0.28, 0.54, 0.16, 0.1));
+
+        using var bitmap = SKBitmap.Decode(cut);
+        using var whole = SKBitmap.Decode(jpeg);
+
+        // 0.16 x 0.1 of full HD (537.6 to 844.8, 583.2 to 691.2) plus a quarter of the height (27 px) on each side.
+        Assert.Equal((872 - 510, 719 - 556), (bitmap.Width, bitmap.Height));
+        foreach (var (x, y) in new[] { (577, 623), (700, 650), (520, 700) })
+        {
+            var expected = whole.GetPixel(x, y);
+            var actual = bitmap.GetPixel(x - 510, y - 556);
+            Assert.InRange(Math.Abs(expected.Green - actual.Green), 0, 24);
+        }
+    }
+
+    [Fact]
     public void A_whole_picture_region_decodes_everything()
     {
         using var picture = Picture.Decode(Box(), (w, h) => new SKRectI(0, 0, w, h));
