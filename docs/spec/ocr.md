@@ -38,7 +38,14 @@ that better (the docs say so).
 
 A reader is a saved setup: name, camera, video source, resolution, mode, frame rate and up to 8 areas.
 
-- **Areas**: rectangles drawn on the picture, each with a name ("Container number") and an expected text. Stored relative
+- **Camera**: chosen once, when the reader is created (New, then the camera). A saved reader keeps it: a save with
+  another camera is refused (`camera`: "A saved reader keeps its camera. Create a new reader for another camera."); the
+  page offers no camera change.
+
+- **Areas**: rectangles drawn on the picture, each with a name and an expected text. The page names a new area "Area n"
+  with the lowest free number (Area 2 again after Area 2 was deleted; the others keep theirs, rules name them); Rename
+  gives it any other name. The server checks names as before (not empty, at most 64 characters, unique in the reader),
+  no pattern. Stored relative
   to the picture (0 to 1), so a change of resolution keeps them in place. **Text is read only inside areas**, never in
   the whole picture by itself: a reader without an area reads nothing (no stream, no events, no preview reading; the page
   asks "Start by drawing an area"), and the action Read text with it ends "The reader has no area. Draw one on the Text
@@ -201,17 +208,26 @@ Per area: **Any text** (default) or **Format**.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
     nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
     while drawing the drawing hint shows instead.
-  - **Right, stacked**: the form (Name, Camera, Video source and Resolution side by side in one row, Mode with Watching
-    and On action, Frames per second as a select of the server's choices: 1, 2, 4, on a graphics card also 8, 12, 15;
-    only while Watching), the **Areas** panel, then the save status left of **Save**. The column scrolls; Save stays at
-    the bottom.
+  - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream settings**), the Areas
+    header, the area rows (the only part that scrolls: with many areas New above and Save below stay in reach), then the
+    save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
+  - **Stream settings**: a secondary button (video icon) that opens a small dialog (single operation: no card,
+    `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
+    as a select of the server's choices (1, 2, 4, on a graphics card also 8, 12, 15). OK hands them to the reader (Not
+    saved like any edit, the preview and the live video follow); Cancel changes nothing. Below the button a one-line
+    summary in secondary text, "View area 1 · 1920x1080 · 4 fps" (no rate for On action); a refusal of the server for the
+    video source, the resolution or the frame rate shows in the summary's place and, in the dialog, below its field.
   - **Areas panel**: header Areas and **New** (flat command button, plus icon; it starts drawing on the video; tooltip
-    "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. One header row (Name,
-    Mode, Format), then one row per area: Name | Mode | Format | delete icon (columns `*`, 96, `*`, 32, the same in the
-    header and the rows). Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any
-    text (the format typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format
-    syntax as its tooltip; errors directly below the field. The rows are a list: the selected area's row is highlighted,
-    and selecting a row (or a field in it) selects the area on the video.
+    "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. One header row (Area,
+    Mode, Format), then one row per area: the name as plain text (trimmed, the whole name as tooltip; a refusal of the
+    name or the box below it) | Mode | Format | Rename | delete (columns 48, 96, `*`, 28, 28, the same in the header and the
+    rows). Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
+    typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format syntax as its
+    tooltip; errors directly below the field. **Rename** (icon only, tag icon, tooltip "Rename") opens a small dialog
+    (single operation, one Name field: required, unique in the reader, at most 64 characters, the error below it; Rename
+    and Cancel). The rows are a list (`ListBox.areaRows`): the selected area's row is softly highlighted (the hover fill
+    and an accent bar on its left edge, so the inputs and a red error stay readable), and selecting a row (or a field in
+    it) selects the area on the video.
 - **Areas on the live video**: New, then a drag draws one (at least 2 % of the picture each way; Esc stops). A
   press on an area or on its row in the Areas panel selects it: solid with handles at the corners and edge midpoints. A
   drag inside moves it, a drag on a handle resizes it; both stay inside the picture and keep the drawing minimum
@@ -252,8 +268,8 @@ Per area: **Any text** (default) or **Format**.
   camera's video sources and sizes (largest first) come from `getCameraOptions` (read only, the caller's devices, kept
   10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
   (`name`, `camera`, `videoSource`, `resolution`, `mode`, `fps`, `areas`, `areas[i].name|box|format`); the page shows each
-  below its field, the watching limits and the frame rate below Mode. Refusals without a field (reader gone, 50 readers)
-  stay errors in the host's message.
+  below its field: the watching limits below Mode, the video source, the resolution and the frame rate below Stream
+  settings. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
 - The preview's calls (permission "View text recognition"):
   - `startPreview` `{"previewId":"9f3c...","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
     `problem` while it reads); with a known `previewId` of the caller's scope it keeps that preview alive and takes the
@@ -480,8 +496,9 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - The preview (`Readers/PreviewTests`): the draft read live without rule events, new areas without a new stream, the
   lease (`FakeTimeProvider`), 8 previews and the watching limit, sharing an unchanged watching reader's stream, device
   groups, what a draft allows.
-- The page (`Client/`): fixed columns without a splitter and the results below the video; Video source and Resolution in
-  one row, the area rows under one header with the mode select and the row selection following the area; a real pointer drag that moves
+- The page (`Client/`): fixed columns without a splitter and the results below the video; Name, Mode and Stream settings
+  with its summary (no camera field), the area rows under one header with the name as text, the mode select, Rename and
+  the row selection following the area; with 8 areas in a short window only the rows scroll, New and Save stay in reach; a real pointer drag that moves
   and resizes an area which stays there (`PageLayoutTests`, headless); the lines hidden while an area is drawn or
   adjusted, the start hint without areas, the reading's note, the stats panel and a slow reader's orange chip
   (`PageAreasAndStatsTests`); the live video follows camera and source, the preview's draft on every change and the keep-alive,

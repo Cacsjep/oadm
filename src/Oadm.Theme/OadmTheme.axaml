@@ -1712,6 +1712,35 @@
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
   </Style>
+  <!-- Rows of inputs that select something elsewhere (the areas of a Text recognition reader): the selected row is only a
+       soft fill (the hover background) with an accent bar on its left edge, so the inputs and a red error below them stay
+       readable in both themes. The bar's place is kept on every row, the contents never shift. -->
+  <Style Selector="ListBox.areaRows">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="ListBox.areaRows ListBoxItem">
+    <Setter Property="Padding" Value="5,5,8,5" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="ListBox.areaRows ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderThickness" Value="3,0,0,0" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.areaRows ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+  </Style>
+  <Style Selector="ListBox.areaRows ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:focus /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <!-- The name in such a row: plain text, level with the inputs beside it, trimmed (the full name as tooltip) -->
+  <Style Selector="ListBox.areaRows TextBlock.areaName">
+    <Setter Property="Padding" Value="0,8,0,0" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
   <Style Selector="StackPanel.deviceTreeDevice">
     <Setter Property="Margin" Value="20,0,0,0" />
   </Style>

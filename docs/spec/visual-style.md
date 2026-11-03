@@ -94,6 +94,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   look of the device tags (`Border.tagChip`: the name in its color on the tags' pill); `Border.badge.user` (blue text)
   stays in the theme.
   Menu entries that delete or remove are red (`MenuItem.danger`), last after a separator.
+- Lists of rows with inputs whose row selects something elsewhere (`ListBox.areaRows`, the areas of a Text recognition
+  reader): the selected row is a soft fill (the hover background) with a 3 px accent bar on its left edge, never the
+  strong accent fill of a selected list item, so the inputs and a red error below them stay readable in both themes;
+  the bar's place is kept on every row. The name in such a row is `TextBlock.areaName` (level with the inputs, trimmed).
 - Grouped grids (`DataGrid.groups`): a collapsible header per group, chevron and name; a `ui:GridGroup` key adds its icon
   between them (PKI's policy groups). Rows a link points to are tinted with the accent for a few seconds and fade back
   (`DataGrid.highlightRows`, the rows `DataGridRow.highlight`; PKI's Policies tab after a server tab's "N policies
