@@ -1,0 +1,60 @@
+<Project>
+
+  <!-- The ONNX models of Text recognition (Models/README.md): never in git, downloaded at build into a local cache from their
+       pinned Hugging Face revision, checked against their SHA-256 and copied into the output's Models folder (and so into the
+       add-on ZIP). A file in the cache is never downloaded again; the cache folder is named after each file's hash, so a new
+       model revision is a new folder. Cache: $(OADM_MODEL_CACHE), else %LOCALAPPDATA%\Oadm\model-cache (Windows) or
+       ~/.cache/oadm/models. CI caches that folder keyed by this file (pr.yml, release.yml). Keep the table in README.md the
+       same (a test compares them). -->
+
+  <PropertyGroup>
+    <OcrModelCache Condition="'$(OcrModelCache)' == ''">$(OADM_MODEL_CACHE)</OcrModelCache>
+    <OcrModelCache Condition="'$(OcrModelCache)' == '' and '$(LOCALAPPDATA)' != ''">$(LOCALAPPDATA)\Oadm\model-cache</OcrModelCache>
+    <OcrModelCache Condition="'$(OcrModelCache)' == ''">$(HOME)/.cache/oadm/models</OcrModelCache>
+    <OcrModelCache>$([MSBuild]::EnsureTrailingSlash('$(OcrModelCache)'))</OcrModelCache>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <OcrModel Include="det_mobile.onnx"
+              Url="https://huggingface.co/PaddlePaddle/PP-OCRv5_mobile_det_onnx/resolve/e6f4fa85f00e168c862bc462aebca69eef9b3d3d/inference.onnx"
+              Sha256="a431985659dc921974177a95adcfbb90fd9e51989a5e04d70d0b75f597b6e61d" />
+    <OcrModel Include="det_server.onnx"
+              Url="https://huggingface.co/PaddlePaddle/PP-OCRv5_server_det_onnx/resolve/dcf248c4dcc064c6d030db241255f9e8fbc6733a/inference.onnx"
+              Sha256="10803475a591f7dc623e24670fb5752ec94d39a1f8cf069aac1b6f0ce19cfc85" />
+    <OcrModel Include="rec_latin_mobile.onnx"
+              Url="https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx/resolve/89d3a50e2c27e2e7cceeab0e944c25c807d5db4f/inference.onnx"
+              Sha256="7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498" />
+    <OcrModel Include="textline_ori.onnx"
+              Url="https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx/resolve/7fdcf3cf7061163eda7183b224aa334bd33068f7/inference.onnx"
+              Sha256="38aa97cd4be591e0ad304e659f07ba30d946f27a63315433f6659c69c8778345" />
+  </ItemGroup>
+
+  <!-- Before the copy to the output: every model in the cache (downloaded and checked when missing), then each one as a
+       None item copied to Models\. Skipped in design-time builds of the IDE. -->
+  <Target Name="OcrFetchModels" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_OcrModelMissing Include="@(OcrModel)" Condition="!Exists('$(OcrModelCache)%(OcrModel.Sha256)/%(OcrModel.Identity)')">
+        <Folder>$(OcrModelCache)%(OcrModel.Sha256)/</Folder>
+        <Download>$(OcrModelCache)%(OcrModel.Sha256)/%(OcrModel.Identity).download</Download>
+      </_OcrModelMissing>
+    </ItemGroup>
+
+    <Message Importance="high" Text="Text recognition: downloading the model %(_OcrModelMissing.Identity) into $(OcrModelCache)" Condition="'@(_OcrModelMissing)' != ''" />
+    <DownloadFile SourceUrl="%(_OcrModelMissing.Url)" DestinationFolder="%(_OcrModelMissing.Folder)" DestinationFileName="%(_OcrModelMissing.Identity).download" Retries="3" RetryDelayMilliseconds="5000" Condition="'@(_OcrModelMissing)' != ''" />
+    <GetFileHash Files="@(_OcrModelMissing->'%(Download)')" Algorithm="SHA256" Condition="'@(_OcrModelMissing)' != ''">
+      <Output TaskParameter="Items" ItemName="_OcrModelDownloaded" />
+    </GetFileHash>
+
+    <!-- A good file goes into the cache; one whose hash differs is deleted and fails the build: the source changed or the
+         download broke. -->
+    <Move SourceFiles="%(_OcrModelDownloaded.Identity)" DestinationFiles="%(_OcrModelDownloaded.Folder)%(_OcrModelDownloaded.Filename)" Condition="'@(_OcrModelDownloaded)' != '' and '%(_OcrModelDownloaded.FileHash)' == '%(_OcrModelDownloaded.Sha256)'" />
+    <Delete Files="%(_OcrModelDownloaded.Identity)" Condition="'@(_OcrModelDownloaded)' != '' and '%(_OcrModelDownloaded.FileHash)' != '%(_OcrModelDownloaded.Sha256)'" />
+    <Error Condition="'@(_OcrModelDownloaded)' != '' and '%(_OcrModelDownloaded.FileHash)' != '%(_OcrModelDownloaded.Sha256)'"
+           Text="Text recognition: the model %(_OcrModelDownloaded.Filename) from %(_OcrModelDownloaded.Url) has the SHA-256 %(_OcrModelDownloaded.FileHash), expected %(_OcrModelDownloaded.Sha256) (plugins/Oadm.Plugins.Ocr/Models/README.md). The file was deleted; check the source and the pinned revision." />
+
+    <ItemGroup>
+      <None Include="$(OcrModelCache)%(OcrModel.Sha256)/%(OcrModel.Identity)" Link="Models\%(OcrModel.Identity)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+    </ItemGroup>
+  </Target>
+
+</Project>

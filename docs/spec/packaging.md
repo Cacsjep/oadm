@@ -46,6 +46,13 @@ The file layout of every installer and the user-facing install notes are in `pac
 - Limits of the server: the ZIP at most 400 MB (the download limit of `UpdateDownloader`); the client part the server
   hands to clients is `plugin.json`, the top-level `*.Client.dll` and everything under `client/`, at most 24 MB unpacked
   and never a native library. Client-only dependencies of an add-on go under `client/`.
+- Models are never in git. Text recognition's ONNX models (about 108 MB) are downloaded by the build
+  (`plugins/Oadm.Plugins.Ocr/Models/Models.targets`, MSBuild `DownloadFile` and `GetFileHash`, no other tool): each from its
+  pinned Hugging Face revision into a local cache (`OADM_MODEL_CACHE`, else `%LOCALAPPDATA%\Oadm\model-cache` or
+  `~/.cache/oadm/models`, one folder per SHA-256), checked against the SHA-256 of `Models/README.md` (another hash fails
+  the build), then copied into the output's `Models/` and so into the add-on ZIP. A cached file is never downloaded again.
+  `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
+  the hash of `Models.targets`.
 - `packaging/addons/addon-ids.sh` prints the add-on plugin ids, `packaging/addons/check-addon-zip.sh <zip> <id> <rid>`
   checks one ZIP the same way (both used by `release.yml`).
 - The add-on ZIPs have no notices of their own yet; the third-party notices of OADM's installers do not list the

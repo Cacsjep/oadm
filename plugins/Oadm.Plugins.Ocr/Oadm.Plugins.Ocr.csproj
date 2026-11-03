@@ -54,9 +54,11 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
-    <!-- The models and their character lists (Models/README.md): next to the server part in the plugin folder. -->
-    <None Include="Models\*.onnx;Models\*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The character list and the models' license (Models/README.md): next to the server part in the plugin folder. -->
+    <None Include="Models\*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- The models themselves: downloaded at build into a local cache, checked and copied into Models\ (never in git). -->
+  <Import Project="Models\Models.targets" />
 
   <ItemGroup>
     <!-- The call without a user (the host itself, tests). -->

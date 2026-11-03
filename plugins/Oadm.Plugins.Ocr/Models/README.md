@@ -1,7 +1,8 @@
 # Text recognition models
 
 The ONNX models of Text recognition (docs/spec/ocr.md "Reading", "Packaging and dependencies"). They ship in the add-on
-next to the server part (`Models/`); nothing is downloaded at run time. All are official PaddleOCR exports published by
+next to the server part (`Models/`); nothing is downloaded at run time. They are never committed: the build downloads them
+("Download at build" below). All are official PaddleOCR exports published by
 PaddlePaddle on Hugging Face, unchanged, Apache-2.0 (license text with the attribution: `PaddleOCR-LICENSE.txt`, copied
 into the plugin folder for the notices).
 
@@ -14,6 +15,21 @@ into the plugin folder for the notices).
 | `textline_ori.onnx` | PP-LCNet_x1_0_textline_ori (angle model: 0 or 180 degrees) | [PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx](https://huggingface.co/PaddlePaddle/PP-LCNet_x1_0_textline_ori_onnx) `7fdcf3cf7061163eda7183b224aa334bd33068f7`, `inference.onnx` | 6,777,816 | `38aa97cd4be591e0ad304e659f07ba30d946f27a63315433f6659c69c8778345` |
 
 Downloaded 2026-11-03 from `https://huggingface.co/PaddlePaddle/<repo>/resolve/<revision>/inference.onnx`.
+
+## Download at build
+
+`Models.targets` (imported by the plugin's project) holds the same URL and SHA-256 per file; a test checks that this table
+agrees with it. Before the copy to the output the build:
+
+1. looks for each model in the cache: `$(OADM_MODEL_CACHE)`, else `%LOCALAPPDATA%\Oadm\model-cache` (Windows) or
+   `~/.cache/oadm/models`, in a folder named after the file's SHA-256 (a new revision is a new folder);
+2. downloads a missing one from its pinned revision (MSBuild `DownloadFile`, 3 retries) and checks its SHA-256
+   (`GetFileHash`); a file with another hash is deleted and fails the build with both hashes;
+3. copies every model into the output's `Models/` folder, so the plugin folder and the add-on ZIP have them.
+
+A cached model is never downloaded again (an offline build works once the cache is filled). CI keeps the cache folder with
+`actions/cache`, keyed by the hash of `Models.targets` (pr.yml, release.yml). A new model: change its row here and in
+`Models.targets` together.
 
 ## Choices
 
