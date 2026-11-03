@@ -34,10 +34,12 @@ shows the ones of your OADM version.
 - **Install** downloads the plugin from the OADM release on GitHub, checks it and adds it without a restart. It starts
   off: turn it on in the list above.
 - **Remove** turns it off at once. Its files go at the next restart of the server; its settings are kept for a new
-  install.
+  install. Until then **Install** brings it back at once.
 - When you update OADM, the server downloads the optional plugins of the new version by itself. A plugin it cannot
-  download stays off and its row says so; click **Install** to try again.
-- The clients get the plugin from the server. Nothing is installed on their computers.
+  download stays off and its row says so; click **Install** to try again, or **Remove**. Install again keeps your choice
+  of on or off.
+- The clients get the plugin from the server. Nothing is installed on their computers. A client that runs while the
+  server brings a new version uses it after its next start; the row says so.
 - The server needs to reach github.com. Without it, download the plugin's ZIP for your server's system
   (`oadm-addon-<id>-<version>-<system>.zip`) from the release page and unpack it into the folder `addons/<id>` in the
   server's data folder (`%ProgramData%\OADM`, `/var/lib/oadm` or `/Library/Application Support/OADM`), then restart the

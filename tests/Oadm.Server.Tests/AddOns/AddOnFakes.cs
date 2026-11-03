@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
 using Oadm.Server.AddOns;
 using Oadm.Server.Updates;
 
@@ -32,17 +31,25 @@ internal sealed class FakeAddOnFiles : IAddOnFiles
 
     public int ReachCalls { get; private set; }
 
+    /// <summary>Holds every reach check until it completes (one check at a time).</summary>
+    public TaskCompletionSource? ReachHold { get; set; }
+
     public void Publish(string version, string runtime, byte[] zip, string id = AddOnCatalog.TextRecognitionId) =>
         _files[AddOnCatalog.ReleaseFileName(id, version, runtime)] = zip;
 
-    public Task<bool> CanReachAsync(string version, CancellationToken ct)
+    public async Task<bool> CanReachAsync(string version, CancellationToken ct)
     {
         lock (_sync)
         {
             ReachCalls++;
         }
 
-        return Task.FromResult(Reachable);
+        if (ReachHold is { } hold)
+        {
+            await hold.Task.WaitAsync(ct);
+        }
+
+        return Reachable;
     }
 
     public async Task DownloadAsync(string version, string fileName, string targetPath, IProgress<int>? progress, CancellationToken ct)
@@ -78,10 +85,18 @@ internal sealed class MemoryAddOnList : IAddOnListStore
 {
     public List<InstalledAddOn> Items { get; set; } = [];
 
+    /// <summary>Every write fails (a database that is gone).</summary>
+    public bool FailWrites { get; set; }
+
     public Task<IReadOnlyList<InstalledAddOn>> ReadAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<InstalledAddOn>>([.. Items]);
 
     public Task WriteAsync(IReadOnlyList<InstalledAddOn> list, CancellationToken ct)
     {
+        if (FailWrites)
+        {
+            throw new IOException("The database is gone.");
+        }
+
         Items = [.. list];
         return Task.CompletedTask;
     }
@@ -91,9 +106,15 @@ internal sealed class RecordingActivation : IAddOnActivation
 {
     public List<string> Calls { get; } = [];
 
+    /// <summary>The packages with a stored choice (on or off).</summary>
+    public HashSet<string> Choices { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    public bool HasChoice(string packageId) => Choices.Contains(packageId);
+
     public Task TurnOffAsync(string packageId, CancellationToken ct)
     {
         Calls.Add("off " + packageId);
+        Choices.Add(packageId);
         return Task.CompletedTask;
     }
 
@@ -167,8 +188,11 @@ internal sealed class AddOnRig : IDisposable
             Time);
     }
 
-    /// <summary>The release ZIP of an add-on: plugin.json, a server part that loads, its dependency, a client part, a native library.</summary>
-    public static byte[] Zip(string id = AddOnCatalog.TextRecognitionId, string minSdk = "0.10.0", string? topFolder = null, string? extraEntry = null)
+    /// <summary>
+    /// The release ZIP of an add-on: plugin.json, a server part that loads, its dependency, a client part, a native library and
+    /// the version file of <paramref name="version"/> (none when null).
+    /// </summary>
+    public static byte[] Zip(string id = AddOnCatalog.TextRecognitionId, string minSdk = "0.10.0", string? topFolder = null, string? extraEntry = null, string? version = Version)
     {
         var prefix = topFolder is null ? string.Empty : topFolder + "/";
         using var buffer = new MemoryStream();
@@ -184,6 +208,10 @@ internal sealed class AddOnRig : IDisposable
             Add(zip, prefix + "client/Ocr.Helpers.dll", [4, 5]);
             Add(zip, prefix + "onnxruntime.dll", [9, 9, 9]);
             Add(zip, prefix + "models/reader.onnx", [7]);
+            if (version is not null)
+            {
+                Add(zip, prefix + AddOnFolders.VersionFileName, Encoding.UTF8.GetBytes(version + "\n"));
+            }
             if (extraEntry is not null)
             {
                 Add(zip, extraEntry, [0]);
@@ -199,12 +227,12 @@ internal sealed class AddOnRig : IDisposable
         stream.Write(content);
     }
 
-    /// <summary>Puts an add-on folder in place as if installed (unpacked from <see cref="Zip"/>).</summary>
-    public void PlaceFolder(string? folder = null)
+    /// <summary>Puts an add-on folder in place as if installed (unpacked from <see cref="Zip"/> with the version file of <paramref name="version"/>).</summary>
+    public void PlaceFolder(string? folder = null, string? version = Version)
     {
         folder ??= Folder;
         Directory.CreateDirectory(folder);
-        using var zip = new ZipArchive(new MemoryStream(Zip()), ZipArchiveMode.Read);
+        using var zip = new ZipArchive(new MemoryStream(Zip(version: version)), ZipArchiveMode.Read);
         zip.ExtractToDirectory(folder, overwriteFiles: true);
     }
 

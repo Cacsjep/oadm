@@ -1,5 +1,4 @@
 using Oadm.Contracts.Updates;
-using Oadm.Core.Plugins.AddOns;
 
 namespace Oadm.Server.AddOns;
 

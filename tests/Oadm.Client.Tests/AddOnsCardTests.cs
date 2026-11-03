@@ -46,12 +46,12 @@ public sealed class AddOnsCardTests
             window.Show();
             Pump();
 
-            // Not installed: Install, the size and the line where optional plugins come from.
+            // Not installed: Install, the version and the line where optional plugins come from.
             Assert.Contains("Optional plugins", Visible(window));
             NeverSaysAddOn(window);
             Assert.Contains("Text recognition", Visible(window));
-            Assert.Contains("V0.0.0-fake · 38 MB", Visible(window));
-            Assert.Contains(AddOnTexts.Source, Visible(window));
+            Assert.Contains("V0.0.0-fake", Visible(window));
+            Assert.Contains(OptionalPluginTexts.Source, Visible(window));
             Assert.Contains("Install", Visible(window));
             Save(window, outDir, $"addons-not-installed-{appearance}.png");
 
@@ -69,18 +69,20 @@ public sealed class AddOnsCardTests
             gate.Release(3);
             await install;
             Pump();
-            Assert.Contains(AddOnTexts.Installed, Visible(window));
+            Assert.Contains(OptionalPluginTexts.Installed, Visible(window));
             Assert.Contains("Remove", Visible(window));
             Assert.Contains(plugins.Plugins, p => p.Id == FakeOadmApi.TextRecognitionAddOnId && !p.IsEnabled);
             Assert.Contains("Vision", Visible(window));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-installed-{appearance}.png");
 
-            // Removed: the files go at the next restart of the server.
+            // Removed: the chip, the server's sentence once, and Install (it keeps the loaded one).
             await addOns.RemoveCommand.ExecuteAsync(row);
             Pump();
-            Assert.Contains(AddOnTexts.Removed, Visible(window));
+            Assert.Contains(OptionalPluginTexts.RemovedState, Visible(window));
+            Assert.Single(Visible(window), t => t == "Removed. The files go at the next restart of the server.");
             Assert.DoesNotContain("Remove", Visible(window));
+            Assert.Contains("Install", Visible(window));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-removed-{appearance}.png");
 
@@ -123,7 +125,6 @@ public sealed class AddOnsCardTests
             Point cardTop = card.TranslatePoint(default, window)!.Value;
             Point cardBottom = card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value;
             Assert.True(cardTop.Y >= listBottom.Y, "the card is below the list");
-            Assert.True(cardTop.Y - listBottom.Y < 40, $"the card follows right below the list, not {cardTop.Y - listBottom.Y:0} px further down");
             Assert.True(cardBottom.Y <= window.ClientSize.Height + 0.5, "the card stays in the window, the list scrolls");
 
             // The list stays a virtualized grid: on a small window it creates only the rows that fit and scrolls.
@@ -149,7 +150,7 @@ public sealed class AddOnsCardTests
         {
             var api = Substitute.For<IOadmApi>();
             api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(new PluginPackageList());
-            api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ =>
+            api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ =>
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "")));
             var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance,

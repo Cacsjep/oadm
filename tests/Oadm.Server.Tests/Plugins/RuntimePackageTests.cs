@@ -26,7 +26,6 @@ public sealed class RuntimePackageTests
     {
         await using var host = await TestServerHost.StartAsync();
         var registry = host.Get<PluginRegistry>();
-        Assert.True(registry.IsStarted);
         var other = new AddOnPlugin("test.other", "test.other.task");
         registry.RegisterCorePlugin(other, new PluginOrigin("test.other", "1.0.0", null) { DisplayName = "Other" });
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);

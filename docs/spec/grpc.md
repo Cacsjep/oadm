@@ -192,20 +192,27 @@ used again.
     mapped by the interceptor).
   - `ListPackages` (any user; every loaded plugin package with id, display name, version, enabled, enabled_by_default,
     has_page, menu_task_count, always_on, description, pro, `site_support = 12`, `site_ports = 13`; the list's pro_active),
-    `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, or a PRO plugin
-    without an active license; reply: the whole list), `SetPackageLicense(id, license)` and `RemovePackageLicense(id)`
+    `SetPackageEnabled(id, enabled)` (Admin; NOT_FOUND unknown package; FAILED_PRECONDITION always on, a PRO plugin
+    without an active license, or turning on an optional plugin that was removed and is still loaded ("Removed. The files
+    go at the next restart of the server."); reply: the whole list), `SetPackageLicense(id, license)` and `RemovePackageLicense(id)`
     (Admin; reply: the whole list). See `docs/spec/plugins.md` "Plugins on and off" and "Plugin licenses".
-  - Add-ons (`docs/spec/add-ons.md`): `ListAddOns` (any user; `AddOnList` of `AddOnInfo` {id, display_name, description,
-    size_bytes, state, percent, message, version, can_install}, every add-on of the server's version from `AddOnCatalog`),
-    `InstallAddOn(id)` (Admin; stream of `AddOnProgress` {step Download, Check or Install, percent, done, error}, the last
-    message has done or error set; NOT_FOUND unknown add-on; FAILED_PRECONDITION already installed, another install or
-    remove running, a self update running, or a development build or pre-release (nothing to download); audit "Installed
-    optional plugin <name> V<version>"; done only after the server followed the package), `RemoveAddOn(id)` (Admin;
-    NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
+  - Add-ons (`docs/spec/add-ons.md`): `ListAddOns(ListAddOnsRequest {check_reach})` (any user; `AddOnList` of `AddOnInfo`
+    {id, display_name, description, state, percent, message, version, can_install, client_digest = 10; field 4 reserved},
+    every add-on of the server's version from `AddOnCatalog`; `check_reach` (the card) checks that the server reaches the
+    release, one check at a time, kept 5 minutes; without it (a client's sync) the last answer is used, never a wait on
+    GitHub; `client_digest` while installed), `InstallAddOn(id)` (Admin; stream of `AddOnProgress` {step Download, Check
+    or Install, percent, done, error}, the last message has done or error set; NOT_FOUND unknown add-on;
+    FAILED_PRECONDITION already installed, another install or remove running, a self update running, or a development
+    build or pre-release with nothing to download; audit "Installed optional plugin <name> V<version>" written before the
+    last message, also when the caller has gone (failed writes are dropped); a failed install is audited "Could not
+    install optional plugin" with the reason; done only after the server followed the package), `RemoveAddOn(id)`
+    (Admin; NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
     V<version>"; reply: the whole list), `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with
-    path, data, sha256 lowercase hex}: plugin.json, the top-level `*.Client.dll`/`.pdb` and `*.Server.dll`/`.pdb`,
-    everything under `client/`; NOT_FOUND unknown or not installed; FAILED_PRECONDITION over 24 MB). UNIMPLEMENTED from an
-    installer that is not built (`NotSupportedException`); clients then hide the card.
+    path, data, sha256 lowercase hex, digest = 4}: plugin.json, the top-level `*.Client.dll`/`.pdb` and
+    `*.Server.dll`/`.pdb`, everything under `client/`; read and hashed once per version on the server; `digest` =
+    `AddOnLayout.Digest`, SHA-256 over one "path sha256" line per file sorted by path; NOT_FOUND unknown or not installed;
+    FAILED_PRECONDITION over 24 MB or while the same session waits for one already). A server without add-ons
+    (UNIMPLEMENTED, an older server): clients hide the card.
 - **`SettingsService`** (`settings.proto`): `Get`, `Set` (field numbers in `docs/spec/settings-backup.md`; 0 or unset keeps
   the stored value; read-only `server_version = 21` and `key_replaced = 20` in both replies), `ListCredentials`,
   `AddCredential(user_name, password)` (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the

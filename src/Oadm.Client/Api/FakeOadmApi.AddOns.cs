@@ -30,15 +30,46 @@ public sealed partial class FakeOadmApi
     /// <summary>Tests: the client part GetAddOnClientPart returns (default: no files).</summary>
     public AddOnClientPart? AddOnClientPart { get; set; }
 
+    /// <summary>Tests: the version of the add-on on the server (a server update brings a newer one).</summary>
+    public string AddOnVersion { get; set; } = FakeServerVersion;
+
     /// <summary>Tests: how often the client part was asked for.</summary>
     public int AddOnClientPartCalls { get; private set; }
 
-    public Task<AddOnList> ListAddOnsAsync(CancellationToken ct)
+    /// <summary>Tests: the list's ListAddOns calls with the reach check.</summary>
+    public int AddOnReachChecks { get; private set; }
+
+    public Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
+            if (checkReach)
+            {
+                AddOnReachChecks++;
+            }
+
             return Task.FromResult(FakeAddOnList());
+        }
+    }
+
+    /// <summary>Tests: the state of the add-on (an install another administrator or the server's update started).</summary>
+    public AddOnState TextRecognitionState
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _textRecognitionState;
+            }
+        }
+
+        set
+        {
+            lock (_gate)
+            {
+                _textRecognitionState = value;
+            }
         }
     }
 
@@ -48,7 +79,7 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             CheckAddOn(id);
-            if (_textRecognitionState is AddOnState.AddOnInstalled or AddOnState.AddOnInstalling or AddOnState.AddOnRemoved)
+            if (_textRecognitionState is AddOnState.AddOnInstalled or AddOnState.AddOnInstalling)
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Text recognition is installed."));
             }
@@ -99,12 +130,12 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             CheckAddOn(id);
-            if (_textRecognitionState != AddOnState.AddOnInstalled)
+            if (_textRecognitionState is not (AddOnState.AddOnInstalled or AddOnState.AddOnFailed))
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Text recognition is not installed."));
             }
 
-            _textRecognitionState = AddOnState.AddOnRemoved;
+            _textRecognitionState = _textRecognitionState == AddOnState.AddOnFailed ? AddOnState.AddOnNotInstalled : AddOnState.AddOnRemoved;
             _packageStates[TextRecognitionAddOnId] = false;
             return Task.FromResult(FakeAddOnList());
         }
@@ -122,7 +153,7 @@ public sealed partial class FakeOadmApi
                 throw new RpcException(new Status(StatusCode.NotFound, "Text recognition is not installed."));
             }
 
-            return Task.FromResult(AddOnClientPart ?? new AddOnClientPart { Id = TextRecognitionAddOnId, Version = FakeServerVersion });
+            return Task.FromResult(AddOnClientPart ?? new AddOnClientPart { Id = TextRecognitionAddOnId, Version = AddOnVersion });
         }
     }
 
@@ -143,11 +174,17 @@ public sealed partial class FakeOadmApi
             Id = TextRecognitionAddOnId,
             DisplayName = "Text recognition",
             Description = "Reads text in camera pictures for the event rules.",
-            SizeBytes = 38_000_000,
             State = _textRecognitionState,
-            Version = FakeServerVersion,
-            CanInstall = !AddOnsUnreachable,
-            Message = AddOnsUnreachable && _textRecognitionState == AddOnState.AddOnNotInstalled ? "The server cannot reach github.com." : string.Empty,
+            Version = AddOnVersion,
+            CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsUnreachable && _textRecognitionState != AddOnState.AddOnInstalling),
+            Message = _textRecognitionState switch
+            {
+                AddOnState.AddOnRemoved => "Removed. The files go at the next restart of the server.",
+                AddOnState.AddOnFailed => $"Could not download Text recognition V{FakeServerVersion}. Install it again.",
+                AddOnState.AddOnNotInstalled when AddOnsUnreachable => "The server cannot reach github.com.",
+                _ => string.Empty,
+            },
+            ClientDigest = _textRecognitionState == AddOnState.AddOnInstalled ? AddOnClientPart?.Digest ?? string.Empty : string.Empty,
         });
         return list;
     }

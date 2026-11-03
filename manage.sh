@@ -543,9 +543,9 @@ package_site_node() {
   echo "site node packages written to $out"
 }
 
-# The platforms of the add-on ZIPs, the same as AddOnCatalog.RuntimeIds (src/Oadm.Core/Plugins/AddOns/AddOnCatalog.cs;
-# a test keeps them equal).
-ADDON_RIDS="win-x64 linux-x64 linux-arm64 osx-x64"
+# The platforms of the add-on ZIPs: packaging/addons/addon-rids.txt, also read by manage.ps1 and release.yml (a test keeps
+# it equal to the server's AddOnCatalog.RuntimeIds).
+ADDON_RIDS="$(tr -d '\r' < "$REPO_ROOT/packaging/addons/addon-rids.txt" | xargs)"
 
 # Keeps only the runtimes/ subfolders a server on RID $2 loads (the RID, its OS, unix outside Windows). A RID-specific
 # publish puts the native libraries next to the dlls; this catches packages that keep folders of other platforms.
@@ -571,12 +571,13 @@ check_addon_folder() {
   ls "$dir"/*.Server.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Server.dll" >&2; exit 1; }
   if [ "$has_client" = yes ]; then ls "$dir"/*.Client.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Client.dll" >&2; exit 1; }; fi
   [ -f "$dir/THIRD-PARTY-NOTICES.txt" ] || { echo "error: add-on $id: THIRD-PARTY-NOTICES.txt missing" >&2; exit 1; }
+  [ -f "$dir/oadm-version.txt" ] || { echo "error: add-on $id: oadm-version.txt missing" >&2; exit 1; }
   case "$rid" in win-*) foreign='\.(so|dylib)$|\.so\.' ;; linux-*) foreign='\.dylib$' ;; *) foreign='\.so$|\.so\.' ;; esac
   bad="$(cd "$dir" && find . -type f | grep -E "$foreign" || true)"
   if [ -n "$bad" ]; then echo "error: add-on $id $rid: native libraries of another platform: $bad" >&2; exit 1; fi
 }
 
-# A ZIP of the folder's content (no top folder): zip, else Python's zipfile.
+# A ZIP of the folder's content (no top folder), dot files included like manage.ps1: zip, else Python's zipfile.
 zip_folder() {
   local dir="$1" zip="$2" py
   rm -f "$zip"
@@ -630,12 +631,24 @@ package_addons() {
           "-p:Version=$(app_version)" -o "$stage" ${EXTRA[@]+"${EXTRA[@]}"} || exit 1
       done
       limit_runtime_folders "$stage" "$rid"
+      # The release it belongs to: the server records a folder put in by hand with this version.
+      printf '%s\n' "$(app_version)" > "$stage/oadm-version.txt"
+      # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
+      { echo '['; local first=yes
+        for p in "${projects[@]}"; do
+          [ "$(plugin_id "$p")" = "$id" ] || continue
+          [ -z "$first" ] && echo ','
+          first=
+          "$DOTNET" msbuild "$p" -nologo -getItem:OadmNoticePackage -p:Configuration=Release "-p:RuntimeIdentifier=$rid" || exit 1
+        done
+        echo ']'; } > "$stage/notices-extra.json" || exit 1
       # The add-on ships alone: its own notices (its NuGet packages, its models' licenses) and OADM's license.
       "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release -- --repo "$REPO_ROOT" \
         --rid "$rid" --version "$(app_version)" --addon "$stage" || exit 1
       check_addon_folder "$stage" "$id" "$rid" "$has_client"
       zip="$out/oadm-addon-$id-$(app_version)-$rid.zip"
       zip_folder "$stage" "$zip"
+      bash "$REPO_ROOT/packaging/addons/check-addon-zip.sh" "$zip" "$id" "$rid" || exit 1
       echo "add-on $id $rid: $zip ($(du -k "$zip" | cut -f1) KB)"
     done
   done

@@ -1,4 +1,4 @@
-namespace Oadm.Core.Plugins.AddOns;
+namespace Oadm.Server.AddOns;
 
 /// <summary>The state of an add-on on this server (the Plugins page's Add-ons card).</summary>
 public enum AddOnState
@@ -31,7 +31,11 @@ public sealed record AddOnStatus(AddOnEntry Entry, AddOnState State, string Vers
     /// <summary>One plain sentence why it is not loaded or cannot be installed (<see cref="AddOnTexts"/>); null otherwise.</summary>
     public string? Message { get; init; }
 
-    /// <summary>False while the server cannot reach the release (<see cref="AddOnTexts.CannotReach"/>).</summary>
+    /// <summary>
+    /// Whether Install works now: false while the server cannot reach the release (<see cref="AddOnTexts.CannotReach"/>), in a
+    /// development build, during a self update or while installing. A removed add-on that is still loaded can be installed
+    /// again without a download.
+    /// </summary>
     public bool CanInstall { get; init; } = true;
 }
 
@@ -88,7 +92,7 @@ public static class AddOnTexts
 
     /// <summary>An installed add-on whose new version could not be downloaded after an update.</summary>
     public static string NotLoadedAfterUpdate(string name, string version) =>
-        $"Could not download {name} V{version}. Try again on the Plugins page.";
+        $"Could not download {name} V{version}. Install it again.";
 
     /// <summary>A second install or remove while one runs.</summary>
     public const string Busy = "An optional plugin is being installed or removed. Try again when it is done.";
@@ -107,6 +111,9 @@ public static class AddOnTexts
 
     /// <summary>Unpacking or swapping in failed on the server's disk.</summary>
     public const string CouldNotInstall = "Could not install the optional plugin. The server log has the details.";
+
+    /// <summary>A second request for a client part while the same session waits for one.</summary>
+    public const string ClientPartBusy = "The optional plugin is being sent to this client. Try again when it is done.";
 
     /// <summary>The client part is larger than a client takes in one answer.</summary>
     public const string ClientPartTooBig = "The optional plugin is too large to send to the clients.";

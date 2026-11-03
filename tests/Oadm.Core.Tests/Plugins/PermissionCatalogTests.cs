@@ -23,6 +23,23 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionKeys.Task("t.hidden-own", "enroll"), keys); // still grantable while it is hidden
     }
 
+    [Fact]
+    public void PluginGroupsFollowTheRailOrderSoVisionComesRightAfterMonitoring()
+    {
+        var registry = new PluginRegistry();
+        foreach (var (id, group) in new[] { ("c.ext", CorePluginGroup.Extensions), ("c.vision", CorePluginGroup.Vision), ("c.report", CorePluginGroup.Reporting), ("c.monitor", CorePluginGroup.Monitoring) })
+        {
+            Assert.True(registry.RegisterCorePlugin(new Core(id, group), new PluginOrigin("test." + id, "1.0.0", null)));
+        }
+
+        var groups = PermissionCatalog.Build(registry).Entries.Where(e => e.PackageId is not null).ToList();
+
+        Assert.Equal(["c.monitor", "c.vision", "c.report", "c.ext"], groups.Select(e => e.Group).Distinct());
+        Assert.True(groups.Zip(groups.Skip(1)).All(p => p.First.GroupOrder <= p.Second.GroupOrder), "GroupOrder follows the rail");
+        Assert.Equal(CorePluginGroups.RailOrder(CorePluginGroup.Monitoring) + 1, CorePluginGroups.RailOrder(CorePluginGroup.Vision));
+        Assert.Equal(CorePluginGroups.RailOrder(CorePluginGroup.Extensions) + 1, CorePluginGroups.RailOrder((CorePluginGroup)99)); // unknown: last
+    }
+
     private static void Register(PluginRegistry registry, ITaskPlugin plugin) =>
         Assert.True(registry.RegisterTaskPlugin(plugin, new PluginOrigin("test." + plugin.Id, "1.0.0", null)));
 
@@ -46,5 +63,25 @@ public sealed class PermissionCatalogTests
 
         public System.Threading.Tasks.Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
             System.Threading.Tasks.Task.CompletedTask;
+    }
+
+    private sealed class Core(string id, CorePluginGroup group) : ICorePlugin
+    {
+        public string Id => id;
+
+        public string DisplayName => id;
+
+        public string? IconKey => null;
+
+        public CorePluginGroup Group => group;
+
+        public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
+
+        public System.Threading.Tasks.Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+
+        public System.Threading.Tasks.Task StopAsync(CancellationToken ct) => System.Threading.Tasks.Task.CompletedTask;
+
+        public System.Threading.Tasks.Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
+            System.Threading.Tasks.Task.FromResult<string?>(null);
     }
 }

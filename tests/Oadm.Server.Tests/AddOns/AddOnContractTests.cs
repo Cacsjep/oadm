@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using Oadm.Core.Auth;
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
 using Oadm.Sdk.Plugins;
 using Oadm.Server.AddOns;
 using Oadm.Server.Plugins;
@@ -30,7 +29,7 @@ public sealed class AddOnContractTests
         await using var host = await TestServerHost.StartAsync();
         var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync("operator1", UserRole.Operator));
 
-        var list = await op.ListAddOnsAsync(new Proto.Empty());
+        var list = await op.ListAddOnsAsync(new Proto.ListAddOnsRequest { CheckReach = true });
 
         var ocr = Assert.Single(list.AddOns);
         Assert.Equal((Id, "Text recognition", "Reads text in camera pictures for the event rules."), (ocr.Id, ocr.DisplayName, ocr.Description));
@@ -86,7 +85,7 @@ public sealed class AddOnContractTests
         var registry = host.Get<PluginRegistry>();
         Assert.True(host.Get<IAddOnInstaller>() is AddOnInstaller);
 
-        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.Empty())).AddOns);
+        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest { CheckReach = true })).AddOns);
         Assert.True(listed.CanInstall);
 
         var steps = new List<Proto.AddOnProgress>();
@@ -119,15 +118,131 @@ public sealed class AddOnContractTests
         Assert.Contains(part.Files, f => f.Path == "Oadm.Plugins.Ocr.Server.dll");
         Assert.DoesNotContain(part.Files, f => f.Path.Contains("onnxruntime", StringComparison.OrdinalIgnoreCase) || f.Path.StartsWith("models/", StringComparison.Ordinal));
 
+        // The list carries the digest of the client part: a client checks its cached copy against it.
+        var installedRow = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns);
+        Assert.Equal(64, part.Digest.Length);
+        Assert.Equal(part.Digest, installedRow.ClientDigest);
+
         // Remove: off at once, still loaded, the row says when the files go.
         var afterRemove = Assert.Single((await host.Plugins.RemoveAddOnAsync(new Proto.AddOnIdRequest { Id = Id })).AddOns);
         Assert.Equal((Proto.AddOnState.AddOnRemoved, AddOnTexts.Removed), (afterRemove.State, afterRemove.Message));
         Assert.True(registry.HasPackage(Id));
         Assert.False(registry.IsEnabled(Id));
 
+        // A removed optional plugin cannot be turned on in the plugin list; Install on its card keeps it.
+        var turnOn = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = Id, Enabled = true }));
+        Assert.Equal((StatusCode.FailedPrecondition, AddOnTexts.Removed), (turnOn.StatusCode, turnOn.Status.Detail));
+        Assert.False(registry.IsEnabled(Id));
+        Assert.True(afterRemove.CanInstall);
+
         // Audited as users name it: "optional plugin", never "add-on".
         var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
         Assert.Contains(audit, e => e.Action == "Installed optional plugin" && e.Target == $"Text recognition V{AddOnRig.Version}");
         Assert.Contains(audit, e => e.Action == "Removed optional plugin" && e.Target == $"Text recognition V{AddOnRig.Version}");
+    }
+
+    [Fact]
+    public async Task AnInstallIsAuditedWhenTheCallerHasGone()
+    {
+        var files = new FakeAddOnFiles();
+        files.Publish(AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId(), AddOnRig.Zip());
+        await using var host = await StartReleaseAsync(files);
+        var service = ActivatorUtilities.CreateInstance<PluginGrpcService>(host.Services);
+
+        // Every write fails: the caller has gone. The install runs to its end and is audited.
+        var gone = new ThrowingStream();
+        await service.InstallAddOn(new Proto.AddOnIdRequest { Id = Id }, gone, new BareCallContext());
+
+        Assert.True(gone.Attempts > 0);
+        Assert.True(host.Get<PluginRegistry>().HasPackage(Id));
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.AddOnInstalled && e.Target == $"Text recognition V{AddOnRig.Version}");
+    }
+
+    [Fact]
+    public async Task AFailedInstallIsAuditedWithItsReason()
+    {
+        var files = new FakeAddOnFiles { WrongHash = true };
+        files.Publish(AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId(), AddOnRig.Zip());
+        await using var host = await StartReleaseAsync(files);
+        var recorded = new RecordingStream();
+
+        await ActivatorUtilities.CreateInstance<PluginGrpcService>(host.Services)
+            .InstallAddOn(new Proto.AddOnIdRequest { Id = Id }, recorded, new BareCallContext());
+
+        Assert.Equal(AddOnTexts.Damaged, recorded.Messages[^1].Error);
+        Assert.False(host.Get<PluginRegistry>().HasPackage(Id));
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.AddOnInstallFailed && e.Target == "Text recognition" && e.Detail == AddOnTexts.Damaged);
+    }
+
+    /// <summary>A server of a release whose release files are <paramref name="files"/> (never a real download).</summary>
+    private static async Task<TestServerHost> StartReleaseAsync(FakeAddOnFiles files)
+    {
+        var dataDirectory = TestServerHost.NewDataDirectory();
+        return await TestServerHost.StartAsync(
+            dataDirectory: dataDirectory,
+            configureServices: services =>
+            {
+                services.RemoveAll<AddOnInstallerOptions>();
+                services.AddSingleton(new AddOnInstallerOptions(dataDirectory, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId()));
+                services.RemoveAll<IAddOnFiles>();
+                services.AddSingleton<IAddOnFiles>(files);
+            });
+    }
+
+    /// <summary>A response stream whose caller has gone: every write fails.</summary>
+    private sealed class ThrowingStream : IServerStreamWriter<Proto.AddOnProgress>
+    {
+        public int Attempts;
+
+        public WriteOptions? WriteOptions { get; set; }
+
+        public Task WriteAsync(Proto.AddOnProgress message)
+        {
+            Interlocked.Increment(ref Attempts);
+            return Task.FromException(new InvalidOperationException("The call is complete."));
+        }
+    }
+
+    private sealed class RecordingStream : IServerStreamWriter<Proto.AddOnProgress>
+    {
+        public List<Proto.AddOnProgress> Messages { get; } = [];
+
+        public WriteOptions? WriteOptions { get; set; }
+
+        public Task WriteAsync(Proto.AddOnProgress message)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A call context without a caller, deadline or cancellation (the service called directly).</summary>
+    private sealed class BareCallContext : ServerCallContext
+    {
+        protected override string MethodCore => "/oadm.v1.PluginService/InstallAddOn";
+
+        protected override string HostCore => "localhost";
+
+        protected override string PeerCore => "ipv4:127.0.0.1:1";
+
+        protected override DateTime DeadlineCore => DateTime.MaxValue;
+
+        protected override Metadata RequestHeadersCore { get; } = [];
+
+        protected override CancellationToken CancellationTokenCore => CancellationToken.None;
+
+        protected override Metadata ResponseTrailersCore { get; } = [];
+
+        protected override Status StatusCore { get; set; }
+
+        protected override WriteOptions? WriteOptionsCore { get; set; }
+
+        protected override AuthContext AuthContextCore { get; } = new(null, []);
+
+        protected override ContextPropagationToken CreatePropagationTokenCore(ContextPropagationOptions? options) => throw new NotSupportedException();
+
+        protected override Task WriteResponseHeadersAsyncCore(Metadata responseHeaders) => Task.CompletedTask;
     }
 }

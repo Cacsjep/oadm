@@ -626,6 +626,35 @@ public enum CorePluginGroup
     Vision = 9,
 }
 
+/// <summary>Helpers for <see cref="CorePluginGroup"/>.</summary>
+public static class CorePluginGroups
+{
+    private static readonly CorePluginGroup[] Rail =
+    [
+        CorePluginGroup.Servers,
+        CorePluginGroup.Automation,
+        CorePluginGroup.Security,
+        CorePluginGroup.Monitoring,
+        CorePluginGroup.Vision,
+        CorePluginGroup.Reporting,
+        CorePluginGroup.Maintenance,
+        CorePluginGroup.Integrations,
+        CorePluginGroup.Utilities,
+        CorePluginGroup.Extensions,
+    ];
+
+    /// <summary>
+    /// The position of <paramref name="group"/> in the rail, on the Plugins page and in the permission matrix (SDK 0.10.0).
+    /// The enum's values are never renumbered, so a group added later gets its place here: Vision right after Monitoring.
+    /// A value this SDK does not know goes last.
+    /// </summary>
+    public static int RailOrder(CorePluginGroup group)
+    {
+        var index = Array.IndexOf(Rail, group);
+        return index < 0 ? Rail.Length : index;
+    }
+}
+
 /// <summary>Well-known context menu groups (<see cref="ITaskPlugin.Group"/>). Related tasks of different plugins share one submenu.</summary>
 public static class TaskGroups
 {

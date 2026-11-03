@@ -607,6 +607,7 @@ jobs:
           sparse-checkout: |
             CHANGELOG.md
             packaging/addons/addon-ids.sh
+            packaging/addons/addon-rids.txt
             plugins/*/*.csproj
           sparse-checkout-cone-mode: false
 
@@ -644,7 +645,7 @@ jobs:
           # Every add-on for every server platform (AddOnCatalog.RuntimeIds): the server installs one only by this list.
           version="${GITHUB_REF_NAME#v}"
           for id in $(bash ../packaging/addons/addon-ids.sh); do
-            for rid in win-x64 linux-x64 linux-arm64 osx-x64; do
+            for rid in $(tr -d '\r' < ../packaging/addons/addon-rids.txt); do
               grep -q "  oadm-addon-$id-$version-$rid\.zip$" SHA256SUMS.txt || { echo "oadm-addon-$id-$version-$rid.zip missing"; exit 1; }
             done
           done

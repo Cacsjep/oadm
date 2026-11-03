@@ -79,13 +79,18 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
         }
     }
 
-    /// <summary>The data folder (database, master key) and the extraction folder: the server refuses to start when insecure.</summary>
-    public async Task EnsureServerFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
+    /// <summary>
+    /// The data folder (database, master key) and the extraction folder: the server refuses to start when insecure. Returns
+    /// whether a folder had to be fixed (others could write it until now: what is in it may come from anyone).
+    /// </summary>
+    public async Task<bool> EnsureServerFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(folders);
+        var fixedAny = false;
         foreach (var folder in folders)
         {
             var check = await EnsureAsync(folder, readableByUsers: false, ct).ConfigureAwait(false);
+            fixedAny |= check.Verdict == FolderVerdict.Fixed;
             if (check.Verdict == FolderVerdict.Insecure)
             {
                 throw new InvalidOperationException(
@@ -93,6 +98,8 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
                     $"({check.FixError}). The OADM server does not start: make it writable only by administrators / root.");
             }
         }
+
+        return fixedAny;
     }
 
     /// <summary>

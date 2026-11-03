@@ -65,7 +65,10 @@ public sealed class SettingsAddOnListStore(ServerSettingsStore settings) : IAddO
 /// </summary>
 public interface IAddOnActivation
 {
-    /// <summary>Turns the package off and stores that (an installed add-on starts off; Remove turns it off at once).</summary>
+    /// <summary>Whether the administrator's choice (on or off) of the package is stored: an add-on installed again keeps it.</summary>
+    bool HasChoice(string packageId);
+
+    /// <summary>Turns the package off and stores that (a first install starts off; Remove turns it off at once).</summary>
     Task TurnOffAsync(string packageId, CancellationToken ct);
 
     /// <summary>
@@ -78,6 +81,8 @@ public interface IAddOnActivation
 /// <summary><see cref="IAddOnActivation"/> over <see cref="Plugins.PluginActivation"/>, the Plugins page's Turn on and off.</summary>
 public sealed class PluginActivationAddOns(Plugins.PluginActivation activation, PluginRegistry registry) : IAddOnActivation
 {
+    public bool HasChoice(string packageId) => registry.ChoiceOf(packageId) is not null;
+
     public async Task TurnOffAsync(string packageId, CancellationToken ct)
     {
         if (registry.HasPackage(packageId))

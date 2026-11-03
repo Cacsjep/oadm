@@ -17,7 +17,8 @@ using Oadm.Notices;
 //                            packaging/notices/site-node.md, no LGPL part, so no LGPL-2.1.txt
 //
 // Add-ons ("manage package addons", docs/spec/add-ons.md): THIRD-PARTY-NOTICES.txt and LICENSE.txt into each published
-// add-on folder, from its own *.deps.json files and its models' license files (no --app, no --out):
+// add-on folder, from its own *.deps.json files, the packages of its notices-extra.json (shipped outside deps.json; the
+// file is deleted) and its models' license files (no --app, no --out):
 //
 //   Oadm.Notices --rid win-x64 --version 1.2.0 --addon artifacts/publish/addons/win-x64/oadm.ocr
 var options = Arguments.Parse(args);
@@ -48,6 +49,7 @@ if (options.AddOns.Count > 0)
 
         File.WriteAllText(Path.Combine(folder, NoticesWriter.FileName), addOn.Text);
         File.WriteAllText(Path.Combine(folder, "LICENSE.txt"), addOnLicense);
+        File.Delete(Path.Combine(folder, AddOnNotices.ExtraFileName)); // read, never shipped
         Console.WriteLine($"notices: {addOn.PackageCount} packages, {addOn.Text.Length / 1024} KB -> {Path.Combine(folder, NoticesWriter.FileName)}");
     }
 

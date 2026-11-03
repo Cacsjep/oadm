@@ -108,7 +108,7 @@ public sealed class UpdateDownloader(IReleaseFeed feed, IDiskSpace disk)
 
                 try
                 {
-                    await feed.DownloadAsync(asset.Url, file, Math.Min(MaxInstallerBytes, asset.Size > 0 ? asset.Size : MaxInstallerBytes), new SyncProgress(Report), ct).ConfigureAwait(false);
+                    await feed.DownloadAsync(asset.Url, file, Math.Min(MaxInstallerBytes, asset.Size > 0 ? asset.Size : MaxInstallerBytes), new SyncProgress<long>(Report), ct).ConfigureAwait(false);
                 }
                 catch (HttpRequestException)
                 {
@@ -201,11 +201,6 @@ public sealed class UpdateDownloader(IReleaseFeed feed, IDiskSpace disk)
         return null;
     }
 
-    /// <summary>Reports at once on the caller's thread (Progress&lt;T&gt; would post to a synchronization context).</summary>
-    private sealed class SyncProgress(Action<long> report) : IProgress<long>
-    {
-        public void Report(long value) => report(value);
-    }
 
     /// <summary>"1.2 GB" for the refusal log.</summary>
     public static string Size(long bytes) => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024d / 1024d:0.0} MB");

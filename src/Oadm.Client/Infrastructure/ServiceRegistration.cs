@@ -110,16 +110,24 @@ public static class ServiceRegistration
         services.AddSingleton<TaskPluginCatalog>();
         services.AddSingleton<PluginPackageStore>();
         services.AddSingleton<IClientPluginRegistry>(sp => new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>()));
-        // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per version in the data folder;
-        // the files of removed add-ons go here, at the start, before any add-on loads.
+        // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per server and version in the
+        // data folder's plugin-cache (never the server's addons/: both may share the data folder); the files of removed
+        // add-ons and of versions no longer used go here, at the start, before any add-on loads.
         services.AddSingleton<Plugins.AddOns.IAddOnPartLoader>(sp => (Plugins.AddOns.IAddOnPartLoader)sp.GetRequiredService<IClientPluginRegistry>());
         services.AddSingleton(sp =>
         {
-            var cache = new Plugins.AddOns.AddOnClientCache(Path.Combine(options.DataFolder, "addons"), sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientCache>>());
+            var cache = new Plugins.AddOns.AddOnClientCache(
+                Path.Combine(options.DataFolder, Plugins.AddOns.AddOnClientCache.FolderName),
+                sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientCache>>());
             cache.DeleteRemoved();
             return cache;
         });
-        services.AddSingleton<Plugins.AddOns.AddOnClientSync>();
+        services.AddSingleton(sp => new Plugins.AddOns.AddOnClientSync(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<Plugins.AddOns.AddOnClientCache>(),
+            sp.GetRequiredService<Plugins.AddOns.IAddOnPartLoader>(),
+            sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientSync>>(),
+            () => sp.GetRequiredService<IServerTrust>().PresentedFingerprint));
         services.AddSingleton<Plugins.AddOns.AddOnsViewModel>();
         services.AddSingleton<AvaloniaDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
