@@ -78,6 +78,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly ModelSet? _gpuSet;
     private readonly LineBatcher? _gpuLines;
     private readonly RecognitionDevice _cpuDevice;
+    private readonly UnchangedAreas _unchanged = new();
     private readonly RecognitionDevice? _gpuDevice;
     private volatile bool _useGpu = true;
     private bool _disposed;
@@ -186,7 +187,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                     var decodeStart = Stopwatch.GetTimestamp();
                     using var picture = Picture.Decode(jpeg, (w, h) => NeededRegion(areas, w, h));
                     StageClock.Add(Stage.Decode, decodeStart);
-                    return await ReadWithAsync(picture, areas, runner, ct).ConfigureAwait(false);
+                    return options.ReuseUnchanged
+                        ? await ReadChangedAsync(picture, areas, runner, options, ct).ConfigureAwait(false)
+                        : await ReadWithAsync(picture, areas, runner, ct).ConfigureAwait(false);
                 },
                 ct).ConfigureAwait(false);
         }
@@ -195,6 +198,43 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             _pictures.Release();
         }
     }
+
+    /// <summary>Reads only the areas whose pixels changed since their last reading; the others give that reading again.</summary>
+    private async Task<RecognitionResult> ReadChangedAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner runner, RecognitionOptions options, CancellationToken ct)
+    {
+        var results = new AreaRecognition?[areas.Count];
+        var keys = new UnchangedAreas.Key[areas.Count];
+        var prints = new float[areas.Count][];
+        var changed = new List<int>();
+        for (var a = 0; a < areas.Count; a++)
+        {
+            var area = areas[a];
+            var rect = PixelRect(area.Box, picture.Width, picture.Height);
+            keys[a] = new UnchangedAreas.Key(options.Source, rect, picture.Width, picture.Height, area.Expected.Kind, area.Expected.Format, options.Accurate, runner is GpuRunner);
+            prints[a] = UnchangedAreas.Print(picture, rect);
+            results[a] = _unchanged.TryReuse(keys[a], prints[a]);
+            if (results[a] is null)
+            {
+                changed.Add(a);
+            }
+        }
+
+        if (changed.Count > 0)
+        {
+            var fresh = await ReadWithAsync(picture, [.. changed.Select(a => areas[a])], runner, ct).ConfigureAwait(false);
+            for (var i = 0; i < changed.Count; i++)
+            {
+                var a = changed[i];
+                results[a] = fresh.Areas[i];
+                _unchanged.Keep(keys[a], prints[a], fresh.Areas[i]);
+            }
+        }
+
+        return new RecognitionResult(new Resolution(picture.Width, picture.Height), [.. results.Select(r => r!)]);
+    }
+
+    /// <summary>The areas whose last reading was used again (tests).</summary>
+    internal UnchangedAreas Unchanged => _unchanged;
 
     private static async Task<RecognitionResult> ReadWithAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner set, CancellationToken ct)
     {

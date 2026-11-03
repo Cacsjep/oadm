@@ -229,6 +229,43 @@ internal sealed class Picture : IDisposable
         return new SKColor((byte)(r / n), (byte)(g / n), (byte)(b / n));
     }
 
+    /// <summary>
+    /// The mean brightness (0 to 255) of <paramref name="columns"/> x <paramref name="rows"/> cells over <paramref name="rect"/>,
+    /// row by row (the print of <see cref="UnchangedAreas"/>); cells outside the decoded part are 0.
+    /// </summary>
+    public float[] CellMeans(SKRectI rect, int columns, int rows)
+    {
+        var sums = new float[columns * rows];
+        var counts = new int[columns * rows];
+        var pixels = _bitmap.GetPixelSpan();
+        var stride = _bitmap.RowBytes;
+        var part = SKRectI.Intersect(rect, Decoded);
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            return sums;
+        }
+
+        for (var y = part.Top; y < part.Bottom; y++)
+        {
+            var row = (int)((y - rect.Top) * (long)rows / rect.Height) * columns;
+            var o = (y - _top) * stride;
+            for (var x = part.Left; x < part.Right; x++)
+            {
+                var cell = row + (int)((x - rect.Left) * (long)columns / rect.Width);
+                var i = o + (x - _left) * 4;
+                sums[cell] += (pixels[i] + 2 * pixels[i + 1] + pixels[i + 2]) * 0.25f;
+                counts[cell]++;
+            }
+        }
+
+        for (var c = 0; c < sums.Length; c++)
+        {
+            sums[c] = counts[c] == 0 ? 0 : sums[c] / counts[c];
+        }
+
+        return sums;
+    }
+
     private static SKSamplingOptions Sampling(float scale) =>
         scale >= 0.99f ? new SKSamplingOptions(SKCubicResampler.CatmullRom) : new SKSamplingOptions(SKCubicResampler.Mitchell);
 

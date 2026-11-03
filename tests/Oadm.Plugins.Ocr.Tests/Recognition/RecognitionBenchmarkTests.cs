@@ -73,6 +73,26 @@ public sealed class RecognitionBenchmarkTests(ITestOutputHelper output)
         var twenty = watch.Elapsed.TotalMilliseconds / 80;
         rows.Add(("20 fixed-place readers at once", twenty, 1000 / twenty));
 
+        // Watching a still scene: the areas' last readings used again (every 11th picture read anew).
+        foreach (var (name, areas) in new[] { ("Fixed place, unchanged", FixedPlace), ("4 areas, unchanged", FourAreas) })
+        {
+            var options = new RecognitionOptions { ReuseUnchanged = true, Source = name };
+            var ms = await TimeAsync(33, () => recognizer.ReadDetailedAsync(jpeg, areas, options, CancellationToken.None));
+            rows.Add((name, ms, 1000 / ms));
+        }
+
+        watch.Restart();
+        await Task.WhenAll(Enumerable.Range(0, 20).Select(async reader =>
+        {
+            var options = new RecognitionOptions { ReuseUnchanged = true, Source = "reader " + reader };
+            for (var i = 0; i < 11; i++)
+            {
+                await recognizer.ReadDetailedAsync(jpeg, FixedPlace, options, CancellationToken.None);
+            }
+        }));
+        var twentyUnchanged = watch.Elapsed.TotalMilliseconds / 220;
+        rows.Add(("20 readers, unchanged", twentyUnchanged, 1000 / twentyUnchanged));
+
         output.WriteLine($"Runs on {recognizer.RunsOn.Name}");
         output.WriteLine($"{"Case",-32} {"ms per picture",15} {"pictures/s",11}");
         foreach (var (name, ms, perSecond) in rows)
