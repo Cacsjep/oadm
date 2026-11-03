@@ -236,10 +236,11 @@ must never break.
   bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
   server, sent only to axis.com, never to plugins; Upgrade firmware downloads AXIS OS with it (Recommended, Latest LTS,
   Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
-- **[Self update](docs/spec/self-update.md)** (spec, not built): Install now in the new version dialog updates the server
+- **[Self update](docs/spec/self-update.md)**: Install now in the new version dialog updates the server
   and the Administrator's client with their own installers run silently by the same program in update mode
   (no extra app); Administrators only, stable releases only, SHA-256 of the release, never during a task; the server keeps
-  the update record and shows the result after the restart; no rollback by OADM;
+  the update record and shows the result after the restart; no rollback by OADM; only from an installed package (the
+  ZIP and `dotnet run` keep Open download page); never a real installer in tests;
   site nodes are updated by hand (they run with few rights).
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at

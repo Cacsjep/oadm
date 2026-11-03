@@ -267,6 +267,17 @@ used again.
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
 - **`BackupService`** (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,
   `Restore`, see `docs/spec/settings-backup.md` "Backup and restore".
+- **`UpdateService`** (`update.proto`, `docs/spec/self-update.md`): `Get` and `Start` need `server.update` (the
+  Administrator's alone, AccessPolicy Admin); `Watch` every signed-in user. `Get`: the server's version, platform and
+  machine name, `same_computer` (the caller connects from a loopback address or one of the server's own addresses and
+  names the server's machine name), `installed`, running tasks, the latest stable release (cached 10 minutes; empty when
+  GitHub is not reached), the running update, the last record, sites with an older node. `Start` (version): the latest
+  stable release only; FAILED_PRECONDITION with the reason for a pre-release, a downgrade, the same version, a newer
+  version than the latest, a development build, a server not installed with the installer, a running task, too little
+  disk space, GitHub not reached, a download that failed its checks, a helper that could not start; it returns once the
+  helper started. `Watch`: the current step first, then each one (`same_computer` per subscriber); `finished` when the
+  update ended while the server kept running (with `failed`). Once the helper started, every other call answers
+  UNAVAILABLE "Updating the server to V4.9.0" (`UpdateGate`; `AuthService.Status` and UpdateService stay open).
 - **`SiteService`** (`sites.proto`, `docs/spec/sites.md`; reading needs "See sites", every change Administrator):
   `ListSites`, `WatchSites`, `SetAccept`, `BindSite`, `RenameSite`, `ReplaceSite`, `RemoveSite`.
 - **`SiteNodeService`** (`site_node.proto`): hosted by the node and called by the server over the links the node opened

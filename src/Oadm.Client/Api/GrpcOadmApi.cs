@@ -243,6 +243,16 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<SiteList> ListSitesAsync(CancellationToken ct) =>
         await C.Sites.ListSitesAsync(new Empty(), cancellationToken: ct);
 
+    public async Task<UpdateInfo> GetUpdateAsync(CancellationToken ct) => await C.Update.GetAsync(new Empty(), cancellationToken: ct);
+
+    /// <summary>Start returns once the helper started: at most the download limit and the database copy (a margin of 10 minutes).</summary>
+    public static readonly TimeSpan StartUpdateDeadline = Contracts.Updates.GitHubReleaseFeed.DownloadLimit + TimeSpan.FromMinutes(10);
+
+    public async Task<UpdateInfo> StartUpdateAsync(string version, CancellationToken ct) =>
+        await C.Update.StartAsync(new StartUpdateRequest { Version = version }, deadline: DateTime.UtcNow.Add(StartUpdateDeadline), cancellationToken: ct);
+
+    public IAsyncEnumerable<UpdateProgress> WatchUpdateAsync(CancellationToken ct) => ReadAll(C.Update.Watch(new Empty(), cancellationToken: ct), ct);
+
     public IAsyncEnumerable<SiteList> WatchSitesAsync(CancellationToken ct) =>
         ReadAll(C.Sites.WatchSites(new Empty(), cancellationToken: ct), ct);
 
@@ -753,5 +763,6 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public MyAxisService.MyAxisServiceClient MyAxis { get; } = new(channel);
         public SupportService.SupportServiceClient Support { get; } = new(channel);
         public SiteService.SiteServiceClient Sites { get; } = new(channel);
+        public UpdateService.UpdateServiceClient Update { get; } = new(channel);
     }
 }

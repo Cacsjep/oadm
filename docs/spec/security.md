@@ -93,7 +93,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `PermissionCatalogTests`); `RoleStore.SyncCatalogAsync` gives a role a permission it has not seen once: Operator
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
   role has but no loaded plugin declares are kept. **Administrator only, never grantable**: users and roles, the
-  credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log. Every gRPC method
+  credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log, self update
+  (`server.update`: `UpdateService.Get` and `Start`, Install now and Update client; `HostPermissions.ServerUpdate`, never a
+  row of the matrix, docs/spec/self-update.md). Every gRPC method
   has a rule in `AccessPolicy` (Open, SignedIn, a permission, InCall, Admin; a test checks that every contract method is
   listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
   task runs are checked in the call (`InCall`). The operator default withholds the risky rights:
@@ -140,7 +142,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), the waiting list (kept, removed), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
-  focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"). The Logs page has an **Audit** tab (Admin only, newest 10,000,
+  focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"), server updates ("Started server update" with the
+  version it came from, then "Updated server" or "Server update failed" with from, to and the reason, written once by the
+  server that completes the record). The Logs page has an **Audit** tab (Admin only, newest 10,000,
   virtualized, search).
 
 ## Client: login and users

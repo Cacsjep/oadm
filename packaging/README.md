@@ -76,6 +76,35 @@ Notes:
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
   `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`).
 
+## Self update: manual test
+
+Self update (`docs/spec/self-update.md`) runs these installers silently; the tests never run one. Before a release with
+changes to self update or to an installer, test a real update on each system, once with "Server and client" and once
+with "Client only", from the previous stable release to a release that is newer (a test repository or a local release
+with the same file names and `SHA256SUMS.txt`):
+
+1. Install the older version. Log in as an Administrator, start no task.
+2. "Server and client": the new version dialog shows **Install now**; click it. The steps run (Download the update,
+   Check the download, Install the update), the banner says "Updating the server to V<new>", the client on this computer
+   closes and opens again with "Server updated to V<new>". Check: Settings > About shows the new version, the service
+   runs, `update/state.json` says done, `update/oadm-<old>.db` exists, the Logs page's Audit tab shows "Started server
+   update" and "Updated server", "Server and client" is still installed (MSI: Apps and Features > Change; .pkg: the
+   LaunchDaemon `com.oadm.server` exists).
+3. A failing installer: lock the package system first (Windows: another `msiexec` waiting; Linux: `sudo apt-get install`
+   waiting at its prompt), then Install now: "The update failed. The server runs V<old>." with "Another installation is
+   running. Try again later.", the old server keeps running, tasks start again.
+4. "Client only" on another computer (Linux with `pkexec`): connect to the updated server; the dialog offers **Update
+   client**. The system's prompt asks for the password, the installer runs, OADM opens again with "OADM updated to
+   V<new>"; cancel the prompt once: "The update failed" with "The update was cancelled.", the old client keeps running.
+   "Client only" stays client only (MSI: no service; macOS: no LaunchDaemon).
+5. A ZIP (portable) server or client offers only Open download page.
+
+| System | Server and client | Client only |
+|---|---|---|
+| Windows 10/11 x64 (MSI) | Install now, client closes and returns | Update client with the UAC prompt (`/passive`) |
+| Debian / Ubuntu (amd64, arm64) | Install now; the client is its own package: Update client afterwards | Update client with `pkexec` |
+| macOS (x64 .pkg) | Install now, client closes and returns | Update client with the administrator prompt; no server installed afterwards |
+
 ## OADM Site Node
 
 `manage package site-node [--rid RID] [--version V]` (`docs/spec/packaging.md`) publishes the node service

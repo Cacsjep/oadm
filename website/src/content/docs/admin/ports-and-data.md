@@ -19,6 +19,7 @@ in use, as in the table. The server runs as Local System / root because the NTP 
 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
+For **Install now** the server reaches github.com on TCP 443; **Update client** the client does the same.
 
 ## Data folder
 
@@ -36,7 +37,8 @@ It holds the database (devices, tasks, users), the plugin settings including the
 Use **Settings > Backup and restore**: **Back up now** or the automatic backups (kept in `backups` in the data folder).
 A backup restores on another computer too. See [Settings](../settings/#backup-and-restore).
 
-Before every database upgrade OADM copies the database to `backups/before-upgrade` (the newest five kept).
+Before every database upgrade OADM copies the database to `backups/before-upgrade` (the newest five kept). **Install
+now** also keeps a copy of the database before the update in `update` (see [Update OADM](../settings/#update-oadm)).
 
 Backing up the whole data folder by hand also works. Without `master.key` the stored passwords cannot be read.
 

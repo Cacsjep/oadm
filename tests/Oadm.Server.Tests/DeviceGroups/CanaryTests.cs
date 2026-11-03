@@ -366,6 +366,7 @@ public sealed partial class CanaryTests
         ["/oadm.v1.VulnerabilityService/Get"] = "the public list of Axis CVEs, no device (the client matches its own view)",
         ["/oadm.v1.VulnerabilityService/Upload"] = "the public list of Axis CVEs from a client, no device",
         ["/oadm.v1.MyAxisService/Get"] = "the caller's own MyAxis sign-in, no device",
+        ["/oadm.v1.UpdateService/Watch"] = "the steps of a server update (version and step), no device",
         ["/oadm.v1.MyAxisService/SignIn"] = "the caller's own MyAxis sign-in, no device",
         ["/oadm.v1.MyAxisService/SignOut"] = "the caller's own MyAxis sign-in, no device",
         ["/oadm.v1.AuthService/Login"] = "open: the session",

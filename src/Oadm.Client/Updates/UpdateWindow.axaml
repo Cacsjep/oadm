@@ -11,7 +11,8 @@
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
   <!-- A new OADM version: the logo band with the update badge, the release notes behind What's new, Later and
-       Open download page. docs/spec/main-window.md "New version" -->
+       Open download page; for an Administrator of an installed server Install now (or Update client), then the steps,
+       "Updating the server to V4.9.0" and the result. docs/spec/main-window.md "New version", docs/spec/self-update.md -->
   <StackPanel>
     <tc:HeroBand Classes="tall" ShowsDots="True" ShowsUpdate="True" CloseCommand="{Binding LaterCommand}">
       <tc:HeroBand.Art>
@@ -22,8 +23,8 @@
     <Border Classes="heroBody">
       <StackPanel Classes="form">
         <StackPanel>
-          <TextBlock Classes="heroTitle" Text="{Binding Title}" />
-          <TextBlock Classes="heroSubtitle" Text="{Binding Current}" />
+          <TextBlock Classes="heroTitle" Text="{Binding Title}" TextWrapping="Wrap" />
+          <TextBlock Classes="heroSubtitle" Text="{Binding Current}" IsVisible="{Binding Current, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         </StackPanel>
 
         <Border Classes="disclosure" IsVisible="{Binding HasNotes}">
@@ -70,13 +71,48 @@
           </StackPanel>
         </Border>
 
-        <CheckBox Content="Don't tell me about new versions" IsChecked="{Binding DontTellAgain}" />
+        <!-- The three steps (fixed, never a list that grows): done, running, failed, waiting -->
+        <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding ShowsSteps}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="8" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="up:UpdateStepRow">
+              <ui:StatusChip Text="{Binding Name}" Detail="{Binding Detail}" IsOk="{Binding IsDone}" IsAccent="{Binding IsCurrent}" IsError="{Binding IsFailed}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- The result: the reason, the installer log, the database copy, the site node hint -->
+        <ItemsControl ItemsSource="{Binding ResultLines}" IsVisible="{Binding IsResult}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="6" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <SelectableTextBlock TextWrapping="Wrap" Text="{Binding}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <CheckBox Content="Don't tell me about new versions" IsChecked="{Binding DontTellAgain}" IsVisible="{Binding ShowsDontTell}" />
       </StackPanel>
     </Border>
 
     <Border Classes="heroFooter">
-      <ui:DialogFooter CancelText="Later" CancelCommand="{Binding LaterCommand}">
-        <Button Classes="primary" IsDefault="True" Command="{Binding OpenDownloadCommand}">
+      <ui:DialogFooter CancelText="{Binding CloseText}" CancelCommand="{Binding LaterCommand}">
+        <Button Classes="secondary" Command="{Binding OpenDownloadCommand}" IsVisible="{Binding ShowsDownloadSecondary}">
+          <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Open download page" />
+        </Button>
+        <Button Classes="primary" IsDefault="True" Command="{Binding InstallCommand}" IsVisible="{Binding ShowsInstall}"
+                ToolTip.Tip="{Binding InstallTip}" ToolTip.ShowOnDisabled="True">
+          <ui:IconLabel Icon="{StaticResource Icon.download}" Text="{Binding InstallText}" />
+        </Button>
+        <Button Classes="primary" IsDefault="True" Command="{Binding OpenDownloadCommand}" IsVisible="{Binding ShowsDownloadPrimary}">
           <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Open download page" />
         </Button>
       </ui:DialogFooter>

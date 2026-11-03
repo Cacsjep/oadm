@@ -136,10 +136,12 @@
   </Package>
 
   <!-- Setup type "Server and client" / "Client only". The page preselects what is installed (Change) or what an upgrade
-       keeps (MigrateFeatureStates: a client-only installation stays client-only). -->
+       keeps (MigrateFeatureStates: a client-only installation stays client-only). Set in both sequences: a silent update
+       (msiexec /qn or /passive of self update, docs/spec/self-update.md rule 10) skips the UI sequence and passes no
+       feature properties, so the execute sequence keeps the setup type the same way. -->
   <Fragment>
     <Property Id="OADM_SETUP" Value="ServerAndClient" />
-    <SetProperty Id="OADM_SETUP" Value="ClientOnly" After="MigrateFeatureStates" Sequence="ui"
+    <SetProperty Id="OADM_SETUP" Value="ClientOnly" After="MigrateFeatureStates" Sequence="both"
                  Condition="(Installed AND !Server = 2) OR (NOT Installed AND &amp;Server = 2)" />
 
     <UI Id="WixUI_Oadm">

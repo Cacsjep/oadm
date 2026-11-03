@@ -69,6 +69,36 @@ card shows what was restored.
 
 A backup of an older OADM is upgraded when it is restored. A backup of a newer OADM is refused: update OADM first.
 
+## Update OADM
+
+When a new OADM version is out, an administrator updates the server from the new version dialog after the login:
+
+1. Wait until no task runs. **Install now** stays grey while tasks run.
+2. Click **Install now**. OADM downloads the update, checks it, saves a copy of the database and installs the update
+   with the OADM installer. "Server and client" stays "Server and client", "Client only" stays "Client only".
+3. The server is away for a few minutes. Every client says "Updating the server to" the new version. A client on the
+   server's computer closes and opens again by itself.
+4. After the update the dialog says **Server updated** or why it failed. The result is also on the **Logs** page, tab
+   **Audit**.
+
+Clients on other computers then offer **Update client**. Your computer asks for an administrator password, the installer
+runs and OADM opens again with the new version. A computer with its own OADM server updates with **Install now** instead.
+
+- Only the installed OADM updates itself. A server or client from the ZIP files, or a computer without internet,
+  installs the update from the [download page](../../start/install/).
+- OADM 4.9.0 and older have no **Install now**: install this version once from the download page.
+- Site nodes are not updated by OADM. The **Sites** page shows **Update on its computer** next to an older node: install
+  the new OADM Site Node on that computer.
+- A failed update on Windows undoes itself, the old server runs on. The result names the installer log on the server.
+
+If the new version does not start and you need the old one back:
+
+1. Stop the service **OADM Server**.
+2. In the data folder (`C:\ProgramData\OADM`, `/var/lib/oadm` or `/Library/Application Support/OADM`), replace
+   `oadm.db` with the copy `update/oadm-<old version>.db` and delete `oadm.db-wal` and `oadm.db-shm`.
+3. Install the old version from the [releases on GitHub](https://github.com/Cacsjep/oadm/releases).
+4. Start the service.
+
 ## License
 
 The **License** card shows this server's OADM PRO license. OADM itself works the same with or without one; PRO adds

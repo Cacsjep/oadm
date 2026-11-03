@@ -42,6 +42,12 @@ public sealed record AppOptions
     /// <summary>Clock of the fake server's task simulation (<see cref="UseFake"/>); null = the system clock. Headless tests freeze it.</summary>
     public TimeProvider? FakeSimulationTime { get; init; }
 
+    /// <summary>The client runs as its own update helper (<c>--update-helper</c>, docs/spec/self-update.md): no main window.</summary>
+    public Updates.ClientHelperArguments? UpdateHelper { get; init; }
+
+    /// <summary>The helper started this client after an update (<c>--updated client|server</c>): it shows the result first.</summary>
+    public Updates.UpdatedArguments? Updated { get; init; }
+
     public static string DefaultDataFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm");
 
@@ -57,6 +63,8 @@ public sealed record AppOptions
         {
             FakeUser = string.IsNullOrWhiteSpace(fakeUser) ? null : fakeUser.Trim(),
             AsVersion = string.IsNullOrWhiteSpace(asVersion) ? null : asVersion.Trim(),
+            UpdateHelper = Updates.ClientHelperArguments.Parse(args),
+            Updated = Updates.UpdatedArguments.Parse(args),
         };
         for (int i = 0; i < args.Count; i++)
         {

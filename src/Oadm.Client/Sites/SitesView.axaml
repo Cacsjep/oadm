@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:upd="using:Oadm.Contracts.Updates"
              xmlns:c="using:Oadm.Client.Controls"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Client.Sites"
@@ -68,7 +69,19 @@
                 <TextBlock Classes="numberHeader" Text="Uploads and downloads" ToolTip.Tip="Running now" />
               </DataGridTextColumn.Header>
             </DataGridTextColumn>
-            <DataGridTextColumn Header="Version" Width="175" MinWidth="80" Binding="{Binding VersionText}" x:DataType="vm:SiteRowViewModel" />
+            <!-- An older node than the server: "Update on its computer" with the download page (docs/spec/self-update.md "Site nodes") -->
+            <DataGridTemplateColumn Header="Version" Width="250" MinWidth="80" SortMemberPath="VersionText">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:SiteRowViewModel">
+                  <StackPanel Classes="cellParts">
+                    <TextBlock Text="{Binding VersionText}" />
+                    <Button Classes="link" Margin="10,0" VerticalAlignment="Center" IsVisible="{Binding IsOlderThanServer}"
+                            Content="{x:Static upd:UpdateTexts.UpdateNodeHere}" ToolTip.Tip="Opens the download page"
+                            Command="{Binding $parent[UserControl].((vm:SitesViewModel)DataContext).OpenDownloadPageCommand}" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTextColumn Header="Last seen" Width="140" MinWidth="130" Binding="{Binding LastSeenText}" SortMemberPath="LastSeenSortKey" x:DataType="vm:SiteRowViewModel" />
             <!-- Row actions (administrators): Bind for waiting nodes; Rename, Replace with and Remove site for sites;
                  Replace with and Remove devices for a removed site with kept devices -->

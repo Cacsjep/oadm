@@ -86,6 +86,22 @@ public static class ServiceRegistration
         services.AddSingleton<AppShell>();
         services.AddSingleton<Updates.IReleaseCheck>(_ => Updates.GitHubReleaseCheck.Create());
         services.AddSingleton<Updates.UpdateNotifier>();
+        // Self update (docs/spec/self-update.md): the server's update as this client sees it, Update client and the helper.
+        services.AddSingleton<Updates.ServerUpdateTracker>();
+        services.AddSingleton(sp =>
+        {
+            var disk = new Contracts.Updates.SystemDiskSpace();
+            var feed = Contracts.Updates.GitHubReleaseFeed.Create("OADM-Client/" + Updates.ClientVersion.Text);
+            return new Updates.ClientUpdater(
+                feed,
+                new Contracts.Updates.UpdateDownloader(feed, disk),
+                new Updates.ClientHelperLauncher(new Contracts.Updates.SystemProcessLauncher(), Path.Combine(options.DataFolder, "update"), () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown())),
+                Contracts.Updates.InstallFacts.Current(isService: false),
+                Contracts.Updates.UpdatePlatform.Current,
+                Path.Combine(options.DataFolder, "update"),
+                options.AsVersion ?? Updates.ClientVersion.Text);
+        });
 
         services.AddSingleton<Tags.TagStore>();
         services.AddSingleton<DeviceStore>();

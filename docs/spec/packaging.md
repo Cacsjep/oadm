@@ -66,7 +66,11 @@ each app.
   UpgradeCode + MajorUpgrade (same version reinstall allowed). Features `Client` (always) and `Server` (service, firewall
   rule, data folder); own UI `WixUI_Oadm` (welcome, page "Choose what to install" with the radio buttons "Server and
   client" / "Client only" = AddLocal / Remove of `Server`, ready, progress, finish; Change in Apps and Features opens the
-  same page, upgrades keep the choice through MigrateFeatureStates); silent `ADDLOCAL=Client` = client only.
+  same page, upgrades keep the choice through MigrateFeatureStates; `OADM_SETUP` is set after MigrateFeatureStates in
+  the UI and the execute sequence (`Sequence="both"`), so a silent update of self update keeps the setup type too);
+  silent `ADDLOCAL=Client` = client only. Self update ([self-update.md](self-update.md)) takes the release files by these
+  exact names: `OADM-<version>-win-x64.msi`, `oadm-server_<version>_<arch>.deb`, `oadm-client_<version>_<arch>.deb`,
+  `OADM-<version>-osx-x64.pkg` and `SHA256SUMS.txt`; renaming one breaks it.
   `%ProgramData%\OADM` is created for SYSTEM and Administrators only and never removed. Files are harvested from the
   publish folders.
 - **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 and arm64, built on Linux or in a container), two

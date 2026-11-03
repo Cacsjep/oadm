@@ -11,6 +11,9 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Dashboards: Button widgets that run event rules, for example to open a gate or switch a light. Update every client: older clients cannot open dashboards with buttons.
 - Plugin SDK 0.10.0.
+- Administrators update the server and their client from inside OADM with Install now.
+- The Sites page says which site nodes are older than the server, with a link to the download page.
+- Servers and clients before this version are updated by hand once; from then on Install now does it.
 
 ### Changed
 

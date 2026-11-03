@@ -145,6 +145,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<MyAxis.MyAxisGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
+        app.MapGrpcService<Updates.UpdateGrpcService>();
         if (app.Environment.IsDevelopment())
         {
             app.MapGrpcReflectionService();
@@ -268,6 +269,28 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<Backup.BackupManager>>()));
         services.AddHostedService<Backup.BackupScheduleHostedService>();
+        // Self update (docs/spec/self-update.md): the release's installer, run by a helper outside the service.
+        services.AddSingleton<Updates.UpdateGate>();
+        services.AddSingleton(sp => new Updates.UpdateRecordFile(sp.GetRequiredService<OadmPaths>().DataDirectory));
+        services.TryAddSingleton<Contracts.Updates.IReleaseFeed>(_ => Contracts.Updates.GitHubReleaseFeed.Create("OADM-Server/" + Mapping.Mappers.ServerVersion));
+        services.TryAddSingleton<Contracts.Updates.IDiskSpace, Contracts.Updates.SystemDiskSpace>();
+        services.AddSingleton(sp => new Contracts.Updates.UpdateDownloader(sp.GetRequiredService<Contracts.Updates.IReleaseFeed>(), sp.GetRequiredService<Contracts.Updates.IDiskSpace>()));
+        services.TryAddSingleton<Updates.IServerHelperStarter>(_ => new Updates.ServerHelperStarter(
+            Contracts.Updates.UpdatePlatform.Current.Os, new ProcessCommandRunner(), new Contracts.Updates.SystemProcessLauncher()));
+        services.TryAddSingleton<Updates.ILocalAddresses, Updates.SystemLocalAddresses>();
+        services.TryAddSingleton(sp => new Updates.ServerUpdateEnvironment
+        {
+            ServerVersion = Mapping.Mappers.ServerVersion,
+            Platform = Contracts.Updates.UpdatePlatform.Current,
+            Installed = Contracts.Updates.Installation.IsServerInstalled(Contracts.Updates.InstallFacts.Current(serviceMode)),
+            ConnectionString = sp.GetRequiredService<OadmPaths>().ConnectionString,
+            DataDirectory = sp.GetRequiredService<OadmPaths>().DataDirectory,
+            MakeHelper = folder => Contracts.Updates.HelperCopy.Make(folder),
+            StatusUrl = () => Updates.HelperArguments.StatusUrlFor(
+                sp.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()?.Addresses.FirstOrDefault() ?? "https://127.0.0.1:5080"),
+            OlderSiteNodes = () => sp.GetRequiredService<Sites.SiteManager>().OlderNodeCount(Mapping.Mappers.ServerVersion),
+        });
+        services.AddSingleton<Updates.ServerUpdateCoordinator>();
         // Vulnerabilities (docs/spec/vulnerabilities.md): the list of Axis CVEs; fetched online only when the setting allows.
         services.AddSingleton(sp => new Vulnerabilities.VulnerabilityStore(
             sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>()));
@@ -636,6 +659,9 @@ public static partial class OadmServerHost
         // 2c. A restore this start applied: its report (Settings page) and audit entry; every login session ends.
         sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
         await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
+
+        // 2c1. Self update: the record of the last update is completed by this server, old or new (and audited once).
+        await sp.GetRequiredService<Updates.ServerUpdateCoordinator>().CompleteOnStartAsync(ct).ConfigureAwait(false);
 
         // 2c2. Basic login over HTTP (server setting) before the first device connection.
         var basicOverHttp = sp.GetRequiredService<BasicOverHttpSetting>();

@@ -89,7 +89,9 @@ side.
   `Sites/SitesViewModel`). Table: State, Name, Node address, Connections, Waiting for approval, Uploads and downloads,
   Version, Last seen and the row actions (Bind, Rename, Replace with, Remove); no Devices or Response time columns, so Bind
   stays visible. The counts line sits in the toolbar row, left of Turn off / Accept site nodes; a node message that only
-  repeats the state is not shown again as its detail.
+  repeats the state is not shown again as its detail. A node older than the server (`Site.update_available`, set by the
+  server) has the link "Update on its computer" next to its version, to the download page; site nodes are never updated by
+  OADM ([self-update.md](self-update.md) "Site nodes").
 - One dialog `SiteFormWindow` for Bind, Rename, Replace and Remove. Bind starts with the node's host name, "acs (2)" when
   a site has it, or the site's own name when its node binds it again; Replace with lists only other online sites; Remove
   site names the device groups that use the site (`Site.group_names`: "Used by device group Building B.").

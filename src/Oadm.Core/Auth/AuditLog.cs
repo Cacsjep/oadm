@@ -80,6 +80,9 @@ public static class AuditActions
     public const string DeviceGroupCreated = "Created device group";
     public const string DeviceGroupChanged = "Changed device group";
     public const string DeviceGroupDeleted = "Deleted device group";
+    public const string ServerUpdateStarted = "Started server update";
+    public const string ServerUpdated = "Updated server";
+    public const string ServerUpdateFailed = "Server update failed";
 }
 
 /// <summary>

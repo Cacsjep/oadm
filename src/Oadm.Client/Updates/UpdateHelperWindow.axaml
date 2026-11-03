@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:tc="using:Oadm.Theme.Controls"
+        xmlns:up="using:Oadm.Client.Updates"
+        x:Class="Oadm.Client.Updates.UpdateHelperWindow"
+        x:DataType="up:UpdateHelperViewModel"
+        Title="{Binding Title}"
+        Width="420" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="BorderOnly">
+  <!-- The client's update helper (docs/spec/self-update.md): the logo band and what runs until the new client starts. -->
+  <StackPanel>
+    <tc:HeroBand x:Name="Band" ShowsUpdate="True">
+      <tc:HeroBand.Art>
+        <tc:OadmMark Width="120" Height="120" />
+      </tc:HeroBand.Art>
+    </tc:HeroBand>
+    <Border Classes="heroBody">
+      <StackPanel Classes="form">
+        <StackPanel>
+          <TextBlock Classes="heroTitle" Text="{Binding Title}" TextWrapping="Wrap" />
+          <TextBlock Classes="heroSubtitle" Text="{Binding Status}" TextWrapping="Wrap" />
+        </StackPanel>
+        <ui:ProgressRow />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</Window>

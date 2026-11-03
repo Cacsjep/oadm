@@ -60,6 +60,29 @@ public sealed partial class ServerTlsCertificate(OadmPaths paths, CredentialProt
     /// <summary>SHA-256 fingerprint as clients show it ("3F:A2:...").</summary>
     public string Fingerprint => ServerCertificatePinning.Fingerprint(Certificate);
 
+    /// <summary>
+    /// The fingerprint of the certificate stored in <paramref name="dataDirectory"/> (the update helper pins its own server
+    /// with it); null when there is none or it cannot be read.
+    /// </summary>
+    public static string? FingerprintOf(string dataDirectory)
+    {
+        try
+        {
+            var stored = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(dataDirectory, FileName)), TlsFileJsonContext.Default.TlsFile);
+            if (stored is null || string.IsNullOrEmpty(stored.CertificatePem))
+            {
+                return null;
+            }
+
+            using var certificate = X509Certificate2.CreateFromPem(stored.CertificatePem);
+            return ServerCertificatePinning.Fingerprint(certificate);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     public async Task<X509Certificate2> LoadOrCreateAsync(bool regenerate, CancellationToken ct)
     {
         if (_certificate is not null && !regenerate)

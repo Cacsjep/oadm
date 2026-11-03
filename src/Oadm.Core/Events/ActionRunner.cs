@@ -212,9 +212,23 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private static bool HasAggregateActions(RuleDefinition rule) =>
         rule.Actions.Exists(a => a.Targets.Mode != DeviceSelectorMode.EventDevice);
 
+    /// <summary>While true no event rule action runs (the server is updating, docs/spec/self-update.md rule 6).</summary>
+    public bool IsHeld
+    {
+        get => Volatile.Read(ref _held);
+        set => Volatile.Write(ref _held, value);
+    }
+
+    private bool _held;
+
     private async Task RunJobAsync(RuleEdgeJob job)
     {
         var ct = _stop.Token;
+        if (IsHeld)
+        {
+            LogHeld(job.Rule.Name);
+            return;
+        }
         foreach (var action in job.Rule.Actions)
         {
             if (ct.IsCancellationRequested)
@@ -578,6 +592,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Event rule {Rule}: action {Action} failed unexpectedly")]
     private partial void LogRunFailed(Exception ex, string rule, string action);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Event rule {Rule}: actions skipped, the server is updating")]
+    private partial void LogHeld(string rule);
 
     private sealed class RunContext(
         IVapixClient? vapix,

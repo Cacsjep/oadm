@@ -20,7 +20,7 @@ namespace Oadm.Server.Auth;
 /// message ("3 devices are no longer available."), a <see cref="Sdk.Plugins.DeviceAccessRefusedException"/> (plugin code a
 /// user with a device group may not reach) PERMISSION_DENIED.
 /// </summary>
-public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, DeviceViewFactory views, AccessEpochs epochs, ILogger<AuthInterceptor> logger) : Interceptor
+public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore roles, CallerStreams streams, DeviceViewFactory views, AccessEpochs epochs, ILogger<AuthInterceptor> logger, Updates.UpdateGate? update = null) : Interceptor
 {
     /// <summary>The session stream reports role changes itself; it is never ended by one.</summary>
     private const string WatchSessionMethod = "/oadm.v1.AuthService/WatchSession";
@@ -248,6 +248,12 @@ public sealed partial class AuthInterceptor(AuthTokenStore tokens, RoleStore rol
     private async Task<(AuthenticatedCaller? Caller, AccessRule Rule)> AuthorizeAsync(ServerCallContext context)
     {
         var rule = AccessPolicy.For(context.Method);
+        if (update?.ClosedFor is { } updatingTo && !Updates.UpdateGate.StaysOpen(context.Method))
+        {
+            // The update's helper runs (docs/spec/self-update.md): no new work reaches this server.
+            throw new RpcException(new Status(StatusCode.Unavailable, Contracts.Updates.UpdateTexts.Updating(updatingTo)));
+        }
+
         if (rule.Access == Access.Open)
         {
             return (null, rule);

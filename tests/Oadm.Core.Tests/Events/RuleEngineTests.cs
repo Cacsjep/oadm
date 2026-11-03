@@ -34,6 +34,25 @@ public sealed class RuleEngineTests
     }
 
     [Fact]
+    public async Task NoActionRunsWhileTheServerUpdates()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var a = await rig.AddDeviceAsync("10.0.0.1");
+        rig.Publisher.ReplaceStates(EventRulesRig.Blur, []);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur, rig.OnEventDevice()));
+
+        rig.Runner.IsHeld = true; // self update started (docs/spec/self-update.md rule 6)
+        rig.Publisher.SetState(EventRulesRig.Blur, a.Id, true);
+        await rig.SettleAsync();
+        Assert.Empty(rig.OnDevice.Edges);
+
+        rig.Runner.IsHeld = false;
+        rig.Publisher.SetState(EventRulesRig.Blur, a.Id, false);
+        await rig.SettleAsync();
+        Assert.Equal([ActionEdge.TurnedOff], rig.OnDevice.Edges.Select(e => e.Edge));
+    }
+
+    [Fact]
     public async Task ActionsOnChosenDevicesFollowTheFirstOnAndTheLastOff()
     {
         await using var rig = await EventRulesRig.StartAsync();

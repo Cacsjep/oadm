@@ -15,7 +15,9 @@ CHANGELOG section; `ReleaseNotes.Parse`: `###` groups, `-` entries, plain text),
 **Open download page** (https://oadm.app/start/install/) and "Don't tell me about new versions" (client setting
 `TellAboutNewVersions`; Settings, Client card "Tell me about new versions" turns it on again). A development build
 (version 1.0.0) never asks; to see the dialog from one, start the client as an older version (`--as-version 4.4.0` or the
-environment variable `OADM_CLIENT_VERSION=4.4.0`).
+environment variable `OADM_CLIENT_VERSION=4.4.0`). For an Administrator of an installed server or client the dialog offers
+**Install now** or **Update client** and follows the update to its result ([self-update.md](self-update.md)); while the
+server installs its update the connection banner says "Updating the server to V4.9.0" instead of "unreachable".
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in [visual-style.md](visual-style.md).

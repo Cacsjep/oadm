@@ -219,6 +219,11 @@ public static class AccessPolicy
         ["/oadm.v1.SiteService/RenameSite"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/ReplaceSite"] = AccessRule.Admin,
         ["/oadm.v1.SiteService/RemoveSite"] = AccessRule.Admin,
+        // Self update (docs/spec/self-update.md): server.update, which only the Administrator role holds (never grantable);
+        // the steps reach every signed-in client ("Updating the server to 4.9.0").
+        ["/oadm.v1.UpdateService/Get"] = AccessRule.Admin,
+        ["/oadm.v1.UpdateService/Start"] = AccessRule.Admin,
+        ["/oadm.v1.UpdateService/Watch"] = AccessRule.SignedIn,
     };
 
     /// <summary>The listed methods (a test checks them against the contracts, both ways).</summary>

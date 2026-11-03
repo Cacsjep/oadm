@@ -35,6 +35,14 @@ public partial class App : Application
         WindowFit.Attach();
         Oadm.Sdk.Client.Controls.GridSort.Install();
         Infrastructure.WheelScroll.Attach();
+        if (Options.UpdateHelper is { } helper && ApplicationLifetime is IClassicDesktopStyleApplicationLifetime helperDesktop)
+        {
+            // The update helper (docs/spec/self-update.md): its own small window, then the new client starts.
+            RunUpdateHelper(helper, helperDesktop);
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
+
         Services = ServiceRegistration.Build(Options, LogStore);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -44,6 +52,37 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void RunUpdateHelper(Updates.ClientHelperArguments helper, IClassicDesktopStyleApplicationLifetime desktop)
+    {
+        var window = new Updates.UpdateHelperWindow { DataContext = new Updates.UpdateHelperViewModel(helper) };
+        desktop.MainWindow = window;
+        window.Show();
+        var run = new Updates.ClientUpdateHelper(
+            Contracts.Updates.UpdatePlatform.Current.Os,
+            Contracts.Updates.InstallFacts.Current(isService: false),
+            new Contracts.Updates.ProcessInstallerRunner(),
+            new Contracts.Updates.GrpcServerVersionProbe(),
+            new Contracts.Updates.SystemProcessLauncher(),
+            TimeProvider.System);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await run.RunAsync(helper, CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The helper always ends; the log says why it could not finish.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                Serilog.Log.Error(ex, "The update helper failed");
+            }
+            finally
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => desktop.Shutdown());
+            }
+        });
     }
 
     /// <summary>

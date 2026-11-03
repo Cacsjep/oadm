@@ -66,6 +66,71 @@ public sealed class TaskEngineTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task NoTaskStartsWhileTheServerUpdates()
+    {
+        Register("t.ok", (_, _, _) => Task.CompletedTask);
+        var ids = _devices.AddMany(1);
+
+        Engine.HoldStarts("Updating the server to V4.9.0. Try again after the update.");
+        var held = await Assert.ThrowsAsync<TasksHeldException>(() => Engine.RunAsync("t.ok", ids, null, "alice@pc", CancellationToken.None));
+        Assert.Equal("Updating the server to V4.9.0. Try again after the update.", held.Message);
+        Assert.Empty(await Engine.ListAsync(CancellationToken.None));
+
+        Engine.ResumeStarts();
+        await WaitAllAsync(await Engine.RunAsync("t.ok", ids, null, "alice@pc", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task AHoldWaitsForARunThatPassedTheCheckBeforeIt()
+    {
+        var store = new GatedStore();
+        _store = store;
+        Register("t.ok", (_, _, _) => Task.CompletedTask);
+        var ids = _devices.AddMany(1);
+
+        var run = Engine.RunAsync("t.ok", ids, null, "alice@pc", CancellationToken.None);
+        await Eventually.TrueAsync(() => store.Adds >= 1, "the run is being stored");
+        Engine.HoldStarts("Updating the server to V4.9.0.");
+        var wait = Engine.WaitForStartsAsync(TimeProvider.System, CancellationToken.None);
+        Assert.False(wait.IsCompleted); // the run passed the check before the hold: the hold waits for it
+
+        store.Gate.SetResult();
+        await wait;
+        var started = await run;
+        Assert.Single(started); // counted as a task now: an update refuses with "1 task is running"
+    }
+
+    /// <summary>The in-memory store whose AddAsync waits for the test.</summary>
+    private sealed class GatedStore : ITaskStore
+    {
+        private readonly InMemoryTaskStore _inner = new();
+        private int _adds;
+
+        public TaskCompletionSource Gate { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Adds => Volatile.Read(ref _adds);
+
+        public async Task AddAsync(TaskRecord task, CancellationToken ct)
+        {
+            Interlocked.Increment(ref _adds);
+            await Gate.Task.WaitAsync(ct);
+            await _inner.AddAsync(task, ct);
+        }
+
+        public Task UpdateAsync(TaskRecord task, CancellationToken ct) => _inner.UpdateAsync(task, ct);
+
+        public Task<TaskRecord?> GetAsync(Guid id, CancellationToken ct) => _inner.GetAsync(id, ct);
+
+        public Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken ct) => _inner.ListAsync(ct);
+
+        public Task<bool> DeleteAsync(Guid id, CancellationToken ct) => _inner.DeleteAsync(id, ct);
+
+        public Task AppendLogAsync(Guid taskId, IReadOnlyList<TaskLogEntry> entries, CancellationToken ct) => _inner.AppendLogAsync(taskId, entries, ct);
+
+        public Task<IReadOnlyList<TaskLogEntry>> GetLogAsync(Guid taskId, CancellationToken ct) => _inner.GetLogAsync(taskId, ct);
+    }
+
     [Theory]
     [InlineData(null, null, 16)]
     [InlineData(3, null, 3)]

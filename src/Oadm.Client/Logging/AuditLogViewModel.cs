@@ -89,12 +89,54 @@ public sealed partial class AuditLogViewModel(IOadmApi api) : ObservableObject
 
     partial void OnSearchTextChanged(string value) => Filter();
 
+    /// <summary>The server's last update (docs/spec/self-update.md): "Server updated to V4.9.0"; null without one.</summary>
+    [ObservableProperty]
+    public partial string? LastUpdate { get; private set; }
+
+    /// <summary>"Last server update: V4.8.0 to V4.9.0, 2026-11-03 10:05" and the reason of a failure.</summary>
+    [ObservableProperty]
+    public partial string? LastUpdateDetail { get; private set; }
+
+    [ObservableProperty]
+    public partial bool LastUpdateOk { get; private set; }
+
+    [ObservableProperty]
+    public partial bool LastUpdateFailed { get; private set; }
+
+    private async Task LoadLastUpdateAsync()
+    {
+        try
+        {
+            var info = await api.GetUpdateAsync(CancellationToken.None).ConfigureAwait(true);
+            if (info.Last is not { } last)
+            {
+                LastUpdate = null;
+                return;
+            }
+
+            var outcome = Updates.UpdateOutcome.OfServer(last, info.ServerVersion, info.OlderSiteNodes);
+            LastUpdate = outcome?.Title ?? Contracts.Updates.UpdateTexts.Updating(last.ToVersion);
+            LastUpdateOk = outcome?.IsDone ?? false;
+            LastUpdateFailed = outcome is { IsDone: false };
+            LastUpdateDetail = string.Join(" · ", new[] { Updates.UpdateOutcome.LastLine(last) }.Concat(outcome?.Lines ?? []));
+        }
+        catch (RpcException)
+        {
+            LastUpdate = null; // a server without self update
+        }
+        catch (NotSupportedException)
+        {
+            LastUpdate = null;
+        }
+    }
+
     [RelayCommand]
     public async Task RefreshAsync()
     {
         IsLoading = true;
         try
         {
+            await LoadLastUpdateAsync().ConfigureAwait(true);
             AuditList list = await api.ListAuditAsync(PageSize, CancellationToken.None).ConfigureAwait(true);
             _all = list.Entries.Select(e => new AuditRowViewModel(e)).ToList();
             Error = null;

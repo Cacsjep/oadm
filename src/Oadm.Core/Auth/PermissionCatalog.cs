@@ -50,6 +50,12 @@ public static class HostPermissions
     public const string LogsServer = HostPermissionKeys.LogsServer;
     public const string SitesView = HostPermissionKeys.SitesView;
 
+    /// <summary>
+    /// Updating the server and the clients (docs/spec/self-update.md): only the Administrator role holds it, so it is never
+    /// a row of the matrix and never granted to another role (AccessPolicy: Admin).
+    /// </summary>
+    public const string ServerUpdate = "server.update";
+
     /// <summary>The host rows of the matrix, in order.</summary>
     public static IReadOnlyList<PermissionEntry> All { get; } =
     [

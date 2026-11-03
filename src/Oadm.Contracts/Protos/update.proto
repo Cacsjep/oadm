@@ -1,0 +1,66 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// Self update (docs/spec/self-update.md): an Administrator updates the server (and a client on its computer) with the
+// release's own installer. Get and Start need server.update (Administrator only); Watch is open to every signed-in user,
+// so every client shows "Updating the server to 4.9.0" instead of "Connection lost".
+service UpdateService {
+  // The server's version, platform and machine, whether it can update itself, the latest release, the running update
+  // and the last result.
+  rpc Get (Empty) returns (UpdateInfo);
+  // Starts the update to the latest stable release (free space, download, check, database copy, record, helper).
+  // FAILED_PRECONDITION while a task runs, for a pre-release, a downgrade, the same version, too little disk space, a
+  // server not installed with the installer or a download that failed its checks (the message says why).
+  rpc Start (StartUpdateRequest) returns (UpdateInfo);
+  // The running update's steps (the current one first), then each change. Ends with the server.
+  rpc Watch (Empty) returns (stream UpdateProgress);
+}
+
+message StartUpdateRequest {
+  string version = 1;                 // "4.9.0": the release the dialog showed (must be the latest stable release)
+}
+
+message UpdateInfo {
+  string server_version = 1;          // "4.8.0"
+  string platform = 2;                // windows, linux, macos
+  string machine_name = 3;            // the server's computer
+  bool same_computer = 4;             // the caller's client runs on the server's computer (loopback or own address, same name)
+  bool installed = 5;                 // installed with the OADM installer: Install now is offered
+  int32 active_tasks = 6;             // Install now waits for 0 ("3 tasks are running")
+  string latest_version = 7;          // the latest stable release the server read; empty = GitHub not reached
+  UpdateProgress running = 8;         // unset = no update runs
+  UpdateRecord last = 9;              // unset = no update yet
+  int32 older_site_nodes = 10;        // sites whose node runs an older version than the server
+}
+
+enum UpdateStepKind {
+  UPDATE_STEP_DOWNLOAD = 0;           // Download the update
+  UPDATE_STEP_CHECK = 1;              // Check the download
+  UPDATE_STEP_INSTALL = 2;            // Install the update (the server goes away)
+}
+
+message UpdateProgress {
+  string to_version = 1;
+  UpdateStepKind step = 2;
+  int32 percent = 3;                  // the download's percent
+  bool same_computer = 4;             // for this subscriber: its client runs on the server's computer (it closes for the installer)
+  string failed = 5;                  // set: the update stopped before the installer ran, nothing changed (the reason)
+  bool finished = 6;                  // the update ended while the server kept running (failed or refused); see Get
+}
+
+// update/state.json of the server's data folder (rule 5).
+message UpdateRecord {
+  string from_version = 1;
+  string to_version = 2;
+  google.protobuf.Timestamp started = 3;
+  google.protobuf.Timestamp finished = 4;
+  string step = 5;                    // download, check, copy, install, wait
+  string result = 6;                  // running, done, failed, not-back
+  string reason = 7;                  // why it failed, or "Restart the computer to finish the update"
+  string installer_log = 8;           // the installer log on the server
+  string database_copy = 9;           // the copy of the database before the update
+  string requested_by = 10;           // "admin@PC-1"
+}

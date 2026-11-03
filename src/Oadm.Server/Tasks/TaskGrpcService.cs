@@ -188,6 +188,10 @@ public sealed partial class TaskGrpcService(
         {
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
+        catch (TasksHeldException ex)
+        {
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, ex.Message));
+        }
     }
 
     /// <summary>Newest first; a page with <c>limit</c> (store paging), every task without. Only the tasks of the caller's view.</summary>

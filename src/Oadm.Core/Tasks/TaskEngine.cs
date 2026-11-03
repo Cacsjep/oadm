@@ -164,9 +164,60 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// <summary>The plugins the engine runs (the role check of <see cref="ViewTaskRunner"/>).</summary>
     internal PluginRegistry Plugins => _plugins;
 
+    private string? _heldReason;
+
+    /// <summary>
+    /// While set, no task starts (<see cref="TasksHeldException"/> with this reason): the server is updating
+    /// (docs/spec/self-update.md rule 6). Running tasks are not touched.
+    /// </summary>
+    public string? HeldReason => Volatile.Read(ref _heldReason);
+
+    /// <summary>No new task starts until <see cref="ResumeStarts"/>.</summary>
+    public void HoldStarts(string reason)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        Volatile.Write(ref _heldReason, reason);
+    }
+
+    public void ResumeStarts() => Volatile.Write(ref _heldReason, null);
+
+    private int _starting;
+
+    /// <summary>
+    /// After <see cref="HoldStarts"/>: waits until every run that passed the held check before is in the active tasks (a run
+    /// between a caller's check of <see cref="ActiveCount"/> and the hold is counted then).
+    /// </summary>
+    public async Task WaitForStartsAsync(TimeProvider time, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(time);
+        while (Volatile.Read(ref _starting) > 0)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), time, ct).ConfigureAwait(false);
+        }
+    }
+
     private async Task<IReadOnlyList<Guid>> RunCoreAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        Interlocked.Increment(ref _starting);
+        try
+        {
+            // Counted before the check: a hold that comes right after waits for this run (WaitForStartsAsync).
+            if (HeldReason is { } held)
+            {
+                throw new TasksHeldException(held);
+            }
+
+            return await RunUnheldAsync(pluginId, deviceIds, payloadJson, owner, caller, views, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _starting);
+        }
+    }
+
+    private async Task<IReadOnlyList<Guid>> RunUnheldAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
+    {
 
         var distinct = deviceIds.Distinct().ToArray();
         if (distinct.Length == 0)

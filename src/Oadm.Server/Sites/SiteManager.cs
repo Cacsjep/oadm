@@ -162,6 +162,18 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         }
     }
 
+    /// <summary>
+    /// Bound sites whose node runs an older version than <paramref name="serverVersion"/> (docs/spec/self-update.md "Site
+    /// nodes": site nodes are updated by hand on their computers).
+    /// </summary>
+    public int OlderNodeCount(string serverVersion)
+    {
+        lock (_lock)
+        {
+            return _sites.Values.Count(e => !e.Row.NotBound && Contracts.Updates.UpdateVersions.IsOlder(e.Version ?? e.Row.Version, serverVersion));
+        }
+    }
+
     // ---------- ISiteStates ----------
 
     public string? NameOf(Guid siteId)
@@ -1054,6 +1066,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             NodeId = row.NodeId,
             NodeAddress = row.Address ?? string.Empty,
             Version = entry.Version ?? row.Version ?? string.Empty,
+            // An older node than the server: the Sites page says "Update on its computer" (site nodes are not self-updated).
+            UpdateAvailable = Contracts.Updates.UpdateVersions.IsOlder(entry.Version ?? row.Version, Mapping.Mappers.ServerVersion),
             DeviceCount = devices,
             RoundTripMs = (int)Math.Ceiling(entry.RoundTrip.TotalMilliseconds),
             ShortConnections = status?.ShortConnections ?? 0,

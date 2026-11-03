@@ -388,4 +388,14 @@ public interface IOadmApi
     Task<BackupInfo> InspectBackupAsync(RestoreRequest request, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
 
     Task<RestoreReply> RestoreBackupAsync(RestoreRequest request, CancellationToken ct) => throw new NotSupportedException("This connection has no backups.");
+
+    // UpdateService (docs/spec/self-update.md): Get and Start Administrator only; Watch every signed-in user. Default: a
+    // server without self update (UNIMPLEMENTED; the new version dialog keeps Open download page).
+    Task<UpdateInfo> GetUpdateAsync(CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no self update."));
+
+    /// <summary>Install now: FAILED_PRECONDITION with the reason when the update stops before the installer.</summary>
+    Task<UpdateInfo> StartUpdateAsync(string version, CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no self update."));
+
+    /// <summary>The steps of a running server update; ends with the server.</summary>
+    IAsyncEnumerable<UpdateProgress> WatchUpdateAsync(CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no self update."));
 }

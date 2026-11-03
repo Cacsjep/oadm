@@ -96,7 +96,7 @@ public sealed class AuthTests
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
             Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor,
             Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor, Proto.LicenseService.Descriptor, Proto.SupportService.Descriptor,
-            Proto.DeviceGroupService.Descriptor, Proto.VulnerabilityService.Descriptor, Proto.MyAxisService.Descriptor,
+            Proto.DeviceGroupService.Descriptor, Proto.VulnerabilityService.Descriptor, Proto.MyAxisService.Descriptor, Proto.UpdateService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();
 
         // Both ways: no made-up entry, and no method that falls back to Administrator only by accident.
@@ -109,6 +109,10 @@ public sealed class AuthTests
             methods.Where(m => AccessPolicy.For(m).Access == Access.Open).Order(StringComparer.Ordinal).ToArray());
         Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.UserService/Delete"));
         Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.AuditService/List"));
+        // Self update: server.update is the Administrator's alone; every client hears of a running update.
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.UpdateService/Start"));
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.UpdateService/Get"));
+        Assert.Equal(AccessRule.SignedIn, AccessPolicy.For("/oadm.v1.UpdateService/Watch"));
         // Sites: the page with "See sites", every change Administrator only.
         Assert.Equal(AccessRule.Needs(Oadm.Core.Auth.HostPermissions.SitesView), AccessPolicy.For("/oadm.v1.SiteService/WatchSites"));
         Assert.All(Proto.SiteService.Descriptor.Methods.Where(m => m.Name is not ("ListSites" or "WatchSites")),

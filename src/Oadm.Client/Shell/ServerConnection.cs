@@ -35,9 +35,25 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private readonly TimeProvider _time;
     private CancellationTokenSource? _cts;
 
+    private readonly Updates.ServerUpdateTracker? _updates;
+    private string _rawText = string.Empty;
+
     public ServerConnection(IOadmApi api, DeviceStore devices, TaskStore tasks, IUiDispatcher ui, ILogger<ServerConnection> logger, UserSession? session = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null, Updates.ServerUpdateTracker? updates = null)
     {
+        _updates = updates;
+        if (updates is not null)
+        {
+            // "Updating the server to V4.9.0" instead of "unreachable" while the server installs its update.
+            updates.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Updates.ServerUpdateTracker.AwayText))
+                {
+                    SetState(State, _rawText);
+                }
+            };
+        }
+
         _time = time ?? TimeProvider.System; // the reconnect back-off; tests pass a fake clock
         _api = api;
         _devices = devices;
@@ -76,6 +92,10 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _ = Task.Run(() => ComplianceChecksLoopAsync(ct), ct);
         _ = Task.Run(() => ComplianceResultsLoopAsync(ct), ct);
         _ = Task.Run(() => VulnerabilityLoopAsync(ct), ct);
+        if (_updates is not null)
+        {
+            _ = Task.Run(() => UpdateLoopAsync(_updates, ct), ct);
+        }
         if (_session is not null)
         {
             _ = Task.Run(() => SessionLoopAsync(_session, ct), ct);
@@ -152,8 +172,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             {
                 LogDisconnected(_logger, _api.ServerAddress, ex.Message);
                 int seconds = (int)delay.TotalSeconds;
-                _ui.Post(() => SetState(ConnectionState.Disconnected,
-                    $"Server {_api.ServerAddress} unreachable, retrying in {seconds} s"));
+                _ui.Post(() =>
+                {
+                    _updates?.Disconnected();
+                    SetState(ConnectionState.Disconnected, $"Server {_api.ServerAddress} unreachable, retrying in {seconds} s");
+                });
             }
 
             try
@@ -583,6 +606,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
             _devices.Reset(item.Snapshot);
             SetState(ConnectionState.Connected, "Connected to " + _api.ServerAddress);
             Connected?.Invoke(this, EventArgs.Empty);
+            _updates?.Connected();
         }
 
         _devices.ApplyBatch(changes);
@@ -619,8 +643,52 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
 
     private void SetState(ConnectionState state, string text)
     {
+        _rawText = text;
         State = state;
-        StatusText = text;
+        StatusText = state != ConnectionState.Connected && _updates?.AwayText is { } away ? away : text;
+    }
+
+    /// <summary>
+    /// The steps of a server update (every signed-in user): "Updating the server to V4.9.0" while it is away, the result
+    /// after the reconnect. A server without self update (UNIMPLEMENTED) ends the loop.
+    /// </summary>
+    private async Task UpdateLoopAsync(Updates.ServerUpdateTracker updates, CancellationToken ct)
+    {
+        TimeSpan delay = MinDelay;
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (var progress in _api.WatchUpdateAsync(ct).ConfigureAwait(false))
+                {
+                    _ui.Post(() => updates.Apply(progress));
+                    delay = MinDelay;
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Unimplemented)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // the device loop reports the connection state; just retry
+            }
+
+            try
+            {
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(MaxDelay.Ticks, delay.Ticks * 2));
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Connected to server {Address}")]

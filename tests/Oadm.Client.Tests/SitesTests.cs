@@ -59,7 +59,9 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("Online", building.StateTip);
         var warehouse = page.Rows.Single(r => r.Name == "Warehouse");
         Assert.True(warehouse.IsError);
-        Assert.Equal("3.6.9 · Update available", warehouse.VersionText);
+        Assert.Equal("3.6.9", warehouse.VersionText);
+        Assert.True(warehouse.IsOlderThanServer); // "Update on its computer" beside it (site nodes are updated by hand)
+        Assert.False(building.IsOlderThanServer);
         Assert.Equal("Offline: " + SiteTexts.NodeNotAnswering, warehouse.StateTip); // the whole reason as the tooltip
         var waiting = page.Rows.Single(r => !r.IsBound);
         Assert.Equal("Waiting to be bound", waiting.StateText);
@@ -418,6 +420,17 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public async Task Update_on_its_computer_opens_the_download_page()
+    {
+        var urls = Substitute.For<IUrlLauncher>();
+        using var page = new SitesViewModel(new FakeOadmApi(TimeSpan.FromMilliseconds(5)), Substitute.For<IDialogService>(), new ImmediateUiDispatcher(), urls: urls);
+
+        await page.OpenDownloadPageCommand.ExecuteAsync(null);
+
+        await urls.Received(1).OpenAsync(new Uri("https://oadm.app/start/install/"));
+    }
+
+    [Fact]
     public async Task Page_dialog_and_device_column_render_headless()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
@@ -440,6 +453,8 @@ public sealed class SitesTests(ITestOutputHelper output) : IDisposable
             Assert.Contains("Waiting for approval", texts);
             Assert.Contains("Uploads and downloads", texts);
             Assert.DoesNotContain("Change address", texts); // site nodes always connect to the server
+            // The older node: "Update on its computer" beside its version (docs/spec/self-update.md "Site nodes").
+            Assert.Single(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, Oadm.Contracts.Updates.UpdateTexts.UpdateNodeHere));
             Capture(window, outDir, "sites-page.png");
 
             // The empty page: off (what sites are, Accept site nodes) and on (what to type in the node app).

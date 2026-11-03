@@ -111,7 +111,13 @@
           <ui:SearchBox Grid.Column="3" Text="{Binding Audit.SearchText}" />
         </Grid>
 
-        <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Audit.StatusLine}" Margin="2,14,0,8" />
+        <StackPanel Grid.Row="1" Spacing="6" Margin="2,14,0,8">
+          <!-- The server's last update (docs/spec/self-update.md): its result and when -->
+          <ui:StatusChip Text="{Binding Audit.LastUpdate}" Detail="{Binding Audit.LastUpdateDetail}" IsOk="{Binding Audit.LastUpdateOk}"
+                         IsError="{Binding Audit.LastUpdateFailed}" MaxLines="2"
+                         IsVisible="{Binding Audit.LastUpdate, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="secondary" Text="{Binding Audit.StatusLine}" />
+        </StackPanel>
 
         <DataGrid Grid.Row="2" x:Name="AuditGrid" ItemsSource="{Binding Audit.Entries}" IsReadOnly="True" SelectionMode="Extended"
                   CanUserSortColumns="False" CanUserReorderColumns="False">

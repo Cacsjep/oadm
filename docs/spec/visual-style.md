@@ -129,7 +129,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   Trust this server?: the shield icon instead of the logo, one line on what trusting means, the fingerprint behind
   **Fingerprint** (`Border.disclosure`). New version: the taller band (`tall`, logo 146 px) with dots and the update badge
   (`ShowsUpdate`), What's new (`Border.disclosure`, "4 changes" right, the release notes grouped, Added green, Fixed
-  and Security amber, other groups accent), "Don't tell me about new versions", Later and the primary **Open download page**.
+  and Security amber, other groups accent), "Don't tell me about new versions", Later and the primary **Open download page**
+  (for an Administrator of an installed server or client the primary **Install now** / **Update client** with **Open
+  download page** secondary; then the three steps as `ui:StatusChip` rows, the result's lines below the title, Close). The
+  update helper's window: the band (120 px) with the update badge, the title and a `ui:ProgressRow`.
 - Text fields, number fields and select fields: text vertically centered (measured; select
   fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never

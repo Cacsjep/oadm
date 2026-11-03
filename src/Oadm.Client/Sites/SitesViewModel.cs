@@ -46,7 +46,9 @@ public sealed class SiteRowViewModel
             : string.Empty;
         PortsWaitingText = site.PortsWaiting > 0 ? site.PortsWaiting.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
         LargeTransfersText = site.LargeTransfers > 0 ? site.LargeTransfers.ToString("N0", CultureInfo.CurrentCulture) : string.Empty;
-        VersionText = site.UpdateAvailable ? site.Version + " · Update available" : site.Version;
+        // An older node than the server (docs/spec/self-update.md "Site nodes"): "Update on its computer" beside the version.
+        VersionText = site.Version;
+        IsOlderThanServer = site.UpdateAvailable && site.Version.Length > 0;
         LastSeenText = site.LastSeen is { } seen && seen.Seconds > 0
             ? seen.ToDateTime().ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)
             : string.Empty;
@@ -105,6 +107,9 @@ public sealed class SiteRowViewModel
 
     public string VersionText { get; }
 
+    /// <summary>The node runs an older version than the server: "Update on its computer" with the download page.</summary>
+    public bool IsOlderThanServer { get; }
+
     public string LastSeenText { get; }
 
     public DateTime LastSeenSortKey { get; }
@@ -147,8 +152,9 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     /// <summary>The session the shown list belongs to (<see cref="UserSession.SignInCount"/>); another one starts empty.</summary>
     private int _shownSession = -1;
 
-    public SitesViewModel(IOadmApi api, IDialogService dialogs, IUiDispatcher ui, UserSession? session = null)
+    public SitesViewModel(IOadmApi api, IDialogService dialogs, IUiDispatcher ui, UserSession? session = null, IUrlLauncher? urls = null)
     {
+        _urls = urls;
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
@@ -341,6 +347,18 @@ public sealed partial class SitesViewModel : ObservableObject, IDisposable
     /// <summary>Accept site nodes (the button of the empty page and of the toolbar while it is off).</summary>
     [RelayCommand]
     private Task AcceptAsync() => SetAcceptAsync(true);
+
+    private readonly IUrlLauncher? _urls;
+
+    /// <summary>"Update on its computer" beside an older node's version: the download page (site nodes are updated by hand).</summary>
+    [RelayCommand]
+    private async Task OpenDownloadPageAsync()
+    {
+        if (_urls is not null)
+        {
+            await _urls.OpenAsync(new Uri(Contracts.Updates.UpdateTexts.DownloadPage)).ConfigureAwait(true);
+        }
+    }
 
     /// <summary>Turn off site nodes (red, left of the search, confirmed): nodes that connect to the server are cut off.</summary>
     [RelayCommand]
