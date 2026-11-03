@@ -178,6 +178,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         await _pictures.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             // On a pool thread: the caller's thread never carries the work.
             return await Task.Run(
                 async () =>
@@ -556,6 +557,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     internal static int RoundUp32(int value) => Math.Max(32, (value + 31) / 32 * 32);
 
+    /// <summary>
+    /// Waits for the readings in work (at most <see cref="DisposeWait"/>), then frees the models; readings asked for later end
+    /// with <see cref="ObjectDisposedException"/>. A graphics card set still in use after the wait is left to the process
+    /// rather than freed under a running call.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -564,11 +570,39 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
 
         _disposed = true;
-        _gpuLines?.Dispose();
-        _gpuSet?.Dispose();
+        var taken = 0;
+        while (taken < Workers && _pictures.Wait(DisposeWait))
+        {
+            taken++;
+        }
+
+        var idle = taken == Workers;
+        if (_gpuLines?.Stop(DisposeWait) == false)
+        {
+            idle = false;
+        }
+
+        if (idle)
+        {
+            _gpuSet?.Dispose();
+        }
+        else
+        {
+            RecognitionLog.StillReading(_logger);
+        }
+
+        // In-use CPU sets are freed when their call ends.
         _cpu.Dispose();
-        _pictures.Dispose();
+
+        // Readings that waited for a slot get one, see the recognizer disposed and end.
+        if (taken > 0)
+        {
+            _pictures.Release(taken);
+        }
     }
+
+    /// <summary>How long <see cref="Dispose"/> waits for the readings in work.</summary>
+    internal static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(30);
 
     /// <summary>Lines whose mean probability is below the spec's 50 % are dropped (used by <see cref="LineReader"/>).</summary>
     internal static float DropBelow => MinMeanProbability;

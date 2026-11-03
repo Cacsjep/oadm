@@ -112,6 +112,90 @@ public sealed class WorkerTests
     }
 
     [Fact]
+    public async Task A_set_in_use_is_disposed_when_its_call_ends_and_later_calls_are_refused()
+    {
+        var workers = new CpuWorkers<FakeSet>(2, 1, _ => new FakeSet());
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        FakeSet? inUse = null;
+        var call = workers.RunAsync(false, async set =>
+        {
+            inUse = set;
+            await release.Task;
+            return set.Disposed;
+        }, CancellationToken.None);
+        await Eventually.TrueAsync(() => Volatile.Read(ref inUse) is not null, "the call running");
+
+        workers.Dispose();
+
+        Assert.False(inUse!.Disposed);
+        release.SetResult();
+        Assert.False(await call);
+        Assert.True(inUse.Disposed);
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => workers.RunAsync(false, set => Task.FromResult(set), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Sets_unused_for_a_while_are_disposed()
+    {
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var made = new List<FakeSet>();
+        using var workers = new CpuWorkers<FakeSet>(3, 1, _ =>
+        {
+            var set = new FakeSet();
+            lock (made)
+            {
+                made.Add(set);
+            }
+
+            return set;
+        }, time);
+
+        // Three calls at once make three sets.
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = Enumerable.Range(0, 3).Select(_ => workers.RunAsync(false, async set => { await release.Task; return set; }, CancellationToken.None)).ToList();
+        await Eventually.TrueAsync(() => workers.Busy == 3, "three calls running");
+        release.SetResult();
+        await Task.WhenAll(calls);
+        Assert.Equal(3, workers.Idle);
+
+        // One set keeps being used; the other two age out.
+        for (var minute = 0; minute < 3; minute++)
+        {
+            await workers.RunAsync(false, set => Task.FromResult(set), CancellationToken.None);
+            time.Advance(TimeSpan.FromMinutes(1));
+        }
+
+        Assert.Equal(1, workers.Idle);
+        Assert.Equal(2, made.Count(s => s.Disposed));
+    }
+
+    [Fact]
+    public async Task Stopping_the_line_batcher_waits_for_the_running_round()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = false;
+        var batcher = new LineBatcher(async (lines, _) =>
+        {
+            entered.SetResult();
+            await finish.Task;
+            Volatile.Write(ref ended, true);
+            return [.. lines.Select(_ => new LineScores([1], 1, 1))];
+        });
+        using var line = Line(10);
+        var reading = batcher.RecognizeAsync([line], CancellationToken.None);
+        await entered.Task;
+
+        var stop = Task.Run(() => batcher.Stop());
+        Assert.False(stop.IsCompleted);
+        finish.SetResult();
+
+        Assert.True(await stop);
+        Assert.True(Volatile.Read(ref ended));
+        Assert.Single(await reading);
+    }
+
+    [Fact]
     public async Task Lines_of_readings_that_wait_together_are_read_in_one_round()
     {
         var firstRound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

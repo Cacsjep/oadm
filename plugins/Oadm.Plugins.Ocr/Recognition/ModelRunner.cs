@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using SkiaSharp;
 
 namespace Oadm.Plugins.Ocr.Recognition;
@@ -32,26 +31,38 @@ internal interface IModelRunner
 /// The CPU workers (docs/spec/ocr.md rule 4): every model call takes one of <see cref="Model.OcrLimits.Workers"/> slots and a
 /// session set of its own (<see cref="Model.OcrLimits.ThreadsPerWorker"/> threads). The tiles of one picture and its batches
 /// of lines are separate calls, so an otherwise idle server reads one picture on several workers at once, and many readers
-/// share the same slots fairly.
+/// share the same slots fairly. A set unused for <see cref="IdleTimeout"/> is disposed (its memory goes back); a set still in
+/// use when the workers are disposed is disposed when its call ends, never while it runs.
 /// </summary>
 internal sealed class CpuWorkers<TSet> : IDisposable
     where TSet : class, IDisposable
 {
+    /// <summary>How long an unused session set is kept.</summary>
+    public static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(2);
+
     private readonly SemaphoreSlim _slots;
     private readonly SemaphoreSlim _accurate;
     private readonly Func<bool, TSet> _create;
-    private readonly ConcurrentBag<TSet> _idle = [];
-    private readonly ConcurrentBag<TSet> _idleAccurate = [];
+    private readonly TimeProvider _time;
+    private readonly object _lock = new();
+    private readonly List<(TSet Set, long Since)> _idle = [];
+    private readonly List<(TSet Set, long Since)> _idleAccurate = [];
+    private readonly ITimer _trim;
+    private bool _disposed;
 
     /// <param name="slots">Model calls at once.</param>
     /// <param name="accurateSets">Calls with the accurate (large) models at once, within <paramref name="slots"/>.</param>
     /// <param name="create">Makes a session set: the accurate models when true.</param>
-    public CpuWorkers(int slots, int accurateSets, Func<bool, TSet> create)
+    /// <param name="time">The clock of the idle trimming (tests: a fake one).</param>
+    public CpuWorkers(int slots, int accurateSets, Func<bool, TSet> create, TimeProvider? time = null)
     {
         _slots = new SemaphoreSlim(slots, slots);
         _accurate = new SemaphoreSlim(accurateSets, accurateSets);
         _create = create;
+        _time = time ?? TimeProvider.System;
         Slots = slots;
+        var period = IdleTimeout / 2;
+        _trim = _time.CreateTimer(_ => TrimIdle(), null, period, period);
     }
 
     /// <summary>Model calls at once.</summary>
@@ -60,7 +71,20 @@ internal sealed class CpuWorkers<TSet> : IDisposable
     /// <summary>Slots in use now (tests: the gate holds).</summary>
     public int Busy => Slots - _slots.CurrentCount;
 
+    /// <summary>Session sets kept for the next calls (tests: the idle trimming).</summary>
+    public int Idle
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _idle.Count + _idleAccurate.Count;
+            }
+        }
+    }
+
     /// <summary>Runs <paramref name="work"/> on a free slot with a set of its own.</summary>
+    /// <exception cref="ObjectDisposedException">The workers were disposed.</exception>
     public async Task<T> RunAsync<T>(bool accurate, Func<TSet, Task<T>> work, CancellationToken ct)
     {
         await _slots.WaitAsync(ct).ConfigureAwait(false);
@@ -71,14 +95,23 @@ internal sealed class CpuWorkers<TSet> : IDisposable
                 await _accurate.WaitAsync(ct).ConfigureAwait(false);
             }
 
-            var idle = accurate ? _idleAccurate : _idle;
             TSet? set = null;
             try
             {
-                if (!idle.TryTake(out set))
+                lock (_lock)
                 {
-                    set = _create(accurate);
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+
+                    // The most recently used set: the others age out.
+                    var idle = accurate ? _idleAccurate : _idle;
+                    if (idle.Count > 0)
+                    {
+                        set = idle[^1].Set;
+                        idle.RemoveAt(idle.Count - 1);
+                    }
                 }
+
+                set ??= _create(accurate);
 
                 // Off the caller's thread: the model call blocks its thread for the length of the call.
                 var taken = set;
@@ -88,7 +121,7 @@ internal sealed class CpuWorkers<TSet> : IDisposable
             {
                 if (set is not null)
                 {
-                    idle.Add(set);
+                    Return(set, accurate);
                 }
 
                 if (accurate)
@@ -103,20 +136,65 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         }
     }
 
+    /// <summary>Disposes the sets unused for <see cref="IdleTimeout"/>.</summary>
+    internal void TrimIdle()
+    {
+        var now = _time.GetTimestamp();
+        var old = new List<TSet>();
+        lock (_lock)
+        {
+            foreach (var idle in (List<(TSet Set, long Since)>[])[_idle, _idleAccurate])
+            {
+                old.AddRange(idle.Where(e => _time.GetElapsedTime(e.Since, now) >= IdleTimeout).Select(e => e.Set));
+                idle.RemoveAll(e => _time.GetElapsedTime(e.Since, now) >= IdleTimeout);
+            }
+        }
+
+        foreach (var set in old)
+        {
+            set.Dispose();
+        }
+    }
+
+    private void Return(TSet set, bool accurate)
+    {
+        lock (_lock)
+        {
+            if (!_disposed)
+            {
+                (accurate ? _idleAccurate : _idle).Add((set, _time.GetTimestamp()));
+                return;
+            }
+        }
+
+        set.Dispose();
+    }
+
+    /// <summary>
+    /// Disposes the idle sets now and every set in use when its call ends. The semaphores stay (a call in flight still releases
+    /// its slot); calls that get a slot afterwards end with <see cref="ObjectDisposedException"/>.
+    /// </summary>
     public void Dispose()
     {
-        while (_idle.TryTake(out var set))
+        List<TSet> sets;
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            sets = [.. _idle.Select(e => e.Set), .. _idleAccurate.Select(e => e.Set)];
+            _idle.Clear();
+            _idleAccurate.Clear();
+        }
+
+        _trim.Dispose();
+        foreach (var set in sets)
         {
             set.Dispose();
         }
-
-        while (_idleAccurate.TryTake(out var set))
-        {
-            set.Dispose();
-        }
-
-        _slots.Dispose();
-        _accurate.Dispose();
     }
 }
 
