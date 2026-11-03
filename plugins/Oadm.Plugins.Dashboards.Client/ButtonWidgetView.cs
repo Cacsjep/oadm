@@ -10,7 +10,7 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Dashboards.Client;
 
 /// <summary>
-/// A Button widget: a real button filling the tile in the widget's color (icon and label sized with the tile, white on a
+/// A Button widget: a real button in the tile (its Size: Small by default, Medium, Large fills it) in the widget's color (icon and label sized with the tile, white on a
 /// dark fill and dark on a light one, <see cref="IsLightFill"/>), and for a moment the answer of a press ("Sent", "No event
 /// rule uses this button.") or why it failed, small at the bottom of the fill: the button never moves. The button never
 /// touches a device; a press fires the button's event for the event rules. While the dashboard is edited a press does
@@ -34,6 +34,7 @@ public sealed class ButtonWidgetView : Border
     private readonly TextBlock _note = new();
     private readonly ShareBox _box = new();
     private IDisposable? _fillBrush;
+    private string? _fillKey;
     private Widget? _widget;
     private bool _editing;
     private bool _mayPress = true;
@@ -42,6 +43,7 @@ public sealed class ButtonWidgetView : Border
 
     public ButtonWidgetView()
     {
+        ActualThemeVariantChanged += (_, _) => UpdateLabelColor(); // a fill can be dark in one appearance, light in the other
         Classes.Add("dashboardWidget");
         _button.Classes.Add("dashboardButton");
         _fill.Classes.Add("dashboardButtonFill");
@@ -98,9 +100,14 @@ public sealed class ButtonWidgetView : Border
         _fillBrush?.Dispose();
         var key = WidgetColors.BrushKey(widget.Color);
         _fillBrush = _fill.Bind(BackgroundProperty, this.GetResourceObservable(key));
-        _fill.Classes.Set("onLight", this.TryFindResource(key, ActualThemeVariant, out var brush) && brush is ISolidColorBrush solid && IsLightFill(solid.Color));
+        _fillKey = key;
+        UpdateLabelColor();
         SizeLabel(_button.Bounds.Height);
     }
+
+    // White or dark label for the fill of the appearance shown now.
+    private void UpdateLabelColor() =>
+        _fill.Classes.Set("onLight", _fillKey is not null && this.TryFindResource(_fillKey, ActualThemeVariant, out var brush) && brush is ISolidColorBrush solid && IsLightFill(solid.Color));
 
     /// <summary>
     /// Whether a fill takes dark text: its WCAG relative luminance (sRGB channels linearized, 0.2126 R + 0.7152 G +

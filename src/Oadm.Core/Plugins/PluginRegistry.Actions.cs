@@ -159,9 +159,29 @@ public sealed partial class PluginRegistry
                     continue;
                 }
 
-                _eventTypes.Add(new RegisteredEventType(type, plugin.Id, origin));
+                _eventTypes.Add(new RegisteredEventType(WithValidFolders(type, origin), plugin.Id, origin));
             }
         }
+    }
+
+    /// <summary>The most folders an event may sit in (EventTypeInfo.Path).</summary>
+    internal const int MaxEventFolders = 4;
+
+    /// <summary>The folder of an event whose plugin gives neither a valid path nor a group.</summary>
+    internal const string OtherEventsFolder = "Other";
+
+    // A plugin's folders reach every rule dialog (EventService.GetCatalog): a blank or missing name, or too many folders,
+    // would break or clutter the tree for everyone. Such a path is dropped (the group is the folder) and noted.
+    private EventTypeInfo WithValidFolders(EventTypeInfo type, PluginOrigin origin)
+    {
+        var path = type.Path;
+        if (path is { Count: > 0 } && (path.Count > MaxEventFolders || path.Any(string.IsNullOrWhiteSpace)))
+        {
+            AddErrorLocked(new PluginLoadError(origin.PackageId, $"Event type '{type.Id}' has an invalid folder path; its group is used instead."));
+            type = type with { Path = null };
+        }
+
+        return string.IsNullOrWhiteSpace(type.Group) && type.Path is not { Count: > 0 } ? type with { Path = [OtherEventsFolder] } : type;
     }
 
     private bool RegisterAction(IActionPlugin plugin, ICorePlugin? owner, PluginOrigin origin)

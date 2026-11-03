@@ -91,7 +91,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     public static readonly IReadOnlyList<IconOption> IconOptions = [.. WidgetIcons.All.Select(i => new IconOption(i.Key, i.Label))];
 
-    /// <summary>The sizes of a button (Large fills the tile).</summary>
+    /// <summary>The sizes of a button (Small by default, Large fills the tile).</summary>
     public static readonly IReadOnlyList<Choice<ButtonSize>> ButtonSizeOptions = [.. ButtonSizes.All.Select(s => new Choice<ButtonSize>(s.Size, s.Label))];
 
     /// <summary>The icon of a button: none, or one of the widget icons.</summary>

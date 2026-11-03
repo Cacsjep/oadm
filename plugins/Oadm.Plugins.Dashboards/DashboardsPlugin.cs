@@ -515,7 +515,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             {
                 Description = "Someone pressed this button on the dashboard.",
                 Path = [DashboardsPluginInfo.ButtonGroup, d.Name],
-                OwnerScopeKey = d.Owner ?? ICallContext.AllDevicesScopeKey,
+                OwnerScopeKey = OwnerScope.Of(d.Owner),
             })),
     ];
 

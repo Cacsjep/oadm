@@ -95,6 +95,8 @@ the Permissions page and the client's hiding rules are in `docs/spec/security.md
   with a group get no event rules: the rules, the event log, the event catalog and **Test** (every `EventService`
   method) are `AccessRule.AllDevices`, and the client hides the Event rules page for them. Rules have no owner and run on
   all devices. Send HTTP request, Send TCP message and Send email send to any address (no allowed-address list).
+  A Dashboards button of a group's dashboard fires a server event, so the rule an administrator wired to it may act on
+  devices outside the group; a group user who may change dashboards can rename or delete such a button.
 - **Server-wide services** (NTP, DHCP, PKI and EST settings, the VAPIX Commander command library): managing them stays
   with users who have all devices; users with a group may view the pages, rows filtered to their group (by device,
   address or serial; DHCP leases by MAC address only, never by address). The role and user editors say so. PKI's

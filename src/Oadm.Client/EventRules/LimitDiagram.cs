@@ -32,6 +32,9 @@ public sealed class LimitDiagram : Control
     private const double W = 440, H = 104, X0 = 58, X1 = 430, YE = 30, YA = 74, Ph = 16, Pw = 7;
     private const int DefaultDead = 10, DefaultMax = 60;
 
+    /// <summary>The ranges the fields accept (RuleEditorViewModel's rules): a value outside draws the default.</summary>
+    internal const int MaxDead = 3600, MaxRuns = 1000;
+
     static LimitDiagram() => AffectsRender<LimitDiagram>(LimitProperty, ValueProperty);
 
     public RuleLimit Limit
@@ -67,18 +70,18 @@ public sealed class LimitDiagram : Control
             DrawFrame(context, paint);
             if (Limit == RuleLimit.DeadTime)
             {
-                DrawDeadTime(context, paint, Parse(Value, DefaultDead, 0));
+                DrawDeadTime(context, paint, Parse(Value, DefaultDead, 0, MaxDead));
             }
             else
             {
-                DrawMaxPerMinute(context, paint, Parse(Value, DefaultMax, 1));
+                DrawMaxPerMinute(context, paint, Parse(Value, DefaultMax, 1, MaxRuns));
             }
         }
     }
 
     /// <summary>The value to draw: the typed whole number, else the default.</summary>
-    internal static int Parse(string? text, int fallback, int min) =>
-        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= min ? value : fallback;
+    internal static int Parse(string? text, int fallback, int min, int max) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value >= min && value <= max ? value : fallback;
 
     /// <summary>The event times (s, of a 30 s window) that run the actions with this dead time.</summary>
     internal static IReadOnlyList<double> Runs(IReadOnlyList<double> events, int dead)

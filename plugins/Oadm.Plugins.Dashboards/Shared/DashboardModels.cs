@@ -303,7 +303,7 @@ public sealed record Widget
     /// <summary>The icon of a button before its label (a key of <see cref="WidgetIcons"/>); empty = none.</summary>
     public string Icon { get; init; } = string.Empty;
 
-    /// <summary>How large a button is drawn in its tile; Large (the default) fills it.</summary>
+    /// <summary>How large a button is drawn in its tile; Small is the default, Large fills it.</summary>
     public ButtonSize ButtonSize { get; init; }
 
     [JsonIgnore]

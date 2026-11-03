@@ -9,7 +9,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light.
+- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light. Update every client: older clients cannot open dashboards with buttons.
+- Plugin SDK 0.10.0.
 
 ### Changed
 
