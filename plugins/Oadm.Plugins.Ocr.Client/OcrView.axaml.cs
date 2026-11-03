@@ -11,10 +11,11 @@ namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
 /// The Text recognition page. Layout only (fixed readers and settings columns, the video takes the rest): the camera picker,
+/// the Stream settings and Rename dialogs,
 /// the live video overlay's drawing, moving, resizing and nudging handed to the reader's editor, Esc stops drawing; the view
 /// model watches while the view is in the visual tree.
 /// </summary>
-public partial class OcrView : UserControl
+public partial class OcrView : UserControl, IReaderDialogs
 {
     /// <summary>The readers column's fixed width (the reader rows and the runtime stats fit).</summary>
     public const double ReadersWidth = 320;
@@ -63,6 +64,7 @@ public partial class OcrView : UserControl
         {
             vm.PropertyChanged += OnViewModelPropertyChanged;
             vm.PickCamera = PickCameraAsync;
+            vm.Dialogs = this;
         }
 
         WatchEditor(_viewModel?.Editor);
@@ -114,6 +116,44 @@ public partial class OcrView : UserControl
         TopLevel.GetTopLevel(this) is Window owner && _viewModel is { } vm
             ? await DevicePickerWindow.ShowOneAsync(owner, vm.Cameras, selected, heading: "Choose a camera").ConfigureAwait(true)
             : null;
+
+    /// <summary>Stream settings: the dialog over the page, OK or Cancel.</summary>
+    public async Task<bool> EditStreamAsync(StreamSettingsViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new StreamSettingsWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        return ok;
+    }
+
+    /// <summary>Rename of an area: the dialog over the page, Rename or Cancel.</summary>
+    public async Task<bool> RenameAreaAsync(RenameAreaViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new RenameAreaWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        return ok;
+    }
+
+    private async Task ShowDialogAsync(Window window)
+    {
+        if (TopLevel.GetTopLevel(this) is Window owner)
+        {
+            await window.ShowDialog(owner).ConfigureAwait(true);
+        }
+    }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {

@@ -50,6 +50,17 @@ public static class OcrTexts
 
     public const string NoGpu = "No graphics card found";
 
+    /// <summary>The button that opens the stream settings, and the dialog's title.</summary>
+    public const string StreamSettings = "Stream settings";
+
+    /// <summary>The tooltip of an area row's rename icon.</summary>
+    public const string Rename = "Rename";
+
+    /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings; without the rate for On action.</summary>
+    public static string StreamSummary(string source, Resolution resolution, int? fps) => fps is { } rate
+        ? string.Create(CultureInfo.InvariantCulture, $"{source} · {resolution} · {rate} fps")
+        : string.Create(CultureInfo.InvariantCulture, $"{source} · {resolution}");
+
     /// <summary>"Watching · 2 fps".</summary>
     public static string WatchingAt(int fps) => string.Create(CultureInfo.InvariantCulture, $"{Watching} · {fps} fps");
 

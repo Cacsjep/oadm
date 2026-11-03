@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Ocr.Client"
+        x:Class="Oadm.Plugins.Ocr.Client.RenameAreaWindow"
+        x:DataType="vm:RenameAreaViewModel"
+        Title="{x:Static vm:RenameAreaViewModel.Title}"
+        Width="400" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation (docs/spec/ocr.md "Page"): one Name field, its error below it, Rename off while there is one. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:RenameAreaViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
+        <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:RenameAreaViewModel.MaxNameLength}" />
+      </ui:FormField>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Rename" Command="{Binding RenameCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>
