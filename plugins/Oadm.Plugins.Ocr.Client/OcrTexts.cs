@@ -53,6 +53,11 @@ public static class OcrTexts
     /// <summary>The button that opens the stream settings, and the dialog's title.</summary>
     public const string StreamSettings = "Stream settings";
 
+    /// <summary>The label of the stream field and its button.</summary>
+    public const string Stream = "Stream";
+
+    public const string Configure = "Configure";
+
     /// <summary>The tooltip of an area row's rename icon.</summary>
     public const string Rename = "Rename";
 

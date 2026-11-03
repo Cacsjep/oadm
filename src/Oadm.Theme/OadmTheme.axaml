@@ -1718,6 +1718,8 @@
   <Style Selector="ListBox.areaRows">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
+    <!-- The rows start and end level with the fields above: the accent bar and the padding (8 px) sit outside the column. -->
+    <Setter Property="Margin" Value="-8,0,-8,0" />
   </Style>
   <Style Selector="ListBox.areaRows ListBoxItem">
     <Setter Property="Padding" Value="5,5,8,5" />
@@ -1735,10 +1737,9 @@
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
-  <!-- The name in such a row: plain text, level with the inputs beside it, trimmed (the full name as tooltip) -->
+  <!-- The name in such a row: plain text on its own line, trimmed (the full name as tooltip) -->
   <Style Selector="ListBox.areaRows TextBlock.areaName">
-    <Setter Property="Padding" Value="0,8,0,0" />
-    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
   </Style>
   <Style Selector="StackPanel.deviceTreeDevice">

@@ -149,9 +149,9 @@
                             HorizontalAlignment="Stretch" />
                 </ui:FormField>
               </Grid>
-              <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Hint="{Binding StreamSummary}" Error="{Binding StreamError}">
+              <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Label="{x:Static vm:OcrTexts.Stream}" Hint="{Binding StreamSummary}" Error="{Binding StreamError}">
                 <Button x:Name="StreamButton" Classes="secondary" HorizontalAlignment="Left" Command="{Binding EditStreamCommand}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{x:Static vm:OcrTexts.StreamSettings}" />
+                  <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{x:Static vm:OcrTexts.Configure}" />
                 </Button>
               </ui:FormField>
             </StackPanel>
@@ -174,20 +174,21 @@
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:AreaViewModel">
                   <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
-                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
                       <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
                         <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
                       </ui:FormField>
-                      <Button Grid.Column="1" x:Name="RenameButton" Classes="toolbar iconOnly" VerticalAlignment="Center"
-                              ToolTip.Tip="{x:Static vm:OcrTexts.Rename}" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
-                              CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
-                        <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
-                      </Button>
-                      <Button Grid.Column="2" Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="Delete area"
-                              IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}"
-                              CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
-                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
-                      </Button>
+                      <!-- The shared row actions (like the dashboard and view lists): compact icon buttons, delete red. -->
+                      <StackPanel Grid.Column="1" Classes="rowActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                        <Button x:Name="RenameButton" Classes="toolbar iconOnly" ToolTip.Tip="{x:Static vm:OcrTexts.Rename}"
+                                CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
+                          <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
+                        </Button>
+                        <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete area"
+                                CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
+                          <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                        </Button>
+                      </StackPanel>
                     </Grid>
                     <Grid Grid.Row="1" ColumnDefinitions="104,*" ColumnSpacing="4" Margin="12,0,0,0"
                           IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">

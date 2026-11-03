@@ -54,10 +54,10 @@ public sealed class PageLayoutTests
             // The form: Name, Mode and Stream settings with its summary below it; no camera, no stream selects of their own.
             var settings = view.FindControl<Grid>("SettingsColumn")!;
             var labels = settings.GetVisualDescendants().OfType<FormField>().Where(f => f.IsEffectivelyVisible && f.Label is { Length: > 0 }).Select(f => f.Label).ToList();
-            Assert.Equal(["Name", "Mode"], labels);
+            Assert.Equal(["Name", "Mode", "Stream"], labels);
             var stream = view.FindControl<Button>("StreamButton")!;
             Assert.Contains("secondary", stream.Classes);
-            Assert.Equal(OcrTexts.StreamSettings, stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
+            Assert.Equal(OcrTexts.Configure, stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
             Assert.Equal("View area 1 · 1920x1080 · 1 fps", view.FindControl<FormField>("StreamField")!.Hint);
             Assert.DoesNotContain(settings.GetVisualDescendants().OfType<ComboBox>(), c => c.IsEffectivelyVisible && c.Name is not ("ModeBox" or "ReaderModeBox"));
             // The reader's mode is a select next to the name (decision 2026-11-03).
