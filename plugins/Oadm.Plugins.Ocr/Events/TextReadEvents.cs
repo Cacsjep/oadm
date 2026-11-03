@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
@@ -15,7 +14,7 @@ namespace Oadm.Plugins.Ocr.Events;
 /// reader in the folder Text recognition / reader name, one event per area and reading, with the fields Area, Text, Text
 /// read, All matches, Number, Confidence and Matches format.
 /// </summary>
-public static partial class TextReadEvents
+public static class TextReadEvents
 {
     /// <summary>The longest text of an event value (docs/spec/ocr.md "Several lines").</summary>
     public const int MaxTextLength = 500;
@@ -93,26 +92,5 @@ public static partial class TextReadEvents
         return Cut(joined.ToString());
     }
 
-    /// <summary>
-    /// The value as a number in invariant culture when it is one ("1234.5" from "1234,5" or "1234.5", "-3"); empty otherwise
-    /// (text, several numbers, thousands separators).
-    /// </summary>
-    public static string Number(string? value)
-    {
-        var text = value?.Trim() ?? string.Empty;
-        if (!NumberPattern().IsMatch(text))
-        {
-            return string.Empty;
-        }
-
-        return double.TryParse(text.Replace(',', '.'), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var number)
-            && double.IsFinite(number)
-            ? number.ToString(CultureInfo.InvariantCulture)
-            : string.Empty;
-    }
-
     private static string Cut(string text) => text.Length <= MaxTextLength ? text : text[..MaxTextLength];
-
-    [GeneratedRegex(@"^[+-]?[0-9]+(?:[.,][0-9]+)?$", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
-    private static partial Regex NumberPattern();
 }

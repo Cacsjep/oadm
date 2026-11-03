@@ -124,6 +124,7 @@ public sealed class VapixFrameSourceTests
         var sent = _camera.Sent[0];
         Assert.Equal("GET /axis-cgi/mjpg/video.cgi?fps=2&resolution=640x360&camera=2", sent.Line);
         Assert.True(sent.Streamed);
+        Assert.True(sent.Live); // through a site it takes none of the large transfer slots
     }
 
     [Fact]
@@ -266,6 +267,55 @@ public sealed class VapixFrameSourceTests
     }
 
     [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, "", "Unauthorized - HTTP 401 (check the credentials)")]
+    [InlineData(HttpStatusCode.OK, "Error: Invalid resolution 4000x3000", FrameTexts.ResolutionNotOffered)]
+    [InlineData(HttpStatusCode.BadRequest, "Error: camera 5 does not exist", FrameTexts.SourceNotOffered)]
+    [InlineData(HttpStatusCode.OK, "<html>Hello</html>", FrameTexts.NoPicture)]
+    public async Task AStreamThatGivesNoPicturesTellsWhyOnceAndClearsWhenPicturesCome(HttpStatusCode status, string body, string problem)
+    {
+        var refused = true;
+        _camera.Answer = (_, _) => Task.FromResult(refused
+            ? new HttpResponseMessage(status) { Content = new StringContent(body) }
+            : Mjpeg(new MemoryStream(MjpegParserTests.Part(MjpegParserTests.Jpeg(100, 1)))));
+        var told = new System.Collections.Concurrent.ConcurrentQueue<string?>();
+        using var stop = new CancellationTokenSource();
+        var watch = ConsumeAsync(_source.WatchAsync(Request, 1, told.Enqueue, stop.Token));
+
+        await Eventually.TrueAsync(() => Pauses == 1, "first pause");
+        _time.Advance(LastPause);
+        await Eventually.TrueAsync(() => Pauses == 2, "second pause");
+        Assert.Equal([problem], told); // told once, not at every try
+
+        refused = false;
+        _time.Advance(LastPause);
+        await Eventually.TrueAsync(() => Volatile.Read(ref _frames) == 1, "a picture");
+        Assert.Equal([problem, null], told);
+        await stop.CancelAsync();
+        await watch;
+    }
+
+    [Fact]
+    public async Task ACameraThatDoesNotOpenTheStreamInTimeIsTold()
+    {
+        _camera.Answer = async (_, ct) =>
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        };
+        var told = new System.Collections.Concurrent.ConcurrentQueue<string?>();
+        using var stop = new CancellationTokenSource();
+        var watch = ConsumeAsync(_source.WatchAsync(Request, 1, told.Enqueue, stop.Token));
+
+        await Eventually.TrueAsync(() => _camera.Sent.Count == 1, "the stream was asked for");
+        _time.Advance(VapixFrameSource.RequestTimeout);
+        await Eventually.TrueAsync(() => Pauses == 1, "the pause after the open timeout");
+
+        Assert.Equal([FrameTexts.NoPictures], told);
+        await stop.CancelAsync();
+        await watch;
+    }
+
+    [Theory]
     [InlineData(1, 1)]
     [InlineData(2, 2)]
     [InlineData(3, 4)]
@@ -290,7 +340,7 @@ public sealed class VapixFrameSourceTests
         return count;
     }
 
-    private sealed record SentRequest(string Line, bool Streamed);
+    private sealed record SentRequest(string Line, bool Streamed, bool Live = false);
 
     /// <summary>A camera whose answers the test gives; records each request and whether it asked for a streamed answer.</summary>
     private sealed class StreamCamera : IVapixClient
@@ -318,7 +368,8 @@ public sealed class VapixFrameSourceTests
             lock (_sent)
             {
                 var streamed = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var s) && s;
-                _sent.Add(new SentRequest($"{request.Method} {request.RequestUri!.OriginalString}", streamed));
+                var live = request.Options.TryGetValue(VapixRequestOptions.LiveStream, out var l) && l;
+                _sent.Add(new SentRequest($"{request.Method} {request.RequestUri!.OriginalString}", streamed, live));
             }
 
             return Answer(request, ct);

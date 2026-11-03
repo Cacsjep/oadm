@@ -62,7 +62,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
             try
             {
                 var reader = OcrJson.Deserialize<Reader>(json);
-                readers.Add(reader with { Id = key });
+                readers.Add(ReaderRules.Stored(reader) with { Id = key }); // "areas": null and the like read as none
             }
             catch (Exception ex) when (ex is JsonException or ArgumentException)
             {
@@ -86,14 +86,14 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
         ICorePluginContext ctx,
         ICallContext caller,
         Reader incoming,
-        bool onGpu,
+        int maxWatching,
         Func<Guid, CancellationToken, Task<IDeviceInfo?>> deviceOf,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceOf);
         ArgumentNullException.ThrowIfNull(incoming);
         var reader = ReaderRules.Normalize(incoming);
-        if (ReaderRules.Problems(reader, onGpu) is { Count: > 0 } problems)
+        if (ReaderRules.Problems(reader) is { Count: > 0 } problems)
         {
             throw new ReaderFieldException(problems);
         }
@@ -127,14 +127,14 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
             }
 
             if (reader.Mode == ReaderMode.Watching && before?.Mode != ReaderMode.Watching
-                && others.Count(r => r.Mode == ReaderMode.Watching) >= ReaderRules.MaxWatching(onGpu))
+                && others.Count(r => r.Mode == ReaderMode.Watching) >= maxWatching)
             {
-                throw new ReaderFieldException(OcrFields.Mode, ReaderRules.TooManyWatching(onGpu));
+                throw new ReaderFieldException(OcrFields.Mode, ReaderRules.TooManyWatching(maxWatching));
             }
 
             if (reader.Mode == ReaderMode.Watching && await deviceOf(reader.DeviceId, ct).ConfigureAwait(false) is { SiteId: { } site } camera)
             {
-                // At a site every stream holds one of the node's large transfers: at most 4 watching readers per site.
+                // A site node's link carries every stream of its cameras: at most 4 watching readers per site.
                 var atSite = 0;
                 foreach (var other in others.Where(r => r.Mode == ReaderMode.Watching))
                 {

@@ -44,10 +44,10 @@ public sealed class TextMatcherTests
         Assert.Equal("DECAF-FEINATO 250 g", match.Text);
         Assert.Equal("DECAF-FEINATO 250 g", match.TextRead);
         Assert.Equal("DECAF-\nFEINATO\n250 g", match.RawText);
-        Assert.True(match.MatchesFormat);
+        Assert.False(match.MatchesFormat); // Any text has no format to match: Matches format is No
         Assert.Equal(70, match.Confidence);
         Assert.Empty(match.AllMatches);
-        Assert.Null(match.Number);
+        Assert.Empty(match.Number);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class TextMatcherTests
         Assert.Equal(string.Empty, match.Text);
         Assert.False(match.MatchesFormat);
         Assert.Equal(0, match.Confidence);
-        Assert.False(_matcher.Match([], ExpectedText.AnyText).MatchesFormat);
+        Assert.False(_matcher.Match([], ExpectedText.AnyText).Match.MatchesFormat);
     }
 
     [Theory]
@@ -104,7 +104,7 @@ public sealed class TextMatcherTests
         Assert.False(match.MatchesFormat);
         Assert.Equal(string.Empty, match.Text);
         Assert.Equal(text, match.TextRead);
-        Assert.Null(match.Number);
+        Assert.Empty(match.Number);
     }
 
     [Theory]
@@ -198,13 +198,13 @@ public sealed class TextMatcherTests
     }
 
     [Theory]
-    [InlineData("01234", 1234.0)]
-    [InlineData("12.5", 12.5)]
-    [InlineData("12,5", 12.5)]
-    [InlineData(" -3 ", -3.0)]
-    public void TheValueIsANumberWhenItIsOne(string text, double number)
+    [InlineData("01234", "1234")]
+    [InlineData("12.5", "12.5")]
+    [InlineData("12,5", "12.5")]
+    [InlineData(" -3 ", "-3")]
+    public void TheValueIsANumberWhenItIsOne(string text, string number)
     {
-        Assert.Equal(number, TextMatcher.ParseNumber(text));
+        Assert.Equal(number, NumberText.Of(text));
         Assert.Equal(number, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.AnyText).Number);
     }
 
@@ -213,15 +213,49 @@ public sealed class TextMatcherTests
     [InlineData("12 kWh")]
     [InlineData("")]
     [InlineData("١٢")]
-    public void OtherTextsAreNoNumber(string text) => Assert.Null(TextMatcher.ParseNumber(text));
+    public void OtherTextsAreNoNumber(string text) => Assert.Empty(NumberText.Of(text));
 
     [Fact]
     public void TheModelFormKeepsValueMatchAndRawText()
     {
         var area = _matcher.Match([Line("Meter", 0.1, 0.1), Line("00815", 0.1, 0.2)], ExpectedText.WithFormat("#####"));
 
-        Assert.Equal(new AreaMatch("00815", true, "Meter\n00815"), area);
+        Assert.Equal(new AreaMatch("00815", true, "Meter\n00815"), area.Match);
+        Assert.Equal(["00815"], area.AllMatches);
     }
+
+    [Theory]
+    [InlineData("AAAU ######", "MSCU 123456", "MSCU 123456")] // no check digit in the format: nothing to check
+    [InlineData("AAAU ###### # 22G1", "CSQU 305438 3 22G1", "CSQU 305438 3 22G1")] // the size and type code after it
+    [InlineData("AAAU ###### # 22G1", "CSQU3054383 22G1", "CSQU 305438 3 22G1")]
+    [InlineData("AAAU-######-#", "CSQU-305438-3", "CSQU-305438-3")]
+    public void ContainerFormatsCheckTheFirstElevenLettersAndDigits(string format, string text, string value)
+    {
+        Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
+    }
+
+    [Theory]
+    [InlineData("AAAU ###### #", true)]
+    [InlineData(" AAAU-######-# 22G1", true)]
+    [InlineData("AAAU ######", false)]
+    [InlineData("AAAU ###### A", false)]
+    [InlineData("AAAA ###### #", false)]
+    [InlineData("#####", false)]
+    public void AFormatHasACheckDigitWhenItStartsWithAContainerNumber(string format, bool check)
+    {
+        Assert.Equal(check, ContainerCheck.FormatHasCheckDigit(format));
+        Assert.Equal(check, TextFormat.Parse(format).HasContainerCheckDigit);
+    }
+
+    [Fact]
+    public void AWrongCheckDigitBeforeATypeCodeIsNoMatch() =>
+        Assert.False(TextMatcher.MatchAll([Line("CSQU 305438 4 22G1", 0.1, 0.1)], ExpectedText.WithFormat("AAAU ###### # 22G1")).MatchesFormat);
+
+    [Theory]
+    [InlineData("(###)", "Lane(123)", "(123)")] // a format that starts with a sign may touch letters
+    [InlineData("##)", "12)ab", "12)")]
+    public void AFormatThatStartsOrEndsWithASignMayTouchText(string format, string text, string value) =>
+        Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
 
     [Fact]
     public void AFormatWithoutCharactersIsRefused() =>

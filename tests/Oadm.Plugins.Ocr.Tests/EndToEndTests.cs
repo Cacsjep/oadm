@@ -46,7 +46,7 @@ public sealed class EndToEndTests(RecognizerFixture fixture)
         var first = ocr.TextRead.ToList();
         Assert.Equal([("Brand", "BARISSIMO"), ("Intensity", "4/12")], first.Select(e => (e.Data[OcrInfo.AreaField], e.Data[OcrInfo.TextField])));
         Assert.All(first, e => Assert.Equal(OcrInfo.TextReadTypeId(reader.Id), e.TypeId));
-        Assert.All(first, e => Assert.Equal(OcrInfo.Yes, e.Data[OcrInfo.MatchesFormatField]));
+        Assert.Equal([OcrInfo.No, OcrInfo.Yes], first.Select(e => e.Data[OcrInfo.MatchesFormatField])); // Any text has no format to match
         Assert.All(first, e => Assert.InRange(double.Parse(e.Data[OcrInfo.ConfidenceField], System.Globalization.CultureInfo.InvariantCulture), 50, 100));
         Assert.Equal("4/12", first[1].Data[OcrInfo.AllMatchesField]);
         Assert.Equal(string.Empty, first[1].Data[OcrInfo.NumberField]);

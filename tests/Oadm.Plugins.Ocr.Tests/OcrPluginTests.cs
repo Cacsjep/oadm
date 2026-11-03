@@ -9,7 +9,7 @@ using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Ocr.Tests;
 
-/// <summary>The skeleton of Text recognition (docs/spec/ocr.md "Build plan", wave 1): manifest, loading, limits, payloads.</summary>
+/// <summary>The plugin as a whole: manifest, loading, limits, payloads (docs/spec/ocr.md).</summary>
 public sealed class OcrPluginTests
 {
     [Fact]
@@ -105,8 +105,8 @@ public sealed class OcrPluginTests
     {
         Assert.Equal(8, OcrLimits.MaxAreas);
         Assert.Equal(50, OcrLimits.MaxReaders);
-        Assert.Equal(20, OcrLimits.MaxWatching);
-        Assert.Equal([1, 2, 4], OcrLimits.FpsChoices);
+        Assert.Equal((8, 8, 16, 48, 50), (OcrLimits.MaxWatching(1), OcrLimits.MaxWatching(4), OcrLimits.MaxWatching(8), OcrLimits.MaxWatching(24), OcrLimits.MaxWatching(64))); // 4 per worker, 8 to 50
+        Assert.Equal([1, 2, 4, 8, 12, 15], OcrLimits.FpsChoices); // on every server: the CPU reads every fixed area
         Assert.Equal(1, OcrLimits.DefaultFps);
         Assert.Equal(50, OcrLimits.MinConfidence);
         Assert.Equal(2, OcrLimits.EqualFramesToPublish);
@@ -170,7 +170,7 @@ public sealed class OcrPluginTests
     }
 
     [Fact]
-    public void AReadingWithItsPictureRoundTripsAsJson()
+    public void AReadingWithItsCutoutsRoundTripsAsJson()
     {
         var reply = new ReadingReply
         {
@@ -192,13 +192,13 @@ public sealed class OcrPluginTests
                     },
                 ],
             },
-            Jpeg = [0xFF, 0xD8, 0xFF, 0xD9],
+            Details = [new AreaDetails { Area = "Container number", Cutout = [0xFF, 0xD8, 0xFF, 0xD9] }],
         };
 
         var json = OcrJson.Serialize(reply);
         var back = OcrJson.Deserialize<ReadingReply>(json);
 
-        Assert.Equal(reply.Jpeg, back.Jpeg);
+        Assert.Equal(reply.Details[0].Cutout, back.Details[0].Cutout);
         Assert.Equal(json, OcrJson.Serialize(back));
         Assert.Equal(reply.Reading!.Areas[0].Lines, back.Reading!.Areas[0].Lines);
 

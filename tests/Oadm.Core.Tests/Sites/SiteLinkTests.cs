@@ -40,6 +40,16 @@ public sealed class SiteLinkTests
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         }
 
+        // A plugin's live stream (Text recognition's MJPEG pictures) runs for hours and needs no slot either.
+        using (var live = Request("/axis-cgi/mjpg/video.cgi"))
+        {
+            live.Options.Set(VapixRequestOptions.StreamResponse, true);
+            live.Options.Set(VapixRequestOptions.LiveStream, true);
+            using var response = await client.SendAsync(live, CancellationToken.None);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(1, sites.Running); // only the slot held above
+        }
+
         // Anyone else outside a task waits inside the request's timeout and then hears that the site is busy.
         using var report = Request("/axis-cgi/serverreport.cgi");
         report.Options.Set(VapixRequestOptions.StreamResponse, true);

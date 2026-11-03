@@ -11,9 +11,10 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// The page's previews (docs/spec/ocr.md "Page"): while a page shows a reader, the server reads it live, saved or not, at the
 /// reader's rate (On action: 1 per second), and publishes no rule events. A preview of a saved watching reader that the page
 /// did not change shares the reader's stream (its readings are the preview's); any other preview has its own stream through
-/// the same loop with the vote and the events off, and counts against the watching limits (also per site). At most
-/// <see cref="OcrLimits.MaxPreviews"/>; each ends <see cref="OcrLimits.PreviewLease"/> after the page's last call, so a
-/// closed client never leaves one running.
+/// the same loop with the vote and the events off, and counts against the watching limits (also per site), after the saved
+/// readers. At most <see cref="OcrLimits.MaxPreviews"/>, <see cref="OcrLimits.MaxPreviewsPerUser"/> per user; each belongs to
+/// the user who started it and ends <see cref="OcrLimits.PreviewLease"/> after the page's last call, so a closed client never
+/// leaves one running.
 /// </summary>
 internal sealed partial class ReaderRuntime
 {
@@ -22,7 +23,7 @@ internal sealed partial class ReaderRuntime
 
     private readonly Dictionary<string, Preview> _previews = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderReading> _previewLast = new(StringComparer.Ordinal);
-    private volatile Dictionary<Guid, int> _watchingPerSite = [];
+    private long _previewOrder;
 
     /// <summary>The previews now (tests): id, whether it has its own stream, the reader whose stream it shares.</summary>
     public IReadOnlyList<(string Id, bool OwnStream, string? SharedWith)> Previews
@@ -37,11 +38,12 @@ internal sealed partial class ReaderRuntime
     }
 
     /// <summary>
-    /// Starts a preview of <paramref name="reader"/> (checked by <see cref="ReaderRules.PreviewOf"/>) for the scope
-    /// <paramref name="owner"/>, or keeps the preview <paramref name="previewId"/> of that scope alive with the new draft.
-    /// Refuses with <see cref="ReaderRules.TooManyPreviews"/> beyond <see cref="OcrLimits.MaxPreviews"/>. Runs without the caller.
+    /// Starts a preview of <paramref name="reader"/> (checked by <see cref="ReaderRules.PreviewOf"/>) for <paramref name="user"/>
+    /// of the scope <paramref name="owner"/>, or keeps that user's preview <paramref name="previewId"/> alive with the new draft.
+    /// Refuses with <see cref="ReaderRules.TooManyPreviews"/> beyond <see cref="OcrLimits.MaxPreviews"/>; a user's preview
+    /// beyond <see cref="OcrLimits.MaxPreviewsPerUser"/> ends that user's oldest one. Runs without the caller.
     /// </summary>
-    public Task<PreviewReply> StartPreviewAsync(string? previewId, Reader reader, string owner) => Detached(async () =>
+    public Task<PreviewReply> StartPreviewAsync(string? previewId, Reader reader, string owner, string user) => Detached(async () =>
     {
         ArgumentNullException.ThrowIfNull(reader);
         if (_maker is null || _frames is null)
@@ -54,31 +56,50 @@ internal sealed partial class ReaderRuntime
         {
             ObjectDisposedException.ThrowIf(_stopped, this);
             Preview? preview = null;
+            Preview? oldest = null;
             lock (_previews)
             {
-                if (!string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var kept) && kept.Owner == owner)
+                if (!string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var kept) && kept.IsOf(owner, user))
                 {
                     preview = kept;
                 }
-                else if (_previews.Count >= OcrLimits.MaxPreviews)
-                {
-                    throw new InvalidOperationException(ReaderRules.TooManyPreviews);
-                }
                 else
                 {
-                    // The page's own id (32 hex digits), so it can end a preview whose start answer it never saw; another
-                    // scope's id or any other text gets a new one.
+                    var mine = _previews.Values.Where(p => p.IsOf(owner, user)).ToList();
+                    if (mine.Count >= OcrLimits.MaxPreviewsPerUser)
+                    {
+                        // One user never holds more: their oldest preview (a page closed without a word) makes room.
+                        oldest = mine.MinBy(p => p.Order);
+                    }
+                    else if (_previews.Count >= OcrLimits.MaxPreviews)
+                    {
+                        throw new InvalidOperationException(ReaderRules.TooManyPreviews);
+                    }
+                }
+            }
+
+            if (oldest is not null)
+            {
+                await EndPreviewsAsync(p => p == oldest).ConfigureAwait(false);
+            }
+
+            lock (_previews)
+            {
+                if (preview is null)
+                {
+                    // The page's own id (32 hex digits), so it can end a preview whose start answer it never saw; an id in use
+                    // or any other text gets a new one.
                     var id = IsPreviewId(previewId) && !_previews.ContainsKey(previewId!) ? previewId! : Guid.NewGuid().ToString("N");
-                    preview = new Preview(id, owner);
+                    preview = new Preview(id, owner, user, Interlocked.Increment(ref _previewOrder));
                     _previews[preview.Id] = preview;
                 }
 
-                preview.Reader = reader with { OwnerScopeKey = owner == Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey ? null : owner };
+                preview.Reader = reader with { OwnerScopeKey = owner == ICallContext.AllDevicesScopeKey ? null : owner };
                 preview.Expires = _time.GetUtcNow() + OcrLimits.PreviewLease;
             }
 
             await ReconcileAsync(preview).ConfigureAwait(false);
-            return new PreviewReply { PreviewId = preview.Id, Problem = preview.Problem };
+            return new PreviewReply { PreviewId = preview.Id, Problem = preview.Problem ?? preview.StreamProblem };
         }
         finally
         {
@@ -86,13 +107,13 @@ internal sealed partial class ReaderRuntime
         }
     });
 
-    /// <summary>Ends the preview <paramref name="previewId"/> of the scope <paramref name="owner"/>; nothing when there is none.</summary>
-    public Task StopPreviewAsync(string? previewId, string owner) => Detached(async () =>
+    /// <summary>Ends the preview <paramref name="previewId"/> of <paramref name="user"/> of the scope <paramref name="owner"/>; nothing when there is none.</summary>
+    public Task StopPreviewAsync(string? previewId, string owner, string user) => Detached(async () =>
     {
         await _sync.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await EndPreviewsAsync(p => p.Id == previewId && p.Owner == owner).ConfigureAwait(false);
+            await EndPreviewsAsync(p => p.Id == previewId && p.IsOf(owner, user)).ConfigureAwait(false);
         }
         finally
         {
@@ -100,12 +121,15 @@ internal sealed partial class ReaderRuntime
         }
     });
 
-    /// <summary>The reader and the last reading of the preview <paramref name="previewId"/> of the scope <paramref name="owner"/>; null when it ended.</summary>
-    public (Reader Reader, ReaderReading? Last)? PreviewOf(string? previewId, string owner)
+    /// <summary>
+    /// The reader and the last reading of the preview <paramref name="previewId"/> of <paramref name="user"/> of the scope
+    /// <paramref name="owner"/>; null when it ended or is another user's.
+    /// </summary>
+    public (Reader Reader, ReaderReading? Last)? PreviewOf(string? previewId, string owner, string user)
     {
         lock (_previews)
         {
-            if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out var preview) || preview.Owner != owner)
+            if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out var preview) || !preview.IsOf(owner, user))
             {
                 return null;
             }
@@ -123,7 +147,7 @@ internal sealed partial class ReaderRuntime
         }
     }
 
-    /// <summary>Keeps a preview's reading and tells the pages of its scope (without the cut-outs).</summary>
+    /// <summary>Keeps a preview's reading and tells the user's pages (without the cut-outs).</summary>
     private void KeepPreview(Preview preview, ReaderReading reading)
     {
         lock (_previews)
@@ -142,17 +166,14 @@ internal sealed partial class ReaderRuntime
             return;
         }
 
-        // Only to the scope that started it (all devices: the users with all devices), never to every page.
+        // Only to the user who started it: nobody else learns its id or what it reads.
         var json = OcrJson.Serialize(new PreviewEvent
         {
             PreviewId = preview.Id,
             Reading = reading.Reading,
             Details = [.. reading.Details.Select(d => d with { Cutout = null })],
         });
-        events.Publish(
-            OcrMethods.PreviewTopic,
-            json,
-            preview.Owner == Oadm.Sdk.Plugins.ICallContext.AllDevicesScopeKey ? PluginEventAudience.AllDevices : PluginEventAudience.DeviceScope(preview.Owner));
+        events.Publish(OcrMethods.PreviewTopic, json, PluginEventAudience.User(preview.User));
         Interlocked.Increment(ref _keptPreviews); // after the event: a test that waits for the count sees the event
     }
 
@@ -161,13 +182,43 @@ internal sealed partial class ReaderRuntime
 
     private int _keptPreviews;
 
-    /// <summary>Every preview again (the saved readers' loops changed). Under <see cref="_sync"/>.</summary>
+    /// <summary>
+    /// Every preview again (the saved readers' loops changed). The saved readers come first: a preview's own stream that no
+    /// longer fits beside them (the watching limits, also per site) stops with <see cref="ReaderRules.PreviewBusy"/>, the oldest
+    /// previews keep theirs. Under <see cref="_sync"/>.
+    /// </summary>
     private async Task ReconcilePreviewsAsync()
     {
         List<Preview> previews;
         lock (_previews)
         {
-            previews = [.. _previews.Values];
+            previews = [.. _previews.Values.OrderBy(p => p.Order)];
+        }
+
+        int watching;
+        lock (_loops)
+        {
+            watching = _loops.Count;
+        }
+
+        var left = MaxWatching - watching;
+        var perSite = LoopsPerSite();
+        foreach (var preview in previews.Where(p => p.Loop is not null))
+        {
+            var site = preview.Site;
+            if (left > 0 && (site is not { } at || perSite.GetValueOrDefault(at) < ReaderRules.MaxWatchingPerSite))
+            {
+                left--;
+                if (site is { } s)
+                {
+                    perSite[s] = perSite.GetValueOrDefault(s) + 1;
+                }
+
+                continue;
+            }
+
+            await StopOwnStreamAsync(preview).ConfigureAwait(false);
+            preview.Problem = ReaderRules.PreviewBusy;
         }
 
         foreach (var preview in previews)
@@ -202,15 +253,7 @@ internal sealed partial class ReaderRuntime
             return;
         }
 
-        WatchLoop? saved = null;
-        lock (_loops)
-        {
-            if (reader.Id.Length > 0)
-            {
-                _loops.TryGetValue(reader.Id, out saved);
-            }
-        }
-
+        var saved = reader.Id.Length > 0 ? WatchingLoopOf(reader.Id) : null;
         if (saved is not null && SameReading(saved.Reader, reader))
         {
             await StopOwnStreamAsync(preview).ConfigureAwait(false);
@@ -242,8 +285,8 @@ internal sealed partial class ReaderRuntime
             atSite = site is { } s ? _previews.Values.Count(p => p.Loop is not null && p.Site == s) : 0;
         }
 
-        if (watching + ownStreams >= ReaderRules.MaxWatching(OnGpu)
-            || (site is { } at && _watchingPerSite.GetValueOrDefault(at) + atSite >= ReaderRules.MaxWatchingPerSite))
+        if (watching + ownStreams >= MaxWatching
+            || (site is { } at && LoopsPerSite().GetValueOrDefault(at) + atSite >= ReaderRules.MaxWatchingPerSite))
         {
             preview.Problem = ReaderRules.PreviewBusy;
             return;
@@ -253,9 +296,12 @@ internal sealed partial class ReaderRuntime
         preview.Site = site;
         preview.SiteName = camera?.SiteName;
         preview.Problem = null;
-        preview.Loop = new WatchLoop(reader, stop, Task.Run(
-            () => LoopAsync(reader, () => preview.Reader, vote: false, source: "preview:" + preview.Id, (_, reading) => KeepPreview(preview, reading), slot: null, stop.Token),
-            CancellationToken.None));
+        preview.StreamProblem = null;
+        var loop = new WatchLoop(reader, stop) { Site = site, SiteName = camera?.SiteName };
+        loop.Run = Task.Run(
+            () => LoopAsync(reader, () => preview.Reader, vote: false, source: "preview:" + preview.Id, (_, reading) => KeepPreview(preview, reading), p => preview.StreamProblem = p, slot: null, stop.Token),
+            CancellationToken.None);
+        preview.Loop = loop;
     }
 
     private static async Task StopOwnStreamAsync(Preview preview)
@@ -266,6 +312,7 @@ internal sealed partial class ReaderRuntime
         }
 
         preview.Loop = null;
+        preview.StreamProblem = null;
         await loop.Stop.CancelAsync().ConfigureAwait(false);
         await loop.Run.ConfigureAwait(false);
         loop.Stop.Dispose();
@@ -316,21 +363,28 @@ internal sealed partial class ReaderRuntime
 
     /// <summary>The draft reads like the saved reader's loop: the same camera, source, resolution, rate and areas.</summary>
     private static bool SameReading(Reader loop, Reader draft) =>
-        OcrJson.Serialize(loop with { Name = string.Empty, OwnerScopeKey = null }) == OcrJson.Serialize(draft with { Name = string.Empty, OwnerScopeKey = null });
+        SamePicture(loop, draft) && loop.Fps == draft.Fps && loop.Areas.Zip(draft.Areas).All(p => p.First.Name == p.Second.Name);
 
     /// <summary>The same stream: camera, source, resolution and rate.</summary>
     private static bool SameStream(Reader a, Reader b) =>
         a.DeviceId == b.DeviceId && a.VideoSource == b.VideoSource && a.Resolution == b.Resolution && a.Fps == b.Fps;
 
     /// <summary>One page's preview. Its fields change under <see cref="_sync"/>; <see cref="Reader"/> is read by its loop.</summary>
-    private sealed class Preview(string id, string owner)
+    private sealed class Preview(string id, string owner, string user, long order)
     {
         private volatile Reader _reader = new();
+        private volatile string? _streamProblem;
 
         public string Id { get; } = id;
 
         /// <summary>The scope of the page that started it (<see cref="OwnerScope.Of"/>).</summary>
         public string Owner { get; } = owner;
+
+        /// <summary>The user who started it: only they keep, read and stop it.</summary>
+        public string User { get; } = user;
+
+        /// <summary>When it started among the previews (older ones keep their streams first).</summary>
+        public long Order { get; } = order;
 
         public Reader Reader
         {
@@ -349,5 +403,15 @@ internal sealed partial class ReaderRuntime
         public string? SiteName { get; set; }
 
         public string? Problem { get; set; }
+
+        /// <summary>Why its own stream gives no pictures now (the camera's refusal); null while pictures come.</summary>
+        public string? StreamProblem
+        {
+            get => _streamProblem;
+            set => _streamProblem = value;
+        }
+
+        public bool IsOf(string owner, string user) =>
+            Owner == owner && string.Equals(User, user, StringComparison.OrdinalIgnoreCase);
     }
 }

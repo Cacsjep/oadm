@@ -116,7 +116,7 @@ public sealed class RuntimeSafetyTests
     }
 
     [Fact]
-    public async Task APreviewOfAGroupIsToldOnlyToThatGroup()
+    public async Task APreviewIsToldOnlyToItsUser()
     {
         await using var ocr = await OcrHarness.StartAsync();
         var key = ocr.Context.FakeScopes.Add("Building B", [ocr.Inside.Id]);
@@ -130,7 +130,7 @@ public sealed class RuntimeSafetyTests
 
         var told = ocr.Context.PublishedEvents.Where(e => e.Topic == OcrMethods.PreviewTopic).ToList();
         Assert.NotEmpty(told);
-        Assert.All(told, e => Assert.Equal(PluginEventAudienceKind.DeviceScope, e.Audience.Kind));
+        Assert.All(told, e => Assert.Equal((PluginEventAudienceKind.User, "operator"), (e.Audience.Kind, e.Audience.UserName))); // only its user
         Assert.Equal(reply.PreviewId, OcrJson.Deserialize<PreviewEvent>(told[^1].PayloadJson).PreviewId);
     }
 

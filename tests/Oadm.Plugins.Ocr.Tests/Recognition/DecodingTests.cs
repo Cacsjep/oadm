@@ -1,3 +1,4 @@
+using Oadm.Plugins.Ocr.Matching;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Recognition;
 
@@ -141,9 +142,10 @@ public sealed class DecodingTests
     }
 
     [Fact]
-    public void A_container_number_gets_the_one_change_its_check_digit_needs()
+    public void A_container_number_whose_check_digit_was_misread_is_no_match()
     {
-        // CSQU 305438 3 is valid; the reader saw an 8 for the 3 of the check digit, with the 3 second.
+        // CSQU 305438 3 is valid; the reader saw an 8 for the 3 of the check digit, with the 3 second. No character is
+        // changed to make the check digit fit: a misread never becomes a value reported as sure.
         var frames = Frames("CSQU 305438 ").Concat(["8|3:0.25", "8|3:0.25", "_"]).ToArray();
         var scores = Scores(frames);
         var pattern = FormatPattern.Parse("AAAU ###### #")!;
@@ -152,38 +154,49 @@ public sealed class DecodingTests
         var match = FormatGuidedDecoder.Decode(scores, Chars, pattern);
 
         Assert.NotNull(match);
-        Assert.True(match.CheckDigitValid);
-        Assert.Equal("CSQU3054383", match.Text.Replace(" ", string.Empty, StringComparison.Ordinal));
-        Assert.Equal(0.25f, match.MinProbability, 3);
+        Assert.False(match.CheckDigitValid);
+        Assert.Equal("CSQU3054388", match.Text.Replace(" ", string.Empty, StringComparison.Ordinal));
+        Assert.Null(LineReader.Read(scores, Chars, pattern, RelativeBox.Whole)!.FormatMatch);
     }
 
     [Fact]
-    public void A_container_number_no_single_change_can_fix_is_no_match()
+    public void A_container_number_with_its_check_digit_matches()
     {
-        var scores = Scores(Frames("CSQU 305438 8"));
+        var scores = Scores(Frames("CSQU 305438 3"));
         var line = LineReader.Read(scores, Chars, FormatPattern.Parse("AAAU ###### #"), RelativeBox.Whole);
 
         Assert.NotNull(line);
-        Assert.Null(line.FormatMatch);
-        Assert.Equal("CSQU 305438 8", line.Line.Text);
+        Assert.Equal("CSQU 305438 3", line.FormatMatch);
+    }
+
+    [Fact]
+    public void A_container_number_with_more_after_it_is_checked_on_its_first_eleven()
+    {
+        var pattern = FormatPattern.Parse("AAAU ###### # 22G1")!;
+        Assert.True(pattern.IsContainerNumber);
+        Assert.False(FormatPattern.Parse("AAAU ######")!.IsContainerNumber);
+
+        Assert.True(FormatGuidedDecoder.Decode(Scores(Frames("CSQU 305438 3 22G1")), Chars, pattern)!.CheckDigitValid);
+        Assert.False(FormatGuidedDecoder.Decode(Scores(Frames("CSQU 305438 4 22G1")), Chars, pattern)!.CheckDigitValid);
     }
 
     [Theory]
     [InlineData("CSQU3054383", true)]
     [InlineData("CSQU 305438 3", true)]
+    [InlineData("CSQU 305438 3 22G1", true)]
     [InlineData("CSQU3054384", false)]
     [InlineData("MSCU 123456 7", false)]
     [InlineData("CSQU305438", false)]
-    [InlineData("csqu3054383", false)]
-    public void Iso6346_check_digit(string number, bool valid) => Assert.Equal(valid, Iso6346.IsValid(number));
+    [InlineData("csqu3054383", true)] // the same rule as the matcher's: letters in either case
+    public void Iso6346_check_digit(string number, bool valid) => Assert.Equal(valid, ContainerCheck.IsValid(number));
 
     [Fact]
     public void Iso6346_letter_values_skip_the_multiples_of_eleven()
     {
         // A container number with an L (23, after skipping 22) and a V (34, after skipping 33): HLXU 571426 0 from the set.
-        Assert.Equal(0, Iso6346.CheckDigit("HLXU571426"));
-        Assert.Equal(3, Iso6346.CheckDigit("CSQU305438"));
-        Assert.Equal(-1, Iso6346.CheckDigit("CSQ1305438"));
+        Assert.Equal(0, ContainerCheck.CheckDigit("HLXU571426"));
+        Assert.Equal(3, ContainerCheck.CheckDigit("CSQU305438"));
+        Assert.Equal(-1, ContainerCheck.CheckDigit("CSQ1305438"));
     }
 
     [Fact]

@@ -1,5 +1,6 @@
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Events;
+using Oadm.Plugins.Ocr.Matching;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Readers;
 using Oadm.Plugins.Ocr.Tests.Readers;
@@ -57,8 +58,15 @@ public sealed class TextReadEventTests
     [InlineData("A12", "")]
     [InlineData("", "")]
     [InlineData("١٢", "")]
+    [InlineData("+007", "7")]
+    [InlineData("-0,00", "0")]
+    [InlineData("12.50", "12.5")]
+    [InlineData("1.2.3", "")]
+    [InlineData("12.", "")]
+    [InlineData("12345678901234567890123", "12345678901234567890123")] // a long counter keeps every digit
+    [InlineData("0.12345678901234567890", "0.1234567890123456789")]
     public void TheNumberFieldHoldsTheValueWhenItIsANumber(string value, string number) =>
-        Assert.Equal(number, TextReadEvents.Number(value));
+        Assert.Equal(number, NumberText.Of(value));
 
     [Fact]
     public void TheValuesOfAnArea()
@@ -105,11 +113,9 @@ public sealed class TextReadEventTests
         Assert.Equal("64", fired.Data[OcrInfo.ConfidenceField]);
     }
 
-    private sealed class TwoMatches : ITextMatcher, IAreaValueMatcher
+    private sealed class TwoMatches : ITextMatcher
     {
-        public AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected) => throw new InvalidOperationException("The full matcher is used.");
-
-        public AreaValue MatchValue(IReadOnlyList<TextLine> lines, ExpectedText expected) =>
+        public AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected) =>
             new(new AreaMatch("12345", true, "12345\n67890"), ["12345", "67890", "12345"], 64, new RelativeBox(0.2, 0.2, 0.1, 0.1));
     }
 }

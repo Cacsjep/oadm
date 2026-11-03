@@ -8,7 +8,7 @@ namespace Oadm.Plugins.Ocr.Events;
 
 /// <summary>
 /// Rule action "Read text" (docs/spec/ocr.md "Events and the rule action"): reads one picture of the chosen reader (On
-/// demand or Watching) now and publishes every area's event "Text read", changed or not. While a reading of that reader
+/// action, or the fresh reading of a Watching one) now and publishes every area's event "Text read", changed or not. While a reading of that reader
 /// runs the action ends with "Already reading" in the event log and nothing is queued; loops (a Text read event that runs
 /// Read text of the same reader) are held by the rule limits. Contributed by Text recognition, available while it is on.
 /// Event rules are for users with all devices (docs/spec/device-scope.md), so every reader is a choice.
@@ -32,7 +32,12 @@ public sealed class ReadTextAction(OcrPlugin owner) : IActionPlugin
     public IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule)
     {
         var id = ReaderOf(settings);
-        return string.IsNullOrEmpty(id) || owner.FindReader(id) is not null
+        if (string.IsNullOrEmpty(id))
+        {
+            return new Dictionary<string, string> { [OcrInfo.ReaderActionField] = ReaderRules.ReaderMissing };
+        }
+
+        return owner.FindReader(id) is not null
             ? new Dictionary<string, string>()
             : new Dictionary<string, string> { [OcrInfo.ReaderActionField] = ReaderRules.Gone };
     }

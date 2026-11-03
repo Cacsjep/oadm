@@ -66,7 +66,8 @@ side.
 - `SiteIdentityStore` (`Sites.Identity`, purpose `oadm:site-identity`; dropped with a replaced master key and named in
   the notice), `SiteAdmin` (Remove with or without devices, Replace), `SiteGrpcService`.
 - **Large transfers:** at most 2 per site (streamed bodies over 1 MB or of unknown size, streamed answers except the Web
-  View relay's, `VapixClient.RelayedOption`). A task waits as long as it takes, its device timeout starts after the wait
+  View relay's, `VapixClient.RelayedOption`, and live streams of plugins, `VapixRequestOptions.LiveStream`: Text
+  recognition's MJPEG pictures, which run for hours and are limited per site by the plugin, 4 per site). A task waits as long as it takes, its device timeout starts after the wait
   and the tasks pane says "<step> - Waiting for the site link" (`SiteLinkWait`); anyone else waits inside the request's
   timeout, then "Site <name> is busy."; a dropped streamed answer frees its slot when collected.
 - **Dials:** a dial gets the site's verdict before the caller's timeout (node timeout less a margin, worker wait and node

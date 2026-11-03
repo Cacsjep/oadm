@@ -61,7 +61,7 @@ public sealed class FrameVoteTests
 
         Assert.NotNull(published);
         Assert.Equal("12345", published.Text);
-        Assert.Equal(12345, published.Number);
+        Assert.Equal("12345", published.Number);
     }
 
     [Fact]
@@ -105,6 +105,29 @@ public sealed class FrameVoteTests
         // With 5 frames in the window, "BBB" outweighs "AAA" only once all five old frames are gone, then holds a second frame.
         Assert.Equal(5, FrameVote.Window);
         Assert.Equal([null, null, null, null, null, "BBB"], published);
+    }
+
+    [Fact]
+    public void AVoteThatBreaksTheFormatIsNeverPublished()
+    {
+        // Three readings that each match; voted character by character they give "112", which none of them read.
+        TextMatch[] readings = [Read("111", 40), Read("122", 35), Read("212", 30), Read("212", 30), Read("212", 30)];
+        Assert.Equal([null, "111", null, "112"], Feed(new FrameVote(), readings[..4]));
+
+        // With the format's check the whole reading with the most weight wins instead.
+        var checkedVote = new FrameVote(v => v is "111" or "122" or "212");
+        Assert.Equal([null, "111", null, null, "212"], Feed(checkedVote, readings));
+    }
+
+    [Fact]
+    public void AContainerVoteMustHoldItsCheckDigit()
+    {
+        var accepts = FrameVote.AcceptorOf(ExpectedText.WithFormat("AAAU ###### #"))!;
+
+        Assert.True(accepts("CSQU 305438 3"));
+        Assert.False(accepts("CSQU 305438 4"));
+        Assert.False(accepts("CSQU 30543"));
+        Assert.Null(FrameVote.AcceptorOf(ExpectedText.AnyText));
     }
 
     [Fact]

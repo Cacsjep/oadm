@@ -52,6 +52,18 @@
     <Error Condition="'@(_OcrModelDownloaded)' != '' and '%(_OcrModelDownloaded.FileHash)' != '%(_OcrModelDownloaded.Sha256)'"
            Text="Text recognition: the model %(_OcrModelDownloaded.Filename) from %(_OcrModelDownloaded.Url) has the SHA-256 %(_OcrModelDownloaded.FileHash), expected %(_OcrModelDownloaded.Sha256) (plugins/Oadm.Plugins.Ocr/Models/README.md). The file was deleted; check the source and the pinned revision." />
 
+    <!-- Every build checks the cached files again (a few hundred ms): a file changed in the cache after its download never
+         reaches the output. A bad one is deleted, so the next build downloads it anew. -->
+    <ItemGroup>
+      <_OcrModelCached Include="$(OcrModelCache)%(OcrModel.Sha256)/%(OcrModel.Identity)" Sha256="%(OcrModel.Sha256)" />
+    </ItemGroup>
+    <GetFileHash Files="@(_OcrModelCached)" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="_OcrModelChecked" />
+    </GetFileHash>
+    <Delete Files="%(_OcrModelChecked.Identity)" Condition="'%(_OcrModelChecked.FileHash)' != '%(_OcrModelChecked.Sha256)'" />
+    <Error Condition="'%(_OcrModelChecked.FileHash)' != '%(_OcrModelChecked.Sha256)'"
+           Text="Text recognition: the cached model %(_OcrModelChecked.Identity) has the SHA-256 %(_OcrModelChecked.FileHash), expected %(_OcrModelChecked.Sha256). The file was deleted; build again to download it anew." />
+
     <ItemGroup>
       <None Include="$(OcrModelCache)%(OcrModel.Sha256)/%(OcrModel.Identity)" Link="Models\%(OcrModel.Identity)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
     </ItemGroup>

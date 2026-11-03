@@ -55,9 +55,10 @@ internal sealed partial class ReaderRuntime
             }
         }
 #pragma warning disable CA1031 // A timer callback never throws; the next tick tries again.
-        catch (Exception)
+        catch (Exception ex)
 #pragma warning restore CA1031
         {
+            LogBackgroundFailed(_logger, "the runtime stats", ex);
         }
     }
 
@@ -113,7 +114,7 @@ internal sealed partial class ReaderRuntime
             UnchangedPerSecond = Math.Round(figures.ReusedPerSecond, 1),
             AverageReadMs = Math.Round(figures.AverageReadMs),
             Watching = loops.Count,
-            MaxWatching = ReaderRules.MaxWatching(OnGpu),
+            MaxWatching = MaxWatching,
             Previews = previews,
             MaxPreviews = OcrLimits.MaxPreviews,
             Streams = loops.Count + previewStreams.Count,

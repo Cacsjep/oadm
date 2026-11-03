@@ -25,10 +25,11 @@ that better (the docs say so).
 4. **Bounded load.** Recognition runs on the CPU in at most `max(1, cores / 2)` workers at once, each with at most 2
    threads, so OADM stays responsive. The limit counts model calls (a tile, a batch of lines), so an idle server reads the
    tiles of one picture at once; at most as many pictures as workers are in work. Per reader one frame at a time: the
-   newest frame wins, older ones are dropped, never queued. At most 50 readers per server, at most 20 of them watching on
-   the CPU, 50 on a GPU, and at most 4 watching readers per site (a site node's link carries their streams). At most 8
-   page previews per server; a preview with a stream of its own counts against the watching limits; a preview ends 30 s
-   after the page's last call and never publishes events ("Page").
+   newest frame wins, older ones are dropped, never queued. At most 50 readers per server; watching readers by the
+   server's cores, 4 per worker, at least 8 and at most 50 ("Limits"); at most 4 watching readers per site (a site node's
+   link carries their streams; they take none of the site's large transfer slots). At most 8 page previews per server
+   and 2 per user; a preview with a stream of its own counts against the watching limits after the saved readers; a
+   preview ends 30 s after the page's last call and never publishes events ("Page").
 5. **GPU when there is one, the CPU always works.** ONNX Runtime and the models come with the add-on; nothing is
    downloaded at run time. A missing or failing GPU falls back to the CPU (one log line); the page says what reads.
 6. **Measured accuracy.** Every change to reading keeps or raises the accuracy on the recorded test set ("Accuracy"
@@ -57,12 +58,18 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
     it is (an order number on a receipt laid anywhere on a counter, a label on a parcel). Any text over a large area is
     allowed but rarely useful for rules.
 - **Mode**:
-  - **Watching** (new readers start with it): reads continuously at 1, 2 or 4 frames per second (default 1; a graphics
-    card adds 8, 12 and 15) from the camera's MJPEG stream
-    (`/axis-cgi/mjpg/video.cgi?fps=<n>&resolution=<w>x<h>&camera=<source>` through `ctx.Vapix` with a streamed answer,
-    so device routing and sites work; one stream per reader, reopened after a drop with a growing pause from 1 s up to
+  - **Watching** (new readers start with it): reads continuously at 1, 2, 4, 8, 12 or 15 frames per second (default 1)
+    from the camera's MJPEG stream
+    (`/axis-cgi/mjpg/video.cgi?fps=<n>&resolution=<w>x<h>&camera=<source>` through `ctx.Vapix` with a streamed answer
+    marked `VapixRequestOptions.LiveStream`, so device routing and sites work and the stream holds none of a site's large
+    transfer slots, `docs/spec/sites.md`; one stream per reader, reopened after a drop with a growing pause from 1 s up to
     1 min; a stream that sent pictures and then none for 3 s counts as dropped; the camera has 15 s to answer a request or
-    open the stream).
+    open the stream). Why a stream gives no pictures is the reader's problem in the list (and the preview's): the camera's
+    refusal ("Unauthorized - HTTP 401 (check the credentials)"), "The camera does not offer this resolution. Choose another
+    one." or "... this video source ..." (from the camera's error text), "The camera sends no pictures." (not opened in
+    15 s); it clears with the next picture.
+  - A rename of the reader or of its areas goes on in the running loop (the vote and the published values stay); a new
+    camera place, source, resolution, rate or area place or format starts it again.
   - **On action**: reads one picture when an event rule runs the action **Read text** (below). No stream (the page's
     preview aside, "Page"). Choosing it on the page shows a short message (`ui:MessageWindow`, OK only) once per reader
     and client session: "Reads only on an action", "This reader reads only when an event rule runs the action Read text
@@ -149,7 +156,13 @@ Per area: **Any text** (default) or **Format**.
 
 - Format: `#` a digit, `A` a letter, `*` a letter or digit; every other character must appear as written, except spaces
   and dashes, which may be missing in the text. Example: container number `AAAU ###### #`, wagon `## ## #### ###-#`,
-  counter `#####`.
+  counter `#####`. A match never starts or ends inside a run of letters and digits; a format that starts or ends with a
+  sign (`(###)`) may touch them.
+- **Container numbers** (`Matching/ContainerCheck`, the one rule of the matcher and the format-guided decoding): a
+  format whose first 11 letters and digits are `AAAU` and seven `#` checks the 11th as the ISO 6346 check digit of the
+  10 before it; what follows (`AAAU ###### # 22G1` with the size and type code) is not checked; `AAAU ######` has no
+  check digit and checks nothing. A wrong check digit is no match: no character is ever changed to make it fit
+  (decision 2026-11-03; a misread check digit never becomes a sure value).
 - With a format the reader looks for matches in each line on its own, then in neighbouring lines joined (for a number
   split over two lines). The match fixes look-alike characters by position: where a digit is expected O becomes 0, I
   and L 1, S 5, B 8, Z 2, G 6; where a letter is expected the reverse.
@@ -157,6 +170,8 @@ Per area: **Any text** (default) or **Format**.
   highest confidence, on a tie the larger text; the event field All matches lists every different match, at most 10.
 - The page shows the matched text's cut-out picture next to its value (in memory only, like the frames).
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
+- **Any text** has no format to match: Matches format is always No (decision 2026-11-03: a rule "Matches format is
+  Yes" fires only for a format that matched; "text was read" is a Text that is not empty).
 - The page's format field tooltip: "# digit, A letter, * letter or digit".
 - Not part of this version: taking a read text as the format: later (decision 2026-11-03).
 
@@ -168,25 +183,39 @@ Per area: **Any text** (default) or **Format**.
 - A stop cancels the single readings of the action Read text and waits for them before the recognition is disposed; a
   reading asked for afterwards ends "The Text recognition plugin is not running." Timer and event work never throws (a
   failure is logged); the runtime's locks are never disposed under late callbacks.
-- Cut-outs are cut only when a page asks for a reading (`getReading`, `getPreview`), once per reading, never per frame.
+- Cut-outs are cut only when a page asks for a reading (`getReading`, `getPreview`), once per reading, never per frame,
+  and only for a user with the host's **Live view** (`HostPermissionKeys.DevicesLiveView`; they are pieces of the
+  camera's picture). The page never gets the picture itself: it shows the live video.
 - The event `reading` reaches the pages only when a reader's values or note change, else at most once a second per reader;
-  a preview's readings go only to the scope that started it.
+  a preview's readings go only to the user who started it.
+- A reading is kept as the reader's last and fires its events only while the reader is still stored with the same camera,
+  source, resolution and areas (`ReaderRuntime.SamePicture`): a reading in work when the reader is deleted is dropped
+  (the action ends "The reader no longer exists."), one of the old areas fires (the rule asked for it) but is not kept;
+  a save drops the last reading after the sync when the picture changed.
+- Decoding refuses a picture whose header says more than 7680 px on a side or more than 7680 x 4320 pixels before any
+  pixel memory is taken (`Recognition/Picture`, the page's cut-outs too); a save refuses such a resolution.
+- The reader list (and its event to a group) leaves Last text and the problem blank for a camera the user does not see
+  (its problem reads "The reader's camera is no longer in its device group.").
 
 ## Events and the rule action
 
 - Event **Text read** per reader (folder Text recognition / reader name), stateless, one event per area and reading,
   fields: Area (choice of the reader's areas), Text (the value: the match with a format, else all lines), Text read (all
   lines, raw), All matches (every different match of the format, separated by a space; empty without a format),
-  Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading;
-  empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
+  Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading; written with "."
+  without leading zeros or trailing decimal zeros, every digit kept, never through a floating point number,
+  `Matching/NumberText`; empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
   of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence).
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
   in a row (no flicker between two readings of one picture). An area that becomes empty publishes once with Text empty.
-- Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching). Reads one picture now and
-  publishes every area's event, changed or not; a reader without an area ends "The reader has no area. Draw one on the
-  Text recognition page." and reads nothing. A reading already running for that reader: the action ends "Already
-  reading" and nothing is queued. Loops (a Text read event that runs Read text of the same reader) are held by the rule
-  limits (dead time, maximum per minute).
+- Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
+  at its save: "Choose a reader."). Reads one picture now and publishes every area's event, changed or not; a reader
+  without an area ends "The reader has no area. Draw one on the Text recognition page." and reads nothing. A watching
+  reader answers with its own reading of at most 1 s ago (`ReaderRuntime.FreshReading`, the voted values), else with the
+  reading its stream has in work once it ends, else with a picture of its own: its stream reads all the time, so the
+  action never ends "Already reading" because of it. Another single reading already running for an On action reader:
+  the action ends "Already reading" and nothing is queued. Loops (a Text read event that runs Read text of the same
+  reader) are held by the rule limits (dead time, maximum per minute).
 
 ## Page
 
@@ -215,7 +244,7 @@ Per area: **Any text** (default) or **Format**.
     save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
   - **Stream**: a secondary button (video icon) that opens a small dialog (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
-    as a select of the server's choices (1, 2, 4, on a graphics card also 8, 12, 15). OK hands them to the reader (Not
+    as a select of the server's choices (1, 2, 4, 8, 12, 15). OK hands them to the reader (Not
     saved like any edit, the preview and the live video follow); Cancel changes nothing. The field is labelled Stream and spans the column; the
     button itself shows the summary, "Configure · 1920x1080 @ 4 fps" (no rate for On action; no hint below); a refusal of the server for the
     video source, the resolution or the frame rate shows in the summary's place and, in the dialog, below its field.
@@ -252,19 +281,22 @@ Per area: **Any text** (default) or **Format**.
     other preview has its own stream through the watching loop with the vote and the events off, and shows each frame's
     own result.
   - Limits: at most 8 previews per server ("At most 8 readers can be shown live at once. Try again when another page
-    closes."); a preview's own stream counts with the watching readers against 20 on the CPU (50 on a graphics card) and
-    4 per site; beyond: "No live results now: OADM already reads as many cameras as it can." The texts show where the
-    results are.
+    closes.") and 2 per user (a third ends that user's oldest: a page closed without a word); a preview's own stream
+    counts with the watching readers against the watching limit ("Limits") and 4 per site, after them: a saved reader
+    that starts watching takes the stream of the youngest preview; beyond: "No live results now: OADM already reads as
+    many cameras as it can." The texts show where the results are. A preview's own stream that gives no pictures says
+    why in its `problem`, like a reader.
   - A lease: a preview ends 30 s after its last `startPreview` (checked every 5 s), so a closed client never leaves one
     running; the page ends it with `stopPreview` when it hides the reader or the page.
   - The page makes the preview's id itself (32 hex digits, new per start) and sends it from the first call, so `stopPreview`
     can always name it; a start answer that comes after the page left ends that preview once more (the start may have
     overtaken the stop). A page shown again starts its preview at once (a call still on its way never blocks it). The
-    server keeps a page's id unless another scope uses it; any other text gets an id of the server's.
+    server keeps a page's id unless another preview uses it; any other text gets an id of the server's.
   - Fetched readings show in the order their calls started: the saved reader's last reading never replaces a newer
     preview reading that arrived while it was decoded.
-  - Device groups: a preview belongs to the caller's device scope (only that scope's pages hear of it, get or stop it); a
-    saved reader of another scope answers like an unknown id; the camera must be in the caller's devices.
+  - A preview belongs to the user who started it, in their device scope: only that user hears of it, gets or stops it
+    (another user's id answers like an ended one); a saved reader of another scope answers like an unknown id; the camera
+    must be in the caller's devices.
   - On open the page shows the saved reader's last reading (`getReading`) until the preview's first one arrives.
 - Empty page: "Create a reader to read text from a camera."
 - One contract: the page uses the server part's payloads (`Api/`) and the texts of `ReaderRules`, never copies. The
@@ -275,15 +307,17 @@ Per area: **Any text** (default) or **Format**.
   settings. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
 - The preview's calls (permission "View text recognition"):
   - `startPreview` `{"previewId":"9f3c...","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
-    `problem` while it reads); with a known `previewId` of the caller's scope it keeps that preview alive and takes the
+    `problem` while it reads); with a known `previewId` of the caller it keeps that preview alive and takes the
     draft, an unknown or ended one starts a new preview. Refusals: the 8 previews, a camera outside the caller's
     devices, another scope's reader.
   - `stopPreview` `{"previewId":"9f3c..."}` → `{}`.
-  - `getPreview` `{"previewId":"9f3c..."}` → `{"reading":{...},"details":[...]}` with the cut-outs, no picture (`{}`
-    without a reading).
+  - `getPreview` `{"previewId":"9f3c..."}` → `{"reading":{...},"details":[...]}` with the cut-outs (Live view only), no
+    picture (`{}` without a reading).
   - Event `preview` `{"previewId":"9f3c...","reading":{...},"details":[...]}` after each reading of a preview (without
-    the cut-outs), to users with all devices and the preview's scope; the page fetches with `getPreview` only its own,
-    one call at a time (newest wins).
+    the cut-outs), only to the user who started it (`PluginEventAudience.User`); the page fetches with `getPreview` only
+    its own, one call at a time (newest wins).
+  - `getReading` → `{"reading":{...},"details":[...]}`: the reader's last reading with the cut-outs (Live view only),
+    never the picture.
 
 ## Runtime stats
 
@@ -320,6 +354,26 @@ after the start). All time through the plugin's `TimeProvider`.
 - Device groups: a group user sees the counts, sites and readers of their own group only, plus the server-wide load, CPU,
   pictures per second and reading time (no other scope's reader); each scope's event goes to that scope.
 
+## Limits
+
+Decision 2026-11-03 (with the graphics card reading only Search's text finder, "GPU"): the limits follow the CPU on every
+server, the traffic light ("Runtime stats") is the real guard.
+
+- **Frames per second**: 1, 2, 4, 8, 12 or 15 for every reader on every server (`OcrLimits.FpsChoices`; default 1). A
+  fixed area costs a worker about 28 ms (35 pictures per second), an unchanged one about 5 ms, so one reader at 15 is
+  about half a worker; a server that cannot keep up turns the light orange or red and says which reader reads slower.
+- **Watching readers**: 4 per recognition worker (`max(1, cores / 2)`), at least 8 and at most 50
+  (`OcrLimits.MaxWatching(cores)`): 2 or 4 cores 8, 8 cores 16, 16 cores 32, 24 cores 48. Measured on 24 cores: 20
+  fixed-place readers at once 113 to 138 pictures per second, so 48 readers at 2 frames per second (96 per second) fit,
+  at 4 they need unchanged areas or the light says so. Previews with a stream of their own count with them.
+- **Per site**: 4 watching readers (and previews with their own stream) per site; their streams take none of the site's
+  large transfer slots (`VapixRequestOptions.LiveStream`), so AXIS OS upgrades, applications and exports at the site
+  never wait for them.
+- Readers stored beyond a limit (the readers moved to a server with fewer cores, a camera moved to a site) read nothing
+  and show the limit as their problem ("At most 16 readers can watch at once. Set another reader to On action first.",
+  the site's text); a stored frame rate that is no choice reads at the next one below.
+- `listReaders` and `getStats` give the server's limit (`maxWatching`); `getEngine` the frame rates.
+
 ## Permissions
 
 - **View text recognition**: the page, the readers and their results.
@@ -333,10 +387,13 @@ often, from worse pictures, and never a wrong value reported as sure.
 
 - **Format-guided reading**: with a format, the recognition's character choice is limited per position (digits where
   `#`, letters where `A`) while decoding, not fixed afterwards; the look-alike table stays as a last step. A check
-  digit is checked where the format has one (ISO 6346 for container numbers: a format starting `AAAU` checks its last
-  digit; a wrong check digit is no match).
+  digit is checked where the format has one (ISO 6346 for container numbers, "Expected text"); a wrong check digit is no
+  match, never repaired by changing a character (the decoder once changed one character to make it fit; dropped
+  2026-11-03, the accuracy set kept its baseline).
 - **Several frames vote** (Watching): per area the last 5 readings are combined character by character, weighted by
-  confidence; the value is published once it holds: the vote must give the same value in 2 frames in a row.
+  confidence; the value is published once it holds: the vote must give the same value in 2 frames in a row. With a
+  format the combined value must be a whole match of it, check digit included (`FrameVote.AcceptorOf`): characters of
+  different readings that together break it are never published; the whole reading with the most weight wins instead.
   A single bad frame (motion blur, a hand in front) changes nothing.
 - **Small text is enlarged** before reading: a line lower than 24 px is scaled up (bicubic) to the model's 48 px; lines
   below 10 px are left out with "Text too small. Draw a smaller area or choose a higher resolution." on the page.
@@ -427,7 +484,8 @@ often, from worse pictures, and never a wrong value reported as sure.
     fixed place, 4 areas and 20 readers 0.1 GB (no session on the card); full HD Search 1.25 GB; QHD and 4K Search after
     it 2.7 GB (the full HD and the 1024 x 1024 sessions, 3.29 GB estimated, none freed); the accuracy set 1.3 GB. No
     driver reset in any run.
-- Limits on a GPU (`ReaderRules`): frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
+- The limits do not depend on the graphics card ("Limits"): it reads only Search's text finder, the CPU every fixed area
+  and every line.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
   CPU; 20 fixed-place readers at 4 frames per second.
 - Measured (2026-11-03, development PC: Ryzen 9 3900X, 24 cores, RTX 5070 Ti with nothing else on the card,
@@ -495,8 +553,8 @@ the real parts once per start (`ReaderParts.Real`), the tests hand fakes:
 |---|---|---|
 | `IRecognizerLoad` (optional) | `Recognition/OnnxTextRecognizer` (`BusyMeter` in the CPU slots and the graphics card's calls) | busy time and capacity for the runtime stats |
 | `IFrameSource` | `Frames/VapixFrameSource` (the plugin's full device access, `ctx.System.Vapix`) | single pictures and the MJPEG stream of a camera |
-| `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas; what reads, Use the graphics card |
-| `ITextMatcher` (+ `IAreaValueMatcher`) | `Matching/TextMatcher` | an area's value, every match, its confidence and box |
+| `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas, unchanged areas given again for a reuse source (`ReadAsync(jpeg, areas, reuseSource, ct)`; `IDetailedTextRecognizer` adapts it); what reads (`OnGpu`, `RunsOn`), Use the graphics card |
+| `ITextMatcher` | `Matching/TextMatcher` | an area's value (`AreaValue`): whether it matches, the raw text, every match, its confidence and box |
 | `IPictureCutter` | `Recognition/PictureCutter` (SkiaSharp) | the value's cut-out for the page |
 | the vote | `Matching/FrameVote` inside `Readers/AreaWatch` | the last 5 frames and the publish rule (2 in a row, only on change) |
 
@@ -535,7 +593,7 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   (`Recognition/SearchRoutingTests`: the larger of the CPU workers' and the card's busy time), the
   server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
   live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).
-- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU, 4 per site; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
+- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, the watching readers by the cores (4 per worker, 8 to 50) and 4 per site, a reader beyond them with the limit as its problem, the saved readers before the previews' own streams, 2 previews per user; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
 - End to end with the real parts (`EndToEndTests`): recorded pictures of the coffee box through a watching reader give
   each value once and an empty value once when the box is gone; the action Read text reads a container number with its
@@ -551,29 +609,15 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   recently used out, a session over the cap never made, Search split into calls of half the cap, idle sessions freed
   (`GpuSessionBudgetTests`, fake sessions); fixed-place areas on the CPU and Search on the card, full HD, QHD and 4K
   Search within the cap, the runs-on text (`SearchRoutingTests`, fake runners, no graphics card).
+- A reader's life (`Readers/ReaderLifecycleTests`): a rename keeps the stream and the published values, a reading of a
+  deleted reader is neither kept nor fired, one of old areas not kept, a stream's problem in the list until pictures
+  come, Read text from a watching reader's fresh reading or the one in work, cut-outs only with Live view, no text of a
+  camera the user does not see. The stream's problem texts once per change and the live stream option
+  (`VapixFrameSourceTests`), a picture claiming 65,535 x 65,535 refused (`PictureTests`), the container rule and the
+  vote's format check (`TextMatcherTests`, `FrameVoteTests`, `DecodingTests`), Number with every digit
+  (`TextReadEventTests`).
 
-## Build plan (parallel work)
+## Build plan
 
-Same waves as `docs/spec/add-ons.md` "Build plan". Each package owns its folder under `plugins/Oadm.Plugins.Ocr(.Client)`
-and `tests/Oadm.Plugins.Ocr.Tests`; nobody else changes it.
-
-**Wave 1, skeleton (with the add-on contracts, same agent):** the projects from the template (`manage new`) in
-`Oadm.sln`, `plugin.json` (add-on, off by default, `minSdkVersion`), and the shared types in `Model/`: `Reader`, `Area`,
-`ExpectedText`, `TextLine` (text, box, confidence), `AreaResult`, `Reading`; the interfaces `ITextRecognizer`
-(`ReadAsync(jpeg, areas, ct)` to lines per area), `IFrameSource` (`SingleAsync`, `WatchAsync(fps)` as an
-`IAsyncEnumerable` of JPEG frames) and `ITextMatcher`; the `InvokeAsync` methods and their JSON payloads (`Api/`), the
-event and action ids, the permissions.
-
-**Wave 2, in parallel:**
-
-| Package | Owns | Builds | Against |
-|---|---|---|---|
-| O1 Recognition | `Recognition/`, `Models/`, its tests and fixtures | ONNX Runtime sessions, JPEG decode and crop (SkiaSharp), detection pre and post (contours in C#), straightening, recognition with CTC, the worker gate | `ITextRecognizer`; fixtures recorded read-only from the development cameras |
-| O2 Matching | `Matching/`, its tests | line order, several lines, the format syntax, look-alike fixes, a number over two lines | `ITextMatcher` (pure C#, no I/O) |
-| O3 Frames | `Frames/`, its tests | MJPEG `multipart/x-mixed-replace` parser, the stream through `ctx.Vapix` (streamed answer), reopening with the growing pause, single picture | `IFrameSource`; a recorded MJPEG answer |
-| O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
-| O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, New area, results, Save; headless screenshots | the `Api/` payloads with a fake server |
-
-**Wave 3:** the real parts wired in place of the fakes (done: "Parts and contract"), the models downloaded at build
-(done), the add-on ZIP (A4), a measurement of the speed (done: "GPU"), the plugin's `README.md` (done), review and full
-suite; open: the hardware runs on the development cameras.
+Built in three waves of parallel packages (skeleton; recognition, matching, frames, readers and page; the real parts
+wired). Open: the hardware runs on the development cameras.

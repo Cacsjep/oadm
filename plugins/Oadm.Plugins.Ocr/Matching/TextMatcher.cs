@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
-
 using Oadm.Plugins.Ocr.Model;
 
 namespace Oadm.Plugins.Ocr.Matching;
@@ -11,16 +8,13 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// looked for in each line on its own, then in neighbouring lines joined (a number split over two lines). Of several
 /// matches the value is the one read with the highest confidence, on a tie the larger text. Pure and thread-safe.
 /// </summary>
-public sealed partial class TextMatcher : ITextMatcher, IAreaValueMatcher
+public sealed class TextMatcher : ITextMatcher
 {
     /// <summary>The event field All matches holds at most this many different matches.</summary>
     public const int MaxMatches = 10;
 
     /// <inheritdoc />
-    public AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected) => MatchAll(lines, expected).ToAreaMatch();
-
-    /// <inheritdoc />
-    public AreaValue MatchValue(IReadOnlyList<TextLine> lines, ExpectedText expected) => MatchAll(lines, expected).ToAreaValue();
+    public AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected) => MatchAll(lines, expected).ToAreaValue();
 
     /// <summary>Every event field and the ordered lines of <paramref name="lines"/> for <paramref name="expected"/>.</summary>
     public static TextMatch MatchAll(IReadOnlyList<TextLine> lines, ExpectedText expected)
@@ -38,14 +32,14 @@ public sealed partial class TextMatcher : ITextMatcher, IAreaValueMatcher
 
         if (expected.Kind != ExpectedTextKind.Format || string.IsNullOrWhiteSpace(expected.Format))
         {
+            // Any text: the value is everything read; Matches format stays No (there is no format to match).
             return new TextMatch
             {
                 Text = textRead,
                 TextRead = textRead,
                 RawText = raw,
-                Number = ParseNumber(textRead),
+                Number = NumberText.Of(textRead),
                 Confidence = ordered.Min(l => l.Confidence),
-                MatchesFormat = true,
                 Lines = ordered,
                 TextBox = Union(ordered),
             };
@@ -68,28 +62,12 @@ public sealed partial class TextMatcher : ITextMatcher, IAreaValueMatcher
             TextRead = textRead,
             RawText = raw,
             AllMatches = [.. candidates.Select(c => c.Value).Distinct(StringComparer.Ordinal).Take(MaxMatches)],
-            Number = ParseNumber(best.Value),
+            Number = NumberText.Of(best.Value),
             Confidence = best.Confidence,
             MatchesFormat = true,
             Lines = ordered,
             TextBox = best.Box,
         };
-    }
-
-    /// <summary>
-    /// <paramref name="value"/> as a number when it is one: digits with at most one "." or "," as the decimal sign, an
-    /// optional sign; spaces around are ignored. Null otherwise.
-    /// </summary>
-    public static double? ParseNumber(string value)
-    {
-        ArgumentNullException.ThrowIfNull(value);
-        var trimmed = value.Trim();
-        if (!NumberPattern().IsMatch(trimmed))
-        {
-            return null;
-        }
-
-        return double.Parse(trimmed.Replace(',', '.'), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture);
     }
 
     /// <summary>The matches in reading order: per line, then across each pair of neighbouring lines.</summary>
@@ -144,9 +122,6 @@ public sealed partial class TextMatcher : ITextMatcher, IAreaValueMatcher
         var bottom = lines.Max(l => l.Box.Y + l.Box.Height);
         return new RelativeBox(left, top, right - left, bottom - top);
     }
-
-    [GeneratedRegex(@"^[+-]?[0-9]+([.,][0-9]+)?$", RegexOptions.CultureInvariant)]
-    private static partial Regex NumberPattern();
 
     private sealed record Candidate(string Value, double Confidence, double TextHeight, RelativeBox? Box);
 }

@@ -49,6 +49,13 @@ internal sealed class Picture : IDisposable
         using var codec = SKCodec.Create(skData) ?? throw new InvalidDataException("The camera's answer is not a picture.");
         var width = codec.Info.Width;
         var height = codec.Info.Height;
+        if (width is < 1 or > Readers.ReaderRules.MaxSide || height is < 1 or > Readers.ReaderRules.MaxSide
+            || (long)width * height > Readers.ReaderRules.MaxPixels)
+        {
+            // The header's size before any pixel memory: a picture that claims 65,000 x 65,000 never allocates gigabytes.
+            throw new InvalidDataException("The camera's answer is not a picture.");
+        }
+
         var full = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
         var part = region?.Invoke(width, height) is { } r ? SKRectI.Intersect(r, new SKRectI(0, 0, width, height)) : SKRectI.Empty;
         if (!part.IsEmpty && part.Width * (long)part.Height < width * (long)height * 9 / 10 && DecodePart(codec, full, part) is { } partial)

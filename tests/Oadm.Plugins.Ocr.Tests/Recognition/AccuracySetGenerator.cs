@@ -185,7 +185,7 @@ internal static class AccuracySetGenerator
     {
         var owner = Owners[random.Next(Owners.Length)];
         var serial = random.Next(0, 1000000).ToString("000000", CultureInfo.InvariantCulture);
-        var check = Iso6346.CheckDigit((owner + serial).AsSpan());
+        var check = Oadm.Plugins.Ocr.Matching.ContainerCheck.CheckDigit((owner + serial).AsSpan());
         return $"{owner} {serial} {check}";
     }
 

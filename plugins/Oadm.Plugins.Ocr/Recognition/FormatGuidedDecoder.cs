@@ -1,3 +1,5 @@
+using Oadm.Plugins.Ocr.Matching;
+
 namespace Oadm.Plugins.Ocr.Recognition;
 
 /// <summary>What one position of a format allows (docs/spec/ocr.md "Expected text").</summary>
@@ -19,7 +21,9 @@ internal readonly record struct FormatToken(FormatTokenKind Kind, char Literal, 
 /// <summary>
 /// A format of an area's expected text, parsed: <c>#</c> a digit, <c>A</c> a letter, <c>*</c> a letter or digit, every other
 /// character as written; a space or a dash of the format may be missing in the text. Gaps the reader saw between the
-/// characters (the drums of a meter) do not break a match: the match is written in the format's own layout. A format of 4 + 7 positions starting <c>AAAU</c> is a container number with an ISO 6346 check digit.
+/// characters (the drums of a meter) do not break a match: the match is written in the format's own layout. A format whose
+/// first 11 letters and digits are <c>AAAU</c> and seven <c>#</c> is a container number with an ISO 6346 check digit
+/// (<see cref="ContainerCheck"/>, the same rule as the matcher's), also with more after it ("AAAU ###### # 22G1").
 /// </summary>
 internal sealed class FormatPattern
 {
@@ -36,7 +40,7 @@ internal sealed class FormatPattern
     /// <summary>The positions (spaces dropped).</summary>
     public IReadOnlyList<FormatToken> Tokens { get; }
 
-    /// <summary>Container number: the owner code, U, six digits and the ISO 6346 check digit.</summary>
+    /// <summary>Starts with a container number: the owner code, U, six digits and the ISO 6346 check digit.</summary>
     public bool IsContainerNumber { get; }
 
     /// <summary>The format's positions, or null for a format without any.</summary>
@@ -88,9 +92,7 @@ internal sealed class FormatPattern
             return null;
         }
 
-        var compact = string.Concat(format.Where(c => c is not (' ' or '-')));
-        var iso = compact.Length == 11 && compact.StartsWith("AAAU", StringComparison.Ordinal) && compact[4..].All(c => c == '#');
-        return new FormatPattern(format, tokens, iso);
+        return new FormatPattern(format, tokens, ContainerCheck.FormatHasCheckDigit(format));
     }
 }
 
@@ -99,7 +101,10 @@ internal sealed class FormatPattern
 /// <param name="FirstFrame">The match's first frame.</param>
 /// <param name="LastFrame">The match's last frame.</param>
 /// <param name="LogScore">The match's log probability minus the free reading's over the same frames (0 at best, below when the format forced a choice).</param>
-/// <param name="CheckDigitValid">For a container number: the ISO 6346 check digit holds; true for every other format.</param>
+/// <param name="CheckDigitValid">
+/// For a container number: the ISO 6346 check digit holds as read (a match whose check digit does not hold is no match; no
+/// character is changed to make it hold); true for every other format.
+/// </param>
 internal sealed record GuidedMatch(IReadOnlyList<DecodedChar> Chars, int FirstFrame, int LastFrame, double LogScore, bool CheckDigitValid)
 {
     /// <summary>Per character: the format has a space before it (the match is written with it).</summary>
@@ -120,7 +125,8 @@ internal sealed record GuidedMatch(IReadOnlyList<DecodedChar> Chars, int FirstFr
 /// with the character choice limited per position while decoding (digits where <c>#</c>, letters where <c>A</c>), not fixed
 /// afterwards. A Viterbi search over the states before the match (free reading), each position with each allowed character,
 /// the gaps between positions (blank or space) and after the match (free reading). A container number whose check digit does
-/// not hold gets the best one-character change that makes it hold.
+/// not hold is no match (<see cref="GuidedMatch.CheckDigitValid"/> false): a wrong check digit is never repaired by changing a
+/// character, so a misread never turns into a value reported as sure.
 /// </summary>
 internal static class FormatGuidedDecoder
 {
@@ -462,79 +468,9 @@ internal static class FormatGuidedDecoder
             logScore += e - free[t];
         }
 
-        var valid = true;
-        if (pattern.IsContainerNumber)
-        {
-            valid = Iso6346.IsValid(CtcDecoder.Text(chars));
-            if (!valid)
-            {
-                var fixedChars = FixCheckDigit(scores, characters, chars, segments, classes);
-                if (fixedChars is not null)
-                {
-                    logScore += fixedChars.Value.Cost;
-                    chars = fixedChars.Value.Chars;
-                    valid = true;
-                }
-            }
-        }
-
+        // A container number's check digit is checked as read: a misread is no match, never repaired.
+        var valid = !pattern.IsContainerNumber || ContainerCheck.IsValid(CtcDecoder.Text(chars));
         return new GuidedMatch(chars, first, last, logScore, valid) { SpaceBefore = [.. segments.Select(seg => tokens[seg.Token].SpaceBefore)] };
-    }
-
-    /// <summary>The best change of one character that makes the ISO 6346 check digit hold, with its cost in log probability.</summary>
-    private static (List<DecodedChar> Chars, double Cost)? FixCheckDigit(
-        LineScores scores,
-        CharacterList characters,
-        List<DecodedChar> chars,
-        List<(int Token, int First, int Last)> segments,
-        int[][] classes)
-    {
-        (List<DecodedChar> Chars, double Cost)? best = null;
-        for (var i = 0; i < chars.Count; i++)
-        {
-            var (token, first, last) = segments[i];
-            var current = SegmentLog(scores, chars[i].Class, first, last);
-            foreach (var c in classes[token])
-            {
-                if (c == chars[i].Class)
-                {
-                    continue;
-                }
-
-                var cost = SegmentLog(scores, c, first, last) - current;
-                if (best is not null && cost <= best.Value.Cost)
-                {
-                    continue;
-                }
-
-                var candidate = new List<DecodedChar>(chars);
-                var p = 0f;
-                for (var t = first; t <= last; t++)
-                {
-                    p = Math.Max(p, scores.Frame(t)[c]);
-                }
-
-                candidate[i] = chars[i] with { Class = c, Text = characters[c], Probability = p };
-                if (Iso6346.IsValid(CtcDecoder.Text(candidate)))
-                {
-                    best = (candidate, cost);
-                }
-            }
-        }
-
-        return best;
-    }
-
-
-    private static double SegmentLog(LineScores scores, int c, int first, int last)
-    {
-        var sum = 0.0;
-        for (var t = first; t <= last; t++)
-        {
-            sum += Log(scores.Frame(t)[c]);
-        }
-
-        return sum;
     }
 
     private static bool AllOptionalAfter(IReadOnlyList<FormatToken> tokens, int j)
@@ -600,6 +536,7 @@ internal static class FormatGuidedDecoder
             FormatTokenKind.Letter when pattern.IsContainerNumber && index < 3 => characters.UpperLatinLetters,
             FormatTokenKind.Letter => characters.Letters,
             FormatTokenKind.LetterOrDigit => characters.Digits.Concat(characters.Letters),
+            // A literal as the format writes it: the value comes out in the format's form, like the matcher's.
             _ => characters.ClassOf(token.Literal.ToString()) is var c and >= 0 ? [c] : [],
         };
 

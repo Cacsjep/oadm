@@ -77,7 +77,7 @@ public sealed class PageViewModelTests
 
         Assert.Equal(string.Empty, vm.RunsOnText);
         Assert.Equal("Watching · 1 fps", vm.Readers[0].ModeText);
-        Assert.Equal([1, 2, 4], vm.Editor!.FpsChoices);
+        Assert.Equal(OcrLimits.FpsChoices, vm.Editor!.FpsChoices);
         Assert.Single(vm.Editor.VideoSources);
         Assert.Contains(new Resolution(1920, 1080), vm.Editor.Resolutions);
         Assert.False(vm.Editor.IsDirty);
@@ -758,7 +758,7 @@ public sealed class PageViewModelTests
         var dialogs = new Dialogs();
         vm.Dialogs = dialogs;
         var editor = vm.Editor!;
-        var refusal = ReaderRules.FpsNotAllowed(false);
+        var refusal = ReaderRules.FpsNotAllowed();
         editor.Name = "Gate 3";
         ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply { Errors = [new FieldError(OcrFields.Fps, refusal)] });
 
