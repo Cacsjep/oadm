@@ -35,7 +35,7 @@ public sealed class PageMethodsTests
     public async Task OnAGraphicsCardTheEngineNamesItAndOffersTheHigherRates()
     {
         await using var ocr = new OcrHarness(onGpu: true);
-        ocr.Recognizer.RunsOn = "NVIDIA GeForce RTX 5070 Ti";
+        ocr.Recognizer.RunsOn = new(true, "NVIDIA GeForce RTX 5070 Ti");
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
 
         var engine = OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.GetEngine));

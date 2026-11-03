@@ -153,9 +153,6 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// </summary>
     public RecognitionDevice RunsOn => OnGpu ? _gpuDevice! : _cpuDevice;
 
-    /// <inheritdoc />
-    string IEngineInfo.RunsOn => RunsOn.Name;
-
     /// <summary>A graphics card passed the test reading and holds the models.</summary>
     public bool GpuAvailable => _card is not null;
 

@@ -38,7 +38,7 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
     }
 
     /// <summary>What <see cref="IEngineInfo.RunsOn"/> tells; empty: the plugin names the CPU.</summary>
-    public string RunsOn { get; set; } = string.Empty;
+    public RecognitionDevice RunsOn { get; set; } = new(false, string.Empty);
 
     public bool GpuAvailable => _gpu;
 

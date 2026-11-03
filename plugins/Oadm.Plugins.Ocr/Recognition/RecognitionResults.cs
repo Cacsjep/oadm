@@ -93,15 +93,6 @@ public sealed record RecognitionOptions
     public string Source { get; init; } = string.Empty;
 }
 
-/// <summary>What runs the recognition: a graphics card by its name, or the CPU with its cores.</summary>
-/// <param name="IsGraphicsCard">True on a graphics card (DirectML or CUDA).</param>
-/// <param name="Name">"NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)".</param>
-public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)
-{
-    /// <summary>The page's settings card line: "Runs on: NVIDIA GeForce RTX 5070 Ti".</summary>
-    public string Text => $"Runs on: {Name}";
-}
-
 /// <summary>
 /// The recognizer with every detail: character probabilities, the format match, the count of too small lines, Accurate, what
 /// runs (the accuracy set and the speed measurements). The readers need only <see cref="ITextRecognizer"/>: its

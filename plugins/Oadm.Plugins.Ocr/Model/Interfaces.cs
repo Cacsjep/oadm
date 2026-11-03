@@ -94,8 +94,8 @@ public interface IEngineInfo
     /// <summary>True while the recognition runs on a graphics card (more watching readers, higher frame rates).</summary>
     bool OnGpu { get; }
 
-    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") while it reads, else "CPU (8 cores)".</summary>
-    string RunsOn { get; }
+    /// <summary>What reads now: "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)"; an empty name: the plugin names the CPU.</summary>
+    RecognitionDevice RunsOn { get; }
 
     /// <summary>A graphics card was found and passed the test reading.</summary>
     bool GpuAvailable { get; }
@@ -126,4 +126,13 @@ public interface IPictureCutter
 {
     /// <summary>The part <paramref name="box"/> of <paramref name="jpeg"/> as JPEG; null when it cannot be cut.</summary>
     byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box);
+}
+
+/// <summary>What runs the recognition (<see cref="IEngineInfo.RunsOn"/>): the CPU with its cores, and the graphics card while it reads Search.</summary>
+/// <param name="IsGraphicsCard">True while a graphics card helps (DirectML or CUDA).</param>
+/// <param name="Name">"CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)".</param>
+public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)
+{
+    /// <summary>The page's settings line: "Runs on: CPU (8 cores)".</summary>
+    public string Text => "Runs on: " + Name;
 }
