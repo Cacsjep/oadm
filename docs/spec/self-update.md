@@ -6,7 +6,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 
 An administrator updates the OADM server and their own client from inside OADM, instead of going to the download page.
 **Install now** in the new version dialog starts it; the result is shown to the client after the update, also when it
-failed. Site nodes are updated by hand on their computers (see "Site nodes"). Decisions of 2026-11-02, asked one by one.
+failed. Site nodes are updated by hand on their computers (see "Site nodes"). Decisions of 2026-11-02, asked one by one;
+gaps closed on 2026-11-03 (helper outside the service, silent installs keep the setup type, first version, database copy,
+installer results, disk space; no offline path).
 
 ## Rules that never break
 
@@ -22,7 +24,7 @@ failed. Site nodes are updated by hand on their computers (see "Site nodes"). De
    installer's SHA-256 must match the release's `SHA256SUMS.txt` (both over HTTPS from GitHub), and the file must be the
    one the platform expects by name and size limit (400 MB); anything else is deleted and refused.
 5. **The server remembers.** Every update has a record in the data folder (`update/state.json`: from, to, started,
-   step, result, reason, installer log path) written before the installer starts and completed by the server that starts
+   step, result, reason, installer log path, database copy) written before the installer starts and completed by the server that starts
    afterwards, old or new. The client only shows what the server says.
 6. **Never during a task.** **Install now** is disabled while a task runs (tooltip "3 tasks are running"); once the update
    started, the server starts no new task and no event rule action.
@@ -30,15 +32,45 @@ failed. Site nodes are updated by hand on their computers (see "Site nodes"). De
    version. The result says what happened and what to do.
 8. **Every update is in the audit log**: who, from, to, result.
 
+9. **The helper never runs inside the service.** Stopping the service must not stop the helper: on Linux it starts as
+   its own transient unit (`systemd-run --unit=oadm-update --collect`; systemd stops every process of a service's
+   control group), on macOS as its own launchd job (`launchctl submit -l com.oadm.update`), on Windows as a detached
+   process (the Service Control Manager does not stop a service's child processes).
+10. **A silent update keeps the setup type.** "Client only" stays client only, "Server and client" stays both:
+    - Windows: `OADM_SETUP` is set today only in the setup screens (`Sequence="ui"`), which `/qn` skips. It is also set in
+      the execute sequence after `MigrateFeatureStates`, and the helper passes no feature properties.
+    - macOS: `installer -pkg` remembers no choices. The helper passes a choice file (`-applyChoiceChangesXML`) with
+      `com.oadm.choice.server` unselected when no server is installed (no `/Library/LaunchDaemons/com.oadm.server.plist`).
+    - Linux: server and client are separate packages, each updates only itself.
+11. **A copy of the database first.** Before the installer starts, the server copies its database with the SQLite backup
+    API to `update/oadm-<from version>.db`: the new server migrates the database on its first start, and an older server
+    cannot open a migrated one. Only the copy of the last update is kept. A failed or missing result names the copy;
+    putting it back is a manual step in the user docs, never done by OADM.
+12. **Installer results are read, not guessed.** Each exit code has its text in the result:
+    - `msiexec` (always `/norestart`, OADM never restarts the computer): 0 done; 3010 done, "Restart the
+      computer to finish the update"; 1618 "Another installation is running. Try again later."; anything else "The
+      installer failed (code N)" with the log.
+    - `apt-get` waits up to 5 minutes for the package lock (`-o DPkg::Lock::Timeout=300`), else "Another installation is
+      running. Try again later."; any other failure "The installer failed" with its output in the log.
+    - `installer`: a non-zero exit is "The installer failed" with `/var/log/install.log`.
+13. **Enough room.** The data folder needs free space of three times the installer's size (download, database copy,
+    installer cache), else "Not enough free disk space for the update" before anything is downloaded.
+14. **The first version with self update is installed by hand.** Older servers and clients have no Install now; the
+    release notes of that version say so.
+
 ## Server (and a client on the same computer)
 
 1. The new version dialog shows **Install now** (filled accent; Open download page becomes secondary) to an
    Administrator whose server is older than the release. The dialog changes in place to the steps: Download the update,
    Check the download, Install the update.
-2. The server downloads the installer of its platform into `update/`, checks it, writes the record, tells every connected client "update to 4.9.0 starting" and
-   starts its helper detached, then stops accepting calls.
-3. The helper (as SYSTEM / root) runs the installer silently with a log (`msiexec /i … /qn /norestart /l*v`,
-   `apt-get install -y ./oadm-server_….deb`, `installer -pkg … -target /`), then waits up to 5 minutes for the service to
+2. The server checks the free space (rule 13), downloads the installer of its platform from the GitHub release into
+   `update/`, checks it, copies the database (rule 11), writes the record, tells every connected client "Updating the
+   server to 4.9.0" and starts its helper outside the service (rule 9), then stops accepting calls. GitHub not reachable:
+   "Could not download the update. Install it from the download page." with Open download page; nothing else happens.
+3. The helper (as SYSTEM / root) waits up to 30 s for the clients on this computer to close (step 6), so the installer
+   finds no client file in use. It runs the installer silently with a log (`msiexec /i … /qn /norestart /l*v`,
+   `apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-server_….deb`, `installer -pkg … -target /` with the choice
+   file of rule 10), reads its exit code (rule 12), then waits up to 5 minutes for the service to
    answer `AuthService.Status` on this computer with the new version.
 4. **The new version answers:** done. **The installer failed** (on Windows the MSI rolled back and the old server runs
    again): the helper writes the installer's error into the record. **The new version does not answer**: the helper writes
@@ -55,12 +87,12 @@ failed. Site nodes are updated by hand on their computers (see "Site nodes"). De
 ## Client on another computer
 
 Once the server is newer than the client, an Administrator's client offers **Update client** (the new version dialog
-for the server's version; other users: Open download page). The client downloads its installer (from the server when it
-has it, else from GitHub), checks it, starts its helper and closes. The helper runs the installer with the system's
-elevation prompt and visible progress (`msiexec /i … /passive`, `pkexec apt-get install -y ./oadm-client_….deb`, an
-administrator prompt for `installer -pkg`), then starts the client that is installed now: the new one says "OADM updated
-to 4.9.0"; the old one (installer failed, cancelled prompt) says "The update failed" with the reason. Feature choices stay (MSI
-MigrateFeatureStates, .pkg choices).
+for the server's version; other users: Open download page). The client downloads its installer from the GitHub release
+(not reachable: Open download page), checks it like the server does (rules 4 and 13), starts its helper and closes. The
+helper runs the installer with the system's elevation prompt and visible progress (`msiexec /i … /passive /norestart`,
+`pkexec apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-client_….deb`, an administrator prompt for
+`installer -pkg` with the choice file of rule 10), reads its exit code (rule 12), then starts the client that is installed now: the new one says "OADM updated
+to 4.9.0"; the old one (installer failed, cancelled prompt) says "The update failed" with the reason. The setup type stays (rule 10).
 
 ## Site nodes
 
@@ -72,21 +104,16 @@ download page.
 
 ## Server without internet
 
-The server tries GitHub first. Without an answer, an Administrator's client downloads the installers the server needs
-(its own platform) and uploads them
-(`UpdateService.Upload`, client stream in chunks), like "By the clients" of [vulnerabilities.md](vulnerabilities.md). The
-server checks them against `SHA256SUMS.txt`, which the client uploads too.
+Not part of self update (decision 2026-11-03). A server or client that cannot reach GitHub is updated the normal way,
+with the installer from the download page.
 
 ## gRPC
 
 `UpdateService` ([grpc.md](grpc.md)), every method `server.update`:
 
-- `Get`: the server's version and platform, the latest release, the running update and the last result; whether
-  installers are on the server.
+- `Get`: the server's version, platform and machine ID, the latest release, the running update and the last result.
 - `Start` (version): checks the rules above, then steps 2 to 3. `FAILED_PRECONDITION` while a task runs, for a
-  pre-release, a downgrade or a missing installer.
-- `Upload`: an installer or `SHA256SUMS.txt` from the client.
-- `DownloadInstaller` (platform): a client installer the server has (server stream in chunks).
+  pre-release, a downgrade, the same version, too little disk space or a download that failed its checks.
 
 The update's steps reach every client through a server stream while the server runs; the final result through `Get` after
 the reconnect.
@@ -98,12 +125,15 @@ the reconnect.
 - A release signature: the SHA-256 of the same GitHub release is the check (decision 2026-11-02).
 - Updating clients of other users or other computers from the server.
 - Updating site nodes (see "Site nodes").
+- Servers and clients without access to GitHub (see "Server without internet").
+- Putting the database copy back (a manual step in the user docs).
 - winget, an apt repository, the macOS App Store.
 
 ## Tests
 
-The update record across a restart (done, failed, not back); the helper's installer call per platform with a
-fake installer and a `FakeTimeProvider`; refusal of a pre-release, a downgrade, a wrong checksum, a wrong file name or
-size, a running task; the upload path; the client's states (updating, updated, failed, not back) headless with
+The update record across a restart (done, failed, not back); the helper's start outside the service and its installer
+call per platform (choice file on macOS, each exit code) with a fake installer and a `FakeTimeProvider`; the database
+copy; refusal of a pre-release, a downgrade, the same version, a wrong checksum, a wrong file name or size, too little
+disk space, a running task; `Package.wxs` sets the setup type in the execute sequence; the client's states (updating, updated, failed, not back) headless with
 screenshots; the hint for older site nodes. A real update of each installer is a manual test on
-Windows, Debian/Ubuntu and macOS, written down in `packaging/README.md`.
+Windows, Debian/Ubuntu and macOS, each with "Server and client" and "Client only", written down in `packaging/README.md`.
