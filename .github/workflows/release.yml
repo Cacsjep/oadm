@@ -8,9 +8,11 @@ name: release
 #                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
 #                 plus the portable ZIPs of the server and client publish folders per platform (plugin development);
 #                 the OADM Site Node too: its MSI (installed by smoke-windows-node) and its .deb packages (amd64, arm64,
-#                 installed, checked and removed here); no portable ZIP and no macOS package for the node
-#   3. release    the GitHub release of the tag with the installers, the ZIPs and SHA256SUMS.txt (a tag with a pre-release
-#                 part, v1.2.0-rc.1, is a pre-release and never the latest; installers are not signed;
+#                 installed, checked and removed here); no portable ZIP and no macOS package for the node;
+#                 the add-on ZIPs oadm-addon-<id>-<version>-<rid>.zip of each platform (docs/spec/add-ons.md), checked,
+#                 and no add-on folder in any installer or portable ZIP
+#   3. release    the GitHub release of the tag with the installers, the ZIPs, the add-on ZIPs and SHA256SUMS.txt (a tag
+#                 with a pre-release part, v1.2.0-rc.1, is a pre-release and never the latest; installers are not signed;
 #                 the checksums are published instead)
 #   docs          (with the tests) the offline docs of the client's Help (website, npm run build:offline), put into the
 #                 client of every installer as docs/ (docs/spec/help.md)
@@ -145,6 +147,36 @@ jobs:
         shell: bash
         run: ./manage.sh package site-node --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
+      # The add-on ZIPs of this platform (docs/spec/add-ons.md "Release files"): each add-on with server and client part
+      # and the native libraries of this platform only; the server downloads them from this release.
+      - name: Build add-on archives (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./manage.ps1 package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Build add-on archives (Linux, macOS)
+        if: matrix.target != 'windows'
+        shell: bash
+        run: ./manage.sh package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      # Every add-on has its ZIP for this platform with plugin.json, server and client part and only this platform's
+      # native libraries; no add-on folder next to the published exes (the installers and portable ZIPs come from them).
+      - name: Check add-on archives
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          rid="${{ matrix.rid }}"
+          ids="$(bash packaging/addons/addon-ids.sh)"
+          echo "add-ons: ${ids:-none}"
+          for id in $ids; do
+            bash packaging/addons/check-addon-zip.sh "artifacts/packages/oadm-addon-$id-$version-$rid.zip" "$id" "$rid"
+            for app in server client; do
+              test ! -e "artifacts/publish/$app/$rid/plugins/$id" || { echo "$app: add-on $id must not be published next to the exe"; exit 1; }
+            done
+          done
+          extra="$(ls artifacts/packages | grep '^oadm-addon-' | grep -v -- "-$version-$rid\.zip$" || true)"
+          test -z "$extra" || { echo "add-on ZIPs of another version or platform: $extra"; exit 1; }
+
       - name: License texts next to the published exes
         shell: bash
         run: |
@@ -183,10 +215,13 @@ jobs:
           if [ "$RUNNER_OS" != "Windows" ] && ! command -v zip >/dev/null; then
             if [ "$RUNNER_OS" = "Linux" ]; then sudo apt-get install -y zip; else brew install zip; fi
           fi
+          addons="$(bash packaging/addons/addon-ids.sh)"
           for app in Server Client; do
             name="OADM-$app-$version-$rid"
             cp -R "artifacts/publish/$(echo "$app" | tr '[:upper:]' '[:lower:]')/$rid" "$stage/$name"
             test -d "$stage/$name/plugins" || { echo "$name: plugins missing"; exit 1; }
+            # Add-ons have their own ZIPs (docs/spec/add-ons.md rule 1).
+            for id in $addons; do test ! -e "$stage/$name/plugins/$id" || { echo "$name: add-on $id must not be in it"; exit 1; }; done
             if [ "$RUNNER_OS" = "Windows" ]; then
               (cd "$stage" && pwsh -NoProfile -Command "Compress-Archive -Path '$name' -DestinationPath '$name.zip'")
             else
@@ -227,6 +262,16 @@ jobs:
           # folder (Client\docs), so the check is on the parent, not the row count.
           $docs = @(Query 'SELECT Directory_Parent, DefaultDir FROM Directory') -match '\| (\w+\|)?docs$'
           if ($docs.Count -eq 0 -or @($docs -notmatch '^ClientFolder \|').Count -ne 0) { throw "docs folder below the client only expected: $($docs -join '; ')" }
+          # No add-on folder (docs/spec/add-ons.md rule 1): the add-on plugin ids, as packaging/addons/addon-ids.sh finds them.
+          $addOns = @(Get-ChildItem plugins/*/*.csproj | ForEach-Object {
+              $xml = Get-Content -LiteralPath $_.FullName -Raw
+              if ($xml -match '<OadmAddOn>\s*true\s*</OadmAddOn>') {
+                if ($xml -match '<OadmPluginId>([^<]+)</OadmPluginId>') { $Matches[1].Trim() } else { $_.Directory.Name }
+              }
+            } | Sort-Object -Unique)
+          "add-ons: $($addOns -join ', ')"
+          $dirs = @(Query 'SELECT DefaultDir FROM Directory') | ForEach-Object { ($_ -split '\|')[-1].Trim() }
+          foreach ($id in $addOns) { if ($dirs -ccontains $id) { throw "add-on $id must not be in the MSI" } }
           Query "SELECT Property, Value FROM Property WHERE Property='ProductVersion'"
 
       - name: Validate site node MSI
@@ -276,6 +321,12 @@ jobs:
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'oadm-server.service'
           dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/client/docs/index.html$'
           ! dpkg-deb --contents artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/server/docs/'
+          # No add-on folder (docs/spec/add-ons.md rule 1).
+          for id in $(bash packaging/addons/addon-ids.sh); do
+            for p in oadm-server oadm-client; do
+              ! dpkg-deb --contents artifacts/packages/${p}_*_${{ matrix.deb }}.deb | grep -qF "/plugins/$id/" || { echo "$p: add-on $id must not be in it"; exit 1; }
+            done
+          done
           # The site node: service + command line, and the app (Depends oadm-site-node); no LGPL text.
           node=$(ls artifacts/packages/oadm-site-node_*_${{ matrix.deb }}.deb)
           app=$(ls artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb)
@@ -311,6 +362,10 @@ jobs:
           test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/TERMS.md
           test -f expanded/oadm-client.pkg/Payload/OADM.app/Contents/Resources/docs/index.html
           test ! -e expanded/oadm-client.pkg/Payload/OADM.app/Contents/MacOS/docs
+          # No add-on folder (docs/spec/add-ons.md rule 1).
+          for id in $(bash packaging/addons/addon-ids.sh); do
+            test -z "$(find expanded -type d -name "$id")" || { echo "add-on $id must not be in the .pkg"; exit 1; }
+          done
           # No license page: the client asks for the terms of use on its first start.
           ! grep -q '<license' expanded/Distribution
 
@@ -385,12 +440,23 @@ jobs:
           sudo test -f /var/lib/oadm-site-node/node.json
           echo "site node: install, service, status, remove ok"
 
+      # Without the add-on ZIPs: smoke-windows downloads this artifact.
       - name: Upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oadm-${{ steps.version.outputs.version }}-${{ matrix.rid }}
-          path: artifacts/packages/*
+          path: |
+            artifacts/packages/*
+            !artifacts/packages/oadm-addon-*
           if-no-files-found: error
+
+      # Their own artifact, for the release only. None when no add-on exists.
+      - name: Upload add-on archives
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: addons-${{ steps.version.outputs.version }}-${{ matrix.rid }}
+          path: artifacts/packages/oadm-addon-*
+          if-no-files-found: ignore
 
       # Their own artifact: smoke-windows downloads only the MSI; the release job takes every artifact.
       - name: Upload portable archives
@@ -524,13 +590,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: CHANGELOG.md
+          sparse-checkout: |
+            CHANGELOG.md
+            packaging/addons/addon-ids.sh
+            plugins/*/*.csproj
           sparse-checkout-cone-mode: false
 
       - name: Download installers
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: "{oadm,portable}-*"
+          pattern: "{oadm,portable,addons}-*"
           path: installers
           merge-multiple: true
 
@@ -558,6 +627,13 @@ jobs:
           sha256sum -- * > ../SHA256SUMS.txt
           mv ../SHA256SUMS.txt .
           cat SHA256SUMS.txt
+          # Every add-on for every server platform (AddOnCatalog.RuntimeIds): the server installs one only by this list.
+          version="${GITHUB_REF_NAME#v}"
+          for id in $(bash ../packaging/addons/addon-ids.sh); do
+            for rid in win-x64 linux-x64 linux-arm64 osx-x64; do
+              grep -q "  oadm-addon-$id-$version-$rid\.zip$" SHA256SUMS.txt || { echo "oadm-addon-$id-$version-$rid.zip missing"; exit 1; }
+            done
+          done
 
       - name: Create or update the release
         env:

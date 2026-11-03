@@ -15,7 +15,8 @@ Verbs:
   test      Run unit, perf, hardware or all tests              (default target: unit)
   publish   Self-contained single-file apps in artifacts/publish (default target: all)
   package   Installer for windows (MSI), linux (.deb) or macos (.pkg) in artifacts/packages,
-            the OADM Site Node (site-node), or the NuGet packages of the plugin SDK (nuget)
+            the OADM Site Node (site-node), the add-on ZIPs (addons), or the NuGet packages of
+            the plugin SDK (nuget)
   new       A new plugin from a tutorial sample: task, page or action
   license   Keys and license files for a commercial plugin: keys or sign
   clean     Remove bin, obj and artifacts
@@ -138,6 +139,7 @@ Self-contained single-file Release builds (ReadyToRun, embedded symbols, no .NET
 needed on the target machine). Every plugin project is published once into
 artifacts/publish/plugins/<plugin id>/ and copied next to each exe in plugins/<plugin id>/
 (the server loads the *.Server.dll, the client the *.Client.dll of each folder).
+Add-ons (<OadmAddOn>true</OadmAddOn>) are left out: "manage package addons" builds them.
 Next to each exe: LICENSE.txt, LGPL-2.1.txt and THIRD-PARTY-NOTICES.txt, generated from every
 published NuGet package and the bundled components (tools/Oadm.Notices).
 
@@ -160,11 +162,13 @@ Examples:
 ## package
 Usage: manage package <windows|linux|macos> [--rid RID] [--version V]
        manage package site-node [--rid RID] [--version V]
+       manage package addons [--rid RID] [--version V]
        manage package nuget [--version V]
 
 Publishes server and client for the RID (same as "manage publish all"), then builds the
 installer into artifacts/packages. Layout, services and data folders: packaging/README.md.
 "site-node" publishes and packages the OADM Site Node instead (service and app, docs/spec/sites.md).
+"addons" builds the add-on ZIPs instead (docs/spec/add-ons.md).
 "nuget" builds the plugin SDK packages instead (see the developer guide on the website).
 
 Every installer offers "Server and client" (default) or "Client only".
@@ -184,6 +188,11 @@ Targets:
             service "OADM Site Node", msiexec ... SERVER=<address> sets the server) or
             oadm-site-node_<version>_<arch>.deb and oadm-site-node-app_<version>_<arch>.deb (Linux,
             dpkg-deb). --rid win-x64, linux-x64 or linux-arm64; no macOS
+  addons    Every add-on plugin (<OadmAddOn>true</OadmAddOn>, server and client part) published
+            into artifacts/publish/addons/<rid>/<plugin id>/ with the native libraries of
+            that platform only, then oadm-addon-<plugin id>-<version>-<rid>.zip (the folder's
+            content, plugin.json at the top). --rid win-x64, linux-x64, linux-arm64 or osx-x64;
+            without --rid all four. Builds on any system (needs zip or python3 in bash)
   nuget     The plugin SDK in artifacts/nuget, all with the same version: Oadm.Sdk,
             Oadm.Sdk.Client, Oadm.Sdk.Testing, Oadm.Plugin.Sdk (project SDK), Oadm.Plugin.Templates
             (dotnet new oadm-task|page|action, generated from samples/ into artifacts/templates)
@@ -202,6 +211,7 @@ Examples:
   manage package linux --rid linux-arm64 --version v1.2.0
   manage package macos --rid osx-arm64
   manage package site-node --rid linux-arm64 --version 1.2.0
+  manage package addons --rid win-x64 --version 1.2.0
   manage package nuget --version 1.2.0
 
 ## new

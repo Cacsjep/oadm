@@ -4,20 +4,22 @@
 installer into `artifacts/packages/`. The publish step writes self-contained single-file exes, every plugin project in
 `plugins/<plugin id>/` next to each exe, and `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt`
 next to each exe. The client also gets the offline docs of Help as `docs/` when `artifacts/docs-offline/` exists
-(`manage build docs-offline`, needs Node.js; in CI the job `docs`).
+(`manage build docs-offline`, needs Node.js; in CI the job `docs`). Add-on plugins (`<OadmAddOn>true</OadmAddOn>`) are
+never in an installer or portable ZIP (see "Add-on ZIPs").
 
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
 when the jobs it needs passed (details in `docs/spec/packaging.md` "CI"):
 1. `tests`: build and unit tests on Windows, Linux and macOS (30 min timeout, hang detection after 5 min).
-2. `installers`: every installer (the .deb packages for arm64 on a native ARM runner), the OADM Site Node packages and
-   the portable ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders). The
-   .deb packages are installed, checked and removed on the runner, as "Server and client", as "Client only" and the site
-   node; the .pkg is checked without installing it.
+2. `installers`: every installer (the .deb packages for arm64 on a native ARM runner), the OADM Site Node packages,
+   the portable ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders) and
+   the add-on ZIPs of the platform. The .deb packages are installed, checked and removed on the runner, as "Server and
+   client", as "Client only" and the site node; the .pkg is checked without installing it; no installer or portable ZIP
+   may hold an add-on folder.
 3. `smoke-windows` and `smoke-windows-node`: the MSI (both ways) and the site node MSI installed, checked and removed,
    each on a runner of its own.
 4. `nuget-pack` (after `tests`): the plugin SDK packages; every template is built and tested with them.
-5. `release`: the GitHub release of the tag with the installers, the ZIPs and `SHA256SUMS.txt`, the release text from
-   `CHANGELOG.md`. A tag with a pre-release part (`v1.2.0-rc.1`) makes a pre-release, never the latest release.
+5. `release`: the GitHub release of the tag with the installers, the ZIPs, the add-on ZIPs and `SHA256SUMS.txt`, the
+   release text from `CHANGELOG.md`. A tag with a pre-release part (`v1.2.0-rc.1`) makes a pre-release, never the latest release.
 6. `nuget`: the plugin SDK packages on nuget.org (Trusted Publishing); needs the repository variable `NUGET_USER`,
    skipped for a pre-release.
 
@@ -75,6 +77,21 @@ Notes:
   `/icon/oadm-app-icon-<size>.png`; the client uses `oadm-256.png` as window icon.
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
   `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`).
+
+## Add-on ZIPs
+
+`manage package addons [--rid RID] [--version V]` (`docs/spec/packaging.md` "Add-on ZIPs", `docs/spec/add-ons.md`)
+publishes every add-on plugin, server and client part together, for one platform and zips it as
+`oadm-addon-<plugin id>-<version>-<rid>.zip` into `artifacts/packages/`. RIDs: `win-x64`, `linux-x64`, `linux-arm64`,
+`osx-x64`; without `--rid` all four. Builds on any system.
+
+- Content: the plugin folder at the top of the ZIP (`plugin.json`, `*.Server.dll`, `*.Client.dll`, their deps files,
+  native libraries and models of that platform only). The server installs it into `<datafolder>/addons/<plugin id>/`;
+  by hand, unpack it there.
+- Limits: the ZIP at most 400 MB; the client part (`plugin.json`, top-level `*.Client.dll`, `client/`) at most 24 MB,
+  no native libraries in it.
+- Staging folder: `artifacts/publish/addons/<rid>/<plugin id>/`.
+- Checks: `addons/check-addon-zip.sh <zip> <plugin id> <rid>` (also in CI); `addons/addon-ids.sh` lists the add-on ids.
 
 ## Self update: manual test
 

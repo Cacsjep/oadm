@@ -9,7 +9,9 @@ The file layout of every installer and the user-facing install notes are in `pac
 - Server and client publish as one self-contained single-file exe per platform (`PublishSingleFile`,
   `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see `manage publish`. Every plugin project is published
   once into `artifacts/publish/plugins/<plugin id>/` (`<OadmPluginId>`, server and client part together) and copied next
-  to both exes in `plugins/<plugin id>/`, so a new plugin project is packaged without further changes.
+  to both exes in `plugins/<plugin id>/`, so a new plugin project is packaged without further changes. Add-on plugin
+  projects (`<OadmAddOn>true</OadmAddOn>`, `docs/spec/add-ons.md`) are left out (`Test-AddOn` / `is_addon`), so no
+  installer and no portable ZIP holds their folder; they get their own ZIPs ("Add-on ZIPs").
 - The client gets the offline docs of Help (`docs/spec/help.md`) as `docs/` next to its exe: `manage publish` copies
   `artifacts/docs-offline/` (`manage build docs-offline`; in CI the job `docs`) when it exists, else it warns. The MSI and
   the .deb carry it in the client folder, the .pkg in `OADM.app/Contents/Resources/docs`. The server and the OADM Site
@@ -25,6 +27,29 @@ The file layout of every installer and the user-facing install notes are in `pac
   the publish folder contains only the exe. They add about 57 MB to the win-x64 exe. `OADM_FFMPEG_DIR` loads a
   user-supplied build instead (LGPL replaceability), `Oadm.Client --check-decoder` verifies the decoder without a window.
   Never add GPL or nonfree FFmpeg builds.
+
+## Add-on ZIPs
+
+- `manage package addons [--rid RID] [--version V]` (`docs/spec/add-ons.md` "Release files"): every add-on (all plugin
+  projects with `<OadmAddOn>true</OadmAddOn>` and the same `<OadmPluginId>`, server and client part) is published with
+  `dotnet publish -r <rid> --self-contained false` into `artifacts/publish/addons/<rid>/<plugin id>/` and zipped as
+  `oadm-addon-<plugin id>-<version>-<rid>.zip` (`AddOnCatalog.ReleaseFileName`) into `artifacts/packages/`.
+- Platforms: `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64` (`AddOnCatalog.RuntimeIds`; the scripts keep the same list,
+  a test checks it); without `--rid` all four. The publish is RID-specific, so NuGet native libraries are those of that
+  platform only, next to the dlls; a `runtimes/` folder left by a package keeps only `<rid>`, its OS and `unix` (outside
+  Windows). It builds on any system (cross-publish; bash needs `zip` or `python3`).
+- The ZIP holds the plugin folder's content at the top (no top folder): `plugin.json`, the server part, the client part,
+  their `*.deps.json`, the native libraries and models of that platform. The server unpacks it into
+  `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
+  the add-on has a client project) and that no native library of another platform is in it (no `.so` on Windows and
+  macOS, no `.dylib` on Windows and Linux).
+- Limits of the server: the ZIP at most 400 MB (the download limit of `UpdateDownloader`); the client part the server
+  hands to clients is `plugin.json`, the top-level `*.Client.dll` and everything under `client/`, at most 24 MB unpacked
+  and never a native library. Client-only dependencies of an add-on go under `client/`.
+- `packaging/addons/addon-ids.sh` prints the add-on plugin ids, `packaging/addons/check-addon-zip.sh <zip> <id> <rid>`
+  checks one ZIP the same way (both used by `release.yml`).
+- The add-on ZIPs have no notices of their own yet; the third-party notices of OADM's installers do not list the
+  add-ons' packages.
 
 ## Notices and terms of use
 
@@ -132,6 +157,10 @@ when the jobs it needs passed:
   artifact `portable-<version>-<rid>`). Takes the offline docs of the job `docs` into the client. Checks the license
   texts and the client's `docs/index.html` next to the published exes; installs, checks and removes the .deb packages as
   "Server and client", as "Client only" and the site node; checks the .pkg's choices and payload without installing.
+  Builds the add-on ZIPs of its platform (`manage package addons --rid <rid>`, their own artifact
+  `addons-<version>-<rid>`, left out of `oadm-<version>-<rid>` so `smoke-windows` does not download them), checks each
+  with `check-addon-zip.sh` and checks that no add-on folder is next to the published exes, in the portable ZIPs, the MSI
+  (Directory table), the .deb packages or the .pkg.
 - `docs` (15 min, next to the tests): `npm run build:offline` in `website/` once, uploaded as the artifact `docs-offline`.
 - `smoke-windows` (needs installers, 30 min): the MSI installed, checked and removed both ways by
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest
@@ -142,8 +171,8 @@ when the jobs it needs passed:
 - `nuget-pack` (needs tests): `manage package nuget` with the tag's version, every template created, built and tested
   against only these packages (`packageSourceMapping` `Oadm.*` to the local folder), uploaded as the artifact
   `nuget-packages`.
-- `release` (needs all of them): the GitHub release of the tag with the installers, the portable ZIPs and
-  `SHA256SUMS.txt`; the release text is the tag's section of `CHANGELOG.md` (GitHub's generated notes without one). A
+- `release` (needs all of them): the GitHub release of the tag with the installers, the portable ZIPs, the add-on ZIPs
+  and `SHA256SUMS.txt` (fails when an add-on ZIP of one of the four platforms is missing from it); the release text is the tag's section of `CHANGELOG.md` (GitHub's generated notes without one). A
   re-run of a moved tag first deletes the release's assets it did not build, so the release holds exactly what
   `SHA256SUMS.txt` lists. A tag with a pre-release part (`v3.5.0-rc.1`) makes a GitHub pre-release that never becomes the
   latest release, so the website's download buttons (`/releases/latest`) stay on the last real release.
@@ -286,7 +315,9 @@ links contact@acs-dev.org with the request in the mail.
 - The plugins (`build`, `run` server / client) are built in one MSBuild run in parallel through a generated solution
   filter `artifacts/plugins.slnf` (every `plugins/*/*.csproj`, which must be in `Oadm.sln`).
 - `manage package nuget [--version]` writes the plugin SDK packages to `artifacts/nuget` (templates generated into
-  `artifacts/templates` first); `manage license` runs `oadm license` of `tools/Oadm.Tools`.
+  `artifacts/templates` first); `manage package addons [--rid] [--version]` the add-on ZIPs ("Add-on ZIPs");
+  `manage license` runs `oadm license` of `tools/Oadm.Tools`. Build and run (development) still build the add-ons into
+  `artifacts/plugins/`.
 - **`manage new task|page|action --name "<name>" [--id <id>]`** (`tools/Oadm.NewPlugin`): copies that sample into
   `plugins/Oadm.Plugins.<Name>(.Client)` and `tests/Oadm.Plugins.<Name>.Tests` with the sample's name, namespaces, id
   (default `community.<kebab>`) and display name replaced, test references pointed at `plugins/`, a
