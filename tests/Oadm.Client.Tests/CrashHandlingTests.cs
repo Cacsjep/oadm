@@ -77,9 +77,10 @@ public sealed class CrashHandlingTests
             Dispatcher.UIThread.RunJobs();
 
             Assert.DoesNotContain(panel.Children, c => c.Name == "x.broken");
-            Assert.Contains(panel.Children, c => c.Name == "oadm.toolbar.add");
+            Assert.Contains(panel.Children, c => c.Name == "AddButton"); // the built-in entries still load
             await f.Dialogs.Received(1).ShowMessageAsync("Toolbar", "The toolbar entry x.broken failed: no control");
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 

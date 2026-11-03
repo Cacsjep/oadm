@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
 using Oadm.Client.Devices.Toolbar;
+using Oadm.Client.Infrastructure;
 using Oadm.Client.Plugins;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
@@ -78,7 +79,8 @@ public sealed class ToolbarPluginTests
         HeadlessUnitTestSession session = HeadlessSession.Shared;
         await session.Dispatch(async () =>
         {
-            using var f = new DevicesFixture(registry: Registry(new ClientPluginLoader([TestPluginRoot], NullLogger<ClientPluginLoader>.Instance).ToolbarPlugins));
+            // The task buttons are rebuilt on the UI thread, like in the client.
+            using var f = new DevicesFixture(registry: Registry(new ClientPluginLoader([TestPluginRoot], NullLogger<ClientPluginLoader>.Instance).ToolbarPlugins), catalogUi: new AvaloniaUiDispatcher());
             f.SeedDevices(
                 TestSupport.Device("1", "B8A44F631339", "10.0.0.48", "AXIS P3265-V"),
                 TestSupport.Device("2", "ACCC8E0A1B2C", "10.0.0.21", "AXIS M3106-L Mk II"));
@@ -95,8 +97,8 @@ public sealed class ToolbarPluginTests
             Assert.Contains("toolbar", buttons[0].Classes);
             Assert.Contains("toolbar", buttons[1].Classes);
             Assert.NotNull(buttons[0].Label.Icon);
-            var addMenu = Assert.IsType<MenuFlyout>(buttons[0].Flyout); // Add: one menu with the four ways to add devices
-            Assert.Equal(["Discovery", "Network range", "Add manually", "Import from file"], addMenu.Items.OfType<MenuItem>().Select(i => i.Header as string ?? string.Empty).ToArray());
+            var addMenu = Assert.IsType<MenuFlyout>(buttons[0].Flyout); // Add: one menu with the five ways to add devices
+            Assert.Equal(["Discovery", "Network range", "Add manually", "Import from file", "Import from ADM"], addMenu.Items.OfType<MenuItem>().Select(i => i.Header as string ?? string.Empty).ToArray());
             ToolbarSeparator[] separators = panel.Children.OfType<ToolbarSeparator>().ToArray();
             Assert.Equal(3, separators.Length);
             Assert.Equal([true, false, true], separators.Select(s => s.IsVisible).ToArray());
@@ -129,6 +131,7 @@ public sealed class ToolbarPluginTests
             Assert.Empty(panel.Children);
             Assert.Same(buttons[0], other.Children[0]);
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 

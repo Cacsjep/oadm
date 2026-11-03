@@ -264,6 +264,7 @@ public sealed class FormValidationTests
             Assert.True(vm.SaveCommand.CanExecute(null));
             Assert.Null(vm.SaveBlockedReason);
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -305,6 +306,7 @@ public sealed class FormValidationTests
             Assert.True(window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Addresses scanned at once" && x.IsEffectivelyVisible).HasError);
             Capture(window, Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR"), "settings-card-opened-by-error.png");
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -341,6 +343,7 @@ public sealed class FormValidationTests
             vm.NewCredentialPassword = "secret";
             Assert.True(vm.AddCredentialCommand.CanExecute(null));
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -386,6 +389,7 @@ public sealed class FormValidationTests
             await vm.LoadAsync();
             Assert.Equal(32m, vm.MaxParallelTasksPerPlugin);
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -422,6 +426,7 @@ public sealed class FormValidationTests
             Assert.True(vm.AllowBasicOverHttp);
             Assert.Equal("On", vm.AllowBasicOverHttpText);
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 

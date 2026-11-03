@@ -67,6 +67,7 @@ public sealed class DevicePickerTests(ITestOutputHelper output)
 
             cancel.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
             Assert.False(window.IsVisible);
+            return true;
         }, CancellationToken.None);
     }
 

@@ -148,6 +148,7 @@ public sealed class CommanderViewHeadlessTests
                 Capture(dialog, outDir, "plugin-vapix-commander-raw-errors.png");
                 dialog.Close();
                 completed = true;
+                return true;
             }, CancellationToken.None);
             Assert.True(completed, "the page checks did not run to the end");
         }
@@ -213,17 +214,22 @@ public sealed class CommanderViewHeadlessTests
                 builder.Raw.QueryRows.Clear();
                 builder.Raw.QueryRows.Add(new KeyValueRowViewModel { Key = "diskid", Value = "all" });
                 builder.Raw.ResponseKind = ResponseKinds.Xml;
+                // Send checks every rule but name and category: a path the editor does not know needs its API by hand.
+                builder.Raw.RequiresApi = "param-cgi";
+                builder.Raw.RequiresVersion = "1.0";
                 vapix.Handler = _ => FakeVapix.Text(
                     "<?xml version=\"1.0\" encoding=\"UTF-8\"?><root xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" version=\"1.0\"><!-- edge storage --><disks numberofdisks=\"1\"><disk diskid=\"SD_DISK\" name=\"\" totalsize=\"30535680\" freesize=\"29967360\" cleanuplevel=\"90\" cleanupmaxage=\"7\" group=\"S0\" status=\"OK\" filesystem=\"vfat\" fullaction=\"overwrite\" readonly=\"no\" /><note><![CDATA[Card <A> & more]]></note></disks></root>",
                     HttpStatusCode.OK,
                     "text/xml");
                 await builder.SendCommand.ExecuteAsync(null);
                 Dispatcher.UIThread.RunJobs();
+                Assert.Null(builder.TryResult!.Error);
                 body = dialog.GetVisualDescendants().OfType<CodeView>().First(c => c.IsEffectivelyVisible);
                 Assert.Equal(CodeLanguage.Xml, body.Document.Language);
                 Assert.True(body.Document.IsHighlighted);
                 Capture(dialog, outDir, "plugin-vapix-commander-try-xml.png");
                 dialog.Close();
+                return true;
             }, CancellationToken.None);
         }
         finally

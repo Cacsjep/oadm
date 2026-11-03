@@ -169,6 +169,7 @@ public sealed class UnsupportedTasksMenuTests(ITestOutputHelper output)
             }
 
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
