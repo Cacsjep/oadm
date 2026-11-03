@@ -6,14 +6,18 @@ namespace Oadm.Client.Plugins.AddOns;
 
 /// <summary>
 /// The texts of the Optional plugins card (docs/spec/add-ons.md "Plugins page"), one phrase per case. Users see add-ons as
-/// "optional plugins", never "add-on"; the server's texts are its own <c>Oadm.Core.Plugins.AddOns.AddOnTexts</c>.
+/// "optional plugins", never "add-on"; the server sends its own sentences (why a row cannot be installed, Removed, a failed
+/// download) in each row's message.
 /// </summary>
-public static class AddOnTexts
+public static class OptionalPluginTexts
 {
     public const string CardTitle = "Optional plugins";
 
     /// <summary>The progress row of the first read.</summary>
     public const string Reading = "Reading the optional plugins";
+
+    /// <summary>The progress row while the client parts come from the server.</summary>
+    public const string GettingParts = "Getting the optional plugins from the server";
 
     /// <summary>The one line below the optional plugins.</summary>
     public const string Source = "Optional plugins come from the OADM release on GitHub and are checked before they are installed. Clients get them from the server.";
@@ -22,14 +26,17 @@ public static class AddOnTexts
 
     public const string NotInstalled = "Not installed";
 
-    /// <summary>The row after Remove (the server's <c>AddOnTexts.Removed</c>).</summary>
-    public const string Removed = "Removed. The files go at the next restart of the server.";
+    /// <summary>The chip of a removed optional plugin (the server's message says when its files go).</summary>
+    public const string RemovedState = "Removed";
 
     public const string Install = "Install";
 
     public const string Remove = "Remove";
 
     public const string RemoveTitle = "Remove optional plugin";
+
+    /// <summary>A newer version came from the server while this client has the older one loaded.</summary>
+    public const string RestartClient = "Restart the client to use the new version.";
 
     /// <summary>The question of Remove.</summary>
     public static string RemoveQuestion(string name) => $"Remove {name}? It turns off now. Its settings are kept.";
@@ -60,28 +67,6 @@ public static class AddOnTexts
         _ => "Download",
     };
 
-    /// <summary>"V4.11.0 · 38 MB"; the size left out when unknown, the version when empty.</summary>
-    public static string Meta(string version, long sizeBytes)
-    {
-        var parts = new List<string>(2);
-        if (!string.IsNullOrEmpty(version))
-        {
-            parts.Add("V" + version);
-        }
-
-        if (sizeBytes > 0)
-        {
-            parts.Add(Size(sizeBytes));
-        }
-
-        return string.Join(" · ", parts);
-    }
-
-    /// <summary>A download size in KB, MB or GB (1,000 based, like the release page).</summary>
-    public static string Size(long bytes) => bytes switch
-    {
-        < 1_000_000 => string.Create(CultureInfo.CurrentCulture, $"{Math.Max(1, (long)Math.Round(bytes / 1_000d))} KB"),
-        < 1_000_000_000 => string.Create(CultureInfo.CurrentCulture, $"{Math.Round(bytes / 1_000_000d)} MB"),
-        _ => string.Create(CultureInfo.CurrentCulture, $"{Math.Round(bytes / 1_000_000_000d, 1)} GB"),
-    };
+    /// <summary>"V4.11.0"; empty when the version is.</summary>
+    public static string Meta(string version) => string.IsNullOrEmpty(version) ? string.Empty : "V" + version;
 }

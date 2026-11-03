@@ -107,9 +107,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
         _logger = logger;
         foreach (string root in pluginRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            LoadFrom(root);
-            _loadedPackages.UnionWith(_rootPackages);
-            _rootPackages.Clear();
+            Merge(Scan(root, addOn: false, _loadedPackages));
         }
     }
 
@@ -130,9 +128,10 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
     /// <summary>
     /// The client part of an add-on (docs/spec/add-ons.md rule 6), fetched while connected: loaded like a plugin folder,
-    /// each dll in its own load context. Call on the UI thread (the lists are read there).
+    /// each dll in its own load context (which also finds the part's dependencies in its <c>client/</c> folder). The
+    /// assemblies load on the thread pool; call on the UI thread, where the parts join the lists.
     /// </summary>
-    public int LoadAddOn(string packageId, string folder)
+    public async Task<int> LoadAddOnAsync(string packageId, string folder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
@@ -141,19 +140,63 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
             return 0;
         }
 
-        int before = _dialogs.Count + _pages.Count + _toolbar.Count;
-        LoadFrom(Path.GetFullPath(folder));
-        _loadedPackages.UnionWith(_rootPackages);
-        _rootPackages.Clear();
+        var loaded = new HashSet<string>(_loadedPackages, StringComparer.OrdinalIgnoreCase);
+        string root = Path.GetFullPath(folder);
+        ScannedParts parts = await Task.Run(() => Scan(root, addOn: true, loaded)).ConfigureAwait(true);
+        if (_loadedPackages.Contains(packageId))
+        {
+            return 0; // another load got there first
+        }
+
+        int count = Merge(parts);
         _loadedPackages.Add(packageId);
-        return _dialogs.Count + _pages.Count + _toolbar.Count - before;
+        return count;
     }
 
-    private void LoadFrom(string root)
+    /// <summary>Adds scanned parts to the lists; returns how many parts they brought.</summary>
+    private int Merge(ScannedParts parts)
     {
+        _dialogs.AddRange(parts.Dialogs);
+        _pages.AddRange(parts.Pages);
+        _toolbar.AddRange(parts.Toolbar);
+        foreach (var (part, packageId) in parts.PackageOf)
+        {
+            _packageOf[part] = packageId;
+        }
+
+        _contexts.AddRange(parts.Contexts);
+        _loadedPackages.UnionWith(parts.Packages);
+        return parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count;
+    }
+
+    /// <summary>The parts of one root, loaded without touching the lists (an add-on's on the thread pool).</summary>
+    private sealed class ScannedParts
+    {
+        public List<ITaskPluginDialog> Dialogs { get; } = [];
+
+        public List<ICorePluginPage> Pages { get; } = [];
+
+        public List<IToolbarPlugin> Toolbar { get; } = [];
+
+        public List<(object Part, string PackageId)> PackageOf { get; } = [];
+
+        public List<AssemblyLoadContext> Contexts { get; } = [];
+
+        /// <summary>Packages of this root (one package may have several client dlls).</summary>
+        public HashSet<string> Packages { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Loads every <c>*.Client.dll</c> below <paramref name="root"/>; packages in <paramref name="loadedPackages"/> (an
+    /// earlier root) are skipped. <paramref name="addOn"/>: the folder is an add-on's client part (dependencies without
+    /// deps.json in <see cref="Contracts.AddOnLayout.ClientFolder"/>).
+    /// </summary>
+    private ScannedParts Scan(string root, bool addOn, HashSet<string> loadedPackages)
+    {
+        var parts = new ScannedParts();
         if (!Directory.Exists(root))
         {
-            return;
+            return parts;
         }
 
         foreach (string dll in Directory.EnumerateFiles(root, "*.Client.dll", SearchOption.AllDirectories))
@@ -168,7 +211,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
                     continue;
                 }
 
-                if (packageId is not null && _loadedPackages.Contains(packageId))
+                if (packageId is not null && loadedPackages.Contains(packageId))
                 {
                     // An earlier root (a --plugin-dir build output) has this package already: that copy wins.
                     LogSkipped(_logger, packageId, dll);
@@ -177,11 +220,11 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
                 if (packageId is not null)
                 {
-                    _rootPackages.Add(packageId);
+                    parts.Packages.Add(packageId);
                 }
 
-                var context = new PluginLoadContext(dll);
-                _contexts.Add(context);
+                var context = new PluginLoadContext(dll, addOn);
+                parts.Contexts.Add(context);
                 // From memory: the file stays replaceable, so a plugin build can overwrite it while the client runs.
                 Assembly assembly = context.LoadWithoutLock(Path.GetFullPath(dll));
 
@@ -189,22 +232,22 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
                 {
                     if (typeof(ITaskPluginDialog).IsAssignableFrom(type) && Activator.CreateInstance(type) is ITaskPluginDialog dialog)
                     {
-                        _dialogs.Add(dialog);
+                        parts.Dialogs.Add(dialog);
                         LogLoaded(_logger, "dialog", dialog.PluginId, dll);
                     }
 
                     if (typeof(ICorePluginPage).IsAssignableFrom(type) && Activator.CreateInstance(type) is ICorePluginPage page)
                     {
-                        _pages.Add(page);
+                        parts.Pages.Add(page);
                         LogLoaded(_logger, "page", page.PluginId, dll);
                     }
 
                     if (typeof(IToolbarPlugin).IsAssignableFrom(type) && Activator.CreateInstance(type) is IToolbarPlugin toolbar)
                     {
-                        _toolbar.Add(toolbar);
+                        parts.Toolbar.Add(toolbar);
                         if (packageId is not null)
                         {
-                            _packageOf[toolbar] = packageId;
+                            parts.PackageOf.Add((toolbar, packageId));
                         }
                         LogLoaded(_logger, "toolbar", toolbar.Id, dll);
                     }
@@ -215,6 +258,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
                 LogLoadFailed(_logger, ex, dll);
             }
         }
+
+        return parts;
     }
 
     /// <summary>The id of plugin.json in the folder, or null.</summary>
@@ -245,9 +290,6 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     /// <summary>Packages of the roots loaded so far; a later root never loads the same package again.</summary>
     private readonly HashSet<string> _loadedPackages = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Packages of the root being loaded (one package may have several client dlls).</summary>
-    private readonly HashSet<string> _rootPackages = new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>
     /// Packages of OADM 4.1 that are parts of PKI now (docs/spec/pki.md "One plugin", the server's
     /// <c>Oadm.Core.Plugins.MergedPlugins.Ids</c>): a folder of one is never loaded.
@@ -267,8 +309,11 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     private static partial void LogLoadFailed(ILogger logger, Exception ex, string path);
 }
 
-/// <summary>Isolated load context; host-shared assemblies (SDK, Avalonia, logging) resolve from the default context.</summary>
-internal sealed class PluginLoadContext(string pluginPath)
+/// <summary>
+/// Isolated load context; host-shared assemblies (SDK, Avalonia, logging) resolve from the default context.
+/// <paramref name="addOn"/>: the context of an add-on's client part, which may come without deps.json.
+/// </summary>
+internal sealed class PluginLoadContext(string pluginPath, bool addOn = false)
     : AssemblyLoadContext(Path.GetFileNameWithoutExtension(pluginPath), isCollectible: true)
 {
     private readonly AssemblyDependencyResolver _resolver = new(pluginPath);
@@ -299,9 +344,14 @@ internal sealed class PluginLoadContext(string pluginPath)
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
         if (path is null)
         {
+            if (!addOn)
+            {
+                return null;
+            }
+
             // An add-on's client part (docs/spec/add-ons.md rule 6) may come without deps.json: its server part next to the
             // client dll, other dependencies in client/.
-            foreach (string candidate in (string[])[Path.Combine(_folder, assemblyName.Name + ".dll"), Path.Combine(_folder, "client", assemblyName.Name + ".dll")])
+            foreach (string candidate in (string[])[Path.Combine(_folder, assemblyName.Name + ".dll"), Path.Combine(_folder, Contracts.AddOnLayout.ClientFolder, assemblyName.Name + ".dll")])
             {
                 if (File.Exists(candidate))
                 {

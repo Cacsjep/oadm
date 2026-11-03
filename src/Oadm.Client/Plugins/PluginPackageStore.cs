@@ -9,12 +9,20 @@ namespace Oadm.Client.Plugins;
 /// The server's plugin packages and which are on (PluginService.ListPackages). Loaded on every connect and after a change
 /// on the Settings page; <see cref="Changed"/> lets the shell add or remove rail pages, refresh the task menus and hide the
 /// toolbar entries of packages that are off. A package the server does not list counts as on (older server). With an
-/// <see cref="AddOns.AddOnClientSync"/>, every load first brings the client parts of the server's add-ons, so the pages of
-/// an add-on follow like those of any plugin (docs/spec/add-ons.md rule 6).
+/// <see cref="AddOns.AddOnClientSync"/>, every load then brings the client parts of the server's add-ons in the background
+/// and announces the list again once parts came, so the pages of an add-on follow like those of any plugin; while the server
+/// installs an add-on (after its update) the list is read again every <see cref="AddOnPollInterval"/>
+/// (docs/spec/add-ons.md rule 6).
 /// </summary>
-public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPackageStore> logger, AddOns.AddOnClientSync? addOns = null)
+public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPackageStore> logger, AddOns.AddOnClientSync? addOns = null, TimeProvider? time = null)
 {
+    /// <summary>How often the list is read again while the server installs an add-on.</summary>
+    public static readonly TimeSpan AddOnPollInterval = TimeSpan.FromSeconds(10);
+
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
     private IReadOnlyList<PluginPackageInfo> _packages = [];
+    private Task _addOnsSynced = Task.CompletedTask;
+    private bool _polling;
 
     public IReadOnlyList<PluginPackageInfo> Packages => _packages;
 
@@ -58,21 +66,64 @@ public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPacka
         || _packages.FirstOrDefault(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)) is not { } package
         || package.Enabled;
 
+    /// <summary>The sync of the add-ons' client parts the last load started (completes when their pages are in).</summary>
+    public Task AddOnsSynced => _addOnsSynced;
+
+    /// <summary>
+    /// Reads the list and announces it (<see cref="Changed"/>); then brings the add-ons' client parts in the background
+    /// (<see cref="AddOnsSynced"/>) and announces the list again when they brought parts. Call on the UI thread.
+    /// </summary>
     public async Task LoadAsync(CancellationToken ct)
     {
         try
         {
             PluginPackageList list = await api.ListPluginPackagesAsync(ct).ConfigureAwait(true);
-            if (addOns is not null)
-            {
-                await addOns.SyncAsync(ct).ConfigureAwait(true);
-            }
-
             Apply(list);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogLoadFailed(logger, ex.Message);
+            return;
+        }
+
+        if (addOns is not null)
+        {
+            _addOnsSynced = SyncAddOnsAsync(addOns);
+        }
+    }
+
+    /// <summary>Never throws: a failed sync is logged, the client runs without the add-on's pages.</summary>
+    private async Task SyncAddOnsAsync(AddOns.AddOnClientSync sync)
+    {
+        try
+        {
+            if (await sync.SyncAsync(CancellationToken.None).ConfigureAwait(true) > 0)
+            {
+                Changed?.Invoke(this, EventArgs.Empty); // the shell adds the new pages
+            }
+        }
+#pragma warning disable CA1031 // The plugin list stays as it is.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogLoadFailed(logger, ex.Message);
+            return;
+        }
+
+        if (sync.AnyInstalling && !_polling)
+        {
+            // The server downloads an add-on (after its update): ask again until it is done, then its pages follow.
+            _polling = true;
+            try
+            {
+                await Task.Delay(AddOnPollInterval, _time).ConfigureAwait(true);
+            }
+            finally
+            {
+                _polling = false;
+            }
+
+            await LoadAsync(CancellationToken.None).ConfigureAwait(true);
         }
     }
 

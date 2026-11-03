@@ -9,8 +9,9 @@
        version with its state; administrators install and remove. A server without add-ons hides the card. -->
   <Border Classes="card" IsVisible="{Binding HasAddOns, FallbackValue=False}">
     <StackPanel Spacing="12">
-      <TextBlock Classes="cardTitle" Text="{x:Static addons:AddOnTexts.CardTitle}" />
-      <ui:ProgressRow Text="{x:Static addons:AddOnTexts.Reading}" IsVisible="{Binding IsLoading}" />
+      <TextBlock Classes="cardTitle" Text="{x:Static addons:OptionalPluginTexts.CardTitle}" />
+      <ui:ProgressRow Text="{x:Static addons:OptionalPluginTexts.Reading}" IsVisible="{Binding IsLoading}" />
+      <ui:ProgressRow Text="{x:Static addons:OptionalPluginTexts.GettingParts}" IsVisible="{Binding IsGettingParts}" />
       <ItemsControl ItemsSource="{Binding AddOns}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -26,31 +27,33 @@
                 <TextBlock Classes="secondary" Text="{Binding Description}" TextWrapping="Wrap" />
                 <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsVisible="{Binding HasMessage}"
                            Classes.secondary="{Binding !MessageIsError}" Classes.error="{Binding MessageIsError}" />
+                <TextBlock Classes="secondary" Text="{x:Static addons:OptionalPluginTexts.RestartClient}" TextWrapping="Wrap"
+                           IsVisible="{Binding RestartNeeded}" />
                 <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
               </StackPanel>
               <TextBlock Grid.Column="2" Classes="secondary small" Text="{Binding MetaText}" VerticalAlignment="Center" />
               <Panel Grid.Column="3" VerticalAlignment="Center">
-                <ui:ToolbarButton Text="{x:Static addons:AddOnTexts.Install}" IconKey="download" IsVisible="{Binding ShowInstall}"
-                                  IsEnabled="{Binding CanInstall}" ToolTip.Tip="{Binding InstallTip}" ToolTip.ShowOnDisabled="True"
-                                  Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).InstallCommand}"
-                                  CommandParameter="{Binding}" />
                 <ui:ProgressRow Width="320" Value="{Binding Percent}" Text="{Binding ProgressText}" IsVisible="{Binding IsInstalling}" />
-                <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsInstalled}">
-                  <ui:StatusChip Text="{x:Static addons:AddOnTexts.Installed}" IsOk="True" VerticalAlignment="Center" />
-                  <ui:ToolbarButton Classes="danger" Text="{x:Static addons:AddOnTexts.Remove}" IconKey="remove" IsVisible="{Binding ShowRemove}"
+                <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding !IsInstalling}">
+                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.Installed}" IsOk="True" VerticalAlignment="Center" IsVisible="{Binding IsInstalled}" />
+                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.RemovedState}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding IsRemoved}" />
+                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.NotInstalled}" VerticalAlignment="Center" IsVisible="{Binding ShowNotInstalled}" />
+                  <ui:ToolbarButton Text="{x:Static addons:OptionalPluginTexts.Install}" IconKey="download" IsVisible="{Binding ShowInstall}"
+                                    IsEnabled="{Binding CanInstall}" ToolTip.Tip="{Binding InstallTip}" ToolTip.ShowOnDisabled="True"
+                                    Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).InstallCommand}"
+                                    CommandParameter="{Binding}" />
+                  <ui:ToolbarButton Classes="danger" Text="{x:Static addons:OptionalPluginTexts.Remove}" IconKey="remove" IsVisible="{Binding ShowRemove}"
                                     IsEnabled="{Binding CanRemove}"
                                     Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).RemoveCommand}"
                                     CommandParameter="{Binding}" />
                 </StackPanel>
-                <ui:StatusChip Text="{x:Static addons:AddOnTexts.Removed}" IsWarning="True" MaxLines="2" IsVisible="{Binding IsRemoved}" />
-                <ui:StatusChip Text="{x:Static addons:AddOnTexts.NotInstalled}" IsVisible="{Binding ShowNotInstalled}" />
               </Panel>
             </Grid>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
       <TextBlock Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-      <tc:Callout Kind="Info" Text="{x:Static addons:AddOnTexts.Source}" />
+      <tc:Callout Kind="Info" Text="{x:Static addons:OptionalPluginTexts.Source}" />
     </StackPanel>
   </Border>
 </UserControl>

@@ -277,8 +277,11 @@ public interface IOadmApi
 
     // Add-on plugins (docs/spec/add-ons.md). Default: a server without add-ons (UNIMPLEMENTED; the Plugins page hides the card).
 
-    /// <summary>The add-ons of the server's version with their state (any logged-in user).</summary>
-    Task<AddOnList> ListAddOnsAsync(CancellationToken ct) => throw NoAddOns();
+    /// <summary>
+    /// The add-ons of the server's version with their state (any logged-in user). <paramref name="checkReach"/>: the server
+    /// checks that it reaches the release (the Plugins page's card); without it the last answer is used.
+    /// </summary>
+    Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct) => throw NoAddOns();
 
     /// <summary>Admin: installs an add-on; the progress until the last message (done or error).</summary>
     IAsyncEnumerable<AddOnProgress> InstallAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();
@@ -290,7 +293,7 @@ public interface IOadmApi
     Task<AddOnClientPart> GetAddOnClientPartAsync(string id, CancellationToken ct) => throw NoAddOns();
 
     private static Grpc.Core.RpcException NoAddOns() =>
-        new(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, Plugins.AddOns.AddOnTexts.NotOnThisServer));
+        new(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, Plugins.AddOns.OptionalPluginTexts.NotOnThisServer));
 
     // SiteService (reading needs "See sites"; everything else is Administrator only)
     Task<SiteList> ListSitesAsync(CancellationToken ct) => Task.FromResult(new SiteList());

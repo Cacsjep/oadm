@@ -578,7 +578,8 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct) =>
         await C.Plugins.RemovePackageLicenseAsync(new PackageIdRequest { Id = packageId }, cancellationToken: ct);
 
-    public async Task<AddOnList> ListAddOnsAsync(CancellationToken ct) => await C.Plugins.ListAddOnsAsync(new Empty(), cancellationToken: ct);
+    public async Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct) =>
+        await C.Plugins.ListAddOnsAsync(new ListAddOnsRequest { CheckReach = checkReach }, cancellationToken: ct);
 
     public IAsyncEnumerable<AddOnProgress> InstallAddOnAsync(string id, CancellationToken ct) =>
         ReadAll(C.Plugins.InstallAddOn(new AddOnIdRequest { Id = id }, cancellationToken: ct), ct);
