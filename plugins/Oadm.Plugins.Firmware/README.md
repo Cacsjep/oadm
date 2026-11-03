@@ -159,7 +159,7 @@ own choice). The list is one per model and shared by its devices. The card heade
 each device says what happens. Choosing on one device changes only that device; the
 select **Set versions** right in the header of the device card (same row as the title) sets every device. The right of
 that header shows either that select (signed in and the versions of axis.com arrived; hidden while the lookup runs and
-when it failed) or the command button **Sign in to MyAxis** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
+when it failed) or the command button **Sign in to MyAxis to download firmware** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
 another device has one. A chosen file is judged per device in its Result (Invalid file, Wrong product). Files given
 together (`SelectFilesAsync`, drag and drop and tests) go to the devices of their model; a refused file or two files for
 one product ("Two files are for P3265-V. Choose one file per model.") show directly below the table and block Upgrade.
@@ -241,7 +241,7 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   ("AXIS OS 11.11.192 is no longer on axis.com."). While the lookup runs, a progress line shows "Reading the versions on
   axis.com, 40 of 120 models" and Upgrade waits. Signed in, the dialog opens with Recommended; not signed in, every
   device starts on Choose file, the versions show for information, choosing one says "Sign in to MyAxis to download from
-  axis.com." in its Result, and the header has the button **Sign in to MyAxis** (`ITaskDialogContext.MyAxis.SignInAsync`);
+  axis.com." in its Result, and the header has the button **Sign in to MyAxis to download firmware** (`ITaskDialogContext.MyAxis.SignInAsync`);
   after a sign-in (in the dialog or elsewhere while it is open) the dialog reads axis.com again when it had not or
   failed (with its progress line), then sets Recommended on every device without a choice and the select shows
   Recommended, like opening the dialog signed in. The decision table, the upgrade path advice and the apps

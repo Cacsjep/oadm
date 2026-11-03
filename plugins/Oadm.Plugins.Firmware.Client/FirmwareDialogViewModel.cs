@@ -121,7 +121,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     [NotifyPropertyChangedFor(nameof(ShowSignIn), nameof(ShowRules))]
     public partial bool IsSignedIn { get; private set; }
 
-    /// <summary>The command button "Sign in to MyAxis" right in the header of the device card (not signed in).</summary>
+    /// <summary>The command button "Sign in to MyAxis to download firmware" right in the header of the device card (not signed in).</summary>
     public bool ShowSignIn => CanSignIn && !IsSignedIn;
 
     /// <summary>The select "Set versions" right in the header: signed in and the versions of axis.com arrived.</summary>
