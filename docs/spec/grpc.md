@@ -199,10 +199,13 @@ used again.
     size_bytes, state, percent, message, version, can_install}, every add-on of the server's version from `AddOnCatalog`),
     `InstallAddOn(id)` (Admin; stream of `AddOnProgress` {step Download, Check or Install, percent, done, error}, the last
     message has done or error set; NOT_FOUND unknown add-on; FAILED_PRECONDITION already installed, another install or
-    remove running, or a self update running; audit "Installed add-on"), `RemoveAddOn(id)` (Admin; NOT_FOUND,
-    FAILED_PRECONDITION not installed or a self update running; audit "Removed add-on"; reply: the whole list),
-    `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with path, data, sha256 lowercase hex};
-    NOT_FOUND unknown or not installed). UNIMPLEMENTED while the server has no installer (`IAddOnInstaller`).
+    remove running, a self update running, or a development build or pre-release (nothing to download); audit "Installed
+    optional plugin <name> V<version>"; done only after the server followed the package), `RemoveAddOn(id)` (Admin;
+    NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
+    V<version>"; reply: the whole list), `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with
+    path, data, sha256 lowercase hex}: plugin.json, the top-level `*.Client.dll`/`.pdb` and `*.Server.dll`/`.pdb`,
+    everything under `client/`; NOT_FOUND unknown or not installed; FAILED_PRECONDITION over 24 MB). UNIMPLEMENTED from an
+    installer that is not built (`NotSupportedException`); clients then hide the card.
 - **`SettingsService`** (`settings.proto`): `Get`, `Set` (field numbers in `docs/spec/settings-backup.md`; 0 or unset keeps
   the stored value; read-only `server_version = 21` and `key_replaced = 20` in both replies), `ListCredentials`,
   `AddCredential(user_name, password)` (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the

@@ -1,6 +1,6 @@
 # Add-on plugins (vision plugins)
 
-Status: **spec, not built** (2026-11-03).
+Status: **built** (2026-11-03): installer, registry, client, packaging and notices; the first add-on is Text recognition.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -26,7 +26,7 @@ release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
    the new version of every installed add-on by itself before it loads them (an add-on whose download fails stays
    unloaded with "Could not download <name> V<version>. Try again on the Plugins page.", OADM runs).
 4. **Administrators only.** Install and Remove need the Plugins permission of turning plugins on and off; both are in
-   the audit log ("Installed add-on Text recognition V4.11.0", "Removed add-on ...").
+   the audit log ("Installed optional plugin Text recognition V4.11.0", "Removed optional plugin ...").
 5. **Install without a restart, remove at the next start.** An installed add-on loads at once
    (`PluginLoader.LoadPackage` into its own `PluginLoadContext`), off; turning it on is the existing Turn on path. Every
    part that reads the plugin registry (permissions, event and action catalogue, pages) follows an added package as it
@@ -47,20 +47,42 @@ release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
 
 - Per add-on and platform of the server: `oadm-addon-<id>-<version>-<rid>.zip` (`win-x64`, `linux-x64`, `linux-arm64`,
   `osx-x64`): the plugin folder as the server loads it (`plugin.json`, server part, client part, native libraries of that
-  platform, models). Built in the same `release.yml` run, attached to the same release, listed in `SHA256SUMS.txt`.
-- The client part is platform-neutral (.NET only); the server hands it to clients of any system. A client part with
-  native libraries is not allowed for add-ons.
+  platform, models, `THIRD-PARTY-NOTICES.txt` and `LICENSE.txt`). Built in the same `release.yml` run, attached to the
+  same release, listed in `SHA256SUMS.txt`. The notices list the add-on's own NuGet packages and its models' licenses
+  (`tools/Oadm.Notices --addon`, `docs/spec/packaging.md` "Add-on ZIPs").
+- The client part is platform-neutral (.NET only); the server hands it to clients of any system: `plugin.json`, the
+  top-level `*.Client.dll`, the managed `*.Server.dll` it references (its contracts and texts; the client loads it next to
+  the client dll in the add-on's load context) with their `.pdb`, and everything under `client/`
+  (`AddOnFolders.ClientPartPatterns`). Never the server part's dependencies, native libraries or models. A client part
+  with native libraries is not allowed for add-ons.
 - The list of add-ons a version offers is in the server (`AddOnCatalog`: id, name, one line what it adds, size per
   platform), not read from GitHub, so the Plugins page shows them without internet.
 
 ## Server
 
-- Folder: `<datafolder>/addons/<id>/`, writable by the service. The list of installed add-ons is a server setting;
-  backups hold the list, not the files: after a restore the server downloads them again, as after an update. The loader reads it after the plugin folder next to the exe; an id in both: the bundled one wins
-  and the add-on is not loaded (log line).
+- Folder: `<datafolder>/addons/<id>/`, writable by the service. Folders starting with a dot are never add-ons
+  (`.download/`, `.new-*` and `.old-*` while one is swapped) and are emptied at every start. The list of installed add-ons
+  is the server setting `AddOns.Installed` (JSON array of {id, version, removed}, `SettingsAddOnListStore`); backups hold
+  the list, not the files: after a restore the server downloads them again, as after an update. A folder put in by hand
+  is taken into the list at the next start. The loader reads it after the plugin folder next to the exe; an id in both:
+  the bundled one wins and the add-on is not loaded (log line).
+- Start (`OadmServerHost`): `AddOnInstaller.LoadInstalledAsync` right after `PluginLoader.LoadFromRoots` (deletes the
+  folders of removed add-ons, loads every add-on of this version; no event, the start reads the registry);
+  `FetchAfterUpdateAsync` in the background once the start is over (after `PluginActivation.LoadAsync`, the licenses and
+  `PluginRegistry.MarkStarted`): an add-on of another version or without its folder (after an update or a restore) is
+  downloaded, loaded and followed like one installed now, with its stored choice; OADM runs meanwhile.
+- A development build or a pre-release downloads nothing: the row says "This OADM version has no optional plugins to
+  download." and Install stays off; folders put in by hand load as they are.
+- Wiring: `IAddOnListStore` = `SettingsAddOnListStore`, `IAddOnFiles` = `GitHubAddOnFiles` (the self update's
+  `IReleaseFeed` and `UpdateDownloader`), `IAddOnActivation` = `PluginActivationAddOns` (Turn off through
+  `PluginActivation.SetEnabledAsync`; waits for `PluginActivation.AddedPackagesFollowed`), `AddOnInstallerOptions(data
+  folder, server version, AddOnInstallerOptions.CurrentRuntimeId())`. The load raises `PluginRegistry.PackageAdded` (the
+  loader, never the installer); Installed is reported after the server followed it (`docs/spec/plugins.md` "Packages
+  loaded at run time").
 - Install: download into `<datafolder>/addons/.download/`, check SHA-256, unpack into a new folder, check `plugin.json`
   (id as expected, `minSdkVersion` met), then swap it in and load it. Any failure leaves nothing behind and says why
-  ("Could not download the add-on. Check that the server can reach github.com.", "The download is damaged. Try again.").
+  ("Could not download the optional plugin. Check that the server can reach github.com.", "The download is damaged. Try
+  again."). All server texts are `Oadm.Core.Plugins.AddOns.AddOnTexts`, the card's are the client's `AddOnTexts`.
 - One install or remove at a time; while a self update runs both are refused ("The server is updating.").
 - Remove keeps the add-on's settings, records and `plugin-data/<id>` (as when a plugin is turned off); installing it
   again picks them up.
@@ -70,8 +92,11 @@ release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
 
 ## Plugins page
 
-- Below the plugin list a card **Add-ons**: one row per add-on of this version: name, one line, size, state (Not
-  installed, Installing 42 %, Installed), and **Install** or **Remove** (red, with a confirmation).
+- Below the plugin list a card **Optional plugins**: one row per add-on of this version: name, one line, size, state (Not
+  installed, Installing 42 %, Installed), and **Install** or **Remove** (red, with the confirmation "Remove <name>? It
+  turns off now. Its settings are kept."). Below the rows: "Optional plugins come from the OADM release on GitHub and are
+  checked before they are installed. Clients get them from the server." A server without add-ons hides the card.
+- In the plugin list the package of an installed add-on shows the chip **Optional** next to its name.
 - Without access to GitHub the row says "The server cannot reach github.com." and Install stays off; the add-on can then
   be put into `<datafolder>/addons/<id>/` by hand from the release ZIP (Help page names the folder).
 

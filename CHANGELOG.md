@@ -14,6 +14,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Administrators update the server and their client from inside OADM with Install now.
 - The Sites page says which site nodes are older than the server, with a link to the download page.
 - Servers and clients before this version are updated by hand once; from then on Install now does it.
+- Optional plugins: administrators install them on the Plugins page from the OADM release, without a restart.
 
 ### Changed
 

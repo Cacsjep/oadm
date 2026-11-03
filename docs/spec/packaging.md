@@ -41,15 +41,20 @@ The file layout of every installer and the user-facing install notes are in `pac
 - The ZIP holds the plugin folder's content at the top (no top folder): `plugin.json`, the server part, the client part,
   their `*.deps.json`, the native libraries and models of that platform. The server unpacks it into
   `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
-  the add-on has a client project) and that no native library of another platform is in it (no `.so` on Windows and
-  macOS, no `.dylib` on Windows and Linux).
+  the add-on has a client project), `THIRD-PARTY-NOTICES.txt` and that no native library of another platform is in it
+  (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux).
 - Limits of the server: the ZIP at most 400 MB (the download limit of `UpdateDownloader`); the client part the server
-  hands to clients is `plugin.json`, the top-level `*.Client.dll` and everything under `client/`, at most 24 MB unpacked
-  and never a native library. Client-only dependencies of an add-on go under `client/`.
+  hands to clients is `plugin.json`, the top-level `*.Client.dll`, `*.Server.dll` (the client part references its server
+  project) with their `.pdb`, and everything under `client/` (`AddOnFolders.ClientPartPatterns`), at most 24 MB unpacked
+  and never a native library. Client-only dependencies of an add-on go under `client/`; dependencies of the server part
+  stay on the server.
 - `packaging/addons/addon-ids.sh` prints the add-on plugin ids, `packaging/addons/check-addon-zip.sh <zip> <id> <rid>`
   checks one ZIP the same way (both used by `release.yml`).
-- The add-on ZIPs have no notices of their own yet; the third-party notices of OADM's installers do not list the
-  add-ons' packages.
+- Notices: an add-on ships alone, so `manage package addons` runs `tools/Oadm.Notices --addon <folder>` on each published
+  add-on folder before the check: `THIRD-PARTY-NOTICES.txt` with the add-on's own NuGet packages (its `*.deps.json`
+  files: ONNX Runtime, SkiaSharp, ...), the license files of its models as bundled components (`Models/*LICENSE*`, e.g.
+  `Models/PaddleOCR-LICENSE.txt`) and the license texts, plus OADM's `LICENSE.txt`. The notices of OADM's installers do
+  not list the add-ons' packages.
 
 ## Notices and terms of use
 

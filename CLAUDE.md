@@ -242,8 +242,8 @@ must never break.
   the update record and shows the result after the restart; no rollback by OADM; only from an installed package (the
   ZIP and `dotnet run` keep Open download page); never a real installer in tests;
   site nodes are updated by hand (they run with few rights).
-- **[Add-on plugins](docs/spec/add-ons.md)** (spec, not built): OADM's own plugins outside the installers (the vision
-  plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
+- **[Add-on plugins](docs/spec/add-ons.md)** (built; users see "Optional plugins", never "add-on"): OADM's own plugins
+  outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
   version from its GitHub release, checked by `SHA256SUMS.txt`, Administrators only; clients get the client part from the
   server; updated with the server; never a file upload.
 - **[Text recognition](docs/spec/ocr.md)** (spec, not built; add-on `oadm.ocr`, free, off by default): readers (camera,

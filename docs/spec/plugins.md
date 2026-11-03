@@ -463,6 +463,15 @@ restart. Own rail page (not a Settings card); core functionality is always on.
   core plugins of a package turned off are stopped (trust anchors removed), turned on are started. Invoking a core plugin
   that is off: FAILED_PRECONDITION "The <name> plugin is turned off.". Tasks of the package already queued or running
   finish.
+- **Packages loaded at run time** (an optional plugin installed or fetched after an update, `docs/spec/add-ons.md`):
+  `PluginLoader.LoadPackage` registers the package and, after `PluginRegistry.MarkStarted` (server start, after the core
+  plugins started), `PluginRegistry.PackageRegistered` raises `EnabledChanged` and then `PackageAdded` once per package
+  (the loader is the only one that raises it). Everything follows it like Turn on: the catalogues of events, actions and
+  compliance types (`EnabledChanged`), and `PluginActivation.FollowAddedPackages` (the roles take its permissions with
+  the defaults of a new permission, its license is checked, its core plugins start when it is on; its state is the stored
+  choice, else its manifest default). `PluginActivation.AddedPackagesFollowed` completes once that is done; the add-on
+  installer waits for it before it reports Installed. A package is never unloaded while the server runs: Remove turns it
+  off and its folder goes at the next start. Tests: `tests/Oadm.Server.Tests/Plugins/RuntimePackageTests`.
 - gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
   `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off", target the plugin name);
   `PluginPackageInfo.always_on = 8`, `description = 9`, `group = 10` (`PluginPackageState.Group`: the rail group of the
@@ -476,7 +485,8 @@ restart. Own rail page (not a Settings card); core functionality is always on.
   that has plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`;
   sorted by name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
   always-on packages are not listed; a refused change is undone with the reason below the list. Other clients see a
-  change on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
+  change on their next connect. The package of an optional plugin shows the chip "Optional" next to its name, and the
+  card **Optional plugins** sits below the list (`docs/spec/add-ons.md` "Plugins page"). Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
   descriptions; the takeover of the 4.1 choices), `tests/Oadm.Core.Tests/Plugins/MergedPluginsTests` (PKI with three core
   plugins and the ids of 4.1, folders of 4.1 skipped, the takeover from a 4.1 fixture),

@@ -26,6 +26,25 @@ System report, Outputs and Notifications are the everyday device work. They are 
 [EST server](../../tools/est-server/) and the [802.1X server](../../tools/radius-server/) are part of PKI: you turn each on
 with **Turn on** on its tab of the PKI page; they need OADM PRO.
 
+## Optional plugins
+
+Some plugins of OADM are not in its installers because they are large. The **Optional plugins** card below the list
+shows the ones of your OADM version.
+
+- **Install** downloads the plugin from the OADM release on GitHub, checks it and adds it without a restart. It starts
+  off: turn it on in the list, where it shows the chip **Optional**.
+- **Remove** turns it off at once. Its files go at the next restart of the server; its settings are kept for a new
+  install.
+- When you update OADM, the server downloads the optional plugins of the new version by itself. A plugin it cannot
+  download stays off and its row says so; click **Install** to try again.
+- The clients get the plugin from the server. Nothing is installed on their computers.
+- The server needs to reach github.com. Without it, download the plugin's ZIP for your server's system
+  (`oadm-addon-<id>-<version>-<system>.zip`) from the release page and unpack it into the folder `addons/<id>` in the
+  server's data folder (`%ProgramData%\OADM`, `/var/lib/oadm` or `/Library/Application Support/OADM`), then restart the
+  server.
+
+Install and Remove are written to the audit log.
+
 ## OADM PRO plugins
 
 Plugins that need OADM PRO are listed for everyone. Their License column shows **OADM PRO**:
