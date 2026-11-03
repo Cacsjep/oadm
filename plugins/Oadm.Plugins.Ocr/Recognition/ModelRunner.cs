@@ -215,9 +215,10 @@ internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList char
 
     public async Task<LineScores[]> RecognizeAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
     {
-        // Batches of lines of similar width, each batch a call of its own (several workers when they are free).
+        // Pairs of lines of similar width (little padding), each pair a call of its own: the lines of a picture spread over the
+        // free workers (a reader with 4 areas: 147 to 87 ms on 24 cores).
         var order = Enumerable.Range(0, lines.Count).OrderBy(i => lines[i].Width).ToArray();
-        const int Batch = 8;
+        const int Batch = 2;
         var calls = new List<Task<LineScores[]>>();
         for (var start = 0; start < order.Length; start += Batch)
         {
