@@ -1591,6 +1591,15 @@
     </Style.Animations>
   </Style>
 
+  <!-- A small ring in place of a check box while its change runs (Plugins page): the box's size and spot (a check box
+       keeps 8 px of content room right of its box) -->
+  <Style Selector="ui|ProgressRing.checkBox">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Thickness" Value="2" />
+    <Setter Property="Margin" Value="0,0,8,0" />
+  </Style>
+
   <!-- Loading cover of a dialog (ui:LoadingOverlay): hides the content completely (window background), ring and text in
        the middle -->
   <Style Selector="ui|LoadingOverlay">

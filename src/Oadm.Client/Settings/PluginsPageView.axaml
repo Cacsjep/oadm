@@ -9,63 +9,72 @@
   <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
        Packages that are always on (core functionality) are not listed. Grouped like the navigation rail (code-behind
        builds the grouped view: Servers, Automation, Security, Monitoring, ...). Below it the Optional plugins card. -->
-  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16">
+  <Grid RowDefinitions="Auto,*" RowSpacing="16">
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
-    <Border Grid.Row="1" x:Name="PluginCard" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
-      <Grid RowDefinitions="*,Auto" RowSpacing="12">
-        <DataGrid Grid.Row="0" x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
-                  SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
-          <DataGrid.Columns>
-            <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="settings:PluginRowViewModel">
-                  <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}" HorizontalAlignment="Center"
-                            ToolTip.Tip="{Binding StateText}" />
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
-            <DataGridTextColumn Header="Description" Width="*" MinWidth="320" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
-            <DataGridTemplateColumn Header="Sites" Width="160" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="settings:PluginRowViewModel">
-                  <StackPanel Margin="8,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" />
-                    <TextBlock Classes="secondary small" Text="{Binding SitePortsText}" IsVisible="{Binding HasSitePorts}" />
-                  </StackPanel>
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="settings:PluginRowViewModel">
-                  <StackPanel Spacing="4" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding IsPro}" VerticalAlignment="Center">
-                      <ui:StatusChip Text="OADM PRO" IsOk="{Binding ProActive}" ToolTip.Tip="{Binding ProDetail}" />
-                      <Button Classes="link" Content="Activate" IsVisible="{Binding CanActivatePro}"
-                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).ActivateProCommand}" />
+    <!-- The list card is as high as its rows, at most the room the Optional plugins card leaves (then its rows scroll):
+         this grid sits at the top, so its star row gets the list's own height, never more, and the card follows right below.
+         The list stays a virtualized grid (never in an unbounded row). -->
+    <Grid Grid.Row="1" RowDefinitions="*,Auto" RowSpacing="16" VerticalAlignment="Top">
+      <Border Grid.Row="0" x:Name="PluginCard" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
+        <Grid RowDefinitions="*,Auto" RowSpacing="12">
+          <DataGrid Grid.Row="0" x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                    SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
+            <DataGrid.Columns>
+              <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="settings:PluginRowViewModel">
+                    <!-- While a turn on or off runs: a ring in place of the box, no second click. -->
+                    <Panel HorizontalAlignment="Center" VerticalAlignment="Center">
+                      <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}" IsVisible="{Binding !IsBusy}"
+                                ToolTip.Tip="{Binding StateText}" />
+                      <ui:ProgressRing Classes="checkBox" IsVisible="{Binding IsBusy}" />
+                    </Panel>
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
+              <DataGridTextColumn Header="Description" Width="*" MinWidth="320" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
+              <DataGridTemplateColumn Header="Sites" Width="160" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="settings:PluginRowViewModel">
+                    <StackPanel Margin="8,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" />
+                      <TextBlock Classes="secondary small" Text="{Binding SitePortsText}" IsVisible="{Binding HasSitePorts}" />
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
-                      <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
-                                     IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
-                      <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
-                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
-                              CommandParameter="{Binding}" />
-                      <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
-                              IsEnabled="{Binding CanEditLicense}"
-                              Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
-                              CommandParameter="{Binding}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="settings:PluginRowViewModel">
+                    <StackPanel Spacing="4" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding IsPro}" VerticalAlignment="Center">
+                        <ui:StatusChip Text="OADM PRO" IsOk="{Binding ProActive}" ToolTip.Tip="{Binding ProDetail}" />
+                        <Button Classes="link" Content="Activate" IsVisible="{Binding CanActivatePro}"
+                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).ActivateProCommand}" />
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
+                        <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
+                                       IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
+                        <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
+                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
+                                CommandParameter="{Binding}" />
+                        <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
+                                IsEnabled="{Binding CanEditLicense}"
+                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
+                                CommandParameter="{Binding}" />
+                      </StackPanel>
                     </StackPanel>
-                  </StackPanel>
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
-          </DataGrid.Columns>
-        </DataGrid>
-        <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
-      </Grid>
-    </Border>
-    <!-- As wide as the plugin list above it. -->
-    <addons:AddOnsCardView Grid.Row="2" DataContext="{Binding AddOns}" HorizontalAlignment="Left" Width="{Binding #PluginCard.Bounds.Width}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+        </Grid>
+      </Border>
+      <!-- As wide as the plugin list above it. -->
+      <addons:AddOnsCardView Grid.Row="1" x:Name="AddOnsCard" DataContext="{Binding AddOns}" HorizontalAlignment="Left" Width="{Binding #PluginCard.Bounds.Width}" />
+    </Grid>
   </Grid>
 </UserControl>

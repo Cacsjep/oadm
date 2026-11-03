@@ -50,7 +50,17 @@ public sealed partial class PluginRowViewModel : ObservableObject
         IsPro = info.Pro;
         ProLocked = info.Pro && !owner.ProActive;
         _applying = true;
-        IsEnabled = info.Enabled;
+        if (owner.SwitchingTo(Id) is { } target)
+        {
+            // A rebuild while this package is being switched: the row keeps its ring and the state it is going to.
+            IsEnabled = target;
+            IsBusy = true;
+        }
+        else
+        {
+            IsEnabled = info.Enabled;
+        }
+
         _applying = false;
     }
 
@@ -139,6 +149,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(StateText))]
     public partial bool IsEnabled { get; set; }
 
+    /// <summary>A turn on or off is running: the row shows a ring instead of the check box and takes no click.</summary>
     [ObservableProperty]
     public partial bool IsBusy { get; private set; }
 
@@ -148,10 +159,19 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     partial void OnIsEnabledChanged(bool value)
     {
-        if (!_applying)
+        if (_applying)
         {
-            _ = ToggleAsync(value);
+            return;
         }
+
+        if (IsBusy)
+        {
+            // A second click while the switch runs: ignored, the box stays at the state it is going to.
+            Set(!value);
+            return;
+        }
+
+        _ = _owner.SwitchAsync(this, value);
     }
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggle));
@@ -170,18 +190,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
         _applying = false;
     }
 
-    private async Task ToggleAsync(bool enabled)
-    {
-        IsBusy = true;
-        try
-        {
-            await _owner.SetEnabledAsync(this, enabled).ConfigureAwait(true);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
+    internal void SetBusy(bool busy) => IsBusy = busy;
 }
 
 /// <summary>
@@ -197,6 +206,9 @@ public sealed partial class PluginsViewModel : ObservableObject
     private readonly IDialogService? _dialogs;
     private readonly IClipboardService? _clipboard;
     private readonly ILogger<PluginsViewModel> _logger;
+
+    /// <summary>The packages being turned on or off, with the state they go to (kept over a rebuild of the rows).</summary>
+    private readonly Dictionary<string, bool> _switching = new(StringComparer.OrdinalIgnoreCase);
 
     public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null,
         Devices.DeviceStore? devices = null, Plugins.AddOns.AddOnsViewModel? addOns = null)
@@ -313,19 +325,43 @@ public sealed partial class PluginsViewModel : ObservableObject
         }
     }
 
-    internal async Task SetEnabledAsync(PluginRowViewModel row, bool enabled)
+    /// <summary>The state a package is being switched to, null while no switch runs for it.</summary>
+    internal bool? SwitchingTo(string id) => _switching.TryGetValue(id, out bool target) ? target : null;
+
+    /// <summary>
+    /// Turns a package on or off (its check box). One switch per package at a time: a click while one runs sends nothing.
+    /// The row shows a ring until the server answered; on failure the box goes back and the error shows below the list.
+    /// </summary>
+    internal async Task SwitchAsync(PluginRowViewModel row, bool enabled)
     {
+        string id = row.Id;
+        if (!_switching.TryAdd(id, enabled))
+        {
+            return;
+        }
+
+        row.SetBusy(true);
+        string? error = null;
         try
         {
-            await _store.SetEnabledAsync(row.Id, enabled, CancellationToken.None).ConfigureAwait(true);
-            ErrorText = null;
-            LogChanged(_logger, row.Id, enabled ? "on" : "off");
+            await _store.SetEnabledAsync(id, enabled, CancellationToken.None).ConfigureAwait(true);
+            LogChanged(_logger, id, enabled ? "on" : "off");
         }
         catch (Exception ex)
         {
-            row.Set(!enabled);
-            ErrorText = string.Create(CultureInfo.CurrentCulture, $"{row.Name} could not be turned {(enabled ? "on" : "off")}: {Message(ex)}");
+            error = string.Create(CultureInfo.CurrentCulture, $"{row.Name} could not be turned {(enabled ? "on" : "off")}: {Message(ex)}");
         }
+        finally
+        {
+            _switching.Remove(id);
+        }
+
+        ErrorText = error;
+        // The rows may have been rebuilt meanwhile: the current row of the package shows the server's state again.
+        PluginRowViewModel current = Plugins.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)) ?? row;
+        PluginPackageInfo? info = _store.Packages.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+        current.Set(info?.Enabled ?? (error is null ? enabled : !enabled));
+        current.SetBusy(false);
     }
 
     private void Rebuild()

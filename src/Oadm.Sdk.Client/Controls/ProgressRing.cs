@@ -19,12 +19,13 @@ public sealed class ProgressRing : Control
     static ProgressRing()
     {
         AffectsRender<ProgressRing>(ForegroundProperty, TrackProperty, ThicknessProperty);
+        // Defaults, not local values: a theme class can size it (checkBox: in place of a check box).
+        WidthProperty.OverrideDefaultValue<ProgressRing>(40);
+        HeightProperty.OverrideDefaultValue<ProgressRing>(40);
     }
 
     public ProgressRing()
     {
-        Width = 40;
-        Height = 40;
         RenderTransformOrigin = RelativePoint.Center;
         RenderTransform = new RotateTransform();
     }

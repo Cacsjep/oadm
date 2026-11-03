@@ -300,6 +300,86 @@ public sealed class PluginListTests
             FakeOadmApi.SampleLicenseKeys.PrivateKeyPem);
     }
 
+    [Fact]
+    public async Task A_plugin_being_switched_shows_a_ring_and_takes_no_second_click()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            using var api = new FakeOadmApi(TimeSpan.Zero);
+            var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            api.PackageSwitchGate = (id, _) => id == FakeOadmApi.HardeningScanPluginId ? held.Task : Task.CompletedTask;
+            var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+            var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance);
+            await store.LoadAsync(CancellationToken.None);
+
+            var window = new Window { Width = 1300, Height = 900, Content = new PluginsPageView { DataContext = plugins } };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+
+            // Turn on: the row shows a ring in place of its box while the server works.
+            PluginRowViewModel hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
+            hardening.IsEnabled = true;
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => api.PackageSwitchCalls == 1, "the switch reached the server");
+            Pump();
+            Assert.True(hardening.IsBusy);
+            Assert.False(hardening.CanToggle);
+            Assert.Single(VisibleRings(window));
+            Save(window, outDir, "client-plugins-switching.png");
+
+            // A second click while it runs sends nothing and the box keeps the state it is going to.
+            hardening.IsEnabled = false;
+            Assert.True(hardening.IsEnabled);
+            Assert.Equal(1, api.PackageSwitchCalls);
+
+            // Other rows stay usable; their change rebuilds the list and the running row keeps its ring.
+            PluginRowViewModel snapshot = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId);
+            Assert.True(snapshot.CanToggle);
+            snapshot.IsEnabled = false;
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !store.IsEnabled(FakeOadmApi.SnapshotReportPluginId), "the other plugin turned off");
+            hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
+            Assert.True(hardening.IsBusy);
+            Assert.True(hardening.IsEnabled);
+            Pump();
+            Assert.Single(VisibleRings(window));
+
+            // The server answers: the ring goes, the box shows On.
+            held.SetResult();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(
+                () => plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId) is { IsBusy: false, IsEnabled: true, CanToggle: true },
+                "the switch ended");
+            Pump();
+            Assert.Empty(VisibleRings(window));
+            Assert.True(store.IsEnabled(FakeOadmApi.HardeningScanPluginId));
+            Assert.Equal(2, api.PackageSwitchCalls);
+            Assert.Null(plugins.ErrorText);
+
+            // A refused switch: the ring goes, the box goes back and the error shows as before.
+            api.SetOnline(false);
+            hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
+            hardening.IsEnabled = false;
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => plugins.HasError, "the error shows");
+            Assert.False(hardening.IsBusy);
+            Assert.True(hardening.IsEnabled);
+            Assert.StartsWith("Hardening scan could not be turned off: ", plugins.ErrorText, StringComparison.Ordinal);
+
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+
+        static List<Oadm.Sdk.Client.Controls.ProgressRing> VisibleRings(Window window) =>
+            [.. window.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ProgressRing>().Where(r => r.IsEffectivelyVisible)];
+    }
+
+    private static void Pump()
+    {
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        Dispatcher.UIThread.RunJobs();
+    }
+
     private static void Save(Window window, string? outDir, string name)
     {
         var frame = window.CaptureRenderedFrame();

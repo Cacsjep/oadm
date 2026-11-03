@@ -393,7 +393,10 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
 
 The rail page **Plugins** lists every plugin package (one plugin folder = one row: its core plugins, contributed and
 standalone tasks and client parts together) and administrators turn each on or off; the change applies at once without a
-restart. Own rail page (not a Settings card); core functionality is always on.
+restart. Own rail page (not a Settings card); core functionality is always on. While a turn on or off runs (turning on
+can take a moment, e.g. a plugin that loads models), the row shows a small `ui:ProgressRing` in place of its check box and
+takes no second click; the state survives a reload of the list, other rows stay usable, and a refused change puts the
+box back with the error below the list (`PluginsViewModel.SwitchAsync`).
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Action Rule Editor, Application management, Dashboards, Device triggers, Edge Recording Export, Edge

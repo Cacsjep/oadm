@@ -12,6 +12,14 @@ public sealed partial class FakeOadmApi
 {
     private readonly Dictionary<string, bool> _packageStates = new(StringComparer.OrdinalIgnoreCase);
 
+    private int _packageSwitchCalls;
+
+    /// <summary>Tests: hold every turn on or off of a package until this task completes (null: answer at once).</summary>
+    public Func<string, bool, Task>? PackageSwitchGate { get; set; }
+
+    /// <summary>Tests: how often a package was turned on or off (calls, also refused ones).</summary>
+    public int PackageSwitchCalls => Volatile.Read(ref _packageSwitchCalls);
+
     private static IEnumerable<PluginPackageInfo> FakePackageTemplates =>
     [
         Package(SnapshotReportPluginId, "Snapshot report", "Snapshots of every camera and a PDF maintenance report.", "Reporting", hasPage: true, tasks: 0),
@@ -126,7 +134,18 @@ public sealed partial class FakeOadmApi
         return state;
     }
 
-    public Task<PluginPackageList> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct)
+    public async Task<PluginPackageList> SetPluginPackageEnabledAsync(string packageId, bool enabled, CancellationToken ct)
+    {
+        Interlocked.Increment(ref _packageSwitchCalls);
+        if (PackageSwitchGate is { } gate)
+        {
+            await gate(packageId, enabled).ConfigureAwait(false);
+        }
+
+        return SetPackageEnabled(packageId, enabled);
+    }
+
+    private PluginPackageList SetPackageEnabled(string packageId, bool enabled)
     {
         lock (_gate)
         {
@@ -134,7 +153,7 @@ public sealed partial class FakeOadmApi
             if (FakeAddOnPackages().Any(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)))
             {
                 _packageStates[packageId] = enabled && _textRecognitionState == AddOnState.AddOnInstalled;
-                return Task.FromResult(FakePackageList());
+                return FakePackageList();
             }
 
             if (!FakePackageTemplates.Any(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)))
@@ -148,7 +167,7 @@ public sealed partial class FakeOadmApi
             }
 
             _packageStates[packageId] = enabled;
-            return Task.FromResult(FakePackageList());
+            return FakePackageList();
         }
     }
 

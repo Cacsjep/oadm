@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
@@ -82,6 +83,58 @@ public sealed class AddOnsCardTests
             Assert.DoesNotContain("Remove", Visible(window));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-removed-{appearance}.png");
+
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    /// <summary>
+    /// The card follows right below the plugin list on a large screen too (not at the bottom of the window), and on a
+    /// small one the list scrolls so the card stays in view.
+    /// </summary>
+    [Theory]
+    [InlineData(1920, 1080)]
+    [InlineData(3840, 2160)]
+    [InlineData(1300, 640)]
+    public async Task The_add_ons_card_sits_right_below_the_plugin_list(int width, int height)
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        string appearance = string.Equals(Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE"), "Light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            using var api = new FakeOadmApi(TimeSpan.Zero);
+            var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+            var addOns = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance);
+            var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance, addOns: addOns);
+            await plugins.RefreshAsync();
+
+            var page = new PluginsPageView { DataContext = plugins };
+            var window = new Window { Width = width, Height = height, Content = page };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Pump();
+
+            Border list = page.FindControl<Border>("PluginCard")!;
+            AddOnsCardView card = page.FindControl<AddOnsCardView>("AddOnsCard")!;
+            Assert.True(card.IsEffectivelyVisible);
+            Point listBottom = list.TranslatePoint(new Point(0, list.Bounds.Height), window)!.Value;
+            Point cardTop = card.TranslatePoint(default, window)!.Value;
+            Point cardBottom = card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value;
+            Assert.True(cardTop.Y >= listBottom.Y, "the card is below the list");
+            Assert.True(cardTop.Y - listBottom.Y < 40, $"the card follows right below the list, not {cardTop.Y - listBottom.Y:0} px further down");
+            Assert.True(cardBottom.Y <= window.ClientSize.Height + 0.5, "the card stays in the window, the list scrolls");
+
+            // The list stays a virtualized grid: on a small window it creates only the rows that fit and scrolls.
+            if (height < 1000)
+            {
+                DataGrid grid = page.FindControl<DataGrid>("PluginGrid")!;
+                int realized = grid.GetVisualDescendants().OfType<DataGridRow>().Count(r => r.IsVisible);
+                Assert.InRange(realized, 1, plugins.Plugins.Count - 1);
+            }
+
+            Save(window, outDir, $"plugins-page-{width}x{height}-{appearance}.png");
 
             window.Close();
             return true;

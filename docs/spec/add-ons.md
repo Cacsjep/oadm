@@ -92,7 +92,8 @@ release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
 
 ## Plugins page
 
-- Below the plugin list a card **Optional plugins**: one row per add-on of this version: name, one line, size, state (Not
+- Right below the plugin list (at every window size: the list is as high as its rows and scrolls when the window is too
+  small, the card follows directly) a card **Optional plugins**: one row per add-on of this version: name, one line, size, state (Not
   installed, Installing 42 %, Installed), and **Install** or **Remove** (red, with the confirmation "Remove <name>? It
   turns off now. Its settings are kept."). Below the rows: "Optional plugins come from the OADM release on GitHub and are
   checked before they are installed. Clients get them from the server." A server without add-ons hides the card.

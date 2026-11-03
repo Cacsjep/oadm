@@ -171,7 +171,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the row with the button on
   the right.
 - `ProgressRow` (progress bar + status text), `ProgressRing` (an indeterminate ring where something loads without a known
-  progress: a live picture that connects, Sites), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden,
+  progress: a live picture that connects, Sites; class `checkBox`: small, in place of a check box while its change runs,
+  Plugins page), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden,
   ring and text in the middle, Cancel stays usable).
 - `OffState`: a page or tab whose feature is off. A card with a large icon, "Site nodes are off", what it does and the
   Turn on button, all centered (Sites, Compliance, PKI's 802.1X and EST servers).
