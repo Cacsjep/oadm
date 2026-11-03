@@ -57,6 +57,12 @@ public static class OcrInfo
 
     public const string ConfidenceField = "confidence";
 
+    /// <summary>Every different match of the format, separated by a space; empty without a format.</summary>
+    public const string AllMatchesField = "allMatches";
+
+    /// <summary>The value as a number ("." as the decimal sign) when it is one; empty otherwise.</summary>
+    public const string NumberField = "number";
+
     public const string MatchesFormatField = "matchesFormat";
 
     /// <summary>The values of <see cref="MatchesFormatField"/>.</summary>
@@ -126,12 +132,21 @@ public sealed record ReaderSummary
 
     /// <summary>When the last reading was taken; null without one.</summary>
     public DateTimeOffset? LastTime { get; init; }
+
+    /// <summary>Why the reader does not read now (its camera left its device group); null while it can read.</summary>
+    public string? Problem { get; init; }
 }
 
-/// <summary>The answer of <see cref="OcrMethods.ListReaders"/>.</summary>
+/// <summary>The answer of <see cref="OcrMethods.ListReaders"/> and the live event <see cref="OcrMethods.ReadersTopic"/>.</summary>
 public sealed record ReaderList
 {
     public IReadOnlyList<ReaderSummary> Readers { get; init; } = [];
+
+    /// <summary>The frame rates a watching reader may use on this server (1, 2, 4 on the CPU; 1, 2, 4, 8, 15 on a GPU).</summary>
+    public IReadOnlyList<int> FpsChoices { get; init; } = [];
+
+    /// <summary>Watching readers per server at most (20 on the CPU, 50 on a GPU).</summary>
+    public int MaxWatching { get; init; }
 }
 
 /// <summary>A request for one reader.</summary>
@@ -154,12 +169,40 @@ public sealed record ReadingReply
 
     /// <summary>The picture of the reading as JPEG (base64 in JSON); null without one.</summary>
     public byte[]? Jpeg { get; init; }
+
+    /// <summary>The further values of each area (with the cut-outs), in the reader's area order; empty without a reading.</summary>
+    public IReadOnlyList<AreaDetails> Details { get; init; } = [];
+}
+
+/// <summary>
+/// The values of an area beyond <see cref="AreaResult"/> (docs/spec/ocr.md "Expected text", "Events and the rule action"):
+/// every different match, the number, where the value was found and its cut-out picture (in memory only).
+/// </summary>
+public sealed record AreaDetails
+{
+    /// <summary>The area's name (<see cref="AreaResult.Area"/>).</summary>
+    public string Area { get; init; } = string.Empty;
+
+    /// <summary>Every different match of the format, at most 10, separated by a space; empty without a format.</summary>
+    public string AllMatches { get; init; } = string.Empty;
+
+    /// <summary>The value as a number in invariant culture ("1234.5"); empty when it is none.</summary>
+    public string Number { get; init; } = string.Empty;
+
+    /// <summary>Where the value was found, relative to the picture; null without a value.</summary>
+    public RelativeBox? MatchBox { get; init; }
+
+    /// <summary>The value's cut-out picture as JPEG (base64 in JSON); only in <see cref="ReadingReply"/>, null without one.</summary>
+    public byte[]? Cutout { get; init; }
 }
 
 /// <summary>The live event <see cref="OcrMethods.ReadingTopic"/>.</summary>
 public sealed record ReadingEvent
 {
     public Reading Reading { get; init; } = new();
+
+    /// <summary>The further values of each area (<see cref="AreaDetails"/> without the cut-outs).</summary>
+    public IReadOnlyList<AreaDetails> Details { get; init; } = [];
 }
 
 /// <summary>The JSON of the page's calls and events (web names, enums as names).</summary>

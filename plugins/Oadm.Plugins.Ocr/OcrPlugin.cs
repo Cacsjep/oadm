@@ -1,18 +1,44 @@
 using Oadm.Plugins.Ocr.Api;
+using Oadm.Plugins.Ocr.Events;
+using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
 using Oadm.Plugins.Shared;
+using Oadm.Sdk.Actions;
+using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Ocr;
 
 /// <summary>
 /// Core plugin "Text recognition" (docs/spec/ocr.md): reads text in the cameras' pictures and hands it to the event rules.
-/// An add-on (docs/spec/add-ons.md), off by default (plugin.json). Read only for devices. Page backend methods:
-/// <see cref="OcrMethods"/>. The readers, recognition, events and the action Read text follow in the next build steps.
+/// An add-on (docs/spec/add-ons.md), off by default (plugin.json). Read only for devices. The saved readers
+/// (<see cref="ReaderStore"/>, the only thing it stores) are at work in <see cref="ReaderRuntime"/>; each reader publishes
+/// the event "Text read" (<see cref="TextReadEvents"/>, one type per reader, so the types change with the readers) and the
+/// action "Read text" (<see cref="ReadTextAction"/>) reads one picture of a reader now. Page backend methods:
+/// <see cref="OcrMethods"/> (Api/OcrPlugin.Methods.cs).
 /// </summary>
-public sealed class OcrPlugin : ICorePlugin, IAsyncDisposable
+public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActionSource, IAsyncDisposable
 {
     private const string NotRunning = "The Text recognition plugin is not running.";
+    private readonly ReaderParts _parts;
     private ICorePluginContext? _ctx;
+    private ReaderStore? _store;
+    private ReaderRuntime? _runtime;
+
+    /// <summary>The plugin as the host loads it. The recognition, matching and frame parts are wired in by the next build step.</summary>
+    public OcrPlugin()
+        : this(new ReaderParts())
+    {
+    }
+
+    /// <summary>The plugin with its parts (tests, and the wiring of wave 3).</summary>
+    internal OcrPlugin(ReaderParts parts)
+    {
+        _parts = parts ?? throw new ArgumentNullException(nameof(parts));
+        ActionPlugins = [new ReadTextAction(this)];
+    }
+
+    public event EventHandler? EventTypesChanged;
 
     public string Id => OcrInfo.PluginId;
 
@@ -24,28 +50,80 @@ public sealed class OcrPlugin : ICorePlugin, IAsyncDisposable
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 
-    public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+    /// <summary>"Read text".</summary>
+    public IReadOnlyList<IActionPlugin> ActionPlugins { get; }
+
+    /// <summary>The event "Text read" of every reader.</summary>
+    public IReadOnlyList<EventTypeInfo> EventTypes => [.. AllReaders.Select(TextReadEvents.TypeOf)];
+
+    /// <summary>Every reader, whoever owns it (the action, the event types); none while the plugin is stopped.</summary>
+    internal IReadOnlyList<Reader> AllReaders => _store?.All ?? [];
+
+    /// <summary>The readers at work (tests).</summary>
+    internal ReaderRuntime? Runtime => _runtime;
+
+    /// <summary>The reader of <paramref name="id"/>, whoever owns it; null when there is none.</summary>
+    internal Reader? FindReader(string? id) => _store?.Find(id);
+
+    /// <summary>Reads one picture of <paramref name="reader"/> now and publishes every area's event (<see cref="ReaderRuntime.ReadOnceAsync"/>).</summary>
+    internal Task<ReaderReading> ReadOnceAsync(Reader reader, CancellationToken ct) =>
+        (_runtime ?? throw new InvalidOperationException(NotRunning)).ReadOnceAsync(reader, ct);
+
+    public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        await StopAsync(ct).ConfigureAwait(false);
+        var records = ctx.Records ?? throw new InvalidOperationException("This OADM server cannot keep text readers. Update OADM.");
+        var store = new ReaderStore(records, ctx.Logger);
+        await store.LoadAsync(ct).ConfigureAwait(false);
         _ctx = ctx;
-        return Task.CompletedTask;
+        _store = store;
+        _runtime = new ReaderRuntime(ctx, _parts, ctx.Logger);
+        _runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+        if (ctx.DeviceScopes is { } scopes)
+        {
+            scopes.Changed += OnScopeChanged;
+        }
+
+        EventTypesChanged?.Invoke(this, EventArgs.Empty);
+        await _runtime.SyncAsync(store.All).ConfigureAwait(false);
     }
 
-    public Task StopAsync(CancellationToken ct)
+    /// <summary>Stops every reader's loop (also when the plugin is turned off); the readers stay stored.</summary>
+    public async Task StopAsync(CancellationToken ct)
     {
+        if (_ctx?.DeviceScopes is { } scopes)
+        {
+            scopes.Changed -= OnScopeChanged;
+        }
+
+        var runtime = _runtime;
+        var store = _store;
+        _runtime = null;
+        _store = null;
         _ctx = null;
-        return Task.CompletedTask;
+        if (runtime is not null)
+        {
+            await runtime.DisposeAsync().ConfigureAwait(false);
+        }
+
+        store?.Dispose();
     }
 
     /// <summary>Nothing changes the server's configuration beyond the plugin's own readers: no method is for administrators only.</summary>
     public UserRole RequiredRole(string method) => UserRole.Operator;
+
+    /// <summary>A save counts the watching readers per site over every reader's camera (a limit of the site), showing no device data.</summary>
+    public string? SystemAccessReason(string method) => method is OcrMethods.SaveReader
+        ? "counts the watching readers per site (a limit of the site node), shows no device data"
+        : null;
 
     public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader;
 
     /// <summary>The page reads only (Viewer on); changing readers and reading now are a right of their own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(PermissionKeys.Show, "Show the page", "See the text readers and what they read.") { ViewerDefault = true },
+        new(PermissionKeys.Show, OcrInfo.ViewPermissionName, "See the text readers and what they read.") { ViewerDefault = true },
         new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers and read now."),
     ];
 
@@ -53,23 +131,26 @@ public sealed class OcrPlugin : ICorePlugin, IAsyncDisposable
     public string? RequiredPermission(string method) =>
         method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow ? OcrInfo.ChangePermission : PermissionKeys.Show;
 
-    /// <summary>A user's call. Not built yet: every method answers that the plugin is not running.</summary>
-    public Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(caller);
-        _ = _ctx ?? throw new InvalidOperationException(NotRunning);
-        return method switch
-        {
-            OcrMethods.ListReaders => Task.FromResult<string?>(OcrJson.Serialize(new ReaderList())),
-            OcrMethods.GetReader or OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow or OcrMethods.GetReading =>
-                throw new NotSupportedException($"{method} is not built yet."),
-            _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
-        };
-    }
-
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
         InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
+
+    /// <summary>A group's rules changed or the group was deleted: its readers follow its devices at once (fail closed).</summary>
+    private void OnScopeChanged(object? sender, string scopeKey)
+    {
+        if (_runtime is not { } runtime || _store is not { } store)
+        {
+            return;
+        }
+
+        _ = SyncAndPublishAsync(runtime, store, scopeKey);
+    }
+
+    private async Task SyncAndPublishAsync(ReaderRuntime runtime, ReaderStore store, string scopeKey)
+    {
+        await runtime.SyncAsync(store.All).ConfigureAwait(false);
+        PublishReaders(scopeKey);
+    }
 }
