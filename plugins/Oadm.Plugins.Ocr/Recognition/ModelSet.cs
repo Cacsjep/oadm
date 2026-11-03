@@ -48,19 +48,30 @@ internal sealed class ModelSet : IDisposable
     private readonly ShapeSessions _orientation;
     private readonly SemaphoreSlim? _serial;
     private readonly BusyMeter? _busy;
+    private readonly GpuSessionBudget? _ownBudget;
 
     /// <param name="busy">On a graphics card: counts the time each call holds the card (the recognition load); the CPU's
     /// sets are measured by their worker slots.</param>
-    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads, BusyMeter? busy = null)
+    /// <param name="budget">On DirectML: the sessions on the card of all three models together; null: a budget of its own.</param>
+    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads, BusyMeter? busy = null, GpuSessionBudget? budget = null)
     {
         _busy = target == ExecutionTarget.Cpu ? null : busy;
         Target = target;
         Characters = CharacterList.Load(Path.Combine(folder, choice.Characters));
-        _detection = new ShapeSessions(Path.Combine(folder, choice.Detection), target, threads);
-        _recognition = new ShapeSessions(Path.Combine(folder, choice.Recognition), target, threads);
-        _orientation = new ShapeSessions(Path.Combine(folder, ModelFiles.Orientation), target, threads);
+        if (target == ExecutionTarget.DirectMl && budget is null)
+        {
+            budget = _ownBudget = new GpuSessionBudget();
+        }
+
+        Budget = target == ExecutionTarget.DirectMl ? budget : null;
+        _detection = new ShapeSessions(Path.Combine(folder, choice.Detection), target, threads, Budget, GpuSessionBudget.MaxDetectionSessions);
+        _recognition = new ShapeSessions(Path.Combine(folder, choice.Recognition), target, threads, Budget);
+        _orientation = new ShapeSessions(Path.Combine(folder, ModelFiles.Orientation), target, threads, Budget);
         _serial = target == ExecutionTarget.Cpu ? null : new SemaphoreSlim(1, 1);
     }
+
+    /// <summary>On DirectML: the set's sessions on the card; else null.</summary>
+    public GpuSessionBudget? Budget { get; }
 
     /// <summary>Where it runs.</summary>
     public ExecutionTarget Target { get; }
@@ -211,6 +222,7 @@ internal sealed class ModelSet : IDisposable
         _detection.Dispose();
         _recognition.Dispose();
         _orientation.Dispose();
+        _ownBudget?.Dispose();
         _serial?.Dispose();
     }
 }

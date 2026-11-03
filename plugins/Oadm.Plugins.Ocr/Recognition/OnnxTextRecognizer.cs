@@ -79,6 +79,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly CharacterList _cpuCharacters;
     private readonly CharacterList _accurateCharacters;
     private readonly ModelSet? _gpuSet;
+    private readonly GpuSessionBudget? _gpuBudget;
     private readonly LineBatcher? _gpuLines;
     private readonly RecognitionDevice _cpuDevice;
     private readonly UnchangedAreas _unchanged = new();
@@ -110,7 +111,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         {
             try
             {
-                _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker, _busy);
+                _gpuBudget = target == ExecutionTarget.DirectMl
+                    ? new GpuSessionBudget(GpuSessionBudget.MaxSessions, options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max))
+                    : null;
+                _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker, _busy, _gpuBudget);
                 _gpuLines = new LineBatcher(_gpuSet.RecognizeAsync);
                 _gpuDevice = new RecognitionDevice(true, SessionFactory.GraphicsCardName(target));
             }
@@ -121,6 +125,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 RecognitionLog.GraphicsCardFailed(_logger, ex.Message);
                 _gpuSet?.Dispose();
                 _gpuSet = null;
+                _gpuBudget?.Dispose();
+                _gpuBudget = null;
                 _gpuLines?.Dispose();
                 _gpuLines = null;
                 _gpuDevice = null;
@@ -715,6 +721,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         if (idle)
         {
             _gpuSet?.Dispose();
+            _gpuBudget?.Dispose();
         }
         else
         {

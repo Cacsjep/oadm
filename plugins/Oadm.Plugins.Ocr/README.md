@@ -43,6 +43,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Recognition/Picture.cs` | Partial JPEG decode, cut-outs, model inputs |
 | `Recognition/UnchangedAreas.cs` | The print of each area and its last reading, used again while it barely changes |
 | `Recognition/ModelRunner.cs`, `ModelSet.cs`, `ShapeSessions.cs` | CPU workers (idle sets freed), the graphics card runner, the sessions per input size |
+| `Recognition/GpuSessionBudget.cs` | The graphics card's sessions: at most 6 over all models (3 of the text finder), least recently used out, idle 2 minutes freed |
 | `Recognition/StageClock.cs` | Time per stage for the speed measurements |
 | `Recognition/PictureCutter.cs` | The value's cut-out for the page |
 | `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder`, `FrameVote` |

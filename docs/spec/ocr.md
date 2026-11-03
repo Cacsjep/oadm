@@ -110,7 +110,7 @@ Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the 
 the lines go to the reader in pairs of similar width, each pair a call of its own, so the lines of one picture spread
 over the free workers. On DirectML the text finder's sides (areas and tiles) come in the steps 256, 512, 768 and 1024
 and the tiles of a call in the steps 1, 2, 4 and 6 (at most 6 per call), so few input sizes exist (each is a session of
-its own there). Session sets of a CPU worker unused for 2 minutes are freed; stopping the recognizer waits for the
+its own there, bounded: "GPU", graphics card memory). Session sets of a CPU worker unused for 2 minutes are freed; stopping the recognizer waits for the
 readings in work (at most 30 s) before it frees the models.
 
 There is no Latin server recognition model: PaddleOCR publishes Latin PP-OCRv5 recognition as mobile only, and the
@@ -358,6 +358,24 @@ often, from worse pictures, and never a wrong value reported as sure.
   group), audited. The setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change; the
   next readings run where it says, the graphics card keeps its models until the plugin stops. Without a recognizer: the
   CPU, no graphics card.
+- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): one model set on the card (server text finder,
+  reader, angle model), shared by all readers. On DirectML every input size is a session of its own, and each session keeps
+  its own copy of the model and its own buffers for that size on the card until it is disposed (the provider frees
+  nothing while a session lives). The old cache of 12 sizes per model (up to 12 text finder sessions of up to 6 tiles of
+  1024 x 1024, plus 8 reader and 2 angle sessions, never freed) explains about 10 GB on a 16 GB card. Now:
+  - at most 6 sessions over the three models together, of them at most 3 of the text finder; the least recently used
+    goes (made again when needed, a few hundred ms) and the first time the server logs "Text recognition keeps at most 6
+    model sessions on the graphics card";
+  - a session unused for 2 minutes is freed (like the CPU workers' sets), so an idle server gives the card back;
+  - every model call of the set runs inside the budget's gate (the card's calls run one at a time anyway), so a session is
+    never freed while it runs; memory pattern off and sequential execution as the DirectML provider asks;
+  - CUDA: one session per model takes every size; its memory pool grows by what a call needs
+    (`arena_extend_strategy=kSameAsRequested`, not the next power of two).
+  - Expected budget (estimated from the model sizes, to be measured): weights per session 88 MB (text finder), 8 MB
+    (reader), 7 MB (angle model); the text finder's buffers about 0.2 to 0.4 GB per 1024 x 1024 picture of a call. A fixed
+    area (256 to 512 px): about 0.15 GB per text finder session; Search over full HD (6 tiles of 768 x 768): about 1 to
+    1.5 GB; reader and angle sessions together below 0.5 GB. Typical: 1 to 2 GB; worst case (3 text finder sessions of 6
+    tiles of 1024 x 1024): about 5 GB.
 - On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
   recognition together. Limits on a GPU: frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
@@ -454,6 +472,9 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - Partial decode (`PictureTests`: the same pixels as a full decode), unchanged areas (`UnchangedAreasTests`: reuse,
   a changed area read anew, other readers, 10 uses in a row), the angle model's skip rule, idle session sets freed
   (`FakeTimeProvider`), a set in use freed only after its call, the graphics card's round awaited on stop.
+- Watching readers and previews reuse under their own source, the action never, unchanged pictures counted apart
+  (`UnchangedReuseTests`); the graphics card's session caps, least recently used out, idle sessions freed
+  (`GpuSessionBudgetTests`, fake sessions, no graphics card).
 
 ## Build plan (parallel work)
 
