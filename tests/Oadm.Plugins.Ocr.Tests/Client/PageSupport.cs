@@ -135,7 +135,21 @@ internal sealed class FakePageContext : ICorePluginClientContext
     /// <summary>False: a user limited to a device group.</summary>
     public bool HasAllDevices { get; set; } = true;
 
-    public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
+    public IReadOnlyList<IDeviceInfo> Devices
+    {
+        get
+        {
+            DeviceReads++;
+            return DeviceList;
+        }
+    }
+
+    /// <summary>How often the page read the device list.</summary>
+    public int DeviceReads { get; private set; }
+
+    public event EventHandler? DevicesChanged;
+
+    public void RaiseDevicesChanged() => DevicesChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>The host's live video; null: an older OADM without it.</summary>
     public FakeVideoAccess? Video { get; set; } = new();
@@ -342,7 +356,7 @@ internal static class Samples
         readers = new object[]
         {
             new { id = "r1", name = "Container gate", deviceId = Gate.Id, mode = "Watching", fps = 1, lastText = "MSKU 123456 7", lastTime = Time },
-            new { id = "r3", name = "Dock 4 sign", deviceId = Dock.Id, mode = "Watching", fps = 2, lastText = "DOCK 4", lastTime = Time, problem = "Camera not reachable, trying again in 30 s" },
+            new { id = "r3", name = "Dock 4 sign", deviceId = Dock.Id, mode = "Watching", fps = 2, lastText = "DOCK 4", lastTime = Time, problem = DeviceMessages.NotAnswering },
             new { id = "r2", name = "Water meter", deviceId = Plant.Id, mode = "OnAction", lastText = "" },
         },
         fpsChoices = new[] { 1, 2, 4, 8, 12, 15 },

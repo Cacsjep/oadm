@@ -167,7 +167,7 @@ public sealed partial class OcrPlugin
         var engine = runtime.Engine;
         return new EngineInfo
         {
-            RunsOn = engine?.RunsOn is { Length: > 0 } runsOn ? runsOn : ReaderRules.CpuText(Environment.ProcessorCount),
+            RunsOn = engine?.RunsOn.Name is { Length: > 0 } runsOn ? runsOn : ReaderRules.CpuText(Environment.ProcessorCount),
             GpuAvailable = engine?.GpuAvailable ?? false,
             UseGpu = _useGpu,
             FpsChoices = OcrLimits.FpsChoices,

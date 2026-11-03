@@ -267,7 +267,7 @@ public sealed record ReaderSummary
     /// <summary>When the last reading was taken; null without one.</summary>
     public DateTimeOffset? LastTime { get; init; }
 
-    /// <summary>Why the reader does not read now (its camera left its device group); null while it can read.</summary>
+    /// <summary>Why the reader does not read now (the watching limits, the camera refuses or gives no pictures, its camera left its device group); null while it can read.</summary>
     public string? Problem { get; init; }
 }
 
