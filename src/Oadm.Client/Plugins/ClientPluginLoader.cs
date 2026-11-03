@@ -30,7 +30,7 @@ public interface IClientPluginRegistry
 /// <see cref="AssemblyLoadContext"/> that shares the SDK and Avalonia with the host, and instantiates every
 /// <see cref="ITaskPluginDialog"/>, <see cref="ICorePluginPage"/> and <see cref="IToolbarPlugin"/>. Failures are logged and skipped.
 /// </summary>
-public sealed partial class ClientPluginLoader : IClientPluginRegistry
+public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.IAddOnPartLoader
 {
     private readonly List<ITaskPluginDialog> _dialogs = [];
     private readonly List<ICorePluginPage> _pages = [];
@@ -124,6 +124,30 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry
 
     public ICorePluginPage? FindPage(string pluginId) =>
         _pages.Find(p => string.Equals(p.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
+
+    /// <inheritdoc />
+    public bool HasPackage(string packageId) => _loadedPackages.Contains(packageId);
+
+    /// <summary>
+    /// The client part of an add-on (docs/spec/add-ons.md rule 6), fetched while connected: loaded like a plugin folder,
+    /// each dll in its own load context. Call on the UI thread (the lists are read there).
+    /// </summary>
+    public int LoadAddOn(string packageId, string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        if (_loadedPackages.Contains(packageId))
+        {
+            return 0;
+        }
+
+        int before = _dialogs.Count + _pages.Count + _toolbar.Count;
+        LoadFrom(Path.GetFullPath(folder));
+        _loadedPackages.UnionWith(_rootPackages);
+        _rootPackages.Clear();
+        _loadedPackages.Add(packageId);
+        return _dialogs.Count + _pages.Count + _toolbar.Count - before;
+    }
 
     private void LoadFrom(string root)
     {
@@ -275,6 +299,16 @@ internal sealed class PluginLoadContext(string pluginPath)
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
         if (path is null)
         {
+            // An add-on's client part (docs/spec/add-ons.md rule 6) may come without deps.json: its server part next to the
+            // client dll, other dependencies in client/.
+            foreach (string candidate in (string[])[Path.Combine(_folder, assemblyName.Name + ".dll"), Path.Combine(_folder, "client", assemblyName.Name + ".dll")])
+            {
+                if (File.Exists(candidate))
+                {
+                    return LoadWithoutLock(candidate);
+                }
+            }
+
             return null;
         }
 

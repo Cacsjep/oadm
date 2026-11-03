@@ -110,6 +110,17 @@ public static class ServiceRegistration
         services.AddSingleton<TaskPluginCatalog>();
         services.AddSingleton<PluginPackageStore>();
         services.AddSingleton<IClientPluginRegistry>(sp => new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>()));
+        // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per version in the data folder;
+        // the files of removed add-ons go here, at the start, before any add-on loads.
+        services.AddSingleton<Plugins.AddOns.IAddOnPartLoader>(sp => (Plugins.AddOns.IAddOnPartLoader)sp.GetRequiredService<IClientPluginRegistry>());
+        services.AddSingleton(sp =>
+        {
+            var cache = new Plugins.AddOns.AddOnClientCache(Path.Combine(options.DataFolder, "addons"), sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientCache>>());
+            cache.DeleteRemoved();
+            return cache;
+        });
+        services.AddSingleton<Plugins.AddOns.AddOnClientSync>();
+        services.AddSingleton<Plugins.AddOns.AddOnsViewModel>();
         services.AddSingleton<AvaloniaDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
         services.AddSingleton<IUrlLauncher>(sp => sp.GetRequiredService<AvaloniaDialogService>());

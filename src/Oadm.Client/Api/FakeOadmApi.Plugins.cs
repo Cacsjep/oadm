@@ -131,6 +131,12 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
+            if (FakeAddOnPackages().Any(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)))
+            {
+                _packageStates[packageId] = enabled && _textRecognitionState == AddOnState.AddOnInstalled;
+                return Task.FromResult(FakePackageList());
+            }
+
             if (!FakePackageTemplates.Any(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase)))
             {
                 throw new RpcException(new Status(StatusCode.NotFound, $"Unknown plugin '{packageId}'."));
@@ -167,6 +173,7 @@ public sealed partial class FakeOadmApi
 
             return p;
         }),
+        .. FakeAddOnPackages(),
     ];
 
     private static PluginPackageInfo Package(string id, string name, string description, string group, bool hasPage, int tasks,

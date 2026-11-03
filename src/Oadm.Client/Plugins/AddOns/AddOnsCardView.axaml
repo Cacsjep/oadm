@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:addons="using:Oadm.Client.Plugins.AddOns"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:tc="using:Oadm.Theme.Controls"
+             x:Class="Oadm.Client.Plugins.AddOns.AddOnsCardView"
+             x:DataType="addons:AddOnsViewModel">
+  <!-- Plugins page, below the plugin list (docs/spec/add-ons.md "Plugins page"): one row per add-on of the server's
+       version with its state; administrators install and remove. A server without add-ons hides the card. -->
+  <Border Classes="card" IsVisible="{Binding HasAddOns, FallbackValue=False}">
+    <StackPanel Spacing="12">
+      <TextBlock Classes="cardTitle" Text="{x:Static addons:AddOnTexts.CardTitle}" />
+      <ui:ProgressRow Text="Reading the add-ons" IsVisible="{Binding IsLoading}" />
+      <ItemsControl ItemsSource="{Binding AddOns}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="16" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="addons:AddOnRowViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
+              <ui:OadmIcon Classes="accent" Data="{StaticResource Icon.plugin}" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                <TextBlock Classes="secondary" Text="{Binding Description}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Message}" TextWrapping="Wrap" IsVisible="{Binding HasMessage}"
+                           Classes.secondary="{Binding !MessageIsError}" Classes.error="{Binding MessageIsError}" />
+                <TextBlock Classes="error" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+              </StackPanel>
+              <TextBlock Grid.Column="2" Classes="secondary small" Text="{Binding MetaText}" VerticalAlignment="Center" />
+              <Panel Grid.Column="3" VerticalAlignment="Center">
+                <ui:ToolbarButton Text="{x:Static addons:AddOnTexts.Install}" IconKey="download" IsVisible="{Binding ShowInstall}"
+                                  IsEnabled="{Binding CanInstall}" ToolTip.Tip="{Binding InstallTip}" ToolTip.ShowOnDisabled="True"
+                                  Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).InstallCommand}"
+                                  CommandParameter="{Binding}" />
+                <ui:ProgressRow Width="320" Value="{Binding Percent}" Text="{Binding ProgressText}" IsVisible="{Binding IsInstalling}" />
+                <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsInstalled}">
+                  <ui:StatusChip Text="{x:Static addons:AddOnTexts.Installed}" IsOk="True" VerticalAlignment="Center" />
+                  <ui:ToolbarButton Classes="danger" Text="{x:Static addons:AddOnTexts.Remove}" IconKey="remove" IsVisible="{Binding ShowRemove}"
+                                    IsEnabled="{Binding CanRemove}"
+                                    Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).RemoveCommand}"
+                                    CommandParameter="{Binding}" />
+                </StackPanel>
+                <ui:StatusChip Text="{x:Static addons:AddOnTexts.Removed}" IsWarning="True" MaxLines="2" IsVisible="{Binding IsRemoved}" />
+                <ui:StatusChip Text="{x:Static addons:AddOnTexts.NotInstalled}" IsVisible="{Binding ShowNotInstalled}" />
+              </Panel>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+      <tc:Callout Kind="Info" Text="{x:Static addons:AddOnTexts.Source}" />
+    </StackPanel>
+  </Border>
+</UserControl>

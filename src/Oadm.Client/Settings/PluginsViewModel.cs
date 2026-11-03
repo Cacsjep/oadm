@@ -199,8 +199,9 @@ public sealed partial class PluginsViewModel : ObservableObject
     private readonly ILogger<PluginsViewModel> _logger;
 
     public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null,
-        Devices.DeviceStore? devices = null)
+        Devices.DeviceStore? devices = null, Plugins.AddOns.AddOnsViewModel? addOns = null)
     {
+        AddOns = addOns;
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
         _session = session;
@@ -231,6 +232,9 @@ public sealed partial class PluginsViewModel : ObservableObject
     }
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
+
+    /// <summary>The Add-ons card below the plugin list (docs/spec/add-ons.md "Plugins page"); null hides it.</summary>
+    public Plugins.AddOns.AddOnsViewModel? AddOns { get; }
 
     /// <summary>The server has sites: the page shows the Sites column (what works at a site), like the device grid's Site column.</summary>
     [ObservableProperty]
@@ -265,8 +269,11 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool IsEmpty => Plugins.Count == 0;
 
-    /// <summary>Reads the plugin list again (the page opened): the PRO lock follows a license that ended or changed elsewhere.</summary>
-    public Task RefreshAsync() => _store.LoadAsync(CancellationToken.None);
+    /// <summary>
+    /// Reads the plugin list and the add-ons again (the page opened): the PRO lock follows a license that ended or changed
+    /// elsewhere.
+    /// </summary>
+    public Task RefreshAsync() => Task.WhenAll(_store.LoadAsync(CancellationToken.None), AddOns?.LoadAsync(CancellationToken.None) ?? Task.CompletedTask);
 
     /// <summary>Opens "License of X": paste or choose the file, the server checks and stores it.</summary>
     [RelayCommand]
