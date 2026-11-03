@@ -722,6 +722,10 @@ public static partial class OadmServerHost
         // their core plugin running.
         sp.GetRequiredService<ActionRunner>().PluginsStarted();
 
+        // 4d. From here a package loaded while the server runs (an add-on installed) is followed like Turn on.
+        sp.GetRequiredService<PluginActivation>().FollowAddedPackages();
+        registry.MarkStarted();
+
         // 5. Background services and Kestrel.
         var listenUrl = options.ListenUrl
             ?? app.Configuration["Oadm:ListenUrl"]

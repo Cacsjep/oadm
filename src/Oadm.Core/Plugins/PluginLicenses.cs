@@ -152,6 +152,41 @@ public sealed partial class PluginLicenses : IPluginLicenseSource, IDisposable
         return Update(packageId);
     }
 
+    /// <summary>
+    /// A package was added while the server runs (<see cref="PluginRegistry.PackageAdded"/>): its trial starts today when it
+    /// is seen for the first time, as at a server start, and its license is checked. Nothing before
+    /// <see cref="InitializeAsync"/> (the start checks every package then).
+    /// </summary>
+    public async Task PackageAddedAsync(string packageId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        if (ServerId.Length == 0 || !_registry.HasPackage(packageId))
+        {
+            return;
+        }
+
+        var package = _registry.Packages.FirstOrDefault(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase));
+        if (package?.Origin.License is { TrialDays: > 0 })
+        {
+            await _write.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                if (!_trials.ContainsKey(packageId))
+                {
+                    var trials = new Dictionary<string, DateOnly>(_trials, StringComparer.OrdinalIgnoreCase) { [packageId] = Today() };
+                    await _settings.SetJsonAsync(TrialsKey, JsonSerializer.Serialize(trials), CancellationToken.None).ConfigureAwait(false);
+                    _trials = trials;
+                }
+            }
+            finally
+            {
+                _write.Release();
+            }
+        }
+
+        Update(packageId);
+    }
+
     /// <summary>Checks every package again (a license or a trial may have run out) and raises Changed where it changed.</summary>
     public void Refresh()
     {

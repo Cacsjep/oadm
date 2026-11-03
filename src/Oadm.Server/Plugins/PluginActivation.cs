@@ -12,16 +12,100 @@ namespace Oadm.Server.Plugins;
 /// setting <see cref="SettingKey"/> (JSON object package id -> on); packages without a choice use their manifest's
 /// <c>enabledByDefault</c> (the Hardening scan is off by default). A change applies at once: the core plugins of a
 /// package that was turned off stop, its tasks leave the context menu, and turning it on starts them again.
+/// A package added while the server runs (an add-on installed, <see cref="FollowAddedPackages"/>) is followed the same
+/// way: its permissions join the roles, its license is checked and its core plugins start if it is on.
 /// </summary>
 public sealed partial class PluginActivation(
     PluginRegistry registry,
     CorePluginHost host,
     ServerSettingsStore settings,
-    ILogger<PluginActivation> logger) : IDisposable
+    ILogger<PluginActivation> logger,
+    Core.Auth.RoleStore? roles = null,
+    PluginLicenses? licenses = null) : IDisposable
 {
     public const string SettingKey = "Plugins.Enabled";
 
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Lock _followSync = new();
+    private bool _following;
+    private Task _lastFollow = Task.CompletedTask;
+
+    /// <summary>
+    /// The follow of the packages added so far (<see cref="FollowAddedPackages"/>): completes once the roles, the license
+    /// and the core plugins of the last added package follow it. Never faults (a failure is logged).
+    /// </summary>
+    public Task AddedPackagesFollowed
+    {
+        get
+        {
+            lock (_followSync)
+            {
+                return _lastFollow;
+            }
+        }
+    }
+
+    /// <summary>
+    /// From now on a package added to the registry while the server runs (<see cref="PluginRegistry.PackageAdded"/>) is
+    /// followed like Turn on: the roles take its permissions (<see cref="Core.Auth.RoleStore.SyncCatalogAsync"/>, the
+    /// defaults of a new permission once), its license and trial are checked, and its core plugins start when it is on
+    /// (an add-on is off). The catalogues of events, actions and compliance types follow the registry's
+    /// <see cref="PluginRegistry.EnabledChanged"/> by themselves. Once per server (server start); later calls do nothing.
+    /// </summary>
+    public void FollowAddedPackages()
+    {
+        lock (_followSync)
+        {
+            if (_following)
+            {
+                return;
+            }
+
+            _following = true;
+        }
+
+        registry.PackageAdded += (_, e) =>
+        {
+            lock (_followSync)
+            {
+                _lastFollow = FollowAsync(e.PackageId);
+            }
+        };
+    }
+
+    private async Task FollowAsync(string packageId)
+    {
+        await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            using (Core.Auth.CallerContext.Suppress())
+            {
+                if (licenses is not null)
+                {
+                    await licenses.PackageAddedAsync(packageId, CancellationToken.None).ConfigureAwait(false);
+                }
+
+                if (roles is not null)
+                {
+                    await roles.SyncCatalogAsync(Core.Auth.PermissionCatalog.Build(registry), CancellationToken.None).ConfigureAwait(false);
+                }
+
+                await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+
+            LogAdded(logger, packageId, registry.IsEnabled(packageId) ? "on" : "off");
+        }
+#pragma warning disable CA1031 // A failed follow is logged; the next start reads the package like any other.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogAddFailed(logger, ex, packageId);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <summary>
     /// Applies the stored choices to the registry (server start, before the core plugins start). The choices of packages
@@ -137,6 +221,12 @@ public sealed partial class PluginActivation(
     }
 
     public void Dispose() => _gate.Dispose();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} was added while the server runs and is {State}")]
+    private static partial void LogAdded(ILogger logger, string packageId, string state);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The added plugin {PackageId} could not be followed; it is read again at the next start")]
+    private static partial void LogAddFailed(ILogger logger, Exception ex, string packageId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} is {State}: OADM PRO is {Pro}")]
     private static partial void LogProChanged(ILogger logger, string packageId, string state, string pro);
