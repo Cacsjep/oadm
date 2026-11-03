@@ -137,6 +137,11 @@ internal sealed class FakePageContext : ICorePluginClientContext
 
     public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
 
+    /// <summary>The host's live video; null: an older OADM without it.</summary>
+    public FakeVideoAccess? Video { get; set; } = new();
+
+    public ILiveVideoAccess? LiveVideo => Video;
+
     public event EventHandler? PermissionsChanged;
 
     public void RaisePermissionsChanged() => PermissionsChanged?.Invoke(this, EventArgs.Empty);
@@ -204,6 +209,78 @@ internal sealed class FakePageContext : ICorePluginClientContext
     }
 }
 
+/// <summary>Live videos that record what they were asked to show; <see cref="Still"/> is the picture they show (screenshots).</summary>
+internal sealed class FakeVideoAccess : ILiveVideoAccess
+{
+    public List<FakeVideo> Created { get; } = [];
+
+    /// <summary>A still frame as PNG bytes shown by every video created afterwards; null: an empty surface.</summary>
+    public byte[]? Still { get; set; }
+
+    public ILiveVideo Create(LiveVideoPlace place)
+    {
+        var video = new FakeVideo(place, Still);
+        Created.Add(video);
+        return video;
+    }
+}
+
+internal sealed class FakeVideo : ILiveVideo
+{
+    private readonly byte[]? _still;
+    private Control? _view;
+
+    public FakeVideo(LiveVideoPlace place, byte[]? still)
+    {
+        Place = place;
+        _still = still;
+    }
+
+    public LiveVideoPlace Place { get; }
+
+    /// <summary>Made on first use (the view model tests run without a UI thread).</summary>
+    public Control View => _view ??= MakeView();
+
+    private Control MakeView()
+    {
+        if (_still is null)
+        {
+            return new Border();
+        }
+
+        using var stream = new MemoryStream(_still);
+        return new Image { Source = new Bitmap(stream), Stretch = Stretch.Uniform };
+    }
+
+    public Guid? Shown { get; private set; }
+
+    /// <summary>Every Start in order: device and channel.</summary>
+    public List<(Guid Device, int Camera)> Starts { get; } = [];
+
+    public int Camera { get; private set; }
+
+    public bool IsDisposed { get; private set; }
+
+    public event EventHandler<int>? CameraChosen;
+
+    public void Start(Guid deviceId, int camera = 0)
+    {
+        Shown = deviceId;
+        Camera = camera;
+        Starts.Add((deviceId, camera));
+    }
+
+    public void Close() => Shown = null;
+
+    public void Choose(int camera)
+    {
+        Camera = camera;
+        CameraChosen?.Invoke(this, camera);
+    }
+
+    public void Dispose() => IsDisposed = true;
+}
+
 /// <summary>Example readers, readings and a drawn camera picture (no camera, no recognition).</summary>
 internal static class Samples
 {
@@ -235,7 +312,7 @@ internal static class Samples
         Id = "r2",
         Name = "Water meter",
         DeviceId = Plant.Id,
-        Mode = ReaderMode.OnDemand,
+        Mode = ReaderMode.OnAction,
         Areas =
         [
             new Area { Name = "Reading", Box = new(0.32, 0.32, 0.38, 0.18), Expected = ExpectedText.WithFormat("####.#") },
@@ -266,9 +343,9 @@ internal static class Samples
         {
             new { id = "r1", name = "Container gate", deviceId = Gate.Id, mode = "Watching", fps = 1, lastText = "MSKU 123456 7", lastTime = Time },
             new { id = "r3", name = "Dock 4 sign", deviceId = Dock.Id, mode = "Watching", fps = 2, lastText = "DOCK 4", lastTime = Time, problem = "Camera not reachable, trying again in 30 s" },
-            new { id = "r2", name = "Water meter", deviceId = Plant.Id, mode = "OnDemand", lastText = "" },
+            new { id = "r2", name = "Water meter", deviceId = Plant.Id, mode = "OnAction", lastText = "" },
         },
-        fpsChoices = new[] { 1, 2, 4, 8, 15 },
+        fpsChoices = new[] { 1, 2, 4, 8, 12, 15 },
         maxWatching = 50,
     });
 
@@ -305,6 +382,14 @@ internal static class Samples
         new AreaDetails { Area = "Lane", TooSmall = true },
     ];
 
+    /// <summary>The details with the server's cut-out of the first area's match.</summary>
+    public static IReadOnlyList<AreaDetails> WithCutout(IReadOnlyList<AreaDetails> details, byte[] cutout)
+    {
+        var list = details.ToList();
+        list[0] = list[0] with { Cutout = cutout };
+        return list;
+    }
+
     /// <summary>
     /// The reading reply JSON as the server sends it: <c>{"reading":{...},"jpeg":...,"details":[...]}</c> (the picture as
     /// PNG bytes in the JPEG field: the page decodes either).
@@ -312,7 +397,7 @@ internal static class Samples
     public static string ReplyJson(Reading reading, IReadOnlyList<AreaDetails> details, byte[]? picture) =>
         OcrJson.Serialize(new { reading, jpeg = picture, details });
 
-    public static EngineInfo Engine => new() { RunsOn = "NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true, UseGpu = true, FpsChoices = [1, 2, 4, 8, 15] };
+    public static EngineInfo Engine => new() { RunsOn = "NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true, UseGpu = true, FpsChoices = [1, 2, 4, 8, 12, 15] };
 
     public static CameraOptions CameraOptions => new()
     {
@@ -338,6 +423,13 @@ internal static class Samples
             return OcrJson.Serialize(new SaveReaderReply { Reader = reader with { Id = reader.Id.Length == 0 ? "r9" : reader.Id } });
         };
         ctx.Answers[OcrMethods.DeleteReader] = _ => "{}";
+        ctx.Answers[OcrMethods.StartPreview] = json =>
+        {
+            var id = OcrJson.Deserialize<PreviewRequest>(json).PreviewId;
+            return OcrJson.Serialize(new PreviewReply { PreviewId = id.Length > 0 ? id : "p1" });
+        };
+        ctx.Answers[OcrMethods.StopPreview] = _ => "{}";
+        ctx.Answers[OcrMethods.GetPreview] = _ => ReplyJson(GateReading(), GateExtras, null);
         return ctx;
     }
 

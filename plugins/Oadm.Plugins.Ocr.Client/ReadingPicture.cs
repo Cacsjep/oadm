@@ -9,18 +9,21 @@ using Oadm.Plugins.Ocr.Model;
 
 namespace Oadm.Plugins.Ocr.Client;
 
+/// <summary>The end of a move or resize of an area on the picture: the area and its new box.</summary>
+public sealed record AreaBoxChange(AreaViewModel Area, RelativeBox Box);
+
 /// <summary>
-/// The picture of the last reading with the reader's areas and the found lines drawn on it (docs/spec/ocr.md "Page"): areas
-/// dashed in the accent colour with their name on a tag, the selected one solid; the lines as teal boxes with their text.
-/// Keeps the picture's shape inside the space it gets. While <see cref="IsDrawing"/> a drag draws a rectangle that is handed
-/// to <see cref="AreaDrawn"/>; a click selects the area under it (<see cref="AreaClicked"/>). Colours and fonts come from the
-/// theme (like the charts); no logic beyond the geometry.
+/// The overlay over the live video of the shown reader (docs/spec/ocr.md "Page"): the reader's areas dashed in the accent
+/// colour with their name on a tag, the selected one solid with handles at its corners and edge midpoints; the lines of the
+/// latest reading as teal boxes with their text. The picture's place inside the control follows the reader's resolution
+/// (its shape kept, centered: the same letterboxing as the video below it). While <see cref="IsDrawing"/> a drag draws a
+/// rectangle (<see cref="AreaDrawn"/>); otherwise a press on an area selects it (<see cref="AreaSelected"/>), a drag inside
+/// moves it, a drag on a handle resizes it (<see cref="AreaChanged"/> at the end; Esc cancels the drag), the arrow keys
+/// nudge it (<see cref="NudgeRequested"/>). The geometry rules are <see cref="AreaGeometry"/>; colours and fonts come from
+/// the theme.
 /// </summary>
 public sealed class ReadingPicture : Control
 {
-    public static readonly StyledProperty<IImage?> SourceProperty =
-        AvaloniaProperty.Register<ReadingPicture, IImage?>(nameof(Source));
-
     public static readonly StyledProperty<Resolution> PictureSizeProperty =
         AvaloniaProperty.Register<ReadingPicture, Resolution>(nameof(PictureSize), Resolution.Default);
 
@@ -33,19 +36,29 @@ public sealed class ReadingPicture : Control
     public static readonly StyledProperty<bool> IsDrawingProperty =
         AvaloniaProperty.Register<ReadingPicture, bool>(nameof(IsDrawing));
 
+    /// <summary>Areas can be moved and resized (the change right).</summary>
+    public static readonly StyledProperty<bool> CanEditProperty =
+        AvaloniaProperty.Register<ReadingPicture, bool>(nameof(CanEdit), true);
+
     /// <summary>Changes whenever the areas, the selection or the lines changed: the overlay draws again.</summary>
     public static readonly StyledProperty<int> VersionProperty =
         AvaloniaProperty.Register<ReadingPicture, int>(nameof(Version));
 
     /// <summary>The smallest area drawn, relative to the picture (a click is not an area).</summary>
-    public const double MinAreaSize = 0.02;
+    public const double MinAreaSize = AreaGeometry.MinSize;
 
-    private Point? _dragStart;
-    private Point _dragNow;
+    /// <summary>The side of a handle and how near the pointer must be to take it, in pixels.</summary>
+    private const double HandleSize = 8;
+
+    private const double HandleReach = 7;
+
+    private Point? _drawStart;
+    private Point _drawNow;
+    private EditDrag? _edit;
 
     static ReadingPicture()
     {
-        AffectsRender<ReadingPicture>(SourceProperty, AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty);
+        AffectsRender<ReadingPicture>(AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty);
         AffectsMeasure<ReadingPicture>(PictureSizeProperty);
         FocusableProperty.OverrideDefaultValue<ReadingPicture>(true);
         ClipToBoundsProperty.OverrideDefaultValue<ReadingPicture>(true);
@@ -54,17 +67,17 @@ public sealed class ReadingPicture : Control
     /// <summary>A rectangle was drawn, relative to the picture.</summary>
     public event EventHandler<RelativeBox>? AreaDrawn;
 
-    /// <summary>A click on the picture (not drawing), relative to the picture.</summary>
-    public event EventHandler<Point>? AreaClicked;
+    /// <summary>A press on an area (not drawing): it becomes the selected one.</summary>
+    public event EventHandler<AreaViewModel>? AreaSelected;
+
+    /// <summary>A move or resize ended with another box.</summary>
+    public event EventHandler<AreaBoxChange>? AreaChanged;
+
+    /// <summary>An arrow key (not drawing, no drag): move the selected area by this much, relative to the picture.</summary>
+    public event EventHandler<Vector>? NudgeRequested;
 
     /// <summary>Esc while drawing.</summary>
     public event EventHandler? DrawingCancelled;
-
-    public IImage? Source
-    {
-        get => GetValue(SourceProperty);
-        set => SetValue(SourceProperty, value);
-    }
 
     public Resolution PictureSize
     {
@@ -90,6 +103,12 @@ public sealed class ReadingPicture : Control
         set => SetValue(IsDrawingProperty, value);
     }
 
+    public bool CanEdit
+    {
+        get => GetValue(CanEditProperty);
+        set => SetValue(CanEditProperty, value);
+    }
+
     public int Version
     {
         get => GetValue(VersionProperty);
@@ -98,6 +117,9 @@ public sealed class ReadingPicture : Control
 
     /// <summary>Where the picture sits inside the control (its shape kept, centered).</summary>
     public Rect PictureRect => Fit(Bounds.Size, Aspect);
+
+    /// <summary>A move or resize is in progress.</summary>
+    public bool IsDragging => _edit is not null;
 
     private double Aspect => PictureSize.Width > 0 && PictureSize.Height > 0 ? (double)PictureSize.Width / PictureSize.Height : 16.0 / 9;
 
@@ -111,17 +133,92 @@ public sealed class ReadingPicture : Control
     }
 
     /// <summary>The rectangle between two relative points.</summary>
-    public static RelativeBox BoxBetween(Point a, Point b) =>
-        new(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Abs(b.X - a.X), Math.Abs(b.Y - a.Y));
+    public static RelativeBox BoxBetween(Point a, Point b) => AreaGeometry.Between(a.X, a.Y, b.X, b.Y);
 
-    /// <summary>Finishes a drag from <paramref name="start"/> to <paramref name="end"/> (relative): an area or nothing.</summary>
+    /// <summary>Finishes a drawing drag from <paramref name="start"/> to <paramref name="end"/> (relative): an area or nothing.</summary>
     public void FinishDrag(Point start, Point end)
     {
         var box = BoxBetween(start, end);
-        if (box.Width >= MinAreaSize && box.Height >= MinAreaSize)
+        if (AreaGeometry.IsBigEnough(box))
         {
             AreaDrawn?.Invoke(this, box);
         }
+    }
+
+    /// <summary>
+    /// What a press at <paramref name="point"/> (in the control) takes: a handle of the selected area, else the topmost
+    /// area under it (move), else nothing.
+    /// </summary>
+    public (AreaViewModel? Area, AreaHandle Handle) HitTest(Point point)
+    {
+        var picture = PictureRect;
+        if (Areas is not { Count: > 0 } areas || picture.Width <= 0)
+        {
+            return (null, AreaHandle.None);
+        }
+
+        if (areas.FirstOrDefault(a => a.IsSelected) is { } selected)
+        {
+            var rect = ToRect(selected.Box, picture);
+            foreach (var (handle, at) in Handles(rect))
+            {
+                if (Math.Abs(point.X - at.X) <= HandleReach && Math.Abs(point.Y - at.Y) <= HandleReach)
+                {
+                    return (selected, handle);
+                }
+            }
+        }
+
+        for (var i = areas.Count - 1; i >= 0; i--)
+        {
+            if (ToRect(areas[i].Box, picture).Contains(point))
+            {
+                return (areas[i], AreaHandle.Move);
+            }
+        }
+
+        return (null, AreaHandle.None);
+    }
+
+    /// <summary>Starts a move or resize of <paramref name="area"/> at the relative point <paramref name="start"/> (tests and the pointer).</summary>
+    internal void BeginEdit(AreaViewModel area, AreaHandle handle, Point start)
+    {
+        _edit = new EditDrag(area, handle, start, area.Box) { Now = area.Box };
+        InvalidateVisual();
+    }
+
+    /// <summary>The drag reached the relative point <paramref name="now"/>: the area is shown at its new box.</summary>
+    internal void UpdateEdit(Point now)
+    {
+        if (_edit is { } edit)
+        {
+            edit.Now = AreaGeometry.Resize(edit.StartBox, edit.Handle, now.X - edit.Start.X, now.Y - edit.Start.Y);
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>The drag ended: <see cref="AreaChanged"/> when the box changed.</summary>
+    internal void EndEdit()
+    {
+        if (_edit is not { } edit)
+        {
+            return;
+        }
+
+        _edit = null;
+        if (edit.Now != edit.StartBox)
+        {
+            AreaChanged?.Invoke(this, new AreaBoxChange(edit.Area, edit.Now));
+        }
+
+        InvalidateVisual();
+    }
+
+    /// <summary>Esc during a drag: the area stays where it was.</summary>
+    internal void CancelEdit()
+    {
+        _edit = null;
+        InvalidateVisual();
     }
 
     protected override Size MeasureOverride(Size availableSize)
@@ -147,16 +244,30 @@ public sealed class ReadingPicture : Control
         }
 
         Focus();
-        var relative = ToRelative(e.GetPosition(this));
-        if (!IsDrawing)
+        var position = e.GetPosition(this);
+        var relative = ToRelative(position);
+        if (IsDrawing)
         {
-            AreaClicked?.Invoke(this, relative);
+            _drawStart = relative;
+            _drawNow = relative;
+            e.Pointer.Capture(this);
+            e.Handled = true;
             return;
         }
 
-        _dragStart = relative;
-        _dragNow = relative;
-        e.Pointer.Capture(this);
+        var (area, handle) = HitTest(position);
+        if (area is null)
+        {
+            return;
+        }
+
+        AreaSelected?.Invoke(this, area);
+        if (CanEdit)
+        {
+            BeginEdit(area, handle, relative);
+            e.Pointer.Capture(this);
+        }
+
         e.Handled = true;
     }
 
@@ -164,34 +275,53 @@ public sealed class ReadingPicture : Control
     {
         ArgumentNullException.ThrowIfNull(e);
         base.OnPointerMoved(e);
-        if (_dragStart is null)
+        var position = e.GetPosition(this);
+        if (_drawStart is not null)
         {
+            _drawNow = ToRelative(position);
+            InvalidateVisual();
             return;
         }
 
-        _dragNow = ToRelative(e.GetPosition(this));
-        InvalidateVisual();
+        if (_edit is not null)
+        {
+            UpdateEdit(ToRelative(position));
+            return;
+        }
+
+        Cursor = IsDrawing ? new Cursor(StandardCursorType.Cross) : CursorOf(CanEdit ? HitTest(position).Handle : AreaHandle.None);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
         base.OnPointerReleased(e);
-        if (_dragStart is not { } start)
+        if (_drawStart is { } start)
         {
+            _drawStart = null;
+            e.Pointer.Capture(null);
+            FinishDrag(start, ToRelative(e.GetPosition(this)));
+            InvalidateVisual();
             return;
         }
 
-        _dragStart = null;
-        e.Pointer.Capture(null);
-        FinishDrag(start, ToRelative(e.GetPosition(this)));
-        InvalidateVisual();
+        if (_edit is not null)
+        {
+            UpdateEdit(ToRelative(e.GetPosition(this)));
+            e.Pointer.Capture(null);
+            EndEdit();
+        }
     }
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        _dragStart = null;
+        _drawStart = null;
+        if (_edit is not null)
+        {
+            CancelEdit();
+        }
+
         InvalidateVisual();
     }
 
@@ -199,10 +329,38 @@ public sealed class ReadingPicture : Control
     {
         ArgumentNullException.ThrowIfNull(e);
         base.OnKeyDown(e);
+        if (e.Key == Key.Escape && _edit is not null)
+        {
+            CancelEdit();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape && IsDrawing)
         {
-            _dragStart = null;
+            _drawStart = null;
             DrawingCancelled?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
+
+        if (IsDrawing || _edit is not null || !CanEdit)
+        {
+            return;
+        }
+
+        var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? AreaGeometry.BigNudge : AreaGeometry.Nudge;
+        Vector? nudge = e.Key switch
+        {
+            Key.Left => new Vector(-step, 0),
+            Key.Right => new Vector(step, 0),
+            Key.Up => new Vector(0, -step),
+            Key.Down => new Vector(0, step),
+            _ => null,
+        };
+        if (nudge is { } by && Areas?.Any(a => a.IsSelected) == true)
+        {
+            NudgeRequested?.Invoke(this, by);
             e.Handled = true;
         }
     }
@@ -211,17 +369,18 @@ public sealed class ReadingPicture : Control
     {
         ArgumentNullException.ThrowIfNull(change);
         base.OnPropertyChanged(change);
-        if (change.Property == IsDrawingProperty && !IsDrawing)
+        if (change.Property == IsDrawingProperty)
         {
-            _dragStart = null;
+            _drawStart = null;
+            Cursor = IsDrawing ? new Cursor(StandardCursorType.Cross) : null;
         }
     }
 
-    /// <summary>Shows a drag in progress (tests: the drawing screenshot without a pointer).</summary>
+    /// <summary>Shows a drawing drag in progress (tests: the drawing screenshot without a pointer).</summary>
     internal void ShowDrag(Point start, Point now)
     {
-        _dragStart = start;
-        _dragNow = now;
+        _drawStart = start;
+        _drawNow = now;
         InvalidateVisual();
     }
 
@@ -234,20 +393,16 @@ public sealed class ReadingPicture : Control
             return;
         }
 
-        context.FillRectangle(Brush("Oadm.VideoBackgroundBrush"), picture);
-        if (Source is { } source)
-        {
-            context.DrawImage(source, new Rect(source.Size), picture);
-        }
-
+        // A transparent fill: the pointer reaches the overlay over the whole picture.
+        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         using (context.PushClip(picture))
         {
             DrawLines(context, picture);
             DrawAreas(context, picture);
-            if (_dragStart is { } start)
+            if (_drawStart is { } start)
             {
                 var accent = Brush("Oadm.AccentBrush");
-                var rect = ToRect(BoxBetween(start, _dragNow), picture);
+                var rect = ToRect(BoxBetween(start, _drawNow), picture);
                 context.DrawRectangle(Tint(accent, 0.16), new Pen(accent, 2), rect);
             }
         }
@@ -306,7 +461,8 @@ public sealed class ReadingPicture : Control
         var size = Number("Oadm.FontSizeSmall", 11);
         foreach (var area in areas)
         {
-            var rect = ToRect(area.Box, picture);
+            var box = _edit is { } edit && ReferenceEquals(edit.Area, area) ? edit.Now : area.Box;
+            var rect = ToRect(box, picture);
             context.DrawRectangle(Tint(accent, area.IsSelected ? 0.16 : 0.08), area.IsSelected ? solid : dashed, rect);
             var name = string.IsNullOrWhiteSpace(area.Name) ? " " : area.Name.Trim();
             var text = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, font, size, onAccent);
@@ -318,6 +474,14 @@ public sealed class ReadingPicture : Control
 
             context.FillRectangle(accent, tag, 3);
             context.DrawText(text, new Point(tag.X + 5, tag.Y + 2));
+            if (area.IsSelected && CanEdit && !IsDrawing)
+            {
+                var border = new Pen(onAccent, 1);
+                foreach (var (_, at) in Handles(rect))
+                {
+                    context.DrawRectangle(accent, border, new Rect(at.X - (HandleSize / 2), at.Y - (HandleSize / 2), HandleSize, HandleSize));
+                }
+            }
         }
     }
 
@@ -329,6 +493,33 @@ public sealed class ReadingPicture : Control
         context.FillRectangle(Brush("Oadm.OverlayBrush"), box, 4);
         context.DrawText(text, new Point(box.X + 10, box.Y + 5));
     }
+
+    /// <summary>The eight handles of an area: the corners and the middle of each edge.</summary>
+    private static IEnumerable<(AreaHandle Handle, Point At)> Handles(Rect rect)
+    {
+        var midX = rect.X + (rect.Width / 2);
+        var midY = rect.Y + (rect.Height / 2);
+        yield return (AreaHandle.TopLeft, rect.TopLeft);
+        yield return (AreaHandle.TopRight, rect.TopRight);
+        yield return (AreaHandle.BottomRight, rect.BottomRight);
+        yield return (AreaHandle.BottomLeft, rect.BottomLeft);
+        yield return (AreaHandle.Top, new Point(midX, rect.Y));
+        yield return (AreaHandle.Right, new Point(rect.Right, midY));
+        yield return (AreaHandle.Bottom, new Point(midX, rect.Bottom));
+        yield return (AreaHandle.Left, new Point(rect.X, midY));
+    }
+
+    private static Cursor? CursorOf(AreaHandle handle) => handle switch
+    {
+        AreaHandle.Move => new Cursor(StandardCursorType.SizeAll),
+        AreaHandle.TopLeft => new Cursor(StandardCursorType.TopLeftCorner),
+        AreaHandle.TopRight => new Cursor(StandardCursorType.TopRightCorner),
+        AreaHandle.BottomRight => new Cursor(StandardCursorType.BottomRightCorner),
+        AreaHandle.BottomLeft => new Cursor(StandardCursorType.BottomLeftCorner),
+        AreaHandle.Top or AreaHandle.Bottom => new Cursor(StandardCursorType.SizeNorthSouth),
+        AreaHandle.Left or AreaHandle.Right => new Cursor(StandardCursorType.SizeWestEast),
+        _ => null,
+    };
 
     internal static Rect Fit(Size space, double aspect)
     {
@@ -361,4 +552,18 @@ public sealed class ReadingPicture : Control
     private double Number(string key, double fallback) => Find(key) is double value ? value : fallback;
 
     private Typeface Font(string key) => new(Find(key) as FontFamily ?? FontFamily.Default);
+
+    /// <summary>A move or resize in progress: the area, what moves, where it started (relative) and the box now.</summary>
+    private sealed class EditDrag(AreaViewModel area, AreaHandle handle, Point start, RelativeBox startBox)
+    {
+        public AreaViewModel Area { get; } = area;
+
+        public AreaHandle Handle { get; } = handle;
+
+        public Point Start { get; } = start;
+
+        public RelativeBox StartBox { get; } = startBox;
+
+        public RelativeBox Now { get; set; }
+    }
 }

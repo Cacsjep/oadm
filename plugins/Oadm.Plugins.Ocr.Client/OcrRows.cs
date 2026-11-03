@@ -49,9 +49,9 @@ public sealed partial class ReaderRow : ObservableObject
 
     public DateTimeOffset? LastTime { get; private set; }
 
-    /// <summary>On demand / Watching · 2 fps / Not reachable.</summary>
+    /// <summary>On action / Watching · 2 fps / Not reachable.</summary>
     public string ModeText => IsProblem ? OcrTexts.NotReachable
-        : Mode != ReaderMode.Watching ? OcrTexts.OnDemand
+        : Mode != ReaderMode.Watching ? OcrTexts.OnAction
         : OcrTexts.WatchingAt(Fps);
 
     public bool IsWatching => Mode == ReaderMode.Watching && !IsProblem;

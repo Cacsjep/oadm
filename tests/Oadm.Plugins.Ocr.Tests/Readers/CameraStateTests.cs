@@ -28,7 +28,7 @@ public sealed class CameraStateTests
 
         Assert.Empty(ocr.Plugin.Runtime!.Watching);
         Assert.Equal(DeviceMessages.CertificateChanged, Assert.Single((await ocr.ListAsync()).Readers).Problem);
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.ReadOnceAsync(reader.Id));
         Assert.Equal(DeviceMessages.CertificateChanged, refused.Message);
         Assert.Equal((0, 0), (ocr.Frames.Opened, ocr.Frames.Singles));
 
@@ -53,9 +53,9 @@ public sealed class CameraStateTests
         }
 
         var refused = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(ocr.NewReader("Crane 5", ReaderMode.Watching, device: cameras[4].Id)));
-        Assert.Equal(new FieldError(OcrFields.Mode, "At most 4 readers can watch at once at the site Harbour. Set another reader there to On demand first."), Assert.Single(refused.Errors));
+        Assert.Equal(new FieldError(OcrFields.Mode, "At most 4 readers can watch at once at the site Harbour. Set another reader there to On action first."), Assert.Single(refused.Errors));
 
-        // On demand at the site, and watching on the server's own network, stay possible.
+        // On action at the site, and watching on the server's own network, stay possible.
         await ocr.SaveAsync(ocr.NewReader("Crane 5", device: cameras[4].Id));
         await ocr.SaveAsync(ocr.NewReader("Gate", ReaderMode.Watching));
         await Eventually.TrueAsync(() => ocr.Frames.Open == 5, "4 readers at the site and 1 at the server watch");

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 
@@ -17,47 +18,42 @@ using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.Ocr.Client;
 
-/// <summary>A frame rate choice of a watching reader (one radio button).</summary>
-public sealed partial class FpsOption(ReaderEditorViewModel owner, int value) : ObservableObject
-{
-    public int Value { get; } = value;
-
-    public string Text => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-
-    public bool IsChecked
-    {
-        get => owner.Fps == Value;
-        set
-        {
-            if (value)
-            {
-                owner.Fps = Value;
-            }
-        }
-    }
-
-    internal void Refresh() => OnPropertyChanged(nameof(IsChecked));
-}
-
 /// <summary>
-/// The right card: the selected reader's form (name, camera, video source, resolution, mode, frame rate), its areas, the
-/// picture of the last reading with the found lines, the results, Read now and Save (docs/spec/ocr.md "Page"). A new reader
-/// starts from its camera; nothing is saved before Save. The picture is fetched with getReading, one call at a time: a
-/// reading that arrives meanwhile is fetched once the call ends (newest wins), so a watching reader never queues frames.
+/// The selected reader (docs/spec/ocr.md "Page"): the camera's live video with the areas and the found lines over it, and
+/// the form (name, camera, video source, resolution, mode, frame rate), its areas, the results and Save. A new reader starts
+/// from its camera; nothing is saved before Save. While the page shows the reader (<see cref="StartPreview"/>) the server
+/// reads it live as a preview with the draft as it is now (saved or not, no rule events): the draft goes to the server on
+/// every change and every <see cref="OcrLimits.PreviewKeepAlive"/>; the preview's readings are fetched one call at a time
+/// (a reading that arrives meanwhile is fetched once the call ends, newest wins).
 /// </summary>
 public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDisposable
 {
     private static readonly Resolution[] FallbackResolutions = [new(3840, 2160), new(2688, 1512), new(1920, 1080), new(1280, 720), new(640, 360)];
 
+    /// <summary>The live video of the page: the picture only, nothing that would sit under the areas or leave them behind.</summary>
+    internal static readonly LiveVideoPlace VideoPlace = new()
+    {
+        ShowSourceSwitch = false,
+        AllowFullscreen = false,
+        AllowQualitySwitch = false,
+        ShowControlsButton = false,
+    };
+
     private readonly ICorePluginClientContext _ctx;
     private readonly Func<string, string, bool> _readerNameTaken;
     private readonly Func<byte[], Task<Bitmap?>> _decode;
+    private readonly ISet<string> _onActionNoticeShown;
+    private readonly string _draftKey = "new:" + Guid.NewGuid().ToString("N");
+    private readonly ILiveVideo? _video;
     private string _savedJson;
     private bool _loading;
     private bool _fetching;
     private bool _fetchAgain;
+    private bool _sending;
+    private bool _sendAgain;
     private bool _disposed;
-    private Bitmap? _picture;
+    private CancellationTokenSource? _preview;
+    private (Guid Device, int Source)? _shown;
 
     public ReaderEditorViewModel(
         ICorePluginClientContext ctx,
@@ -66,7 +62,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         EngineInfo engine,
         Func<Guid, string> cameraText,
         Func<string, string, bool> readerNameTaken,
-        Func<byte[], Task<Bitmap?>> decode)
+        Func<byte[], Task<Bitmap?>> decode,
+        ISet<string>? onActionNoticeShown = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         ArgumentNullException.ThrowIfNull(reader);
@@ -74,9 +71,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         CameraTextOf = cameraText ?? throw new ArgumentNullException(nameof(cameraText));
         _readerNameTaken = readerNameTaken ?? throw new ArgumentNullException(nameof(readerNameTaken));
         _decode = decode ?? throw new ArgumentNullException(nameof(decode));
+        _onActionNoticeShown = onActionNoticeShown ?? new HashSet<string>(StringComparer.Ordinal);
         IsNew = isNew;
         MayChange = ctx.Has(OcrViewModel.ChangePermissionKey);
-        FpsOptions = [.. engine.FpsChoices.Order().Select(v => new FpsOption(this, v))];
+        FpsChoices = [.. engine.FpsChoices.Order()];
 
         _loading = true;
         Id = reader.Id;
@@ -107,6 +105,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         Validation.Validate();
         _savedJson = isNew ? string.Empty : Signature();
         UpdateSaveState();
+
+        _video = ctx.LiveVideo?.Create(VideoPlace);
+        ShowVideo();
     }
 
     /// <summary>The reader was saved: its new state (with its id).</summary>
@@ -117,12 +118,13 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Opens the camera picker (set by the view through the page); null when cancelled.</summary>
     public Func<Guid?, Task<Guid?>>? PickCamera { get; set; }
 
+    /// <summary>The keep-alive's clock (tests pass a fake one).</summary>
+    public TimeProvider PreviewTime { get; set; } = TimeProvider.System;
+
     public bool MayChange { get; }
 
     /// <summary>Not saved yet (New).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ReadNowBlockedReason))]
-    [NotifyCanExecuteChangedFor(nameof(ReadNowCommand))]
     public partial bool IsNew { get; private set; }
 
     [ObservableProperty]
@@ -151,6 +153,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial IReadOnlyList<Resolution> Resolutions { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PictureSize))]
     public partial Resolution SelectedResolution { get; set; }
 
     /// <summary>The camera's sources and sizes are being read.</summary>
@@ -158,17 +161,18 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial bool IsLoadingCamera { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnDemand), nameof(ResultsEmptyText))]
+    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction))]
     public partial ReaderMode Mode { get; set; }
 
-    public bool IsOnDemand
+    /// <summary>On action: reads only when an event rule runs Read text.</summary>
+    public bool IsOnAction
     {
-        get => Mode == ReaderMode.OnDemand;
+        get => Mode == ReaderMode.OnAction;
         set
         {
             if (value)
             {
-                Mode = ReaderMode.OnDemand;
+                Mode = ReaderMode.OnAction;
             }
         }
     }
@@ -189,7 +193,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     [ObservableProperty]
     public partial int Fps { get; set; }
 
-    public IReadOnlyList<FpsOption> FpsOptions { get; }
+    /// <summary>The frame rates offered now (the select of Frames per second).</summary>
+    public IReadOnlyList<int> FpsChoices { get; }
 
     public ObservableCollection<AreaViewModel> Areas { get; } = [];
 
@@ -202,7 +207,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public static string NoAreasText => OcrTexts.NoAreas;
 
-    /// <summary>Draw area is on: the next drag on the picture adds an area.</summary>
+    /// <summary>Draw area is on: the next drag on the live video adds an area.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DrawAreaCommand))]
     public partial bool IsDrawing { get; set; }
@@ -212,18 +217,19 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Why Draw area is off (its tooltip).</summary>
     public string? DrawBlockedReason => Areas.Count >= OcrLimits.MaxAreas ? ReaderRules.TooManyAreas : null;
 
-    /// <summary>Raised to the picture: areas, selection or lines changed (the overlay draws again).</summary>
+    /// <summary>Raised to the overlay: areas, selection or lines changed (it draws again).</summary>
     [ObservableProperty]
     public partial int OverlayVersion { get; private set; }
 
-    /// <summary>The picture of the last reading; null before one.</summary>
-    public IImage? Picture => _picture;
+    /// <summary>The live video of the reader's camera and video source; null when the client has none (an older OADM).</summary>
+    public Control? VideoView => _video?.View;
 
-    /// <summary>The picture's size (for its shape); the reader's resolution before a reading.</summary>
-    [ObservableProperty]
-    public partial Resolution PictureSize { get; private set; }
+    public bool HasLiveVideo => _video is not null;
 
-    /// <summary>The lines of the last reading, drawn on the picture.</summary>
+    /// <summary>The picture's shape for the overlay: the reader's resolution.</summary>
+    public Resolution PictureSize => SelectedResolution;
+
+    /// <summary>The lines of the latest reading, drawn over the live video.</summary>
     [ObservableProperty]
     public partial IReadOnlyList<TextLine> Lines { get; private set; } = [];
 
@@ -231,24 +237,30 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public bool HasResults => Results.Count > 0;
 
-    public string ResultsEmptyText => IsWatching && !IsNew ? OcrTexts.WaitingForPicture : OcrTexts.ReadNowHint;
+    /// <summary>Below the results while there are none: why the preview reads nothing, else that it waits.</summary>
+    public string ResultsEmptyText => PreviewProblem ?? OcrTexts.WaitingForPicture;
 
-    /// <summary>"Last reading 14:32:06" or "No reading yet" over the picture.</summary>
+    /// <summary>"Last reading 14:32:06" below the live video, or "Waiting for the first picture."</summary>
     [ObservableProperty]
-    public partial string PictureText { get; private set; } = OcrTexts.NoReading;
+    public partial string PictureText { get; private set; } = OcrTexts.WaitingForPicture;
 
-    /// <summary>A Read now or a picture is on its way.</summary>
+    /// <summary>The server's preview of this reader; null while there is none.</summary>
+    public string? PreviewId { get; private set; }
+
+    /// <summary>Why the preview reads nothing now (the camera, the limits); null while it reads.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ReadNowCommand))]
-    public partial bool IsReading { get; private set; }
+    [NotifyPropertyChangedFor(nameof(ResultsEmptyText), nameof(HasPreviewProblem))]
+    public partial string? PreviewProblem { get; private set; }
+
+    public bool HasPreviewProblem => PreviewProblem is not null;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsSaving { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(SaveStatus), nameof(HasSaveStatus), nameof(IsSaveStatusOk), nameof(ReadNowBlockedReason))]
-    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(ReadNowCommand))]
+    [NotifyPropertyChangedFor(nameof(SaveStatus), nameof(HasSaveStatus), nameof(IsSaveStatusOk))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsDirty { get; private set; }
 
     [ObservableProperty]
@@ -265,16 +277,13 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Why Save is off (its tooltip): the first error of the form or of an area.</summary>
     public string? SaveBlockedReason => FormError ?? Areas.Select(a => a.FirstError).FirstOrDefault(e => e is not null);
 
-    /// <summary>Why Read now is off (its tooltip).</summary>
-    public string? ReadNowBlockedReason => IsNew || IsDirty ? OcrTexts.SaveFirst : null;
-
     /// <summary>The live state of the saved reader (list row): "Camera not reachable, trying again in 30 s" or null.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ModeChipText), nameof(IsModeOk), nameof(IsModeError))]
     public partial string? Problem { get; set; }
 
-    /// <summary>The server's problem text in either mode, else Watching · 2 fps or On demand.</summary>
-    public string ModeChipText => IsModeError ? Problem! : IsWatching ? OcrTexts.WatchingAt(Fps) : OcrTexts.OnDemand;
+    /// <summary>The server's problem text in either mode, else Watching · 2 fps or On action.</summary>
+    public string ModeChipText => IsModeError ? Problem! : IsWatching ? OcrTexts.WatchingAt(Fps) : OcrTexts.OnAction;
 
     public bool IsModeOk => IsWatching && !IsModeError;
 
@@ -352,6 +361,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
 
         UpdateSaveState();
+        ShowVideo();
     }
 
     /// <summary>The default size, else the camera's largest below it, else its smallest.</summary>
@@ -378,10 +388,38 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Another camera: its text, the first video source.</summary>
     internal void SetCamera(Guid id)
     {
-        DeviceId = id;
-        CameraText = CameraTextOf(id);
-        SelectedSource = new CameraSource { Number = 1, Name = SourceName(1) };
-        VideoSources = [SelectedSource];
+        _holdVideo = true;
+        try
+        {
+            DeviceId = id;
+            CameraText = CameraTextOf(id);
+            SelectedSource = new CameraSource { Number = 1, Name = SourceName(1) };
+            VideoSources = [SelectedSource];
+        }
+        finally
+        {
+            _holdVideo = false;
+        }
+
+        ShowVideo();
+    }
+
+    private bool _holdVideo;
+
+    /// <summary>The live video shows the reader's camera and video source (once per change).</summary>
+    private void ShowVideo()
+    {
+        if (_video is null || _disposed || _holdVideo || DeviceId == Guid.Empty)
+        {
+            return;
+        }
+
+        var wanted = (DeviceId, SelectedSource?.Number ?? 1);
+        if (_shown != wanted)
+        {
+            _shown = wanted;
+            _video.Start(wanted.DeviceId, wanted.Item2);
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanDraw))]
@@ -389,7 +427,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private bool CanDraw() => IsDrawing || CanAddArea;
 
-    /// <summary>Esc on the picture.</summary>
+    /// <summary>Esc on the live video.</summary>
     public void StopDrawing() => IsDrawing = false;
 
     /// <summary>A rectangle was drawn: a new area "Area 3", selected; drawing ends.</summary>
@@ -410,6 +448,43 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         var area = AddAreaViewModel(new Area { Name = $"Area {number}", Box = box });
         SelectedArea = area;
         return area;
+    }
+
+    /// <summary>
+    /// A move or resize of <paramref name="area"/> on the live video ended at <paramref name="box"/>; held inside the
+    /// picture with the minimum size (<see cref="AreaGeometry"/>). The reader is Not saved like after any other edit.
+    /// </summary>
+    public void SetAreaBox(AreaViewModel area, RelativeBox box)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        if (!MayChange || !Areas.Contains(area))
+        {
+            return;
+        }
+
+        var width = Math.Clamp(box.Width, AreaGeometry.MinSize, 1);
+        var height = Math.Clamp(box.Height, AreaGeometry.MinSize, 1);
+        area.Box = AreaGeometry.Move(new RelativeBox(box.X, box.Y, width, height), 0, 0);
+        SelectedArea = area;
+    }
+
+    /// <summary>Moves (<see cref="AreaHandle.Move"/>) or resizes <paramref name="area"/> by a drag of (dx, dy), relative to the picture.</summary>
+    public void EditArea(AreaViewModel area, AreaHandle handle, double dx, double dy)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        if (handle != AreaHandle.None)
+        {
+            SetAreaBox(area, AreaGeometry.Resize(area.Box, handle, dx, dy));
+        }
+    }
+
+    /// <summary>An arrow key: the selected area moves by (dx, dy), held inside the picture.</summary>
+    public void NudgeSelected(double dx, double dy)
+    {
+        if (SelectedArea is { } area)
+        {
+            EditArea(area, AreaHandle.Move, dx, dy);
+        }
     }
 
     [RelayCommand]
@@ -434,7 +509,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
-    /// <summary>A click on the picture: the topmost area under the point, else none.</summary>
+    /// <summary>A click on the live video: the topmost area under the point, else none.</summary>
     public void SelectAreaAt(Point relative)
     {
         var hit = Areas.LastOrDefault(a => relative.X >= a.Box.X && relative.X <= a.Box.X + a.Box.Width && relative.Y >= a.Box.Y && relative.Y <= a.Box.Y + a.Box.Height);
@@ -469,6 +544,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             {
                 await ShowRefusalAsync(reply.Errors).ConfigureAwait(true);
                 return;
+            }
+
+            if (IsNew && _onActionNoticeShown.Contains(_draftKey))
+            {
+                _onActionNoticeShown.Add(saved.Id);
             }
 
             Id = saved.Id;
@@ -538,37 +618,135 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private bool IsValidToSave() => IsFormValid && Areas.All(a => a.IsValid);
 
-    [RelayCommand(CanExecute = nameof(CanReadNow))]
-    private async Task ReadNowAsync()
+    /// <summary>
+    /// The page shows the reader: the server previews it with the draft now, again on every change and every
+    /// <see cref="OcrLimits.PreviewKeepAlive"/> until <see cref="StopPreview"/>.
+    /// </summary>
+    public void StartPreview()
     {
-        IsReading = true;
-        try
+        if (_preview is not null || _disposed || DeviceId == Guid.Empty)
         {
-            var json = await _ctx.InvokeAsync(OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = Id }), CancellationToken.None)
-                .ConfigureAwait(true);
-            await ApplyReplyJsonAsync(json).ConfigureAwait(true);
+            return;
         }
-#pragma warning disable CA1031 // The server's reason ("Already reading", the camera's answer) in the host's message.
-        catch (Exception ex)
-#pragma warning restore CA1031
+
+        _preview = new CancellationTokenSource();
+        _ = KeepPreviewAsync(_preview.Token);
+    }
+
+    /// <summary>The page hides the reader: the keep-alive stops and the server ends the preview.</summary>
+    public void StopPreview()
+    {
+        if (_preview is { } preview)
         {
-            await _ctx.ShowMessageAsync("Read now", ServerErrors.Message(ex)).ConfigureAwait(true);
+            _preview = null;
+            preview.Cancel();
+            preview.Dispose();
         }
-        finally
+
+        if (PreviewId is { } id)
         {
-            IsReading = false;
+            PreviewId = null;
+            _ = EndPreviewAsync(id);
         }
     }
 
-    private bool CanReadNow() => MayChange && !IsNew && !IsDirty && !IsReading;
+    /// <summary>A preview is running for this page (tests).</summary>
+    public bool IsPreviewing => _preview is not null;
+
+    private async Task EndPreviewAsync(string id)
+    {
+        try
+        {
+            await _ctx.InvokeAsync(OcrMethods.StopPreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), CancellationToken.None).ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // The server ends it anyway when its lease runs out.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
+    private async Task KeepPreviewAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            await SendPreviewAsync(ct).ConfigureAwait(true);
+            try
+            {
+                await Task.Delay(OcrLimits.PreviewKeepAlive, PreviewTime, ct).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
 
     /// <summary>
-    /// A reading of this reader arrived (live event) or the reader was opened: fetch its picture. One call at a time; a
-    /// request during a call fetches once more after it (the newest reading wins).
+    /// Sends the draft to the preview (starts it, keeps it alive, takes the change). One call at a time; a change during a
+    /// call sends once more after it.
     /// </summary>
-    public async Task RefreshReadingAsync(CancellationToken ct)
+    public async Task SendPreviewAsync(CancellationToken ct)
     {
-        if (IsNew || string.IsNullOrEmpty(Id))
+        if (_sending)
+        {
+            _sendAgain = true;
+            return;
+        }
+
+        _sending = true;
+        try
+        {
+            do
+            {
+                _sendAgain = false;
+                var request = new PreviewRequest { PreviewId = PreviewId ?? string.Empty, Reader = ToReader() };
+                var json = await _ctx.InvokeAsync(OcrMethods.StartPreview, OcrJson.Serialize(request), ct).ConfigureAwait(true);
+                if (_disposed || ct.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var reply = OcrJson.Deserialize<PreviewReply>(json);
+                PreviewId = reply.PreviewId.Length > 0 ? reply.PreviewId : null;
+                PreviewProblem = reply.Problem;
+            }
+            while (_sendAgain && !ct.IsCancellationRequested && !_disposed);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // The server's reason (too many previews, the camera) where the results would be.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            if (!_disposed)
+            {
+                PreviewProblem = ServerErrors.Message(ex);
+            }
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+
+    /// <summary>The draft changed: the preview takes it now (while it runs).</summary>
+    private void SendDraft()
+    {
+        if (_preview is { } preview && !_loading)
+        {
+            _ = SendPreviewAsync(preview.Token);
+        }
+    }
+
+    /// <summary>
+    /// A reading of this page's preview arrived (live event): fetch it with its cut-outs. One call at a time; a request
+    /// during a call fetches once more after it (the newest reading wins).
+    /// </summary>
+    public async Task RefreshPreviewAsync(CancellationToken ct)
+    {
+        if (PreviewId is null)
         {
             return;
         }
@@ -585,7 +763,12 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             do
             {
                 _fetchAgain = false;
-                var json = await _ctx.InvokeAsync(OcrMethods.GetReading, OcrJson.Serialize(new ReaderRequest { ReaderId = Id }), ct).ConfigureAwait(true);
+                if (PreviewId is not { } id)
+                {
+                    return;
+                }
+
+                var json = await _ctx.InvokeAsync(OcrMethods.GetPreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), ct).ConfigureAwait(true);
                 if (_disposed)
                 {
                     return;
@@ -598,7 +781,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
-#pragma warning disable CA1031 // A missed picture: the next reading brings a new one.
+#pragma warning disable CA1031 // A missed reading: the next one brings new results.
         catch (Exception)
 #pragma warning restore CA1031
         {
@@ -609,11 +792,36 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
+    /// <summary>On open: the saved reader's last reading, shown until the preview's first one arrives.</summary>
+    public async Task LoadLastReadingAsync(CancellationToken ct)
+    {
+        if (IsNew || string.IsNullOrEmpty(Id))
+        {
+            return;
+        }
+
+        try
+        {
+            var json = await _ctx.InvokeAsync(OcrMethods.GetReading, OcrJson.Serialize(new ReaderRequest { ReaderId = Id }), ct).ConfigureAwait(true);
+            if (!_disposed && Results.Count == 0)
+            {
+                await ApplyReplyJsonAsync(json).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // No last reading: the preview brings one.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
     private async Task ApplyReplyJsonAsync(string? json)
     {
         var reply = OcrJson.Deserialize<ReadingReply>(json);
         var details = reply.Details;
-        var picture = reply.Jpeg is { Length: > 0 } jpeg ? await _decode(jpeg).ConfigureAwait(true) : null;
         var cutOuts = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
         foreach (var detail in details)
         {
@@ -625,32 +833,24 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         if (_disposed)
         {
-            picture?.Dispose();
             DisposeAll(cutOuts.Values);
             return;
         }
 
-        ApplyReading(reply.Reading, details, picture, cutOuts);
+        ApplyReading(reply.Reading, details, cutOuts);
     }
 
-    /// <summary>
-    /// Shows a reading with its decoded picture and the server's cut-outs by area (the editor owns the bitmaps from now on).
-    /// </summary>
-    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details, Bitmap? picture, IReadOnlyDictionary<string, Bitmap>? cutOuts = null)
+    /// <summary>Shows a reading: its lines over the live video, the results with the server's cut-outs by area (the editor owns the bitmaps from now on).</summary>
+    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details, IReadOnlyDictionary<string, Bitmap>? cutOuts = null)
     {
-        var old = _picture;
         var oldCutOuts = _cutOuts;
         if (reading is null)
         {
-            picture?.Dispose();
             DisposeAll(cutOuts?.Values);
             return;
         }
 
         _cutOuts = cutOuts is null ? [] : [.. cutOuts.Values];
-        _picture = picture ?? (reading.Resolution == PictureSize ? old : null);
-        OnPropertyChanged(nameof(Picture));
-        PictureSize = reading.Resolution.Width > 0 ? reading.Resolution : SelectedResolution;
         Lines = [.. reading.Areas.SelectMany(a => a.Lines)];
         PictureText = OcrTexts.LastReading(reading.Time);
 
@@ -666,18 +866,13 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             var area = reading.Areas[i];
             var detail = details?.FirstOrDefault(d => d.Area == area.Area);
             var hasFormat = formats.TryGetValue(area.Area, out var isFormat) && isFormat;
-            IImage? cut = cutOuts is not null && cutOuts.TryGetValue(area.Area, out var served) ? served : CutOut(area, detail);
+            IImage? cut = cutOuts is not null && cutOuts.TryGetValue(area.Area, out var served) ? served : null;
             rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null));
         }
 
         Results.ReplaceAll(rows);
         OnPropertyChanged(nameof(HasResults));
         OverlayVersion++;
-        if (old is not null && !ReferenceEquals(old, _picture))
-        {
-            old.Dispose();
-        }
-
         DisposeAll(oldCutOuts);
     }
 
@@ -691,44 +886,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
-    /// <summary>The value's piece of the picture: the server's match box, else the box around the area's lines.</summary>
-    private CroppedBitmap? CutOut(AreaResult area, AreaDetails? detail)
-    {
-        if (_picture is not { } picture || area.Text.Length == 0)
-        {
-            return null;
-        }
-
-        var box = detail?.MatchBox ?? Around(area.Lines);
-        if (box is not { } b || !b.IsValid)
-        {
-            return null;
-        }
-
-        var size = picture.PixelSize;
-        var rect = new PixelRect(
-            (int)Math.Floor(b.X * size.Width),
-            (int)Math.Floor(b.Y * size.Height),
-            Math.Max(1, (int)Math.Ceiling(b.Width * size.Width)),
-            Math.Max(1, (int)Math.Ceiling(b.Height * size.Height)));
-        rect = rect.Intersect(new PixelRect(size));
-        return rect.Width > 0 && rect.Height > 0 ? new CroppedBitmap(picture, rect) : null;
-    }
-
-    private static RelativeBox? Around(IReadOnlyList<TextLine> lines)
-    {
-        if (lines.Count == 0)
-        {
-            return null;
-        }
-
-        var left = lines.Min(l => l.Box.X);
-        var top = lines.Min(l => l.Box.Y);
-        var right = lines.Max(l => l.Box.X + l.Box.Width);
-        var bottom = lines.Max(l => l.Box.Y + l.Box.Height);
-        return new RelativeBox(left, top, right - left, bottom - top);
-    }
-
     public void Dispose()
     {
         if (_disposed)
@@ -736,10 +893,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return;
         }
 
+        StopPreview();
         _disposed = true;
+        _video?.Dispose();
         Results.Clear();
-        _picture?.Dispose();
-        _picture = null;
         DisposeAll(_cutOuts);
         _cutOuts = [];
     }
@@ -764,6 +921,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         {
             UpdateSaveState();
         }
+
+        if (e.PropertyName is nameof(DeviceId) or nameof(SelectedSource))
+        {
+            ShowVideo();
+        }
     }
 
     partial void OnModeChanged(ReaderMode value)
@@ -771,6 +933,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         OnPropertyChanged(nameof(ModeChipText));
         OnPropertyChanged(nameof(IsModeOk));
         OnPropertyChanged(nameof(IsModeError));
+        if (!_loading && value == ReaderMode.OnAction && _onActionNoticeShown.Add(IsNew ? _draftKey : Id))
+        {
+            _ = _ctx.ShowMessageAsync(OcrTexts.OnActionNoticeTitle, OcrTexts.OnActionNotice);
+        }
     }
 
     partial void OnFpsChanged(int value)
@@ -780,21 +946,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             Validation.SetServerError(nameof(Mode), null); // another rate: the refusal about it no longer holds
         }
 
-        foreach (var option in FpsOptions)
-        {
-            option.Refresh();
-        }
-
         OnPropertyChanged(nameof(ModeChipText));
     }
 
-    partial void OnSelectedResolutionChanged(Resolution value)
-    {
-        if (_picture is null)
-        {
-            PictureSize = value;
-        }
-    }
+    partial void OnSelectedResolutionChanged(Resolution value) => OverlayVersion++;
 
     partial void OnSelectedAreaChanged(AreaViewModel? oldValue, AreaViewModel? newValue)
     {
@@ -861,6 +1016,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         IsDirty = dirty;
         OnPropertyChanged(nameof(SaveBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
+        SendDraft();
     }
 
     private string Signature() => OcrJson.Serialize(ToReader() with { Id = string.Empty });

@@ -15,6 +15,18 @@ public static class OcrLimits
     /// <summary>The frame rates a watching reader offers.</summary>
     public static readonly IReadOnlyList<int> FpsChoices = [1, 2, 4];
 
+    /// <summary>Previews (a page that shows a reader reads it live, without events) per server at most.</summary>
+    public const int MaxPreviews = 8;
+
+    /// <summary>A preview ends this long after the page's last keep-alive (a closed client never leaves one running).</summary>
+    public static readonly TimeSpan PreviewLease = TimeSpan.FromSeconds(30);
+
+    /// <summary>How often the page keeps its preview alive.</summary>
+    public static readonly TimeSpan PreviewKeepAlive = TimeSpan.FromSeconds(10);
+
+    /// <summary>The frame rate of the preview of an On action reader.</summary>
+    public const int PreviewFpsOnAction = 1;
+
     /// <summary>The frame rate of a new reader.</summary>
     public const int DefaultFps = 1;
 

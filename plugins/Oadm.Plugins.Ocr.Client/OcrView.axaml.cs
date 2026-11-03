@@ -9,8 +9,8 @@ using Oadm.Sdk.Client.Controls;
 namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
-/// The Text recognition page. Layout only: the camera picker, the picture's drawing handed to the reader's editor, Esc stops
-/// drawing; the view model watches while the view is in the visual tree.
+/// The Text recognition page. Layout only: the camera picker, the live video overlay's drawing, moving, resizing and nudging
+/// handed to the reader's editor, Esc stops drawing; the view model watches while the view is in the visual tree.
 /// </summary>
 public partial class OcrView : UserControl
 {
@@ -30,19 +30,24 @@ public partial class OcrView : UserControl
             Panes.ColumnDefinitions[2].MinWidth = min;
         };
         Picture.AreaDrawn += (_, box) => _editor?.AddArea(box);
-        Picture.AreaClicked += (_, point) => _editor?.SelectAreaAt(point);
+        Picture.AreaSelected += (_, area) => _editor?.SelectedArea = area;
+        Picture.AreaChanged += (_, change) => _editor?.SetAreaBox(change.Area, change.Box);
+        Picture.NudgeRequested += (_, by) => _editor?.NudgeSelected(by.X, by.Y);
         Picture.DrawingCancelled += (_, _) => _editor?.StopDrawing();
-        // An area's field takes the focus: that area is the selected one on the picture.
-        AreaList.AddHandler(GotFocusEvent, (_, e) =>
-        {
-            if (_editor is { } editor && (e.Source as Control)?.DataContext is AreaViewModel area)
-            {
-                editor.SelectedArea = area;
-            }
-        });
+        // A press on an area's row or its field taking the focus: that area is the selected one on the live video.
+        AreaList.AddHandler(GotFocusEvent, (_, e) => SelectAreaOf(e.Source));
+        AreaList.AddHandler(PointerPressedEvent, (_, e) => SelectAreaOf(e.Source), Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
-    /// <summary>The picture of the shown reader (tests draw on it).</summary>
+    private void SelectAreaOf(object? source)
+    {
+        if (_editor is { } editor && (source as Control)?.DataContext is AreaViewModel area)
+        {
+            editor.SelectedArea = area;
+        }
+    }
+
+    /// <summary>The overlay over the live video of the shown reader (tests draw on it).</summary>
     internal ReadingPicture PictureControl => Picture;
 
     protected override void OnDataContextChanged(EventArgs e)

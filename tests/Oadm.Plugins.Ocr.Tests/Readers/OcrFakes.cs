@@ -229,13 +229,27 @@ internal sealed class OcrHarness : IAsyncDisposable
         return reply.Reader ?? throw new ReaderFieldException(reply.Errors);
     }
 
-    public Reader NewReader(string name = "Gate 2", ReaderMode mode = ReaderMode.OnDemand, Guid? device = null, params Area[] areas) => new()
+    public Reader NewReader(string name = "Gate 2", ReaderMode mode = ReaderMode.OnAction, Guid? device = null, params Area[] areas) => new()
     {
         Name = name,
         DeviceId = device ?? Inside.Id,
         Mode = mode,
         Areas = areas,
     };
+
+    /// <summary>Reads one picture of a stored reader now, like the action Read text (every area's event).</summary>
+    public async Task<ReadingReply> ReadOnceAsync(string readerId)
+    {
+        var reading = await Plugin.ReadOnceAsync(Plugin.FindReader(readerId) ?? throw new ArgumentException(ReaderRules.Gone), CancellationToken.None);
+        return new ReadingReply { Reading = reading.Reading, Jpeg = reading.Jpeg.ToArray(), Details = reading.Details };
+    }
+
+    /// <summary>Starts or keeps a preview as <paramref name="caller"/>.</summary>
+    public async Task<PreviewReply> PreviewAsync(Reader draft, string? previewId = null, FakeCallContext? caller = null) =>
+        OcrJson.Deserialize<PreviewReply>(await CallAsync(OcrMethods.StartPreview, new PreviewRequest { PreviewId = previewId ?? string.Empty, Reader = draft }, caller));
+
+    /// <summary>The readings told to the pages for previews so far.</summary>
+    public int PreviewReadings => Context.PublishedEvents.Count(e => e.Topic == OcrMethods.PreviewTopic && e.Audience.Kind == Oadm.Sdk.Plugins.PluginEventAudienceKind.AllDevices);
 
     public async Task<ReaderList> ListAsync(FakeCallContext? caller = null) =>
         OcrJson.Deserialize<ReaderList>(await CallAsync(OcrMethods.ListReaders, caller: caller));

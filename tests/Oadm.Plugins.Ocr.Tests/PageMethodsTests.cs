@@ -41,7 +41,7 @@ public sealed class PageMethodsTests
         var engine = OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.GetEngine));
 
         Assert.Equal(new EngineInfo { RunsOn = "NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true, UseGpu = true }, engine with { FpsChoices = OcrLimits.FpsChoices });
-        Assert.Equal([1, 2, 4, 8, 15], engine.FpsChoices);
+        Assert.Equal([1, 2, 4, 8, 12, 15], engine.FpsChoices);
         Assert.True(ocr.Recognizer.UsesGpu);
         Assert.Equal(1, ocr.Recognizer.SetUseGpuCalls); // handed over at the start
     }
@@ -181,7 +181,7 @@ public sealed class PageMethodsTests
         ocr.Frames.Single = "G3";
         ocr.Recognizer.TooSmall = [true, false];
 
-        var reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        var reply = await ocr.ReadOnceAsync(reader.Id);
 
         Assert.Equal([true, false], reply.Details.Select(d => d.TooSmall));
         var live = OcrJson.Deserialize<ReadingEvent>(ocr.Context.PublishedEvents.Last(e => e.Topic == OcrMethods.ReadingTopic).PayloadJson);
@@ -189,7 +189,7 @@ public sealed class PageMethodsTests
 
         // Without the flag from the recognizer: false.
         ocr.Recognizer.TooSmall = [];
-        reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        reply = await ocr.ReadOnceAsync(reader.Id);
         Assert.All(reply.Details, d => Assert.False(d.TooSmall));
     }
 

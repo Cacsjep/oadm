@@ -15,12 +15,12 @@ namespace Oadm.Plugins.Ocr.Client;
 /// <summary>
 /// The Text recognition page (docs/spec/ocr.md "Page"): the readers on the left (New, Delete, search), the selected reader on
 /// the right (<see cref="Editor"/>), "Runs on" and Use the graphics card below the list. <see cref="Activate"/> when the
-/// page is shown reads the list and the engine and watches the live events (readers changed, a reading); a reading of the
-/// shown reader fetches its picture. <see cref="Deactivate"/> stops the watch: nothing is fetched while the page is hidden.
+/// page is shown reads the list and the engine, watches the live events (readers changed, a reading, the preview's readings)
+/// and previews the shown reader. <see cref="Deactivate"/> stops both: nothing is read or fetched while the page is hidden.
 /// </summary>
 public sealed partial class OcrViewModel : ObservableObject, IDisposable
 {
-    /// <summary>"oadm.ocr:change": New, Delete, Save, Read now, the settings.</summary>
+    /// <summary>"oadm.ocr:change": New, Delete, Save, the settings.</summary>
     public static readonly string ChangePermissionKey = OcrInfo.PluginId + ":" + OcrInfo.ChangePermission;
 
     private readonly ICorePluginClientContext _ctx;
@@ -41,7 +41,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     /// <summary>Wait before watching the events again after the stream broke.</summary>
     public TimeSpan ReconnectDelay { get; set; } = PluginEventWatch.DefaultRetryDelay;
 
-    /// <summary>Decodes a JPEG off the UI thread (tests decode in place).</summary>
+    /// <summary>Decodes a cut-out JPEG off the UI thread (tests decode in place).</summary>
     public Func<byte[], Task<Bitmap?>> DecodePicture { get; set; } = DecodeAsync;
 
     /// <summary>Opens the camera picker (set by the view); the argument is the camera chosen so far.</summary>
@@ -57,7 +57,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     private Func<Guid?, Task<Guid?>>? _pickCamera;
 
-    /// <summary>New, Delete, Save, Read now and the settings.</summary>
+    /// <summary>New, Delete, Save and the settings.</summary>
     [ObservableProperty]
     public partial bool MayChange { get; private set; }
 
@@ -136,10 +136,11 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         _active = new CancellationTokenSource();
         var token = _active.Token;
         _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        Editor?.StartPreview();
         _ = LoadAsync(token);
     }
 
-    /// <summary>The page is hidden: no watch, no fetch.</summary>
+    /// <summary>The page is hidden: no watch, no fetch, no preview.</summary>
     public void Deactivate()
     {
         if (_active is not { } active)
@@ -150,7 +151,14 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         _active = null;
         active.Cancel();
         active.Dispose();
+        Editor?.StopPreview();
     }
+
+    /// <summary>The page is shown (the shown reader is previewed live).</summary>
+    public bool IsActive => _active is not null;
+
+    /// <summary>The readers set to On action this session that already showed their short message.</summary>
+    private readonly HashSet<string> _onActionNoticeShown = new(StringComparer.Ordinal);
 
     public void Dispose()
     {
@@ -355,9 +363,12 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
                         row.SetLast(reading.Areas.Count > 0 ? reading.Areas[0].Text : string.Empty, reading.Time);
                     }
 
-                    if (Editor is { IsNew: false } editor && editor.Id == reading.ReaderId)
+                    break;
+                case OcrMethods.PreviewTopic:
+                    var preview = OcrJson.Deserialize<PreviewEvent>(e.PayloadJson);
+                    if (Editor is { PreviewId: { } id } editor && id == preview.PreviewId)
                     {
-                        _ = editor.RefreshReadingAsync(_active?.Token ?? CancellationToken.None);
+                        _ = editor.RefreshPreviewAsync(_active?.Token ?? CancellationToken.None);
                     }
 
                     break;
@@ -431,7 +442,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             var editor = ShowEditor(OcrJson.Deserialize<Reader>(json), isNew: false);
             editor.Problem = row.Problem;
             IsOpening = false;
-            await Task.WhenAll(editor.LoadCameraOptionsAsync(ct), editor.RefreshReadingAsync(ct)).ConfigureAwait(true);
+            await Task.WhenAll(editor.LoadCameraOptionsAsync(ct), editor.LoadLastReadingAsync(ct)).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -454,7 +465,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     /// <summary>Shows <paramref name="editor"/>'s reader on the right (tests and the page).</summary>
     internal ReaderEditorViewModel ShowEditor(Reader reader, bool isNew)
     {
-        var editor = new ReaderEditorViewModel(_ctx, reader, isNew, Engine, CameraText, ReaderNameTaken, DecodePicture) { PickCamera = PickCamera };
+        var editor = new ReaderEditorViewModel(_ctx, reader, isNew, Engine, CameraText, ReaderNameTaken, DecodePicture, _onActionNoticeShown) { PickCamera = PickCamera };
         editor.Saved += OnEditorSaved;
         var old = Editor;
         Editor = editor;
@@ -462,6 +473,11 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         {
             old.Saved -= OnEditorSaved;
             old.Dispose();
+        }
+
+        if (_active is not null)
+        {
+            editor.StartPreview();
         }
 
         return editor;
@@ -499,7 +515,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             number++;
         }
 
-        var editor = ShowEditor(new Reader { Name = $"Reader {number}", DeviceId = camera }, isNew: true);
+        var editor = ShowEditor(new Reader { Name = $"Reader {number}", DeviceId = camera, Mode = ReaderMode.Watching }, isNew: true);
         SetSelected(null);
         await editor.LoadCameraOptionsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
     }

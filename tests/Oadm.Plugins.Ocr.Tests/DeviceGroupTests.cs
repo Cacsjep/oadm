@@ -28,7 +28,9 @@ public sealed class DeviceGroupTests
             .WithoutDevices(OcrMethods.GetEngine, "what reads the pictures on this server")
             .AllDevicesOnly(OcrMethods.SetUseGpu, """{"useGpu":false}""")
             .WithoutDevices(OcrMethods.DeleteReader, "a reader of the caller's own device scope", """{"readerId":"r1"}""")
-            .WithoutDevices(OcrMethods.ReadNow, "a reader of the caller's own device scope", """{"readerId":"r1"}""")
+            .Method(OcrMethods.StartPreview, """{"reader":{"name":"Gate","deviceId":"{device}"}}""")
+            .WithoutDevices(OcrMethods.StopPreview, "a preview of the caller's own device scope", """{"previewId":"p1"}""")
+            .WithoutDevices(OcrMethods.GetPreview, "a preview of the caller's own device scope", """{"previewId":"p1"}""")
             .WithoutDevices(OcrMethods.GetReading, "a reader of the caller's own device scope", """{"readerId":"r1"}""")
             .RunAsync();
     }
@@ -53,7 +55,7 @@ public sealed class DeviceGroupTests
         Assert.Equal(key, ocr.Plugin.FindReader(mine.Id)!.OwnerScopeKey);
         Assert.Equal(key, ocr.Plugin.EventTypes.Single(t => t.Id == OcrInfo.TextReadTypeId(mine.Id)).OwnerScopeKey);
 
-        foreach (var method in new[] { OcrMethods.GetReader, OcrMethods.ReadNow, OcrMethods.GetReading })
+        foreach (var method in new[] { OcrMethods.GetReader, OcrMethods.GetReading })
         {
             var foreign = await Assert.ThrowsAsync<ArgumentException>(() => ocr.CallAsync(method, new ReaderRequest { ReaderId = admins.Id }, group));
             var unknown = await Assert.ThrowsAsync<ArgumentException>(() => ocr.CallAsync(method, new ReaderRequest { ReaderId = "unknown" }, group));
@@ -70,7 +72,7 @@ public sealed class DeviceGroupTests
         await ocr.SaveAsync(ocr.NewReader("Lobby"), group);
         var edited = await ocr.SaveAsync(mine with { Name = "Gate 2" });
         Assert.Equal(key, ocr.Plugin.FindReader(edited.Id)!.OwnerScopeKey);
-        await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = mine.Id }, group);
+        await ocr.ReadOnceAsync(mine.Id);
         Assert.Equal(1, ocr.Frames.Singles);
     }
 
@@ -104,7 +106,7 @@ public sealed class DeviceGroupTests
         await Eventually.TrueAsync(() => ocr.Frames.Open == 0, "the deleted group's reader stopped");
         Assert.Equal(ReaderRules.Off, Assert.Single((await ocr.ListAsync()).Readers).Problem);
         var action = Assert.Single(ocr.Plugin.ActionPlugins);
-        var off = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id }));
+        var off = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.ReadOnceAsync(reader.Id));
         Assert.Equal(ReaderRules.Off, off.Message);
         Assert.Equal(0, ocr.Frames.Singles);
 
@@ -124,7 +126,7 @@ public sealed class DeviceGroupTests
         var mine = await ocr.SaveAsync(ocr.NewReader("Gate"), group);
         await ocr.SaveAsync(ocr.NewReader("Lobby"));
         ocr.Frames.Single = "A";
-        await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = mine.Id }, group);
+        await ocr.ReadOnceAsync(mine.Id);
 
         var seen = ocr.Context.EventsSeenBy(group);
         Assert.Equal(["Gate"], OcrJson.Deserialize<ReaderList>(seen.Last(e => e.Topic == OcrMethods.ReadersTopic).PayloadJson).Readers.Select(r => r.Name));

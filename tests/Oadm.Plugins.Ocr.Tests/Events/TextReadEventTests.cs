@@ -93,7 +93,7 @@ public sealed class TextReadEventTests
             OcrJson.Serialize(new SaveReaderRequest { Reader = ocr.NewReader(areas: new Area { Name = "Order", Expected = ExpectedText.WithFormat("#####") }) }))).Reader!;
         ocr.Frames.Single = "anything";
 
-        var reply = OcrJson.Deserialize<ReadingReply>(await ocr.Context.InvokeAsync(plugin, ocr.Context.CallAsAllDevices(), OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = reader.Id })));
+        var reply = await plugin.ReadOnceAsync(plugin.FindReader(reader.Id)!, CancellationToken.None);
 
         var details = Assert.Single(reply.Details);
         Assert.Equal("12345 67890", details.AllMatches);

@@ -7,7 +7,12 @@ namespace Oadm.Plugins.Ocr.Client;
 /// <summary>The page's texts, one phrase per concept (CLAUDE.md "Wording").</summary>
 public static class OcrTexts
 {
-    public const string OnDemand = "On demand";
+    public const string OnAction = "On action";
+
+    /// <summary>The short message when a reader is set to On action (once per reader and session).</summary>
+    public const string OnActionNoticeTitle = "Reads only on an action";
+
+    public const string OnActionNotice = "This reader reads only when an event rule runs the action Read text with it.";
 
     public const string Watching = "Watching";
 
@@ -16,8 +21,6 @@ public static class OcrTexts
     public const string NoAreas = "Draw one area around each text you want to read.";
 
     public const string NoReading = "No reading yet";
-
-    public const string ReadNowHint = "Read now to see what the reader finds.";
 
     public const string WaitingForPicture = "Waiting for the first picture.";
 
@@ -37,7 +40,7 @@ public static class OcrTexts
 
     public const string NoMatch = "No reader matches the search.";
 
-    public const string SaveFirst = "Save the reader first.";
+    public const string LiveResults = "Live results";
 
     public const string NoGpu = "No graphics card found";
 

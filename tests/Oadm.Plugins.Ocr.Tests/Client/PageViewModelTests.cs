@@ -34,7 +34,7 @@ public sealed class PageViewModelTests
         Assert.Equal("MSKU 123456 7", vm.Readers[0].LastText);
         Assert.Equal(OcrTexts.NotReachable, vm.Readers[1].ModeText);
         Assert.True(vm.Readers[1].IsProblem);
-        Assert.Equal(OcrTexts.OnDemand, vm.Readers[2].ModeText);
+        Assert.Equal(OcrTexts.OnAction, vm.Readers[2].ModeText);
         Assert.Equal(OcrTexts.NoReading, vm.Readers[2].LastText);
         Assert.Equal("Runs on: NVIDIA GeForce RTX 5070 Ti", vm.RunsOnText);
         Assert.True(vm.CanSetGpu);
@@ -44,7 +44,7 @@ public sealed class PageViewModelTests
         Assert.Equal("Container gate", editor.Name);
         Assert.False(editor.IsDirty);
         Assert.Equal(3, editor.Areas.Count);
-        Assert.Equal([1, 2, 4, 8, 15], editor.FpsOptions.Select(o => o.Value));
+        Assert.Equal([1, 2, 4, 8, 12, 15], editor.FpsChoices);
         Assert.Equal(2, editor.VideoSources.Count);
         Assert.Equal(new Resolution(1920, 1080), editor.SelectedResolution);
         Assert.Equal("Watching · 1 fps", editor.ModeChipText);
@@ -77,7 +77,7 @@ public sealed class PageViewModelTests
 
         Assert.Equal(string.Empty, vm.RunsOnText);
         Assert.Equal("Watching · 1 fps", vm.Readers[0].ModeText);
-        Assert.Equal([1, 2, 4], vm.Editor!.FpsOptions.Select(o => o.Value));
+        Assert.Equal([1, 2, 4], vm.Editor!.FpsChoices);
         Assert.Single(vm.Editor.VideoSources);
         Assert.Contains(new Resolution(1920, 1080), vm.Editor.Resolutions);
         Assert.False(vm.Editor.IsDirty);
@@ -170,56 +170,98 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public async Task Changing_the_mode_shows_the_frame_rate_and_needs_a_save_before_Read_now()
+    public async Task Changing_the_mode_shows_the_frame_rate_select_and_saves()
     {
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
         var editor = vm.Editor!;
 
-        Assert.True(editor.IsOnDemand);
+        Assert.True(editor.IsOnAction);
         Assert.False(editor.IsWatching);
-        Assert.Equal(OcrTexts.OnDemand, editor.ModeChipText);
-        Assert.Equal(OcrTexts.ReadNowHint, editor.ResultsEmptyText);
-        Assert.Equal(OcrTexts.NoReading, editor.PictureText);
-        Assert.True(editor.ReadNowCommand.CanExecute(null));
+        Assert.Equal(OcrTexts.OnAction, editor.ModeChipText);
+        Assert.Equal(OcrTexts.WaitingForPicture, editor.ResultsEmptyText);
+        Assert.Equal(OcrTexts.WaitingForPicture, editor.PictureText);
 
+        // Frames per second is one select of the server's choices.
         editor.IsWatching = true;
-        editor.FpsOptions.Single(o => o.Value == 4).IsChecked = true;
-        Assert.Equal(4, editor.Fps);
-        Assert.Equal("Watching · 4 fps", editor.ModeChipText);
+        Assert.Equal([1, 2, 4, 8, 12, 15], editor.FpsChoices);
+        editor.Fps = 12;
+        Assert.Equal("Watching · 12 fps", editor.ModeChipText);
         Assert.True(editor.IsDirty);
-        Assert.False(editor.ReadNowCommand.CanExecute(null));
-        Assert.Equal(OcrTexts.SaveFirst, editor.ReadNowBlockedReason);
 
         await editor.SaveCommand.ExecuteAsync(null);
         var saved = OcrJson.Deserialize<SaveReaderRequest>(ctx.LastPayloadOf(OcrMethods.SaveReader)).Reader;
         Assert.Equal(ReaderMode.Watching, saved.Mode);
-        Assert.Equal(4, saved.Fps);
+        Assert.Equal(12, saved.Fps);
         Assert.Equal("r2", saved.Id);
         Assert.Equal(2, saved.Areas.Count);
         Assert.Equal("####.#", saved.Areas[0].Expected.Format);
         Assert.Equal(OcrTexts.Saved, editor.SaveStatus);
-        Assert.True(editor.ReadNowCommand.CanExecute(null));
-        Assert.Equal("Watching · 4 fps", vm.Readers.Single(r => r.Id == "r2").ModeText);
+        Assert.Equal("Watching · 12 fps", vm.Readers.Single(r => r.Id == "r2").ModeText);
     }
 
     [Fact]
-    public async Task Read_now_shows_the_new_reading_and_the_servers_refusal()
+    public async Task On_action_shows_its_short_message_once_per_reader_and_session()
     {
         var ctx = Samples.Context();
-        ctx.Answers[OcrMethods.ReadNow] = _ => Samples.ReplyJson(Samples.GateReading("TGHU 765432 1"), Samples.GateExtras, null);
+        using var vm = await LoadedAsync(ctx);
+        var editor = vm.Editor!; // Container gate, watching
+
+        editor.IsOnAction = true;
+        var message = Assert.Single(ctx.Messages);
+        Assert.Equal((OcrTexts.OnActionNoticeTitle, OcrTexts.OnActionNotice), message);
+        Assert.Equal("Reads only on an action", message.Title);
+        Assert.Equal("This reader reads only when an event rule runs the action Read text with it.", message.Message);
+
+        // Back and forth: not again for this reader, also after opening it again.
+        editor.IsWatching = true;
+        editor.IsOnAction = true;
+        Assert.Single(ctx.Messages);
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r1"), CancellationToken.None);
+        vm.Editor!.IsOnAction = true;
+        Assert.Single(ctx.Messages);
+
+        // Another reader shows it once; opening an On action reader shows nothing.
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
+        vm.Editor!.IsOnAction = true;
+        Assert.Equal(2, ctx.Messages.Count);
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
+        Assert.Equal(2, ctx.Messages.Count);
+    }
+
+    [Fact]
+    public async Task The_live_video_shows_the_readers_camera_and_source_with_the_picture_only()
+    {
+        var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
+        var video = Assert.Single(ctx.Video!.Created);
 
-        await editor.ReadNowCommand.ExecuteAsync(null);
-        Assert.Equal("TGHU 765432 1", editor.Results[0].Text);
-        Assert.Equal("{\"readerId\":\"r1\"}", ctx.LastPayloadOf(OcrMethods.ReadNow));
+        Assert.True(editor.HasLiveVideo);
+        Assert.Equal([(Samples.Gate.Id, 1)], video.Starts);
+        Assert.False(video.Place.ShowSourceSwitch);
+        Assert.False(video.Place.AllowFullscreen);
+        Assert.False(video.Place.ShowControlsButton);
 
-        ctx.Answers[OcrMethods.ReadNow] = _ => throw new InvalidOperationException(OcrInfo.AlreadyReading);
-        await editor.ReadNowCommand.ExecuteAsync(null);
-        Assert.Contains(ctx.Messages, m => m.Message.Contains(OcrInfo.AlreadyReading, StringComparison.Ordinal));
-        Assert.False(editor.IsReading);
+        // Another video source and another camera: the video follows once each.
+        editor.SelectedSource = editor.VideoSources[1];
+        editor.SelectedSource = editor.VideoSources[1];
+        editor.SetCamera(Samples.Dock.Id);
+        Assert.Equal([(Samples.Gate.Id, 1), (Samples.Gate.Id, 2), (Samples.Dock.Id, 1)], video.Starts);
+
+        // Another reader: the old video goes.
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
+        Assert.True(video.IsDisposed);
+        Assert.Equal(Samples.Plant.Id, ctx.Video.Created[^1].Shown);
+
+        // An older OADM without live video: the overlay alone.
+        var older = Samples.Context();
+        older.Video = null;
+        using var page = await LoadedAsync(older);
+        Assert.False(page.Editor!.HasLiveVideo);
+        Assert.Null(page.Editor.VideoView);
     }
 
     [Fact]
@@ -247,7 +289,6 @@ public sealed class PageViewModelTests
         Assert.Equal("AXIS M3215-LVE · 10.0.0.202", editor.CameraText);
         Assert.Null(vm.SelectedReader);
         Assert.Equal(OcrTexts.NotSaved, editor.SaveStatus);
-        Assert.False(editor.ReadNowCommand.CanExecute(null));
         Assert.False(editor.HasAreas);
         Assert.Equal(OcrTexts.NoAreas, ReaderEditorViewModel.NoAreasText);
 
@@ -340,17 +381,19 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public async Task Readings_arrive_live_and_only_the_newest_picture_is_fetched()
+    public async Task The_preview_reads_live_and_only_the_newest_reading_is_fetched()
     {
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
-        var before = ctx.CallsOf(OcrMethods.GetReading);
+        await editor.SendPreviewAsync(CancellationToken.None);
+        Assert.Equal("p1", editor.PreviewId);
+        var before = ctx.CallsOf(OcrMethods.GetPreview);
 
         // A fetch that is held: two more readings meanwhile give one more fetch, not two.
         var gate = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var held = true;
-        ctx.AsyncAnswers[OcrMethods.GetReading] = _ =>
+        ctx.AsyncAnswers[OcrMethods.GetPreview] = _ =>
         {
             if (held)
             {
@@ -360,29 +403,32 @@ public sealed class PageViewModelTests
 
             return Task.FromResult<string?>(Samples.ReplyJson(Samples.GateReading("TGHU 765432 1"), Samples.GateExtras, null));
         };
-        var first = editor.RefreshReadingAsync(CancellationToken.None);
-        await editor.RefreshReadingAsync(CancellationToken.None);
-        await editor.RefreshReadingAsync(CancellationToken.None);
-        Assert.Equal(before + 1, ctx.CallsOf(OcrMethods.GetReading));
+        var first = editor.RefreshPreviewAsync(CancellationToken.None);
+        await editor.RefreshPreviewAsync(CancellationToken.None);
+        await editor.RefreshPreviewAsync(CancellationToken.None);
+        Assert.Equal(before + 1, ctx.CallsOf(OcrMethods.GetPreview));
         gate.SetResult(Samples.ReplyJson(Samples.GateReading("MSKU 000000 0"), Samples.GateExtras, null));
         await first;
-        Assert.Equal(before + 2, ctx.CallsOf(OcrMethods.GetReading));
+        Assert.Equal(before + 2, ctx.CallsOf(OcrMethods.GetPreview));
         Assert.Equal("TGHU 765432 1", editor.Results[0].Text);
+        Assert.Equal("{\"previewId\":\"p1\"}", ctx.LastPayloadOf(OcrMethods.GetPreview));
 
-        // The live event: the list's last text and the shown reader's picture.
-        ctx.AsyncAnswers.Remove(OcrMethods.GetReading);
+        // Live: the page's own preview fetches; the readings event updates the list's last text only.
+        ctx.AsyncAnswers.Remove(OcrMethods.GetPreview);
         vm.Activate();
         try
         {
-            ctx.Push(OcrMethods.ReadingTopic, new ReadingEvent { Reading = Samples.GateReading("CMAU 111111 1") with { Time = Samples.Time.AddSeconds(1) } });
-            await Eventually.TrueAsync(() => vm.Readers[0].LastText == "CMAU 111111 1", "the list's last text");
-            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.GetReading) >= before + 3, "the picture fetched");
+            await Eventually.TrueAsync(() => editor.IsPreviewing, "the shown reader is previewed");
+            var calls = ctx.CallsOf(OcrMethods.GetPreview);
+            ctx.Push(OcrMethods.PreviewTopic, new PreviewEvent { PreviewId = "p1", Reading = Samples.GateReading("CMAU 111111 1") });
+            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.GetPreview) > calls, "the preview's reading fetched");
 
-            // A reading of another reader fetches nothing.
-            var calls = ctx.CallsOf(OcrMethods.GetReading);
-            ctx.Push(OcrMethods.ReadingTopic, new ReadingEvent { Reading = new Reading { ReaderId = "r2", Time = Samples.Time, Areas = [new AreaResult { Area = "Reading", Text = "0482.6" }] } });
-            await Eventually.TrueAsync(() => vm.Readers.Single(r => r.Id == "r2").LastText == "0482.6", "the other row");
-            Assert.Equal(calls, ctx.CallsOf(OcrMethods.GetReading));
+            // Another page's preview and a saved reader's reading fetch nothing.
+            calls = ctx.CallsOf(OcrMethods.GetPreview);
+            ctx.Push(OcrMethods.PreviewTopic, new PreviewEvent { PreviewId = "p9", Reading = Samples.GateReading() });
+            ctx.Push(OcrMethods.ReadingTopic, new ReadingEvent { Reading = Samples.GateReading("CMAU 222222 2") with { Time = Samples.Time.AddSeconds(1) } });
+            await Eventually.TrueAsync(() => vm.Readers[0].LastText == "CMAU 222222 2", "the list's last text");
+            Assert.Equal(calls, ctx.CallsOf(OcrMethods.GetPreview));
 
             // The readers event: a deleted reader goes, the shown one stays.
             ctx.Push(OcrMethods.ReadersTopic, new ReaderList
@@ -396,12 +442,162 @@ public sealed class PageViewModelTests
         {
             vm.Deactivate();
         }
+
+        // Hidden: the keep-alive stops and the server ends the preview.
+        Assert.False(editor.IsPreviewing);
+        Assert.Null(editor.PreviewId);
+        await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StopPreview) == 1, "the preview ended");
+        Assert.Equal("{\"previewId\":\"p1\"}", ctx.LastPayloadOf(OcrMethods.StopPreview));
     }
+
+    [Fact]
+    public async Task The_preview_takes_the_draft_on_every_change_and_keeps_alive()
+    {
+        var ctx = Samples.Context();
+        var vm = await LoadedAsync(ctx);
+        var editor = vm.Editor!;
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(Samples.Time);
+        editor.PreviewTime = time;
+        vm.Activate();
+        try
+        {
+            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) == 1 && editor.PreviewId == "p1", "the preview started");
+            var started = OcrJson.Deserialize<PreviewRequest>(ctx.LastPayloadOf(OcrMethods.StartPreview));
+            Assert.Equal(string.Empty, started.PreviewId);
+            Assert.Equal("r1", started.Reader!.Id);
+            Assert.Equal(3, started.Reader.Areas.Count);
+
+            // An area moved: the draft goes at once, with the preview's id (unsaved).
+            editor.EditArea(editor.Areas[0], AreaHandle.Move, 0.1, 0);
+            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) == 2, "the draft sent");
+            var changed = OcrJson.Deserialize<PreviewRequest>(ctx.LastPayloadOf(OcrMethods.StartPreview));
+            Assert.Equal("p1", changed.PreviewId);
+            Assert.Equal(0.57, changed.Reader!.Areas[0].Box.X, 6);
+            Assert.True(editor.IsDirty);
+
+            // The keep-alive: once per 10 s of the clock (advanced a second per check: the wait may start after this line).
+            await Eventually.TrueAsync(
+                () =>
+                {
+                    time.Advance(TimeSpan.FromSeconds(1));
+                    return ctx.CallsOf(OcrMethods.StartPreview) >= 3;
+                },
+                "kept alive");
+
+            // A refusal of the server shows where the results are.
+            ctx.Answers[OcrMethods.StartPreview] = _ => OcrJson.Serialize(new PreviewReply { PreviewId = "p1", Problem = ReaderRules.PreviewBusy });
+            editor.Name = "Gate 3";
+            await Eventually.TrueAsync(() => editor.PreviewProblem == ReaderRules.PreviewBusy, "the problem shown");
+            ctx.Answers[OcrMethods.StartPreview] = _ => throw new InvalidOperationException(ReaderRules.TooManyPreviews);
+            editor.Name = "Gate 4";
+            await Eventually.TrueAsync(() => editor.PreviewProblem == ReaderRules.TooManyPreviews, "the refusal shown");
+        }
+        finally
+        {
+            vm.Dispose();
+        }
+
+        await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StopPreview) == 1, "the preview ended with the page");
+    }
+
+    [Fact]
+    public async Task Areas_move_and_resize_inside_the_picture_and_mark_the_reader_not_saved()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var editor = vm.Editor!;
+        var area = editor.Areas[0]; // 0.47, 0.27, 0.27 x 0.12
+        Assert.False(editor.IsDirty);
+
+        editor.EditArea(area, AreaHandle.Move, 0.03, -0.02);
+        AssertBox(new RelativeBox(0.50, 0.25, 0.27, 0.12), area.Box);
+        Assert.True(editor.IsDirty);
+        Assert.Equal(OcrTexts.NotSaved, editor.SaveStatus);
+        Assert.Same(area, editor.SelectedArea);
+
+        // Moved far: held inside the picture, the size kept.
+        editor.EditArea(area, AreaHandle.Move, 2, 2);
+        AssertBox(new RelativeBox(0.73, 0.88, 0.27, 0.12), area.Box);
+        editor.EditArea(area, AreaHandle.Move, -5, -5);
+        AssertBox(new RelativeBox(0, 0, 0.27, 0.12), area.Box);
+
+        // Resized by a corner and by an edge: the opposite edges stay.
+        editor.EditArea(area, AreaHandle.BottomRight, 0.1, 0.05);
+        AssertBox(new RelativeBox(0, 0, 0.37, 0.17), area.Box);
+        editor.EditArea(area, AreaHandle.Left, 0.07, 0);
+        AssertBox(new RelativeBox(0.07, 0, 0.30, 0.17), area.Box);
+        editor.EditArea(area, AreaHandle.Top, 0, 0.05);
+        AssertBox(new RelativeBox(0.07, 0.05, 0.30, 0.12), area.Box);
+
+        // Never smaller than the drawing minimum, never past the picture's edge.
+        editor.EditArea(area, AreaHandle.Right, -1, 0);
+        AssertBox(new RelativeBox(0.07, 0.05, AreaGeometry.MinSize, 0.12), area.Box);
+        editor.EditArea(area, AreaHandle.TopLeft, 0.5, 0.5);
+        AssertBox(new RelativeBox(0.07, 0.15, AreaGeometry.MinSize, AreaGeometry.MinSize), area.Box);
+        editor.EditArea(area, AreaHandle.BottomRight, 5, 5);
+        AssertBox(new RelativeBox(0.07, 0.15, 0.93, 0.85), area.Box);
+        editor.EditArea(area, AreaHandle.TopRight, 5, -5);
+        AssertBox(new RelativeBox(0.07, 0, 0.93, 1), area.Box);
+        Assert.True(area.Box.IsValid);
+
+        // The arrow keys: 1 %, with Shift 5 %, inside the picture.
+        var lane = editor.Areas[2]; // 0.88, 0.31, 0.10 x 0.13
+        editor.SelectedArea = lane;
+        editor.NudgeSelected(AreaGeometry.Nudge, 0);
+        AssertBox(new RelativeBox(0.89, 0.31, 0.10, 0.13), lane.Box);
+        editor.NudgeSelected(AreaGeometry.BigNudge, AreaGeometry.BigNudge);
+        AssertBox(new RelativeBox(0.90, 0.36, 0.10, 0.13), lane.Box);
+
+        // A box from the live video is held the same way; without the change right nothing moves.
+        editor.SetAreaBox(lane, new RelativeBox(0.95, -0.1, 0.001, 0.2));
+        AssertBox(new RelativeBox(0.95, 0, AreaGeometry.MinSize, 0.2), lane.Box);
+        var viewer = Samples.Context();
+        viewer.Denied.Add(OcrViewModel.ChangePermissionKey);
+        using var readOnly = await LoadedAsync(viewer);
+        var kept = readOnly.Editor!.Areas[0].Box;
+        readOnly.Editor.EditArea(readOnly.Editor.Areas[0], AreaHandle.Move, 0.1, 0.1);
+        Assert.Equal(kept, readOnly.Editor.Areas[0].Box);
+    }
+
+    private static void AssertBox(RelativeBox expected, RelativeBox actual)
+    {
+        Assert.Equal(expected.X, actual.X, 6);
+        Assert.Equal(expected.Y, actual.Y, 6);
+        Assert.Equal(expected.Width, actual.Width, 6);
+        Assert.Equal(expected.Height, actual.Height, 6);
+    }
+
+    [Fact]
+    public async Task New_readers_start_watching_and_Draw_area_sits_with_the_areas()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        vm.PickCamera = _ => Task.FromResult<Guid?>(Samples.Plant.Id);
+
+        await vm.NewCommand.ExecuteAsync(null);
+
+        var editor = vm.Editor!;
+        Assert.True(editor.IsNew);
+        Assert.Equal(ReaderMode.Watching, editor.Mode);
+        Assert.Equal("Watching · 1 fps", editor.ModeChipText);
+        Assert.True(editor.DrawAreaCommand.CanExecute(null));
+        editor.DrawAreaCommand.Execute(null);
+        Assert.True(editor.IsDrawing);
+
+        // On action for a new reader: its message once, also after the save.
+        editor.IsOnAction = true;
+        Assert.Single(ctx.Messages);
+        await editor.SaveCommand.ExecuteAsync(null);
+        editor.IsWatching = true;
+        editor.IsOnAction = true;
+        Assert.Single(ctx.Messages);
+    }
+
 
     [Fact]
     public async Task A_refusal_of_the_watching_limit_shows_below_Mode_until_the_readers_change()
     {
-        const string Refusal = "At most 4 readers can watch at once at the site Building B. Set another reader there to On demand first.";
+        const string Refusal = "At most 4 readers can watch at once at the site Building B. Set another reader there to On action first.";
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
@@ -415,7 +611,7 @@ public sealed class PageViewModelTests
         Assert.True(editor.IsDirty);
         Assert.False(editor.SaveCommand.CanExecute(null));
 
-        // Another reader set to On demand elsewhere: the readers event lifts it.
+        // Another reader set to On action elsewhere: the readers event lifts it.
         vm.ApplyList(Samples.ListJson());
         Assert.Null(editor.ModeError);
         Assert.True(editor.SaveCommand.CanExecute(null));
@@ -492,7 +688,7 @@ public sealed class PageViewModelTests
         var ctx = Samples.Context();
         ctx.Answers[OcrMethods.ListReaders] = _ => OcrJson.Serialize(new
         {
-            readers = new[] { new { id = "r2", name = "Water meter", deviceId = Samples.Plant.Id, mode = "OnDemand", problem = "The camera refuses connections." } },
+            readers = new[] { new { id = "r2", name = "Water meter", deviceId = Samples.Plant.Id, mode = "OnAction", problem = "The camera refuses connections." } },
         });
         using var vm = await LoadedAsync(ctx);
 
@@ -546,7 +742,6 @@ public sealed class PageViewModelTests
         Assert.False(vm.DeleteCommand.CanExecute(null));
         Assert.False(vm.CanSetGpu);
         Assert.False(vm.Editor!.MayChange);
-        Assert.False(vm.Editor.ReadNowCommand.CanExecute(null));
         Assert.False(vm.Editor.DrawAreaCommand.CanExecute(null));
         vm.Editor.Name = "Gate 3";
         Assert.False(vm.Editor.SaveCommand.CanExecute(null));

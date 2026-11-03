@@ -131,16 +131,16 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
 
     public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu;
 
-    /// <summary>The page reads only (Viewer on); changing readers and reading now are a right of their own.</summary>
+    /// <summary>The page reads only (Viewer on); changing readers is a right of its own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
         new(PermissionKeys.Show, OcrInfo.ViewPermissionName, "See the text readers and what they read.") { ViewerDefault = true },
-        new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers and read now."),
+        new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers."),
     ];
 
-    /// <summary>New, Delete, Save, Read now and Use the graphics card: "change"; the rest: "show".</summary>
+    /// <summary>New, Delete, Save and Use the graphics card: "change"; the rest (the page's preview too): "show".</summary>
     public string? RequiredPermission(string method) =>
-        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
+        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
 
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>

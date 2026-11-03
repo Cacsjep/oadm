@@ -18,7 +18,7 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// <item>one loop per watching reader on <see cref="IFrameSource.WatchAsync"/>: the newest frame wins (older ones are
 /// dropped, never queued), one reading at a time per reader, then per area the vote and the event only on change
 /// (<see cref="AreaWatch"/>);</item>
-/// <item>single readings (the action Read text, the page's Read now) through <see cref="IFrameSource.SingleAsync"/> that
+/// <item>single readings (the action Read text) through <see cref="IFrameSource.SingleAsync"/> that
 /// publish every area's event; a reading already running for the reader refuses with <see cref="OcrInfo.AlreadyReading"/>;</item>
 /// <item>the last reading of each reader (picture, results, cut-outs) in memory only.</item>
 /// </list>
@@ -37,6 +37,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ReaderSlot> _slots = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderReading> _last = new(StringComparer.Ordinal);
     private readonly ITimer _recheck;
+    private readonly ITimer _sweep;
+    private readonly TimeProvider _time;
     private volatile Dictionary<string, string> _problems = [];
     private volatile IReadOnlyList<Reader> _readers = [];
     private bool _stopped;
@@ -56,7 +58,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         using (ExecutionContext.SuppressFlow())
         {
             _recheck = parts.Time.CreateTimer(_ => _ = SyncAsync(_readers), null, RecheckInterval, RecheckInterval);
+            _sweep = parts.Time.CreateTimer(_ => _ = SweepPreviewsAsync(), null, PreviewSweepInterval, PreviewSweepInterval);
         }
+
+        _time = parts.Time;
     }
 
     /// <summary>How often the readers' cameras are checked again (a camera that refused connections starts when it is Ok).</summary>
@@ -155,7 +160,9 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         {
             _stopped = true;
             await _recheck.DisposeAsync().ConfigureAwait(false);
+            await _sweep.DisposeAsync().ConfigureAwait(false);
             await StopLoopsAsync(_ => true).ConfigureAwait(false);
+            await EndPreviewsAsync(_ => true).ConfigureAwait(false);
         }
         finally
         {
@@ -245,6 +252,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                     _loops[reader.Id] = new WatchLoop(reader, stop, Task.Run(() => WatchAsync(reader, stop.Token), CancellationToken.None));
                 }
             }
+
+            // The previews follow: one may now share a reader's stream, or need its own again.
+            _watchingPerSite = perSite;
+            await ReconcilePreviewsAsync().ConfigureAwait(false);
         }
         finally
         {
@@ -276,34 +287,42 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
     }
 
+    /// <summary>A saved watching reader: votes per area and publishes its events (<see cref="LoopAsync"/>).</summary>
+    private Task WatchAsync(Reader reader, CancellationToken ct) =>
+        LoopAsync(reader, () => reader, vote: true, (r, reading) => Keep(r, reading), SlotOf(reader.Id), ct);
+
     /// <summary>
-    /// One watching reader: a pump takes the camera's frames into a slot of one (the newest replaces an unread one), the
-    /// loop reads the slot's frame, one at a time. A frame that arrives while the action reads the same reader is dropped.
+    /// One stream of a camera: a pump takes the frames into a slot of one (the newest replaces an unread one), the loop
+    /// reads the slot's frame, one at a time, with the reader <paramref name="current"/> gives at that moment (a preview takes
+    /// the page's new areas without opening the stream again). With <paramref name="vote"/> (a saved watching reader) the
+    /// areas vote and publish their events; without (a preview) every frame's own result is kept and nothing is published to
+    /// the rules. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped.
     /// </summary>
-    private async Task WatchAsync(Reader reader, CancellationToken ct)
+    private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, Action<Reader, ReaderReading> keep, ReaderSlot? slot, CancellationToken ct)
     {
-        var watches = ReaderRules.EffectiveAreas(reader).Select(_ => new AreaWatch()).ToArray();
+        var watches = vote ? ReaderRules.EffectiveAreas(stream).Select(_ => new AreaWatch()).ToArray() : null;
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = true,
         });
-        var pump = Task.Run(() => PumpAsync(reader, latest.Writer, ct), CancellationToken.None);
-        var slot = SlotOf(reader.Id);
+        var pump = Task.Run(() => PumpAsync(stream, latest.Writer, ct), CancellationToken.None);
         try
         {
             await foreach (var frame in latest.Reader.ReadAllAsync(ct).ConfigureAwait(false))
             {
-                if (!slot.TryEnter())
+                if (slot is not null && !slot.TryEnter())
                 {
                     Interlocked.Increment(ref _dropped);
                     continue;
                 }
 
+                var reader = current();
                 try
                 {
-                    await ReadFrameAsync(reader, frame, watches, ct).ConfigureAwait(false);
+                    var read = await _maker!.ReadAsync(reader, frame, ct).ConfigureAwait(false);
+                    keep(reader, watches is null ? read : Vote(reader, read, watches));
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -317,7 +336,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 }
                 finally
                 {
-                    slot.Exit();
+                    slot?.Exit();
                 }
             }
         }
@@ -356,9 +375,9 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
     }
 
-    private async Task ReadFrameAsync(Reader reader, ReadOnlyMemory<byte> frame, AreaWatch[] watches, CancellationToken ct)
+    /// <summary>Each area's vote over the frame's result; the areas whose voted value changed publish their event.</summary>
+    private ReaderReading Vote(Reader reader, ReaderReading read, AreaWatch[] watches)
     {
-        var read = await _maker!.ReadAsync(reader, frame, ct).ConfigureAwait(false);
         var areas = new AreaResult[watches.Length];
         var details = new AreaDetails[watches.Length];
         var publish = new bool[watches.Length];
@@ -380,14 +399,22 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             }
         }
 
-        // Last: the page's event tells that the reading is complete, its rule events included.
-        Keep(reader, read with { Reading = read.Reading with { Areas = areas }, Details = details });
+        // Kept afterwards: the page's event tells that the reading is complete, its rule events included.
+        return read with { Reading = read.Reading with { Areas = areas }, Details = details };
     }
 
-    /// <summary>Keeps the reading as the reader's last and tells the pages that see the reader.</summary>
+    /// <summary>
+    /// Keeps the reading as the reader's last and tells the pages that see the reader; the previews that share the reader's
+    /// stream get it as theirs.
+    /// </summary>
     private void Keep(Reader reader, ReaderReading reading)
     {
         _last[reader.Id] = reading;
+        foreach (var preview in SharingPreviews(reader.Id))
+        {
+            KeepPreview(preview, reading);
+        }
+
         if (_ctx.Events is not { } events)
         {
             return;
@@ -405,6 +432,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             events.Publish(OcrMethods.ReadingTopic, json, PluginEventAudience.DeviceScope(owner));
         }
     }
+
 
     private void Fire(Reader reader, AreaResult area, AreaDetails details) =>
         _ctx.EventPublisher?.Fire(OcrInfo.TextReadTypeId(reader.Id), reader.DeviceId, TextReadEvents.Data(area, details));
