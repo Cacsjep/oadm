@@ -60,7 +60,7 @@ public sealed class AccuracySetTests(RecognizerFixture fixture, ITestOutputHelpe
         Assert.True(total < 15 * 1024 * 1024, $"{total} bytes");
 
         // Every container number of the set has a valid check digit.
-        Assert.All(pictures.SelectMany(p => p.Areas).Where(a => a.Format == "AAAU ###### #"), a => Assert.True(Iso6346.IsValid(a.Expected), a.Expected));
+        Assert.All(pictures.SelectMany(p => p.Areas).Where(a => a.Format == "AAAU ###### #"), a => Assert.True(Oadm.Plugins.Ocr.Matching.ContainerCheck.IsValid(a.Expected), a.Expected));
     }
 
     [Fact]

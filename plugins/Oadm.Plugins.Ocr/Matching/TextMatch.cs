@@ -29,8 +29,8 @@ public sealed record TextMatch
     /// <summary>The event field All matches: <see cref="AllMatches"/> separated by a space.</summary>
     public string AllMatchesText => string.Join(' ', AllMatches);
 
-    /// <summary>The event field Number: <see cref="Text"/> as a number ("." or "," as the decimal sign); null when it is none.</summary>
-    public double? Number { get; init; }
+    /// <summary>The event field Number: <see cref="Text"/> as a number (<see cref="NumberText.Of"/>); empty when it is none.</summary>
+    public string Number { get; init; } = string.Empty;
 
     /// <summary>
     /// 0 to 100: the lowest confidence of the lines that make <see cref="Text"/>; 0 without text. A line's confidence is the
@@ -39,7 +39,7 @@ public sealed record TextMatch
     /// </summary>
     public double Confidence { get; init; }
 
-    /// <summary>The event field Matches format: a format matched; for Any text: there is text.</summary>
+    /// <summary>The event field Matches format: the area's format matched; always false for Any text (no format to match).</summary>
     public bool MatchesFormat { get; init; }
 
     /// <summary>The area's lines in reading order: top to bottom, left to right.</summary>
@@ -48,9 +48,9 @@ public sealed record TextMatch
     /// <summary>Where <see cref="Text"/> was read (the union of its lines' boxes, for the page's cut-out); null without text.</summary>
     public RelativeBox? TextBox { get; init; }
 
-    /// <summary>The model's form for <see cref="ITextMatcher"/>: value, matches format, raw text.</summary>
+    /// <summary>Value, matches format, raw text.</summary>
     public AreaMatch ToAreaMatch() => new(Text, MatchesFormat, RawText);
 
-    /// <summary>The model's form for <see cref="IAreaValueMatcher"/>: with every match, the confidence and the value's box.</summary>
+    /// <summary>The model's form for <see cref="ITextMatcher"/>: with every match, the confidence and the value's box.</summary>
     public AreaValue ToAreaValue() => new(ToAreaMatch(), AllMatches, Text.Length == 0 ? 0 : Confidence, Text.Length == 0 ? null : TextBox);
 }

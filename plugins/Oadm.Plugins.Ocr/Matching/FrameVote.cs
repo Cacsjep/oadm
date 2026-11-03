@@ -8,10 +8,13 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// The vote of one area of a watching reader (docs/spec/ocr.md "Accuracy", "Events and the rule action"): the last
 /// <see cref="Window"/> readings are combined character by character, weighted by their confidence, and a value is
 /// published only when the vote gives it in <see cref="OcrLimits.EqualFramesToPublish"/> frames in a row and it differs
-/// from the value published last. An area that becomes empty publishes once with an empty text; an area that was never
-/// read publishes nothing while it stays empty. Not thread-safe: one per area, fed by the reader's one reading at a time.
+/// from the value published last. With a format the combined value must match it like a single reading (and hold its check
+/// digit); a combination that does not is never published: the whole reading with the most weight wins instead. An area that
+/// becomes empty publishes once with an empty text; an area that was never read publishes nothing while it stays empty. Not
+/// thread-safe: one per area, fed by the reader's one reading at a time.
 /// </summary>
-public sealed class FrameVote
+/// <param name="accepts">Whether a value the vote combined may be published (the area's format); null: any text.</param>
+public sealed class FrameVote(Func<string, bool>? accepts = null)
 {
     /// <summary>The vote combines this many last readings.</summary>
     public const int Window = 5;
@@ -22,6 +25,28 @@ public sealed class FrameVote
     private readonly LinkedList<TextMatch> _window = new();
     private string? _lastVote;
     private int _inARow;
+
+    /// <summary>
+    /// The check of a combined value for <paramref name="expected"/>: with a format it must be one whole match of it (the
+    /// ISO 6346 check digit included); null for any text.
+    /// </summary>
+    public static Func<string, bool>? AcceptorOf(ExpectedText expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        if (expected.Kind != ExpectedTextKind.Format || string.IsNullOrWhiteSpace(expected.Format))
+        {
+            return null;
+        }
+
+        try
+        {
+            return TextFormat.Parse(expected.Format).IsWholeMatch;
+        }
+        catch (ArgumentException)
+        {
+            return null; // a format without anything to match reads as any text
+        }
+    }
 
     /// <summary>The value published last; empty before the first.</summary>
     public string Published { get; private set; } = string.Empty;
@@ -101,7 +126,21 @@ public sealed class FrameVote
                 .First().Char);
         }
 
-        return value.ToString();
+        var combined = value.ToString();
+        if (accepts is null || accepts(combined))
+        {
+            return combined;
+        }
+
+        // Characters of different readings that together break the format or the check digit: the whole reading with the
+        // most weight (each one matched on its own), on a tie the newest.
+        return voters
+            .Select((r, order) => (r.Text, Weight: Weight(r), Order: order))
+            .GroupBy(v => v.Text, StringComparer.Ordinal)
+            .Select(g => (Text: g.Key, Weight: g.Sum(v => v.Weight), Newest: g.Min(v => v.Order)))
+            .OrderByDescending(g => g.Weight)
+            .ThenBy(g => g.Newest)
+            .First().Text;
     }
 
     private TextMatch SourceOf(string vote)
@@ -113,7 +152,7 @@ public sealed class FrameVote
         }
 
         var model = newestFirst.First(r => r.Text.Length == vote.Length);
-        return model with { Text = vote, Number = TextMatcher.ParseNumber(vote) };
+        return model with { Text = vote, Number = NumberText.Of(vote) };
     }
 
     private static double Weight(TextMatch reading) => Math.Max(MinWeight, reading.Confidence);

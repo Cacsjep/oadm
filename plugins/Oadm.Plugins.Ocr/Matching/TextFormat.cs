@@ -17,14 +17,28 @@ public sealed class TextFormat
     {
         Pattern = pattern;
         _tokens = tokens;
-        HasContainerCheckDigit = pattern.TrimStart().StartsWith("AAAU", StringComparison.Ordinal);
+        HasContainerCheckDigit = ContainerCheck.FormatHasCheckDigit(pattern);
     }
 
     /// <summary>The format as written.</summary>
     public string Pattern { get; }
 
-    /// <summary>The format starts with <c>AAAU</c>: a container number whose last digit is its ISO 6346 check digit.</summary>
+    /// <summary>
+    /// The format starts with a container number (<see cref="ContainerCheck.FormatHasCheckDigit"/>): its 11th letter or digit
+    /// is the ISO 6346 check digit of the 10 before it.
+    /// </summary>
     public bool HasContainerCheckDigit { get; }
+
+    /// <summary>
+    /// True when <paramref name="value"/> is one whole match of the format (a value a reading or a vote made), with its check
+    /// digit where the format has one.
+    /// </summary>
+    public bool IsWholeMatch(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var matches = FindAll(value);
+        return matches.Count == 1 && matches[0].Start == 0 && matches[0].Length == value.Length;
+    }
 
     /// <summary>
     /// The parsed <paramref name="pattern"/>. Leading and trailing spaces and dashes are ignored.
@@ -69,8 +83,8 @@ public sealed class TextFormat
 
     /// <summary>
     /// Every match in <paramref name="text"/>, left to right, each as (start, length in <paramref name="text"/>, the value in
-    /// the format's form). A match never starts or ends inside a run of letters and digits; matches do not overlap. A wrong
-    /// ISO 6346 check digit is no match.
+    /// the format's form). A match never starts or ends inside a run of letters and digits (a format that starts or ends with
+    /// a sign such as "(" may touch them); matches do not overlap. A wrong ISO 6346 check digit is no match.
     /// </summary>
     public IReadOnlyList<FormatMatch> FindAll(string text)
     {
@@ -79,7 +93,7 @@ public sealed class TextFormat
         var start = 0;
         while (start < text.Length)
         {
-            if ((start > 0 && char.IsLetterOrDigit(text[start - 1])) || text[start] is ' ' or '-')
+            if ((start > 0 && char.IsLetterOrDigit(text[start - 1]) && char.IsLetterOrDigit(text[start])) || text[start] is ' ' or '-')
             {
                 start++;
                 continue;
@@ -115,7 +129,7 @@ public sealed class TextFormat
     {
         if (token == _tokens.Length)
         {
-            if ((pos == text.Length || !char.IsLetterOrDigit(text[pos])) && pos > best)
+            if ((pos == text.Length || !char.IsLetterOrDigit(text[pos]) || (pos > 0 && !char.IsLetterOrDigit(text[pos - 1]))) && pos > best)
             {
                 best = pos;
             }
@@ -267,51 +281,118 @@ public static class LookAlike
     };
 }
 
-/// <summary>The ISO 6346 check digit of container numbers (docs/spec/ocr.md "Accuracy").</summary>
+/// <summary>
+/// The ISO 6346 check digit of container numbers (docs/spec/ocr.md "Accuracy"), the one rule of the matcher and the
+/// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>AAAU</c> and seven <c>#</c> is a
+/// container number ("AAAU ###### #", also "AAAU ###### # 22G1" with the size and type code after it), and the 11th letter
+/// or digit of its value is the check digit of the 10 before it. A value whose check digit does not fit is no match; no
+/// character is ever changed to make it fit.
+/// </summary>
 public static class ContainerCheck
 {
-    /// <summary>
-    /// True when the letters and digits of <paramref name="value"/> are 4 letters, 6 digits and a check digit that fits them.
-    /// </summary>
-    public static bool IsValid(string value)
+    /// <summary>The owner code, category and serial number: 4 letters and 6 digits.</summary>
+    private const int CodeLength = 10;
+
+    /// <summary>True when the first 11 letters and digits of <paramref name="format"/> are <c>AAAU</c> and seven <c>#</c>.</summary>
+    public static bool FormatHasCheckDigit(string? format)
     {
-        ArgumentNullException.ThrowIfNull(value);
-        var chars = value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray();
-        if (chars.Length != 11 || !chars[..4].All(char.IsAsciiLetterUpper) || !chars[4..].All(char.IsAsciiDigit))
+        if (format is null)
         {
             return false;
         }
 
-        return CheckDigit(new string(chars, 0, 10)) == chars[10] - '0';
+        Span<char> first = stackalloc char[CodeLength + 1];
+        var count = 0;
+        foreach (var c in format)
+        {
+            if (c is ' ' or '-')
+            {
+                continue;
+            }
+
+            first[count++] = c;
+            if (count == first.Length)
+            {
+                return ((ReadOnlySpan<char>)first).StartsWith("AAAU", StringComparison.Ordinal) && first[4..].IndexOfAnyExcept('#') < 0;
+            }
+        }
+
+        return false;
     }
 
-    /// <summary>The check digit of the owner code, category and serial number (10 characters: 4 letters, 6 digits).</summary>
-    public static int CheckDigit(string first10)
+    /// <summary>
+    /// True when the first 11 letters and digits of <paramref name="value"/> are 4 letters, 6 digits and a check digit that fits
+    /// them (spaces, dashes and other signs between them are left out; what follows the 11th, such as a type code, is not
+    /// checked).
+    /// </summary>
+    public static bool IsValid(string value)
     {
-        ArgumentNullException.ThrowIfNull(first10);
-        if (first10.Length != 10)
+        ArgumentNullException.ThrowIfNull(value);
+        Span<char> chars = stackalloc char[CodeLength + 1];
+        var count = 0;
+        foreach (var c in value)
         {
-            throw new ArgumentException("A container number has 10 characters before its check digit.", nameof(first10));
+            if (!char.IsLetterOrDigit(c))
+            {
+                continue;
+            }
+
+            chars[count++] = char.ToUpperInvariant(c);
+            if (count == chars.Length)
+            {
+                var check = CheckDigit(chars[..CodeLength]);
+                return check >= 0 && chars[CodeLength] == (char)('0' + check);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The check digit (0 to 9) of the owner code, category and serial number (10 characters: 4 letters, 6 digits; letters in
+    /// either case), or -1 when they are not.
+    /// </summary>
+    public static int CheckDigit(ReadOnlySpan<char> first10)
+    {
+        if (first10.Length != CodeLength)
+        {
+            return -1;
         }
 
         var sum = 0;
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < CodeLength; i++)
         {
-            sum += CharValue(first10[i]) << i;
+            var c = first10[i];
+            int value;
+            if (i < 4)
+            {
+                if (!char.IsAsciiLetter(c))
+                {
+                    return -1;
+                }
+
+                value = LetterValue(char.ToUpperInvariant(c));
+            }
+            else
+            {
+                if (!char.IsAsciiDigit(c))
+                {
+                    return -1;
+                }
+
+                value = c - '0';
+            }
+
+            sum += value << i;
         }
 
         return sum % 11 % 10;
     }
 
-    /// <summary>Digits their value; letters from A = 10 up, skipping 11, 22 and 33.</summary>
-    private static int CharValue(char c)
+    /// <summary>Letters from A = 10 up, skipping 11, 22 and 33.</summary>
+    private static int LetterValue(char letter)
     {
-        if (char.IsAsciiDigit(c))
-        {
-            return c - '0';
-        }
-
-        var value = 10 + (char.ToUpperInvariant(c) - 'A');
+        var value = 10 + (letter - 'A');
         value += value >= 11 ? 1 : 0;
         value += value >= 22 ? 1 : 0;
         value += value >= 33 ? 1 : 0;
