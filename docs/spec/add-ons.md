@@ -9,6 +9,10 @@ downloads them from the OADM release on GitHub, and every client gets their clie
 are the vision plugins, which analyse the cameras' pictures on the server (text recognition, `docs/spec/ocr.md`). OADM
 itself stays free of models and inference libraries; no extra installer.
 
+**Name for users: "optional plugins"** (decision 2026-11-03): the card "Optional plugins" on the Plugins page, the chip
+"Optional", audit "Installed optional plugin ...", docs and every UI text. "Add-on" stays the name in code, files, the
+release ZIPs (`oadm-addon-...`) and this spec; it is never shown to users.
+
 ## Rules that never break
 
 1. **Never in the OADM installers.** Add-on plugin projects (`<OadmAddOn>true</OadmAddOn>`) are left out of `manage
