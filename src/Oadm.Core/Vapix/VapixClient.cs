@@ -525,6 +525,7 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         request.Options.Set(DeviceRouter.ConnectTimeoutOption, deviceTimeout);
         var streamed = request.Options.TryGetValue(VapixRequestOptions.StreamResponse, out var stream) && stream;
         var relayed = request.Options.TryGetValue(RelayedOption, out var relay) && relay;
+        var live = request.Options.TryGetValue(VapixRequestOptions.LiveStream, out var liveStream) && liveStream;
         var http = relayed && _relayHttp is not null ? _relayHttp.Value
             : _statusHttp is not null && request.Options.TryGetValue(StatusReadOption, out var status) && status ? _statusHttp
             : _http;
@@ -532,8 +533,9 @@ public sealed partial class VapixClient : IVapixClient, IDisposable
         // Through a site at most a few large transfers run at once (docs/spec/sites.md, Server side: Large transfers). A task waits as long as it takes and
         // says "Waiting for the site link"; its device timeout starts after the wait. Anyone else waits inside the request's
         // timeout, and a wait that uses it up is "Site ... is busy", never a device timeout. A streamed answer keeps its slot
-        // until the caller disposes the response (or drops it: the slot is freed when it is collected).
-        var large = !Route.IsLocal && ((streamed && !relayed) || IsLargeBody(request.Content));
+        // until the caller disposes the response (or drops it: the slot is freed when it is collected). The Web View relay's
+        // answers and the live streams of plugins (VapixRequestOptions.LiveStream, limited per site by the plugin) take none.
+        var large = !Route.IsLocal && ((streamed && !relayed && !live) || IsLargeBody(request.Content));
         var timeout = Router.Timeout(Route, deviceTimeout);
         var bounded = timeout != System.Threading.Timeout.InfiniteTimeSpan;
         var task = large ? SiteLinkWait.Current : null;

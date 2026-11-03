@@ -29,4 +29,15 @@ public static class VapixRequestOptions
     /// For large read-only downloads such as server reports: <c>request.Options.Set(VapixRequestOptions.StreamResponse, true)</c>.
     /// </summary>
     public static readonly HttpRequestOptionsKey<bool> StreamResponse = new(StreamResponseKey);
+
+    /// <summary>Name of the <see cref="LiveStream"/> option.</summary>
+    public const string LiveStreamKey = "Oadm.LiveStream";
+
+    /// <summary>
+    /// True marks a streamed answer (<see cref="StreamResponse"/>) as a live stream that runs as long as the plugin reads it,
+    /// such as an MJPEG stream of pictures (SDK 0.10.0). Through a site it takes none of the site's large transfer slots, which
+    /// AXIS OS upgrades, application installs and exports need: a live stream would hold one for as long as it runs. A plugin
+    /// that sets it limits its own streams per site. A large request body still takes a slot.
+    /// </summary>
+    public static readonly HttpRequestOptionsKey<bool> LiveStream = new(LiveStreamKey);
 }
