@@ -123,36 +123,47 @@ public sealed class PreviewTests
     [Fact]
     public async Task AtMostEightPreviewsAndTheyCountAgainstTheWatchingLimit()
     {
-        await using var ocr = await OcrHarness.StartAsync();
+        await using var ocr = await OcrHarness.StartAsync(); // 8 cores: 16 streams
+        var runtime = ocr.Plugin.Runtime!;
         var draft = ocr.NewReader("Gate");
+        var users = Enumerable.Range(0, 5).Select(i => ocr.Context.CallAsAllDevices($"user{i}")).ToArray();
         var ids = new List<string>();
         for (var i = 0; i < OcrLimits.MaxPreviews; i++)
         {
-            ids.Add((await ocr.PreviewAsync(draft)).PreviewId);
+            ids.Add((await ocr.PreviewAsync(draft, caller: users[i / OcrLimits.MaxPreviewsPerUser])).PreviewId);
         }
 
         await Eventually.TrueAsync(() => ocr.Frames.Opened == OcrLimits.MaxPreviews, "every preview streams");
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.PreviewAsync(draft));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.PreviewAsync(draft, caller: users[4]));
         Assert.Equal(ReaderRules.TooManyPreviews, refused.Message);
         Assert.Equal("At most 8 readers can be shown live at once. Try again when another page closes.", refused.Message);
 
-        // One ends: room for another.
-        await ocr.CallAsync(OcrMethods.StopPreview, new PreviewRequest { PreviewId = ids[0] });
-        Assert.NotEmpty((await ocr.PreviewAsync(draft)).PreviewId);
+        // A user's third preview ends their oldest (a page closed without a word), never another user's.
+        var third = (await ocr.PreviewAsync(draft, caller: users[0])).PreviewId;
+        Assert.Equal(OcrLimits.MaxPreviews, runtime.Previews.Count);
+        Assert.DoesNotContain(runtime.Previews, p => p.Id == ids[0]);
+        Assert.Contains(runtime.Previews, p => p.Id == third);
 
-        // The watching readers and the own streams of the previews share the limit (20 on the CPU).
-        for (var i = 0; i < OcrLimits.MaxWatching - OcrLimits.MaxPreviews; i++)
+        // Another user can neither read nor end a preview.
+        await ocr.CallAsync(OcrMethods.StopPreview, new PreviewRequest { PreviewId = ids[2] }, users[0]);
+        Assert.Contains(runtime.Previews, p => p.Id == ids[2]);
+        Assert.Null(OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetPreview, new PreviewRequest { PreviewId = ids[2] }, users[0])).Reading);
+
+        // The watching readers and the previews' own streams share the limit; the saved readers come first.
+        var free = runtime.MaxWatching - OcrLimits.MaxPreviews;
+        for (var i = 0; i < free; i++)
         {
             await ocr.SaveAsync(ocr.NewReader($"Watch {i:00}", ReaderMode.Watching));
         }
 
-        await Eventually.TrueAsync(() => ocr.Plugin.Runtime!.Watching.Count == OcrLimits.MaxWatching - OcrLimits.MaxPreviews, "the readers watch");
-        await ocr.CallAsync(OcrMethods.StopPreview, new PreviewRequest { PreviewId = ids[1] });
+        await Eventually.TrueAsync(() => runtime.Watching.Count == free, "the readers watch");
+        Assert.Equal(OcrLimits.MaxPreviews, runtime.Previews.Count(p => p.OwnStream));
         await ocr.SaveAsync(ocr.NewReader("Watch 99", ReaderMode.Watching));
-        await Eventually.TrueAsync(() => ocr.Plugin.Runtime!.Watching.Count == OcrLimits.MaxWatching - OcrLimits.MaxPreviews + 1, "the new reader watches");
-        var busy = await ocr.PreviewAsync(draft);
+        await Eventually.TrueAsync(() => runtime.Watching.Count == free + 1, "the new reader watches");
+        Assert.Equal(OcrLimits.MaxPreviews - 1, runtime.Previews.Count(p => p.OwnStream)); // the youngest preview gave way
+        Assert.False(runtime.Previews.Single(p => p.Id == third).OwnStream);
+        var busy = await ocr.PreviewAsync(draft, third, users[0]);
         Assert.Equal(ReaderRules.PreviewBusy, busy.Problem);
-        Assert.DoesNotContain(ocr.Plugin.Runtime!.Previews, p => p.Id == busy.PreviewId && p.OwnStream);
         Assert.Empty(ocr.TextRead);
     }
 
@@ -227,15 +238,15 @@ public sealed class PreviewTests
             ],
         };
 
-        var cpu = ReaderRules.PreviewOf(draft, onGpu: false);
-        Assert.Equal(OcrLimits.DefaultFps, cpu.Fps); // 15 only on a graphics card
-        Assert.Equal(15, ReaderRules.PreviewOf(draft, onGpu: true).Fps);
-        Assert.Equal(12, ReaderRules.PreviewOf(draft with { Fps = 12 }, onGpu: true).Fps);
+        var cpu = ReaderRules.PreviewOf(draft);
+        Assert.Equal(15, cpu.Fps);
+        Assert.Equal(12, ReaderRules.PreviewOf(draft with { Fps = 12 }).Fps);
+        Assert.Equal(OcrLimits.DefaultFps, ReaderRules.PreviewOf(draft with { Fps = 10 }).Fps); // no choice: the default
         Assert.Equal(["Area 1", "Code"], cpu.Areas.Select(a => a.Name)); // outside the picture: left out
         Assert.Equal(ExpectedTextKind.Any, cpu.Areas[0].Expected.Kind); // a format with a problem reads any text
         Assert.Equal("A#", cpu.Areas[1].Expected.Format);
-        Assert.Equal(OcrLimits.PreviewFpsOnAction, ReaderRules.PreviewOf(draft with { Mode = ReaderMode.OnAction }, onGpu: true).Fps);
-        Assert.Equal(ReaderRules.CameraMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { DeviceId = Guid.Empty }, false)).Message);
-        Assert.Equal(ReaderRules.ResolutionMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { Resolution = new(10, 10) }, false)).Message);
+        Assert.Equal(OcrLimits.PreviewFpsOnAction, ReaderRules.PreviewOf(draft with { Mode = ReaderMode.OnAction }).Fps);
+        Assert.Equal(ReaderRules.CameraMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { DeviceId = Guid.Empty })).Message);
+        Assert.Equal(ReaderRules.ResolutionMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { Resolution = new(10, 10) })).Message);
     }
 }

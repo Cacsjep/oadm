@@ -105,8 +105,8 @@ public sealed class OcrPluginTests
     {
         Assert.Equal(8, OcrLimits.MaxAreas);
         Assert.Equal(50, OcrLimits.MaxReaders);
-        Assert.Equal(20, OcrLimits.MaxWatching);
-        Assert.Equal([1, 2, 4], OcrLimits.FpsChoices);
+        Assert.Equal((8, 8, 16, 48, 50), (OcrLimits.MaxWatching(1), OcrLimits.MaxWatching(4), OcrLimits.MaxWatching(8), OcrLimits.MaxWatching(24), OcrLimits.MaxWatching(64))); // 4 per worker, 8 to 50
+        Assert.Equal([1, 2, 4, 8, 12, 15], OcrLimits.FpsChoices); // on every server: the CPU reads every fixed area
         Assert.Equal(1, OcrLimits.DefaultFps);
         Assert.Equal(50, OcrLimits.MinConfidence);
         Assert.Equal(2, OcrLimits.EqualFramesToPublish);

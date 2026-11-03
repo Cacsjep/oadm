@@ -192,7 +192,7 @@ public sealed class StatsTests
         Assert.Equal(0, Published());
 
         var stats = OcrJson.Deserialize<OcrStats>(await ocr.CallAsync(OcrMethods.GetStats));
-        Assert.Equal((1, 20, 0, 8, 1), (stats.Watching, stats.MaxWatching, stats.Previews, stats.MaxPreviews, stats.Streams));
+        Assert.Equal((1, 16, 0, 8, 1), (stats.Watching, stats.MaxWatching, stats.Previews, stats.MaxPreviews, stats.Streams));
         var rate = Assert.Single(stats.Readers);
         Assert.Equal((reader.Id, 2, false), (rate.ReaderId, rate.Fps, rate.Slow));
         Assert.Empty(stats.Sites);

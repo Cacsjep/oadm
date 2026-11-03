@@ -177,6 +177,22 @@ internal sealed class FakeFrames : IFrameSource
         }
     }
 
+    /// <summary>The problem callbacks of the open streams, per camera (the last opened one).</summary>
+    private readonly ConcurrentDictionary<Guid, Action<string?>> _problems = new();
+
+    public IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, Action<string?> problem, CancellationToken ct)
+    {
+        _problems[request.DeviceId] = problem;
+        return WatchAsync(request, fps, ct);
+    }
+
+    /// <summary>The stream of <paramref name="deviceId"/> tells a problem (the camera refused), or null: pictures flow again.</summary>
+    public void Tell(Guid deviceId, string? problem)
+    {
+        Assert.True(_problems.TryGetValue(deviceId, out var report), "No stream of the camera is open.");
+        report(problem);
+    }
+
     public bool IsStreaming(Guid deviceId) => _streams.ContainsKey(deviceId);
 
     /// <summary>Sends a frame to the stream of <paramref name="deviceId"/>.</summary>
@@ -194,7 +210,7 @@ internal sealed class FakeFrames : IFrameSource
 internal sealed class OcrHarness : IAsyncDisposable
 {
     /// <summary>Over the fakes, or with real parts: <paramref name="recognizer"/>, <paramref name="matcher"/> and <paramref name="cutter"/> in place of the fakes.</summary>
-    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null)
+    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null, int processorCount = 8)
     {
         Context = new FakeCoreContext { EventPublisher = Publisher };
         Inside = Context.Add(new FakeDevice { Address = "10.0.0.1" });
@@ -208,7 +224,7 @@ internal sealed class OcrHarness : IAsyncDisposable
             Cutter = cutter,
             Time = Time,
             ProcessorTime = () => TimeSpan.Zero,
-            ProcessorCount = 8,
+            ProcessorCount = processorCount,
         };
         Plugin = new OcrPlugin(Parts);
     }
@@ -231,9 +247,9 @@ internal sealed class OcrHarness : IAsyncDisposable
 
     public OcrPlugin Plugin { get; }
 
-    public static async Task<OcrHarness> StartAsync(bool onGpu = false)
+    public static async Task<OcrHarness> StartAsync(bool onGpu = false, int processorCount = 8)
     {
-        var harness = new OcrHarness(onGpu);
+        var harness = new OcrHarness(onGpu, processorCount: processorCount);
         await harness.Plugin.StartAsync(harness.Context, CancellationToken.None);
         return harness;
     }

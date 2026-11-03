@@ -114,7 +114,7 @@ internal sealed partial class ReaderRuntime
             UnchangedPerSecond = Math.Round(figures.ReusedPerSecond, 1),
             AverageReadMs = Math.Round(figures.AverageReadMs),
             Watching = loops.Count,
-            MaxWatching = ReaderRules.MaxWatching(OnGpu),
+            MaxWatching = MaxWatching,
             Previews = previews,
             MaxPreviews = OcrLimits.MaxPreviews,
             Streams = loops.Count + previewStreams.Count,

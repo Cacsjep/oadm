@@ -201,7 +201,7 @@ internal sealed partial class ReaderRuntime
             watching = _loops.Count;
         }
 
-        var left = ReaderRules.MaxWatching(OnGpu) - watching;
+        var left = MaxWatching - watching;
         var perSite = LoopsPerSite();
         foreach (var preview in previews.Where(p => p.Loop is not null))
         {
@@ -285,7 +285,7 @@ internal sealed partial class ReaderRuntime
             atSite = site is { } s ? _previews.Values.Count(p => p.Loop is not null && p.Site == s) : 0;
         }
 
-        if (watching + ownStreams >= ReaderRules.MaxWatching(OnGpu)
+        if (watching + ownStreams >= MaxWatching
             || (site is { } at && LoopsPerSite().GetValueOrDefault(at) + atSite >= ReaderRules.MaxWatchingPerSite))
         {
             preview.Problem = ReaderRules.PreviewBusy;

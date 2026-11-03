@@ -199,7 +199,7 @@ public sealed record OcrStats
     /// <summary>The caller's watching readers that read now.</summary>
     public int Watching { get; init; }
 
-    /// <summary>Watching readers per server at most (20 on the CPU, 50 on a graphics card).</summary>
+    /// <summary>Watching readers per server at most (by the server's cores: 4 per recognition worker, 8 to 50).</summary>
     public int MaxWatching { get; init; }
 
     /// <summary>The caller's page previews now.</summary>
@@ -276,10 +276,10 @@ public sealed record ReaderList
 {
     public IReadOnlyList<ReaderSummary> Readers { get; init; } = [];
 
-    /// <summary>The frame rates a watching reader may use on this server (1, 2, 4 on the CPU; 1, 2, 4, 8, 12, 15 on a GPU).</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = [];
 
-    /// <summary>Watching readers per server at most (20 on the CPU, 50 on a GPU).</summary>
+    /// <summary>Watching readers per server at most (by the server's cores: 4 per recognition worker, 8 to 50).</summary>
     public int MaxWatching { get; init; }
 }
 
@@ -365,7 +365,7 @@ public sealed record EngineInfo
     /// <summary>The setting "Use the graphics card" (on by default).</summary>
     public bool UseGpu { get; init; } = true;
 
-    /// <summary>The frame rates a watching reader may use now: 1, 2, 4 on the CPU, 1, 2, 4, 8, 12, 15 on a GPU.</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
 }
 

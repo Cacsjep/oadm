@@ -100,6 +100,7 @@ public sealed class ReadTextActionTests
         Assert.Equal([(gate.Id, "Gate"), (meter.Id, "Meter")], choices.Select(c => (c.Value, c.Label)));
         Assert.Empty(action.Validate(Invocation(gate.Id).Settings, statefulRule: false));
         Assert.Equal(ReaderRules.Gone, action.Validate(Invocation("gone").Settings, statefulRule: false)[OcrInfo.ReaderActionField]);
+        Assert.Equal(ReaderRules.ReaderMissing, action.Validate(JsonDocument.Parse("{}").RootElement, statefulRule: false)[OcrInfo.ReaderActionField]); // refused at the rule's save
         var failed = await Assert.ThrowsAsync<InvalidOperationException>(() => action.ExecuteAsync(new FakeActionContext(), Invocation("gone"), CancellationToken.None));
         Assert.Equal(ReaderRules.Gone, failed.Message);
     }

@@ -85,4 +85,22 @@ public sealed class PictureTests
 
         Assert.Equal(new SKRectI(0, 0, 1920, 1080), picture.Decoded);
     }
+
+    [Fact]
+    public void A_picture_that_claims_a_huge_size_is_refused_before_any_pixel_memory()
+    {
+        // A small JPEG whose header says 65,535 x 65,535 (16 GB of pixels): refused from the header, never allocated.
+        using var bitmap = new SKBitmap(64, 64);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 80);
+        var jpeg = data.ToArray();
+        var sof = Enumerable.Range(0, jpeg.Length - 1).First(i => jpeg[i] == 0xFF && jpeg[i + 1] is 0xC0 or 0xC2);
+        for (var i = sof + 5; i < sof + 9; i++)
+        {
+            jpeg[i] = 0xFF;
+        }
+
+        Assert.Throws<InvalidDataException>(() => Picture.Decode(jpeg));
+        Assert.Null(new PictureCutter().Cut(jpeg, new RelativeBox(0, 0, 0.5, 0.5)));
+    }
 }

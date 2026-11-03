@@ -25,7 +25,7 @@ public sealed class PageMethodsTests
         var json = await plugin.InvokeAsync(OcrMethods.GetEngine, "{}", CancellationToken.None);
 
         Assert.Equal(
-            $$"""{"runsOn":"{{ReaderRules.CpuText(Environment.ProcessorCount)}}","gpuAvailable":false,"useGpu":true,"fpsChoices":[1,2,4]}""",
+            $$"""{"runsOn":"{{ReaderRules.CpuText(Environment.ProcessorCount)}}","gpuAvailable":false,"useGpu":true,"fpsChoices":[1,2,4,8,12,15]}""",
             json);
         Assert.Equal("CPU (8 cores)", ReaderRules.CpuText(8));
         Assert.Equal("CPU (1 core)", ReaderRules.CpuText(1));
@@ -56,11 +56,11 @@ public sealed class PageMethodsTests
 
         Assert.False(engine.UseGpu);
         Assert.True(engine.GpuAvailable);
-        Assert.Equal([1, 2, 4], engine.FpsChoices); // the CPU's rates now
+        Assert.Equal([1, 2, 4, 8, 12, 15], engine.FpsChoices); // the same rates: the CPU reads every fixed area anyway
         Assert.False(ocr.Recognizer.UsesGpu);
         Assert.Equal("false", ocr.Context.PluginSettings.Values["useGpu"]);
-        Assert.True(ocr.Context.PublishedEvents.Count(e => e.Topic == OcrMethods.ReadersTopic) > publishedBefore, "the pages get the new limits");
-        Assert.Equal([1, 2, 4], (await ocr.ListAsync()).FpsChoices);
+        Assert.True(ocr.Context.PublishedEvents.Count(e => e.Topic == OcrMethods.ReadersTopic) > publishedBefore, "the pages get the list again");
+        Assert.Equal(16, (await ocr.ListAsync()).MaxWatching); // the limits follow the cores, not the card
 
         // A restart reads the setting and hands it over again.
         await ocr.Plugin.StopAsync(CancellationToken.None);

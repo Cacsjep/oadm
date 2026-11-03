@@ -9,11 +9,29 @@ public static class OcrLimits
     /// <summary>Readers per server at most.</summary>
     public const int MaxReaders = 50;
 
-    /// <summary>Watching readers per server at most.</summary>
-    public const int MaxWatching = 20;
+    /// <summary>Watching readers per server at least, whatever the cores (a small server).</summary>
+    public const int MinWatching = 8;
 
-    /// <summary>The frame rates a watching reader offers.</summary>
-    public static readonly IReadOnlyList<int> FpsChoices = [1, 2, 4];
+    /// <summary>Watching readers per server at most, whatever the cores.</summary>
+    public const int MaxWatchingReaders = 50;
+
+    /// <summary>Watching readers per recognition worker (<see cref="Workers"/>).</summary>
+    public const int WatchingPerWorker = 4;
+
+    /// <summary>
+    /// Watching readers at most on a server with <paramref name="processorCount"/> cores: 4 per recognition worker, at least 8
+    /// and at most 50 (docs/spec/ocr.md "Limits"; 8 cores: 16, 24 cores: 48). The CPU reads every fixed area and every line
+    /// whether or not a graphics card helps with Search, so the cores set the limit. A worker reads a fixed area in about
+    /// 28 ms (35 pictures per second); 4 readers at 2 frames per second use about a quarter of it, and unchanged areas cost
+    /// almost nothing. Higher rates are the user's choice: the traffic light tells when the server no longer keeps up.
+    /// </summary>
+    public static int MaxWatching(int processorCount) => Math.Clamp(Workers(processorCount) * WatchingPerWorker, MinWatching, MaxWatchingReaders);
+
+    /// <summary>
+    /// The frame rates a watching reader offers, on every server: the recognition's load and the traffic light of the runtime
+    /// stats show when a server reads slower than set.
+    /// </summary>
+    public static readonly IReadOnlyList<int> FpsChoices = [1, 2, 4, 8, 12, 15];
 
     /// <summary>Previews (a page that shows a reader reads it live, without events) per server at most.</summary>
     public const int MaxPreviews = 8;

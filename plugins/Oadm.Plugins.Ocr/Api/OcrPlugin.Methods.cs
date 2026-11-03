@@ -50,7 +50,7 @@ public sealed partial class OcrPlugin
                 Reader? before;
                 try
                 {
-                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.OnGpu, ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
+                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.MaxWatching, ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
                 }
                 catch (ReaderFieldException ex) when (ex.Errors.Count > 0)
                 {
@@ -87,7 +87,7 @@ public sealed partial class OcrPlugin
             case OcrMethods.StartPreview:
             {
                 var request = OcrJson.Deserialize<PreviewRequest>(payloadJson);
-                var draft = ReaderRules.PreviewOf(request.Reader ?? throw new ArgumentException("Missing payload.", nameof(payloadJson)), runtime.OnGpu);
+                var draft = ReaderRules.PreviewOf(request.Reader ?? throw new ArgumentException("Missing payload.", nameof(payloadJson)));
                 if (draft.Id.Length > 0 && store.FindVisible(caller, draft.Id) is null)
                 {
                     throw new ArgumentException(ReaderRules.Gone);
@@ -138,7 +138,7 @@ public sealed partial class OcrPlugin
                 _useGpu = useGpu;
                 runtime.Engine?.SetUseGpu(useGpu);
 
-                // The limits follow what reads now (watching readers, frame rates).
+                // The readers go on where the recognition reads now (their limits follow the cores, not the card).
                 await runtime.SyncAsync().ConfigureAwait(false);
                 PublishReaders([.. store.All.Select(r => r.OwnerScopeKey)]);
                 return OcrJson.Serialize(EngineOf(runtime));
@@ -170,7 +170,7 @@ public sealed partial class OcrPlugin
             RunsOn = engine?.RunsOn is { Length: > 0 } runsOn ? runsOn : ReaderRules.CpuText(Environment.ProcessorCount),
             GpuAvailable = engine?.GpuAvailable ?? false,
             UseGpu = _useGpu,
-            FpsChoices = ReaderRules.FpsChoices(runtime.OnGpu),
+            FpsChoices = OcrLimits.FpsChoices,
         };
     }
 
@@ -226,8 +226,8 @@ public sealed partial class OcrPlugin
     private static ReaderList ListOf(IEnumerable<Reader> readers, ReaderRuntime runtime, Func<Guid, bool> seesCamera) => new()
     {
         Readers = [.. readers.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).Select(r => SummaryOf(r, runtime, seesCamera(r.DeviceId)))],
-        FpsChoices = ReaderRules.FpsChoices(runtime.OnGpu),
-        MaxWatching = ReaderRules.MaxWatching(runtime.OnGpu),
+        FpsChoices = OcrLimits.FpsChoices,
+        MaxWatching = runtime.MaxWatching,
     };
 
     private static ReaderSummary SummaryOf(Reader reader, ReaderRuntime runtime, bool seesCamera)

@@ -17,11 +17,6 @@ public static class ReaderRules
     /// <summary>The longest format.</summary>
     public const int MaxFormatLength = 64;
 
-    /// <summary>Watching readers at most while the recognition runs on a graphics card.</summary>
-    public const int MaxWatchingGpu = 50;
-
-    /// <summary>The frame rates a watching reader offers on a graphics card.</summary>
-    public static readonly IReadOnlyList<int> FpsChoicesGpu = [1, 2, 4, 8, 12, 15];
 
     /// <summary>The smallest and largest picture side the readers ask for.</summary>
     public const int MinSide = 160;
@@ -126,24 +121,21 @@ public static class ReaderRules
         CultureInfo.InvariantCulture,
         $"At most {MaxWatchingPerSite} readers can watch at once at the site {(string.IsNullOrWhiteSpace(siteName) ? "of this camera" : siteName)}. Set another reader there to On action first.");
 
-    /// <summary>"At most 20 readers can watch at once. Set another reader to On action first."</summary>
-    public static string TooManyWatching(bool onGpu) => string.Create(
+    /// <summary>"At most 16 readers can watch at once. Set another reader to On action first."</summary>
+    public static string TooManyWatching(int maxWatching) => string.Create(
         CultureInfo.InvariantCulture,
-        $"At most {MaxWatching(onGpu)} readers can watch at once. Set another reader to On action first.");
+        $"At most {maxWatching} readers can watch at once. Set another reader to On action first.");
 
-    /// <summary>"Choose 1, 2 or 4 frames per second."</summary>
-    public static string FpsNotAllowed(bool onGpu)
+    /// <summary>"Choose 1, 2, 4, 8, 12 or 15 frames per second."</summary>
+    public static string FpsNotAllowed()
     {
-        var choices = FpsChoices(onGpu);
+        var choices = OcrLimits.FpsChoices;
         var list = string.Join(", ", choices.Take(choices.Count - 1).Select(c => c.ToString(CultureInfo.InvariantCulture)));
         return string.Create(CultureInfo.InvariantCulture, $"Choose {list} or {choices[^1]} frames per second.");
     }
 
-    /// <summary>Watching readers at most: 20 on the CPU, 50 on a graphics card.</summary>
-    public static int MaxWatching(bool onGpu) => onGpu ? MaxWatchingGpu : OcrLimits.MaxWatching;
-
-    /// <summary>The frame rates: 1, 2, 4 on the CPU; 1, 2, 4, 8, 12, 15 on a graphics card.</summary>
-    public static IReadOnlyList<int> FpsChoices(bool onGpu) => onGpu ? FpsChoicesGpu : OcrLimits.FpsChoices;
+    /// <summary>Watching readers at most on a server with <paramref name="processorCount"/> cores (<see cref="OcrLimits.MaxWatching"/>).</summary>
+    public static int MaxWatching(int processorCount) => OcrLimits.MaxWatching(processorCount);
 
     /// <summary>"At most 8 readers can be shown live at once. Try again when another page closes."</summary>
     public static readonly string TooManyPreviews = string.Create(
@@ -159,7 +151,7 @@ public static class ReaderRules
     /// out, a name missing becomes "Area 2", a format with a problem reads any text, a frame rate not offered the default;
     /// an On action reader previews at <see cref="OcrLimits.PreviewFpsOnAction"/>. No owner: the server sets it.
     /// </summary>
-    public static Reader PreviewOf(Reader draft, bool onGpu)
+    public static Reader PreviewOf(Reader draft)
     {
         ArgumentNullException.ThrowIfNull(draft);
         var reader = Normalize(draft);
@@ -189,7 +181,7 @@ public static class ReaderRules
 
         var mode = Enum.IsDefined(reader.Mode) ? reader.Mode : ReaderMode.Watching;
         var fps = mode == ReaderMode.Watching
-            ? FpsChoices(onGpu).Contains(reader.Fps) ? reader.Fps : OcrLimits.DefaultFps
+            ? OcrLimits.FpsChoices.Contains(reader.Fps) ? reader.Fps : OcrLimits.DefaultFps
             : OcrLimits.PreviewFpsOnAction;
         return reader with { Mode = mode, Fps = fps, Areas = areas };
     }
@@ -205,7 +197,7 @@ public static class ReaderRules
         return reader with
         {
             Name = reader.Name?.Trim() ?? string.Empty,
-            Fps = reader.Mode == ReaderMode.OnAction && !FpsChoicesGpu.Contains(reader.Fps) ? OcrLimits.DefaultFps : reader.Fps,
+            Fps = reader.Mode == ReaderMode.OnAction && !OcrLimits.FpsChoices.Contains(reader.Fps) ? OcrLimits.DefaultFps : reader.Fps,
             Areas = Areas(reader),
             OwnerScopeKey = null,
         };
@@ -225,13 +217,13 @@ public static class ReaderRules
     })];
 
     /// <summary>
-    /// <paramref name="reader"/> at a frame rate the recognition offers now: its own, or the highest choice below it (a
-    /// graphics card turned off: 15 becomes 4). The runtime's loops read at it; the stored reader keeps its rate.
+    /// <paramref name="reader"/> at a frame rate the readers offer: its own, or the highest choice below it (a record written
+    /// by hand or by an older version with 10 reads at 8). The runtime's loops read at it; the stored reader keeps its rate.
     /// </summary>
-    public static Reader WithOfferedFps(Reader reader, bool onGpu)
+    public static Reader WithOfferedFps(Reader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        var choices = FpsChoices(onGpu);
+        var choices = OcrLimits.FpsChoices;
         if (choices.Contains(reader.Fps))
         {
             return reader;
@@ -242,10 +234,10 @@ public static class ReaderRules
     }
 
     /// <summary>The first problem of a normalized reader (<see cref="Normalize"/>), or null.</summary>
-    public static FieldError? Problem(Reader reader, bool onGpu) => Problems(reader, onGpu) is { Count: > 0 } problems ? problems[0] : null;
+    public static FieldError? Problem(Reader reader) => Problems(reader) is { Count: > 0 } problems ? problems[0] : null;
 
     /// <summary>Every problem of a normalized reader (<see cref="Normalize"/>), at most one per field; empty when it can be saved.</summary>
-    public static IReadOnlyList<FieldError> Problems(Reader reader, bool onGpu)
+    public static IReadOnlyList<FieldError> Problems(Reader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
         var problems = new List<FieldError>();
@@ -275,10 +267,10 @@ public static class ReaderRules
             problems.Add(new(OcrFields.Mode, ModeMissing));
         }
 
-        if (reader.Mode == ReaderMode.Watching && !FpsChoices(onGpu).Contains(reader.Fps))
+        if (reader.Mode == ReaderMode.Watching && !OcrLimits.FpsChoices.Contains(reader.Fps))
         {
             // The frame rate is set only while Watching (the page hides it for On action).
-            problems.Add(new(OcrFields.Fps, FpsNotAllowed(onGpu)));
+            problems.Add(new(OcrFields.Fps, FpsNotAllowed()));
         }
 
         if (reader.Areas.Count > OcrLimits.MaxAreas)

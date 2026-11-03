@@ -73,6 +73,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         _cutter = parts.Cutter;
         _recognizer = parts.Recognizer?.Invoke(ctx);
         _stats = new ReaderStats(parts.Time, parts.ProcessorTime, parts.ProcessorCount);
+        MaxWatching = OcrLimits.MaxWatching(parts.ProcessorCount);
         _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Time, _stats) : null;
         using (ExecutionContext.SuppressFlow())
         {
@@ -90,7 +91,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// <summary>Raised (without a caller) when the problems of the readers changed (<see cref="ProblemOf"/>).</summary>
     public event EventHandler? ProblemsChanged;
 
-    /// <summary>True while the recognition runs on a graphics card (<see cref="IEngineInfo.OnGpu"/>).</summary>
+    /// <summary>Watching readers at most on this server (its cores, <see cref="OcrLimits.MaxWatching"/>), previews' own streams included.</summary>
+    public int MaxWatching { get; }
+
+    /// <summary>True while the recognition uses a graphics card (<see cref="IEngineInfo.OnGpu"/>).</summary>
     public bool OnGpu => _recognizer is IEngineInfo { OnGpu: true };
 
     /// <summary>What the recognition runs on and "Use the graphics card"; null while the recognizer does not tell.</summary>
@@ -350,11 +354,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             }
 
             var readers = _readers();
-            var onGpu = OnGpu;
+            var limit = MaxWatching;
             var problems = new Dictionary<string, string>(StringComparer.Ordinal);
             var wanted = new Dictionary<string, (Reader Reader, IDeviceInfo? Camera)>(StringComparer.Ordinal);
             var perSite = new Dictionary<Guid, int>();
-            var limit = ReaderRules.MaxWatching(onGpu);
             foreach (var stored in readers)
             {
                 var (problem, camera) = await CheckAsync(stored, CancellationToken.None).ConfigureAwait(false);
@@ -369,10 +372,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                     continue;
                 }
 
-                // Beyond a limit (a graphics card turned off, a camera moved to a site) the reader says why it reads nothing.
+                // Beyond a limit (another server with fewer cores, a camera moved to a site) the reader says why it reads nothing.
                 if (wanted.Count >= limit)
                 {
-                    problems[stored.Id] = ReaderRules.TooManyWatching(onGpu);
+                    problems[stored.Id] = ReaderRules.TooManyWatching(limit);
                     continue;
                 }
 
@@ -387,8 +390,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                     perSite[site] = perSite.GetValueOrDefault(site) + 1;
                 }
 
-                // A frame rate the recognition no longer offers (the graphics card turned off) reads at the highest one below it.
-                wanted[stored.Id] = (ReaderRules.WithOfferedFps(stored, onGpu), camera);
+                // A frame rate no choice (a record of an older version) reads at the highest one below it.
+                wanted[stored.Id] = (ReaderRules.WithOfferedFps(stored), camera);
             }
 
             var before = _problems;
