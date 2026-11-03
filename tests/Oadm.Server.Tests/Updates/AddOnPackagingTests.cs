@@ -77,6 +77,27 @@ public sealed partial class AddOnPackagingTests
     }
 
     [Fact]
+    public void EveryAddOnZipHasItsOwnNoticesAndTheCheckCountsTheServerPartInTheClientPart()
+    {
+        var ps1 = Function(Read("manage.ps1"), "function Invoke-PackageAddOns {");
+        var sh = Function(Read("manage.sh"), "package_addons() {");
+        var check = Read("packaging", "addons", "check-addon-zip.sh");
+
+        // Written into the add-on folder before the check and the ZIP (tools/Oadm.Notices --addon).
+        Assert.Contains("'--addon', $stage", ps1, StringComparison.Ordinal);
+        Assert.Contains("--addon \"$stage\"", sh, StringComparison.Ordinal);
+        Assert.True(ps1.IndexOf("'--addon'", StringComparison.Ordinal) < ps1.IndexOf("Test-AddOnFolder", StringComparison.Ordinal));
+        Assert.True(sh.IndexOf("--addon", StringComparison.Ordinal) < sh.IndexOf("check_addon_folder", StringComparison.Ordinal));
+        Assert.Contains("THIRD-PARTY-NOTICES.txt missing", Function(Read("manage.ps1"), "function Test-AddOnFolder("), StringComparison.Ordinal);
+        Assert.Contains("THIRD-PARTY-NOTICES.txt missing", Function(Read("manage.sh"), "check_addon_folder() {"), StringComparison.Ordinal);
+        Assert.Contains("grep -qx 'THIRD-PARTY-NOTICES.txt' || fail", check, StringComparison.Ordinal);
+
+        // The client part the server hands out (AddOnFolders.ClientPartPatterns) is what the size check counts.
+        Assert.Equal(["*.Client.dll", "*.Client.pdb", "*.Server.dll", "*.Server.pdb"], Oadm.Server.AddOns.AddOnFolders.ClientPartPatterns);
+        Assert.Contains(@"name ~ /^[^\/]+\.(Client|Server)\.(dll|pdb)$/ || name ~ /^client\//", check, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheReleaseBuildsChecksAndAttachesTheAddOnZips()
     {
         var release = Read(".github", "workflows", "release.yml");

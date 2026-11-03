@@ -5,8 +5,9 @@
 #   - native libraries of <rid>'s platform only: no runtimes/ folder of another platform, no .so on Windows and macOS,
 #     no .dylib on Windows and Linux;
 #   - the limits of the server: the ZIP at most 400 MB (its download limit), the client part it hands to clients
-#     (plugin.json, the top-level *.Client.dll, everything under client/) at most 24 MB unpacked and without native
-#     libraries.
+#     (plugin.json, the top-level *.Client.dll/.pdb and *.Server.dll/.pdb, everything under client/) at most 24 MB
+#     unpacked and without native libraries;
+#   - THIRD-PARTY-NOTICES.txt at the top (tools/Oadm.Notices --addon).
 # Needs unzip (Linux, macOS, Git Bash on Windows).
 set -euo pipefail
 
@@ -21,7 +22,7 @@ size=$(wc -c < "$zip")
 # unzip -l: length, date, time, name; the client part as the server picks it.
 client=$(unzip -l "$zip" | awk 'NF >= 4 && $1 ~ /^[0-9]+$/ {
   name = $0; sub(/^ *[0-9]+ +[^ ]+ +[^ ]+ +/, "", name)
-  if (name == "plugin.json" || name ~ /^[^\/]+\.Client\.dll$/ || name ~ /^client\//) sum += $1
+  if (name == "plugin.json" || name ~ /^[^\/]+\.(Client|Server)\.(dll|pdb)$/ || name ~ /^client\//) sum += $1
 } END { print sum + 0 }')
 echo "$(basename "$zip"): $(printf '%s\n' "$names" | grep -c .) files, $((size / 1024)) KB, client part $((client / 1024)) KB unpacked"
 [ "$size" -le $((400 * 1024 * 1024)) ] || fail "larger than 400 MB, the server's download limit"
@@ -30,6 +31,7 @@ bad_client="$(printf '%s\n' "$names" | grep -E '^client/.*(\.so$|\.so\.|\.dylib$
 [ -z "$bad_client" ] || fail "native libraries in client/: $(echo $bad_client)"
 
 printf '%s\n' "$names" | grep -qx 'plugin.json' || fail "no plugin.json at the top"
+printf '%s\n' "$names" | grep -qx 'THIRD-PARTY-NOTICES.txt' || fail "no THIRD-PARTY-NOTICES.txt at the top"
 unzip -p "$zip" plugin.json | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" || fail "plugin.json has another id than $id"
 printf '%s\n' "$names" | grep -Eq '^[^/]+\.Server\.dll$' || fail "no server part (*.Server.dll)"
 

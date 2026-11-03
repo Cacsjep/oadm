@@ -250,6 +250,55 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void AnAddOnListsItsOwnPackagesAndTheLicensesOfItsModels()
+    {
+        var folder = Path.Combine(_dir, "oadm.ocr");
+        Directory.CreateDirectory(Path.Combine(folder, "Models"));
+        File.WriteAllText(Path.Combine(folder, "plugin.json"), """{ "id": "oadm.ocr", "displayName": "Text recognition" }""");
+        File.WriteAllText(Path.Combine(folder, "Oadm.Plugins.Ocr.Server.deps.json"), """
+            { "libraries": {
+                "Oadm.Plugins.Ocr.Server/1.0.0": { "type": "project" },
+                "Microsoft.ML.OnnxRuntime.Managed/1.24.4": { "type": "package" },
+                "SkiaSharp/3.119.4": { "type": "package" } } }
+            """);
+        File.WriteAllText(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.deps.json"), """
+            { "libraries": { "SkiaSharp/3.119.4": { "type": "package" } } }
+            """);
+        File.WriteAllText(Path.Combine(folder, "Models", "PaddleOCR-LICENSE.txt"), "Copyright (c) PaddlePaddle Authors\r\nApache License");
+        File.WriteAllText(Path.Combine(folder, "Models", "rec_latin_mobile.txt"), "a\nb");
+        var packages = new Dictionary<string, PackageInfo>
+        {
+            ["Microsoft.ML.OnnxRuntime.Managed"] = Info("Microsoft.ML.OnnxRuntime.Managed", "1.24.4", "MIT"),
+            ["SkiaSharp"] = Info("SkiaSharp", "3.119.4", "MIT"),
+        };
+
+        var result = AddOnNotices.Build(folder, "4.11.0", "linux-x64", (id, _) => packages[id], Templates());
+
+        Assert.Empty(result.Warnings);
+        Assert.Equal(2, result.PackageCount); // SkiaSharp of both parts once, the project not at all
+        var text = result.Text;
+        Assert.Contains("OADM 4.11.0 (linux-x64)", text, StringComparison.Ordinal);
+        Assert.Contains("the optional plugin Text recognition (oadm.ocr)", text, StringComparison.Ordinal);
+        Assert.Contains("SkiaSharp 3.119.4\n  License: MIT\n  Used by: plugin oadm.ocr\n", text, StringComparison.Ordinal);
+        Assert.Contains("=== Models/PaddleOCR-LICENSE.txt ===\n\nCopyright (c) PaddlePaddle Authors\nApache License\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("rec_latin_mobile", text, StringComparison.Ordinal); // a character list, no license
+        Assert.Contains("=== Apache-2.0 ===", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("LGPL", text, StringComparison.Ordinal); // FFmpeg is the client's, not the add-on's
+    }
+
+    [Fact]
+    public void AnAddOnWithoutModelsSaysSo()
+    {
+        var folder = Path.Combine(_dir, "acme.addon");
+        Directory.CreateDirectory(folder);
+
+        var text = AddOnNotices.Build(folder, "4.11.0", "win-x64", (id, _) => throw new KeyNotFoundException(id), Templates()).Text;
+
+        Assert.Contains("the optional plugin acme.addon (acme.addon)", text, StringComparison.Ordinal);
+        Assert.Contains("No bundled components besides the NuGet packages.", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BundledLicenseTemplatesOfTheRepositoryAreComplete()
     {
         var templates = new LicenseTemplates(Oadm.Tests.Shared.TestRepository.Path("packaging", "notices", "licenses"));

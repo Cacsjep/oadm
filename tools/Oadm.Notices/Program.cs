@@ -15,10 +15,43 @@ using Oadm.Notices;
 //                            packaging/notices/licenses, bundled notes in THIRD-PARTY-NOTICES.md, LICENSE
 //   --product site-node      the OADM Site Node (service and app, "manage package site-node"): bundled notes from
 //                            packaging/notices/site-node.md, no LGPL part, so no LGPL-2.1.txt
+//
+// Add-ons ("manage package addons", docs/spec/add-ons.md): THIRD-PARTY-NOTICES.txt and LICENSE.txt into each published
+// add-on folder, from its own *.deps.json files and its models' license files (no --app, no --out):
+//
+//   Oadm.Notices --rid win-x64 --version 1.2.0 --addon artifacts/publish/addons/win-x64/oadm.ocr
 var options = Arguments.Parse(args);
 if (options is null)
 {
     return 2;
+}
+
+if (options.AddOns.Count > 0)
+{
+    var addOnPackages = options.Packages ?? Environment.GetEnvironmentVariable("NUGET_PACKAGES")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+    var addOnTemplates = new LicenseTemplates(Path.Combine(options.Repo, "packaging", "notices", "licenses"));
+    var addOnLicense = PackageReader.Normalize(File.ReadAllText(Path.Combine(options.Repo, "LICENSE")));
+    foreach (var folder in options.AddOns)
+    {
+        if (!Directory.Exists(folder))
+        {
+            Console.Error.WriteLine($"error: add-on folder {folder} not found");
+            return 1;
+        }
+
+        var addOn = AddOnNotices.Build(folder, options.Version, options.Rid, (id, version) => PackageReader.Read(addOnPackages, id, version), addOnTemplates);
+        foreach (var warning in addOn.Warnings)
+        {
+            Console.Error.WriteLine("warning: " + warning);
+        }
+
+        File.WriteAllText(Path.Combine(folder, NoticesWriter.FileName), addOn.Text);
+        File.WriteAllText(Path.Combine(folder, "LICENSE.txt"), addOnLicense);
+        Console.WriteLine($"notices: {addOn.PackageCount} packages, {addOn.Text.Length / 1024} KB -> {Path.Combine(folder, NoticesWriter.FileName)}");
+    }
+
+    return 0;
 }
 
 var uses = new List<PackageUse>();
@@ -137,13 +170,13 @@ static string? PackagesFolderFromAssets(string? assetsFile)
         : null;
 }
 
-internal sealed record Arguments(string Rid, string Version, string Repo, string? Packages, List<string> Apps, List<string> PluginRoots, List<string> Outputs, string Product)
+internal sealed record Arguments(string Rid, string Version, string Repo, string? Packages, List<string> Apps, List<string> PluginRoots, List<string> Outputs, string Product, List<string> AddOns)
 {
     public static Arguments? Parse(string[] args)
     {
         string? rid = null, version = null, repo = null, packages = null;
         var product = "oadm";
-        List<string> apps = [], plugins = [], outputs = [];
+        List<string> apps = [], plugins = [], outputs = [], addOns = [];
         for (var i = 0; i < args.Length; i++)
         {
             var name = args[i];
@@ -162,24 +195,31 @@ internal sealed record Arguments(string Rid, string Version, string Repo, string
                 case "--app": apps.Add(value); break;
                 case "--plugins": plugins.Add(value); break;
                 case "--out": outputs.Add(value); break;
+                case "--addon": addOns.Add(value); break;
                 case "--product" when value is "oadm" or "site-node": product = value; break;
                 default: return Usage($"unknown option {name}");
             }
         }
 
         repo ??= FindRepo(Directory.GetCurrentDirectory());
-        if (rid is null || version is null || repo is null || outputs.Count == 0 || apps.Count == 0)
+        if (rid is null || version is null || repo is null || (addOns.Count == 0 && (outputs.Count == 0 || apps.Count == 0)))
         {
-            return Usage("--rid, --version, --app and --out are required (and --repo outside the repository)");
+            return Usage("--rid, --version and --app with --out (or --addon) are required (and --repo outside the repository)");
         }
 
-        return new Arguments(rid, version, repo, packages, apps, plugins, outputs, product);
+        if (addOns.Count > 0 && (apps.Count > 0 || outputs.Count > 0 || plugins.Count > 0))
+        {
+            return Usage("--addon takes no --app, --out or --plugins");
+        }
+
+        return new Arguments(rid, version, repo, packages, apps, plugins, outputs, product, addOns);
     }
 
     private static Arguments? Usage(string message)
     {
         Console.Error.WriteLine("error: " + message);
         Console.Error.WriteLine("usage: Oadm.Notices --rid <rid> --version <v> --app <project folder>... [--plugins <folder>] --out <folder>... [--packages <folder>] [--repo <folder>] [--product oadm|site-node]");
+        Console.Error.WriteLine("       Oadm.Notices --rid <rid> --version <v> --addon <published add-on folder>... [--packages <folder>] [--repo <folder>]");
         return null;
     }
 

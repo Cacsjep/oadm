@@ -563,13 +563,14 @@ limit_runtime_folders() {
 }
 
 # The checks of docs/spec/add-ons.md "Release files" on a published add-on folder ($1, id $2, RID $3, client part $4
-# yes/no): plugin.json with the id, the server part, the client part, no native library of another platform.
+# yes/no): plugin.json with the id, the server part, the client part, the notices, no native library of another platform.
 check_addon_folder() {
   local dir="$1" id="$2" rid="$3" has_client="$4" foreign bad
   [ -f "$dir/plugin.json" ] || { echo "error: add-on $id: plugin.json missing" >&2; exit 1; }
   grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" "$dir/plugin.json" || { echo "error: add-on $id: plugin.json has another id" >&2; exit 1; }
   ls "$dir"/*.Server.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Server.dll" >&2; exit 1; }
   if [ "$has_client" = yes ]; then ls "$dir"/*.Client.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Client.dll" >&2; exit 1; }; fi
+  [ -f "$dir/THIRD-PARTY-NOTICES.txt" ] || { echo "error: add-on $id: THIRD-PARTY-NOTICES.txt missing" >&2; exit 1; }
   case "$rid" in win-*) foreign='\.(so|dylib)$|\.so\.' ;; linux-*) foreign='\.dylib$' ;; *) foreign='\.so$|\.so\.' ;; esac
   bad="$(cd "$dir" && find . -type f | grep -E "$foreign" || true)"
   if [ -n "$bad" ]; then echo "error: add-on $id $rid: native libraries of another platform: $bad" >&2; exit 1; fi
@@ -629,6 +630,9 @@ package_addons() {
           "-p:Version=$(app_version)" -o "$stage" ${EXTRA[@]+"${EXTRA[@]}"} || exit 1
       done
       limit_runtime_folders "$stage" "$rid"
+      # The add-on ships alone: its own notices (its NuGet packages, its models' licenses) and OADM's license.
+      "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release -- --repo "$REPO_ROOT" \
+        --rid "$rid" --version "$(app_version)" --addon "$stage" || exit 1
       check_addon_folder "$stage" "$id" "$rid" "$has_client"
       zip="$out/oadm-addon-$id-$(app_version)-$rid.zip"
       zip_folder "$stage" "$zip"

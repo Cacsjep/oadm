@@ -606,13 +606,14 @@ function Limit-RuntimeFolders([string]$Folder, [string]$Rid) {
 }
 
 # The checks of docs/spec/add-ons.md "Release files" on a published add-on folder: plugin.json with the id, the server
-# part, the client part when the add-on has one, no native library of another platform.
+# part, the client part when the add-on has one, the notices, no native library of another platform.
 function Test-AddOnFolder([string]$Folder, [string]$Id, [string]$Rid, [bool]$HasClient) {
     $manifest = Join-Path $Folder 'plugin.json'
     if (-not (Test-Path -LiteralPath $manifest)) { Exit-Environment "add-on ${Id}: plugin.json missing" }
     if ((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).id -cne $Id) { Exit-Environment "add-on ${Id}: plugin.json has another id" }
     if (@(Get-ChildItem -LiteralPath $Folder -Filter '*.Server.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Server.dll" }
     if ($HasClient -and @(Get-ChildItem -LiteralPath $Folder -Filter '*.Client.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Client.dll" }
+    if (-not (Test-Path -LiteralPath (Join-Path $Folder 'THIRD-PARTY-NOTICES.txt'))) { Exit-Environment "add-on ${Id}: THIRD-PARTY-NOTICES.txt missing" }
     $foreign = switch ($Rid.Split('-')[0]) { 'win' { '\.(so|dylib)$|\.so\.' } 'linux' { '\.dylib$' } 'osx' { '\.so$|\.so\.' } }
     $bad = @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object { $_.Name -match $foreign })
     if ($bad.Count -gt 0) { Exit-Environment "add-on $Id ${Rid}: native libraries of another platform: $(($bad | ForEach-Object Name) -join ', ')" }
@@ -657,6 +658,9 @@ function Invoke-PackageAddOns {
                         '-p:OadmSkipPluginDeploy=true', "-p:Version=$version", '-o', $stage) + $script:Extra)
             }
             Limit-RuntimeFolders $stage $rid
+            # The add-on ships alone: its own notices (its NuGet packages, its models' licenses) and OADM's license.
+            Invoke-Dotnet @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Notices/Oadm.Notices.csproj'), '-c', 'Release', '--',
+                '--repo', $RepoRoot, '--rid', $rid, '--version', $version, '--addon', $stage)
             $hasClient = @($parts | Where-Object { $_.BaseName -like '*.Client' }).Count -gt 0
             Test-AddOnFolder $stage $id $rid $hasClient
             $zip = Join-Path $out "oadm-addon-$id-$version-$rid.zip"
