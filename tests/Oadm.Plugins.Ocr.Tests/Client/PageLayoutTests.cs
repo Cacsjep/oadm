@@ -51,29 +51,39 @@ public sealed class PageLayoutTests
             // No "Use as format" in the results (decision 2026-11-03).
             Assert.DoesNotContain(results.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Use as format"));
 
-            // Video source and Resolution in one row.
-            var sourceRow = view.FindControl<Grid>("SourceRow")!;
-            var sourceFields = sourceRow.Children.OfType<FormField>().ToList();
-            Assert.Equal(["Video source", "Resolution"], sourceFields.Select(f => f.Label));
-            Assert.Equal([0, 1], sourceFields.Select(Grid.GetColumn));
+            // The form: Name, Mode and Stream settings with its summary below it; no camera, no stream selects of their own.
+            var settings = view.FindControl<Grid>("SettingsColumn")!;
+            var labels = settings.GetVisualDescendants().OfType<FormField>().Where(f => f.IsEffectivelyVisible && f.Label is { Length: > 0 }).Select(f => f.Label).ToList();
+            Assert.Equal(["Name", "Mode", "Stream"], labels);
+            var stream = view.FindControl<Button>("StreamButton")!;
+            Assert.Contains("secondary", stream.Classes);
+            Assert.Equal("Configure · 1920x1080 @ 1 fps", stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
+            Assert.Null(view.FindControl<FormField>("StreamField")!.Hint); // the summary is the button itself
+            Assert.DoesNotContain(settings.GetVisualDescendants().OfType<ComboBox>(), c => c.IsEffectivelyVisible && c.Name is not ("ModeBox" or "ReaderModeBox"));
+            // The reader's mode is a select next to the name (decision 2026-11-03).
+            var readerMode = view.FindControl<ComboBox>("ReaderModeBox")!;
+            Assert.Equal(OcrTexts.Watching, readerMode.SelectedItem);
 
-            // The areas header: New (no count); one header row and one row per area: Name | Mode | Format | delete.
+            // No status line under the video: the reader's state is in the reader list.
+            Assert.DoesNotContain(column.Children.OfType<Grid>(), g => g.Children.OfType<StatusChip>().Any());
+
+            // The areas header: New at the right (no count); one entry per area: the name with Rename and Delete in the first
+            // line, Mode and Format indented in the second.
             var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;
             Assert.Equal("New", newArea.Text);
             Assert.Equal(OcrTexts.NewAreaTip, ToolTip.GetTip(newArea));
-            var header = view.FindControl<Grid>("AreaHeader")!;
-            Assert.Equal(["Name", "Mode", "Format"], header.Children.OfType<TextBlock>().Select(t => t.Text));
+            Assert.Equal(1, Grid.GetColumn(newArea));
             var list = view.FindControl<ListBox>("AreaList")!;
             var editorVm = vm.Editor!;
             Assert.Equal(3, editorVm.Areas.Count);
             foreach (var area in editorVm.Areas)
             {
                 var row = (Control)list.ContainerFromItem(area)!;
-                var grid = row.GetVisualDescendants().OfType<Grid>().First(g => g.ColumnDefinitions.Count == 4);
-                Assert.Equal(header.ColumnDefinitions.Select(c => c.Width), grid.ColumnDefinitions.Select(c => c.Width));
-                var fields = grid.Children.OfType<FormField>().ToList();
-                Assert.All(fields, f => Assert.Null(f.Label)); // the header row names them
-                Assert.IsType<TextBox>(fields[0].Input);
+                var fields = row.GetVisualDescendants().OfType<FormField>().ToList();
+                Assert.All(fields, f => Assert.Null(f.Label));
+                Assert.Equal(area.Name, Assert.IsType<TextBlock>(fields[0].Input).Text); // the name as plain text, Rename changes it
+                Assert.DoesNotContain(row.GetVisualDescendants().OfType<TextBox>(), t => t.TemplatedParent is null && t.Name != "FormatBox");
+                Assert.Equal(OcrTexts.Rename, ToolTip.GetTip(row.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "RenameButton")));
                 var mode = Assert.IsType<ComboBox>(fields[1].Input);
                 Assert.Equal(area.Mode, mode.SelectedItem);
                 var format = Assert.IsType<TextBox>(fields[2].Input);
@@ -103,12 +113,56 @@ public sealed class PageLayoutTests
             Headless.Pump();
             Assert.False(typeFormat.IsEffectivelyEnabled);
 
-            var statsCard =view.FindControl<StackPanel>("StatsPanel")!.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("card"));
+            var statsCard = view.FindControl<StackPanel>("StatsPanel")!.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("card"));
             Assert.Equal(0, Grid.GetColumn(statsCard));
             window.Close();
 
             // A value: the async lambda is then awaited to its end (Dispatch has no overload for a plain Task, so its
             // assertions after the first await would otherwise never reach the test).
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task With_eight_areas_in_a_short_window_only_the_rows_scroll_and_New_and_Save_stay_in_reach()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            using var vm = new OcrViewModel(ctx) { DecodePicture = Samples.Decode };
+            var view = new OcrView();
+            var window = Headless.Host(view, 1500, 640);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAsync(CancellationToken.None);
+            var editor = vm.Editor!;
+            while (editor.Areas.Count < OcrLimits.MaxAreas)
+            {
+                editor.AddArea(new RelativeBox(0.05 * editor.Areas.Count, 0.8, 0.04, 0.1));
+            }
+
+            editor.SelectedArea = editor.Areas[^1];
+            Headless.Pump();
+
+            var column = view.FindControl<Grid>("SettingsColumn")!;
+            var list = view.FindControl<ListBox>("AreaList")!;
+            var bounds = new Rect(column.Bounds.Size);
+            bool Inside(Control control) =>
+                control.TranslatePoint(new Point(0, 0), column) is { } top && control.TranslatePoint(new Point(control.Bounds.Width, control.Bounds.Height), column) is { } bottom
+                && bounds.Contains(top) && bounds.Contains(bottom);
+
+            // The rows are taller than their place: the list scrolls them, New above and Save below stay inside the column.
+            var scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
+            Assert.Equal(2, Grid.GetRow(list));
+            Assert.True(column.RowDefinitions[2].Height.IsStar);
+            // New ends level with the fields: its padding lies outside the column (theme class atEnd), so only check it is in reach.
+            var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;
+            Assert.True(newArea.TranslatePoint(new Point(0, 0), column) is { } newTop && bounds.Contains(newTop) && newArea.IsEffectivelyVisible);
+            Assert.True(Inside(view.FindControl<Button>("StreamButton")!));
+            Assert.True(Inside(column.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Save"))));
+            Headless.Capture(window, $"ocr-eight-areas-{Headless.Appearance}.png");
+            window.Close();
             return true;
         }, CancellationToken.None);
     }

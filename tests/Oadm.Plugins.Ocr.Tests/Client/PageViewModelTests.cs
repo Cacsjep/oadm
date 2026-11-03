@@ -278,11 +278,10 @@ public sealed class PageViewModelTests
         Assert.False(video.Place.AllowFullscreen);
         Assert.False(video.Place.ShowControlsButton);
 
-        // Another video source and another camera: the video follows once each.
+        // Another video source: the video follows once (the camera never changes on the page).
         editor.SelectedSource = editor.VideoSources[1];
         editor.SelectedSource = editor.VideoSources[1];
-        editor.SetCamera(Samples.Dock.Id);
-        Assert.Equal([(Samples.Gate.Id, 1), (Samples.Gate.Id, 2), (Samples.Dock.Id, 1)], video.Starts);
+        Assert.Equal([(Samples.Gate.Id, 1), (Samples.Gate.Id, 2)], video.Starts);
 
         // Another reader: the old video goes.
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
@@ -682,12 +681,13 @@ public sealed class PageViewModelTests
         await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.Equal(ReaderRules.NameTaken("Container gate"), editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
-        Assert.Equal("The camera is not in your devices.", editor.CameraError);
         Assert.Equal(ReaderRules.SourceMissing, editor.ErrorOf(nameof(ReaderEditorViewModel.SelectedSource)));
         Assert.Equal(ReaderRules.ResolutionMissing, editor.ErrorOf(nameof(ReaderEditorViewModel.SelectedResolution)));
         Assert.Equal(ReaderRules.AreaOutside, editor.Areas[0].ErrorOf(nameof(AreaViewModel.Name)));
         Assert.Equal(ReaderRules.FormatWithoutPlaceholder, editor.Areas[1].ErrorOf(nameof(AreaViewModel.FormatText)));
-        Assert.Equal("Something else.", ctx.Messages.Single().Message); // a key without a field: the host's message
+        // Keys without a field on the page (the camera never changes there): the host's message.
+        Assert.Equal("The camera is not in your devices." + Environment.NewLine + "Something else.", ctx.Messages.Single().Message);
+        Assert.Equal(ReaderRules.SourceMissing, editor.StreamError); // the source's, in the summary's place
         Assert.False(editor.SaveCommand.CanExecute(null));
 
         // An edit clears the server's error of its field.
@@ -695,6 +695,179 @@ public sealed class PageViewModelTests
         Assert.Null(editor.ErrorOf(nameof(ReaderEditorViewModel.Name)));
         editor.Areas[1].FormatText = "#####";
         Assert.Null(editor.Areas[1].ErrorOf(nameof(AreaViewModel.FormatText)));
+    }
+
+    [Fact]
+    public async Task Stream_settings_apply_with_OK_and_change_nothing_with_Cancel()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var dialogs = new Dialogs();
+        vm.Dialogs = dialogs;
+        var editor = vm.Editor!;
+        Assert.Same(dialogs, editor.Dialogs);
+        Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
+
+        // Cancel: nothing changes, the reader stays saved.
+        dialogs.Stream = form =>
+        {
+            Assert.Equal(editor.VideoSources, form.VideoSources);
+            Assert.Equal(editor.Resolutions, form.Resolutions);
+            Assert.Equal([1, 2, 4, 8, 12, 15], form.FpsChoices);
+            Assert.True(form.ShowFps);
+            form.SelectedSource = form.VideoSources[1];
+            form.Fps = 4;
+            return false;
+        };
+        await editor.EditStreamCommand.ExecuteAsync(null);
+        Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
+        Assert.False(editor.IsDirty);
+
+        // OK: the values go to the reader, Not saved, the preview and the live video follow.
+        dialogs.Stream = form =>
+        {
+            form.SelectedSource = form.VideoSources[1];
+            form.SelectedResolution = new Resolution(1280, 720);
+            form.Fps = 4;
+            return true;
+        };
+        await editor.EditStreamCommand.ExecuteAsync(null);
+        Assert.Equal("Configure · 1280x720 @ 4 fps", editor.StreamSummary);
+        Assert.Equal((2, new Resolution(1280, 720), 4), (editor.ToReader().VideoSource, editor.ToReader().Resolution, editor.ToReader().Fps));
+        Assert.True(editor.IsDirty);
+        Assert.Equal(OcrTexts.NotSaved, editor.SaveStatus);
+        Assert.Equal((Samples.Gate.Id, 2), ctx.Video!.Created[^1].Starts[^1]);
+
+        // On action: no frame rate in the dialog or the summary.
+        editor.IsOnAction = true;
+        Assert.Equal("Configure · 1280x720", editor.StreamSummary);
+        dialogs.Stream = form =>
+        {
+            Assert.False(form.ShowFps);
+            return true;
+        };
+        await editor.EditStreamCommand.ExecuteAsync(null);
+        Assert.Equal(4, editor.Fps);
+    }
+
+    [Fact]
+    public async Task A_refused_frame_rate_shows_below_Stream_settings_and_in_the_dialog()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var dialogs = new Dialogs();
+        vm.Dialogs = dialogs;
+        var editor = vm.Editor!;
+        var refusal = ReaderRules.FpsNotAllowed(false);
+        editor.Name = "Gate 3";
+        ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply { Errors = [new FieldError(OcrFields.Fps, refusal)] });
+
+        await editor.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(refusal, editor.StreamError);
+        Assert.Null(editor.ModeError);
+        Assert.False(editor.SaveCommand.CanExecute(null));
+
+        // The dialog shows it below Frames per second; another rate clears it.
+        dialogs.Stream = form =>
+        {
+            Assert.Equal(refusal, form.ErrorOf(nameof(StreamSettingsViewModel.Fps)));
+            Assert.Null(form.ErrorOf(nameof(StreamSettingsViewModel.SelectedResolution)));
+            form.Fps = 2;
+            Assert.Null(form.ErrorOf(nameof(StreamSettingsViewModel.Fps)));
+            return true;
+        };
+        await editor.EditStreamCommand.ExecuteAsync(null);
+        Assert.Null(editor.StreamError);
+        Assert.True(editor.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task New_areas_take_the_lowest_free_number_and_the_others_keep_theirs()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        vm.PickCamera = _ => Task.FromResult<Guid?>(Samples.Plant.Id);
+        await vm.NewCommand.ExecuteAsync(null);
+        var editor = vm.Editor!;
+
+        var one = editor.AddArea(new RelativeBox(0.1, 0.1, 0.1, 0.1))!;
+        var two = editor.AddArea(new RelativeBox(0.3, 0.1, 0.1, 0.1))!;
+        var three = editor.AddArea(new RelativeBox(0.5, 0.1, 0.1, 0.1))!;
+        Assert.Equal(["Area 1", "Area 2", "Area 3"], editor.Areas.Select(a => a.Name));
+
+        // Area 2 goes: Area 3 stays Area 3 (rules name it), the next new one is Area 2, then Area 4.
+        editor.RemoveAreaCommand.Execute(two);
+        Assert.Equal(["Area 1", "Area 3"], editor.Areas.Select(a => a.Name));
+        Assert.Equal("Area 2", editor.AddArea(new RelativeBox(0.3, 0.3, 0.1, 0.1))!.Name);
+        Assert.Equal("Area 4", editor.AddArea(new RelativeBox(0.5, 0.3, 0.1, 0.1))!.Name);
+        Assert.Equal("Area 1", one.Name);
+        Assert.Equal("Area 3", three.Name);
+
+        // A renamed area frees its number.
+        one.Name = "Gate lane";
+        Assert.Equal("Area 1", editor.AddArea(new RelativeBox(0.7, 0.3, 0.1, 0.1))!.Name);
+        Assert.Equal(["Gate lane", "Area 3", "Area 2", "Area 4", "Area 1"], editor.ToReader().Areas.Select(a => a.Name));
+    }
+
+    [Fact]
+    public async Task Rename_asks_for_a_name_unique_in_the_reader()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var dialogs = new Dialogs();
+        vm.Dialogs = dialogs;
+        var editor = vm.Editor!;
+        var type = editor.Areas[1];
+
+        // Cancel: the name stays.
+        dialogs.Rename = form =>
+        {
+            Assert.Equal("Type", form.Name);
+            form.Name = "Kind";
+            return false;
+        };
+        await editor.RenameAreaCommand.ExecuteAsync(type);
+        Assert.Equal("Type", type.Name);
+        Assert.False(editor.IsDirty);
+
+        // The dialog checks: required, unique within the reader, the length; Rename off meanwhile.
+        dialogs.Rename = form =>
+        {
+            Assert.Null(form.ErrorOf(nameof(RenameAreaViewModel.Name))); // untouched: no error yet
+            form.Name = " ";
+            Assert.Equal(ReaderRules.NameMissing, form.ErrorOf(nameof(RenameAreaViewModel.Name)));
+            Assert.False(form.RenameCommand.CanExecute(null));
+            form.Name = "lane";
+            Assert.Equal(ReaderRules.AreaNameTaken("lane"), form.ErrorOf(nameof(RenameAreaViewModel.Name)));
+            Assert.Equal(ReaderRules.AreaNameTaken("lane"), form.FormError);
+            form.Name = new string('x', ReaderRules.MaxNameLength + 1);
+            Assert.Equal(ReaderRules.NameTooLong, form.ErrorOf(nameof(RenameAreaViewModel.Name)));
+            form.Name = "Type"; // its own name is fine
+            Assert.True(form.RenameCommand.CanExecute(null));
+            form.Name = " Container type ";
+            var closed = false;
+            form.CloseRequested += (_, ok) => closed = ok;
+            form.RenameCommand.Execute(null);
+            Assert.True(closed);
+            return true;
+        };
+        await editor.RenameAreaCommand.ExecuteAsync(type);
+        Assert.Equal("Container type", type.Name);
+        Assert.Same(type, editor.SelectedArea);
+        Assert.True(editor.IsDirty);
+        Assert.Equal("Container type", editor.ToReader().Areas[1].Name);
+    }
+
+    /// <summary>Answers the settings column dialogs in place.</summary>
+    private sealed class Dialogs : IReaderDialogs
+    {
+        public Func<StreamSettingsViewModel, bool> Stream { get; set; } = _ => false;
+
+        public Func<RenameAreaViewModel, bool> Rename { get; set; } = _ => false;
+
+        public Task<bool> EditStreamAsync(StreamSettingsViewModel form) => Task.FromResult(Stream(form));
+
+        public Task<bool> RenameAreaAsync(RenameAreaViewModel form) => Task.FromResult(Rename(form));
     }
 
     [Fact]

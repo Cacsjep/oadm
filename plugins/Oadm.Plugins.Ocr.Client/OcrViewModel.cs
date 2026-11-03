@@ -51,11 +51,23 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         set
         {
             _pickCamera = value;
-            Editor?.PickCamera = value;
         }
     }
 
     private Func<Guid?, Task<Guid?>>? _pickCamera;
+
+    /// <summary>The settings column's dialogs (set by the view): Stream settings and Rename of an area.</summary>
+    public IReaderDialogs? Dialogs
+    {
+        get => _dialogs;
+        set
+        {
+            _dialogs = value;
+            Editor?.Dialogs = value;
+        }
+    }
+
+    private IReaderDialogs? _dialogs;
 
     /// <summary>New, Delete, Save and the settings.</summary>
     [ObservableProperty]
@@ -523,7 +535,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     /// <summary>Shows <paramref name="editor"/>'s reader on the right (tests and the page).</summary>
     internal ReaderEditorViewModel ShowEditor(Reader reader, bool isNew)
     {
-        var editor = new ReaderEditorViewModel(_ctx, reader, isNew, Engine, CameraText, ReaderNameTaken, DecodePicture, _onActionNoticeShown) { PickCamera = PickCamera };
+        var editor = new ReaderEditorViewModel(_ctx, reader, isNew, Engine, CameraText, ReaderNameTaken, DecodePicture, _onActionNoticeShown) { Dialogs = Dialogs };
         editor.Saved += OnEditorSaved;
         var old = Editor;
         Editor = editor;

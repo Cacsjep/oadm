@@ -1,24 +1,35 @@
+using Oadm.Plugins.Ocr.Model;
 using SkiaSharp;
 
 namespace Oadm.Plugins.Ocr.Recognition;
 
-/// <summary>Runs the three models for one reading: on the CPU through the worker gate, on a graphics card through its shared set.</summary>
-internal interface IModelRunner
+/// <summary>The text finder of a reading: on the CPU workers, or the graphics card's for Search (docs/spec/ocr.md "GPU").</summary>
+internal interface ITextFinder
+{
+    /// <summary>True when the tiles of an area go in few calls of several tiles (a graphics card); else one call per tile.</summary>
+    bool BatchTiles { get; }
+
+    /// <summary>The side of the text finder's input for an area of <paramref name="pixels"/> (a multiple of 32, on DirectML in a few steps).</summary>
+    int DetectionSide(int pixels);
+
+    /// <summary>Tiles per call for an area of <paramref name="tiles"/> tiles of one size (only with <see cref="BatchTiles"/>).</summary>
+    int TilesPerCall(int tiles, int tileWidth, int tileHeight) => 1;
+
+    /// <summary>The text finder's maps of <paramref name="count"/> pictures of one size ([count, height, width]), rented: the caller disposes them.</summary>
+    Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct);
+}
+
+/// <summary>Runs the three models for one reading: the CPU workers, the text finder of Search on the graphics card when there is one.</summary>
+internal interface IModelRunner : ITextFinder
 {
     /// <summary>The reader's character list.</summary>
     CharacterList Characters { get; }
 
-    /// <summary>True when all tiles of a picture go in one call (a graphics card); else one call per tile.</summary>
-    bool BatchTiles { get; }
+    /// <summary>The text finder of an area read in tiles (Search over a large area): the graphics card's when it is used.</summary>
+    ITextFinder Search { get; }
 
-    /// <summary>The side of the text finder's input for an area of <paramref name=pixels/> (a multiple of 32, on DirectML in a few steps).</summary>
-    int DetectionSide(int pixels);
-
-    /// <summary>The batch of a text finder call for <paramref name="count"/> tiles (DirectML: in steps, the rest blank).</summary>
-    int TileBatch(int count) => count;
-
-    /// <summary>The text finder's maps of <paramref name="count"/> pictures of one size ([count, height, width]), rented: the caller disposes them.</summary>
-    Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct);
+    /// <summary>True when <see cref="Search"/> is the graphics card (an area's reading on the card is never reused on the CPU).</summary>
+    bool SearchOnCard { get; }
 
     /// <summary>The probability that each line is upside down.</summary>
     Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct);
@@ -209,10 +220,17 @@ internal sealed class CpuWorkers<TSet> : IDisposable
     }
 }
 
-/// <summary>The CPU runner: each call through <see cref="CpuWorkers"/>; lines in pairs of similar width, the pairs at once.</summary>
-internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList characters, bool accurate) : IModelRunner
+/// <summary>
+/// The CPU runner: each call through <see cref="CpuWorkers"/>; lines in pairs of similar width, the pairs at once. With
+/// <paramref name="search"/> the text finder of areas read in tiles runs there (the graphics card).
+/// </summary>
+internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList characters, bool accurate, CardTextFinder? search = null) : IModelRunner
 {
     public CharacterList Characters => characters;
+
+    public ITextFinder Search => search ?? (ITextFinder)this;
+
+    public bool SearchOnCard => search is not null;
 
     public bool BatchTiles => false;
 
@@ -252,29 +270,67 @@ internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList char
     }
 }
 
-/// <summary>The graphics card runner: one shared set, model calls one at a time; lines batched across readers.</summary>
-internal sealed class GpuRunner(ModelSet set, LineBatcher lines) : IModelRunner
+/// <summary>
+/// The graphics card's text finder (docs/spec/ocr.md "GPU"): the server text finder for Search, the areas read in tiles. One
+/// call at a time (the card's time counted in its <see cref="BusyMeter"/>); on DirectML each input size is a session of its own
+/// in the <see cref="GpuSessionBudget"/> (counted by its pixels, capped), the sides in steps and the tiles of an area in calls
+/// of one size that fits <see cref="GpuSessionBudget.MaxCallBytes"/>. Reader and angle model run on the CPU workers.
+/// </summary>
+internal sealed class CardTextFinder : ITextFinder, IDisposable
 {
-    public CharacterList Characters => set.Characters;
+    private static readonly int[] Steps = [256, 512, 768, 1024];
+
+    private readonly ShapeSessions _sessions;
+    private readonly SemaphoreSlim _serial = new(1, 1);
+    private readonly BusyMeter _busy;
+    private readonly ExecutionTarget _target;
+    private readonly long _maxCallBytes;
+
+    /// <param name="busy">Counts the time each call holds the card.</param>
+    /// <param name="budget">DirectML: the card's sessions (required there); CUDA: unused.</param>
+    public CardTextFinder(string modelPath, ExecutionTarget target, BusyMeter busy, GpuSessionBudget? budget)
+    {
+        _target = target;
+        _busy = busy;
+        _maxCallBytes = (budget?.Max ?? GpuSessionBudget.MaxBytes) / 2;
+        _sessions = new ShapeSessions(modelPath, target, OcrLimits.ThreadsPerWorker, budget);
+    }
 
     public bool BatchTiles => true;
 
-    /// <summary>On DirectML each input size is a session of its own: areas and tiles in four steps.</summary>
-    public int DetectionSide(int pixels) =>
-        set.Target == ExecutionTarget.DirectMl ? Steps.FirstOrDefault(s => s >= pixels, OnnxTextRecognizer.RoundUp32(pixels)) : OnnxTextRecognizer.RoundUp32(pixels);
+    /// <summary>On DirectML each input size is a session of its own: sides in four steps.</summary>
+    public int DetectionSide(int pixels) => _target == ExecutionTarget.DirectMl ? SteppedSide(pixels) : OnnxTextRecognizer.RoundUp32(pixels);
 
-    /// <summary>On DirectML the tiles of a call in steps.</summary>
-    public int TileBatch(int count) =>
-        set.Target == ExecutionTarget.DirectMl ? TileBatches.FirstOrDefault(b => b >= count, count) : count;
+    /// <summary>The DirectML side for <paramref name="pixels"/>: 256, 512, 768 or 1024 (tiles are at most 960).</summary>
+    internal static int SteppedSide(int pixels) => Steps.FirstOrDefault(s => s >= pixels, OnnxTextRecognizer.RoundUp32(pixels));
 
-    private static readonly int[] Steps = [256, 512, 768, 1024];
+    public int TilesPerCall(int tiles, int tileWidth, int tileHeight) => GpuSessionBudget.TilesPerCall(tiles, tileWidth, tileHeight, _maxCallBytes);
 
-    private static readonly int[] TileBatches = [1, 2, 4, 6];
+    public async Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct)
+    {
+        await _serial.WaitAsync(ct).ConfigureAwait(false);
+        var started = _busy.Start();
+        try
+        {
+            return ModelSet.Timed(
+                () => _sessions.Run(input.Array, [count, 3, height, width], static (output, _) =>
+                {
+                    var map = PooledFloats.Rent(output.Length, clear: false);
+                    output.CopyTo(map.Span);
+                    return map;
+                }),
+                Stage.DetectModel);
+        }
+        finally
+        {
+            _busy.Stop(started);
+            _serial.Release();
+        }
+    }
 
-    public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
-        set.DetectAsync(input, count, height, width, ct);
-
-    public Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> list, CancellationToken ct) => set.UpsideDownAsync(list, ct);
-
-    public Task<LineScores[]> RecognizeAsync(IReadOnlyList<SKBitmap> list, CancellationToken ct) => lines.RecognizeAsync(list, ct);
+    public void Dispose()
+    {
+        _sessions.Dispose();
+        _serial.Dispose();
+    }
 }

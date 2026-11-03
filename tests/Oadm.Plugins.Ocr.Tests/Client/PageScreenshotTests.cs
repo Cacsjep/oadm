@@ -64,10 +64,7 @@ public sealed class PageScreenshotTests
                 Assert.True(picture.PictureRect.Width > 100);
                 Assert.Equal(16.0 / 9, picture.PictureRect.Width / picture.PictureRect.Height, 2);
                 Assert.Equal(3, editor.Lines.Count);
-                var fps = view.FindControl<ComboBox>("FpsBox")!;
-                Assert.True(fps.IsEffectivelyVisible);
-                Assert.Equal(1, fps.SelectedItem);
-                Assert.Equal(6, fps.ItemCount);
+                Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
                 var draw = view.FindControl<ToolbarButton>("NewAreaButton")!;
                 Assert.True(draw.IsEffectivelyVisible);
                 Assert.Equal("New", draw.Text);
@@ -149,7 +146,7 @@ public sealed class PageScreenshotTests
                 Assert.Equal(0.14, drawn.Value.Height, 6);
                 Assert.Equal(4, editor.Areas.Count); // the view handed it to the reader
                 Assert.False(editor.IsDrawing);
-                Assert.Equal("Area 4", editor.Areas[^1].Name);
+                Assert.Equal("Area 1", editor.Areas[^1].Name); // the lowest free number
                 editor.RemoveAreaCommand.Execute(editor.Areas[^1]);
 
                 // A wrong format: the error below the format field, Save off.
@@ -179,10 +176,45 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 Assert.Equal("Water meter", vm.Editor!.Name);
                 Assert.True(vm.Editor.IsOnAction);
-                Assert.False(view.FindControl<ComboBox>("FpsBox")!.IsEffectivelyVisible);
+                Assert.Equal("Configure · 1920x1080", ((Oadm.Plugins.Ocr.Client.ReaderEditorViewModel)view.FindControl<Grid>("EditorPanel")!.DataContext!).StreamSummary); // no frame rate
                 Headless.Capture(window, $"ocr-on-action-{suffix}.png");
+
+                // A refusal of the server for the resolution: in the summary's place below Stream settings.
+                vm.Editor.ShowFieldError(new FieldError(OcrFields.Resolution, ReaderRules.ResolutionMissing));
+                Headless.Pump();
+                Assert.True(view.FindControl<FormField>("StreamField")!.HasError);
+                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ReaderRules.ResolutionMissing);
+                Headless.Capture(window, $"ocr-stream-error-{suffix}.png");
                 window.Close();
             }
+
+            // The Stream settings dialog of a watching reader (frames per second shown), the resolution refused by the server.
+            var form = new StreamSettingsViewModel(
+                Samples.CameraOptions.VideoSources, Samples.CameraOptions.VideoSources[0], Samples.CameraOptions.Resolutions, new Resolution(1920, 1080),
+                [1, 2, 4, 8, 12, 15], 4, showFps: true, isLoading: false,
+                new Dictionary<string, string?> { [nameof(StreamSettingsViewModel.SelectedResolution)] = ReaderRules.ResolutionMissing });
+            var stream = new StreamSettingsWindow { DataContext = form };
+            Oadm.Client.App.ApplyCrispText(stream);
+            stream.Show();
+            Headless.Pump();
+            Assert.True(stream.FindControl<ComboBox>("FpsBox")!.IsEffectivelyVisible);
+            Assert.Contains(stream.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ReaderRules.ResolutionMissing);
+            Assert.DoesNotContain(stream.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("card"));
+            Headless.Capture(stream, $"ocr-stream-settings-{suffix}.png");
+            stream.Close();
+
+            // The Rename dialog, with a name another area has.
+            var rename = new RenameAreaViewModel("Area 2", name => name.Equals("Lane", StringComparison.OrdinalIgnoreCase)) { Name = "Lane" };
+            var renameWindow = new RenameAreaWindow { DataContext = rename };
+            Oadm.Client.App.ApplyCrispText(renameWindow);
+            renameWindow.Show();
+            Headless.Pump();
+            Assert.Contains(renameWindow.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ReaderRules.AreaNameTaken("Lane"));
+            Headless.Capture(renameWindow, $"ocr-rename-area-{suffix}.png");
+            rename.Name = "Container number 2";
+            Headless.Pump();
+            Headless.Capture(renameWindow, $"ocr-rename-area-ok-{suffix}.png");
+            renameWindow.Close();
 
             // The short message when a reader is set to On action (the host shows it with MessageWindow).
             var notice = new MessageWindow { Heading = OcrTexts.OnActionNoticeTitle, Message = OcrTexts.OnActionNotice, ConfirmText = "OK", CancelText = null };

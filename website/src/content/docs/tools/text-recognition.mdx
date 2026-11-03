@@ -37,18 +37,19 @@ A reader is one camera, one video source and up to 8 areas around the texts you 
 
 <Steps>
 
-1. Click **New** and choose the camera.
-2. Enter a **Name**, for example `Gate 2 containers`.
-3. Choose the **Video source** and the **Resolution**. The default is 1920x1080 or the largest below it. Small text needs
-   pixels: choose a higher resolution before you draw larger areas.
-4. Choose the **Mode**: **Watching** reads all the time, **On action** reads one picture when an event rule runs the
-   action **Read text**. See [Watching or On action](#watching-or-on-action).
-5. While Watching, choose the **Frames per second**.
-6. Under **Areas** click **New** and drag a rectangle over the text on the video. Draw one area around each text you
-   want to read.
-7. In the area's row enter a **Name** (`Container number`), choose **Any text** or **Format**, and enter the format if
-   you chose one. See [Formats](#formats).
-8. Watch the results below the video. When they are right, click **Save**.
+1. Click **New** and choose the camera. A reader keeps its camera; for another camera create another reader.
+2. Enter a **Name**, for example `Gate 2 containers`, and choose the **Mode**: **Watching** reads all the time,
+   **On action** reads one picture when an event rule runs the action **Read text**. See
+   [Watching or On action](#watching-or-on-action).
+3. Under **Stream** click the button to choose the **Video source**, the **Resolution** and, while Watching, the **Frames per
+   second**. The button shows them, for example `Configure · 1920x1080 @ 2 fps`. The default resolution
+   is 1920x1080 or the largest below it. Small text needs pixels: choose a higher resolution before you draw larger areas.
+4. Under **Areas** click **New** and drag a rectangle over the text on the video. Draw one area around each text you
+   want to read. Areas are named **Area 1**, **Area 2** and so on; the tag button renames one, for example to
+   `Container number`. Rules see this name.
+5. Below the area's name choose **Any text** or **Format**, and enter the format if you chose one. See
+   [Formats](#formats).
+6. Watch the results below the video. When they are right, click **Save**.
 
 </Steps>
 
@@ -64,7 +65,8 @@ area**.
 - Click an area on the video or its row to select it. Handles appear at its corners and edges.
 - Drag inside the area to move it, drag a handle to resize it. **Esc** cancels the drag.
 - The arrow keys move the selected area a little, with **Shift** more.
-- The bin in the area's row deletes it.
+- The tag button next to an area's name renames it, the bin deletes it. A new area takes the lowest free number, and
+  the others keep theirs.
 - At most 8 areas per reader. Areas stay in place when you change the resolution.
 
 Two ways to place them:
@@ -241,9 +243,13 @@ To read on demand instead, put a button on a [dashboard](../dashboards/) that ru
 
 ## Speed and graphics card
 
-**Runs on** says what reads: the graphics card's name, for example `Runs on: NVIDIA GeForce RTX 5070 Ti`, or the CPU,
-for example `Runs on: CPU (8 cores)`. On the CPU Text recognition limits how much it reads at once, so OADM stays
-responsive.
+**Runs on** says what reads, for example `Runs on: CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti`, or
+`Runs on: CPU (8 cores)` without a graphics card. The graphics card reads only areas larger than about 960 pixels, such
+as a search over the whole picture: there it is 1.5 to 2.5 times faster than the CPU. Smaller areas are read on the CPU,
+which is as fast for them. Text recognition limits how much it reads at once on the CPU, so OADM stays responsive.
+
+Text recognition uses at most 4 GB of the graphics card's memory, whatever the cameras' resolution, and gives it back
+after 2 minutes without a search.
 
 | Server | Graphics card | What you need |
 |---|---|---|
@@ -290,7 +296,7 @@ A reader that falls behind shows it in the list, for example **Watching · 8 fps
 - lower the frames per second, most readers need 1 or 2;
 - set readers that do not need to watch to **On action**;
 - draw smaller areas: a tight area reads many times faster than a search over the whole picture;
-- use a graphics card.
+- for searches, use a graphics card.
 
 Areas whose picture has not changed cost almost nothing: the reader keeps their last result.
 
@@ -346,15 +352,20 @@ light turns orange, then stop or lower the frames per second.
 
 ### On a graphics card
 
-<Aside type="caution">
-To be filled with the measurement on an NVIDIA GeForce RTX 5070 Ti. The rows for other cards will be estimates.
-</Aside>
+The graphics card reads only searches (areas larger than about 960 pixels). Small areas are read on the CPU, as without
+a card: plan them with the CPU table above.
 
-| Card | 1 small area | 4 small areas | Search over the whole picture | Pictures per second in all |
-|---|---|---|---|---|
-| NVIDIA GeForce RTX 5070 Ti (measured) | | | | |
-| Other cards of the same class (estimate) | | | | |
-| Entry cards (estimate) | | | | |
+Measured on an NVIDIA GeForce RTX 5070 Ti with the Ryzen 9 3900X above, Windows:
+
+| Search over the whole picture | Time on its own | Searches per second in all |
+|---|---|---|
+| Full HD (1920 x 1080) | 321 ms (CPU only: 483 ms) | about 5.7 |
+| QHD (2560 x 1440) | 377 ms (CPU only: 945 ms) | about 4 |
+| 4K (3840 x 2160) | 923 ms (CPU only: 2,190 ms) | about 1.5 |
+
+**Searches per second in all** is what one card reads for all search readers together, for example 5 readers at 1
+frame per second over full HD pictures. The text found is then read on the CPU: plan one full HD search like about 15
+small areas in the CPU table.
 
 On a graphics card up to 50 readers watch, at up to 15 frames per second each.
 

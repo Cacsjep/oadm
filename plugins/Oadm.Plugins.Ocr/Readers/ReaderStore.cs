@@ -103,6 +103,12 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
         {
             var isNew = string.IsNullOrEmpty(reader.Id);
             var before = isNew ? null : FindVisible(caller, reader.Id) ?? throw new ArgumentException(ReaderRules.Gone);
+            if (before is not null && before.DeviceId != reader.DeviceId)
+            {
+                // The camera is chosen once, when the reader is created (docs/spec/ocr.md "Readers").
+                throw new ReaderFieldException(OcrFields.Camera, ReaderRules.CameraFixed);
+            }
+
             var owner = OwnerScope.ForSave(ctx, caller, before?.OwnerScopeKey, isNew);
             await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
             await OwnerScope.RequireDevicesAsync(ctx, caller, owner, [reader.DeviceId], ct).ConfigureAwait(false);

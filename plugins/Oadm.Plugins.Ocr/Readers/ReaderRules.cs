@@ -37,6 +37,9 @@ public static class ReaderRules
 
     public const string CameraMissing = "Choose a camera.";
 
+    /// <summary>A save that changes the camera of a saved reader (the page offers no camera change: New starts from one).</summary>
+    public const string CameraFixed = "A saved reader keeps its camera. Create a new reader for another camera.";
+
     public const string SourceMissing = "Choose a video source.";
 
     public const string ResolutionMissing = "Choose a resolution.";

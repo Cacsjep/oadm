@@ -8,8 +8,9 @@ using Oadm.Sdk.Client.Validation;
 namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
-/// One area of the reader being edited: its name, where it is on the picture and Any text or a Format. The rules show their
-/// error directly below the field (CLAUDE.md "validation errors directly below the field").
+/// One area of the reader being edited: its name ("Area 2" from the page, Rename changes it), where it is on the picture and
+/// Any text or a Format. The rules show their error directly below the field (CLAUDE.md "validation errors directly below
+/// the field"); the name's below the name in the row.
 /// </summary>
 public sealed partial class AreaViewModel : ValidatingViewModel
 {
@@ -27,7 +28,7 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         FormatText = isFormat ? _keptFormat : string.Empty;
         IsFormat = isFormat;
         Validation
-            .Rule(nameof(Name), NameError)
+            .Rule(nameof(Name), NameProblem)
             .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null);
         Validation.Validate();
     }
@@ -85,6 +86,9 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         Expected = IsFormat ? new ExpectedText { Kind = ExpectedTextKind.Format, Format = FormatText.Trim() } : ExpectedText.AnyText,
     };
 
+    /// <summary>Another area of the same reader has this name (the Rename dialog's check).</summary>
+    internal bool IsNameTaken(string name) => _nameTaken(this, name.Trim());
+
     /// <summary>The name's rule again after another area's name changed.</summary>
     internal void Revalidate() => Validation.Validate();
 
@@ -105,9 +109,16 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     /// <summary>An error came or went: the reader's Save follows.</summary>
     public event EventHandler? ValidityChanged;
 
-    protected override void OnValidationChanged() => ValidityChanged?.Invoke(this, EventArgs.Empty);
+    /// <summary>The name's error below the name in the row (a server refusal of the name or the box).</summary>
+    public string? NameError => ErrorOf(nameof(Name));
 
-    private string? NameError() =>
+    protected override void OnValidationChanged()
+    {
+        OnPropertyChanged(nameof(NameError));
+        ValidityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string? NameProblem() =>
         ReaderRules.NameProblem(Name) ?? (_nameTaken(this, Name.Trim()) ? ReaderRules.AreaNameTaken(Name.Trim()) : null);
 
     partial void OnNameChanged(string value) => Changed?.Invoke(this, EventArgs.Empty);

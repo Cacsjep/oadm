@@ -20,8 +20,8 @@ namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
 /// The selected reader (docs/spec/ocr.md "Page"): the camera's live video with the areas and the found lines over it, and
-/// the form (name, camera, video source, resolution, mode, frame rate), its areas, the results and Save. A new reader starts
-/// from its camera; nothing is saved before Save. While the page shows the reader (<see cref="StartPreview"/>) the server
+/// the form (name, mode, the stream settings in their dialog), its areas, the results and Save. A new reader starts from its
+/// camera, which stays (no camera change: a new reader instead); nothing is saved before Save. While the page shows the reader (<see cref="StartPreview"/>) the server
 /// reads it live as a preview with the draft as it is now (saved or not, no rule events): the draft goes to the server on
 /// every change and every <see cref="OcrLimits.PreviewKeepAlive"/>; the preview's readings are fetched one call at a time
 /// (a reading that arrives meanwhile is fetched once the call ends, newest wins).
@@ -101,9 +101,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         // server's refusal below them.
         Validation
             .Rule(nameof(Name), NameError)
-            .Rule(nameof(DeviceId), () => DeviceId == Guid.Empty ? ReaderRules.CameraMissing : null)
             .Rule(nameof(SelectedSource), () => null)
             .Rule(nameof(SelectedResolution), () => null)
+            .Rule(nameof(Fps), () => null)
             .Rule(nameof(Mode), () => null);
         Validation.Validate();
         _savedJson = isNew ? string.Empty : Signature();
@@ -118,8 +118,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     internal Func<Guid, string> CameraTextOf { get; }
 
-    /// <summary>Opens the camera picker (set by the view through the page); null when cancelled.</summary>
-    public Func<Guid?, Task<Guid?>>? PickCamera { get; set; }
+    /// <summary>Shows the Stream settings and Rename dialogs (set by the view through the page).</summary>
+    public IReaderDialogs? Dialogs { get; set; }
 
     /// <summary>The keep-alive's clock (tests pass a fake one).</summary>
     public TimeProvider PreviewTime { get; set; } = TimeProvider.System;
@@ -139,12 +139,15 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     [ObservableProperty]
     public partial Guid DeviceId { get; private set; }
 
-    /// <summary>"AXIS Q1798-LE · 10.0.0.48" on the camera button.</summary>
+    /// <summary>"AXIS Q1798-LE · 10.0.0.48": the reader's camera (shown in the reader list).</summary>
     [ObservableProperty]
     public partial string CameraText { get; private set; }
 
-    /// <summary>The camera's error below its button (only after Save was tried).</summary>
-    public string? CameraError => ErrorOf(nameof(DeviceId));
+    /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings (no frame rate for On action).</summary>
+    public string StreamSummary => OcrTexts.StreamSummary(SelectedResolution, IsWatching ? Fps : null);
+
+    /// <summary>A refusal of the server for the video source, the resolution or the frame rate, in the summary's place.</summary>
+    public string? StreamError => ErrorOf(nameof(SelectedSource)) ?? ErrorOf(nameof(SelectedResolution)) ?? ErrorOf(nameof(Fps));
 
     [ObservableProperty]
     public partial IReadOnlyList<CameraSource> VideoSources { get; private set; }
@@ -164,8 +167,18 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial bool IsLoadingCamera { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction))]
+    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction), nameof(ModeChoice))]
     public partial ReaderMode Mode { get; set; }
+
+    /// <summary>The Mode select's choices, in this order.</summary>
+    public static IReadOnlyList<string> ModeChoices { get; } = [OcrTexts.Watching, OcrTexts.OnAction];
+
+    /// <summary>The Mode select: "Watching" or "On action".</summary>
+    public string ModeChoice
+    {
+        get => IsOnAction ? OcrTexts.OnAction : OcrTexts.Watching;
+        set => Mode = value == OcrTexts.OnAction ? ReaderMode.OnAction : ReaderMode.Watching;
+    }
 
     /// <summary>On action: reads only when an event rule runs Read text.</summary>
     public bool IsOnAction
@@ -403,43 +416,71 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             : sizes.Where(s => s.Width * s.Height <= limit).OrderByDescending(s => s.Width * s.Height).FirstOrDefault(sizes.OrderBy(s => s.Width * s.Height).First());
     }
 
+    /// <summary>
+    /// Stream settings: the dialog with the video source, the resolution and (Watching) the frame rate; OK hands them to the
+    /// reader (Not saved like any edit, the preview follows), Cancel changes nothing.
+    /// </summary>
     [RelayCommand]
-    private async Task ChooseCameraAsync()
+    private async Task EditStreamAsync()
     {
-        if (PickCamera is not { } pick || await pick(DeviceId == Guid.Empty ? null : DeviceId).ConfigureAwait(true) is not { } id || id == DeviceId)
+        if (Dialogs is not { } dialogs)
         {
             return;
         }
 
-        SetCamera(id);
-        await LoadCameraOptionsAsync(CancellationToken.None).ConfigureAwait(true);
+        var form = new StreamSettingsViewModel(
+            VideoSources,
+            SelectedSource,
+            Resolutions,
+            SelectedResolution,
+            FpsChoices,
+            Fps,
+            IsWatching,
+            IsLoadingCamera,
+            new Dictionary<string, string?>
+            {
+                [nameof(StreamSettingsViewModel.SelectedSource)] = ErrorOf(nameof(SelectedSource)),
+                [nameof(StreamSettingsViewModel.SelectedResolution)] = ErrorOf(nameof(SelectedResolution)),
+                [nameof(StreamSettingsViewModel.Fps)] = ErrorOf(nameof(Fps)),
+            });
+        if (!await dialogs.EditStreamAsync(form).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        if (form.SelectedSource is { } source && !Equals(source, SelectedSource))
+        {
+            SelectedSource = source;
+        }
+
+        SelectedResolution = form.SelectedResolution;
+        if (IsWatching)
+        {
+            Fps = form.Fps;
+        }
     }
 
-    /// <summary>Another camera: its text, the first video source.</summary>
-    internal void SetCamera(Guid id)
+    /// <summary>Rename (the tag icon in an area's row): the dialog with the area's name; Rename sets it.</summary>
+    [RelayCommand]
+    private async Task RenameAreaAsync(AreaViewModel? area)
     {
-        _holdVideo = true;
-        try
+        if (area is null || !Areas.Contains(area) || !MayChange || Dialogs is not { } dialogs)
         {
-            DeviceId = id;
-            CameraText = CameraTextOf(id);
-            SelectedSource = new CameraSource { Number = 1, Name = SourceName(1) };
-            VideoSources = [SelectedSource];
-        }
-        finally
-        {
-            _holdVideo = false;
+            return;
         }
 
-        ShowVideo();
+        var form = new RenameAreaViewModel(area.Name, area.IsNameTaken);
+        if (await dialogs.RenameAreaAsync(form).ConfigureAwait(true) && Areas.Contains(area))
+        {
+            area.Name = form.Name.Trim();
+            SelectedArea = area;
+        }
     }
-
-    private bool _holdVideo;
 
     /// <summary>The live video shows the reader's camera and video source (once per change).</summary>
     private void ShowVideo()
     {
-        if (_video is null || _disposed || _holdVideo || DeviceId == Guid.Empty)
+        if (_video is null || _disposed || DeviceId == Guid.Empty)
         {
             return;
         }
@@ -460,7 +501,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Esc on the live video.</summary>
     public void StopDrawing() => IsDrawing = false;
 
-    /// <summary>A rectangle was drawn: a new area "Area 3", selected; drawing ends.</summary>
+    /// <summary>
+    /// A rectangle was drawn: a new area named with the lowest free number ("Area 2" when Area 2 was deleted; the others keep
+    /// theirs, rules name them), selected; drawing ends.
+    /// </summary>
     public AreaViewModel? AddArea(RelativeBox box)
     {
         IsDrawing = false;
@@ -469,7 +513,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return null;
         }
 
-        var number = Areas.Count + 1;
+        var number = 1;
         while (Areas.Any(a => string.Equals(a.Name.Trim(), $"Area {number}", StringComparison.OrdinalIgnoreCase)))
         {
             number++;
@@ -611,8 +655,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     }
 
     /// <summary>
-    /// Shows a refusal below the field of its key (<see cref="OcrFields"/>): the watching limits and the frame rate below
-    /// Mode, an area's below the area; false for a key the page has no field for.
+    /// Shows a refusal below the field of its key (<see cref="OcrFields"/>): the watching limits below Mode, the video source,
+    /// resolution and frame rate below Stream settings, an area's below the area; false for a key the page has no field for
+    /// (the camera: it never changes on the page).
     /// </summary>
     internal bool ShowFieldError(FieldError error)
     {
@@ -620,10 +665,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         var property = error.Field switch
         {
             OcrFields.Name => nameof(Name),
-            OcrFields.Camera => nameof(DeviceId),
             OcrFields.VideoSource => nameof(SelectedSource),
             OcrFields.Resolution => nameof(SelectedResolution),
-            OcrFields.Mode or OcrFields.Fps => nameof(Mode),
+            OcrFields.Fps => nameof(Fps),
+            OcrFields.Mode => nameof(Mode),
             _ => null,
         };
         if (property is not null)
@@ -958,7 +1003,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     protected override void OnValidationChanged()
     {
-        OnPropertyChanged(nameof(CameraError));
+        OnPropertyChanged(nameof(StreamError));
         OnPropertyChanged(nameof(ModeError));
         OnPropertyChanged(nameof(SaveBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
@@ -980,6 +1025,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         if (e.PropertyName is nameof(DeviceId) or nameof(SelectedSource))
         {
             ShowVideo();
+        }
+
+        if (e.PropertyName is nameof(SelectedSource) or nameof(SelectedResolution) or nameof(Fps) or nameof(Mode))
+        {
+            OnPropertyChanged(nameof(StreamSummary));
         }
     }
 

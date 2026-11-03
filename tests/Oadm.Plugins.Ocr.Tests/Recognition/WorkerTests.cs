@@ -3,13 +3,12 @@ using Microsoft.Extensions.Time.Testing;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Recognition;
 using Oadm.Sdk.Testing;
-using SkiaSharp;
 
 namespace Oadm.Plugins.Ocr.Tests.Recognition;
 
 /// <summary>
 /// The bounded load (docs/spec/ocr.md rule 4 and "GPU"): at most max(1, cores / 2) model calls on the CPU at once, the
-/// accurate sets fewer still, and on a graphics card the lines of all waiting readings read together. Gates hold the work;
+/// accurate sets fewer still. Gates hold the work;
 /// nothing depends on timing.
 /// </summary>
 public sealed class WorkerTests
@@ -194,89 +193,6 @@ public sealed class WorkerTests
         Assert.Equal(1, workers.Idle);
         Assert.Equal(2, made.Count(s => s.Disposed));
     }
-
-    [Fact]
-    public async Task Stopping_the_line_batcher_waits_for_the_running_round()
-    {
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var ended = false;
-        var batcher = new LineBatcher(async (lines, _) =>
-        {
-            entered.SetResult();
-            await finish.Task;
-            Volatile.Write(ref ended, true);
-            return [.. lines.Select(_ => new LineScores([1], 1, 1))];
-        });
-        using var line = Line(10);
-        var reading = batcher.RecognizeAsync([line], CancellationToken.None);
-        await entered.Task;
-
-        var stop = Task.Run(() => batcher.Stop());
-        Assert.False(stop.IsCompleted);
-        finish.SetResult();
-
-        Assert.True(await stop);
-        Assert.True(Volatile.Read(ref ended));
-        Assert.Single(await reading);
-    }
-
-    [Fact]
-    public async Task Lines_of_readings_that_wait_together_are_read_in_one_round()
-    {
-        var firstRound = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var rounds = new List<int>();
-        var entered = 0;
-        using var batcher = new LineBatcher(async (lines, ct) =>
-        {
-            lock (rounds)
-            {
-                rounds.Add(lines.Count);
-            }
-
-            if (Interlocked.Increment(ref entered) == 1)
-            {
-                await firstRound.Task;
-            }
-
-            return [.. lines.Select(l => new LineScores([l.Width], 1, 1))];
-        });
-
-        using var a = Line(10);
-        using var b = Line(20);
-        using var c = Line(30);
-        using var d = Line(40);
-        var first = batcher.RecognizeAsync([a], CancellationToken.None);
-        await Eventually.TrueAsync(() => Volatile.Read(ref entered) == 1, "the first round running");
-
-        // While the card reads the first round, two readings wait: their lines go in the next round together.
-        var second = batcher.RecognizeAsync([b, c], CancellationToken.None);
-        var third = batcher.RecognizeAsync([d], CancellationToken.None);
-        firstRound.SetResult();
-
-        Assert.Equal(10, (await first).Single().Probabilities[0]);
-        Assert.Equal([20f, 30f], (await second).Select(s => s.Probabilities[0]));
-        Assert.Equal(40, (await third).Single().Probabilities[0]);
-        Assert.Equal([1, 3], rounds);
-        Assert.Equal(2, batcher.Rounds);
-    }
-
-    [Fact]
-    public async Task A_failing_round_fails_its_readings_and_the_next_round_still_runs()
-    {
-        var fail = true;
-        using var batcher = new LineBatcher((lines, ct) => fail
-            ? throw new InvalidOperationException("The card is gone.")
-            : Task.FromResult(lines.Select(_ => new LineScores([1], 1, 1)).ToArray()));
-        using var line = Line(10);
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => batcher.RecognizeAsync([line], CancellationToken.None));
-        fail = false;
-
-        Assert.Single(await batcher.RecognizeAsync([line], CancellationToken.None));
-    }
-
-    private static SKBitmap Line(int width) => new(new SKImageInfo(width, 48, SKColorType.Rgba8888, SKAlphaType.Premul));
 
     private static void InterlockedMax(ref int target, int value)
     {

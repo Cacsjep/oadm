@@ -83,8 +83,8 @@ public sealed class DeviceGroupTests
         var (group, _) = GroupOf(ocr);
         var mine = await ocr.SaveAsync(ocr.NewReader("Gate"), group);
 
-        // A user with all devices cannot move a group's reader to a camera outside the group.
-        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ocr.SaveAsync(mine with { DeviceId = ocr.Outside.Id }));
+        // A saved reader keeps its camera (also a group's: never one outside the group); a new one only on the caller's cameras.
+        await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(mine with { DeviceId = ocr.Outside.Id }));
         await Assert.ThrowsAsync<DevicesNotAvailableException>(() => ocr.SaveAsync(ocr.NewReader("Other", device: Guid.NewGuid())));
 
         var none = FakeCallContext.WithGroup(ocr.Context, [], "nobody", "none");

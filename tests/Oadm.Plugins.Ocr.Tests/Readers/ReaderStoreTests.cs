@@ -60,6 +60,23 @@ public sealed class ReaderStoreTests
     }
 
     [Fact]
+    public async Task ASavedReaderKeepsItsCamera()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var other = ocr.Context.Add(new FakeDevice { Address = "10.0.0.3" });
+        var saved = await ocr.SaveAsync(ocr.NewReader());
+
+        // The camera is chosen once, with New: a save with another camera is refused below the camera key and changes nothing.
+        var refused = await Assert.ThrowsAsync<ReaderFieldException>(() => ocr.SaveAsync(saved with { DeviceId = other.Id, Name = "Gate 9" }));
+        Assert.Equal(new FieldError(OcrFields.Camera, ReaderRules.CameraFixed), Assert.Single(refused.Errors));
+        Assert.Equal("A saved reader keeps its camera. Create a new reader for another camera.", ReaderRules.CameraFixed);
+        Assert.Equal((ocr.Inside.Id, "Gate 2"), (ocr.Plugin.FindReader(saved.Id)!.DeviceId, ocr.Plugin.FindReader(saved.Id)!.Name));
+
+        // A new reader on that camera is fine.
+        Assert.Equal(other.Id, (await ocr.SaveAsync(ocr.NewReader("Dock", device: other.Id))).DeviceId);
+    }
+
+    [Fact]
     public async Task ABadReaderIsRefusedWithItsTextAndNothingIsStored()
     {
         await using var ocr = await OcrHarness.StartAsync();
