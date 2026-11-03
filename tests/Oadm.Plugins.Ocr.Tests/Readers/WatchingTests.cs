@@ -113,7 +113,7 @@ public sealed class WatchingTests
         Assert.Equal("1234,5", Frame.TextOf(reply.Jpeg));
         Assert.Equal(ocr.Time.GetUtcNow(), reply.Reading!.Time);
         var area = Assert.Single(reply.Reading.Areas);
-        Assert.Equal((ReaderRules.WholePictureName, "1234,5", 90.0), (area.Area, area.Text, area.Confidence));
+        Assert.Equal((OcrHarness.DefaultArea.Name, "1234,5", 90.0), (area.Area, area.Text, area.Confidence));
         Assert.Equal("1234.5", Assert.Single(reply.Details).Number);
         Assert.Equal("1234,5", Assert.Single((await ocr.ListAsync()).Readers).LastText);
 
@@ -144,6 +144,42 @@ public sealed class WatchingTests
         await Eventually.TrueAsync(() => ocr.Frames.Open == 1, "the watching reader watches after a start");
         await ocr.DisposeAsync();
         Assert.Equal(0, ocr.Frames.Open);
+    }
+
+    [Fact]
+    public async Task WithoutAnAreaNothingIsRead()
+    {
+        // Text is read only inside areas: a watching reader without one opens no stream and the action refuses.
+        await using var ocr = await OcrHarness.StartAsync();
+        var bare = await ocr.SaveAsync(ocr.NewReader("Gate", ReaderMode.Watching) with { Areas = [] });
+        await WatchAsync(ocr, ocr.NewReader("Other", ReaderMode.Watching, device: ocr.Outside.Id));
+
+        Assert.False(ocr.Frames.IsStreaming(ocr.Inside.Id));
+        Assert.DoesNotContain(bare.Id, ocr.Plugin.Runtime!.Watching);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.ReadOnceAsync(bare.Id));
+        Assert.Equal(ReaderRules.NoAreas, refused.Message);
+        Assert.Equal(0, ocr.Frames.Singles);
+        Assert.Empty(ocr.TextRead);
+
+        // An area drawn and saved: it watches.
+        await WatchAsync(ocr, bare with { Areas = [OcrHarness.DefaultArea] });
+        Assert.True(ocr.Frames.IsStreaming(ocr.Inside.Id));
+    }
+
+    [Fact]
+    public async Task MoreThan30TextsCarryTheNoteOfTheReading()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
+        ocr.Recognizer.TooManyTexts = true;
+        ocr.Frames.Single = "A";
+
+        var reply = await ocr.ReadOnceAsync(reader.Id);
+
+        Assert.Equal("More than 30 texts found. Only the first 30 are read. Draw smaller areas.", reply.Reading!.Note);
+        Assert.Equal(ReaderRules.TooManyTexts, reply.Reading.Note);
+        ocr.Recognizer.TooManyTexts = false;
+        Assert.Null((await ocr.ReadOnceAsync(reader.Id)).Reading!.Note);
     }
 
     [Fact]

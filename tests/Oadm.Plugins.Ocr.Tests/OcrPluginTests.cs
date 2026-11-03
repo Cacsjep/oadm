@@ -155,7 +155,7 @@ public sealed class OcrPluginTests
             Areas =
             [
                 new Area { Name = "Container number", Box = new RelativeBox(0.1, 0.2, 0.3, 0.1), Expected = ExpectedText.WithFormat("AAAU ###### #") },
-                Area.WholePicture("All"),
+                new Area { Name = "All" },
             ],
         };
 

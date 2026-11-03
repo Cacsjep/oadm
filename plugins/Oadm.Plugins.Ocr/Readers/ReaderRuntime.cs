@@ -105,8 +105,9 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    /// Brings the loops in line with <paramref name="readers"/>: a loop for every watching reader that may read (at most
-    /// <see cref="ReaderRules.MaxWatching"/>), changed readers start again, the others stop. Runs without the caller.
+    /// Brings the loops in line with <paramref name="readers"/>: a loop for every watching reader with areas that may read (at
+    /// most <see cref="ReaderRules.MaxWatching"/>; text is read only inside areas, so a reader without one opens no stream),
+    /// changed readers start again, the others stop. Runs without the caller.
     /// </summary>
     public Task SyncAsync(IReadOnlyList<Reader> readers) => Detached(() => SyncCoreAsync(readers));
 
@@ -121,6 +122,11 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         if (_maker is null || _frames is null)
         {
             throw new InvalidOperationException(ReaderRules.NotInstalled);
+        }
+
+        if (reader.Areas.Count == 0)
+        {
+            throw new InvalidOperationException(ReaderRules.NoAreas); // text is read only inside areas
         }
 
         if ((await CheckAsync(reader, ct).ConfigureAwait(false)).Problem is { } problem)
@@ -230,7 +236,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 {
                     problems[reader.Id] = problem; // a refusing camera is not contacted; the next check starts it again
                 }
-                else if (reader.Mode == ReaderMode.Watching && _maker is not null && _frames is not null && wanted.Count < limit
+                else if (reader.Mode == ReaderMode.Watching && reader.Areas.Count > 0 && _maker is not null && _frames is not null && wanted.Count < limit
                     && (camera?.SiteId is not { } site || (perSite[site] = perSite.GetValueOrDefault(site) + 1) <= ReaderRules.MaxWatchingPerSite))
                 {
                     wanted[reader.Id] = reader;
@@ -300,7 +306,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// </summary>
     private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, Action<Reader, ReaderReading> keep, ReaderSlot? slot, CancellationToken ct)
     {
-        var watches = vote ? ReaderRules.EffectiveAreas(stream).Select(_ => new AreaWatch()).ToArray() : null;
+        var watches = vote ? stream.Areas.Select(_ => new AreaWatch()).ToArray() : null;
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -383,7 +389,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         var publish = new bool[watches.Length];
         for (var i = 0; i < watches.Length; i++)
         {
-            var frameResult = i < read.Reading.Areas.Count ? read.Reading.Areas[i] : new AreaResult { Area = ReaderRules.EffectiveAreas(reader)[i].Name };
+            var frameResult = i < read.Reading.Areas.Count ? read.Reading.Areas[i] : new AreaResult { Area = i < reader.Areas.Count ? reader.Areas[i].Name : string.Empty };
             var frameDetails = i < read.Details.Count ? read.Details[i] : new AreaDetails { Area = frameResult.Area };
             (areas[i], publish[i]) = watches[i].Add(frameResult);
             details[i] = string.Equals(areas[i].Text, frameResult.Text, StringComparison.Ordinal)

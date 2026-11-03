@@ -30,6 +30,12 @@ public static class OcrLimits
     /// <summary>The frame rate of a new reader.</summary>
     public const int DefaultFps = 1;
 
+    /// <summary>
+    /// Text boxes read per picture at most, over all areas together (the highest detection scores first); more are dropped
+    /// and the reading carries <see cref="Readers.ReaderRules.TooManyTexts"/>.
+    /// </summary>
+    public const int MaxTextBoxes = 30;
+
     /// <summary>Lines below this confidence (0 to 100) are dropped.</summary>
     public const double MinConfidence = 50;
 

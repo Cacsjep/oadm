@@ -17,8 +17,14 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
     public async Task<ReaderReading> ReadAsync(Reader reader, ReadOnlyMemory<byte> jpeg, CancellationToken ct)
     {
         var taken = time.GetUtcNow();
-        var areas = ReaderRules.EffectiveAreas(reader);
-        var picture = await recognizer.ReadAsync(jpeg, reader.Areas, ct).ConfigureAwait(false);
+        var areas = reader.Areas;
+        if (areas.Count == 0)
+        {
+            // Text is read only inside areas: no area, no reading (the picture is not even decoded).
+            return new ReaderReading(new Reading { ReaderId = reader.Id, Time = taken, Resolution = reader.Resolution }, [], jpeg);
+        }
+
+        var picture = await recognizer.ReadAsync(jpeg, areas, ct).ConfigureAwait(false);
         var results = new List<AreaResult>(areas.Count);
         var details = new List<AreaDetails>(areas.Count);
         for (var i = 0; i < areas.Count; i++)
@@ -33,7 +39,14 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             });
         }
 
-        var reading = new Reading { ReaderId = reader.Id, Time = taken, Resolution = picture.Resolution, Areas = results };
+        var reading = new Reading
+        {
+            ReaderId = reader.Id,
+            Time = taken,
+            Resolution = picture.Resolution,
+            Areas = results,
+            Note = picture.TooManyTexts ? ReaderRules.TooManyTexts : null,
+        };
         return new ReaderReading(reading, details, jpeg);
     }
 

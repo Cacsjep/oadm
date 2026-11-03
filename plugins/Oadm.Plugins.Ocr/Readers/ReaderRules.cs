@@ -28,9 +28,6 @@ public static class ReaderRules
 
     public const int MaxSide = 7680;
 
-    /// <summary>The area of a reader without areas (the whole picture), in the results and the events' Area field.</summary>
-    public const string WholePictureName = "Whole picture";
-
     public const string NameMissing = "Enter a name.";
 
     public static readonly string NameTooLong = string.Create(CultureInfo.InvariantCulture, $"Use at most {MaxNameLength} characters.");
@@ -58,6 +55,14 @@ public static class ReaderRules
 
     /// <summary>Lines lower than 10 px were left out of an area (<see cref="AreaDetails.TooSmall"/>).</summary>
     public const string TooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
+
+    /// <summary>A reading found more than <see cref="OcrLimits.MaxTextBoxes"/> texts (<see cref="Reading.Note"/>).</summary>
+    public static readonly string TooManyTexts = string.Create(
+        CultureInfo.InvariantCulture,
+        $"More than {OcrLimits.MaxTextBoxes} texts found. Only the first {OcrLimits.MaxTextBoxes} are read. Draw smaller areas.");
+
+    /// <summary>The action Read text with a reader without areas: text is read only inside areas.</summary>
+    public const string NoAreas = "The reader has no area. Draw one on the Text recognition page.";
 
     /// <summary>"CPU (8 cores)": what reads without a graphics card.</summary>
     public static string CpuText(int cores) => string.Create(CultureInfo.InvariantCulture, $"CPU ({cores} {(cores == 1 ? "core" : "cores")})");
@@ -152,13 +157,6 @@ public static class ReaderRules
             ? FpsChoices(onGpu).Contains(reader.Fps) ? reader.Fps : OcrLimits.DefaultFps
             : OcrLimits.PreviewFpsOnAction;
         return reader with { Mode = mode, Fps = fps, Areas = areas };
-    }
-
-    /// <summary>The areas a reading has: the reader's own, or the whole picture as one.</summary>
-    public static IReadOnlyList<Area> EffectiveAreas(Reader reader)
-    {
-        ArgumentNullException.ThrowIfNull(reader);
-        return reader.Areas.Count > 0 ? reader.Areas : [Area.WholePicture(WholePictureName)];
     }
 
     /// <summary>The reader as it is stored: names trimmed, a format only with Format, no owner from the page.</summary>

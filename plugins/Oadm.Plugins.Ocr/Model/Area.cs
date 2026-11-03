@@ -45,7 +45,4 @@ public sealed record Area
 
     /// <summary>Any text or a format.</summary>
     public ExpectedText Expected { get; init; } = ExpectedText.AnyText;
-
-    /// <summary>The area of a reader without areas: the whole picture, any text.</summary>
-    public static Area WholePicture(string name) => new() { Name = name };
 }

@@ -167,13 +167,22 @@ internal sealed partial class ReaderRuntime
     }
 
     /// <summary>
-    /// Brings one preview in line with its draft: a problem of the camera stops it; an unchanged saved watching reader shares
+    /// Brings one preview in line with its draft: without areas nothing streams; a problem of the camera stops it; an unchanged saved watching reader shares
     /// its stream; otherwise its own stream, kept while camera, source, resolution and rate stay (the areas follow the draft),
     /// within the watching limits. Under <see cref="_sync"/>.
     /// </summary>
     private async Task ReconcileAsync(Preview preview)
     {
         var reader = preview.Reader;
+        if (reader.Areas.Count == 0)
+        {
+            // Text is read only inside areas: no area, no stream (the page asks to draw one).
+            await StopOwnStreamAsync(preview).ConfigureAwait(false);
+            preview.SharedWith = null;
+            preview.Problem = null;
+            return;
+        }
+
         var (problem, camera) = await CheckAsync(reader, CancellationToken.None).ConfigureAwait(false);
         if (problem is not null)
         {

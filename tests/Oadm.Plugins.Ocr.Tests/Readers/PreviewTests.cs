@@ -71,6 +71,32 @@ public sealed class PreviewTests
     }
 
     [Fact]
+    public async Task APreviewWithoutAnAreaReadsNothingUntilOneIsDrawn()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var draft = ocr.NewReader("Gate", ReaderMode.Watching) with { Areas = [] };
+
+        var reply = await ocr.PreviewAsync(draft);
+
+        // Kept alive, no problem, but no stream and no reading: the page shows "Start by drawing an area".
+        Assert.Null(reply.Problem);
+        var preview = Assert.Single(ocr.Plugin.Runtime!.Previews);
+        Assert.False(preview.OwnStream);
+        Assert.Equal(0, ocr.Frames.Opened);
+        Assert.Equal(0, ocr.PreviewReadings);
+
+        // The first area: the stream opens and the preview reads.
+        await ocr.PreviewAsync(draft with { Areas = [OcrHarness.DefaultArea] }, reply.PreviewId);
+        await Eventually.TrueAsync(() => ocr.Frames.Open == 1, "the preview streams once an area exists");
+        await SendAndWaitPreviewAsync(ocr, ocr.Inside.Id, "A");
+
+        // The area removed again: the stream stops.
+        await ocr.PreviewAsync(draft, reply.PreviewId);
+        Assert.Equal(0, ocr.Frames.Open);
+        Assert.Empty(ocr.TextRead);
+    }
+
+    [Fact]
     public async Task APreviewEndsThirtySecondsAfterTheLastKeepAlive()
     {
         await using var ocr = await OcrHarness.StartAsync();

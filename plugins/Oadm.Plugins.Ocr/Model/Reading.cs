@@ -52,6 +52,12 @@ public sealed record Reading
 
     /// <summary>Every area's result, in the reader's area order.</summary>
     public IReadOnlyList<AreaResult> Areas { get; init; } = [];
+
+    /// <summary>
+    /// A note for the page about this reading (<see cref="Readers.ReaderRules.TooManyTexts"/> when more than
+    /// <see cref="OcrLimits.MaxTextBoxes"/> texts were found); null without one.
+    /// </summary>
+    public string? Note { get; init; }
 }
 
 /// <summary>What <see cref="ITextRecognizer"/> found in one picture.</summary>
@@ -64,4 +70,7 @@ public sealed record RecognizedPicture(Resolution Resolution, IReadOnlyList<IRea
     /// the areas or empty: no such lines.
     /// </summary>
     public IReadOnlyList<bool> TooSmallPerArea { get; init; } = [];
+
+    /// <summary>More than <see cref="OcrLimits.MaxTextBoxes"/> texts were found over all areas; only that many were read.</summary>
+    public bool TooManyTexts { get; init; }
 }

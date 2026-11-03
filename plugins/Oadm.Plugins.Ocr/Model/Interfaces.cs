@@ -8,8 +8,9 @@ namespace Oadm.Plugins.Ocr.Model;
 public interface ITextRecognizer
 {
     /// <summary>
-    /// The lines of each of <paramref name="areas"/> in <paramref name="jpeg"/>, in the order of the areas; no areas: the
-    /// whole picture is one area. Lines below <see cref="OcrLimits.MinConfidence"/> are left out. Boxes are relative to the
+    /// The lines of each of <paramref name="areas"/> in <paramref name="jpeg"/>, in the order of the areas; no areas: nothing
+    /// is read (an empty result, the picture is not decoded). At most <see cref="OcrLimits.MaxTextBoxes"/> lines over all
+    /// areas together (the highest detection scores; <see cref="RecognizedPicture.TooManyTexts"/> tells). Lines below <see cref="OcrLimits.MinConfidence"/> are left out. Boxes are relative to the
     /// whole picture.
     /// </summary>
     Task<RecognizedPicture> ReadAsync(ReadOnlyMemory<byte> jpeg, IReadOnlyList<Area> areas, CancellationToken ct);

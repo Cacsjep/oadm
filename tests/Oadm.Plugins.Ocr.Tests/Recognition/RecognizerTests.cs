@@ -83,12 +83,13 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     }
 
     [Fact]
-    public async Task Without_areas_the_whole_picture_is_one_area()
+    public async Task An_area_over_the_whole_picture_reads_it_all()
     {
-        var picture = await fixture.Recognizer.ReadAsync(Fixture("box-1280x720.jpg"), [], None);
+        var picture = await fixture.Recognizer.ReadAsync(Fixture("box-1280x720.jpg"), [new Area { Name = "All", Box = RelativeBox.Whole }], None);
 
         var lines = Assert.Single(picture.LinesPerArea);
         Assert.Contains(lines, l => l.Text == "BARISSIMO");
+        Assert.InRange(lines.Count, 1, OcrLimits.MaxTextBoxes);
     }
 
     [Fact]
@@ -114,7 +115,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     {
         var jpeg = TurnedSign(degrees, 1f);
 
-        var picture = await fixture.Recognizer.ReadAsync(jpeg, [], None);
+        var picture = await fixture.Recognizer.ReadAsync(jpeg, [new Area { Name = "All", Box = RelativeBox.Whole }], None);
 
         Assert.Contains(picture.LinesPerArea[0], l => l.Text == "LOADING DOCK 3");
     }
@@ -137,7 +138,34 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     [Fact]
     public async Task An_answer_that_is_not_a_picture_is_refused()
     {
-        await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Recognizer.ReadAsync("<html>401</html>"u8.ToArray(), [], None));
+        await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Recognizer.ReadAsync("<html>401</html>"u8.ToArray(), [new Area { Name = "All" }], None));
+    }
+
+    [Fact]
+    public async Task Without_areas_nothing_is_read_and_the_picture_is_not_decoded()
+    {
+        // Text is read only inside areas: not even an answer that is no picture is looked at.
+        var picture = await fixture.Recognizer.ReadAsync("<html>401</html>"u8.ToArray(), [], None);
+
+        Assert.Empty(picture.LinesPerArea);
+        Assert.False(picture.TooManyTexts);
+    }
+
+    [Fact]
+    public void At_most_30_text_boxes_are_read_the_strongest_first()
+    {
+        // 40 boxes over two areas with rising scores: the 30 strongest stay, in their order, and the reading says so.
+        var boxes = Enumerable.Range(0, 40).Select(i => (i % 2, new RotatedBox(10 + i, 10, 50, 20, 0, 0.5f + (i / 100f)))).ToList();
+
+        var (kept, dropped) = OnnxTextRecognizer.Strongest(boxes, OcrLimits.MaxTextBoxes);
+
+        Assert.True(dropped);
+        Assert.Equal(30, kept.Count);
+        Assert.Equal(Enumerable.Range(10, 30).Select(i => 10f + i), kept.Select(k => k.Box.CenterX));
+        var (all, none) = OnnxTextRecognizer.Strongest(boxes.Take(30).ToList(), OcrLimits.MaxTextBoxes);
+        Assert.False(none);
+        Assert.Equal(30, all.Count);
+        Assert.True(new RecognitionResult(new Resolution(1920, 1080), []) { TooManyTexts = true }.ToPicture().TooManyTexts);
     }
 
     [Fact]

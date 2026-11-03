@@ -59,10 +59,14 @@ public sealed record AreaRecognition(IReadOnlyList<RecognizedLine> Lines, int To
 /// <param name="Areas">One entry per area asked for, in order.</param>
 public sealed record RecognitionResult(Resolution Resolution, IReadOnlyList<AreaRecognition> Areas)
 {
+    /// <summary>More than <see cref="Model.OcrLimits.MaxTextBoxes"/> texts were found; only that many (the strongest) were read.</summary>
+    public bool TooManyTexts { get; init; }
+
     /// <summary>The model type of <see cref="ITextRecognizer"/>.</summary>
     public RecognizedPicture ToPicture() => new(Resolution, Areas.Select(a => (IReadOnlyList<TextLine>)a.Lines.Select(l => l.Line).ToList()).ToList())
     {
         TooSmallPerArea = [.. Areas.Select(a => a.Hint is not null)],
+        TooManyTexts = TooManyTexts,
     };
 }
 

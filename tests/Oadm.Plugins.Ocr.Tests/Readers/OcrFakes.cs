@@ -57,6 +57,9 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
     /// <summary>Per area: lines were too small (handed to the reading as <see cref="RecognizedPicture.TooSmallPerArea"/>).</summary>
     public IReadOnlyList<bool> TooSmall { get; set; } = [];
 
+    /// <summary>Every reading says it found more than 30 texts.</summary>
+    public bool TooManyTexts { get; set; }
+
     /// <summary>When set, every reading waits for it (one release per reading).</summary>
     public SemaphoreSlim? Gate { get; set; }
 
@@ -85,9 +88,13 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
 
         var text = Frame.TextOf(jpeg);
         _read.Enqueue(text);
-        var count = Math.Max(1, areas.Count);
+        var count = areas.Count;
         var lines = text.Length == 0 ? [] : new[] { new TextLine(text, new RelativeBox(0.1, 0.1, 0.5, 0.1), 90) };
-        return new RecognizedPicture(new Resolution(1920, 1080), [.. Enumerable.Range(0, count).Select(_ => (IReadOnlyList<TextLine>)lines)]) { TooSmallPerArea = TooSmall };
+        return new RecognizedPicture(new Resolution(1920, 1080), [.. Enumerable.Range(0, count).Select(_ => (IReadOnlyList<TextLine>)lines)])
+        {
+            TooSmallPerArea = TooSmall,
+            TooManyTexts = TooManyTexts,
+        };
     }
 }
 
@@ -229,12 +236,16 @@ internal sealed class OcrHarness : IAsyncDisposable
         return reply.Reader ?? throw new ReaderFieldException(reply.Errors);
     }
 
+    /// <summary>The area of <see cref="NewReader"/> when none is given (text is read only inside areas).</summary>
+    public static Area DefaultArea { get; } = new() { Name = "Text", Box = new RelativeBox(0.1, 0.1, 0.8, 0.8) };
+
+    /// <summary>A reader of <paramref name="device"/> with <paramref name="areas"/>, else <see cref="DefaultArea"/>; <c>with { Areas = [] }</c> for none.</summary>
     public Reader NewReader(string name = "Gate 2", ReaderMode mode = ReaderMode.OnAction, Guid? device = null, params Area[] areas) => new()
     {
         Name = name,
         DeviceId = device ?? Inside.Id,
         Mode = mode,
-        Areas = areas,
+        Areas = areas.Length > 0 ? areas : [DefaultArea],
     };
 
     /// <summary>Reads one picture of a stored reader now, like the action Read text (every area's event).</summary>

@@ -18,7 +18,7 @@ public sealed class TextReadEventTests
         ocr.Plugin.EventTypesChanged += (_, _) => changed++;
 
         var reader = await ocr.SaveAsync(ocr.NewReader("Gate 2", areas: [new Area { Name = "Container number" }, new Area { Name = "Seal" }]));
-        var whole = await ocr.SaveAsync(ocr.NewReader("Meter"));
+        var whole = await ocr.SaveAsync(ocr.NewReader("Meter") with { Areas = [] });
 
         Assert.Equal(2, changed);
         var type = ocr.Plugin.EventTypes.Single(t => t.Id == OcrInfo.TextReadTypeId(reader.Id));
@@ -33,7 +33,7 @@ public sealed class TextReadEventTests
             type.DataFields.Select(f => (f.Name, f.DisplayName, f.Kind)));
         Assert.All(type.DataFields, f => Assert.True(f.Filter));
         Assert.Equal(["Container number", "Seal"], type.DataFields[0].Values);
-        Assert.Equal([ReaderRules.WholePictureName], ocr.Plugin.EventTypes.Single(t => t.Id == OcrInfo.TextReadTypeId(whole.Id)).DataFields[0].Values);
+        Assert.Empty(ocr.Plugin.EventTypes.Single(t => t.Id == OcrInfo.TextReadTypeId(whole.Id)).DataFields[0].Values ?? []); // no area: nothing to read
 
         await ocr.CallAsync(OcrMethods.DeleteReader, new ReaderRequest { ReaderId = reader.Id });
         Assert.Equal(3, changed);

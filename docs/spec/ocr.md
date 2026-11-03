@@ -38,11 +38,14 @@ that better (the docs say so).
 A reader is a saved setup: name, camera, video source, resolution, mode, frame rate and up to 8 areas.
 
 - **Areas**: rectangles drawn on the picture, each with a name ("Container number") and an expected text. Stored relative
-  to the picture (0 to 1), so a change of resolution keeps them in place. No area: the whole picture is one area.
+  to the picture (0 to 1), so a change of resolution keeps them in place. **Text is read only inside areas**, never in
+  the whole picture by itself: a reader without an area reads nothing (no stream, no events, no preview reading; the page
+  asks "Start by drawing an area"), and the action Read text with it ends "The reader has no area. Draw one on the Text
+  recognition page." An area may cover the whole picture.
 - **Two ways to read**, both with the same areas:
   - **Fixed place**: a small area around where the text always is (a meter, a sign, the number on a gate lane). The
     best reading: nothing else gets in, and it is fast.
-  - **Search**: a large area or the whole picture with a **Format**; the reader finds the text that matches wherever
+  - **Search**: a large area (up to the whole picture) with a **Format**; the reader finds the text that matches wherever
     it is (an order number on a receipt laid anywhere on a counter, a label on a parcel). Any text over a large area is
     allowed but rarely useful for rules.
 - **Mode**:
@@ -69,19 +72,23 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
    around it); a larger one (Search over the whole picture) in tiles at full resolution: the fewest tiles that cover it
    at up to 960 px each with at least 15 % overlap, all of one size and spread evenly (full HD: 3 x 2 = 6 tiles of
    736 x 608). On the CPU each tile is a model call of its own, on a graphics card all tiles are one call.
-3. **Merge boxes**: boxes found twice (in two tiles) and pieces of one line the text finder split (the digit drums of a
+3. **At most 30 text boxes** per reading, over all areas together: the boxes with the highest detection scores are
+   read, the others dropped, and the reading carries the note "More than 30 texts found. Only the first 30 are read. Draw
+   smaller areas." (`Reading.Note`, `ReaderRules.TooManyTexts`), shown on the page below the video. A busy picture (a
+   large area over a shelf of labels) never floods the recognition, and stray text far from the value never wins.
+4. **Merge boxes**: boxes found twice (in two tiles) and pieces of one line the text finder split (the digit drums of a
    meter) become one line: same direction, about the same height, on one line, overlapping or closer than 0.6 line
    heights.
-4. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
+5. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
    by 90 degrees) is turned by 90 degrees. The angle model names the lines that may be upside down (probability at
    least 0.3): those are read both ways and the reading the recognition is surer of wins (the angle model alone turned
    coloured print).
-5. **Contrast**: a dark or flat line (brightness spanning less than 100 of 255) is stretched so its darkest and brightest
+6. **Contrast**: a dark or flat line (brightness spanning less than 100 of 255) is stretched so its darkest and brightest
    percent become black and white, at most 4 times; lines with contrast and the text finder's input stay as they are.
-6. **Read**: the PP-OCRv5 Latin recognition model per line (height 48 px), CTC decoding with its character list. Lines
+7. **Read**: the PP-OCRv5 Latin recognition model per line (height 48 px), CTC decoding with its character list. Lines
    whose characters' mean probability is below 50 % are dropped. A line's confidence is the lowest probability of its
    characters (of its format match when it has one).
-7. **Second reading of a fixed-place area**: an area with a format whose lines gave no match, a strip (at least 1.5
+8. **Second reading of a fixed-place area**: an area with a format whose lines gave no match, a strip (at least 1.5
    times wider than tall, up to 960 px), is read once more as one line; the text finder can miss a part of a value (a
    dark drum of a meter), the whole strip often still reads. That reading counts only when its format match holds.
 
@@ -133,7 +140,8 @@ Per area: **Any text** (default) or **Format**.
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
   in a row (no flicker between two readings of one picture). An area that becomes empty publishes once with Text empty.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching). Reads one picture now and
-  publishes every area's event, changed or not. A reading already running for that reader: the action ends "Already
+  publishes every area's event, changed or not; a reader without an area ends "The reader has no area. Draw one on the
+  Text recognition page." and reads nothing. A reading already running for that reader: the action ends "Already
   reading" and nothing is queued. Loops (a Text read event that runs Read text of the same reader) are held by the rule
   limits (dead time, maximum per minute).
 
@@ -300,6 +308,8 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 
 ## Tests
 
+- Text only inside areas: no area, no stream, no reading, no event (watching, the action, the preview, the recognizer
+  without decoding); at most 30 text boxes, the strongest, and the reading's note.
 - Recognition from recorded camera pictures with known text (`tests/Oadm.Plugins.Ocr.Tests/Fixtures`, recorded read-only
   from the development cameras): lines found, text and order, several lines, a slanted line.
 - Format: the syntax, look-alike fixes by position, a number split over two lines, no match.

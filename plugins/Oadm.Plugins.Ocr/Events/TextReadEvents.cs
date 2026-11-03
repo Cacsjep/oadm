@@ -24,7 +24,7 @@ public static partial class TextReadEvents
     public static EventTypeInfo TypeOf(Reader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
-        var areas = ReaderRules.EffectiveAreas(reader).Select(a => a.Name).ToList();
+        var areas = reader.Areas.Select(a => a.Name).ToList();
         return new EventTypeInfo(
             OcrInfo.TextReadTypeId(reader.Id),
             OcrInfo.TextReadName,

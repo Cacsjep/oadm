@@ -67,7 +67,7 @@ public sealed record Reader
     /// <summary>Frames per second while Watching, one of <see cref="OcrLimits.FpsChoices"/>.</summary>
     public int Fps { get; init; } = OcrLimits.DefaultFps;
 
-    /// <summary>Up to <see cref="OcrLimits.MaxAreas"/> areas; none: the whole picture is one area.</summary>
+    /// <summary>Up to <see cref="OcrLimits.MaxAreas"/> areas; none: nothing is read (text is read only inside areas).</summary>
     public IReadOnlyList<Area> Areas { get; init; } = [];
 
     /// <summary>The <c>ICallContext.DeviceScopeKey</c> of the scope that made it; set by the server, never by the page.</summary>

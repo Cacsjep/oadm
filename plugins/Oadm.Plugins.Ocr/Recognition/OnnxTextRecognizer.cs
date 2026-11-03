@@ -165,7 +165,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (areas.Count == 0)
         {
-            areas = [Area.WholePicture(string.Empty)];
+            // Text is read only inside areas: nothing to do, the picture is not decoded.
+            return new RecognitionResult(default, []);
         }
 
         IModelRunner runner = _useGpu && _gpuSet is { } gpuSet && _gpuLines is { } gpuLines
@@ -195,6 +196,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var lineBitmaps = new List<SKBitmap>();
         var lineBoxes = new List<(int Area, RotatedBox Box)>();
         var tooSmall = new int[areas.Count];
+        var tooMany = false;
         try
         {
             // The areas' text finding at once (on the CPU each call takes a worker of its own).
@@ -203,6 +205,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 var rect = PixelRect(area.Box, picture.Width, picture.Height);
                 return rect.Width < 4 || rect.Height < 4 ? Task.FromResult(new List<RotatedBox>()) : FindLinesAsync(picture, rect, set, ct);
             })).ConfigureAwait(false);
+            var candidates = new List<(int Area, RotatedBox Box)>();
             for (var a = 0; a < areas.Count; a++)
             {
                 foreach (var box in found[a])
@@ -213,9 +216,17 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                         continue;
                     }
 
-                    lineBitmaps.Add(CutLine(picture, box));
-                    lineBoxes.Add((a, box));
+                    candidates.Add((a, box));
                 }
+            }
+
+            // At most MaxTextBoxes over all areas together, the highest detection scores first (a busy picture never floods
+            // the reader); the picture's reading says so.
+            (candidates, tooMany) = Strongest(candidates, OcrLimits.MaxTextBoxes);
+            foreach (var (a, box) in candidates)
+            {
+                lineBitmaps.Add(CutLine(picture, box));
+                lineBoxes.Add((a, box));
             }
 
             // Upside down lines (a receipt laid the other way round): the angle model names the candidates; each candidate is
@@ -268,7 +279,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 results[a] = new AreaRecognition(Order(perArea[a]), tooSmall[a]);
             }
 
-            return new RecognitionResult(new Resolution(picture.Width, picture.Height), results.Select(r => r ?? new AreaRecognition([], 0)).ToList());
+            return new RecognitionResult(new Resolution(picture.Width, picture.Height), results.Select(r => r ?? new AreaRecognition([], 0)).ToList())
+            {
+                TooManyTexts = tooMany,
+            };
         }
         finally
         {
@@ -277,6 +291,26 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 bitmap.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// The <paramref name="max"/> boxes with the highest detection scores (in their order), and whether any were dropped.
+    /// </summary>
+    internal static (List<(int Area, RotatedBox Box)> Kept, bool Dropped) Strongest(List<(int Area, RotatedBox Box)> boxes, int max)
+    {
+        if (boxes.Count <= max)
+        {
+            return (boxes, false);
+        }
+
+        var keep = Enumerable.Range(0, boxes.Count)
+            .OrderByDescending(i => boxes[i].Box.Score)
+            .ThenBy(i => i)
+            .Take(max)
+            .Order()
+            .Select(i => boxes[i])
+            .ToList();
+        return (keep, true);
     }
 
     /// <summary>
