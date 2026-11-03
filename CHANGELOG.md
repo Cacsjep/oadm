@@ -5,6 +5,13 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
+## Unreleased
+
+### Changed
+
+- Event rules: the event list is grouped by where the events come from, so an event is quick to find.
+- Event rules: the info of Dead time and Max per minute shows a small pulse diagram of what they do, following the number you type.
+
 ## [4.9.0] - 2026-11-02
 
 ### Added

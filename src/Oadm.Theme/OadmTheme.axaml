@@ -879,6 +879,11 @@
   <Style Selector="Button.toolbar.danger:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
+  <!-- A red icon alone (Remove condition, Remove action, a trash icon in a row): as small as every icon button; the
+       danger button's wide padding above must not apply to it -->
+  <Style Selector="Button.iconOnly.danger">
+    <Setter Property="Padding" Value="7" />
+  </Style>
 
   <!-- Secondary button (dialogs) -->
   <Style Selector="Button.secondary">
@@ -1003,6 +1008,52 @@
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
 
+  <!-- Illustration (Viewbox.illustration around a Canvas.illustration drawn on 240 x 240): centred above a card,
+       e.g. the Rule step of the event rule dialog. Classes: gear (accent outline on soft accent), hub (a circle like an
+       input), loop and loopArrow (the dashed ring and its arrowheads), ui:OadmIcon in the accent, .action in teal. -->
+  <Style Selector="Viewbox.illustration">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="Width" Value="180" />
+    <Setter Property="Height" Value="180" />
+  </Style>
+  <Style Selector="Canvas.illustration">
+    <Setter Property="Width" Value="240" />
+    <Setter Property="Height" Value="240" />
+  </Style>
+  <Style Selector="Canvas.illustration > Path.gear">
+    <Setter Property="Fill" Value="{StaticResource Oadm.StatusAccentBackgroundBrush}" />
+    <Setter Property="Stroke" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeJoin" Value="Round" />
+  </Style>
+  <Style Selector="Canvas.illustration > Ellipse.hub">
+    <Setter Property="Fill" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="Stroke" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+  </Style>
+  <Style Selector="Canvas.illustration > Ellipse.loop">
+    <Setter Property="Stroke" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="StrokeDashArray" Value="1.5,3.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="Opacity" Value="0.55" />
+  </Style>
+  <Style Selector="Canvas.illustration > Path.loopArrow">
+    <Setter Property="Fill" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Opacity" Value="0.8" />
+  </Style>
+  <Style Selector="Canvas.illustration > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Canvas.illustration > ui|OadmIcon.action">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
+  </Style>
+
+  <!-- A tooltip with a drawing below its text (ui:InfoIcon.PictureTemplate, e.g. the pulse diagrams of the rule limits) -->
+  <Style Selector="ToolTip.wide">
+    <Setter Property="MaxWidth" Value="480" />
+  </Style>
+
   <!-- Grouped select field (ComboBox.grouped with ui:GroupedChoice items): grey group headers that cannot be chosen,
        the choices indented below them; the closed box shows the chosen text without indent. -->
   <Style Selector="ComboBox.grouped">
@@ -1015,7 +1066,7 @@
     </Setter>
     <Setter Property="SelectionBoxItemTemplate">
       <DataTemplate x:DataType="ui:GroupedChoice">
-        <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding SelectionText}" TextTrimming="CharacterEllipsis" />
       </DataTemplate>
     </Setter>
   </Style>
@@ -1998,6 +2049,12 @@
   <Style Selector="Grid.form">
     <Setter Property="RowSpacing" Value="10" />
   </Style>
+  <!-- Two form columns side by side in one card (Grid.formColumns, ColumnDefinitions "*,*"): e.g. General and Limits of
+       an event rule -->
+  <Style Selector="Grid.formColumns">
+    <Setter Property="ColumnSpacing" Value="32" />
+  </Style>
+
   <Style Selector="StackPanel.form">
     <Setter Property="Spacing" Value="10" />
   </Style>

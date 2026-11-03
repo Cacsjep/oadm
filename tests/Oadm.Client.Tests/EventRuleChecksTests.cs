@@ -296,6 +296,91 @@ public sealed class EventRuleChecksTests : IDisposable
     private static RuleDetail Detail(string json) => new() { DefinitionJson = json, Summary = new RuleSummary { Name = "Rule" } };
 
     [Fact]
+    public Task The_rule_step_shows_the_flow_and_the_event_picker_is_grouped() => _ui.RunAsync(async () =>
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var (api, editor) = await CreateAsync();
+            var dialog = new RuleEditorWindow();
+            dialog.Attach(editor);
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            editor.Name = "Housing too warm";
+            Pump();
+            // The pulse diagrams of the limits sit in the info icons' tooltips, not on the page.
+            Assert.DoesNotContain(dialog.GetVisualDescendants().OfType<LimitDiagram>(), d => d.IsEffectivelyVisible);
+            Assert.Single(dialog.GetVisualDescendants().OfType<Canvas>(), c => c.IsEffectivelyVisible && c.Classes.Contains("illustration"));
+            Capture(dialog, outDir, "event-rules-rule-step.png");
+            InfoIcon Icon(string label) => dialog.GetVisualDescendants().OfType<FormField>().Single(f => f.Label == label).GetVisualDescendants().OfType<InfoIcon>().Single();
+            LimitDiagram Open(string label, string shot)
+            {
+                var icon = Icon(label);
+                ToolTip.SetIsOpen(icon, true);
+                Pump();
+                var tip = Assert.IsType<ToolTip>(ToolTip.GetTip(icon));
+                Assert.Contains("wide", tip.Classes);
+                var diagram = tip.GetVisualDescendants().OfType<LimitDiagram>().Single();
+                Capture(dialog, outDir, shot);
+                ToolTip.SetIsOpen(icon, false);
+                Pump();
+                return diagram;
+            }
+
+            var dead = Open("Dead time (s)", "event-rules-limit-dead-time.png");
+            Assert.Equal((RuleLimit.DeadTime, "10"), (dead.Limit, dead.Value));
+            var max = Open("Max per minute", "event-rules-limit-max-per-minute.png");
+            Assert.Equal((RuleLimit.MaxPerMinute, "60"), (max.Limit, max.Value));
+            editor.Cooldown = "0";
+            editor.MaxRuns = "1000";
+            Pump();
+            Assert.Equal("0", Open("Dead time (s)", "event-rules-limit-no-dead-time.png").Value);
+            Assert.Equal("1000", Open("Max per minute", "event-rules-limit-max-1000.png").Value);
+            // The flyout of a click shows the drawing too (its own copy).
+            Assert.Single(Assert.IsType<StackPanel>(((Flyout)Icon("Dead time (s)").Flyout!).Content).Children.OfType<ContentControl>());
+
+            editor.NextCommand.Execute(null);
+            var trigger = editor.Conditions[0];
+            Assert.All(trigger.EventChoices.Where(c => c.IsHeader), c => Assert.False(c.IsSelectable));
+            // A group header per group, each event below its group once.
+            var groups = trigger.EventTypes.Select(t => t.Entry.Group).Distinct().ToList();
+            Assert.Equal(groups, trigger.EventChoices.Where(c => c.IsHeader).Select(c => c.Text));
+            Assert.Equal(trigger.EventTypes.Count, trigger.EventChoices.Count(c => !c.IsHeader));
+            Assert.DoesNotContain(trigger.EventChoices, c => !c.IsHeader && c.Text.StartsWith(((EventTypeOption)c.Value!).Entry.Group + ": ", StringComparison.Ordinal));
+
+            // Choosing in the picker sets the event; the closed picker names the group too.
+            var choice = trigger.EventChoices.First(c => c.Value is EventTypeOption o && o.Id == FakeOadmApi.FakeTemperatureTrigger);
+            trigger.SelectedEventChoice = choice;
+            Assert.Equal(FakeOadmApi.FakeTemperatureTrigger, trigger.SelectedEventType?.Id);
+            Assert.Equal(((EventTypeOption)choice.Value!).Text, choice.SelectionText);
+            trigger.SelectedEventType = trigger.EventTypes.First(t => t.Id != FakeOadmApi.FakeTemperatureTrigger);
+            Assert.Same(trigger.SelectedEventType, trigger.SelectedEventChoice?.Value);
+            trigger.SelectedEventChoice = null;
+            trigger.SelectedEventType = null;
+            Pump();
+
+            var picker = dialog.GetVisualDescendants().OfType<ComboBox>().First(c => c.IsEffectivelyVisible && c.PlaceholderText == "Choose an event");
+            picker.IsDropDownOpen = true;
+            Pump();
+            Capture(dialog, outDir, "event-rules-event-picker.png");
+            picker.IsDropDownOpen = false;
+            Pump();
+
+            // An "And" event and a schedule: each has its remove icon (the trigger has none).
+            trigger.SelectedEventType = trigger.EventTypes.First(t => t.Id == FakeOadmApi.FakeTemperatureTrigger);
+            editor.AddEventConditionCommand.Execute(null);
+            editor.AddScheduleCommand.Execute(null);
+            Pump();
+            Assert.Equal(2, dialog.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && ToolTip.GetTip(b) as string == "Remove condition"));
+            Capture(dialog, outDir, "event-rules-and-conditions.png");
+            dialog.Close();
+            api.Dispose();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    });
+
+    [Fact]
     public Task The_checks_render_below_the_event_and_in_the_overview() => _ui.RunAsync(async () =>
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");

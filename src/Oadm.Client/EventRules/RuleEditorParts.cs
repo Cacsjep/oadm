@@ -26,6 +26,37 @@ public sealed record EventTypeOption(EventTypeEntry Entry)
 
     public string Text => Entry.Available ? $"{Entry.Group}: {Entry.DisplayName}" : $"{Entry.Group}: {Entry.DisplayName} (turned off)";
 
+    /// <summary>The text below its group header in the picker: the name without the group it already starts with
+    /// ("Any device: unreachable" under "Any device" is "Unreachable").</summary>
+    public string ChoiceText
+    {
+        get
+        {
+            var name = Entry.DisplayName;
+            var prefix = Entry.Group + ": ";
+            if (name.Length > prefix.Length && name.StartsWith(prefix, StringComparison.CurrentCultureIgnoreCase))
+            {
+                name = name[prefix.Length..];
+                name = char.ToUpper(name[0], CultureInfo.CurrentCulture) + name[1..];
+            }
+
+            return Entry.Available ? name : name + " (turned off)";
+        }
+    }
+
+    /// <summary>The picker's entries: a header per group in the catalog's order, the events below it.</summary>
+    public static IReadOnlyList<GroupedChoice> Choices(IEnumerable<EventTypeOption> options)
+    {
+        var list = new List<GroupedChoice>();
+        foreach (var group in options.GroupBy(o => o.Entry.Group))
+        {
+            list.Add(new GroupedChoice(group.Key, null, IsHeader: true));
+            list.AddRange(group.Select(o => new GroupedChoice(o.ChoiceText, o, IsHeader: false) { SelectedText = o.Text }));
+        }
+
+        return list;
+    }
+
     public override string ToString() => Text;
 }
 

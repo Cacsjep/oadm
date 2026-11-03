@@ -18,6 +18,13 @@ public sealed record GroupedChoice(string Text, object? Value, bool IsHeader)
     /// <summary>A choice, not a header.</summary>
     public bool IsSelectable => !IsHeader;
 
+    /// <summary>Optional: what the closed select shows for this choice, when its text alone is unclear outside its
+    /// group ("Device status: Device unreachable"). Without it the closed select shows <see cref="Text"/>.</summary>
+    public string? SelectedText { get; init; }
+
+    /// <summary>What the closed select shows: <see cref="SelectedText"/> or <see cref="Text"/>.</summary>
+    public string SelectionText => SelectedText ?? Text;
+
     public override string ToString() => Text;
 
     /// <summary>Headers and choices, groups and the choices in them sorted by text (current culture, case-insensitive).</summary>

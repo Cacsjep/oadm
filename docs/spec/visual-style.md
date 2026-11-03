@@ -213,6 +213,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   `LabelAbove` puts the label above a full-width input with a 4 px gap (login, Trust this server?, new version);
   `FormField.Info` puts an `InfoIcon` right of the input instead of a long hint.
 - `InfoIcon`: every "what does this mean" explanation, an info icon whose text shows on hover and click.
+  `PictureTemplate` (`FormField.InfoPicture`) adds a drawing below the text, in the tooltip (`ToolTip.wide`) and the flyout:
+  the pulse diagrams of the event rule limits.
 - `StatCard`: every monitoring count card. Status icon + title, large count, small detail line; `IsOk` / `IsWarning` /
   `IsError` color icon and count, set only while the count needs attention; a card that filters a list sits in
   `Button.statCardButton`, the chosen one with `selected`.
@@ -283,7 +285,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   accent, done with a check, a step opens when every step before it is complete; theme `Button.wizardStep`,
   `Border.wizardDot`, `TextBlock.wizardLabel`, `Border.wizardLine`.
 - `GroupedChoice` with `ComboBox.grouped`: every grouped select field. Grey group headers that cannot be chosen, the
-  choices indented below them, like the event list of a device.
+  choices indented below them, like the event list of a device. `SelectedText` (optional) is what the closed box shows
+  when the choice's text is unclear outside its group (the event picker of the event rules: "Device status: Device
+  unreachable" chosen from "Device unreachable" under "Device status").
 - `ICheckChoice` / `CheckChoice` / `CheckChoiceList` with `ComboBox.multiSelect`: every select field with check boxes. The
   closed box names what is ticked through `PlaceholderText`, each entry a check box with an optional grey second line, a
   click keeps the list open; `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none (the NTP server's sites,

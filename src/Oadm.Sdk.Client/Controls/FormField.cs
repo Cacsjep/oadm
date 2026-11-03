@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -36,6 +37,9 @@ public sealed class FormField : Grid
 
     public static readonly StyledProperty<string?> InfoProperty =
         AvaloniaProperty.Register<FormField, string?>(nameof(Info));
+
+    public static readonly StyledProperty<IDataTemplate?> InfoPictureProperty =
+        AvaloniaProperty.Register<FormField, IDataTemplate?>(nameof(InfoPicture));
 
     public static readonly StyledProperty<Control?> InputProperty =
         AvaloniaProperty.Register<FormField, Control?>(nameof(Input));
@@ -150,6 +154,13 @@ public sealed class FormField : Grid
         set => SetValue(InfoProperty, value);
     }
 
+    /// <summary>Optional: a drawing below <see cref="Info"/> in its tooltip and flyout (<see cref="InfoIcon.PictureTemplate"/>).</summary>
+    public IDataTemplate? InfoPicture
+    {
+        get => GetValue(InfoPictureProperty);
+        set => SetValue(InfoPictureProperty, value);
+    }
+
     /// <summary>The input (XAML content).</summary>
     [Content]
     public Control? Input
@@ -232,6 +243,10 @@ public sealed class FormField : Grid
         else if (change.Property == InfoProperty)
         {
             _info.Text = Info;
+        }
+        else if (change.Property == InfoPictureProperty)
+        {
+            _info.PictureTemplate = InfoPicture;
         }
     }
 

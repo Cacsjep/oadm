@@ -210,7 +210,7 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
   | `ui:StatCard Title Value Detail IsOk IsWarning IsError` | monitoring count card (large count, detail line); set the status only while the count needs attention |
   | `DevicePickerWindow.ShowAsync(owner, devices, selected, unavailableReason)` | every "choose devices" dialog: search, Select all / none, count, unchoose; returns the chosen ids or null (Cancel); `unavailableReason` greys devices with the text |
   | `DevicePickerWindow.ShowChoiceAsync(owner, devices, initial, DevicePickerOptions.Full(eventDeviceText))` | the same picker with All devices, tags and (optional) the device of the event; returns a `DeviceChoice` (All, EventDevice, or Chosen with `DeviceIds` and `Tags`: a tag means every device with it) |
-  | `ui:FormField Info="..."` / `ui:InfoIcon Text="..."` | the explanation of a field as an info icon right of the input (hover and click), instead of a long hint |
+  | `ui:FormField Info="..."` / `ui:InfoIcon Text="..."` | the explanation of a field as an info icon right of the input (hover and click), instead of a long hint; `InfoPicture` / `PictureTemplate` (a `DataTemplate`) adds a drawing below the text |
   | `ui:WizardSteps ItemsSource="{Binding Steps}"` | the step row of a wizard (`WizardStepItem`: index, name, current step, can open, open) |
   | `ComboBox Classes="grouped"` + `GroupedChoice.Build(items, group, text)` | a select field with grey group headers and indented choices (bind `SelectedItem` to a `GroupedChoice`, its `Value` is the item) |
   | `ui:FileRow FileName Details Error Command` | a chosen local file with its "Choose file" button; sizes with `FileSizeText.Format` |

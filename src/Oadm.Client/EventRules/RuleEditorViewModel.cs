@@ -32,6 +32,7 @@ public sealed partial class ConditionViewModel : ObservableObject
         Kind = kind;
         IsTrigger = isTrigger;
         EventTypes = isTrigger ? owner.AllEventTypes : [.. owner.AllEventTypes.Where(t => t.Stateful)];
+        EventChoices = EventTypeOption.Choices(EventTypes);
         Selector = isTrigger
             ? new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full(null, owner.TagNames), DeviceChoice.AllDevices, initial?.Devices, owner.PickDevicesAsync)
             : new DeviceSelectorViewModel(owner.DeviceList, DevicePickerOptions.Full("The same device", owner.TagNames), DeviceChoice.EventDevice, initial?.Devices, owner.PickDevicesAsync);
@@ -68,6 +69,21 @@ public sealed partial class ConditionViewModel : ObservableObject
     public string Title => IsTrigger ? "When" : "And";
 
     public IReadOnlyList<EventTypeOption> EventTypes { get; }
+
+    /// <summary>The grouped picker of <see cref="EventTypes"/> (a header per group).</summary>
+    public IReadOnlyList<GroupedChoice> EventChoices { get; }
+
+    /// <summary>The picker's choice of <see cref="SelectedEventType"/>; both follow each other.</summary>
+    [ObservableProperty]
+    public partial GroupedChoice? SelectedEventChoice { get; set; }
+
+    partial void OnSelectedEventChoiceChanged(GroupedChoice? value)
+    {
+        if (value?.Value is EventTypeOption option && !ReferenceEquals(option, SelectedEventType))
+        {
+            SelectedEventType = option;
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowSelector), nameof(EventDescription))]
@@ -185,6 +201,7 @@ public sealed partial class ConditionViewModel : ObservableObject
 
     partial void OnSelectedEventTypeChanged(EventTypeOption? value)
     {
+        SelectedEventChoice = value is null ? null : EventChoices.FirstOrDefault(c => ReferenceEquals(c.Value, value));
         // A check keeps going while the new event has its value; the others go.
         CheckFields = CheckFieldOption.Of(value?.Entry);
         foreach (var check in Checks.ToList())
