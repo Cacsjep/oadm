@@ -115,9 +115,13 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool UseGpu { get; set; } = true;
 
-    public bool CanSetGpu => MayChange && GpuAvailable;
+    /// <summary>The setting is server-wide: the change right and all devices (the server refuses users with a device group).</summary>
+    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable;
 
-    public string? GpuBlockedReason => GpuAvailable ? null : OcrTexts.NoGpu;
+    public string? GpuBlockedReason =>
+        !GpuAvailable ? OcrTexts.NoGpu
+        : !_ctx.HasAllDevices ? DeviceGroupMessages.AllDevicesOnly
+        : null;
 
     public EngineInfo Engine { get; private set; } = new();
 
@@ -608,6 +612,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     {
         MayChange = _ctx.Has(ChangePermissionKey);
         OnPropertyChanged(nameof(CanSetGpu));
+        OnPropertyChanged(nameof(GpuBlockedReason));
         NewCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
     }

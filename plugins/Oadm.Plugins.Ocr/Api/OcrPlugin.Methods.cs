@@ -86,6 +86,11 @@ public sealed partial class OcrPlugin
 
             case OcrMethods.SetUseGpu:
             {
+                if (!caller.HasAllDevices)
+                {
+                    throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices); fail closed
+                }
+
                 var useGpu = OcrJson.Deserialize<UseGpuRequest>(payloadJson).UseGpu;
                 await ctx.Settings.SetAsync(UseGpuSetting, useGpu ? "true" : "false", ct).ConfigureAwait(false);
                 _useGpu = useGpu;

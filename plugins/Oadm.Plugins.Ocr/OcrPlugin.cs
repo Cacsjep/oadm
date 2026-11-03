@@ -126,6 +126,9 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         ? "counts the watching readers per site (a limit of the site node), shows no device data"
         : null;
 
+    /// <summary>"Use the graphics card" is server-wide: only users with all devices (the host refuses the others first).</summary>
+    public bool RequiresAllDevices(string method) => method is OcrMethods.SetUseGpu;
+
     public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu;
 
     /// <summary>The page reads only (Viewer on); changing readers and reading now are a right of their own.</summary>

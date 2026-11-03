@@ -132,6 +132,9 @@ internal sealed class FakePageContext : ICorePluginClientContext
 
     public bool ConfirmAnswer { get; set; } = true;
 
+    /// <summary>False: a user limited to a device group.</summary>
+    public bool HasAllDevices { get; set; } = true;
+
     public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
 
     public event EventHandler? PermissionsChanged;
