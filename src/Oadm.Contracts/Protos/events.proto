@@ -82,6 +82,7 @@ message EventTypeEntry {
   repeated EventFieldInfo fields = 7;
   bool available = 8;            // false: its plugin is off
   string source_name = 9;        // "Built in", "Image Health Dashboard"
+  repeated string path = 10;     // the folders of the event tree, top first (EventTypeInfo.Folders); empty from older servers: group
 }
 
 message ActionChoiceEntry {

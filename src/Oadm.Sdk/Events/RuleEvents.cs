@@ -104,6 +104,16 @@ public sealed record EventTypeInfo(
 
     /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
+
+    /// <summary>
+    /// Optional (SDK 0.10.0): the folders of the event in the event tree of the rule dialog, top first
+    /// (<c>["Certificates", "EST server"]</c>, <c>["Devices", "Any device"]</c>). Null or empty: one folder, <see cref="Group"/>.
+    /// A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there.
+    /// </summary>
+    public IReadOnlyList<string>? Path { get; init; }
+
+    /// <summary><see cref="Path"/>, else <see cref="Group"/> alone; never empty.</summary>
+    public IReadOnlyList<string> Folders => Path is { Count: > 0 } path ? path : [Group];
 }
 
 /// <summary>

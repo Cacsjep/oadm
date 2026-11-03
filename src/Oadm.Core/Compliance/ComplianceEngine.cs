@@ -1408,6 +1408,7 @@ public sealed partial class ComplianceEngine : IHostEventSource, IAsyncDisposabl
     private static EventTypeInfo EventTypeOf(ComplianceCheck check) =>
         new(EventTypeId(check.Id), "Compliance: " + check.Name, EventGroup, EventKind.Stateful)
         {
+            Path = ["Devices", EventGroup],
             Description = "On while the check fails on the device.",
             OwnerScopeKey = check.Owner.ScopeKey, // the check's owning group: Dashboards shows it only to that group's users
         };

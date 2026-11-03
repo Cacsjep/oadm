@@ -49,6 +49,24 @@ public sealed partial class FakeOadmApi
             catalog.EventTypes.Add(new EventTypeEntry
             {
                 Id = id, DisplayName = name, Group = group, Stateful = true, DeviceScope = true, Description = description, Available = true, SourceName = source,
+                Path = { FakeEventPath(group) },
+            });
+        }
+
+        // The "Any device" twins, the EST and 802.1X servers and a site: every top folder of the event tree.
+        foreach (var (id, name, group, source, description, stateful, deviceScope) in new[]
+        {
+            ("oadm.any.unreachable", "Any device: unreachable", "Any device", "Built in", "At least one device does not answer.", true, false),
+            ("oadm.any.clock-off", "Any device: clock off", "Any device", "Built in", "The clock of at least one device differs from the server's or is not synced.", true, false),
+            ("oadm.est.enrolled", "Certificate enrolled", "EST server", "PKI", "A camera got a certificate from the EST server.", false, true),
+            ("oadm.radius.authenticated", "Device authenticated", "802.1X server", "PKI", "A device passed the 802.1X server.", false, true),
+            ("oadm.site.offline.yard", "Site offline: Yard", "Sites", "Built in", "The site node of the site does not answer.", true, false),
+        })
+        {
+            catalog.EventTypes.Add(new EventTypeEntry
+            {
+                Id = id, DisplayName = name, Group = group, Stateful = stateful, DeviceScope = deviceScope, Description = description, Available = true,
+                SourceName = source, Path = { FakeEventPath(group) },
             });
         }
 
@@ -71,7 +89,7 @@ public sealed partial class FakeOadmApi
         var temperature = new EventTypeEntry
         {
             Id = FakeTemperatureTrigger, DisplayName = "Housing temperature", Group = "Device triggers", Stateful = true, DeviceScope = true, Available = true,
-            SourceName = "Device triggers", Description = "Device › Temperature sensor › Temperature.\n\nValues:\n• {sensor}\n• {temperature}\n• {heater}",
+            SourceName = "Device triggers", Path = { FakeEventPath("Device triggers") }, Description = "Device › Temperature sensor › Temperature.\n\nValues:\n• {sensor}\n• {temperature}\n• {heater}",
         };
         temperature.Fields.Add(new EventFieldInfo { Name = "sensor", DisplayName = "Sensor", Kind = EventFieldKind.EventFieldText });
         temperature.Fields.Add(new EventFieldInfo { Name = "temperature", DisplayName = "Temperature", Kind = EventFieldKind.EventFieldNumber });
@@ -611,4 +629,15 @@ public sealed partial class FakeOadmApi
         };
         return tags is not null && devices is not null ? $"{tags} and {devices}" : tags ?? devices ?? "no devices";
     }
+
+    /// <summary>The event tree folders of a fake event by its group, as the server's sources declare them.</summary>
+    private static string[] FakeEventPath(string group) => group switch
+    {
+        "Device status" => ["Devices", "Selected devices"],
+        "Any device" => ["Devices", "Any device"],
+        "Device triggers" => ["Devices", "Device triggers"],
+        "Certificates" => ["Certificates", "Selected devices"],
+        "EST server" or "802.1X server" => ["Certificates", group],
+        _ => [group],
+    };
 }

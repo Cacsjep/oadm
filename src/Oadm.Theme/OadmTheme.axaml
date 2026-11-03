@@ -1008,50 +1008,79 @@
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
 
-  <!-- Illustration (Viewbox.illustration around a Canvas.illustration drawn on 240 x 240): centred above a card,
-       e.g. the Rule step of the event rule dialog. Classes: gear (accent outline on soft accent), hub (a circle like an
-       input), loop and loopArrow (the dashed ring and its arrowheads), ui:OadmIcon in the accent, .action in teal. -->
-  <Style Selector="Viewbox.illustration">
-    <Setter Property="HorizontalAlignment" Value="Center" />
-    <Setter Property="Width" Value="180" />
-    <Setter Property="Height" Value="180" />
-  </Style>
-  <Style Selector="Canvas.illustration">
-    <Setter Property="Width" Value="240" />
-    <Setter Property="Height" Value="240" />
-  </Style>
-  <Style Selector="Canvas.illustration > Path.gear">
-    <Setter Property="Fill" Value="{StaticResource Oadm.StatusAccentBackgroundBrush}" />
-    <Setter Property="Stroke" Value="{StaticResource Oadm.AccentBrush}" />
-    <Setter Property="StrokeThickness" Value="1.5" />
-    <Setter Property="StrokeJoin" Value="Round" />
-  </Style>
-  <Style Selector="Canvas.illustration > Ellipse.hub">
-    <Setter Property="Fill" Value="{StaticResource Oadm.InputBackgroundBrush}" />
-    <Setter Property="Stroke" Value="{StaticResource Oadm.InputBorderBrush}" />
-    <Setter Property="StrokeThickness" Value="1.5" />
-  </Style>
-  <Style Selector="Canvas.illustration > Ellipse.loop">
-    <Setter Property="Stroke" Value="{StaticResource Oadm.AccentBrush}" />
-    <Setter Property="StrokeThickness" Value="2" />
-    <Setter Property="StrokeDashArray" Value="1.5,3.5" />
-    <Setter Property="StrokeLineCap" Value="Round" />
-    <Setter Property="Opacity" Value="0.55" />
-  </Style>
-  <Style Selector="Canvas.illustration > Path.loopArrow">
-    <Setter Property="Fill" Value="{StaticResource Oadm.AccentBrush}" />
-    <Setter Property="Opacity" Value="0.8" />
-  </Style>
-  <Style Selector="Canvas.illustration > ui|OadmIcon">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
-  </Style>
-  <Style Selector="Canvas.illustration > ui|OadmIcon.action">
-    <Setter Property="Foreground" Value="{StaticResource Oadm.TealBrush}" />
-  </Style>
-
   <!-- A tooltip with a drawing below its text (ui:InfoIcon.PictureTemplate, e.g. the pulse diagrams of the rule limits) -->
   <Style Selector="ToolTip.wide">
     <Setter Property="MaxWidth" Value="480" />
+  </Style>
+
+  <!-- Tree select field (the event select of the event rules, Oadm.Client EventPicker): a button that looks like a
+       ComboBox (Button.treeSelect, .open while its panel is open), the folders of the choice grey before its name; the panel
+       below it (Border.treePopup) with the search, the tree (ListBox.eventTree, rows like the device tree) and a footer
+       with the description of the event under the pointer (Border.treePopupFooter). -->
+  <Style Selector="Button.treeSelect">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+    <Setter Property="Padding" Value="11,0,10,0" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.treeSelect:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.treeSelect:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
+  </Style>
+  <Style Selector="Button.treeSelect.open /template/ ContentPresenter#PART_ContentPresenter, Button.treeSelect:focus-visible /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+  </Style>
+  <Style Selector="Button.treeSelect ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="TextBlock.treeSelectPath, TextBlock.treeSelectName.placeholder">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <Style Selector="Border.treePopup">
+    <Setter Property="Background" Value="{StaticResource Oadm.MenuBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.InputBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Margin" Value="0,4,0,0" />
+    <Setter Property="Padding" Value="8,8,8,0" />
+  </Style>
+  <Style Selector="Border.treePopup ui|SearchBox">
+    <Setter Property="Margin" Value="0,0,0,6" />
+  </Style>
+  <Style Selector="Border.treePopup > DockPanel > TextBlock">
+    <Setter Property="Margin" Value="8,6" />
+  </Style>
+  <Style Selector="ListBox.eventTree">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="MaxHeight" Value="340" />
+  </Style>
+  <!-- The folders of the event tree: the text colour, semibold (grey would read as turned off) -->
+  <Style Selector="TextBlock.eventTreeFolder">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="ListBox.eventTree ListBoxItem">
+    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="Border.treePopupFooter">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Margin" Value="-8,4,-8,0" />
+    <Setter Property="Padding" Value="16,8" />
   </Style>
 
   <!-- Grouped select field (ComboBox.grouped with ui:GroupedChoice items): grey group headers that cannot be chosen,
@@ -1066,7 +1095,7 @@
     </Setter>
     <Setter Property="SelectionBoxItemTemplate">
       <DataTemplate x:DataType="ui:GroupedChoice">
-        <TextBlock Text="{Binding SelectionText}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
       </DataTemplate>
     </Setter>
   </Style>
@@ -2117,7 +2146,7 @@
   <Style Selector="ui|SearchBox">
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
-  <!-- A search box filling a narrow side card (VAPIX Commander library and targets) -->
+  <!-- A search box filling a narrow side card or a panel (VAPIX Commander library and targets, the event tree select) -->
   <Style Selector="ui|SearchBox.stretch">
     <Setter Property="Width" Value="NaN" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />

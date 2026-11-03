@@ -30,6 +30,12 @@ public static class BuiltInEvents
     /// <summary>The group of the "Any device" events: one state for the server, on while any device has the condition.</summary>
     public const string AnyGroup = "Any device";
 
+    /// <summary>The event tree folders of the status events of one device and of their "Any device" twins.</summary>
+    public static readonly IReadOnlyList<string> SinglePath = ["Devices", "Selected devices"];
+
+    /// <inheritdoc cref="SinglePath"/>
+    public static readonly IReadOnlyList<string> AnyPath = ["Devices", AnyGroup];
+
     public const string AnyUnreachable = "oadm.device.any-unreachable";
     public const string AnyCredentialsRequired = "oadm.device.any-credentials-required";
     public const string AnyCertificateChanged = "oadm.device.any-certificate-changed";
@@ -59,9 +65,9 @@ public static class BuiltInEvents
 
     public static readonly IReadOnlyList<EventTypeInfo> Types =
     [
-        new(Unreachable, "Device unreachable", Group, EventKind.Stateful) { Description = "The device does not answer." },
-        new(CredentialsRequired, "Credentials required", Group, EventKind.Stateful) { Description = "The device rejects the stored login." },
-        new(CertificateChanged, "Certificate changed", Group, EventKind.Stateful) { Description = "The device presents another HTTPS certificate." },
+        new(Unreachable, "Device unreachable", Group, EventKind.Stateful) { Path = SinglePath, Description = "The device does not answer." },
+        new(CredentialsRequired, "Credentials required", Group, EventKind.Stateful) { Path = SinglePath, Description = "The device rejects the stored login." },
+        new(CertificateChanged, "Certificate changed", Group, EventKind.Stateful) { Path = SinglePath, Description = "The device presents another HTTPS certificate." },
         Any(AnyUnreachable, "Any device: unreachable", "At least one device does not answer."),
         Any(AnyCredentialsRequired, "Any device: credentials required", "At least one device rejects the stored login."),
         Any(AnyCertificateChanged, "Any device: certificate changed", "At least one device presents another HTTPS certificate."),
@@ -71,6 +77,7 @@ public static class BuiltInEvents
     private static EventTypeInfo Any(string id, string name, string description) =>
         new(id, name, AnyGroup, EventKind.Stateful, EventScope.Server, [new EventField(CountField, "Devices") { Kind = EventValueKind.Number, Filter = false }])
         {
+            Path = AnyPath,
             Description = description + "\n\nValues:\n• {" + CountField + "}",
         };
 }

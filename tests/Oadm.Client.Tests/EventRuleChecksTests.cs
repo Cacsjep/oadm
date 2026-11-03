@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.LogicalTree;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -296,7 +297,7 @@ public sealed class EventRuleChecksTests : IDisposable
     private static RuleDetail Detail(string json) => new() { DefinitionJson = json, Summary = new RuleSummary { Name = "Rule" } };
 
     [Fact]
-    public Task The_rule_step_shows_the_flow_and_the_event_picker_is_grouped() => _ui.RunAsync(async () =>
+    public Task The_rule_step_and_the_event_tree_picker_render() => _ui.RunAsync(async () =>
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
@@ -310,7 +311,6 @@ public sealed class EventRuleChecksTests : IDisposable
             Pump();
             // The pulse diagrams of the limits sit in the info icons' tooltips, not on the page.
             Assert.DoesNotContain(dialog.GetVisualDescendants().OfType<LimitDiagram>(), d => d.IsEffectivelyVisible);
-            Assert.Single(dialog.GetVisualDescendants().OfType<Canvas>(), c => c.IsEffectivelyVisible && c.Classes.Contains("illustration"));
             Capture(dialog, outDir, "event-rules-rule-step.png");
             InfoIcon Icon(string label) => dialog.GetVisualDescendants().OfType<FormField>().Single(f => f.Label == label).GetVisualDescendants().OfType<InfoIcon>().Single();
             LimitDiagram Open(string label, string shot)
@@ -340,30 +340,41 @@ public sealed class EventRuleChecksTests : IDisposable
             Assert.Single(Assert.IsType<StackPanel>(((Flyout)Icon("Dead time (s)").Flyout!).Content).Children.OfType<ContentControl>());
 
             editor.NextCommand.Execute(null);
+            Pump();
             var trigger = editor.Conditions[0];
-            Assert.All(trigger.EventChoices.Where(c => c.IsHeader), c => Assert.False(c.IsSelectable));
-            // A group header per group, each event below its group once.
-            var groups = trigger.EventTypes.Select(t => t.Entry.Group).Distinct().ToList();
-            Assert.Equal(groups, trigger.EventChoices.Where(c => c.IsHeader).Select(c => c.Text));
-            Assert.Equal(trigger.EventTypes.Count, trigger.EventChoices.Count(c => !c.IsHeader));
-            Assert.DoesNotContain(trigger.EventChoices, c => !c.IsHeader && c.Text.StartsWith(((EventTypeOption)c.Value!).Entry.Group + ": ", StringComparison.Ordinal));
-
-            // Choosing in the picker sets the event; the closed picker names the group too.
-            var choice = trigger.EventChoices.First(c => c.Value is EventTypeOption o && o.Id == FakeOadmApi.FakeTemperatureTrigger);
-            trigger.SelectedEventChoice = choice;
-            Assert.Equal(FakeOadmApi.FakeTemperatureTrigger, trigger.SelectedEventType?.Id);
-            Assert.Equal(((EventTypeOption)choice.Value!).Text, choice.SelectionText);
-            trigger.SelectedEventType = trigger.EventTypes.First(t => t.Id != FakeOadmApi.FakeTemperatureTrigger);
-            Assert.Same(trigger.SelectedEventType, trigger.SelectedEventChoice?.Value);
-            trigger.SelectedEventChoice = null;
-            trigger.SelectedEventType = null;
+            // The event picker: closed it names the folders of the choice; open, a tree with a search.
+            var picker = dialog.GetVisualDescendants().OfType<EventPicker>().First(p => p.IsEffectivelyVisible);
+            Assert.Contains("Choose an event", Texts(dialog));
+            picker.SetOpen(true);
             Pump();
-
-            var picker = dialog.GetVisualDescendants().OfType<ComboBox>().First(c => c.IsEffectivelyVisible && c.PlaceholderText == "Choose an event");
-            picker.IsDropDownOpen = true;
-            Pump();
+            Assert.True(picker.IsOpen);
+            Assert.Equal(["Devices", "Selected devices", "Any device", "Device triggers", "Certificates", "Selected devices", "802.1X server", "EST server", "Sites"],
+                trigger.Tree.Rows.OfType<EventTreeFolder>().Select(f => f.Text)); // the top folders start open
             Capture(dialog, outDir, "event-rules-event-picker.png");
-            picker.IsDropDownOpen = false;
+            trigger.Tree.Toggle(trigger.Tree.Rows.OfType<EventTreeFolder>().First(f => f.Text == "Selected devices"));
+            Pump();
+            Capture(dialog, outDir, "event-rules-event-picker-open-folder.png");
+            var search = picker.GetLogicalDescendants().OfType<SearchBox>().Single(); // in the popup: a logical, not a visual child
+            search.Text = "unreach";
+            Pump();
+            Assert.Equal(["Device unreachable", "Unreachable"], trigger.Tree.Rows.OfType<EventTreeEvent>().Select(r => r.Text));
+            Capture(dialog, outDir, "event-rules-event-picker-search.png");
+            search.Text = "nothing like this";
+            Pump();
+            Assert.True(trigger.Tree.IsEmpty);
+            Assert.Contains("No event matches the search.", Texts(dialog));
+            search.Text = string.Empty;
+            picker.SetOpen(false);
+            Pump();
+
+            // Choosing sets the event of the condition; the closed picker shows its folders and name.
+            picker.Selected = trigger.EventTypes.Single(t => t.Id == FakeOadmApi.FakeTemperatureTrigger);
+            Pump();
+            Assert.Equal(FakeOadmApi.FakeTemperatureTrigger, trigger.SelectedEventType?.Id);
+            Assert.Contains("Devices › Device triggers › ", Texts(dialog));
+            Assert.Contains("Housing temperature", Texts(dialog));
+            Capture(dialog, outDir, "event-rules-event-picker-chosen.png");
+            trigger.SelectedEventType = null;
             Pump();
 
             // An "And" event and a schedule: each has its remove icon (the trigger has none).

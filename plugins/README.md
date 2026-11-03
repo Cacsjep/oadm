@@ -792,6 +792,10 @@ filter on.
 - **Stateless**: `Fire(typeId, deviceId, data)`.
 - **Values**: the `data` of `SetState` / `Fire` are the event's values; actions can use each one as a placeholder
   (`{port}`), and a rule condition can filter on declared data fields.
+- **Folders** (`EventTypeInfo.Path`, SDK 0.10.0): the event's place in the event tree of the rule dialog, top first, e.g.
+  `["Devices", "Device triggers"]` or `["Certificates", "EST server"]`; without it the event sits in a top folder named
+  by its group. Use an existing area (Devices with Selected devices, Any device; Certificates; Sites) where the event fits.
+  A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there.
 - **Devices** (`EventTypeInfo.DeviceIds`): the devices that can send the event now (null = any device); raise
   `EventTypesChanged` when they change. Dashboards offers only these devices for a widget.
 - **Data fields** (`EventField`): name, label, `Kind` (`EventValueKind` Text, Number, YesNo: what the value holds, so a

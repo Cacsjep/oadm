@@ -50,6 +50,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             new EventField("kind", "New or renewal", EventFieldType.Choice, ["New", "Renewal"]),
         ])
         {
+            Path = ["Certificates", "EST server"],
             Description = "A camera got a certificate from the EST server.",
         },
         new(EstPluginInfo.RefusedEvent, "Enrollment refused", EstPluginInfo.DisplayName, EventKind.Stateless, EventScope.Device,
@@ -58,6 +59,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             new EventField("reason", "Reason") { Filter = false },
         ])
         {
+            Path = ["Certificates", "EST server"],
             Description = "The EST server refused a camera OADM manages.",
         },
         new(EstPluginInfo.NotRenewedEvent, "Certificate not renewed", EstPluginInfo.DisplayName, EventKind.Stateless, EventScope.Device,
@@ -66,6 +68,7 @@ public sealed class EstPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             new EventField("validUntil", "Valid until") { Filter = false },
         ])
         {
+            Path = ["Certificates", "EST server"],
             Description = "A camera did not renew a certificate from the EST server in time.",
         },
     ];

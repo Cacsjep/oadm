@@ -27,7 +27,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
   them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
-- **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields) and
+- **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields, the folders
+  of the event tree `Path`) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
   `ICorePluginContext.EventSubscriptions` (`IEventSubscriptions.Subscribe(handler)`, `Core.Events.EventSubscription`):
   every event the engine handles (plugins' and built-in) reaches each subscription as `PublishedEvent` (On / Off / Fired,
@@ -130,9 +131,15 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   device of the event", All devices, or chosen devices and tags together; the event's and the action's description sit in an info icon right of their
   select; the When / And / Then rows are outlined (`Border.ruleItem`, no fill). Server: `DeviceSelectorMode.Devices` (and the older `Tags`) = the listed devices
   plus every device with one of the tags (`DeviceSelector.ChoiceMatches`, `IsEmptyChoice`: "choose at least one device
-  or tag"). The Rule step has the gear illustration centred above its card (two columns: General with Name and Enabled "Turned on" left, Limits right) (`Viewbox.illustration`: a gear in a loop past the event, the conditions and the action). The event picker is a grouped select (`ComboBox.grouped`): a header per group (Device status first), the
-  events below it without the group they start with ("Any device: unreachable" is "Unreachable" under Any device), the
-  closed box the full "Group: Event". The limits are **Dead time (s)** and **Max per minute** with their explanation in
+  or tag"). The Rule step is one card in two columns: General with Name and Enabled "Turned on" left, Limits right. The event picker (`EventPicker`, `EventTree`) looks like a select and opens a panel below it: a search
+  box, the events as a tree in one virtualized list and the description of the event under the pointer. The folders come
+  from the sources (`EventTypeInfo.Path`, else the group): Devices (Selected devices, Any device, Compliance, Device
+  triggers), Certificates (Selected devices, Any device, 802.1X server, EST server), Sites, then any other area; Devices
+  first, in an area Selected devices and Any device first, else by name; the top folders start open, the chosen event's
+  folders open when the panel opens. An event shows without the folder it starts with ("Any device: unreachable" is
+  "Unreachable" in Any device); the closed picker shows the folders grey before the name. The search keeps the events
+  whose name or folders contain the text, their folders open ("No event matches the search."); Enter takes the only
+  match, Escape closes. No counts on the folders. The limits are **Dead time (s)** and **Max per minute** with their explanation in
   an info icon (`FormField.Info`), its tooltip and flyout with a pulse diagram below the text (`FormField.InfoPicture`, `LimitDiagram`, like a logic analyzer: Event on
   top, Actions below, the dead time as a shaded zone with the ignored pulses as ghosts, the minute shortened to runs 1,
   2, 3 and the last, the rest skipped; it follows the typed value); errors below their field; a server refusal below the overview. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,

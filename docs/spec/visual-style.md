@@ -285,9 +285,7 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   accent, done with a check, a step opens when every step before it is complete; theme `Button.wizardStep`,
   `Border.wizardDot`, `TextBlock.wizardLabel`, `Border.wizardLine`.
 - `GroupedChoice` with `ComboBox.grouped`: every grouped select field. Grey group headers that cannot be chosen, the
-  choices indented below them, like the event list of a device. `SelectedText` (optional) is what the closed box shows
-  when the choice's text is unclear outside its group (the event picker of the event rules: "Device status: Device
-  unreachable" chosen from "Device unreachable" under "Device status").
+  choices indented below them, like the event list of a device.
 - `ICheckChoice` / `CheckChoice` / `CheckChoiceList` with `ComboBox.multiSelect`: every select field with check boxes. The
   closed box names what is ticked through `PlaceholderText`, each entry a check box with an optional grey second line, a
   click keeps the list open; `CheckChoiceList` = "All ..." or chosen items, nothing ticked = none (the NTP server's sites,

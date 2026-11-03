@@ -14,6 +14,9 @@ public static class DeviceTriggersPluginInfo
     /// <summary>Group of the trigger events in the rule dialog.</summary>
     public const string EventGroup = "Device triggers";
 
+    /// <summary>The event tree folders of the triggers: Devices, Device triggers.</summary>
+    public static readonly IReadOnlyList<string> EventPath = ["Devices", EventGroup];
+
     /// <summary>The device's event stream over WebSocket; only devices that list it can be chosen.</summary>
     public const string ApiId = "event-streaming-over-websocket";
 

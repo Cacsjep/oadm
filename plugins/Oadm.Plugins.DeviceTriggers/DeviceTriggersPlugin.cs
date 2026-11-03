@@ -350,6 +350,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             Description = what + "." + values,
             DeviceIds = devices,
             OwnerScopeKey = OwnerScope.Of(trigger.Owner),
+            Path = DeviceTriggersPluginInfo.EventPath,
         };
         yield return new EventTypeInfo(
             DeviceTriggersPluginInfo.LostTypeId(trigger.Id),
@@ -361,6 +362,7 @@ public sealed partial class DeviceTriggersPlugin : ICorePlugin, IDynamicEventSou
             Description = $"No events of this trigger from the device for {DeviceTriggersPluginInfo.LostDelay.TotalSeconds:0} s.\n\nValues:\n• {{reason}}",
             DeviceIds = devices,
             OwnerScopeKey = OwnerScope.Of(trigger.Owner),
+            Path = DeviceTriggersPluginInfo.EventPath,
         };
     }
 

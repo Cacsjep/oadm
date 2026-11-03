@@ -20,6 +20,12 @@ public sealed partial class ExpiryEvents : IAsyncDisposable
     /// <summary>The event group of PKI's events.</summary>
     public const string Group = "Certificates";
 
+    /// <summary>The event tree folders of the expiry events of one device and of their "Any device" twins.</summary>
+    public static readonly IReadOnlyList<string> SinglePath = [Group, "Selected devices"];
+
+    /// <inheritdoc cref="SinglePath"/>
+    public static readonly IReadOnlyList<string> AnyPath = [Group, "Any device"];
+
     /// <summary>The ids of OADM 4.1's built-in events (kept).</summary>
     public const string ExpiresSoon = "oadm.device.certificate-expires-soon";
     public const string Expired = "oadm.device.certificate-expired";
@@ -55,8 +61,8 @@ public sealed partial class ExpiryEvents : IAsyncDisposable
     /// <summary>The event types (PKI's <c>IEventSource.EventTypes</c>).</summary>
     public static IReadOnlyList<EventTypeInfo> Types { get; } =
     [
-        new(ExpiresSoon, "Certificate expires soon", Group, EventKind.Stateful) { Description = "Within the days of its Expiry warning policy." },
-        new(Expired, "Certificate expired", Group, EventKind.Stateful),
+        new(ExpiresSoon, "Certificate expires soon", Group, EventKind.Stateful) { Path = SinglePath, Description = "Within the days of its Expiry warning policy." },
+        new(Expired, "Certificate expired", Group, EventKind.Stateful) { Path = SinglePath },
         Any(AnyExpiresSoon, "Any device: certificate expires soon", "At least one device certificate is within the days of its Expiry warning policy."),
         Any(AnyExpired, "Any device: certificate expired", "At least one device certificate expired."),
     ];
@@ -178,6 +184,7 @@ public sealed partial class ExpiryEvents : IAsyncDisposable
     private static EventTypeInfo Any(string id, string name, string description) =>
         new(id, name, Group, EventKind.Stateful, EventScope.Server, [new EventField(CountField, "Devices") { Kind = EventValueKind.Number, Filter = false }])
         {
+            Path = AnyPath,
             Description = description + "\n\nValues:\n• {" + CountField + "}",
         };
 

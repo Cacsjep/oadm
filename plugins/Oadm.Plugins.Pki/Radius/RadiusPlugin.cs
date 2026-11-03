@@ -68,6 +68,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             new EventField("vlan", "VLAN", EventFieldType.Number) { Kind = EventValueKind.Number },
         ])
         {
+            Path = ["Certificates", "802.1X server"],
             Description = "A device passed the 802.1X server.",
         },
         new(RadiusService.FailedEvent, "Authentication failed", "802.1X server", EventKind.Stateless, EventScope.Device,
@@ -77,6 +78,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
             new EventField("reason", "Reason") { Filter = false },
         ])
         {
+            Path = ["Certificates", "802.1X server"],
             Description = "The 802.1X server refused a device or a device did not finish.",
         },
     ];
