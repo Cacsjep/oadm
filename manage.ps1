@@ -166,8 +166,8 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
             if ($script:Target -cnotin 'all', 'server', 'client') { Exit-Usage publish "unknown target '$($script:Target)' for publish" }
         }
         'package' {
-            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux, macos, site-node or nuget)' }
-            if ($script:Target -cnotin 'windows', 'linux', 'macos', 'site-node', 'nuget') { Exit-Usage package "unknown target '$($script:Target)' for package" }
+            if (-not $script:Target) { Exit-Usage package 'missing target for package (windows, linux, macos, site-node, addons or nuget)' }
+            if ($script:Target -cnotin 'windows', 'linux', 'macos', 'site-node', 'addons', 'nuget') { Exit-Usage package "unknown target '$($script:Target)' for package" }
         }
         'new' {
             if (-not $script:Target) { Exit-Usage new 'missing target for new (task, page or action)' }
@@ -323,12 +323,18 @@ function Get-PluginId([System.IO.FileInfo]$Project) {
     return $Project.Directory.Name
 }
 
-# Publishes every plugin project (server and client part) into artifacts/publish/plugins/<id>/. Plugins are RID
-# independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
+# Whether a plugin project is an add-on (<OadmAddOn>true</OadmAddOn>, docs/spec/add-ons.md): never published next to
+# the exes, so never in the installers or the portable ZIPs; "manage package addons" builds its own ZIPs.
+function Test-AddOn([System.IO.FileInfo]$Project) {
+    return (Get-Content -LiteralPath $Project.FullName -Raw) -match '<OadmAddOn>\s*true\s*</OadmAddOn>'
+}
+
+# Publishes every plugin project except the add-ons (server and client part) into artifacts/publish/plugins/<id>/.
+# Plugins are RID independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
 $PluginStage = Join-Path $RepoRoot 'artifacts/publish/plugins'
 function Publish-Plugins {
     if (Test-Path -LiteralPath $PluginStage) { Remove-Item -LiteralPath $PluginStage -Recurse -Force }
-    foreach ($p in @(Get-PluginProjects)) {
+    foreach ($p in @(Get-PluginProjects | Where-Object { -not (Test-AddOn $_) })) {
         Invoke-Dotnet @('publish', $p.FullName, '-c', 'Release', '-p:OadmSkipPluginDeploy=true', "-p:Version=$(Get-Version)",
             '-o', (Join-Path $PluginStage (Get-PluginId $p)))
     }
@@ -581,8 +587,88 @@ function Invoke-PackageSiteNode {
     Write-Host "site node packages written to $out"
 }
 
+# The platforms of the add-on ZIPs, the same as AddOnCatalog.RuntimeIds (src/Oadm.Core/Plugins/AddOns/AddOnCatalog.cs;
+# a test keeps them equal).
+$AddOnRids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64')
+
+# Keeps only the runtimes/ subfolders a server on $Rid loads (the RID, its OS, unix outside Windows). A RID-specific
+# publish puts the native libraries next to the dlls; this catches packages that keep folders of other platforms.
+function Limit-RuntimeFolders([string]$Folder, [string]$Rid) {
+    $runtimes = Join-Path $Folder 'runtimes'
+    if (-not (Test-Path -LiteralPath $runtimes)) { return }
+    $os = $Rid.Split('-')[0]
+    $keep = @($Rid, $os)
+    if ($os -ne 'win') { $keep += 'unix' }
+    foreach ($d in @(Get-ChildItem -LiteralPath $runtimes -Directory)) {
+        if ($keep -cnotcontains $d.Name) { Remove-Item -LiteralPath $d.FullName -Recurse -Force }
+    }
+    if (@(Get-ChildItem -LiteralPath $runtimes -Force).Count -eq 0) { Remove-Item -LiteralPath $runtimes -Force }
+}
+
+# The checks of docs/spec/add-ons.md "Release files" on a published add-on folder: plugin.json with the id, the server
+# part, the client part when the add-on has one, no native library of another platform.
+function Test-AddOnFolder([string]$Folder, [string]$Id, [string]$Rid, [bool]$HasClient) {
+    $manifest = Join-Path $Folder 'plugin.json'
+    if (-not (Test-Path -LiteralPath $manifest)) { Exit-Environment "add-on ${Id}: plugin.json missing" }
+    if ((Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).id -cne $Id) { Exit-Environment "add-on ${Id}: plugin.json has another id" }
+    if (@(Get-ChildItem -LiteralPath $Folder -Filter '*.Server.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Server.dll" }
+    if ($HasClient -and @(Get-ChildItem -LiteralPath $Folder -Filter '*.Client.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Client.dll" }
+    $foreign = switch ($Rid.Split('-')[0]) { 'win' { '\.(so|dylib)$|\.so\.' } 'linux' { '\.dylib$' } 'osx' { '\.so$|\.so\.' } }
+    $bad = @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object { $_.Name -match $foreign })
+    if ($bad.Count -gt 0) { Exit-Environment "add-on $Id ${Rid}: native libraries of another platform: $(($bad | ForEach-Object Name) -join ', ')" }
+}
+
+# A ZIP of the folder's content (no top folder), entry names with "/" also on Windows PowerShell 5.1.
+function New-ZipFromFolder([string]$Folder, [string]$Zip) {
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $Zip) { Remove-Item -LiteralPath $Zip -Force }
+    $root = (Resolve-Path -LiteralPath $Folder).ProviderPath.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $archive = [IO.Compression.ZipFile]::Open($Zip, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($f in @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Sort-Object FullName)) {
+            $name = $f.FullName.Substring($root.Length).Replace('\', '/')
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f.FullName, $name, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
+# The add-on ZIPs (docs/spec/add-ons.md "Release files"): every add-on (server and client part together) published for
+# each platform (--rid one of them, default all four) with the native libraries of that platform only, into
+# artifacts/publish/addons/<rid>/<id>/ and as oadm-addon-<id>-<version>-<rid>.zip (AddOnCatalog.ReleaseFileName) into
+# artifacts/packages.
+function Invoke-PackageAddOns {
+    Initialize-Dotnet
+    if ($script:OptRid -and $AddOnRids -cnotcontains $script:OptRid) { Exit-Usage package "--rid for package addons is $($AddOnRids -join ', ')" }
+    $rids = if ($script:OptRid) { @($script:OptRid) } else { $AddOnRids }
+    $version = Get-Version
+    $projects = @(Get-PluginProjects | Where-Object { Test-AddOn $_ })
+    if ($projects.Count -eq 0) { Write-Warning 'no add-on plugin projects (<OadmAddOn>true</OadmAddOn>)'; return }
+    $ids = @($projects | ForEach-Object { Get-PluginId $_ } | Sort-Object -Unique)
+    $out = Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/packages')
+    foreach ($rid in $rids) {
+        foreach ($id in $ids) {
+            $parts = @($projects | Where-Object { (Get-PluginId $_) -ceq $id })
+            $stage = Join-Path $RepoRoot "artifacts/publish/addons/$rid/$id"
+            if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+            foreach ($p in $parts) {
+                Invoke-Dotnet (@('publish', $p.FullName, '-c', 'Release', '-r', $rid, '--self-contained', 'false',
+                        '-p:OadmSkipPluginDeploy=true', "-p:Version=$version", '-o', $stage) + $script:Extra)
+            }
+            Limit-RuntimeFolders $stage $rid
+            $hasClient = @($parts | Where-Object { $_.BaseName -like '*.Client' }).Count -gt 0
+            Test-AddOnFolder $stage $id $rid $hasClient
+            $zip = Join-Path $out "oadm-addon-$id-$version-$rid.zip"
+            New-ZipFromFolder $stage $zip
+            Write-Host ('add-on {0} {1}: {2} ({3:N0} KB)' -f $id, $rid, $zip, ((Get-Item -LiteralPath $zip).Length / 1KB))
+        }
+    }
+}
+
 function Invoke-Package {
     if ($script:Target -eq 'nuget') { Invoke-PackageNuget; return }
+    if ($script:Target -eq 'addons') { Invoke-PackageAddOns; return }
     if ($script:Target -eq 'site-node') { Invoke-PackageSiteNode; return }
     $prefix = @{ windows = 'win'; linux = 'linux'; macos = 'osx' }[$script:Target]
     $arch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' }

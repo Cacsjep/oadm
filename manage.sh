@@ -154,8 +154,8 @@ parse_args() {
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
     test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
-    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node or nuget)"
-             case "$TARGET" in windows|linux|macos|site-node|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
+    package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node, addons or nuget)"
+             case "$TARGET" in windows|linux|macos|site-node|addons|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
     new)     [ -n "$TARGET" ] || usage_error new "missing target for new (task, page or action)"
              case "$TARGET" in task|page|action) ;; *) usage_error new "unknown target '$TARGET' for new" ;; esac ;;
     clean|info)
@@ -306,14 +306,21 @@ plugin_id() {
   echo "${id:-$(basename "$(dirname "$1")")}"
 }
 
-# Publishes every plugin project (server and client part) into artifacts/publish/plugins/<id>/. Plugins are RID
-# independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
+# Whether a plugin project is an add-on (<OadmAddOn>true</OadmAddOn>, docs/spec/add-ons.md): never published next to
+# the exes, so never in the installers or the portable ZIPs; "manage package addons" builds its own ZIPs.
+is_addon() {
+  grep -Eq '<OadmAddOn>[[:space:]]*true[[:space:]]*</OadmAddOn>' "$1"
+}
+
+# Publishes every plugin project except the add-ons (server and client part) into artifacts/publish/plugins/<id>/.
+# Plugins are RID independent; both apps get the whole folder, each loader picks its own *.Server.dll or *.Client.dll.
 PLUGIN_STAGE="$REPO_ROOT/artifacts/publish/plugins"
 publish_plugins() {
   local p
   rm -rf "$PLUGIN_STAGE"
   mkdir -p "$PLUGIN_STAGE"
   while IFS= read -r p; do
+    if is_addon "$p"; then continue; fi
     "$DOTNET" publish "$p" -c Release -p:OadmSkipPluginDeploy=true "-p:Version=$(app_version)" -o "$PLUGIN_STAGE/$(plugin_id "$p")"
   done < <(plugin_projects)
 }
@@ -536,11 +543,106 @@ package_site_node() {
   echo "site node packages written to $out"
 }
 
+# The platforms of the add-on ZIPs, the same as AddOnCatalog.RuntimeIds (src/Oadm.Core/Plugins/AddOns/AddOnCatalog.cs;
+# a test keeps them equal).
+ADDON_RIDS="win-x64 linux-x64 linux-arm64 osx-x64"
+
+# Keeps only the runtimes/ subfolders a server on RID $2 loads (the RID, its OS, unix outside Windows). A RID-specific
+# publish puts the native libraries next to the dlls; this catches packages that keep folders of other platforms.
+limit_runtime_folders() {
+  local runtimes="$1/runtimes" rid="$2" os d name
+  [ -d "$runtimes" ] || return 0
+  os="${rid%%-*}"
+  for d in "$runtimes"/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    if [ "$name" = "$rid" ] || [ "$name" = "$os" ] || { [ "$os" != win ] && [ "$name" = unix ]; }; then continue; fi
+    rm -rf "$d"
+  done
+  rmdir "$runtimes" 2>/dev/null || true
+}
+
+# The checks of docs/spec/add-ons.md "Release files" on a published add-on folder ($1, id $2, RID $3, client part $4
+# yes/no): plugin.json with the id, the server part, the client part, no native library of another platform.
+check_addon_folder() {
+  local dir="$1" id="$2" rid="$3" has_client="$4" foreign bad
+  [ -f "$dir/plugin.json" ] || { echo "error: add-on $id: plugin.json missing" >&2; exit 1; }
+  grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" "$dir/plugin.json" || { echo "error: add-on $id: plugin.json has another id" >&2; exit 1; }
+  ls "$dir"/*.Server.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Server.dll" >&2; exit 1; }
+  if [ "$has_client" = yes ]; then ls "$dir"/*.Client.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Client.dll" >&2; exit 1; }; fi
+  case "$rid" in win-*) foreign='\.(so|dylib)$|\.so\.' ;; linux-*) foreign='\.dylib$' ;; *) foreign='\.so$|\.so\.' ;; esac
+  bad="$(cd "$dir" && find . -type f | grep -E "$foreign" || true)"
+  if [ -n "$bad" ]; then echo "error: add-on $id $rid: native libraries of another platform: $bad" >&2; exit 1; fi
+}
+
+# A ZIP of the folder's content (no top folder): zip, else Python's zipfile.
+zip_folder() {
+  local dir="$1" zip="$2" py
+  rm -f "$zip"
+  if command -v zip >/dev/null 2>&1; then
+    (cd "$dir" && zip -qry "$zip" .)
+    return
+  fi
+  for py in python3 python; do
+    if command -v "$py" >/dev/null 2>&1; then
+      (cd "$dir" && "$py" -I -c 'import os, sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk("."):
+        dirs.sort()
+        for f in sorted(files):
+            path = os.path.join(root, f)
+            z.write(path, os.path.relpath(path, ".").replace(os.sep, "/"))' "$zip")
+      return
+    fi
+  done
+  echo "error: package addons needs zip or python3" >&2
+  exit 1
+}
+
+# The add-on ZIPs (docs/spec/add-ons.md "Release files"): every add-on (server and client part together) published for
+# each platform (--rid one of them, default all four) with the native libraries of that platform only, into
+# artifacts/publish/addons/<rid>/<id>/ and as oadm-addon-<id>-<version>-<rid>.zip (AddOnCatalog.ReleaseFileName) into
+# artifacts/packages.
+package_addons() {
+  local rids rid out ids id p stage zip has_client projects=()
+  if [ -n "$OPT_RID" ]; then
+    case " $ADDON_RIDS " in *" $OPT_RID "*) ;; *) usage_error package "--rid for package addons is ${ADDON_RIDS// /, }" ;; esac
+    rids="$OPT_RID"
+  else
+    rids="$ADDON_RIDS"
+  fi
+  while IFS= read -r p; do
+    if is_addon "$p"; then projects+=("$p"); fi
+  done < <(plugin_projects)
+  if [ ${#projects[@]} -eq 0 ]; then echo "warning: no add-on plugin projects (<OadmAddOn>true</OadmAddOn>)" >&2; return; fi
+  ids="$(for p in "${projects[@]}"; do plugin_id "$p"; done | sort -u)"
+  out="$(abs_dir "$REPO_ROOT/artifacts/packages")"
+  for rid in $rids; do
+    for id in $ids; do
+      stage="$REPO_ROOT/artifacts/publish/addons/$rid/$id"
+      rm -rf "$stage"
+      has_client=no
+      for p in "${projects[@]}"; do
+        [ "$(plugin_id "$p")" = "$id" ] || continue
+        case "$p" in *.Client.csproj) has_client=yes ;; esac
+        "$DOTNET" publish "$p" -c Release -r "$rid" --self-contained false -p:OadmSkipPluginDeploy=true \
+          "-p:Version=$(app_version)" -o "$stage" ${EXTRA[@]+"${EXTRA[@]}"} || exit 1
+      done
+      limit_runtime_folders "$stage" "$rid"
+      check_addon_folder "$stage" "$id" "$rid" "$has_client"
+      zip="$out/oadm-addon-$id-$(app_version)-$rid.zip"
+      zip_folder "$stage" "$zip"
+      echo "add-on $id $rid: $zip ($(du -k "$zip" | cut -f1) KB)"
+    done
+  done
+}
+
 # Installer for one platform in artifacts/packages; publishes server and client for the RID first.
 cmd_package() {
   local prefix arch out server client
   require_dotnet
   if [ "$TARGET" = nuget ]; then package_nuget; return; fi
+  if [ "$TARGET" = addons ]; then package_addons; return; fi
   if [ "$TARGET" = site-node ]; then package_site_node; return; fi
   case "$TARGET" in windows) prefix=win ;; linux) prefix=linux ;; macos) prefix=osx ;; esac
   case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
