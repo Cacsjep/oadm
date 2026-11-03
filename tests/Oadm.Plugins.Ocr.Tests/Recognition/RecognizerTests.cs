@@ -171,7 +171,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     [Fact]
     public async Task The_reader_has_a_class_for_every_entry_of_its_character_list()
     {
-        using var set = new ModelSet(RecognizerFixture.ModelFolder, ModelChoice.Mobile, ExecutionTarget.Cpu, 1);
+        using var set = new ModelSet(RecognizerFixture.ModelFolder, ModelChoice.Mobile, 1);
         using var line = new SKBitmap(new SKImageInfo(100, ModelSet.LineHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
 
         var scores = Assert.Single(await set.RecognizeAsync([line], None));
