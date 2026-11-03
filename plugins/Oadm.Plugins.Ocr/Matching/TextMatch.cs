@@ -1,0 +1,52 @@
+using Oadm.Plugins.Ocr.Model;
+
+namespace Oadm.Plugins.Ocr.Matching;
+
+/// <summary>
+/// Everything <see cref="TextMatcher"/> makes of an area's lines: the fields of the event Text read (docs/spec/ocr.md
+/// "Events and the rule action") and what the page shows. A richer form of <see cref="AreaMatch"/>.
+/// </summary>
+public sealed record TextMatch
+{
+    /// <summary>No text: an empty area.</summary>
+    public static TextMatch Empty { get; } = new();
+
+    /// <summary>
+    /// The event field Text: with a format the chosen match (written in the format's form, look-alikes fixed; empty without
+    /// a match), else all lines joined for the events (<see cref="TextRead"/>).
+    /// </summary>
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary>The event field Text read: all lines joined with a space (a line ending "-" without one), at most 500 characters.</summary>
+    public string TextRead { get; init; } = string.Empty;
+
+    /// <summary>All lines in reading order, joined with line breaks (the page shows one line per row).</summary>
+    public string RawText { get; init; } = string.Empty;
+
+    /// <summary>Every different match of the format in reading order, at most <see cref="TextMatcher.MaxMatches"/>; empty without a format.</summary>
+    public IReadOnlyList<string> AllMatches { get; init; } = [];
+
+    /// <summary>The event field All matches: <see cref="AllMatches"/> separated by a space.</summary>
+    public string AllMatchesText => string.Join(' ', AllMatches);
+
+    /// <summary>The event field Number: <see cref="Text"/> as a number ("." or "," as the decimal sign); null when it is none.</summary>
+    public double? Number { get; init; }
+
+    /// <summary>
+    /// 0 to 100: the lowest confidence of the lines that make <see cref="Text"/>; 0 without text. (The lines carry the mean of
+    /// their characters only; the spec's lowest character probability needs it from the recognition.)
+    /// </summary>
+    public double Confidence { get; init; }
+
+    /// <summary>The event field Matches format: a format matched; for Any text: there is text.</summary>
+    public bool MatchesFormat { get; init; }
+
+    /// <summary>The area's lines in reading order: top to bottom, left to right.</summary>
+    public IReadOnlyList<TextLine> Lines { get; init; } = [];
+
+    /// <summary>Where <see cref="Text"/> was read (the union of its lines' boxes, for the page's cut-out); null without text.</summary>
+    public RelativeBox? TextBox { get; init; }
+
+    /// <summary>The model's form for <see cref="ITextMatcher"/>: value, matches format, raw text.</summary>
+    public AreaMatch ToAreaMatch() => new(Text, MatchesFormat, RawText);
+}
