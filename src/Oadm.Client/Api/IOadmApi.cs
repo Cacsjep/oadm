@@ -290,7 +290,7 @@ public interface IOadmApi
     Task<AddOnClientPart> GetAddOnClientPartAsync(string id, CancellationToken ct) => throw NoAddOns();
 
     private static Grpc.Core.RpcException NoAddOns() =>
-        new(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no add-ons."));
+        new(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, Plugins.AddOns.AddOnTexts.NotOnThisServer));
 
     // SiteService (reading needs "See sites"; everything else is Administrator only)
     Task<SiteList> ListSitesAsync(CancellationToken ct) => Task.FromResult(new SiteList());

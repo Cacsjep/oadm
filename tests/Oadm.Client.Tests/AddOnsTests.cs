@@ -349,7 +349,7 @@ public sealed class AddOnsTests : IDisposable
         dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         await vm.RemoveCommand.ExecuteAsync(row);
 
-        await dialogs.Received().ConfirmAsync("Remove add-on", "Remove Text recognition? It turns off now. Its readers and settings are kept.", "Remove");
+        await dialogs.Received().ConfirmAsync("Remove optional plugin", "Remove Text recognition? It turns off now. Its settings are kept.", "Remove");
         Assert.True(row.IsRemoved);
         Assert.False(row.ShowRemove);
         Assert.False(row.ShowInstall);
@@ -393,7 +393,7 @@ public sealed class AddOnsTests : IDisposable
 
         api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "The server is not reachable.")));
         await addOns.LoadAsync(CancellationToken.None);
-        Assert.Equal("The add-ons could not be read: The server is not reachable.", addOns.ErrorText);
+        Assert.Equal("The optional plugins could not be read: The server is not reachable.", addOns.ErrorText);
     }
 
     [Theory]

@@ -10,7 +10,7 @@
   <Border Classes="card" IsVisible="{Binding HasAddOns, FallbackValue=False}">
     <StackPanel Spacing="12">
       <TextBlock Classes="cardTitle" Text="{x:Static addons:AddOnTexts.CardTitle}" />
-      <ui:ProgressRow Text="Reading the add-ons" IsVisible="{Binding IsLoading}" />
+      <ui:ProgressRow Text="{x:Static addons:AddOnTexts.Reading}" IsVisible="{Binding IsLoading}" />
       <ItemsControl ItemsSource="{Binding AddOns}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>

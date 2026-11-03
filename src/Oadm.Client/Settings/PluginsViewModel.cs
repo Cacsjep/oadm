@@ -49,6 +49,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
         SitePortsText = string.Join(", ", info.SitePorts.Select(p => $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Port}"));
         IsPro = info.Pro;
         ProLocked = info.Pro && !owner.ProActive;
+        IsOptional = owner.IsOptionalPlugin(info.Id);
         _applying = true;
         IsEnabled = info.Enabled;
         _applying = false;
@@ -94,6 +95,9 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     /// <summary>An OADM PRO plugin: the License column shows "OADM PRO".</summary>
     public bool IsPro { get; }
+
+    /// <summary>An optional plugin (an add-on, docs/spec/add-ons.md): the Plugin column shows the chip "Optional".</summary>
+    public bool IsOptional { get; }
 
     /// <summary>A PRO plugin while OADM PRO is not active: it stays off, the check box is locked, Activate opens Settings.</summary>
     public bool ProLocked { get; }
@@ -203,6 +207,12 @@ public sealed partial class PluginsViewModel : ObservableObject
     {
         AddOns = addOns;
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        if (addOns is not null)
+        {
+            // The chip "Optional" follows the list of optional plugins (read after the plugin list).
+            addOns.AddOns.CollectionChanged += (_, _) => Rebuild();
+        }
+
         _logger = logger;
         _session = session;
         _dialogs = dialogs;
@@ -233,7 +243,11 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
-    /// <summary>The Add-ons card below the plugin list (docs/spec/add-ons.md "Plugins page"); null hides it.</summary>
+    /// <summary>Whether <paramref name="packageId"/> is an optional plugin of the server's version (the Optional plugins card).</summary>
+    internal bool IsOptionalPlugin(string packageId) =>
+        AddOns?.AddOns.Any(a => string.Equals(a.Id, packageId, StringComparison.OrdinalIgnoreCase)) ?? false;
+
+    /// <summary>The Optional plugins card below the plugin list (docs/spec/add-ons.md "Plugins page"); null hides it.</summary>
     public Plugins.AddOns.AddOnsViewModel? AddOns { get; }
 
     /// <summary>The server has sites: the page shows the Sites column (what works at a site), like the device grid's Site column.</summary>

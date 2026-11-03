@@ -18,7 +18,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// The Add-ons card on the Plugins page, rendered headless through its states: not installed, installing, installed and
+/// The Optional plugins card on the Plugins page, rendered headless through its states: not installed, installing, installed and
 /// removed (screenshots with OADM_SCREENSHOT_DIR; OADM_TEST_APPEARANCE=Light for the light ones).
 /// </summary>
 public sealed class AddOnsCardTests
@@ -45,8 +45,9 @@ public sealed class AddOnsCardTests
             window.Show();
             Pump();
 
-            // Not installed: Install, the size and the line where add-ons come from.
-            Assert.Contains("Add-ons", Visible(window));
+            // Not installed: Install, the size and the line where optional plugins come from.
+            Assert.Contains("Optional plugins", Visible(window));
+            NeverSaysAddOn(window);
             Assert.Contains("Text recognition", Visible(window));
             Assert.Contains("V0.0.0-fake · 38 MB", Visible(window));
             Assert.Contains(AddOnTexts.Source, Visible(window));
@@ -71,6 +72,10 @@ public sealed class AddOnsCardTests
             Assert.Contains("Remove", Visible(window));
             Assert.Contains(plugins.Plugins, p => p.Id == FakeOadmApi.TextRecognitionAddOnId && !p.IsEnabled);
             Assert.Contains("Vision", Visible(window));
+            Assert.Contains("Optional", Visible(window)); // the chip of the package in the plugin list
+            Assert.True(plugins.Plugins.Single(p => p.Id == FakeOadmApi.TextRecognitionAddOnId).IsOptional);
+            Assert.All(plugins.Plugins.Where(p => p.Id != FakeOadmApi.TextRecognitionAddOnId), p => Assert.False(p.IsOptional));
+            NeverSaysAddOn(window);
             Save(window, outDir, $"addons-installed-{appearance}.png");
 
             // Removed: the files go at the next restart of the server.
@@ -78,6 +83,7 @@ public sealed class AddOnsCardTests
             Pump();
             Assert.Contains(AddOnTexts.Removed, Visible(window));
             Assert.DoesNotContain("Remove", Visible(window));
+            NeverSaysAddOn(window);
             Save(window, outDir, $"addons-removed-{appearance}.png");
 
             window.Close();
@@ -103,17 +109,21 @@ public sealed class AddOnsCardTests
             window.Show();
             Pump();
 
-            Assert.DoesNotContain("Add-ons", Visible(window));
+            Assert.DoesNotContain("Optional plugins", Visible(window));
 
             // Without a view model (older composition) the card stays hidden too.
             window.Content = new PluginsPageView { DataContext = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance) };
             Pump();
-            Assert.DoesNotContain("Add-ons", Visible(window));
+            Assert.DoesNotContain("Optional plugins", Visible(window));
             window.Close();
             return true;
         }, CancellationToken.None);
         Assert.True(done);
     }
+
+    /// <summary>Users see "optional plugins", never "add-on" (docs/spec/add-ons.md).</summary>
+    private static void NeverSaysAddOn(Window window) =>
+        Assert.DoesNotContain(Visible(window), t => t.Contains("add-on", StringComparison.OrdinalIgnoreCase));
 
     private static List<string> Visible(Window window) =>
         [.. window.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible).Select(t => t.Text ?? string.Empty)];

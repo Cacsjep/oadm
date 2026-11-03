@@ -50,7 +50,7 @@ public sealed partial class FakeOadmApi
             CheckAddOn(id);
             if (_textRecognitionState is AddOnState.AddOnInstalled or AddOnState.AddOnInstalling or AddOnState.AddOnRemoved)
             {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "The add-on is installed already."));
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Text recognition is installed."));
             }
 
             _textRecognitionState = AddOnState.AddOnInstalling;
@@ -101,7 +101,7 @@ public sealed partial class FakeOadmApi
             CheckAddOn(id);
             if (_textRecognitionState != AddOnState.AddOnInstalled)
             {
-                throw new RpcException(new Status(StatusCode.FailedPrecondition, "The add-on is not installed."));
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Text recognition is not installed."));
             }
 
             _textRecognitionState = AddOnState.AddOnRemoved;
@@ -119,7 +119,7 @@ public sealed partial class FakeOadmApi
             AddOnClientPartCalls++;
             if (_textRecognitionState is not (AddOnState.AddOnInstalled or AddOnState.AddOnRemoved))
             {
-                throw new RpcException(new Status(StatusCode.NotFound, "The add-on is not installed."));
+                throw new RpcException(new Status(StatusCode.NotFound, "Text recognition is not installed."));
             }
 
             return Task.FromResult(AddOnClientPart ?? new AddOnClientPart { Id = TextRecognitionAddOnId, Version = FakeServerVersion });
@@ -130,7 +130,7 @@ public sealed partial class FakeOadmApi
     {
         if (!string.Equals(id, TextRecognitionAddOnId, StringComparison.OrdinalIgnoreCase))
         {
-            throw new RpcException(new Status(StatusCode.NotFound, $"Unknown add-on '{id}'."));
+            throw new RpcException(new Status(StatusCode.NotFound, $"Unknown optional plugin '{id}'."));
         }
     }
 

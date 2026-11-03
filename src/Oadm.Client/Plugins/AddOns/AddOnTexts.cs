@@ -4,13 +4,22 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Plugins.AddOns;
 
-/// <summary>The texts of the Add-ons card (docs/spec/add-ons.md "Plugins page"), one phrase per case.</summary>
+/// <summary>
+/// The texts of the Optional plugins card (docs/spec/add-ons.md "Plugins page"), one phrase per case. Users see add-ons as
+/// "optional plugins", never "add-on"; the server's texts are its own <c>Oadm.Core.Plugins.AddOns.AddOnTexts</c>.
+/// </summary>
 public static class AddOnTexts
 {
-    public const string CardTitle = "Add-ons";
+    public const string CardTitle = "Optional plugins";
 
-    /// <summary>The one line below the add-ons.</summary>
-    public const string Source = "Add-ons come from the OADM release on GitHub and are checked before they are installed. Clients get them from the server.";
+    /// <summary>The chip of an optional plugin in the plugin list.</summary>
+    public const string Optional = "Optional";
+
+    /// <summary>The progress row of the first read.</summary>
+    public const string Reading = "Reading the optional plugins";
+
+    /// <summary>The one line below the optional plugins.</summary>
+    public const string Source = "Optional plugins come from the OADM release on GitHub and are checked before they are installed. Clients get them from the server.";
 
     public const string Installed = "Installed";
 
@@ -23,13 +32,16 @@ public static class AddOnTexts
 
     public const string Remove = "Remove";
 
-    public const string RemoveTitle = "Remove add-on";
+    public const string RemoveTitle = "Remove optional plugin";
 
     /// <summary>The question of Remove.</summary>
-    public static string RemoveQuestion(string name) => $"Remove {name}? It turns off now. Its readers and settings are kept.";
+    public static string RemoveQuestion(string name) => $"Remove {name}? It turns off now. Its settings are kept.";
 
     /// <summary>The list could not be read.</summary>
-    public static string ListFailed(string reason) => $"The add-ons could not be read: {reason}";
+    public static string ListFailed(string reason) => $"The optional plugins could not be read: {reason}";
+
+    /// <summary>An older server or a connection without optional plugins.</summary>
+    public const string NotOnThisServer = "This connection has no optional plugins.";
 
     /// <summary>Remove failed.</summary>
     public static string RemoveFailed(string name, string reason) => $"{name} could not be removed: {reason}";
