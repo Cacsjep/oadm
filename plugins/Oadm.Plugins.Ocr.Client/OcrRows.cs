@@ -1,0 +1,151 @@
+using Avalonia.Media;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+
+using Oadm.Plugins.Ocr.Api;
+using Oadm.Plugins.Ocr.Model;
+
+namespace Oadm.Plugins.Ocr.Client;
+
+/// <summary>A reader in the list: name, mode, camera, last text. Updated in place by id.</summary>
+public sealed partial class ReaderRow : ObservableObject
+{
+    public ReaderRow(ReaderSummary summary, ReaderSummaryExtras? extras, string camera)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        Id = summary.Id;
+        Apply(summary, extras, camera);
+    }
+
+    public string Id { get; }
+
+    [ObservableProperty]
+    public partial string Name { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial Guid DeviceId { get; private set; }
+
+    /// <summary>"AXIS Q1798-LE · 10.0.0.48".</summary>
+    [ObservableProperty]
+    public partial string Camera { get; private set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem))]
+    public partial ReaderMode Mode { get; private set; }
+
+    /// <summary>The frame rate while Watching once known (the list does not always carry it; the reader's setup does).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeText))]
+    public partial int? Fps { get; set; }
+
+    /// <summary>The full text of what keeps the reader from reading (the header's chip); null while it reads.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem))]
+    public partial string? Problem { get; private set; }
+
+    /// <summary>The value of the first area of the last reading, or "No reading yet".</summary>
+    [ObservableProperty]
+    public partial string LastText { get; private set; } = OcrTexts.NoReading;
+
+    public DateTimeOffset? LastTime { get; private set; }
+
+    /// <summary>On demand / Watching · 2 fps / Not reachable.</summary>
+    public string ModeText => IsProblem ? OcrTexts.NotReachable
+        : Mode != ReaderMode.Watching ? OcrTexts.OnDemand
+        : Fps is { } fps ? OcrTexts.WatchingAt(fps) : OcrTexts.Watching;
+
+    public bool IsWatching => Mode == ReaderMode.Watching && !IsProblem;
+
+    /// <summary>The server reports a problem (the camera refuses connections), in either mode.</summary>
+    public bool IsProblem => !string.IsNullOrEmpty(Problem);
+
+    /// <summary>Name and camera in lower case, for the search.</summary>
+    public string SearchText { get; private set; } = string.Empty;
+
+    public void Apply(ReaderSummary summary, ReaderSummaryExtras? extras, string camera)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        Name = summary.Name;
+        DeviceId = summary.DeviceId;
+        Camera = camera;
+        Mode = summary.Mode;
+        Fps = extras?.Fps ?? Fps;
+        Problem = extras?.Problem;
+        SetLast(summary.LastText, summary.LastTime);
+        SearchText = (Name + " " + Camera).ToLowerInvariant();
+    }
+
+    /// <summary>A new reading arrived (the live event).</summary>
+    public void SetLast(string? text, DateTimeOffset? time)
+    {
+        LastTime = time;
+        LastText = time is null ? OcrTexts.NoReading : FirstLine(text);
+    }
+
+    /// <summary>The camera's text changed (the device list changed).</summary>
+    public void SetCamera(string camera)
+    {
+        Camera = camera;
+        SearchText = (Name + " " + Camera).ToLowerInvariant();
+    }
+
+    private static string FirstLine(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        var end = text.IndexOfAny(['\r', '\n']);
+        return end < 0 ? text : text[..end];
+    }
+}
+
+/// <summary>One row of the results: an area of the last reading.</summary>
+public sealed class ResultRow
+{
+    public ResultRow(AreaResult result, AreaDetails? details, bool hasFormat, DateTimeOffset time, IImage? cutOut)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        Area = result.Area;
+        Text = result.Text.Length > 0 ? result.Text : result.TextRead;
+        Confidence = result.Confidence;
+        ConfidenceText = Text.Length == 0 ? string.Empty : OcrTexts.Percent(result.Confidence);
+        HasFormat = hasFormat;
+        Matches = result.MatchesFormat;
+        TooSmall = details?.TooSmall ?? false;
+        Time = OcrTexts.Time(time);
+        CutOut = cutOut;
+    }
+
+    public string Area { get; }
+
+    /// <summary>The value; without a match the raw text (docs/spec/ocr.md "Expected text": the raw text stays in Text read).</summary>
+    public string Text { get; }
+
+    public double Confidence { get; }
+
+    public string ConfidenceText { get; }
+
+    public bool HasFormat { get; }
+
+    public bool Matches { get; }
+
+    public bool IsMatch => HasFormat && Matches;
+
+    public bool IsNoMatch => HasFormat && !Matches;
+
+    /// <summary>Yes / No / No format.</summary>
+    public string MatchText => !HasFormat ? OcrTexts.NoFormat : Matches ? OcrInfo.Yes : OcrInfo.No;
+
+    public bool TooSmall { get; }
+
+    public static string TooSmallText => OcrTexts.TooSmall;
+
+    public string Time { get; }
+
+    /// <summary>The value's cut-out of the frame (a format's match); null without one.</summary>
+    public IImage? CutOut { get; }
+
+    public bool HasCutOut => CutOut is not null;
+}
