@@ -1,0 +1,16 @@
+{
+  "groups": {
+    "camera-box": { "exact": 1.0, "cer": 0.0 },
+    "camera-search": { "exact": 1.0, "cer": 0.0 },
+    "container-fixed": { "exact": 1.0, "cer": 0.0 },
+    "container-search": { "exact": 1.0, "cer": 0.0 },
+    "hard-container": { "exact": 0.8333, "cer": 0.1667 },
+    "hard-meter": { "exact": 1.0, "cer": 0.0 },
+    "hard-receipt-search": { "exact": 0.375, "cer": 0.425 },
+    "hard-sign": { "exact": 0.6666, "cer": 0.0323 },
+    "meter": { "exact": 1.0, "cer": 0.0 },
+    "no-text": { "exact": 1.0, "cer": 0.0 },
+    "receipt-search": { "exact": 1.0, "cer": 0.0 },
+    "sign": { "exact": 1.0, "cer": 0.0 }
+  }
+}

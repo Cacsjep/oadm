@@ -25,6 +25,39 @@
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Recognition (docs/spec/ocr.md "GPU" and "Packaging and dependencies"): ONNX Runtime per server platform, chosen by the
+       target RID (the add-on ZIP builds per RID) or, without one, by the building machine. All three share one
+       Microsoft.ML.OnnxRuntime.Managed version. Windows: DirectML (any graphics card) plus the CPU; Linux x64: the GPU build
+       with the CUDA provider plus the CPU; everything else: the CPU build. -->
+  <PropertyGroup>
+    <OcrOnnxRuntimeVersion>1.24.4</OcrOnnxRuntimeVersion>
+    <OcrRid>$(RuntimeIdentifier)</OcrRid>
+    <OcrRid Condition="'$(OcrRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</OcrRid>
+  </PropertyGroup>
+  <ItemGroup Condition="$(OcrRid.StartsWith('win'))">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="$(OcrOnnxRuntimeVersion)" />
+    <!-- DirectML.dll copies itself only for an x64 PlatformTarget; place it next to onnxruntime.dll, which loads it (the
+         one in System32 is too old). -->
+    <PackageReference Include="Microsoft.AI.DirectML" Version="1.15.4" GeneratePathProperty="true" />
+    <None Include="$(PkgMicrosoft_AI_DirectML)\bin\x64-win\DirectML.dll" Link="runtimes\win-x64\native\DirectML.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(OcrRid)' == 'linux-x64'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu.Linux" Version="$(OcrOnnxRuntimeVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="!$(OcrRid.StartsWith('win')) and '$(OcrRid)' != 'linux-x64'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OcrOnnxRuntimeVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- JPEG decode, crop, turn and bicubic scale. The version of the host's Avalonia.Skia, so one process never holds two. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <!-- Linux servers without fontconfig and freetype; private: the client and the tests bring Avalonia's own Linux assets. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The models and their character lists (Models/README.md): next to the server part in the plugin folder. -->
+    <None Include="Models\*.onnx;Models\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <!-- The call without a user (the host itself, tests). -->
     <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />

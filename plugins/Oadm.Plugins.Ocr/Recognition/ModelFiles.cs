@@ -1,0 +1,175 @@
+using System.Runtime.InteropServices;
+using Microsoft.Extensions.Logging;
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
+
+namespace Oadm.Plugins.Ocr.Recognition;
+
+/// <summary>The model files in the plugin's <c>Models</c> folder (Models/README.md: sources, versions, SHA-256, licenses).</summary>
+public static class ModelFiles
+{
+    /// <summary>PP-OCRv5 mobile text detection.</summary>
+    public const string DetectionMobile = "det_mobile.onnx";
+
+    /// <summary>PP-OCRv5 server text detection.</summary>
+    public const string DetectionServer = "det_server.onnx";
+
+    /// <summary>PP-OCRv5 Latin mobile recognition.</summary>
+    public const string RecognitionLatin = "rec_latin_mobile.onnx";
+
+    /// <summary>The character list of <see cref="RecognitionLatin"/>.</summary>
+    public const string RecognitionLatinCharacters = "rec_latin_mobile.txt";
+
+    /// <summary>PP-LCNet x1.0 text line orientation (0 or 180 degrees).</summary>
+    public const string Orientation = "textline_ori.onnx";
+
+    /// <summary>The <c>Models</c> folder next to <paramref name="pluginDirectory"/>'s assemblies.</summary>
+    public static string Folder(string pluginDirectory) => Path.Combine(pluginDirectory, "Models");
+}
+
+/// <summary>Which execution provider a session uses.</summary>
+internal enum ExecutionTarget
+{
+    Cpu,
+    DirectMl,
+    Cuda,
+}
+
+/// <summary>
+/// Creates ONNX Runtime sessions (docs/spec/ocr.md "GPU"): on the CPU with <see cref="Model.OcrLimits.ThreadsPerWorker"/>
+/// threads each; on a graphics card with DirectML (Windows) or CUDA (Linux x64). Picks the graphics card when its provider
+/// loads and a test reading succeeds, else the CPU with one log line.
+/// </summary>
+internal static class SessionFactory
+{
+    /// <summary>A session of <paramref name="modelPath"/> on <paramref name="target"/>.</summary>
+    public static InferenceSession Create(string modelPath, ExecutionTarget target, int threads)
+    {
+        var options = new SessionOptions
+        {
+            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
+            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+            IntraOpNumThreads = threads,
+            InterOpNumThreads = 1,
+            LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_ERROR,
+        };
+        try
+        {
+            switch (target)
+            {
+                case ExecutionTarget.DirectMl:
+                    // DirectML needs these two off (ONNX Runtime documentation of the provider).
+                    options.EnableMemoryPattern = false;
+                    options.AppendExecutionProvider_DML(0);
+                    break;
+                case ExecutionTarget.Cuda:
+                    options.AppendExecutionProvider_CUDA(0);
+                    break;
+                case ExecutionTarget.Cpu:
+                default:
+                    break;
+            }
+
+            return new InferenceSession(modelPath, options);
+        }
+        finally
+        {
+            options.Dispose();
+        }
+    }
+
+    /// <summary>The graphics card provider of this platform, or null when there is none to try.</summary>
+    public static ExecutionTarget? GraphicsCardTarget()
+    {
+        if (OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64)
+        {
+            return ExecutionTarget.DirectMl;
+        }
+
+        if (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64)
+        {
+            return ExecutionTarget.Cuda;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Tries the graphics card: a session of <paramref name="testModel"/> and one reading of a small blank picture. Null when it
+    /// fails (logged once).
+    /// </summary>
+    public static ExecutionTarget? TryGraphicsCard(string testModel, ILogger logger)
+    {
+        var target = GraphicsCardTarget();
+        if (target is null)
+        {
+            RecognitionLog.NoGraphicsCardProvider(logger);
+            return null;
+        }
+
+        try
+        {
+            using var session = Create(testModel, target.Value, 1);
+            var input = session.InputNames[0];
+            var tensor = new DenseTensor<float>(new float[3 * 64 * 64], [1, 3, 64, 64]);
+            using var results = session.Run([NamedOnnxValue.CreateFromTensor(input, tensor)]);
+            _ = results[0].AsTensor<float>().Length;
+            return target;
+        }
+#pragma warning disable CA1031 // Any failure of the provider (missing driver, CUDA or cuDNN) means the CPU.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            RecognitionLog.GraphicsCardFailed(logger, ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") or a general one.</summary>
+    public static string GraphicsCardName(ExecutionTarget target)
+    {
+        try
+        {
+            var provider = target == ExecutionTarget.DirectMl ? "DmlExecutionProvider" : "CUDAExecutionProvider";
+            foreach (var device in OrtEnv.Instance().GetEpDevices())
+            {
+                if (device.EpName == provider && device.HardwareDevice.Metadata.Entries.TryGetValue("Description", out var name) && !string.IsNullOrWhiteSpace(name))
+                {
+                    return name.Trim();
+                }
+            }
+        }
+#pragma warning disable CA1031 // Only the name: a failure keeps the general one.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            try
+            {
+                // The NVIDIA driver's own description of each card.
+                var folder = "/proc/driver/nvidia/gpus";
+                if (Directory.Exists(folder))
+                {
+                    foreach (var file in Directory.EnumerateFiles(folder, "information", SearchOption.AllDirectories))
+                    {
+                        var model = File.ReadLines(file).FirstOrDefault(l => l.StartsWith("Model:", StringComparison.Ordinal));
+                        if (model is not null)
+                        {
+                            return model["Model:".Length..].Trim();
+                        }
+                    }
+                }
+            }
+#pragma warning disable CA1031
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+
+        return "Graphics card";
+    }
+}
