@@ -128,7 +128,7 @@ public sealed partial class ReaderRow : ObservableObject
 /// <summary>One row of the results: an area of the last reading.</summary>
 public sealed class ResultRow
 {
-    public ResultRow(AreaResult result, AreaDetails? details, bool hasFormat, DateTimeOffset time, IImage? cutOut, bool mayChange = false)
+    public ResultRow(AreaResult result, AreaDetails? details, bool hasFormat, DateTimeOffset time, IImage? cutOut)
     {
         ArgumentNullException.ThrowIfNull(result);
         Area = result.Area;
@@ -140,13 +140,7 @@ public sealed class ResultRow
         TooSmall = details?.TooSmall ?? false;
         Time = OcrTexts.Time(time);
         CutOut = cutOut;
-        CanUseAsFormat = mayChange && Text.Trim().Length > 0;
     }
-
-    /// <summary>"Use as format" shows: the change right and a text.</summary>
-    public bool CanUseAsFormat { get; }
-
-    public static string UseAsFormatText => OcrTexts.UseAsFormat;
 
     public string Area { get; }
 

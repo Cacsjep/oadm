@@ -148,11 +148,8 @@ Per area: **Any text** (default) or **Format**.
   highest confidence, on a tie the larger text; the event field All matches lists every different match, at most 10.
 - The page shows the matched text's cut-out picture next to its value (in memory only, like the frames).
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
-- The page's field hint: "# digit, A letter, * letter or digit".
-- **Use as format** (a link in a result row's Text, change right only, hidden without text): the read text becomes the
-  area's format (`TextFormat.FromText` in the server part, shared by both: a digit `#`, a letter, umlauts too, `A`, the
-  rest as written; "MSKU 123456 7" gives "AAAA ###### #"), the area switches to Format and is selected with its format
-  field focused and selected to adjust (AAAA to AAAU); Not saved like any edit; the usual format check applies.
+- The page's format field tooltip: "# digit, A letter, * letter or digit".
+- Not part of this version: taking a read text as the format: later (decision 2026-11-03).
 
 ### Runtime safety
 
@@ -202,13 +199,20 @@ Per area: **Any text** (default) or **Format**.
     note when it has one (warning chip: "More than 30 texts found. ..."), then the **results grid** (Area, Text,
     Confidence right-aligned, Matches format, the time) in the rest of the column's height.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
-    nothing is read (the preview has no stream), no lines, no results. Draw area stays the way to start; while drawing
-    the drawing hint shows instead.
-  - **Right, stacked**: the form (Name, Camera, Video source, Resolution, Mode with Watching and On action, Frames per
-    second as a select of the server's choices: 1, 2, 4, on a graphics card also 8, 12, 15; only while Watching), the
-    **Areas** panel (header: Areas, **Draw area** as a flat command button with its icon, "2 of 8"; per area its name and
-    expected text), then the save status left of **Save**. The column scrolls; Save stays at the bottom.
-- **Areas on the live video**: Draw area, then a drag draws one (at least 2 % of the picture each way; Esc stops). A
+    nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
+    while drawing the drawing hint shows instead.
+  - **Right, stacked**: the form (Name, Camera, Video source and Resolution side by side in one row, Mode with Watching
+    and On action, Frames per second as a select of the server's choices: 1, 2, 4, on a graphics card also 8, 12, 15;
+    only while Watching), the **Areas** panel, then the save status left of **Save**. The column scrolls; Save stays at
+    the bottom.
+  - **Areas panel**: header Areas and **New** (flat command button, plus icon; it starts drawing on the video; tooltip
+    "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. One header row (Name,
+    Mode, Format), then one row per area: Name | Mode | Format | delete icon (columns `*`, 96, `*`, 32, the same in the
+    header and the rows). Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any
+    text (the format typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format
+    syntax as its tooltip; errors directly below the field. The rows are a list: the selected area's row is highlighted,
+    and selecting a row (or a field in it) selects the area on the video.
+- **Areas on the live video**: New, then a drag draws one (at least 2 % of the picture each way; Esc stops). A
   press on an area or on its row in the Areas panel selects it: solid with handles at the corners and edge midpoints. A
   drag inside moves it, a drag on a handle resizes it; both stay inside the picture and keep the drawing minimum
   (`AreaGeometry`); Esc cancels the drag in progress; the arrow keys move it by 1 % (Shift: 5 %). The cursor shows move
@@ -450,7 +454,8 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - The preview (`Readers/PreviewTests`): the draft read live without rule events, new areas without a new stream, the
   lease (`FakeTimeProvider`), 8 previews and the watching limit, sharing an unchanged watching reader's stream, device
   groups, what a draft allows.
-- The page (`Client/`): fixed columns without a splitter and the results below the video; a real pointer drag that moves
+- The page (`Client/`): fixed columns without a splitter and the results below the video; Video source and Resolution in
+  one row, the area rows under one header with the mode select and the row selection following the area; a real pointer drag that moves
   and resizes an area which stays there (`PageLayoutTests`, headless); the lines hidden while an area is drawn or
   adjusted, the start hint without areas, the reading's note, the stats panel and a slow reader's orange chip
   (`PageAreasAndStatsTests`); the live video follows camera and source, the preview's draft on every change and the keep-alive,
@@ -502,7 +507,7 @@ event and action ids, the permissions.
 | O2 Matching | `Matching/`, its tests | line order, several lines, the format syntax, look-alike fixes, a number over two lines | `ITextMatcher` (pure C#, no I/O) |
 | O3 Frames | `Frames/`, its tests | MJPEG `multipart/x-mixed-replace` parser, the stream through `ctx.Vapix` (streamed answer), reopening with the growing pause, single picture | `IFrameSource`; a recorded MJPEG answer |
 | O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
-| O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, Draw area, results, Save; headless screenshots | the `Api/` payloads with a fake server |
+| O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, New area, results, Save; headless screenshots | the `Api/` payloads with a fake server |
 
 **Wave 3:** the real parts wired in place of the fakes (done: "Parts and contract"), the models downloaded at build
 (done), the add-on ZIP (A4), a measurement of the speed (done: "GPU"), the plugin's `README.md` (done), review and full

@@ -7,6 +7,7 @@ using Avalonia.VisualTree;
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Client;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Ocr.Tests.Client;
 
@@ -47,15 +48,60 @@ public sealed class PageLayoutTests
             Assert.Same(column, results.FindAncestorOfType<Grid>());
             Assert.True(Grid.GetRow((Control)results.Parent!) > Grid.GetRow(video));
             Assert.True(results.IsEffectivelyVisible);
-            // "Use as format" on a result row: the area's format field shows with the made format selected.
-            var link = results.GetVisualDescendants().OfType<Button>().First(b => b.IsEffectivelyVisible && Equals(b.Content, OcrTexts.UseAsFormat));
-            link.Command!.Execute(link.CommandParameter);
+            // No "Use as format" in the results (decision 2026-11-03).
+            Assert.DoesNotContain(results.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Use as format"));
+
+            // Video source and Resolution in one row.
+            var sourceRow = view.FindControl<Grid>("SourceRow")!;
+            var sourceFields = sourceRow.Children.OfType<FormField>().ToList();
+            Assert.Equal(["Video source", "Resolution"], sourceFields.Select(f => f.Label));
+            Assert.Equal([0, 1], sourceFields.Select(Grid.GetColumn));
+
+            // The areas header: New (no count); one header row and one row per area: Name | Mode | Format | delete.
+            var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;
+            Assert.Equal("New", newArea.Text);
+            Assert.Equal(OcrTexts.NewAreaTip, ToolTip.GetTip(newArea));
+            var header = view.FindControl<Grid>("AreaHeader")!;
+            Assert.Equal(["Name", "Mode", "Format"], header.Children.OfType<TextBlock>().Select(t => t.Text));
+            var list = view.FindControl<ListBox>("AreaList")!;
+            var editorVm = vm.Editor!;
+            Assert.Equal(3, editorVm.Areas.Count);
+            foreach (var area in editorVm.Areas)
+            {
+                var row = (Control)list.ContainerFromItem(area)!;
+                var grid = row.GetVisualDescendants().OfType<Grid>().First(g => g.ColumnDefinitions.Count == 4);
+                Assert.Equal(header.ColumnDefinitions.Select(c => c.Width), grid.ColumnDefinitions.Select(c => c.Width));
+                var fields = grid.Children.OfType<FormField>().ToList();
+                Assert.All(fields, f => Assert.Null(f.Label)); // the header row names them
+                Assert.IsType<TextBox>(fields[0].Input);
+                var mode = Assert.IsType<ComboBox>(fields[1].Input);
+                Assert.Equal(area.Mode, mode.SelectedItem);
+                var format = Assert.IsType<TextBox>(fields[2].Input);
+                Assert.Equal(area.IsFormat, format.IsEffectivelyEnabled); // in place, off for Any text
+                Assert.Equal(AreaViewModel.FormatHint, ToolTip.GetTip(format));
+                Assert.Empty(row.GetVisualDescendants().OfType<RadioButton>());
+            }
+
+            // Selecting a row selects the area on the video (and the other way round).
+            list.SelectedItem = editorVm.Areas[2];
             Headless.Pump();
-            var area = vm.Editor!.SelectedArea!;
-            Assert.True(area.IsFormat);
-            var box = view.FocusFormatOf(area)!;
-            Assert.Equal(area.FormatText, box.Text);
-            Assert.Equal(box.Text!.Length, box.SelectionEnd - box.SelectionStart);
+            Assert.Same(editorVm.Areas[2], editorVm.SelectedArea);
+            editorVm.SelectedArea = editorVm.Areas[0];
+            Headless.Pump();
+            Assert.Same(editorVm.Areas[0], list.SelectedItem);
+
+            // The mode select: Any text turns the format field off and empties it.
+            var typeRow = (Control)list.ContainerFromItem(editorVm.Areas[1])!;
+            var typeMode = typeRow.GetVisualDescendants().OfType<ComboBox>().Single();
+            var typeFormat = typeRow.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "FormatBox");
+            Assert.False(typeFormat.IsEffectivelyEnabled);
+            typeMode.SelectedItem = OcrTexts.Format;
+            Headless.Pump();
+            Assert.True(editorVm.Areas[1].IsFormat);
+            Assert.True(typeFormat.IsEffectivelyEnabled);
+            typeMode.SelectedItem = OcrTexts.AnyText;
+            Headless.Pump();
+            Assert.False(typeFormat.IsEffectivelyEnabled);
 
             var statsCard =view.FindControl<StackPanel>("StatsPanel")!.GetVisualAncestors().OfType<Border>().First(b => b.Classes.Contains("card"));
             Assert.Equal(0, Grid.GetColumn(statsCard));

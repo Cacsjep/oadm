@@ -147,8 +147,41 @@ public sealed class PageViewModelTests
         // Any text needs no format.
         area.FormatText = string.Empty;
         Assert.False(editor.SaveCommand.CanExecute(null));
-        area.IsAnyText = true;
+        area.Mode = OcrTexts.AnyText;
         Assert.True(editor.SaveCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task The_mode_select_switches_between_any_text_and_a_format()
+    {
+        using var vm = await LoadedAsync(Samples.Context());
+        var editor = vm.Editor!;
+        var number = editor.Areas[0]; // Format "AAAU ###### #"
+        var type = editor.Areas[1]; // Any text
+        Assert.Equal([OcrTexts.AnyText, OcrTexts.Format], AreaViewModel.Modes);
+        Assert.Equal(OcrTexts.Format, number.Mode);
+        Assert.Equal(AreaViewModel.FormatExample, number.FormatPlaceholder);
+        Assert.Equal(OcrTexts.AnyText, type.Mode);
+        Assert.Equal(string.Empty, type.FormatText);
+        Assert.Equal(string.Empty, type.FormatPlaceholder);
+
+        // Any text: the format field is empty (and off); Format brings the format back.
+        number.Mode = OcrTexts.AnyText;
+        Assert.False(number.IsFormat);
+        Assert.Equal(string.Empty, number.FormatText);
+        Assert.Equal(ExpectedText.AnyText, editor.ToReader().Areas[0].Expected);
+        Assert.True(editor.IsDirty);
+        number.Mode = OcrTexts.Format;
+        Assert.Equal("AAAU ###### #", number.FormatText);
+        Assert.False(editor.IsDirty); // back to the saved state
+
+        // Format needs one: Save stays off until it is typed.
+        type.Mode = OcrTexts.Format;
+        Assert.False(editor.SaveCommand.CanExecute(null));
+        Assert.Equal("Enter a format.", editor.SaveBlockedReason);
+        type.FormatText = "##A#";
+        Assert.Null(type.ErrorOf(nameof(AreaViewModel.FormatText)));
+        Assert.Equal(ExpectedText.WithFormat("##A#"), editor.ToReader().Areas[1].Expected);
     }
 
     [Fact]
@@ -318,7 +351,7 @@ public sealed class PageViewModelTests
     {
         using var vm = await LoadedAsync(Samples.Context());
         var editor = vm.Editor!;
-        editor.DrawAreaCommand.Execute(null);
+        editor.NewAreaCommand.Execute(null);
         Assert.True(editor.IsDrawing);
         editor.StopDrawing();
         Assert.False(editor.IsDrawing);
@@ -328,14 +361,14 @@ public sealed class PageViewModelTests
             Assert.NotNull(editor.AddArea(new RelativeBox(0.05 * i, 0.7, 0.04, 0.04)));
         }
 
-        Assert.Equal("8 of 8", editor.AreaCountText);
         Assert.False(editor.CanAddArea);
-        Assert.False(editor.DrawAreaCommand.CanExecute(null));
-        Assert.Equal(ReaderRules.TooManyAreas, editor.DrawBlockedReason);
+        Assert.False(editor.NewAreaCommand.CanExecute(null));
+        Assert.Equal(ReaderRules.TooManyAreas, editor.NewAreaTip);
         Assert.Null(editor.AddArea(new RelativeBox(0.1, 0.1, 0.1, 0.1)));
 
         editor.RemoveAreaCommand.Execute(editor.Areas[^1]);
         Assert.True(editor.CanAddArea);
+        Assert.Equal(OcrTexts.NewAreaTip, editor.NewAreaTip);
         editor.SelectAreaAt(new Point(0.5, 0.3));
         Assert.Equal("Container number", editor.SelectedArea!.Name);
     }
@@ -581,8 +614,8 @@ public sealed class PageViewModelTests
         Assert.True(editor.IsNew);
         Assert.Equal(ReaderMode.Watching, editor.Mode);
         Assert.Equal("Watching · 1 fps", editor.ModeChipText);
-        Assert.True(editor.DrawAreaCommand.CanExecute(null));
-        editor.DrawAreaCommand.Execute(null);
+        Assert.True(editor.NewAreaCommand.CanExecute(null));
+        editor.NewAreaCommand.Execute(null);
         Assert.True(editor.IsDrawing);
 
         // On action for a new reader: its message once, also after the save.
@@ -743,7 +776,7 @@ public sealed class PageViewModelTests
         Assert.False(vm.DeleteCommand.CanExecute(null));
         Assert.False(vm.CanSetGpu);
         Assert.False(vm.Editor!.MayChange);
-        Assert.False(vm.Editor.DrawAreaCommand.CanExecute(null));
+        Assert.False(vm.Editor.NewAreaCommand.CanExecute(null));
         vm.Editor.Name = "Gate 3";
         Assert.False(vm.Editor.SaveCommand.CanExecute(null));
 

@@ -85,7 +85,7 @@ public sealed class PageAreasAndStatsTests
         editor.SetAdjusting(false);
         Assert.Equal(3, editor.ShownLines.Count);
 
-        editor.DrawAreaCommand.Execute(null);
+        editor.NewAreaCommand.Execute(null);
         Assert.True(editor.IsDrawing);
         Assert.Empty(editor.ShownLines);
         editor.StopDrawing();
@@ -114,13 +114,13 @@ public sealed class PageAreasAndStatsTests
         Assert.Empty(gate.Lines);
         Assert.False(gate.HasResults);
 
-        // A reader saved without areas: the hint; Draw area hides it while drawing, the first area ends it.
+        // A reader saved without areas: the hint; New (drawing) hides it, the first area ends it.
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
         var dock = vm.Editor!;
         Assert.Empty(dock.Areas);
         Assert.True(dock.ShowStartHint);
         Assert.Equal(OcrTexts.StartHint, "Start by drawing an area");
-        dock.DrawAreaCommand.Execute(null);
+        dock.NewAreaCommand.Execute(null);
         Assert.False(dock.ShowStartHint);
         dock.AddArea(new RelativeBox(0.1, 0.1, 0.3, 0.2));
         Assert.False(dock.ShowStartHint);
@@ -226,53 +226,5 @@ public sealed class PageAreasAndStatsTests
         }
 
         Assert.False(vm.Stats.HasStats);
-    }
-
-    [Fact]
-    public async Task Use_as_format_turns_the_read_text_into_the_areas_format()
-    {
-        var ctx = Samples.Context();
-        using var vm = await LoadedAsync(ctx);
-        var editor = vm.Editor!;
-        var type = editor.Areas[1]; // "Type": Any text, read "22G1"
-        var row = editor.Results.Single(r => r.Area == "Type");
-        Assert.True(row.CanUseAsFormat);
-        AreaViewModel? suggested = null;
-        editor.FormatSuggested += (_, area) => suggested = area;
-
-        editor.UseAsFormatCommand.Execute(row);
-
-        Assert.True(type.IsFormat);
-        Assert.Equal("##A#", type.FormatText);
-        Assert.Same(type, editor.SelectedArea);
-        Assert.Same(type, suggested);
-        Assert.True(editor.IsDirty);
-        Assert.Null(type.ErrorOf(nameof(AreaViewModel.FormatText)));
-        Assert.Equal("##A#", editor.ToReader().Areas[1].Expected.Format);
-
-        // The container number's value: AAAA to adjust to AAAU.
-        editor.UseAsFormatCommand.Execute(editor.Results[0]);
-        Assert.Equal("AAAA ###### #", editor.Areas[0].FormatText);
-    }
-
-    [Fact]
-    public async Task Use_as_format_needs_the_change_right_and_a_text()
-    {
-        var viewer = Samples.Context();
-        viewer.Denied.Add(OcrViewModel.ChangePermissionKey);
-        using var readOnly = await LoadedAsync(viewer);
-        Assert.All(readOnly.Editor!.Results, r => Assert.False(r.CanUseAsFormat));
-        var before = readOnly.Editor.Areas[1].IsFormat;
-        readOnly.Editor.UseAsFormatCommand.Execute(readOnly.Editor.Results[1]);
-        Assert.Equal(before, readOnly.Editor.Areas[1].IsFormat);
-
-        var ctx = Samples.Context();
-        using var vm = await LoadedAsync(ctx);
-        var empty = Samples.GateReading() with
-        {
-            Areas = [Samples.GateReading().Areas[0] with { Text = string.Empty, TextRead = string.Empty, Lines = [] }],
-        };
-        vm.Editor!.ApplyReading(empty, Samples.GateExtras);
-        Assert.False(vm.Editor.Results[0].CanUseAsFormat);
     }
 }
