@@ -275,6 +275,23 @@ public interface IOadmApi
     /// <summary>Admin: removes the license of a plugin. Returns the whole list.</summary>
     Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct);
 
+    // Add-on plugins (docs/spec/add-ons.md). Default: a server without add-ons (UNIMPLEMENTED; the Plugins page hides the card).
+
+    /// <summary>The add-ons of the server's version with their state (any logged-in user).</summary>
+    Task<AddOnList> ListAddOnsAsync(CancellationToken ct) => throw NoAddOns();
+
+    /// <summary>Admin: installs an add-on; the progress until the last message (done or error).</summary>
+    IAsyncEnumerable<AddOnProgress> InstallAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();
+
+    /// <summary>Admin: removes an add-on (off now, its files go at the next server start). Returns the whole list.</summary>
+    Task<AddOnList> RemoveAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();
+
+    /// <summary>The client part of an installed add-on, every file with its SHA-256.</summary>
+    Task<AddOnClientPart> GetAddOnClientPartAsync(string id, CancellationToken ct) => throw NoAddOns();
+
+    private static Grpc.Core.RpcException NoAddOns() =>
+        new(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no add-ons."));
+
     // SiteService (reading needs "See sites"; everything else is Administrator only)
     Task<SiteList> ListSitesAsync(CancellationToken ct) => Task.FromResult(new SiteList());
 

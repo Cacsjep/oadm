@@ -3,14 +3,15 @@
              xmlns:settings="using:Oadm.Client.Settings"
              xmlns:c="using:Oadm.Client.Controls"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:addons="using:Oadm.Client.Plugins.AddOns"
              x:Class="Oadm.Client.Settings.PluginsPageView"
              x:DataType="settings:PluginsViewModel">
   <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
        Packages that are always on (core functionality) are not listed. Grouped like the navigation rail (code-behind
-       builds the grouped view: Servers, Automation, Security, Monitoring, ...). -->
-  <Grid RowDefinitions="Auto,*" RowSpacing="16">
+       builds the grouped view: Servers, Automation, Security, Monitoring, ...). Below it the Add-ons card. -->
+  <Grid RowDefinitions="Auto,*,Auto" RowSpacing="16">
     <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
-    <Border Grid.Row="1" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
+    <Border Grid.Row="1" x:Name="PluginCard" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
       <Grid RowDefinitions="*,Auto" RowSpacing="12">
         <DataGrid Grid.Row="0" x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
                   SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
@@ -64,5 +65,7 @@
         <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
       </Grid>
     </Border>
+    <!-- As wide as the plugin list above it. -->
+    <addons:AddOnsCardView Grid.Row="2" DataContext="{Binding AddOns}" HorizontalAlignment="Left" Width="{Binding #PluginCard.Bounds.Width}" />
   </Grid>
 </UserControl>

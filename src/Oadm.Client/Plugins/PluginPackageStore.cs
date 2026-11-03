@@ -8,9 +8,11 @@ namespace Oadm.Client.Plugins;
 /// <summary>
 /// The server's plugin packages and which are on (PluginService.ListPackages). Loaded on every connect and after a change
 /// on the Settings page; <see cref="Changed"/> lets the shell add or remove rail pages, refresh the task menus and hide the
-/// toolbar entries of packages that are off. A package the server does not list counts as on (older server).
+/// toolbar entries of packages that are off. A package the server does not list counts as on (older server). With an
+/// <see cref="AddOns.AddOnClientSync"/>, every load first brings the client parts of the server's add-ons, so the pages of
+/// an add-on follow like those of any plugin (docs/spec/add-ons.md rule 6).
 /// </summary>
-public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPackageStore> logger)
+public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPackageStore> logger, AddOns.AddOnClientSync? addOns = null)
 {
     private IReadOnlyList<PluginPackageInfo> _packages = [];
 
@@ -60,7 +62,13 @@ public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPacka
     {
         try
         {
-            Apply(await api.ListPluginPackagesAsync(ct).ConfigureAwait(true));
+            PluginPackageList list = await api.ListPluginPackagesAsync(ct).ConfigureAwait(true);
+            if (addOns is not null)
+            {
+                await addOns.SyncAsync(ct).ConfigureAwait(true);
+            }
+
+            Apply(list);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
