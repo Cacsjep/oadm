@@ -7,7 +7,11 @@
 #   - the limits of the server: the ZIP at most 400 MB (its download limit), the client part it hands to clients
 #     (plugin.json, the top-level *.Client.dll/.pdb and *.Server.dll/.pdb, everything under client/) at most 24 MB
 #     unpacked and without native libraries;
-#   - THIRD-PARTY-NOTICES.txt at the top (tools/Oadm.Notices --addon).
+#   - THIRD-PARTY-NOTICES.txt at the top (tools/Oadm.Notices --addon); a win-* ZIP with DirectML.dll only when the notices
+#     hold its license (MICROSOFT SOFTWARE LICENSE TERMS ... DIRECTML, from the add-on's OadmNoticePackage items);
+#   - oadm-version.txt at the top with the version of the ZIP's name (the server records the add-on with it).
+# The limits are kept equal to the server's constants by a test (AddOnPackagingTests): UpdateDownloader.MaxInstallerBytes
+# and AddOnFolders.MaxClientPartBytes.
 # Needs unzip (Linux, macOS, Git Bash on Windows).
 set -euo pipefail
 
@@ -15,6 +19,8 @@ zip="$1"
 id="$2"
 rid="$3"
 fail() { echo "error: $(basename "$zip"): $1" >&2; exit 1; }
+max_zip_mb=400
+max_client_mb=24
 
 [ -f "$zip" ] || fail "missing"
 names="$(unzip -Z1 "$zip")"
@@ -25,8 +31,8 @@ client=$(unzip -l "$zip" | awk 'NF >= 4 && $1 ~ /^[0-9]+$/ {
   if (name == "plugin.json" || name ~ /^[^\/]+\.(Client|Server)\.(dll|pdb)$/ || name ~ /^client\//) sum += $1
 } END { print sum + 0 }')
 echo "$(basename "$zip"): $(printf '%s\n' "$names" | grep -c .) files, $((size / 1024)) KB, client part $((client / 1024)) KB unpacked"
-[ "$size" -le $((400 * 1024 * 1024)) ] || fail "larger than 400 MB, the server's download limit"
-[ "$client" -le $((24 * 1024 * 1024)) ] || fail "client part larger than 24 MB"
+[ "$size" -le $((max_zip_mb * 1024 * 1024)) ] || fail "larger than $max_zip_mb MB, the server's download limit"
+[ "$client" -le $((max_client_mb * 1024 * 1024)) ] || fail "client part larger than $max_client_mb MB"
 bad_client="$(printf '%s\n' "$names" | grep -E '^client/.*(\.so$|\.so\.|\.dylib$)' || true)"
 [ -z "$bad_client" ] || fail "native libraries in client/: $(echo $bad_client)"
 
@@ -34,6 +40,13 @@ printf '%s\n' "$names" | grep -qx 'plugin.json' || fail "no plugin.json at the t
 printf '%s\n' "$names" | grep -qx 'THIRD-PARTY-NOTICES.txt' || fail "no THIRD-PARTY-NOTICES.txt at the top"
 unzip -p "$zip" plugin.json | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" || fail "plugin.json has another id than $id"
 printf '%s\n' "$names" | grep -Eq '^[^/]+\.Server\.dll$' || fail "no server part (*.Server.dll)"
+printf '%s\n' "$names" | grep -qx 'oadm-version.txt' || fail "no oadm-version.txt at the top"
+expected="$(basename "$zip")"
+expected="${expected#oadm-addon-$id-}"
+expected="${expected%-$rid.zip}"
+stamped="$(unzip -p "$zip" oadm-version.txt | tr -d '\r\n')"
+[ "$stamped" = "$expected" ] || fail "oadm-version.txt says '$stamped', the ZIP's name '$expected'"
+! printf '%s\n' "$names" | grep -qx 'notices-extra.json' || fail "notices-extra.json must not ship"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 for p in "$root"/plugins/*.Client/*.csproj; do
@@ -44,6 +57,11 @@ for p in "$root"/plugins/*.Client/*.csproj; do
 done
 
 os="${rid%%-*}"
+if [ "$os" = win ] && printf '%s\n' "$names" | grep -Eqi '(^|/)DirectML\.dll$'; then
+  notices="$(unzip -p "$zip" THIRD-PARTY-NOTICES.txt)"
+  printf '%s' "$notices" | grep -q 'MICROSOFT SOFTWARE LICENSE TERMS' && printf '%s' "$notices" | grep -q 'DIRECTML' \
+    || fail "DirectML.dll without its license in THIRD-PARTY-NOTICES.txt (OadmNoticePackage Microsoft.AI.DirectML)"
+fi
 keep=(-e "$rid" -e "$os")
 if [ "$os" != win ]; then keep+=(-e unix); fi
 other="$(printf '%s\n' "$names" | grep -E '^runtimes/[^/]+/' | cut -d/ -f2 | sort -u | grep -vx "${keep[@]}" || true)"

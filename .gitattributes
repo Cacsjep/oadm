@@ -5,6 +5,7 @@
 # Packaging: maintainer scripts, units and plists are read on Linux/macOS.
 packaging/linux/** text eol=lf
 packaging/macos/** text eol=lf
+packaging/addons/** text eol=lf
 *.ico binary
 *.icns binary
 # ADM configuration files (fixtures) are compared byte for byte: keep their CRLF.

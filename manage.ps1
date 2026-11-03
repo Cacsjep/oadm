@@ -587,9 +587,9 @@ function Invoke-PackageSiteNode {
     Write-Host "site node packages written to $out"
 }
 
-# The platforms of the add-on ZIPs, the same as AddOnCatalog.RuntimeIds (src/Oadm.Core/Plugins/AddOns/AddOnCatalog.cs;
-# a test keeps them equal).
-$AddOnRids = @('win-x64', 'linux-x64', 'linux-arm64', 'osx-x64')
+# The platforms of the add-on ZIPs: packaging/addons/addon-rids.txt, also read by manage.sh and release.yml (a test keeps
+# it equal to the server's AddOnCatalog.RuntimeIds).
+$AddOnRids = @(Get-Content -LiteralPath (Join-Path $RepoRoot 'packaging/addons/addon-rids.txt') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # Keeps only the runtimes/ subfolders a server on $Rid loads (the RID, its OS, unix outside Windows). A RID-specific
 # publish puts the native libraries next to the dlls; this catches packages that keep folders of other platforms.
@@ -614,19 +614,21 @@ function Test-AddOnFolder([string]$Folder, [string]$Id, [string]$Rid, [bool]$Has
     if (@(Get-ChildItem -LiteralPath $Folder -Filter '*.Server.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Server.dll" }
     if ($HasClient -and @(Get-ChildItem -LiteralPath $Folder -Filter '*.Client.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Client.dll" }
     if (-not (Test-Path -LiteralPath (Join-Path $Folder 'THIRD-PARTY-NOTICES.txt'))) { Exit-Environment "add-on ${Id}: THIRD-PARTY-NOTICES.txt missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $Folder 'oadm-version.txt'))) { Exit-Environment "add-on ${Id}: oadm-version.txt missing" }
     $foreign = switch ($Rid.Split('-')[0]) { 'win' { '\.(so|dylib)$|\.so\.' } 'linux' { '\.dylib$' } 'osx' { '\.so$|\.so\.' } }
     $bad = @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object { $_.Name -match $foreign })
     if ($bad.Count -gt 0) { Exit-Environment "add-on $Id ${Rid}: native libraries of another platform: $(($bad | ForEach-Object Name) -join ', ')" }
 }
 
-# A ZIP of the folder's content (no top folder), entry names with "/" also on Windows PowerShell 5.1.
+# A ZIP of the folder's content (no top folder), entry names with "/" also on Windows PowerShell 5.1; hidden and dot
+# files included, like "zip -r" in manage.sh.
 function New-ZipFromFolder([string]$Folder, [string]$Zip) {
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
     if (Test-Path -LiteralPath $Zip) { Remove-Item -LiteralPath $Zip -Force }
     $root = (Resolve-Path -LiteralPath $Folder).ProviderPath.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
     $archive = [IO.Compression.ZipFile]::Open($Zip, [IO.Compression.ZipArchiveMode]::Create)
     try {
-        foreach ($f in @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Sort-Object FullName)) {
+        foreach ($f in @(Get-ChildItem -LiteralPath $Folder -Recurse -File -Force | Sort-Object FullName)) {
             $name = $f.FullName.Substring($root.Length).Replace('\', '/')
             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $f.FullName, $name, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
@@ -658,6 +660,15 @@ function Invoke-PackageAddOns {
                         '-p:OadmSkipPluginDeploy=true', "-p:Version=$version", '-o', $stage) + $script:Extra)
             }
             Limit-RuntimeFolders $stage $rid
+            # The release it belongs to: the server records a folder put in by hand with this version.
+            [IO.File]::WriteAllText((Join-Path $stage 'oadm-version.txt'), "$version`n")
+            # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
+            $extra = foreach ($p in $parts) {
+                $answer = & $script:Dotnet msbuild $p.FullName -nologo -getItem:OadmNoticePackage -p:Configuration=Release "-p:RuntimeIdentifier=$rid"
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+                ($answer -join "`n")
+            }
+            [IO.File]::WriteAllText((Join-Path $stage 'notices-extra.json'), '[' + ($extra -join ',') + ']')
             # The add-on ships alone: its own notices (its NuGet packages, its models' licenses) and OADM's license.
             Invoke-Dotnet @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.Notices/Oadm.Notices.csproj'), '-c', 'Release', '--',
                 '--repo', $RepoRoot, '--rid', $rid, '--version', $version, '--addon', $stage)
@@ -665,6 +676,14 @@ function Invoke-PackageAddOns {
             Test-AddOnFolder $stage $id $rid $hasClient
             $zip = Join-Path $out "oadm-addon-$id-$version-$rid.zip"
             New-ZipFromFolder $stage $zip
+            # The checks of release.yml on the ZIP (check-addon-zip.sh needs bash with unzip: Git Bash on Windows).
+            $bash = Get-Command bash -ErrorAction SilentlyContinue
+            if ($bash -and $bash.Source -notlike "$env:SystemRoot*") {
+                & $bash.Source (Join-Path $RepoRoot 'packaging/addons/check-addon-zip.sh') ($zip -replace '\\', '/') $id $rid
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else {
+                Write-Warning 'bash not found: the ZIP check of packaging/addons/check-addon-zip.sh is left to release.yml'
+            }
             Write-Host ('add-on {0} {1}: {2} ({3:N0} KB)' -f $id, $rid, $zip, ((Get-Item -LiteralPath $zip).Length / 1KB))
         }
     }

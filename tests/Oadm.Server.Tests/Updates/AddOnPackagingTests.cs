@@ -52,9 +52,17 @@ public sealed partial class AddOnPackagingTests
         var sh = Read("manage.sh");
         var release = Read(".github", "workflows", "release.yml");
 
-        Assert.Equal(AddOnCatalog.RuntimeIds, PowerShellRids().Match(ps1).Groups[1].Value.Split(',').Select(r => r.Trim().Trim('\'')));
-        Assert.Equal(AddOnCatalog.RuntimeIds, BashRids().Match(sh).Groups[1].Value.Split(' '));
-        Assert.Equal(AddOnCatalog.RuntimeIds, ReleaseRids().Match(release).Groups[1].Value.Split(' '));
+        // One list of platforms (packaging/addons/addon-rids.txt), read by both scripts and the release's checksum check; the
+        // release's build matrix has a job per platform.
+        var rids = Read("packaging", "addons", "addon-rids.txt").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Equal(AddOnCatalog.RuntimeIds, rids);
+        Assert.Contains("$AddOnRids = @(Get-Content -LiteralPath (Join-Path $RepoRoot 'packaging/addons/addon-rids.txt')", ps1, StringComparison.Ordinal);
+        Assert.Contains("ADDON_RIDS=\"$(tr -d '\\r' < \"$REPO_ROOT/packaging/addons/addon-rids.txt\" | xargs)\"", sh, StringComparison.Ordinal);
+        Assert.Contains("for rid in $(tr -d '\\r' < ../packaging/addons/addon-rids.txt); do", release, StringComparison.Ordinal);
+        foreach (var rid in rids)
+        {
+            Assert.Contains($", rid: {rid},", release, StringComparison.Ordinal);
+        }
 
         // The file name the server downloads (A1) is the one the scripts write and the release checks.
         Assert.Contains($"\"{AddOnCatalog.ReleaseFileName("$id", "$version", "$rid")}\"", ps1, StringComparison.Ordinal);
@@ -98,6 +106,42 @@ public sealed partial class AddOnPackagingTests
     }
 
     [Fact]
+    public void TheZipCheckUsesTheServersLimits()
+    {
+        var limits = CheckLimits().Matches(Read("packaging", "addons", "check-addon-zip.sh"))
+            .ToDictionary(m => m.Groups[1].Value, m => long.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture) * 1024 * 1024);
+
+        // The ZIP: the download limit of the server (GitHubAddOnFiles downloads through the self update's UpdateDownloader).
+        Assert.Equal(Oadm.Contracts.Updates.UpdateDownloader.MaxInstallerBytes, limits["zip"]);
+        Assert.Equal(Oadm.Server.AddOns.AddOnFolders.MaxClientPartBytes, limits["client"]);
+    }
+
+    [Fact]
+    public void BothScriptsStampTheVersionCheckTheZipAndShipNoNoticesExtra()
+    {
+        var ps1 = Function(Read("manage.ps1"), "function Invoke-PackageAddOns {");
+        var sh = Function(Read("manage.sh"), "package_addons() {");
+        var check = Read("packaging", "addons", "check-addon-zip.sh");
+
+        // oadm-version.txt (the server records a folder put in by hand with it), written before the notices and the ZIP.
+        Assert.Contains("'oadm-version.txt'), \"$version`n\")", ps1, StringComparison.Ordinal);
+        Assert.Contains("printf '%s\\n' \"$(app_version)\" > \"$stage/oadm-version.txt\"", sh, StringComparison.Ordinal);
+        Assert.Contains("grep -qx 'oadm-version.txt' || fail", check, StringComparison.Ordinal);
+        // The packages shipped outside deps.json, for the notices (which delete the file); never in the ZIP.
+        Assert.Contains("-getItem:OadmNoticePackage", ps1, StringComparison.Ordinal);
+        Assert.Contains("-getItem:OadmNoticePackage", sh, StringComparison.Ordinal);
+        Assert.True(sh.IndexOf("notices-extra.json", StringComparison.Ordinal) < sh.IndexOf("--addon", StringComparison.Ordinal));
+        Assert.True(ps1.IndexOf("notices-extra.json", StringComparison.Ordinal) < ps1.IndexOf("'--addon'", StringComparison.Ordinal));
+        Assert.Contains("notices-extra.json must not ship", check, StringComparison.Ordinal);
+        Assert.Contains("MICROSOFT SOFTWARE LICENSE TERMS", check, StringComparison.Ordinal);
+        // The ZIP check of release.yml right after the ZIP; both ZIPs hold dot files.
+        Assert.True(sh.IndexOf("zip_folder \"$stage\" \"$zip\"", StringComparison.Ordinal) < sh.IndexOf("check-addon-zip.sh", StringComparison.Ordinal));
+        Assert.True(ps1.IndexOf("New-ZipFromFolder $stage $zip", StringComparison.Ordinal) < ps1.IndexOf("check-addon-zip.sh", StringComparison.Ordinal));
+        Assert.Contains("Get-ChildItem -LiteralPath $Folder -Recurse -File -Force", Function(Read("manage.ps1"), "function New-ZipFromFolder("), StringComparison.Ordinal);
+        Assert.Contains("zip -qry", Function(Read("manage.sh"), "zip_folder() {"), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheReleaseBuildsChecksAndAttachesTheAddOnZips()
     {
         var release = Read(".github", "workflows", "release.yml");
@@ -129,14 +173,8 @@ public sealed partial class AddOnPackagingTests
         return script[at..(end < 0 ? script.Length : end)];
     }
 
-    [GeneratedRegex(@"^\$AddOnRids = @\(([^)]*)\)", RegexOptions.Multiline)]
-    private static partial Regex PowerShellRids();
-
-    [GeneratedRegex("^ADDON_RIDS=\"([^\"]*)\"", RegexOptions.Multiline)]
-    private static partial Regex BashRids();
-
-    [GeneratedRegex(@"for rid in ([a-z0-9 -]+); do\n\s+grep -q ""  oadm-addon-")]
-    private static partial Regex ReleaseRids();
+    [GeneratedRegex(@"^max_(zip|client)_mb=(\d+)$", RegexOptions.Multiline)]
+    private static partial Regex CheckLimits();
 
     [GeneratedRegex(@"uses: (\S+)")]
     private static partial Regex Uses();

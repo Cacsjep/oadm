@@ -34,19 +34,23 @@ The file layout of every installer and the user-facing install notes are in `pac
   projects with `<OadmAddOn>true</OadmAddOn>` and the same `<OadmPluginId>`, server and client part) is published with
   `dotnet publish -r <rid> --self-contained false` into `artifacts/publish/addons/<rid>/<plugin id>/` and zipped as
   `oadm-addon-<plugin id>-<version>-<rid>.zip` (`AddOnCatalog.ReleaseFileName`) into `artifacts/packages/`.
-- Platforms: `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64` (`AddOnCatalog.RuntimeIds`; the scripts keep the same list,
-  a test checks it); without `--rid` all four. The publish is RID-specific, so NuGet native libraries are those of that
+- Platforms: `win-x64`, `linux-x64`, `linux-arm64`, `osx-x64`, listed once in `packaging/addons/addon-rids.txt` (read by
+  both scripts and the checksum check of `release.yml`; a test keeps it equal to `AddOnCatalog.RuntimeIds` and to the
+  `release.yml` build matrix); without `--rid` all four. The publish is RID-specific, so NuGet native libraries are those of that
   platform only, next to the dlls; a `runtimes/` folder left by a package keeps only `<rid>`, its OS and `unix` (outside
   Windows). It builds on any system (cross-publish; bash needs `zip` or `python3`).
-- The ZIP holds the plugin folder's content at the top (no top folder): `plugin.json`, the server part, the client part,
-  their `*.deps.json`, the native libraries and models of that platform. The server unpacks it into
+- The ZIP holds the plugin folder's content at the top (no top folder), dot files included in both scripts: `plugin.json`,
+  the server part, the client part, their `*.deps.json`, the native libraries and models of that platform, and
+  `oadm-version.txt` (the release version, one line, written by the scripts; the server records a folder put in by hand
+  with it). The server unpacks it into
   `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
-  the add-on has a client project), `THIRD-PARTY-NOTICES.txt` and that no native library of another platform is in it
-  (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux).
+  the add-on has a client project), `THIRD-PARTY-NOTICES.txt`, `oadm-version.txt` and that no native library of another
+  platform is in it (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux); after zipping they run
+  `check-addon-zip.sh` on the ZIP (`manage.ps1` with Git Bash when it finds it, else `release.yml` does).
 - Limits of the server: the ZIP at most 400 MB (the download limit of `UpdateDownloader`); the client part the server
   hands to clients is `plugin.json`, the top-level `*.Client.dll`, `*.Server.dll` (the client part references its server
   project) with their `.pdb`, and everything under `client/` (`AddOnFolders.ClientPartPatterns`), at most 24 MB unpacked
-  and never a native library. Client-only dependencies of an add-on go under `client/`; dependencies of the server part
+  (`AddOnFolders.MaxClientPartBytes`; a test keeps `check-addon-zip.sh` on both constants) and never a native library. Client-only dependencies of an add-on go under `client/`; dependencies of the server part
   stay on the server.
 - Models are never in git. Text recognition's ONNX models (about 108 MB) are downloaded by the build
   (`plugins/Oadm.Plugins.Ocr/Models/Models.targets`, MSBuild `DownloadFile` and `GetFileHash`, no other tool): each from its
@@ -56,12 +60,19 @@ The file layout of every installer and the user-facing install notes are in `pac
   `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
   the hash of `Models.targets`.
 - `packaging/addons/addon-ids.sh` prints the add-on plugin ids, `packaging/addons/check-addon-zip.sh <zip> <id> <rid>`
-  checks one ZIP the same way (both used by `release.yml`).
+  checks one ZIP the same way plus the limits, `oadm-version.txt` equal to the version of the ZIP's name, no
+  `notices-extra.json`, and in a `win-*` ZIP with `DirectML.dll` notices that hold its license ("MICROSOFT SOFTWARE
+  LICENSE TERMS" and "DIRECTML") (both used by `release.yml`).
 - Notices: an add-on ships alone, so `manage package addons` runs `tools/Oadm.Notices --addon <folder>` on each published
   add-on folder before the check: `THIRD-PARTY-NOTICES.txt` with the add-on's own NuGet packages (its `*.deps.json`
   files: ONNX Runtime, SkiaSharp, ...), the license files of its models as bundled components (`Models/*LICENSE*`, e.g.
   `Models/PaddleOCR-LICENSE.txt`) and the license texts, plus OADM's `LICENSE.txt`. The notices of OADM's installers do
   not list the add-ons' packages.
+- Packages an add-on ships outside its `*.deps.json` (a native library copied by hand, e.g. `DirectML.dll` of
+  `Microsoft.AI.DirectML`) are MSBuild items `<OadmNoticePackage Include="<package id>" Version="<version>" />` in the
+  add-on's csproj. The scripts write the `dotnet msbuild -getItem:OadmNoticePackage` answers of its projects into
+  `notices-extra.json` in the published folder; `Oadm.Notices --addon` lists those packages like the others, with the
+  license files of the package (the full text, e.g. DirectML's proprietary `LICENSE.txt`), and deletes the file.
 
 ## Notices and terms of use
 
