@@ -621,3 +621,113 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 
 Built in three waves of parallel packages (skeleton; recognition, matching, frames, readers and page; the real parts
 wired). Open: the hardware runs on the development cameras.
+
+## Build plan (parallel work)
+
+Same waves as `docs/spec/add-ons.md` "Build plan". Each package owns its folder under `plugins/Oadm.Plugins.Ocr(.Client)`
+and `tests/Oadm.Plugins.Ocr.Tests`; nobody else changes it.
+
+**Wave 1, skeleton (with the add-on contracts, same agent):** the projects from the template (`manage new`) in
+`Oadm.sln`, `plugin.json` (add-on, off by default, `minSdkVersion`), and the shared types in `Model/`: `Reader`, `Area`,
+`ExpectedText`, `TextLine` (text, box, confidence), `AreaResult`, `Reading`; the interfaces `ITextRecognizer`
+(`ReadAsync(jpeg, areas, ct)` to lines per area), `IFrameSource` (`SingleAsync`, `WatchAsync(fps)` as an
+`IAsyncEnumerable` of JPEG frames) and `ITextMatcher`; the `InvokeAsync` methods and their JSON payloads (`Api/`), the
+event and action ids, the permissions.
+
+**Wave 2, in parallel:**
+
+| Package | Owns | Builds | Against |
+|---|---|---|---|
+| O1 Recognition | `Recognition/`, `Models/`, its tests and fixtures | ONNX Runtime sessions, JPEG decode and crop (SkiaSharp), detection pre and post (contours in C#), straightening, recognition with CTC, the worker gate | `ITextRecognizer`; fixtures recorded read-only from the development cameras |
+| O2 Matching | `Matching/`, its tests | line order, several lines, the format syntax, look-alike fixes, a number over two lines | `ITextMatcher` (pure C#, no I/O) |
+| O3 Frames | `Frames/`, its tests | MJPEG `multipart/x-mixed-replace` parser, the stream through `ctx.Vapix` (streamed answer), reopening with the growing pause, single picture | `IFrameSource`; a recorded MJPEG answer |
+| O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
+| O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, New area, results, Save; headless screenshots | the `Api/` payloads with a fake server |
+
+**Wave 3:** the real parts wired in place of the fakes (done: "Parts and contract"), the models downloaded at build
+(done), the add-on ZIP (A4), a measurement of the speed (done: "GPU"), the plugin's `README.md` (done), review and full
+suite; open: the hardware runs on the development cameras.
+
+## Rotation and perspective (measured 2026-11-03)
+
+How far a text can be turned in the picture and tilted away from the camera and still read. Measured on the CPU with the
+mobile text finder by `Recognition/AngleSweepTests` (Perf, about 10 minutes on 24 cores; the What_if test alone 9.5) and
+pinned by `Recognition/AngleLimitsTests` (a normal test, 5 s).
+
+- **Pictures**: made in memory (`Recognition/AngleSweep.cs`, SkiaSharp), full HD, the plate in the middle: the container
+  number `MSKU 123456 5` (`AAAU ###### #`, `45G1` below it) on a ribbed door, `4/12` (`#/##`, `INTENSITY` above it) on a
+  label, `LOADING DOCK 3` (Any text, one line) on a sign, `36F1A` (`##A#A`, `TOTAL EUR 10.60` below it) on a receipt.
+  20 variants per text and angle: Roboto Bold and Regular (from the repository), Arial Bold, Consolas Bold, cap heights
+  24 to 40 px, each block of 5 clean, blurred (1.2 px), noisy (sigma 8) or strong JPEG (quality 40).
+- **Fixed place**: one square area around the plate, large enough for any turn (the same area at every angle). **Search**:
+  the whole picture, only the three texts with a format (Search with Any text gives every text of the picture), 10 variants.
+- **Tilt**: the plate on a plane turned around the vertical axis ("side") or the horizontal axis ("top"), seen through a
+  60° lens at the distance where it is drawn at its size, the near edge kept at its size.
+
+**Turned in the picture, fixed place** (exact values, 20 per text; a / b is the angle and its mirror, 15° and 345°):
+
+| Turn | With a format | Container | 4/12 | Order code | Sign (any text) |
+|---|---|---|---|---|---|
+| 0° | 100 % | 100 % | 100 % | 100 % | 100 % |
+| 5° / 355° | 100 / 100 % | 100 / 100 % | 100 / 100 % | 100 / 100 % | 100 % |
+| 10° / 350° | 96.7 / 96.7 % | 100 / 100 % | 100 / 100 % | 90 / 90 % | 100 % |
+| 15° / 345° | 95.0 / 93.3 % | 100 / 100 % | 100 / 100 % | 85 / 80 % | 100 % |
+| 30° / 330° | 90.0 / 88.3 % | 90 / 85 % | 100 / 100 % | 80 / 80 % | 100 % |
+| 45° / 315° | 91.7 / 90.0 % | 95 / 80 % | 100 / 100 % | 80 / 90 % | 100 / 95 % |
+| 60° / 300° | 76.7 / 80.0 % | 80 / 90 % | 95 / 90 % | 55 / 60 % | 100 / 95 % |
+| 85° / 275° | 81.7 / 83.3 % | 95 / 90 % | 100 / 100 % | 50 / 60 % | 100 % |
+| 90° / 270° | 100 / 95.0 % | 100 / 85 % | 100 / 100 % | 100 / 100 % | 100 % |
+| 95° / 265° | 86.7 / 75.0 % | 100 / 85 % | 100 / 90 % | 60 / 50 % | 100 % |
+| 120° / 240° | 68.3 / 66.7 % | 75 / 60 % | 85 / 95 % | 45 / 45 % | 100 % |
+| 135° / 225° | 76.7 / 81.7 % | 80 / 65 % | 90 / 95 % | 60 / 85 % | 100 % |
+| 150° / 210° | 86.7 / 88.3 % | 85 / 85 % | 100 / 95 % | 75 / 85 % | 100 % |
+| 165° / 195° | 91.7 / 95.0 % | 100 / 100 % | 95 / 100 % | 80 / 85 % | 100 % |
+| 170° / 190° | 95.0 / 96.7 % | 95 / 100 % | 100 / 100 % | 90 / 90 % | 100 % |
+| 175° / 185° | 98.3 / 96.7 % | 100 / 100 % | 100 / 100 % | 95 / 90 % | 100 % |
+| 180° | 100 % | 100 % | 100 % | 100 % | 100 % |
+
+All 40 angles: 88.2 % exact with a format, 99.8 % any text. Search over the whole picture with a format (10 per text):
+0°, 30°, 90°, 180°, 270° 100 %; 15° and 75° 96.7 %; 45° 90.0 %; 60° 86.7 %; 135° 83.3 %; 225° and 315° 93.3 %.
+
+**Tilted away, fixed place** (exact values with a format / any text):
+
+| Tilt | Side | Top | Side + 15° turn | Top + 15° turn |
+|---|---|---|---|---|
+| 0° | 100 / 100 % | 100 / 100 % | 95.0 / 100 % | 95.0 / 100 % |
+| 10° | 100 / 100 % | 100 / 100 % | 95.0 / 100 % | 96.7 / 100 % |
+| 20° | 100 / 100 % | 100 / 100 % | 93.3 / 100 % | 96.7 / 100 % |
+| 30° | 100 / 100 % | 100 / 100 % | 91.7 / 100 % | 93.3 / 100 % |
+| 40° | 100 / 100 % | 100 / 100 % | 95.0 / 100 % | 96.7 / 100 % |
+| 50° | 100 / 100 % | 100 / 100 % | 95.0 / 100 % | 96.7 / 100 % |
+| 60° | 98.3 / 100 % | 100 / 100 % | 91.7 / 80 % | 96.7 / 100 % |
+
+Search with a format, tilted: 100 % up to 60° to the side, up to 50° from the top, 96.7 % at 60° from the top.
+
+**Limits** (the user docs' "Camera angle"):
+
+- With a format, 95 % exact or better: turned up to 10° either way from upright or upside down (170° to 190°); a
+  container number up to 15°. Turned exactly on its side (90°, 270°) reads too, 5° to 10° off it does not (75 to 88 %).
+- Any text, 90 % exact or better: a single line at every turn (95 % at 300° and 315°, 100 % elsewhere).
+- Tilt: up to 60° to the side or from the top (the end of the sweep) as well as straight on: 98.3 % or better with a
+  format, 100 % any text. Tilt and a 15° turn together: the turn sets the limit (91.7 to 96.7 %); 60° to the side with a
+  turn drops a single line to 80 % (`LOADING DOCK3`: the far, squeezed space is lost).
+
+**Why it breaks**:
+
+- **Two lines close together** (the order code above `TOTAL EUR`, the container number above `45G1`, about one cap height
+  apart): turned 15° to 75° off an axis, the text finder's regions of both lines join into one box (the receipt at 15°:
+  one box 342 x 178 px; at 60°: 129 x 224, turned by the 90° rule). The box is then read across both lines and dropped
+  (mean below 50 %) or misread (`36A0O`, `36G1A`). 139 of the 286 misses had no line at all. A single line (the sign) never
+  breaks, a line with more room to the next one (`4/12`) rarely does.
+- **Short lines of digits upside down** rely on the angle model: `4/12` at 150° got 0.24 to 0.38 for upside down (the
+  candidate threshold is 0.3), so it is read turned only sometimes.
+- **The picture**: of the misses 117 had strong JPEG and 129 Consolas (wide letter spacing), 10 noise.
+- Near-square boxes at 45° were not a problem (`4/12` 100 % at 45°).
+- Any text with several lines upside down gives the lines in reversed order (`TOTAL EUR 10.60 36F1A`); a format is not
+  affected.
+
+**Tried, no gain** (`What_if_rotation`, the same 3,200 pictures through a wrapped model runner, nothing in the plugin
+changed): every unsure line read both ways (the angle model skipped) 88.2 % with a format, the text finder's pixel threshold
+at 0.5 instead of 0.3 88.2 %, both 88.3 % (as it is: 88.2 %). The joined lines stay one region at 0.5; keeping them
+apart needs another step than a threshold (not measured: split a box that holds two rows at the gap in the text finder's
+map).
