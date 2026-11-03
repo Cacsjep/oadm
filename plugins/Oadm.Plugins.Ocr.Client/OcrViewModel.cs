@@ -25,7 +25,6 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     private readonly ICorePluginClientContext _ctx;
     private readonly Dictionary<string, ReaderRow> _rows = new(StringComparer.Ordinal);
-    private Dictionary<Guid, IDeviceInfo>? _devices;
     private CancellationTokenSource? _active;
     private int _openVersion;
     private bool _applyingEngine;
@@ -45,16 +44,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     public Func<byte[], Task<Bitmap?>> DecodePicture { get; set; } = DecodeAsync;
 
     /// <summary>Opens the camera picker (set by the view); the argument is the camera chosen so far.</summary>
-    public Func<Guid?, Task<Guid?>>? PickCamera
-    {
-        get => _pickCamera;
-        set
-        {
-            _pickCamera = value;
-        }
-    }
-
-    private Func<Guid?, Task<Guid?>>? _pickCamera;
+    public Func<Guid?, Task<Guid?>>? PickCamera { get; set; }
 
     /// <summary>The settings column's dialogs (set by the view): Stream settings and Rename of an area.</summary>
     public IReaderDialogs? Dialogs
@@ -198,6 +188,11 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
         _active = new CancellationTokenSource();
         var token = _active.Token;
+        if (_camerasStale)
+        {
+            RefreshCameraTexts();
+        }
+
         _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
         _ = KeepStatsAsync(token);
         Editor?.StartPreview();
@@ -300,6 +295,8 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             _applyingEngine = false;
         }
 
+        Editor?.ApplyFpsChoices(engine.FpsChoices);
+
         OnPropertyChanged(nameof(CanSetGpu));
         OnPropertyChanged(nameof(GpuBlockedReason));
     }
@@ -335,12 +332,14 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         var list = OcrJson.Deserialize<ReaderList>(json);
         if (list.FpsChoices is { Count: > 0 } choices)
         {
-            // The frame rates offered now (more on a GPU) come with the list.
+            // The frame rates offered come with the list: the shown reader's select follows them.
             Engine = Engine with { FpsChoices = choices };
+            Editor?.ApplyFpsChoices(choices);
         }
 
         // A change of the readers may lift a refusal of the watching limits.
         Editor?.ClearModeRefusal();
+        EnsureCameraTexts(list.Readers.Select(r => r.DeviceId));
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var summary in list.Readers)
         {
@@ -376,7 +375,6 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             }
             else
             {
-                editor.Problem = shown.Problem;
                 SetSelected(shown);
             }
         }
@@ -510,18 +508,24 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             }
 
             var editor = ShowEditor(OcrJson.Deserialize<Reader>(json), isNew: false);
-            editor.Problem = row.Problem;
             IsOpening = false;
+            ErrorText = null;
             await Task.WhenAll(editor.LoadCameraOptionsAsync(ct), editor.LoadLastReadingAsync(ct)).ConfigureAwait(true);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            RestoreSelection(version);
         }
 #pragma warning disable CA1031 // The server's reason below the list.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            ErrorText = ServerErrors.Message(ex);
+            if (version == _openVersion)
+            {
+                // Not opened: the list selects the reader that is still shown (or none), never a row the right side does not show.
+                ErrorText = ServerErrors.Message(ex);
+                RestoreSelection(version);
+            }
         }
         finally
         {
@@ -529,6 +533,15 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             {
                 IsOpening = false;
             }
+        }
+    }
+
+    /// <summary>An open that did not show its reader: the selection goes back to the shown one (a new draft: none).</summary>
+    private void RestoreSelection(int version)
+    {
+        if (version == _openVersion)
+        {
+            SetSelected(Editor is { IsNew: false } shown && _rows.TryGetValue(shown.Id, out var row) && Readers.Contains(row) ? row : null);
         }
     }
 
@@ -585,9 +598,18 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             number++;
         }
 
+        // A reader still being opened never replaces the new draft.
+        ForgetOpens();
         var editor = ShowEditor(new Reader { Name = $"Reader {number}", DeviceId = camera, Mode = ReaderMode.Watching }, isNew: true);
         SetSelected(null);
         await editor.LoadCameraOptionsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+    }
+
+    /// <summary>Opens still on their way show nothing when they end (their ring goes now).</summary>
+    private void ForgetOpens()
+    {
+        _openVersion++;
+        IsOpening = false;
     }
 
     private bool CanNew() => MayChange && _rows.Count < OcrLimits.MaxReaders;
@@ -673,24 +695,98 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     /// <summary>"AXIS Q1798-LE · 10.0.0.48"; a device OADM no longer manages: "Removed device 1a2b3c4d".</summary>
     internal string CameraText(Guid deviceId)
     {
-        _devices ??= _ctx.Devices.GroupBy(d => d.Id).ToDictionary(g => g.Key, g => g.First());
-        if (!_devices.TryGetValue(deviceId, out var device))
+        EnsureCameraTexts([deviceId]);
+        return _cameraTexts[deviceId];
+    }
+
+    /// <summary>
+    /// The camera texts of <paramref name="deviceIds"/> known; the ones missing are found in one pass over the devices. Only
+    /// the readers' cameras are kept (at most 50 readers), never a map of every device.
+    /// </summary>
+    private void EnsureCameraTexts(IEnumerable<Guid> deviceIds)
+    {
+        var missing = deviceIds.Where(id => !_cameraTexts.ContainsKey(id)).ToHashSet();
+        if (missing.Count == 0)
         {
-            return DeviceTexts.Removed(deviceId.ToString("N"));
+            return;
         }
 
-        return string.IsNullOrWhiteSpace(device.Model) ? device.Address : device.Model + " · " + device.Address;
+        foreach (var (id, text) in FindCameraTexts(missing))
+        {
+            _cameraTexts[id] = text;
+        }
     }
+
+    /// <summary>The texts of <paramref name="ids"/>: one pass over the devices; a device OADM no longer manages is named as removed.</summary>
+    private Dictionary<Guid, string> FindCameraTexts(HashSet<Guid> ids)
+    {
+        var texts = new Dictionary<Guid, string>(ids.Count);
+        foreach (var device in _ctx.Devices)
+        {
+            if (ids.Contains(device.Id) && !texts.ContainsKey(device.Id))
+            {
+                texts[device.Id] = string.IsNullOrWhiteSpace(device.Model) ? device.Address : device.Model + " · " + device.Address;
+                if (texts.Count == ids.Count)
+                {
+                    break;
+                }
+            }
+        }
+
+        foreach (var id in ids.Where(id => !texts.ContainsKey(id)))
+        {
+            texts[id] = DeviceTexts.Removed(id.ToString("N"));
+        }
+
+        return texts;
+    }
+
+    private readonly Dictionary<Guid, string> _cameraTexts = [];
+
+    /// <summary>The devices changed while the page was hidden: the camera texts are read again when it shows.</summary>
+    private bool _camerasStale;
 
     /// <summary>Only the cameras (the picker's list).</summary>
     public IReadOnlyList<IDeviceInfo> Cameras => [.. _ctx.Devices.Where(d => d.HasVideo)];
 
+    /// <summary>
+    /// A device changed: while the page shows, the readers' camera texts are read again in one pass (only the readers'
+    /// cameras); while it is hidden, once when it shows again.
+    /// </summary>
     private void OnDevicesChanged(object? sender, EventArgs e)
     {
-        _devices = null;
+        if (!IsActive)
+        {
+            _camerasStale = true;
+            return;
+        }
+
+        RefreshCameraTexts();
+    }
+
+    private void RefreshCameraTexts()
+    {
+        _camerasStale = false;
+        var ids = _rows.Values.Select(r => r.DeviceId).ToHashSet();
+        if (Editor is { } editor)
+        {
+            ids.Add(editor.DeviceId);
+        }
+
+        _cameraTexts.Clear();
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var (id, text) in FindCameraTexts(ids))
+        {
+            _cameraTexts[id] = text;
+        }
+
         foreach (var row in _rows.Values)
         {
-            row.SetCamera(CameraText(row.DeviceId));
+            row.SetCamera(_cameraTexts[row.DeviceId]);
         }
     }
 

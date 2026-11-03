@@ -163,9 +163,8 @@ public sealed class PageScreenshotTests
 
                 // A reader without an area: the video dimmed with the start hint, no results.
                 await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
-                vm.Editor!.Problem = null;
                 Headless.Pump();
-                Assert.True(vm.Editor.ShowStartHint);
+                Assert.True(vm.Editor!.ShowStartHint);
                 Assert.True(view.PictureControl.ShowStartHint);
                 Headless.Capture(window, $"ocr-no-area-{suffix}.png");
 
@@ -227,6 +226,86 @@ public sealed class PageScreenshotTests
 
             // A value: the async lambda is then awaited to its end (Dispatch has no overload for a plain Task, so its
             // assertions after the first await would otherwise never reach the test).
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Problems_refusals_and_loading_render()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            // The list with a short chip per kind of problem, the area list refused below its rows.
+            var ctx = Samples.Context();
+            ctx.Video!.Still = Samples.ContainerPicture();
+            ctx.Answers[OcrMethods.ListReaders] = _ => OcrJson.Serialize(new
+            {
+                readers = new object[]
+                {
+                    new { id = "r1", name = "Container gate", deviceId = Samples.Gate.Id, mode = "Watching", fps = 1, lastText = "MSKU 123456 7", lastTime = Samples.Time },
+                    new { id = "r3", name = "Dock 4 sign", deviceId = Samples.Dock.Id, mode = "Watching", fps = 2, lastText = "DOCK 4", lastTime = Samples.Time, problem = ReaderRules.TooManyWatching(16) },
+                    new { id = "r2", name = "Water meter", deviceId = Samples.Plant.Id, mode = "OnAction", lastText = "", problem = Oadm.Sdk.Devices.DeviceMessages.CredentialsRequired },
+                    new { id = "r4", name = "Lane sign", deviceId = Samples.Plant.Id, mode = "Watching", fps = 4, lastText = "", problem = Oadm.Plugins.Ocr.Frames.FrameTexts.ResolutionNotOffered },
+                    new { id = "r5", name = "Gate 2 plate", deviceId = Samples.Gate.Id, mode = "Watching", fps = 2, lastText = "", problem = Oadm.Sdk.Devices.DeviceMessages.NotAnswering },
+                },
+                fpsChoices = new[] { 1, 2, 4, 8, 12, 15 },
+            });
+            using (var vm = new OcrViewModel(ctx) { DecodePicture = Samples.Decode })
+            {
+                var view = new OcrView();
+                var window = Headless.Host(view);
+                window.Show();
+                view.DataContext = vm;
+                await vm.LoadAsync(CancellationToken.None);
+                var editor = vm.Editor!;
+                editor.ShowFieldError(new FieldError(OcrFields.Areas, ReaderRules.TooManyAreas));
+                Headless.Pump();
+                Assert.Equal([OcrTexts.WatchingAt(1), OcrTexts.LimitReached, OcrTexts.LoginRefused, OcrTexts.StreamError, OcrTexts.NotReachable], vm.Readers.Select(r => r.ModeText));
+                foreach (var chip in new[] { OcrTexts.LimitReached, OcrTexts.LoginRefused, OcrTexts.StreamError, OcrTexts.NotReachable })
+                {
+                    Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == chip);
+                }
+
+                var error = view.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "AreasError");
+                Assert.True(error.IsEffectivelyVisible);
+                Assert.Equal(ReaderRules.TooManyAreas, error.Text);
+                Headless.Capture(window, $"ocr-problems-{suffix}.png");
+                window.Close();
+            }
+
+            // The list and a reader still being read: the loading overlays.
+            var slow = Samples.Context();
+            var list = new TaskCompletionSource<string?>();
+            var reader = new TaskCompletionSource<string?>();
+            slow.AsyncAnswers[OcrMethods.ListReaders] = _ => list.Task;
+            slow.AsyncAnswers[OcrMethods.GetReader] = _ => reader.Task;
+            using (var vm = new OcrViewModel(slow) { DecodePicture = Samples.Decode })
+            {
+                var view = new OcrView();
+                var window = Headless.Host(view);
+                window.Show();
+                view.DataContext = vm;
+                var load = vm.LoadAsync(CancellationToken.None);
+                Headless.Pump();
+                Assert.True(vm.IsLoading);
+                Assert.Contains(view.GetVisualDescendants().OfType<LoadingOverlay>(), o => o.IsEffectivelyVisible && o.Text == OcrTexts.ReadingReaders);
+                Headless.Capture(window, $"ocr-loading-list-{suffix}.png");
+
+                list.SetResult(Samples.ListJson());
+                Headless.Pump();
+                Assert.True(vm.IsOpening);
+                Assert.Contains(view.GetVisualDescendants().OfType<LoadingOverlay>(), o => o.IsEffectivelyVisible && o.Text == OcrTexts.ReadingReader);
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<LoadingOverlay>(), o => o.IsEffectivelyVisible && o.Text == OcrTexts.ReadingReaders);
+                Headless.Capture(window, $"ocr-loading-reader-{suffix}.png");
+
+                reader.SetResult(OcrJson.Serialize(Samples.ContainerGate));
+                await load;
+                Headless.Pump();
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<LoadingOverlay>(), o => o.IsEffectivelyVisible);
+                window.Close();
+            }
+
             return true;
         }, CancellationToken.None);
     }

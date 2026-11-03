@@ -54,12 +54,20 @@ public partial class OcrView : UserControl, IReaderDialogs
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (_viewModel is not null)
+        var old = _viewModel;
+        _viewModel = DataContext as OcrViewModel;
+        if (ReferenceEquals(old, _viewModel))
         {
-            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            return;
         }
 
-        _viewModel = DataContext as OcrViewModel;
+        if (old is not null)
+        {
+            // The view owns its page's view model (OcrPage makes both): one that leaves the view is done for good.
+            old.PropertyChanged -= OnViewModelPropertyChanged;
+            old.Dispose();
+        }
+
         if (_viewModel is { } vm)
         {
             vm.PropertyChanged += OnViewModelPropertyChanged;
@@ -114,7 +122,7 @@ public partial class OcrView : UserControl, IReaderDialogs
 
     private async Task<Guid?> PickCameraAsync(Guid? selected) =>
         TopLevel.GetTopLevel(this) is Window owner && _viewModel is { } vm
-            ? await DevicePickerWindow.ShowOneAsync(owner, vm.Cameras, selected, heading: "Choose a camera").ConfigureAwait(true)
+            ? await DevicePickerWindow.ShowOneAsync(owner, vm.Cameras, selected, heading: OcrTexts.ChooseCamera).ConfigureAwait(true)
             : null;
 
     /// <summary>Stream settings: the dialog over the page, OK or Cancel.</summary>

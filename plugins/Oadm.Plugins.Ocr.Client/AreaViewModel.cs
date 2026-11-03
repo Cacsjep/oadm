@@ -29,7 +29,8 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         IsFormat = isFormat;
         Validation
             .Rule(nameof(Name), NameProblem)
-            .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null);
+            .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null)
+            .Rule(nameof(Box), () => null); // no check of its own: a move or resize clears the server's refusal of the box
         Validation.Validate();
     }
 
@@ -94,10 +95,17 @@ public sealed partial class AreaViewModel : ValidatingViewModel
 
     /// <summary>
     /// A refusal of the server for this area (<see cref="OcrFields.AreaName"/>, <see cref="OcrFields.AreaFormat"/>,
-    /// <see cref="OcrFields.AreaBox"/>): the format's below the format, the others below the name.
+    /// <see cref="OcrFields.AreaBox"/>): the format's below the format, the name's and the box's below the name. Each has its
+    /// own key, so a rename never clears the box's refusal and a move or resize of the area does.
     /// </summary>
-    internal void SetServerError(string part, string message) =>
-        Validation.SetServerError(part == "format" && IsFormat ? nameof(FormatText) : nameof(Name), message);
+    internal void SetServerError(string part, string message) => Validation.SetServerError(
+        part switch
+        {
+            "format" when IsFormat => nameof(FormatText),
+            "box" => nameof(Box),
+            _ => nameof(Name),
+        },
+        message);
 
     /// <summary>Every error shows (Save was tried).</summary>
     internal void ShowAllErrors() => Validation.ShowAll();
@@ -109,8 +117,8 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     /// <summary>An error came or went: the reader's Save follows.</summary>
     public event EventHandler? ValidityChanged;
 
-    /// <summary>The name's error below the name in the row (a server refusal of the name or the box).</summary>
-    public string? NameError => ErrorOf(nameof(Name));
+    /// <summary>The error below the name in the row: the name's, else the server's refusal of the box.</summary>
+    public string? NameError => ErrorOf(nameof(Name)) ?? ErrorOf(nameof(Box));
 
     protected override void OnValidationChanged()
     {

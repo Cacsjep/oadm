@@ -77,7 +77,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         _onActionNoticeShown = onActionNoticeShown ?? new HashSet<string>(StringComparer.Ordinal);
         IsNew = isNew;
         MayChange = ctx.Has(OcrViewModel.ChangePermissionKey);
-        FpsChoices = [.. engine.FpsChoices.Order()];
+        FpsChoices = Ordered(engine.FpsChoices);
 
         _loading = true;
         Id = reader.Id;
@@ -85,7 +85,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         DeviceId = reader.DeviceId;
         CameraText = cameraText(reader.DeviceId);
         Mode = reader.Mode;
-        Fps = engine.FpsChoices.Contains(reader.Fps) ? reader.Fps : OcrLimits.DefaultFps;
+        Fps = OfferedFps(reader.Fps, FpsChoices);
         VideoSources = [new CameraSource { Number = reader.VideoSource, Name = SourceName(reader.VideoSource) }];
         SelectedSource = VideoSources[0];
         Resolutions = [reader.Resolution];
@@ -106,7 +106,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             .Rule(nameof(Fps), () => null)
             .Rule(nameof(Mode), () => null);
         Validation.Validate();
-        _savedJson = isNew ? string.Empty : Signature();
+        // A stored frame rate the server no longer offers shows as the offered one and the reader is Not saved: Save stores it.
+        _savedJson = isNew ? string.Empty : Signature(ToReader() with { Fps = reader.Fps });
         UpdateSaveState();
 
         _video = ctx.LiveVideo?.Create(VideoPlace);
@@ -143,7 +144,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     [ObservableProperty]
     public partial string CameraText { get; private set; }
 
-    /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings (no frame rate for On action).</summary>
+    /// <summary>The stream button: "Configure · 1920x1080 @ 4 fps" (no frame rate for On action).</summary>
     public string StreamSummary => OcrTexts.StreamSummary(SelectedResolution, IsWatching ? Fps : null);
 
     /// <summary>A refusal of the server for the video source, the resolution or the frame rate, in the summary's place.</summary>
@@ -181,36 +182,49 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     }
 
     /// <summary>On action: reads only when an event rule runs Read text.</summary>
-    public bool IsOnAction
-    {
-        get => Mode == ReaderMode.OnAction;
-        set
-        {
-            if (value)
-            {
-                Mode = ReaderMode.OnAction;
-            }
-        }
-    }
+    public bool IsOnAction => Mode == ReaderMode.OnAction;
 
     /// <summary>Watching: the frame rate shows.</summary>
-    public bool IsWatching
-    {
-        get => Mode == ReaderMode.Watching;
-        set
-        {
-            if (value)
-            {
-                Mode = ReaderMode.Watching;
-            }
-        }
-    }
+    public bool IsWatching => Mode == ReaderMode.Watching;
 
     [ObservableProperty]
     public partial int Fps { get; set; }
 
-    /// <summary>The frame rates offered now (the select of Frames per second).</summary>
-    public IReadOnlyList<int> FpsChoices { get; }
+    /// <summary>The frame rates the server offers (the select of Frames per second), following its list (<see cref="ApplyFpsChoices"/>).</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<int> FpsChoices { get; private set; }
+
+    /// <summary>
+    /// The server's frame rates changed (the reader list, the engine): the select offers them; a rate no longer offered becomes
+    /// the highest offered below it and the reader is Not saved.
+    /// </summary>
+    public void ApplyFpsChoices(IReadOnlyList<int>? choices)
+    {
+        if (choices is not { Count: > 0 } || Ordered(choices).SequenceEqual(FpsChoices))
+        {
+            return;
+        }
+
+        FpsChoices = Ordered(choices);
+        if (!FpsChoices.Contains(Fps))
+        {
+            Fps = OfferedFps(Fps, FpsChoices);
+        }
+    }
+
+    private static int[] Ordered(IReadOnlyList<int> choices) => [.. choices.Distinct().Order()];
+
+    /// <summary><paramref name="fps"/> when offered, else the highest offered below it, else the default (or the lowest offered).</summary>
+    internal static int OfferedFps(int fps, IReadOnlyList<int> choices)
+    {
+        if (choices.Count == 0 || choices.Contains(fps))
+        {
+            return fps;
+        }
+
+        var below = choices.Where(c => c < fps).ToList();
+        return below.Count > 0 ? below.Max() : choices.Contains(OcrLimits.DefaultFps) ? OcrLimits.DefaultFps : choices.Min();
+    }
 
     public ObservableCollection<AreaViewModel> Areas { get; } = [];
 
@@ -280,10 +294,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Below the results while there are none: why the preview reads nothing, else that it waits (nothing without areas: the video says it).</summary>
     public string ResultsEmptyText => PreviewProblem ?? (HasAreas ? OcrTexts.WaitingForPicture : string.Empty);
 
-    /// <summary>"Last reading 14:32:06" below the live video, or "Waiting for the first picture."</summary>
-    [ObservableProperty]
-    public partial string PictureText { get; private set; } = OcrTexts.WaitingForPicture;
-
     /// <summary>
     /// This page's preview of the reader; null while there is none. The page makes the id itself and sends it with every
     /// call, so it can always end the preview it started (also one whose start answer it never saw).
@@ -320,18 +330,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Why Save is off (its tooltip): the first error of the form or of an area.</summary>
     public string? SaveBlockedReason => FormError ?? Areas.Select(a => a.FirstError).FirstOrDefault(e => e is not null);
 
-    /// <summary>The live state of the saved reader (list row): "Camera not reachable, trying again in 30 s" or null.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeChipText), nameof(IsModeOk), nameof(IsModeError))]
-    public partial string? Problem { get; set; }
-
-    /// <summary>The server's problem text in either mode, else Watching · 2 fps or On action.</summary>
-    public string ModeChipText => IsModeError ? Problem! : IsWatching ? OcrTexts.WatchingAt(Fps) : OcrTexts.OnAction;
-
-    public bool IsModeOk => IsWatching && !IsModeError;
-
-    public bool IsModeError => !string.IsNullOrEmpty(Problem);
-
     /// <summary>The readers changed on the server: a refusal about the watching limits may no longer hold.</summary>
     public void ClearModeRefusal() => Validation.SetServerError(nameof(Mode), null);
 
@@ -356,16 +354,24 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return;
         }
 
+        // The newest read wins: an older answer that arrives later never replaces it.
+        var version = ++_cameraVersion;
+        var camera = DeviceId;
         IsLoadingCamera = true;
         CameraOptions? options = null;
         try
         {
-            var json = await _ctx.InvokeAsync(OcrMethods.GetCameraOptions, OcrJson.Serialize(new CameraOptionsRequest { DeviceId = DeviceId }), ct)
+            var json = await _ctx.InvokeAsync(OcrMethods.GetCameraOptions, OcrJson.Serialize(new CameraOptionsRequest { DeviceId = camera }), ct)
                 .ConfigureAwait(true);
             options = OcrJson.Deserialize<CameraOptions>(json);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            if (version == _cameraVersion)
+            {
+                IsLoadingCamera = false;
+            }
+
             return;
         }
 #pragma warning disable CA1031 // An older server or a camera that does not answer: the reader's own values and the usual sizes.
@@ -373,13 +379,17 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 #pragma warning restore CA1031
         {
         }
-        finally
+
+        if (version != _cameraVersion || _disposed || camera != DeviceId)
         {
-            IsLoadingCamera = false;
+            return;
         }
 
+        IsLoadingCamera = false;
         ApplyCameraOptions(options);
     }
+
+    private int _cameraVersion;
 
     /// <summary>Shows the camera's choices; null: the reader's own values and the usual sizes.</summary>
     public void ApplyCameraOptions(CameraOptions? options)
@@ -669,6 +679,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             OcrFields.Resolution => nameof(SelectedResolution),
             OcrFields.Fps => nameof(Fps),
             OcrFields.Mode => nameof(Mode),
+            OcrFields.Areas => nameof(Areas),
             _ => null,
         };
         if (property is not null)
@@ -688,6 +699,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     /// <summary>A refusal of the server about the mode (the watching limits), below Mode.</summary>
     public string? ModeError => ErrorOf(nameof(Mode));
+
+    /// <summary>A refusal of the server about the area list as a whole (too many areas), below the Areas panel; any change of the areas clears it.</summary>
+    public string? AreasError => ErrorOf(nameof(Areas));
+
+    public bool HasAreasError => AreasError is not null;
 
     private bool CanSave() => MayChange && IsDirty && !IsSaving && IsValidToSave();
 
@@ -914,18 +930,20 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     {
         var reply = OcrJson.Deserialize<ReadingReply>(json);
         var details = reply.Details;
-        var cutOuts = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
-        foreach (var detail in details)
+
+        // The cut-outs by the area's place (a user without Live view gets none: the rows show the text only).
+        var cutOuts = new Bitmap?[details.Count];
+        for (var i = 0; i < details.Count; i++)
         {
-            if (detail.Cutout is { Length: > 0 } bytes && !cutOuts.ContainsKey(detail.Area) && await _decode(bytes).ConfigureAwait(true) is { } cut)
+            if (details[i].Cutout is { Length: > 0 } bytes)
             {
-                cutOuts[detail.Area] = cut;
+                cutOuts[i] = await _decode(bytes).ConfigureAwait(true);
             }
         }
 
         if (_disposed || seq < _shownSeq)
         {
-            DisposeAll(cutOuts.Values);
+            DisposeAll(cutOuts);
             return;
         }
 
@@ -933,17 +951,20 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         ApplyReading(reply.Reading, details, cutOuts);
     }
 
-    /// <summary>Shows a reading: its lines over the live video, the results with the server's cut-outs by area (the editor owns the bitmaps from now on).</summary>
-    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details, IReadOnlyDictionary<string, Bitmap>? cutOuts = null)
+    /// <summary>
+    /// Shows a reading: its lines over the live video, the results with the details and the server's cut-outs matched by the
+    /// area's place in the reader (names can repeat while they are edited); the editor owns the bitmaps from now on.
+    /// </summary>
+    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details, IReadOnlyList<Bitmap?>? cutOuts = null)
     {
         var oldCutOuts = _cutOuts;
         if (reading is null)
         {
-            DisposeAll(cutOuts?.Values);
+            DisposeAll(cutOuts);
             return;
         }
 
-        _cutOuts = cutOuts is null ? [] : [.. cutOuts.Values];
+        _cutOuts = cutOuts is null ? [] : [.. cutOuts.OfType<Bitmap>()];
         if (Areas.Count == 0)
         {
             // Text is read only inside areas: a reading from before the last area went shows nothing.
@@ -952,21 +973,14 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         Lines = [.. reading.Areas.SelectMany(a => a.Lines)];
         ReadingNote = reading.Note;
-        PictureText = OcrTexts.LastReading(reading.Time);
-
-        var formats = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var area in Areas)
-        {
-            formats.TryAdd(area.Name.Trim(), area.IsFormat);
-        }
 
         var rows = new List<ResultRow>(reading.Areas.Count);
         for (var i = 0; i < reading.Areas.Count; i++)
         {
             var area = reading.Areas[i];
-            var detail = details?.FirstOrDefault(d => d.Area == area.Area);
-            var hasFormat = formats.TryGetValue(area.Area, out var isFormat) && isFormat;
-            IImage? cut = cutOuts is not null && cutOuts.TryGetValue(area.Area, out var served) ? served : null;
+            var detail = details is not null && i < details.Count ? details[i] : null;
+            var hasFormat = i < Areas.Count && Areas[i].IsFormat;
+            IImage? cut = cutOuts is not null && i < cutOuts.Count ? cutOuts[i] : null;
             rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null));
         }
 
@@ -978,11 +992,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private List<Bitmap> _cutOuts = [];
 
-    private static void DisposeAll(IEnumerable<Bitmap>? bitmaps)
+    private static void DisposeAll(IEnumerable<Bitmap?>? bitmaps)
     {
         foreach (var bitmap in bitmaps ?? [])
         {
-            bitmap.Dispose();
+            bitmap?.Dispose();
         }
     }
 
@@ -1005,6 +1019,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     {
         OnPropertyChanged(nameof(StreamError));
         OnPropertyChanged(nameof(ModeError));
+        OnPropertyChanged(nameof(AreasError));
+        OnPropertyChanged(nameof(HasAreasError));
         OnPropertyChanged(nameof(SaveBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
     }
@@ -1035,9 +1051,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     partial void OnModeChanged(ReaderMode value)
     {
-        OnPropertyChanged(nameof(ModeChipText));
-        OnPropertyChanged(nameof(IsModeOk));
-        OnPropertyChanged(nameof(IsModeError));
         if (!_loading && value == ReaderMode.OnAction && _onActionNoticeShown.Add(IsNew ? _draftKey : Id))
         {
             _ = _ctx.ShowMessageAsync(OcrTexts.OnActionNoticeTitle, OcrTexts.OnActionNotice);
@@ -1050,8 +1063,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         {
             Validation.SetServerError(nameof(Mode), null); // another rate: the refusal about it no longer holds
         }
-
-        OnPropertyChanged(nameof(ModeChipText));
     }
 
     partial void OnSelectedResolutionChanged(Resolution value) => OverlayVersion++;
@@ -1076,6 +1087,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private void OnAreasChanged()
     {
+        ClearAreasRefusal();
         if (Areas.Count == 0)
         {
             // No area, no reading: the lines and results of the last one go, the video shows the start hint.
@@ -1097,6 +1109,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private void OnAreaChanged(object? sender, EventArgs e)
     {
+        ClearAreasRefusal();
         if (sender is AreaViewModel changed)
         {
             foreach (var other in Areas.Where(a => !ReferenceEquals(a, changed)))
@@ -1107,6 +1120,15 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         OverlayVersion++;
         UpdateSaveState();
+    }
+
+    /// <summary>Any change of the areas: the server's refusal of the list no longer holds.</summary>
+    private void ClearAreasRefusal()
+    {
+        if (AreasError is not null)
+        {
+            Validation.SetServerError(nameof(Areas), null);
+        }
     }
 
     private void OnAreaValidityChanged(object? sender, EventArgs e)
@@ -1134,7 +1156,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         SendDraft();
     }
 
-    private string Signature() => OcrJson.Serialize(ToReader() with { Id = string.Empty });
+    private string Signature() => Signature(ToReader());
+
+    private static string Signature(Reader reader) => OcrJson.Serialize(reader with { Id = string.Empty });
 
     private string? NameError() =>
         ReaderRules.NameProblem(Name) ?? (_readerNameTaken(Id, Name.Trim()) ? ReaderRules.NameTaken(Name.Trim()) : null);

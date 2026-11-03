@@ -2,13 +2,14 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.Ocr.Client"
+             xmlns:api="using:Oadm.Plugins.Ocr.Api"
              x:Class="Oadm.Plugins.Ocr.Client.OcrView"
              x:DataType="vm:OcrViewModel"
-             ui:PageHeader.Subtitle="Reads text in camera pictures for the event rules.">
+             ui:PageHeader.Subtitle="{x:Static api:OcrInfo.Description}">
   <!-- Own cards (ICorePluginPage.HasOwnCards), docs/spec/ocr.md "Page": left the readers in a fixed column (New, red Delete,
        search, the list, Runs on and Use the graphics card, the runtime stats below it); then the selected reader in two
        columns: the camera's live video with the areas and the found lines over it (drawing, moving and resizing areas happen
-       there), the mode, the latest reading and the results below it; right of it a fixed column with the form (Name, Mode,
+       there), the reading's note and the results below it; right of it a fixed column with the form (Name, Mode,
        Stream settings), the areas (New in their header, one row per area, only the rows scroll) and the save status left of Save. Shared controls and theme classes only. -->
   <Grid x:Name="Panes" ColumnDefinitions="320,*" ColumnSpacing="16">
 
@@ -39,9 +40,9 @@
               </DataTemplate>
             </ListBox.ItemTemplate>
           </ListBox>
-          <ui:ProgressRing Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsLoading}" />
           <TextBlock Classes="secondary" Text="{x:Static vm:OcrViewModel.NoMatchText}" TextWrapping="Wrap" IsVisible="{Binding ShowNoMatch}" />
           <TextBlock Classes="error" VerticalAlignment="Bottom" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+          <ui:LoadingOverlay Text="{x:Static vm:OcrTexts.ReadingReaders}" IsVisible="{Binding IsLoading}" />
         </Panel>
 
         <StackPanel Grid.Row="3" Spacing="16">
@@ -73,7 +74,6 @@
       <Panel>
         <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:OcrViewModel.EmptyText}"
                    IsVisible="{Binding ShowEmpty}" />
-        <ui:ProgressRing Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsOpening}" />
 
         <Grid x:Name="EditorPanel" DataContext="{Binding Editor}" x:DataType="vm:ReaderEditorViewModel"
               IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).HasEditor, FallbackValue=False}"
@@ -169,44 +169,49 @@
             </StackPanel>
 
             <!-- At most 8 areas, two lines each: the name with rename and delete at the right; below it, indented, Mode and Format.
-                 The selected area's row softly highlighted. The rows scroll by themselves, so New above stays in reach. -->
-            <ListBox Grid.Row="2" x:Name="AreaList" Classes="areaRows" ItemsSource="{Binding Areas}" SelectedItem="{Binding SelectedArea}" SelectionMode="Single"
-                     IsVisible="{Binding HasAreas}" KeyboardNavigation.TabNavigation="Continue">
-              <ListBox.ItemTemplate>
-                <DataTemplate x:DataType="vm:AreaViewModel">
-                  <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                      <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
-                        <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
-                      </ui:FormField>
-                      <!-- The shared row actions (like the dashboard and view lists): compact icon buttons, delete red. -->
-                      <StackPanel Grid.Column="1" Classes="rowActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                        <Button x:Name="RenameButton" Classes="toolbar iconOnly" ToolTip.Tip="{x:Static vm:OcrTexts.Rename}"
-                                CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
-                          <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
-                        </Button>
-                        <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete area"
-                                CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
-                          <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
-                        </Button>
-                      </StackPanel>
+                 The selected area's row softly highlighted. The rows scroll by themselves, so New above stays in reach. A refusal
+                 of the server for the area list as a whole (too many areas) directly below the rows. -->
+            <DockPanel Grid.Row="2" VerticalAlignment="Top">
+              <TextBlock x:Name="AreasError" DockPanel.Dock="Bottom" Classes="fieldMessage error"
+                         Text="{Binding AreasError}" IsVisible="{Binding HasAreasError}" />
+              <ListBox x:Name="AreaList" Classes="areaRows" ItemsSource="{Binding Areas}" SelectedItem="{Binding SelectedArea}" SelectionMode="Single"
+                       IsVisible="{Binding HasAreas}" KeyboardNavigation.TabNavigation="Continue">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:AreaViewModel">
+                    <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                        <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
+                          <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
+                        </ui:FormField>
+                        <!-- The shared row actions (like the dashboard and view lists): compact icon buttons, delete red. -->
+                        <StackPanel Grid.Column="1" Classes="rowActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                          <Button x:Name="RenameButton" Classes="toolbar iconOnly" ToolTip.Tip="{x:Static vm:OcrTexts.Rename}"
+                                  CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
+                            <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
+                          </Button>
+                          <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete area"
+                                  CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
+                            <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                          </Button>
+                        </StackPanel>
+                      </Grid>
+                      <Grid Grid.Row="1" ColumnDefinitions="104,*" ColumnSpacing="4" Margin="12,0,0,0"
+                            IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                        <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Top">
+                          <ComboBox x:Name="ModeBox" ItemsSource="{x:Static vm:AreaViewModel.Modes}" SelectedItem="{Binding Mode}"
+                                    HorizontalAlignment="Stretch" ToolTip.Tip="Mode" />
+                        </ui:FormField>
+                        <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Top">
+                          <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}" IsEnabled="{Binding IsFormat}"
+                                   PlaceholderText="{Binding FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}"
+                                   ToolTip.Tip="{x:Static vm:AreaViewModel.FormatHint}" />
+                        </ui:FormField>
+                      </Grid>
                     </Grid>
-                    <Grid Grid.Row="1" ColumnDefinitions="104,*" ColumnSpacing="4" Margin="12,0,0,0"
-                          IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                      <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Top">
-                        <ComboBox x:Name="ModeBox" ItemsSource="{x:Static vm:AreaViewModel.Modes}" SelectedItem="{Binding Mode}"
-                                  HorizontalAlignment="Stretch" ToolTip.Tip="Mode" />
-                      </ui:FormField>
-                      <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Top">
-                        <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}" IsEnabled="{Binding IsFormat}"
-                                 PlaceholderText="{Binding FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}"
-                                 ToolTip.Tip="{x:Static vm:AreaViewModel.FormatHint}" />
-                      </ui:FormField>
-                    </Grid>
-                  </Grid>
-                </DataTemplate>
-              </ListBox.ItemTemplate>
-            </ListBox>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </DockPanel>
 
             <!-- The save status directly left of Save. -->
             <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" IsVisible="{Binding MayChange}">
@@ -217,6 +222,7 @@
             </Grid>
           </Grid>
         </Grid>
+        <ui:LoadingOverlay Text="{x:Static vm:OcrTexts.ReadingReader}" IsVisible="{Binding IsOpening}" />
       </Panel>
     </Border>
   </Grid>

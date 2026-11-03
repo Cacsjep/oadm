@@ -5,6 +5,7 @@ using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Client;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Readers;
+using Oadm.Sdk.Devices;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Ocr.Tests.Client;
@@ -47,8 +48,6 @@ public sealed class PageViewModelTests
         Assert.Equal([1, 2, 4, 8, 12, 15], editor.FpsChoices);
         Assert.Equal(2, editor.VideoSources.Count);
         Assert.Equal(new Resolution(1920, 1080), editor.SelectedResolution);
-        Assert.Equal("Watching · 1 fps", editor.ModeChipText);
-        Assert.True(editor.IsModeOk);
 
         // The results: a match, Any text, a format without a match whose lines were too small.
         Assert.Equal(3, editor.Results.Count);
@@ -59,7 +58,6 @@ public sealed class PageViewModelTests
         Assert.Equal("G3", editor.Results[2].Text);
         Assert.True(editor.Results[2].TooSmall);
         Assert.Equal(3, editor.Lines.Count);
-        Assert.StartsWith("Last reading ", editor.PictureText, StringComparison.Ordinal);
         Assert.Equal("{\"readerId\":\"r1\"}", ctx.LastPayloadOf(OcrMethods.GetReading));
     }
 
@@ -212,15 +210,12 @@ public sealed class PageViewModelTests
 
         Assert.True(editor.IsOnAction);
         Assert.False(editor.IsWatching);
-        Assert.Equal(OcrTexts.OnAction, editor.ModeChipText);
         Assert.Equal(OcrTexts.WaitingForPicture, editor.ResultsEmptyText);
-        Assert.Equal(OcrTexts.WaitingForPicture, editor.PictureText);
 
         // Frames per second is one select of the server's choices.
-        editor.IsWatching = true;
+        editor.Mode = ReaderMode.Watching;
         Assert.Equal([1, 2, 4, 8, 12, 15], editor.FpsChoices);
         editor.Fps = 12;
-        Assert.Equal("Watching · 12 fps", editor.ModeChipText);
         Assert.True(editor.IsDirty);
 
         await editor.SaveCommand.ExecuteAsync(null);
@@ -241,24 +236,24 @@ public sealed class PageViewModelTests
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!; // Container gate, watching
 
-        editor.IsOnAction = true;
+        editor.Mode = ReaderMode.OnAction;
         var message = Assert.Single(ctx.Messages);
         Assert.Equal((OcrTexts.OnActionNoticeTitle, OcrTexts.OnActionNotice), message);
         Assert.Equal("Reads only on an action", message.Title);
         Assert.Equal("This reader reads only when an event rule runs the action Read text with it.", message.Message);
 
         // Back and forth: not again for this reader, also after opening it again.
-        editor.IsWatching = true;
-        editor.IsOnAction = true;
+        editor.Mode = ReaderMode.Watching;
+        editor.Mode = ReaderMode.OnAction;
         Assert.Single(ctx.Messages);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r1"), CancellationToken.None);
-        vm.Editor!.IsOnAction = true;
+        vm.Editor!.Mode = ReaderMode.OnAction;
         Assert.Single(ctx.Messages);
 
         // Another reader shows it once; opening an On action reader shows nothing.
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r3"), CancellationToken.None);
-        vm.Editor!.IsOnAction = true;
+        vm.Editor!.Mode = ReaderMode.OnAction;
         Assert.Equal(2, ctx.Messages.Count);
         await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
         Assert.Equal(2, ctx.Messages.Count);
@@ -389,8 +384,6 @@ public sealed class PageViewModelTests
         Assert.Equal(["r3", "r2"], vm.Readers.Select(r => r.Id));
         Assert.Equal("r3", vm.Editor!.Id);
         Assert.Equal(OcrTexts.NotReachable, vm.Readers[0].ModeText);
-        Assert.True(vm.Editor.IsModeError);
-        Assert.Equal("Camera not reachable, trying again in 30 s", vm.Editor.ModeChipText);
     }
 
     [Fact]
@@ -612,17 +605,16 @@ public sealed class PageViewModelTests
         var editor = vm.Editor!;
         Assert.True(editor.IsNew);
         Assert.Equal(ReaderMode.Watching, editor.Mode);
-        Assert.Equal("Watching · 1 fps", editor.ModeChipText);
         Assert.True(editor.NewAreaCommand.CanExecute(null));
         editor.NewAreaCommand.Execute(null);
         Assert.True(editor.IsDrawing);
 
         // On action for a new reader: its message once, also after the save.
-        editor.IsOnAction = true;
+        editor.Mode = ReaderMode.OnAction;
         Assert.Single(ctx.Messages);
         await editor.SaveCommand.ExecuteAsync(null);
-        editor.IsWatching = true;
-        editor.IsOnAction = true;
+        editor.Mode = ReaderMode.Watching;
+        editor.Mode = ReaderMode.OnAction;
         Assert.Single(ctx.Messages);
     }
 
@@ -637,7 +629,7 @@ public sealed class PageViewModelTests
         var editor = vm.Editor!;
         ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply { Errors = [new FieldError(OcrFields.Mode, Refusal)] });
 
-        editor.IsWatching = true;
+        editor.Mode = ReaderMode.Watching;
         await editor.SaveCommand.ExecuteAsync(null);
         Assert.Equal(Refusal, editor.ModeError);
         Assert.Empty(ctx.Messages);
@@ -739,7 +731,7 @@ public sealed class PageViewModelTests
         Assert.Equal((Samples.Gate.Id, 2), ctx.Video!.Created[^1].Starts[^1]);
 
         // On action: no frame rate in the dialog or the summary.
-        editor.IsOnAction = true;
+        editor.Mode = ReaderMode.OnAction;
         Assert.Equal("Configure · 1280x720", editor.StreamSummary);
         dialogs.Stream = form =>
         {
@@ -895,13 +887,53 @@ public sealed class PageViewModelTests
         var ctx = Samples.Context();
         ctx.Answers[OcrMethods.ListReaders] = _ => OcrJson.Serialize(new
         {
-            readers = new[] { new { id = "r2", name = "Water meter", deviceId = Samples.Plant.Id, mode = "OnAction", problem = "The camera refuses connections." } },
+            readers = new[] { new { id = "r2", name = "Water meter", deviceId = Samples.Plant.Id, mode = "OnAction", problem = DeviceMessages.CredentialsRequired } },
         });
         using var vm = await LoadedAsync(ctx);
 
-        Assert.Equal(OcrTexts.NotReachable, vm.Readers[0].ModeText);
-        Assert.True(vm.Editor!.IsModeError);
-        Assert.Equal("The camera refuses connections.", vm.Editor.ModeChipText);
+        Assert.Equal(OcrTexts.LoginRefused, vm.Readers[0].ModeText);
+        Assert.True(vm.Readers[0].IsProblem);
+        Assert.Equal(DeviceMessages.CredentialsRequired, vm.Readers[0].Problem); // the full text: the chip's tooltip
+    }
+
+    public static TheoryData<string, string> Problems() => new()
+    {
+        { ReaderRules.TooManyWatching(16), OcrTexts.LimitReached },
+        { ReaderRules.TooManyWatchingAtSite("Building B"), OcrTexts.LimitReached },
+        { ReaderRules.TooManyWatchingAtSite(null), OcrTexts.LimitReached },
+        { DeviceMessages.CredentialsRequired, OcrTexts.LoginRefused },
+        { DeviceMessages.PasswordNotSet, OcrTexts.LoginRefused },
+        { DeviceMessages.Unauthorized, OcrTexts.LoginRefused },
+        { DeviceMessages.Forbidden, OcrTexts.LoginRefused },
+        { DeviceMessages.BasicOnlyOverHttp, OcrTexts.LoginRefused },
+        { DeviceMessages.CertificateChanged, "Certificate changed" },
+        { Oadm.Sdk.Sites.SiteTexts.SiteOffline("Harbour"), "Site offline" },
+        { DeviceMessages.NotAnswering, OcrTexts.NotReachable },
+        { DeviceMessages.TimedOut, OcrTexts.NotReachable },
+        { DeviceMessages.HostUnreachable, OcrTexts.NotReachable },
+        { DeviceMessages.Unreachable("Connection refused."), OcrTexts.NotReachable },
+        { DeviceMessages.Timeout(TimeSpan.FromSeconds(15)), OcrTexts.NotReachable },
+        { Oadm.Plugins.Ocr.Frames.FrameTexts.ResolutionNotOffered, OcrTexts.StreamError },
+        { Oadm.Plugins.Ocr.Frames.FrameTexts.SourceNotOffered, OcrTexts.StreamError },
+        { Oadm.Plugins.Ocr.Frames.FrameTexts.NoPictures, OcrTexts.StreamError },
+        { Oadm.Plugins.Ocr.Frames.FrameTexts.NoPicture, OcrTexts.StreamError },
+        { DeviceMessages.NotFound, OcrTexts.StreamError },
+        { DeviceMessages.ServerError(503), OcrTexts.StreamError },
+        { ReaderRules.Off, OcrTexts.NotInDeviceGroup },
+        { ReaderRules.NotInstalled, OcrTexts.NotInstalled },
+        { "Something new of a newer server.", OcrTexts.NotReading },
+    };
+
+    [Theory]
+    [MemberData(nameof(Problems))]
+    public void Each_kind_of_problem_has_its_short_chip(string problem, string chip)
+    {
+        var row = new ReaderRow(new ReaderSummary { Id = "r1", Name = "Gate", Mode = ReaderMode.Watching, Fps = 2, Problem = problem }, "AXIS Q1798-LE · 10.0.0.48");
+
+        Assert.Equal(chip, row.ModeText);
+        Assert.True(row.IsProblem);
+        Assert.False(row.IsKeepingUp);
+        Assert.Equal(problem, row.Problem);
     }
 
     [Fact]

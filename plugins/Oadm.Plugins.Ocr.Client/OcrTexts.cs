@@ -1,6 +1,10 @@
 using System.Globalization;
 
+using Oadm.Plugins.Ocr.Frames;
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Plugins.Ocr.Readers;
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Sites;
 
 namespace Oadm.Plugins.Ocr.Client;
 
@@ -16,7 +20,26 @@ public static class OcrTexts
 
     public const string Watching = "Watching";
 
+    /// <summary>The reader list's chip of a reader whose camera does not answer.</summary>
     public const string NotReachable = "Not reachable";
+
+    /// <summary>The chip of a reader beyond the watching limits (of the server or of a site).</summary>
+    public const string LimitReached = "Limit reached";
+
+    /// <summary>The chip of a reader whose camera refuses the stored login.</summary>
+    public const string LoginRefused = "Login refused";
+
+    /// <summary>The chip of a reader whose camera does not give the pictures asked for (resolution, video source, no pictures).</summary>
+    public const string StreamError = "Stream error";
+
+    /// <summary>The chip of a reader whose camera is no longer in its device group.</summary>
+    public const string NotInDeviceGroup = "Not in device group";
+
+    /// <summary>The chip of a reader that cannot read because the plugin is not installed completely.</summary>
+    public const string NotInstalled = "Not installed";
+
+    /// <summary>The chip of a reader with a problem the page does not know (a newer server): the full text is its tooltip.</summary>
+    public const string NotReading = "Not reading";
 
     public const string NoAreas = "Draw one area around each text you want to read.";
 
@@ -42,15 +65,20 @@ public static class OcrTexts
 
     public const string Format = "Format";
 
+    /// <summary>The heading of the camera picker of New.</summary>
     public const string ChooseCamera = "Choose a camera";
 
     public const string NoMatch = "No reader matches the search.";
 
-    public const string LiveResults = "Live results";
-
     public const string NoGpu = "No graphics card found";
 
-    /// <summary>The button that opens the stream settings, and the dialog's title.</summary>
+    /// <summary>The overlay of the reader list while it is read.</summary>
+    public const string ReadingReaders = "Reading the readers";
+
+    /// <summary>The overlay of the reader's card while it is opened.</summary>
+    public const string ReadingReader = "Reading the reader";
+
+    /// <summary>The dialog that the stream button opens: its title.</summary>
     public const string StreamSettings = "Stream settings";
 
     /// <summary>The label of the stream field and its button.</summary>
@@ -61,9 +89,7 @@ public static class OcrTexts
     /// <summary>The tooltip of an area row's rename icon.</summary>
     public const string Rename = "Rename";
 
-    /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings; without the rate for On action.</summary>
-    /// <summary>The stream button: "Configure · 1920x1080 @ 10 fps" (no rate for On action; the video source is in its
-    /// dialog).</summary>
+    /// <summary>The stream button: "Configure · 1920x1080 @ 10 fps" (no rate for On action; the video source is in its dialog).</summary>
     public static string StreamSummary(Resolution resolution, int? fps) => fps is { } rate
         ? string.Create(CultureInfo.InvariantCulture, $"{Configure} · {resolution} @ {rate} fps")
         : string.Create(CultureInfo.InvariantCulture, $"{Configure} · {resolution}");
@@ -79,11 +105,43 @@ public static class OcrTexts
     public static string Percent(double confidence) =>
         string.Create(CultureInfo.InvariantCulture, $"{Math.Round(Math.Clamp(confidence, 0, 100))} %");
 
-    /// <summary>"Last reading 14:32:06" in this computer's time.</summary>
-    public static string LastReading(DateTimeOffset time) => "Last reading " + Time(time);
-
     public static string Time(DateTimeOffset time) => time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
     /// <summary>"Runs on: CPU (8 cores)".</summary>
     public static string RunsOn(string what) => "Runs on: " + what;
+
+    /// <summary>
+    /// The reader list's short chip for the server's problem text of a reader (the full text is its tooltip): the watching
+    /// limits, a refused login, a changed certificate, an offline site, a camera that does not answer, a stream that gives no
+    /// pictures, a camera outside the device group. The device statuses keep the names of the device list.
+    /// </summary>
+    public static string ProblemChip(string problem)
+    {
+        ArgumentNullException.ThrowIfNull(problem);
+        if (ReaderRules.IsWatchingLimit(problem))
+        {
+            return LimitReached;
+        }
+
+        if (problem.StartsWith(SiteTexts.SiteOffline(null), StringComparison.Ordinal))
+        {
+            return SiteTexts.SiteOffline(null);
+        }
+
+        return problem switch
+        {
+            DeviceMessages.CredentialsRequired or DeviceMessages.PasswordNotSet or DeviceMessages.BasicOnlyOverHttp
+                or DeviceMessages.Unauthorized or DeviceMessages.Forbidden => LoginRefused,
+            DeviceMessages.CertificateChanged => DeviceMessages.StatusText(DeviceStatus.CertificateChanged),
+            DeviceMessages.TimedOut or DeviceMessages.NotAnswering or DeviceMessages.HostUnreachable => NotReachable,
+            FrameTexts.NoPicture or FrameTexts.NoPictures or FrameTexts.ResolutionNotOffered or FrameTexts.SourceNotOffered
+                or DeviceMessages.NotFound or DeviceMessages.BadRequest => StreamError,
+            ReaderRules.Off => NotInDeviceGroup,
+            ReaderRules.NotInstalled => NotInstalled,
+            _ when problem.StartsWith(DeviceMessages.Unreachable(string.Empty), StringComparison.Ordinal)
+                || problem.StartsWith("Timeout", StringComparison.Ordinal) => NotReachable,
+            _ when problem.StartsWith(DeviceMessages.ServerError(500)[..^3], StringComparison.Ordinal) => StreamError,
+            _ => NotReading,
+        };
+    }
 }

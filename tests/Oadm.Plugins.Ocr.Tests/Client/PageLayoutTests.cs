@@ -154,7 +154,7 @@ public sealed class PageLayoutTests
             // The rows are taller than their place: the list scrolls them, New above and Save below stay inside the column.
             var scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
             Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
-            Assert.Equal(2, Grid.GetRow(list));
+            Assert.Equal(2, Grid.GetRow((Control)list.Parent!)); // the rows with the list's error below them
             Assert.True(column.RowDefinitions[2].Height.IsStar);
             // New ends level with the fields: its padding lies outside the column (theme class atEnd), so only check it is in reach.
             var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;

@@ -57,6 +57,9 @@ public sealed class ReadingPicture : Control
 
     private const double HandleReach = 7;
 
+    /// <summary>An area with a side below this (pixels) is small: the handles' reach would cover it, a press inside moves it.</summary>
+    internal const double SmallArea = 4 * HandleReach;
+
     private Point? _drawStart;
     private Point _drawNow;
     private EditDrag? _edit;
@@ -161,7 +164,8 @@ public sealed class ReadingPicture : Control
 
     /// <summary>
     /// What a press at <paramref name="point"/> (in the control) takes: a handle of the selected area, else the topmost
-    /// area under it (move), else nothing.
+    /// area under it (move), else nothing. On a small area (a side below <see cref="SmallArea"/>) a press inside always moves
+    /// it and its handles are taken just outside it, so the handles' reach never covers the whole area.
     /// </summary>
     public (AreaViewModel? Area, AreaHandle Handle) HitTest(Point point)
     {
@@ -171,9 +175,10 @@ public sealed class ReadingPicture : Control
             return (null, AreaHandle.None);
         }
 
-        if (areas.FirstOrDefault(a => a.IsSelected) is { } selected)
+        if (areas.FirstOrDefault(a => a.IsSelected) is { } selected
+            && ToRect(selected.Box, picture) is var rect
+            && !(rect.Contains(point) && (rect.Width < SmallArea || rect.Height < SmallArea)))
         {
-            var rect = ToRect(selected.Box, picture);
             foreach (var (handle, at) in Handles(rect))
             {
                 if (Math.Abs(point.X - at.X) <= HandleReach && Math.Abs(point.Y - at.Y) <= HandleReach)

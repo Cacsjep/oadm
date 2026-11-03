@@ -24,7 +24,7 @@ public enum AreaHandle
 public static class AreaGeometry
 {
     /// <summary>The smallest area side, relative to the picture (a click is not an area).</summary>
-    public const double MinSize = 0.02;
+    public const double MinSize = OcrLimits.MinAreaSide;
 
     /// <summary>One arrow key press moves the selected area by this much; with Shift by <see cref="BigNudge"/>.</summary>
     public const double Nudge = 0.01;

@@ -64,7 +64,7 @@ public sealed partial class StreamSettingsViewModel : ValidatingViewModel
     /// <summary>OK (true) or Cancel (false): the view closes the window.</summary>
     public event EventHandler<bool>? CloseRequested;
 
-    public const string Title = "Stream settings";
+    public const string Title = OcrTexts.StreamSettings;
 
     public IReadOnlyList<CameraSource> VideoSources { get; }
 

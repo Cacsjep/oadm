@@ -119,12 +119,20 @@ public static class ReaderRules
     /// <summary>"At most 4 readers can watch at once at the site Building B. Set another reader there to On action first."</summary>
     public static string TooManyWatchingAtSite(string? siteName) => string.Create(
         CultureInfo.InvariantCulture,
-        $"At most {MaxWatchingPerSite} readers can watch at once at the site {(string.IsNullOrWhiteSpace(siteName) ? "of this camera" : siteName)}. Set another reader there to On action first.");
+        $"{LimitStart}{MaxWatchingPerSite}{WatchLimit} at the site {(string.IsNullOrWhiteSpace(siteName) ? "of this camera" : siteName)}. Set another reader there to On action first.");
 
     /// <summary>"At most 16 readers can watch at once. Set another reader to On action first."</summary>
     public static string TooManyWatching(int maxWatching) => string.Create(
         CultureInfo.InvariantCulture,
-        $"At most {maxWatching} readers can watch at once. Set another reader to On action first.");
+        $"{LimitStart}{maxWatching}{WatchLimit}. Set another reader to On action first.");
+
+    /// <summary>A reader's problem is one of the watching limits (<see cref="TooManyWatching"/>, <see cref="TooManyWatchingAtSite"/>): the page's chip "Limit reached".</summary>
+    public static bool IsWatchingLimit(string? problem) =>
+        problem is not null && problem.StartsWith(LimitStart, StringComparison.Ordinal) && problem.Contains(WatchLimit, StringComparison.Ordinal);
+
+    private const string LimitStart = "At most ";
+
+    private const string WatchLimit = " readers can watch at once";
 
     /// <summary>"Choose 1, 2, 4, 8, 12 or 15 frames per second."</summary>
     public static string FpsNotAllowed()
