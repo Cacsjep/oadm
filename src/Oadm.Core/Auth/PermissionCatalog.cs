@@ -159,7 +159,7 @@ public sealed class PermissionCatalog
 
         // Core plugins: one group each, in rail order (group, then name).
         foreach (var core in registry.AllCorePlugins
-                     .OrderBy(c => SafeGroup(c.Plugin))
+                     .OrderBy(c => CorePluginGroups.RailOrder(SafeGroup(c.Plugin)))
                      .ThenBy(c => SafeName(c.Plugin), StringComparer.CurrentCultureIgnoreCase))
         {
             foreach (var entry in CoreEntries(core))
@@ -273,7 +273,7 @@ public sealed class PermissionCatalog
         var plugin = core.Plugin;
         var name = SafeName(plugin);
         var group = SafeGroup(plugin);
-        var order = PluginGroupOrder + (int)group;
+        var order = PluginGroupOrder + CorePluginGroups.RailOrder(group);
         PermissionEntry Entry(string key, string title, string description) =>
             new(PermissionKeys.Of(core.Id, key), title, description, name, order, core.Origin.PackageId) { IconKey = plugin.IconKey };
 
