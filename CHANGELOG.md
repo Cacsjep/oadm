@@ -16,6 +16,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Servers and clients before this version are updated by hand once; from then on Install now does it.
 - Optional plugins: administrators install them on the Plugins page from the OADM release, without a restart.
 - Text recognition (optional plugin): reads container numbers, meters, signs and labels in camera pictures for the event rules.
+- Text recognition reads inside the areas you draw, watching at 1 to 15 frames per second or when a rule runs Read text; a graphics card speeds up searches over the whole picture.
+- Text recognition works with cameras at sites; its picture streams never hold up AXIS OS upgrades, applications or exports there.
+- Navigation rail: the new group Vision holds Text recognition.
+- Download page: the optional plugins as ZIP files per system, for servers without internet.
 
 ### Changed
 
@@ -23,6 +27,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - The device list export names its Firmware column AXIS OS now; scripts that read the export need the new header.
 - Event rules: events are chosen from a tree with search (Devices, Certificates, Sites), so an event is quick to find.
 - Event rules: the info of Dead time and Max per minute shows a small pulse diagram of what they do, following the number you type.
+- Plugins page: a plugin that is being turned on or off shows a ring and takes no second click.
 
 ## [4.9.0] - 2026-11-02
 
