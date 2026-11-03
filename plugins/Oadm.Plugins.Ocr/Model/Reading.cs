@@ -3,7 +3,11 @@ namespace Oadm.Plugins.Ocr.Model;
 /// <summary>A line of text found in a picture.</summary>
 /// <param name="Text">The text read.</param>
 /// <param name="Box">Where it is, relative to the whole picture (for the page's drawing).</param>
-/// <param name="Confidence">0 to 100, the mean of its characters' probabilities; lines below <see cref="OcrLimits.MinConfidence"/> are dropped.</param>
+/// <param name="Confidence">
+/// 0 to 100, the lowest probability of its characters (of the format match when the area has a format and the line holds a
+/// match), so an area's confidence is the lowest character probability of its value. Lines whose characters' mean
+/// probability is below <see cref="OcrLimits.MinConfidence"/> are dropped.
+/// </param>
 public sealed record TextLine(string Text, RelativeBox Box, double Confidence);
 
 /// <summary>What <see cref="ITextMatcher"/> makes of an area's lines.</summary>

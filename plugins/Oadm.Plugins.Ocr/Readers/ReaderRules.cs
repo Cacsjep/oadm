@@ -72,7 +72,7 @@ public static class ReaderRules
     /// <summary>A reader whose camera is no longer in its owner's devices (or whose device group was deleted): it reads nothing.</summary>
     public const string Off = "The reader's camera is no longer in its device group.";
 
-    /// <summary>Reading without the recognition parts (before wave 3 wires them in).</summary>
+    /// <summary>Reading while the plugin folder has no <c>Models</c> folder (<see cref="ReaderParts.Real"/>).</summary>
     public const string NotInstalled = "Text recognition is not installed completely. Install the add-on again.";
 
     public static string NameTaken(string name) => $"A reader named {name} exists already.";

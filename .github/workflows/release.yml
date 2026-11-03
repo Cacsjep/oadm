@@ -47,6 +47,13 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      # The Text recognition models are downloaded at build (plugins/Oadm.Plugins.Ocr/Models/README.md), kept between runs.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/oadm/models
+            ~/AppData/Local/Oadm/model-cache
+          key: oadm-models-${{ runner.os }}-${{ hashFiles('plugins/Oadm.Plugins.Ocr/Models/Models.targets') }}
       - run: dotnet build Oadm.sln -c Release
       # Unit tests only (like manage test unit): Perf tests have time budgets made for a developer machine and run with
       # manage test perf; hardware tests need real devices. One run, no retry: the tests wait for conditions, not for
@@ -110,6 +117,13 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      # The Text recognition models of the add-on ZIP (plugins/Oadm.Plugins.Ocr/Models/README.md).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/oadm/models
+            ~/AppData/Local/Oadm/model-cache
+          key: oadm-models-${{ runner.os }}-${{ hashFiles('plugins/Oadm.Plugins.Ocr/Models/Models.targets') }}
 
       - name: Version
         id: version

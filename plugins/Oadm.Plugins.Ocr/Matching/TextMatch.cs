@@ -33,8 +33,9 @@ public sealed record TextMatch
     public double? Number { get; init; }
 
     /// <summary>
-    /// 0 to 100: the lowest confidence of the lines that make <see cref="Text"/>; 0 without text. (The lines carry the mean of
-    /// their characters only; the spec's lowest character probability needs it from the recognition.)
+    /// 0 to 100: the lowest confidence of the lines that make <see cref="Text"/>; 0 without text. A line's confidence is the
+    /// lowest probability of its characters (of its format match when it has one; the recognition sets it), so this is the
+    /// spec's lowest character probability of the value.
     /// </summary>
     public double Confidence { get; init; }
 
@@ -49,4 +50,7 @@ public sealed record TextMatch
 
     /// <summary>The model's form for <see cref="ITextMatcher"/>: value, matches format, raw text.</summary>
     public AreaMatch ToAreaMatch() => new(Text, MatchesFormat, RawText);
+
+    /// <summary>The model's form for <see cref="IAreaValueMatcher"/>: with every match, the confidence and the value's box.</summary>
+    public AreaValue ToAreaValue() => new(ToAreaMatch(), AllMatches, Text.Length == 0 ? 0 : Confidence, Text.Length == 0 ? null : TextBox);
 }

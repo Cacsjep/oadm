@@ -1,6 +1,7 @@
 # Text recognition
 
-Status: **spec, not built** (2026-11-03).
+Status: **built** (2026-11-03): recognition, matching, frames, readers, page and the real parts wired; the hardware runs
+on the development cameras are open. Developer notes: `plugins/Oadm.Plugins.Ocr/README.md`.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -21,8 +22,10 @@ that better (the docs say so).
    sources; nothing streams before that. Only cameras of the user's device group; readers are owned by the device scope
    that made them (`docs/spec/device-scope.md`).
 4. **Bounded load.** Recognition runs on the CPU in at most `max(1, cores / 2)` workers at once, each with at most 2
-   threads, so OADM stays responsive. Per reader one frame at a time: the newest frame wins, older ones are dropped,
-   never queued. At most 50 readers per server, at most 20 of them watching on the CPU, 50 on a GPU.
+   threads, so OADM stays responsive. The limit counts model calls (a tile, a batch of lines), so an idle server reads the
+   tiles of one picture at once; at most as many pictures as workers are in work. Per reader one frame at a time: the
+   newest frame wins, older ones are dropped, never queued. At most 50 readers per server, at most 20 of them watching on
+   the CPU, 50 on a GPU, and at most 4 watching readers per site (a site node's link carries their streams).
 5. **GPU when there is one, the CPU always works.** ONNX Runtime and the models come with the add-on; nothing is
    downloaded at run time. A missing or failing GPU falls back to the CPU (one log line); the page says what reads.
 6. **Measured accuracy.** Every change to reading keeps or raises the accuracy on the recorded test set ("Accuracy"
@@ -44,7 +47,9 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
   - **On demand**: reads one picture when an event rule runs the action **Read text** (below). No stream.
   - **Watching**: reads continuously at 1, 2 or 4 frames per second (default 1) from the camera's MJPEG stream
     (`/axis-cgi/mjpg/video.cgi?fps=<n>&resolution=<w>x<h>&camera=<source>` through `ctx.Vapix` with a streamed answer,
-    so device routing and sites work; one stream per reader, reopened after a drop with a growing pause up to 1 min).
+    so device routing and sites work; one stream per reader, reopened after a drop with a growing pause from 1 s up to
+    1 min; a stream that sent pictures and then none for 3 s counts as dropped; the camera has 15 s to answer a request or
+    open the stream).
 - **Resolution**: default 1920x1080 or the camera's largest below it; small text needs pixels.
 - **Single pictures** (On demand, the page's Read now): `/axis-cgi/jpg/image.cgi` with the same resolution and source.
 - No H.264 or H.265: decoding video would need FFmpeg on the server.
@@ -52,15 +57,31 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 ## Reading
 
 1. Decode the JPEG (SkiaSharp), cut out each area at full resolution.
-2. **Find text**: the PP-OCRv5 mobile detection model per area, sides a multiple of 32, turn its map into line boxes
-   (threshold, contours, box enlarged; own C#, no OpenCV). An area up to 960 px on its long side is read as it is; a
-   larger one (Search over the whole picture) in overlapping tiles of 960 px at full resolution (overlap 15 %, boxes
-   found twice merged), so small text in a large picture is not lost. Tiles cost time: a 1920x1080 picture is 6 tiles.
-3. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
-   by 90 degrees) is turned by 90 degrees; the angle model then decides whether the line is upside down and turns it
-   by 180 degrees.
-4. **Read**: the PP-OCRv5 Latin recognition model per line (height 48 px), CTC decoding with its character list, a
-   confidence per line (mean of the characters' probabilities). Lines below 50 % are dropped.
+2. **Find text**: the PP-OCRv5 detection model per area (mobile on the CPU, server on a graphics card and for Accurate),
+   sides a multiple of 32, turn its map into line boxes (threshold 0.3, box score 0.6, box enlarged by 1.5; own C#, no
+   OpenCV). An area up to 960 px on its long side is read as it is (a small one scaled up to 64 px, a 16 px margin
+   around it); a larger one (Search over the whole picture) in tiles at full resolution: the fewest tiles that cover it
+   at up to 960 px each with at least 15 % overlap, all of one size and spread evenly (full HD: 3 x 2 = 6 tiles of
+   736 x 608). On the CPU each tile is a model call of its own, on a graphics card all tiles are one call.
+3. **Merge boxes**: boxes found twice (in two tiles) and pieces of one line the text finder split (the digit drums of a
+   meter) become one line: same direction, about the same height, on one line, overlapping or closer than 0.6 line
+   heights.
+4. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
+   by 90 degrees) is turned by 90 degrees. The angle model names the lines that may be upside down (probability at
+   least 0.3): those are read both ways and the reading the recognition is surer of wins (the angle model alone turned
+   coloured print).
+5. **Contrast**: a dark or flat line (brightness spanning less than 100 of 255) is stretched so its darkest and brightest
+   percent become black and white, at most 4 times; lines with contrast and the text finder's input stay as they are.
+6. **Read**: the PP-OCRv5 Latin recognition model per line (height 48 px), CTC decoding with its character list. Lines
+   whose characters' mean probability is below 50 % are dropped. A line's confidence is the lowest probability of its
+   characters (of its format match when it has one).
+7. **Second reading of a fixed-place area**: an area with a format whose lines gave no match, a strip (at least 1.5
+   times wider than tall, up to 960 px), is read once more as one line; the text finder can miss a part of a value (a
+   dark drum of a meter), the whole strip often still reads. That reading counts only when its format match holds.
+
+There is no Latin server recognition model: PaddleOCR publishes Latin PP-OCRv5 recognition as mobile only, and the
+multilingual server model read Latin text worse (no spaces between words). Every device reads with the mobile Latin
+model; "the server models" means the server text finder (`plugins/Oadm.Plugins.Ocr/Models/README.md` "Choices").
 
 Languages: Latin script (English, German with umlauts, French, ...) and digits. Other scripts need another recognition
 model (later, as a choice per reader).
@@ -147,15 +168,31 @@ often, from worse pictures, and never a wrong value reported as sure.
   A single bad frame (motion blur, a hand in front) changes nothing.
 - **Small text is enlarged** before reading: a line lower than 24 px is scaled up (bicubic) to the model's 48 px; lines
   below 10 px are left out with "Text too small. Draw a smaller area or choose a higher resolution." on the page.
-- **Two model sizes**: the PP-OCRv5 mobile models on the CPU, the PP-OCRv5 server models (more accurate, slower) on a
-  GPU. A reader can force the accurate models on the CPU ("Accurate", slower).
+- **Two text finders**: the PP-OCRv5 mobile text finder on the CPU, the server text finder (finds small text the mobile
+  one misses, about 6 times the work) on a GPU; one Latin reader everywhere. "Accurate" (the server text finder on the
+  CPU, at most 2 such model sets at once) exists in the recognition; the reader setting for it is not built yet.
 - **Confidence that means something**: the area's confidence is the lowest character probability of its value, not the
   mean; rules can require "Confidence greater than 90".
 - **Test set and score**: `tests/Oadm.Plugins.Ocr.Tests/Fixtures/AccuracySet` holds recorded pictures (development
   cameras, read only; the box on 10.0.0.48; receipts, labels, signs, meters, container numbers printed and filmed; day,
-  dim, slanted, blurred) with the expected value of each area. A test reads them all and writes exact-value rate and
-  character error rate per group to the test output; the build plan's measurement sets the baseline, a drop fails the
-  test. Target: at least 98 % exact values with a format, at least 95 % without.
+  dim, slanted, blurred) with the expected value of each area. A test reads them all on the CPU, makes each value with
+  the readers' own matcher and writes exact-value rate and character error rate per group to the test output; a group
+  below its baseline (`Fixtures/AccuracySet/baseline.json`, one value of slack for the CPU maths of other platforms)
+  fails the test. Goal: at least 98 % exact values with a format, at least 95 % without.
+- **Baseline** (measured 2026-11-03, mobile text finder on the CPU; with a format 88.9 % exact, any text 91.7 %):
+
+  | Group | Values | Exact | Character errors |
+  |---|---|---|---|
+  | camera-box (the box on 10.0.0.48, fixed place) | 8 | 100 % | 0 % |
+  | camera-search (the box, whole picture with a format) | 2 | 100 % | 0 % |
+  | container-fixed, container-search | 6, 4 | 100 % | 0 % |
+  | meter, receipt-search, sign, no-text | 8, 12, 8, 2 | 100 % | 0 % |
+  | hard-meter | 6 | 100 % | 0 % |
+  | hard-container | 6 | 83.3 % | 16.7 % |
+  | hard-sign | 6 | 66.7 % | 3.2 % |
+  | hard-receipt-search | 8 | 37.5 % | 42.5 % |
+
+  The hard receipts read better with the server text finder (62.5 % exact): a graphics card helps there.
 
 ## GPU
 
@@ -167,14 +204,19 @@ often, from worse pictures, and never a wrong value reported as sure.
 
 - The plugin picks at start: GPU when the provider loads and a test reading succeeds, else the CPU. Settings card of the
   page: "Runs on: NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8 cores)", and **Use the graphics card** (on by default)
-  to force the CPU. `getEngine` / `setUseGpu` (change right, audited) answer `{runsOn, gpuAvailable, useGpu, fpsChoices}`;
-  the setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change. Without one: the CPU,
-  no graphics card.
+  to force the CPU. `getEngine` / `setUseGpu` answer `{runsOn, gpuAvailable, useGpu, fpsChoices}`; `setUseGpu` is
+  server-wide: the change right and all devices (`RequiresAllDevices`; the page disables the box for a user with a device
+  group), audited. The setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change; the
+  next readings run where it says, the graphics card keeps its models until the plugin stops. Without a recognizer: the
+  CPU, no graphics card.
 - On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
   recognition together. Limits on a GPU: frames per second 1, 2, 4, 8 or 15; at most 50 watching readers.
-- Speed targets (measured at the build on the development PC, RTX 5070 Ti): one Search reader over a full HD picture
-  at 10 frames per second or more on the GPU, at least 1 on the CPU; 20 fixed-place readers at 4 frames per second on
-  the GPU.
+- Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
+  CPU; 20 fixed-place readers at 4 frames per second on the GPU.
+- Measured at the build (2026-11-03, development PC, RTX 5070 Ti, `RecognitionSpeedTests`, Perf): CPU, Search over full
+  HD 1.6 pictures per second, a fixed-place area 20 per second; DirectML, Search about 6 per second, a fixed-place area
+  23 per second, 20 fixed-place readers together about 50 pictures per second (2.5 per reader). The CPU goal holds; the
+  GPU's Search goal does not yet (the server text finder on 6 tiles), nor 20 readers at 4 per second.
 
 ## Packaging and dependencies
 
@@ -183,7 +225,26 @@ often, from worse pictures, and never a wrong value reported as sure.
   `NativeAssets.Linux.NoDependencies`), the PP-OCRv5 mobile and server detection and Latin recognition models and the
   angle model as ONNX files with the character list (Apache-2.0, in the plugin's notices). The size is measured at the
   build (Linux x64 is the largest because of the CUDA provider). The client part has no native libraries.
+- The models are never in git: the build downloads each from its pinned Hugging Face revision into a local cache, checks
+  its SHA-256 (another hash fails the build) and copies it into the output's `Models/` (`Models/Models.targets`,
+  `Models/README.md` "Download at build", `docs/spec/packaging.md` "Add-on ZIPs"). The plugin folder without `Models/`
+  reads nothing: every reading ends "Text recognition is not installed completely. Install the add-on again."
 - No OpenCV, no Tesseract, no Python; the CUDA runtime is the server's own, never shipped.
+
+## Parts and contract
+
+One contract between the parts, in `Model/`; the readers (`Readers/ReaderRuntime`) work only against it, the plugin builds
+the real parts once per start (`ReaderParts.Real`), the tests hand fakes:
+
+| Contract | Real part | What it does |
+|---|---|---|
+| `IFrameSource` | `Frames/VapixFrameSource` (the plugin's full device access, `ctx.System.Vapix`) | single pictures and the MJPEG stream of a camera |
+| `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas; what reads, Use the graphics card |
+| `ITextMatcher` (+ `IAreaValueMatcher`) | `Matching/TextMatcher` | an area's value, every match, its confidence and box |
+| `IPictureCutter` | `Recognition/PictureCutter` (SkiaSharp) | the value's cut-out for the page |
+| the vote | `Matching/FrameVote` inside `Readers/AreaWatch` | the last 5 frames and the publish rule (2 in a row, only on change) |
+
+The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), never copies ("Page").
 
 ## Tests
 
@@ -193,8 +254,13 @@ often, from worse pictures, and never a wrong value reported as sure.
 - Watching: the vote over 5 frames (a single bad frame changes nothing), a value published only when the vote holds in 2 frames and only on change; newest frame wins; a dropped stream reopens
   with the growing pause (`FakeTimeProvider`).
 - The action: one reading, "Already reading", the events of every area.
-- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU; GPU fallback to the CPU; the accuracy set and its score; device groups.
+- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU, 4 per site; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
+- End to end with the real parts (`EndToEndTests`): recorded pictures of the coffee box through a watching reader give
+  each value once and an empty value once when the box is gone; the action Read text reads a container number with its
+  format and the page gets its cut-out.
+- The model sources: `Models.targets` and `Models/README.md` name the same files, revisions and SHA-256.
+- Speeds (`RecognitionSpeedTests`, Perf, not in `manage test unit`): the numbers of "GPU".
 
 ## Build plan (parallel work)
 
@@ -218,5 +284,6 @@ event and action ids, the permissions.
 | O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
 | O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, Draw area, results, Read now, Save; headless screenshots | the `Api/` payloads with a fake server |
 
-**Wave 3:** the real parts wired in place of the fakes, the add-on ZIP (A4), a measurement of the speed on the
-development cameras (the numbers go into "Packaging and dependencies"), the plugin's `README.md`, review and full suite.
+**Wave 3:** the real parts wired in place of the fakes (done: "Parts and contract"), the models downloaded at build
+(done), the add-on ZIP (A4), a measurement of the speed (done: "GPU"), the plugin's `README.md` (done), review and full
+suite; open: the hardware runs on the development cameras.

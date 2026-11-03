@@ -11,13 +11,16 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// looked for in each line on its own, then in neighbouring lines joined (a number split over two lines). Of several
 /// matches the value is the one read with the highest confidence, on a tie the larger text. Pure and thread-safe.
 /// </summary>
-public sealed partial class TextMatcher : ITextMatcher
+public sealed partial class TextMatcher : ITextMatcher, IAreaValueMatcher
 {
     /// <summary>The event field All matches holds at most this many different matches.</summary>
     public const int MaxMatches = 10;
 
     /// <inheritdoc />
     public AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected) => MatchAll(lines, expected).ToAreaMatch();
+
+    /// <inheritdoc />
+    public AreaValue MatchValue(IReadOnlyList<TextLine> lines, ExpectedText expected) => MatchAll(lines, expected).ToAreaValue();
 
     /// <summary>Every event field and the ordered lines of <paramref name="lines"/> for <paramref name="expected"/>.</summary>
     public static TextMatch MatchAll(IReadOnlyList<TextLine> lines, ExpectedText expected)

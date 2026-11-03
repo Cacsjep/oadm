@@ -71,6 +71,26 @@ public sealed class PageMethodsTests
     }
 
     [Fact]
+    public async Task UseTheGraphicsCardIsServerWideAndOnlyForUsersWithAllDevices()
+    {
+        await using var ocr = await OcrHarness.StartAsync(onGpu: true);
+        var group = FakeCallContext.WithGroup(ocr.Context, [ocr.Inside.Id], "operator", ocr.Context.FakeScopes.Add("Building A", [ocr.Inside.Id]));
+        Assert.True(ocr.Plugin.RequiresAllDevices(OcrMethods.SetUseGpu));
+        Assert.False(ocr.Plugin.RequiresAllDevices(OcrMethods.GetEngine));
+        Assert.False(ocr.Plugin.RequiresAllDevices(OcrMethods.SaveReader));
+
+        // The host refuses first; the plugin fails closed on its own too.
+        var refused = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ocr.CallAsync(OcrMethods.SetUseGpu, new UseGpuRequest { UseGpu = false }, group));
+        Assert.Equal(DeviceGroupMessages.AllDevicesOnly, refused.Message);
+        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() =>
+            ocr.Plugin.InvokeAsync(group, OcrMethods.SetUseGpu, OcrJson.Serialize(new UseGpuRequest { UseGpu = false }), CancellationToken.None));
+
+        Assert.True(ocr.Recognizer.UsesGpu);
+        Assert.False(ocr.Context.PluginSettings.Values.ContainsKey("useGpu"));
+        Assert.True(OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.GetEngine, caller: group)).UseGpu); // reading stays open
+    }
+
+    [Fact]
     public void ChangingTheEngineNeedsTheChangeRightAndIsAudited()
     {
         var plugin = new OcrPlugin();

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Oadm.Plugins.Ocr.Matching;
 using Oadm.Plugins.Ocr.Model;
 using SkiaSharp;
 
@@ -35,7 +36,7 @@ public sealed record OcrEngineOptions
 /// idle server reads the tiles of one picture at once; on a graphics card one shared set whose model calls run one at a
 /// time, the lines of all waiting pictures read together. At most <see cref="OcrLimits.Workers"/> pictures are in work at once.
 /// </summary>
-public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
+public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IDisposable
 {
 
     /// <summary>The tile size for large areas.</summary>
@@ -72,6 +73,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
     private readonly CharacterList _accurateCharacters;
     private readonly ModelSet? _gpuSet;
     private readonly LineBatcher? _gpuLines;
+    private readonly RecognitionDevice _cpuDevice;
+    private readonly RecognitionDevice? _gpuDevice;
+    private volatile bool _useGpu = true;
     private bool _disposed;
 
     public OnnxTextRecognizer(OcrEngineOptions options, ILogger? logger = null)
@@ -97,7 +101,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
             {
                 _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker);
                 _gpuLines = new LineBatcher(_gpuSet.RecognizeAsync);
-                RunsOn = new RecognitionDevice(true, SessionFactory.GraphicsCardName(target));
+                _gpuDevice = new RecognitionDevice(true, SessionFactory.GraphicsCardName(target));
             }
 #pragma warning disable CA1031 // A graphics card that fails with the real models falls back to the CPU too.
             catch (Exception ex)
@@ -106,15 +110,42 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
                 RecognitionLog.GraphicsCardFailed(_logger, ex.Message);
                 _gpuSet?.Dispose();
                 _gpuSet = null;
+                _gpuLines?.Dispose();
+                _gpuLines = null;
+                _gpuDevice = null;
             }
         }
 
-        RunsOn ??= new RecognitionDevice(false, $"CPU ({options.ProcessorCount} cores)");
+        _cpuDevice = new RecognitionDevice(false, $"CPU ({options.ProcessorCount} cores)");
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
 
-    /// <summary>What runs the recognition.</summary>
-    public RecognitionDevice RunsOn { get; }
+    /// <summary>What runs the recognition now: the graphics card while there is one and "Use the graphics card" is on.</summary>
+    public RecognitionDevice RunsOn => OnGpu ? _gpuDevice! : _cpuDevice;
+
+    /// <inheritdoc />
+    string IEngineInfo.RunsOn => RunsOn.Name;
+
+    /// <summary>A graphics card passed the test reading and holds the models.</summary>
+    public bool GpuAvailable => _gpuSet is not null;
+
+    /// <summary>True while the readings run on the graphics card.</summary>
+    public bool OnGpu => _useGpu && _gpuSet is not null;
+
+    /// <summary>
+    /// "Use the graphics card" (docs/spec/ocr.md "GPU"): off sends the next readings to the CPU, on back to the graphics card
+    /// when there is one. Readings in work finish where they started; the graphics card keeps its models until disposed.
+    /// </summary>
+    public void SetUseGpu(bool useGpu)
+    {
+        if (_useGpu == useGpu)
+        {
+            return;
+        }
+
+        _useGpu = useGpu;
+        RecognitionLog.RunsOn(_logger, RunsOn.Name);
+    }
 
     /// <summary>CPU workers: model calls at once (<see cref="OcrLimits.Workers"/>), and pictures in work at once.</summary>
     public int Workers { get; }
@@ -137,8 +168,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
             areas = [Area.WholePicture(string.Empty)];
         }
 
-        IModelRunner runner = _gpuSet is not null && _gpuLines is not null
-            ? new GpuRunner(_gpuSet, _gpuLines)
+        IModelRunner runner = _useGpu && _gpuSet is { } gpuSet && _gpuLines is { } gpuLines
+            ? new GpuRunner(gpuSet, gpuLines)
             : new CpuRunner(_cpu, options.Accurate ? _accurateCharacters : _cpuCharacters, options.Accurate);
         await _pictures.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -437,28 +468,16 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IDisposable
         return turned;
     }
 
+    /// <summary>The lines in the matcher's reading order (<see cref="LineOrder"/>: rows top to bottom, in a row left to right).</summary>
     private static List<RecognizedLine> Order(List<RecognizedLine> lines)
     {
-        // Top to bottom; lines whose middles are within half a line height count as one row, left to right.
-        var sorted = lines.OrderBy(l => l.Line.Box.Y + l.Line.Box.Height / 2).ToList();
-        var result = new List<RecognizedLine>(sorted.Count);
-        var i = 0;
-        while (i < sorted.Count)
+        var byLine = new Dictionary<TextLine, RecognizedLine>(ReferenceEqualityComparer.Instance);
+        foreach (var line in lines)
         {
-            var row = new List<RecognizedLine> { sorted[i] };
-            var middle = sorted[i].Line.Box.Y + sorted[i].Line.Box.Height / 2;
-            var j = i + 1;
-            while (j < sorted.Count && Math.Abs(sorted[j].Line.Box.Y + sorted[j].Line.Box.Height / 2 - middle) < sorted[i].Line.Box.Height / 2)
-            {
-                row.Add(sorted[j]);
-                j++;
-            }
-
-            result.AddRange(row.OrderBy(l => l.Line.Box.X));
-            i = j;
+            byLine[line.Line] = line;
         }
 
-        return result;
+        return [.. LineOrder.Order([.. lines.Select(l => l.Line)]).Select(l => byLine[l])];
     }
 
     private static SKRectI PixelRect(RelativeBox box, int width, int height)

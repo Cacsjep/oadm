@@ -246,9 +246,10 @@ must never break.
   outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
   version from its GitHub release, checked by `SHA256SUMS.txt`, Administrators only; clients get the client part from the
   server; updated with the server; never a file upload.
-- **[Text recognition](docs/spec/ocr.md)** (spec, not built; add-on `oadm.ocr`, free, off by default): readers (camera,
-  areas, Any text or a format such as `AAAU ###### #`) read text on the CPU (ONNX Runtime, PaddleOCR models) on demand
-  or watching the MJPEG stream at 1 to 4 fps; events Text read for the rules; read only, pictures never stored.
+- **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, free, off by default): readers
+  (camera, areas, Any text or a format such as `AAAU ###### #`) read text on the CPU or a graphics card (ONNX Runtime,
+  PaddleOCR models, never in git: downloaded and checked at build) on demand or watching the MJPEG stream at 1 to 4 fps;
+  events Text read for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

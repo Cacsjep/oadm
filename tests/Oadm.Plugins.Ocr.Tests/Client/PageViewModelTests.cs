@@ -520,6 +520,20 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
+    public async Task A_user_with_a_device_group_cannot_change_the_server_wide_graphics_card_setting()
+    {
+        var ctx = Samples.Context();
+        ctx.HasAllDevices = false;
+        using var vm = await LoadedAsync(ctx);
+
+        Assert.True(vm.MayChange);
+        Assert.True(vm.GpuAvailable);
+        Assert.False(vm.CanSetGpu);
+        Assert.Equal("Only users with all devices can do this.", vm.GpuBlockedReason);
+        Assert.True(vm.NewCommand.CanExecute(null)); // the readers of the group stay theirs to change
+    }
+
+    [Fact]
     public async Task Without_the_change_right_the_page_only_shows()
     {
         var ctx = Samples.Context();

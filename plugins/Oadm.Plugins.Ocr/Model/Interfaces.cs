@@ -55,3 +55,53 @@ public interface ITextMatcher
     /// <summary>The value, whether it matches and the raw text of <paramref name="lines"/> for <paramref name="expected"/>.</summary>
     AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected);
 }
+
+/// <summary>An area's value with what the events need beyond <see cref="AreaMatch"/>.</summary>
+/// <param name="Match">Value, whether it matches and the raw text.</param>
+/// <param name="AllMatches">Every different match of the format (at most 10); empty without a format.</param>
+/// <param name="Confidence">0 to 100: the lowest character probability of the value (its lines' <see cref="TextLine.Confidence"/>); 0 without a value.</param>
+/// <param name="MatchBox">Where the value was found, relative to the picture; null without a value.</param>
+public sealed record AreaValue(AreaMatch Match, IReadOnlyList<string> AllMatches, double Confidence, RelativeBox? MatchBox);
+
+/// <summary>
+/// Optional next to <see cref="ITextMatcher"/>: a matcher that also gives every different match, the value's own confidence
+/// and its box (<c>TextMatcher</c> does). Without it the readers take the single match, the lowest line confidence and the
+/// box around all lines.
+/// </summary>
+public interface IAreaValueMatcher
+{
+    /// <summary>The value of an area's <paramref name="lines"/> for <paramref name="expected"/>.</summary>
+    AreaValue MatchValue(IReadOnlyList<TextLine> lines, ExpectedText expected);
+}
+
+/// <summary>Optional next to <see cref="ITextRecognizer"/>: what the recognition runs on.</summary>
+public interface IRecognizerCapabilities
+{
+    /// <summary>True while the recognition runs on a graphics card (more watching readers, higher frame rates).</summary>
+    bool OnGpu { get; }
+}
+
+/// <summary>
+/// Optional next to <see cref="ITextRecognizer"/>: what reads the pictures and the setting "Use the graphics card"
+/// (docs/spec/ocr.md "GPU"). The plugin stores the setting and hands it over at start and on every change; the recognizer
+/// applies it (false: the CPU, <see cref="IRecognizerCapabilities.OnGpu"/> false). Without it the page shows the CPU and no
+/// graphics card.
+/// </summary>
+public interface IEngineInfo : IRecognizerCapabilities
+{
+    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") while it reads, else "CPU (8 cores)".</summary>
+    string RunsOn { get; }
+
+    /// <summary>A graphics card was found and passed the test reading.</summary>
+    bool GpuAvailable { get; }
+
+    /// <summary>Applies the setting "Use the graphics card" (on by default).</summary>
+    void SetUseGpu(bool useGpu);
+}
+
+/// <summary>Cuts the picture of a found value out of a frame for the page. Optional.</summary>
+public interface IPictureCutter
+{
+    /// <summary>The part <paramref name="box"/> of <paramref name="jpeg"/> as JPEG; null when it cannot be cut.</summary>
+    byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box);
+}
