@@ -20,7 +20,7 @@ in use, as in the table. The server runs as Local System / root because the NTP 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
 For **Install now** and for [optional plugins](../plugins/#optional-plugins) the server reaches github.com on TCP 443;
-**Update client** the client does the same.
+for **Update client** the client does the same.
 
 ## Data folder
 
@@ -31,7 +31,8 @@ For **Install now** and for [optional plugins](../plugins/#optional-plugins) the
 | macOS | `/Library/Application Support/OADM` |
 
 It holds the database (devices, tasks, users), the plugin settings including the PKI's certificate authorities, and
-`master.key`, which encrypts every stored password. Only administrators / root can read it. Uninstalling keeps it.
+`master.key`, which encrypts every stored password, and the installed [optional plugins](../plugins/#optional-plugins)
+in `addons`. Only administrators / root can read it. Uninstalling keeps it.
 
 ## Backup
 

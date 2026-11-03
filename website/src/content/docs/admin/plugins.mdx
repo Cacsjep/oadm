@@ -51,7 +51,7 @@ installed on their computers and they need no rights for it. A client that runs 
 of a plugin says **Restart the client to use the new version.**
 
 Only administrators install and remove optional plugins. Both are written to the audit log, for example
-`Installed optional plugin Text recognition V4.11.0`.
+`Installed optional plugin Text recognition V4.10.0`.
 
 ### Remove
 
@@ -63,7 +63,7 @@ restart, **Install** brings it back at once.
 
 The server always installs the optional plugins of its own version. After you update OADM, the server downloads the new
 version of every installed optional plugin by itself. A plugin it cannot download stays off and its row says
-**Could not download Text recognition V4.11.0. Install it again.**: click **Install**. Your choice of on or off is kept.
+**Could not download Text recognition V4.10.0. Install it again.**: click **Install**. Your choice of on or off is kept.
 
 A backup holds the list of installed optional plugins, not their files. After a restore the server downloads them again.
 
@@ -76,9 +76,10 @@ off. Then install the plugin by hand:
 <Steps>
 
 1. On a computer with internet, open the [OADM release](https://github.com/Cacsjep/oadm/releases) of your server's
-   version and download `oadm-addon-<id>-<version>-<system>.zip` for the server's system: `win-x64`, `linux-x64`,
+   version (the [download page](https://oadm.app/) lists those of the latest release under **Optional plugins**) and download
+   `oadm-addon-<id>-<version>-<system>.zip` for the server's system: `win-x64`, `linux-x64`,
    `linux-arm64` or `osx-x64`. For Text recognition the id is `oadm.ocr`, for example
-   `oadm-addon-oadm.ocr-4.11.0-win-x64.zip`.
+   `oadm-addon-oadm.ocr-4.10.0-win-x64.zip`.
 2. Unpack it on the server into the folder `addons/<id>` of the data folder, so `plugin.json` sits directly in it:
 
    | System | Folder |

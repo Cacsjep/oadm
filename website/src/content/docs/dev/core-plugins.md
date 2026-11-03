@@ -13,7 +13,7 @@ the devices of that group. A core plugin can also contribute task plugins, actio
 | Member | Purpose |
 |---|---|
 | `Id`, `DisplayName`, `IconKey` | Identity, the rail entry's name and icon |
-| `Group` | The rail group: `Servers`, `Automation`, `Security`, `Monitoring`, `Reporting`, `Maintenance`, `Integrations`, `Utilities`, `Extensions` (default) |
+| `Group` | The rail group: `Servers`, `Automation`, `Security`, `Monitoring`, `Vision` (SDK 0.10.0, vision plugins), `Reporting`, `Maintenance`, `Integrations`, `Utilities`, `Extensions` (default) |
 | `HasPage` | False: no rail entry (a toolbar button or only tasks) |
 | `TaskPlugins` | Task plugins it contributes; they reach the owner through `ctx.Owner` |
 | `StartAsync(ctx, ct)`, `StopAsync(ct)` | When the server starts or stops, and when an administrator turns the plugin on or off |

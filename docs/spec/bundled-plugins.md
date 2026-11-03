@@ -6,6 +6,9 @@ One entry per plugin: id, what it does, on or off by default, the rules that mus
 dialogs, pages, device API, decisions and tests are in each plugin's `README.md` (`plugins/<name>/`). On / off and
 always on: `docs/spec/plugins.md` "Plugins on and off".
 
+Optional plugins (add-ons: not in the installers, installed on the Plugins page) are not listed here: the mechanism is
+`docs/spec/add-ons.md`, each one has its own spec (Text recognition, id `oadm.ocr`: `docs/spec/ocr.md`).
+
 Common to all task plugins: every device request and every wait is a named step; every successful task ends with the
 engine's step **Completed**; names follow `docs/spec/tasks.md` (no secrets, at most 48 characters). A new static
 address (IPv4, IPv6) is probed before the first write (`IAddressProbe`: ping, 2 tries x 1 s, plus TCP 80 / 443; the

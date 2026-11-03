@@ -158,5 +158,3 @@ loads the client part its server hands it. The user must trust their server and 
 - Packaging: the OADM installers and ZIPs contain no add-on folder; each add-on ZIP contains its native libraries for its
   platform only; `check-addon-zip.sh` uses the server's limits.
 - Never a real download in tests.
-
-Built in three waves in parallel (2026-11-03); the plan is in the git history of this file.

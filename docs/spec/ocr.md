@@ -253,10 +253,10 @@ Per area: **Any text** (default) or **Format**.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
     nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
     while drawing the drawing hint shows instead.
-  - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream settings**), the Areas
+  - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream**), the Areas
     header, the area rows (the only part that scrolls: with many areas New above and Save below stay in reach), then the
     save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
-  - **Stream**: a secondary button (video icon) that opens a small dialog (single operation: no card,
+  - **Stream**: a secondary button (video icon) that opens a small dialog **Stream settings** (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
     as a select of the server's choices (1, 2, 4, 8, 12, 15; the select follows the choices of each reader list and of
     `getEngine`; a stored rate no longer offered shows as the highest offered below it, the reader Not saved until
@@ -322,8 +322,7 @@ Per area: **Any text** (default) or **Format**.
   camera's video sources and sizes (largest first) come from `getCameraOptions` (read only, the caller's devices, kept
   10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
   (`name`, `camera`, `videoSource`, `resolution`, `mode`, `fps`, `areas`, `areas[i].name|box|format`); the page shows each
-  below its field: the watching limits below Mode, the video source, the resolution and the frame rate below Stream
-  settings, `areas` below the area rows, an area's name and box below its name, its format below the format. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
+  below its field: the watching limits below Mode, the video source, the resolution and the frame rate below Stream, `areas` below the area rows, an area's name and box below its name, its format below the format. Refusals without a field on the page (the camera, reader gone, 50 readers) stay errors in the host's message.
 - The preview's calls (permission "View text recognition"):
   - `startPreview` `{"previewId":"9f3c...","reader":{...the draft...}}` → `{"previewId":"9f3c...","problem":"..."}` (no
     `problem` while it reads); with a known `previewId` of the caller it keeps that preview alive and takes the
@@ -592,7 +591,7 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - The preview (`Readers/PreviewTests`): the draft read live without rule events, new areas without a new stream, the
   lease (`FakeTimeProvider`), 8 previews and the watching limit, sharing an unchanged watching reader's stream, device
   groups, what a draft allows.
-- The page (`Client/`): fixed columns without a splitter and the results below the video; Name, Mode and Stream settings
+- The page (`Client/`): fixed columns without a splitter and the results below the video; Name, Mode and Stream
   with its summary (no camera field), the area rows under one header with the name as text, the mode select, Rename and
   the row selection following the area; with 8 areas in a short window only the rows scroll, New and Save stay in reach; a real pointer drag that moves
   and resizes an area which stays there (`PageLayoutTests`, headless); the lines hidden while an area is drawn or
@@ -640,11 +639,6 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   (`VapixFrameSourceTests`), a picture claiming 65,535 x 65,535 refused (`PictureTests`), the container rule and the
   vote's format check (`TextMatcherTests`, `FrameVoteTests`, `DecodingTests`), Number with every digit
   (`TextReadEventTests`).
-
-## Build plan
-
-Built in three waves of parallel packages (skeleton; recognition, matching, frames, readers and page; the real parts
-wired). Open: the hardware runs on the development cameras.
 
 ## Rotation and perspective (measured 2026-11-03)
 

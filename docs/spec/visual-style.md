@@ -47,7 +47,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   compliance), **Sites** (built in, below Compliance; while the role may see sites), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
   Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
-  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Reporting (Snapshot report; System report
+  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition;
+  `CorePluginGroups.RailOrder`), Reporting (Snapshot report; System report
   has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,
   third-party)): only groups with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Permissions,
@@ -76,7 +77,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
   `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right); icon-only buttons in the text colour, the accent on
   hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
-  for the confirming button of a destructive dialog, flat red text elsewhere.
+  for the confirming button of a destructive dialog, flat red text elsewhere. A command button at the right end of a
+  panel header (New in the Areas header of Text recognition) has the class `atEnd` (`Button.toolbar.atEnd`): its text
+  ends level with the fields below and sits on the title's baseline.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
   Font Inter (Avalonia.Fonts.Inter), whole-pixel sizes only (fractional sizes blur): 12 px body, 10 px small, 18 px card titles, 22 px page titles, semibold titles; every window renders text with subpixel anti-aliasing, strong hinting and pixel-aligned baselines (App.ApplyCrispText). Page subtitles sit right of the page title, small, grey, baseline aligned.
 - **Status**: everywhere a status or result is shown (device certificate columns, tasks, task steps, logs, add page,

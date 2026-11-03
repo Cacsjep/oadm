@@ -282,8 +282,7 @@ all devices can change it.
 
 <Aside>
 On Windows the graphics card is used through Microsoft DirectML, which comes under Microsoft's own license terms; they
-include collecting data. To avoid DirectML, turn off **Use the graphics card** and then turn Text recognition off and on
-again on the Plugins page (or restart the server): it then starts on the CPU only.
+include collecting data. Turn off **Use the graphics card** to read on the CPU only.
 </Aside>
 
 ### Linux with an NVIDIA card
@@ -413,8 +412,9 @@ are for users with all devices.
 | Wrong characters (O for 0, S for 5) | Set a **Format**: it fixes look-alikes and finds only the shape you want |
 | A value split or missing on a busy picture | Draw smaller areas; with a large area use a format |
 | **More than 30 texts found. ...** | Draw smaller areas around the texts you need |
-| The reader shows **Unreachable** or **Credentials required** | The camera is offline or refuses the stored login. Check it on the Devices page |
-| **At most 16 readers can watch at once. ...** | Set another reader to **On action**, or use a server with more cores |
+| The reader shows **Unreachable**, **Credentials required**, **Certificate changed** or **Site offline** | The camera is offline or refuses the stored login. Check it on the Devices page |
+| The reader shows **Stream error** | The camera gives no pictures; hover the chip for the reason (below) |
+| The reader shows **Limit reached**, for example **At most 16 readers can watch at once. ...** | Set another reader to **On action**, or use a server with more cores. At a site, at most 4 readers watch |
 | **Unauthorized - HTTP 401 (check the credentials)** at a reader | OADM's account on the camera may not see video: check it on the Devices page |
 | **The camera does not offer this resolution. Choose another one.** | Choose another resolution under **Stream** |
 | **The camera does not offer this video source. Choose another one.** | Choose another video source under **Stream** |

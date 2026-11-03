@@ -93,6 +93,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
   Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
   Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
+  Oadm.Plugins.Ocr(.Client)/              optional plugin (add-on, not in the installers): Text recognition, rail group Vision (off by default)
   Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
                                           ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
@@ -101,7 +102,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
 tests/
   Oadm.<Project>.Tests/  one test project per project and per plugin (Oadm.Core.Tests, Oadm.Client.Tests,
                        Oadm.Plugins.Pki.Tests, ...); TestPlugins/ holds the plugins the loader tests load
-  Shared/              RecordingFirewall, RecordingStreams, CallWatchers (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
+  Shared/              RecordingFirewall, RecordingStreams, CallWatchers, CountingDeviceScopes, FakeAxisCom, FakeSiteTransport,
+                       TestRepository (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
                        Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new", the templates),
                        Oadm.Tools (the "oadm" command, NuGet Oadm.Tools; "manage license")
@@ -111,7 +113,8 @@ samples/               the plugins of the developer tutorials: Oadm.Samples.Upnp
                        from their properties); in Oadm.sln, built and tested by CI, never deployed
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
-packaging/             installers (windows/, linux/, macos/), icons/, notices/licenses/ (license text templates)
+packaging/             installers (windows/, linux/, macos/), addons/ (the optional plugins' ZIPs), icons/, notices/licenses/
+                       (license text templates)
 docs/spec/             the feature specs (see "Feature specs"), part of the spec like this file
 ```
 
@@ -146,7 +149,8 @@ must never break.
 - **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes (`PublishSingleFile`,
   `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), plugins next to each exe, generated
   `THIRD-PARTY-NOTICES.txt`; terms of use accepted on the first client start; installers MSI (Windows x64), .deb
-  (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb; one
+  (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb, a ZIP per
+  optional plugin and platform (never in the installers); one
   workflow `release.yml` on tags `v*.*.*` (tests on three OS, installers, smoke, release, NuGet; a `-rc.N` tag is a
   pre-release); `pr.yml` for pull requests; `vulnerabilities.yml` weekly (pull request with the new base list of Axis CVEs); every Action pinned by hash; the website (Astro Starlight, oadm.app).
   Never Native AOT or trimming for the host apps; never `Assembly.Location`; FFmpeg LGPL builds only.
@@ -246,10 +250,11 @@ must never break.
   outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
   version from its GitHub release, checked by `SHA256SUMS.txt`, Administrators only; clients get the client part from the
   server; updated with the server; never a file upload.
-- **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, free, off by default): readers
-  (camera, areas, Any text or a format such as `AAAU ###### #`) read text on the CPU or a graphics card (ONNX Runtime,
-  PaddleOCR models, never in git: downloaded and checked at build) on demand or watching the MJPEG stream at 1 to 4 fps;
-  events Text read for the rules; read only, pictures never stored.
+- **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
+  default): readers (camera, up to 8 areas, Any text or a format such as `AAAU ###### #`) read text only inside their
+  areas on the CPU, a search over a large area on a graphics card when there is one (ONNX Runtime, PaddleOCR models, never
+  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps (watching
+  readers by the CPU cores, 4 per site); event Text read for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

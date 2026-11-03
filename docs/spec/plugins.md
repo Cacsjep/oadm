@@ -490,7 +490,8 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   DataGrid On (check box), Plugin, Description, grouped like the navigation rail (one collapsible group per rail group
   that has plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`;
   sorted by name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
-  always-on packages are not listed; a refused change is undone with the reason below the list. Other clients see a
+  always-on packages are not listed; while a change runs the row's check box is a small ring (`ProgressRing.checkBox`) and
+  takes no second click; a refused change is undone with the reason below the list. Other clients see a
   change on their next connect. The card
   **Optional plugins** sits below the list (`docs/spec/add-ons.md` "Plugins page"). Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
