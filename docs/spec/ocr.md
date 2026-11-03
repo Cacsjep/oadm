@@ -622,32 +622,6 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 Built in three waves of parallel packages (skeleton; recognition, matching, frames, readers and page; the real parts
 wired). Open: the hardware runs on the development cameras.
 
-## Build plan (parallel work)
-
-Same waves as `docs/spec/add-ons.md` "Build plan". Each package owns its folder under `plugins/Oadm.Plugins.Ocr(.Client)`
-and `tests/Oadm.Plugins.Ocr.Tests`; nobody else changes it.
-
-**Wave 1, skeleton (with the add-on contracts, same agent):** the projects from the template (`manage new`) in
-`Oadm.sln`, `plugin.json` (add-on, off by default, `minSdkVersion`), and the shared types in `Model/`: `Reader`, `Area`,
-`ExpectedText`, `TextLine` (text, box, confidence), `AreaResult`, `Reading`; the interfaces `ITextRecognizer`
-(`ReadAsync(jpeg, areas, ct)` to lines per area), `IFrameSource` (`SingleAsync`, `WatchAsync(fps)` as an
-`IAsyncEnumerable` of JPEG frames) and `ITextMatcher`; the `InvokeAsync` methods and their JSON payloads (`Api/`), the
-event and action ids, the permissions.
-
-**Wave 2, in parallel:**
-
-| Package | Owns | Builds | Against |
-|---|---|---|---|
-| O1 Recognition | `Recognition/`, `Models/`, its tests and fixtures | ONNX Runtime sessions, JPEG decode and crop (SkiaSharp), detection pre and post (contours in C#), straightening, recognition with CTC, the worker gate | `ITextRecognizer`; fixtures recorded read-only from the development cameras |
-| O2 Matching | `Matching/`, its tests | line order, several lines, the format syntax, look-alike fixes, a number over two lines | `ITextMatcher` (pure C#, no I/O) |
-| O3 Frames | `Frames/`, its tests | MJPEG `multipart/x-mixed-replace` parser, the stream through `ctx.Vapix` (streamed answer), reopening with the growing pause, single picture | `IFrameSource`; a recorded MJPEG answer |
-| O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
-| O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, New area, results, Save; headless screenshots | the `Api/` payloads with a fake server |
-
-**Wave 3:** the real parts wired in place of the fakes (done: "Parts and contract"), the models downloaded at build
-(done), the add-on ZIP (A4), a measurement of the speed (done: "GPU"), the plugin's `README.md` (done), review and full
-suite; open: the hardware runs on the development cameras.
-
 ## Rotation and perspective (measured 2026-11-03)
 
 How far a text can be turned in the picture and tilted away from the camera and still read. Measured on the CPU with the
