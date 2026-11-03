@@ -60,7 +60,10 @@ public sealed record AreaRecognition(IReadOnlyList<RecognizedLine> Lines, int To
 public sealed record RecognitionResult(Resolution Resolution, IReadOnlyList<AreaRecognition> Areas)
 {
     /// <summary>The model type of <see cref="ITextRecognizer"/>.</summary>
-    public RecognizedPicture ToPicture() => new(Resolution, Areas.Select(a => (IReadOnlyList<TextLine>)a.Lines.Select(l => l.Line).ToList()).ToList());
+    public RecognizedPicture ToPicture() => new(Resolution, Areas.Select(a => (IReadOnlyList<TextLine>)a.Lines.Select(l => l.Line).ToList()).ToList())
+    {
+        TooSmallPerArea = [.. Areas.Select(a => a.Hint is not null)],
+    };
 }
 
 /// <summary>How one reading runs.</summary>
@@ -83,8 +86,10 @@ public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)
 }
 
 /// <summary>
-/// The recognizer with the details the model types do not carry yet (wave 3 folds them into <see cref="TextLine"/> and
-/// <see cref="RecognizedPicture"/>): character probabilities, the format match, too small lines, Accurate, what runs.
+/// The recognizer with every detail: character probabilities, the format match, the count of too small lines, Accurate, what
+/// runs (the accuracy set and the speed measurements). The readers need only <see cref="ITextRecognizer.ReadAsync"/>: its
+/// <see cref="TextLine.Confidence"/> is already the lowest character probability and <see cref="RecognizedPicture.TooSmallPerArea"/>
+/// the too small areas.
 /// </summary>
 public interface IDetailedTextRecognizer : ITextRecognizer
 {

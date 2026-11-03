@@ -115,6 +115,9 @@ internal sealed class FakeFrames : IFrameSource
 
     public string Single { get; set; } = string.Empty;
 
+    /// <summary>A real picture the single request answers instead of <see cref="Single"/>.</summary>
+    public ReadOnlyMemory<byte>? SinglePicture { get; set; }
+
     public int Singles => Volatile.Read(ref _singles);
 
     /// <summary>Streams open now.</summary>
@@ -132,7 +135,7 @@ internal sealed class FakeFrames : IFrameSource
     public Task<ReadOnlyMemory<byte>> SingleAsync(FrameRequest request, CancellationToken ct)
     {
         Interlocked.Increment(ref _singles);
-        return Task.FromResult(Frame.Of(Single));
+        return Task.FromResult(SinglePicture ?? Frame.Of(Single));
     }
 
     public async IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, [EnumeratorCancellation] CancellationToken ct)
@@ -159,35 +162,21 @@ internal sealed class FakeFrames : IFrameSource
     public bool IsStreaming(Guid deviceId) => _streams.ContainsKey(deviceId);
 
     /// <summary>Sends a frame to the stream of <paramref name="deviceId"/>.</summary>
-    public void Send(Guid deviceId, string text)
+    public void Send(Guid deviceId, string text) => Send(deviceId, Frame.Of(text));
+
+    /// <summary>Sends a picture to the stream of <paramref name="deviceId"/>.</summary>
+    public void Send(Guid deviceId, ReadOnlyMemory<byte> picture)
     {
         Assert.True(_streams.TryGetValue(deviceId, out var stream), "No stream of the camera is open.");
-        stream.Writer.TryWrite(Frame.Of(text));
+        stream.Writer.TryWrite(picture);
     }
 }
 
-/// <summary>A vote of the tests: the value read most often in the last 5 frames (the newest on a tie).</summary>
-internal sealed class MajorityVote : IFrameVote
-{
-    private readonly Queue<AreaResult> _last = new();
-
-    public AreaResult Add(AreaResult frame)
-    {
-        _last.Enqueue(frame);
-        if (_last.Count > 5)
-        {
-            _last.Dequeue();
-        }
-
-        var best = _last.GroupBy(r => r.Text, StringComparer.Ordinal).OrderByDescending(g => g.Count()).ThenByDescending(g => g.Contains(frame) ? 1 : 0).First();
-        return best.Last();
-    }
-}
-
-/// <summary>A started Text recognition plugin over the fakes.</summary>
+/// <summary>A started Text recognition plugin over the fakes (the vote of watching readers is the real one).</summary>
 internal sealed class OcrHarness : IAsyncDisposable
 {
-    public OcrHarness(Func<Area, IFrameVote>? vote = null, bool onGpu = false)
+    /// <summary>Over the fakes, or with real parts: <paramref name="recognizer"/>, <paramref name="matcher"/> and <paramref name="cutter"/> in place of the fakes.</summary>
+    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null)
     {
         Context = new FakeCoreContext { EventPublisher = Publisher };
         Inside = Context.Add(new FakeDevice { Address = "10.0.0.1" });
@@ -196,9 +185,9 @@ internal sealed class OcrHarness : IAsyncDisposable
         Parts = new ReaderParts
         {
             Frames = _ => Frames,
-            Recognizer = _ => Recognizer,
-            Matcher = new FakeMatcher(),
-            Vote = vote,
+            Recognizer = _ => recognizer ?? Recognizer,
+            Matcher = matcher ?? new FakeMatcher(),
+            Cutter = cutter,
             Time = Time,
         };
         Plugin = new OcrPlugin(Parts);
@@ -222,9 +211,9 @@ internal sealed class OcrHarness : IAsyncDisposable
 
     public OcrPlugin Plugin { get; }
 
-    public static async Task<OcrHarness> StartAsync(Func<Area, IFrameVote>? vote = null, bool onGpu = false)
+    public static async Task<OcrHarness> StartAsync(bool onGpu = false)
     {
-        var harness = new OcrHarness(vote, onGpu);
+        var harness = new OcrHarness(onGpu);
         await harness.Plugin.StartAsync(harness.Context, CancellationToken.None);
         return harness;
     }

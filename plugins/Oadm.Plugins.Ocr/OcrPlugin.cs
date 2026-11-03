@@ -29,13 +29,13 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     private readonly ConcurrentDictionary<Guid, (DateTimeOffset At, CameraOptions Options)> _cameraOptions = new();
     private volatile bool _useGpu = true;
 
-    /// <summary>The plugin as the host loads it. The recognition, matching and frame parts are wired in by the next build step.</summary>
+    /// <summary>The plugin as the host loads it: the real recognition, matcher, camera pictures and cut-outs (<see cref="ReaderParts.Real"/>).</summary>
     public OcrPlugin()
-        : this(new ReaderParts())
+        : this(ReaderParts.Real())
     {
     }
 
-    /// <summary>The plugin with its parts (tests, and the wiring of wave 3).</summary>
+    /// <summary>The plugin with its parts (tests).</summary>
     internal OcrPlugin(ReaderParts parts)
     {
         _parts = parts ?? throw new ArgumentNullException(nameof(parts));

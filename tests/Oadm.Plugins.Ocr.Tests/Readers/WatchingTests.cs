@@ -28,12 +28,15 @@ public sealed class WatchingTests
         var reader = await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching) with { Fps = 2 });
         Assert.Equal([2], ocr.Frames.Rates);
 
-        foreach (var text in new[] { "", "", "A", "B", "B", "B", "B", "A", "A", "", "", "" })
+        // The vote of the last 5 frames (all read with the same confidence): the value most frames had, the newest on a tie.
+        foreach (var text in new[] { "", "", "A", "B", "B", "B", "B", "A", "A", "A", "A", "", "", "", "" })
         {
             await ocr.SendAndWaitAsync(ocr.Inside.Id, text);
         }
 
-        // Empty at the start: nothing; A for one frame: nothing; B twice: B once; A twice: A; empty twice: once, empty.
+        // Empty at the start: nothing. A for one frame: never the vote. B wins at the 4th frame and holds at the 5th: B once,
+        // never again while it stays. A wins at its 3rd frame (B B A A A) and holds: A once. Empty wins at its 3rd frame and
+        // holds: once, empty.
         Assert.Equal(["B", "A", ""], Texts(ocr));
         var last = ocr.TextRead[^1];
         Assert.Equal(OcrInfo.TextReadTypeId(reader.Id), last.TypeId);
@@ -45,16 +48,10 @@ public sealed class WatchingTests
     [Fact]
     public async Task EveryAreaVotesOnItsOwn()
     {
-        var votes = 0;
-        await using var ocr = await OcrHarness.StartAsync(vote: _ =>
-        {
-            Interlocked.Increment(ref votes);
-            return new MajorityVote();
-        });
+        await using var ocr = await OcrHarness.StartAsync();
         await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching, areas: [new Area { Name = "Left", Box = new RelativeBox(0, 0, 0.5, 1) }, new Area { Name = "Right", Box = new RelativeBox(0.5, 0, 0.5, 1) }]));
-        Assert.Equal(2, votes);
 
-        // A single bad frame between good ones changes nothing (the vote of the last 5 frames).
+        // A single bad frame between good ones changes nothing (the vote of the last 5 frames), in each area.
         foreach (var text in new[] { "MSCU", "MSCU", "M5CU", "MSCU", "MSCU" })
         {
             await ocr.SendAndWaitAsync(ocr.Inside.Id, text);

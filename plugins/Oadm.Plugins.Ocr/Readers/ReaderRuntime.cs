@@ -32,7 +32,6 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly IFrameSource? _frames;
     private readonly ITextRecognizer? _recognizer;
     private readonly ReadingMaker? _maker;
-    private readonly Func<Area, IFrameVote> _vote;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dictionary<string, WatchLoop> _loops = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderSlot> _slots = new(StringComparer.Ordinal);
@@ -54,7 +53,6 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         _frames = parts.Frames?.Invoke(ctx);
         _recognizer = parts.Recognizer?.Invoke(ctx);
         _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Cutter, parts.Time) : null;
-        _vote = parts.Vote ?? (_ => new LatestFrameVote());
         using (ExecutionContext.SuppressFlow())
         {
             _recheck = parts.Time.CreateTimer(_ => _ = SyncAsync(_readers), null, RecheckInterval, RecheckInterval);
@@ -284,7 +282,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// </summary>
     private async Task WatchAsync(Reader reader, CancellationToken ct)
     {
-        var watches = ReaderRules.EffectiveAreas(reader).Select(a => new AreaWatch(_vote(a))).ToArray();
+        var watches = ReaderRules.EffectiveAreas(reader).Select(_ => new AreaWatch()).ToArray();
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.DropOldest,

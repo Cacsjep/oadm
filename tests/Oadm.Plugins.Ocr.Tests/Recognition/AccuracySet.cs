@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Oadm.Plugins.Ocr.Matching;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Recognition;
 
@@ -40,9 +41,8 @@ internal sealed record GroupBaseline(double Exact, double Cer);
 
 /// <summary>
 /// The accuracy set (docs/spec/ocr.md "Accuracy"): <c>Fixtures/AccuracySet/set.json</c> lists the pictures, their areas and
-/// expected values; <c>baseline.json</c> the score per group a change must keep. Values are made from the lines like the
-/// matcher does (lines joined with a space, a line ending in "-" without one; with a format the best match of a line or two
-/// neighbouring lines, spaces and dashes of the format optional, the ISO 6346 check digit for container numbers).
+/// expected values; <c>baseline.json</c> the score per group a change must keep. Values are made from the lines by the
+/// plugin's own <see cref="TextMatcher"/>, as the readers make them.
 /// </summary>
 internal static class AccuracySet
 {
@@ -118,80 +118,13 @@ internal static class AccuracySet
         return sb.ToString();
     }
 
-    /// <summary>The area's value from its lines (a small stand-in for the matcher of the Matching package).</summary>
-    public static string ValueOf(IReadOnlyList<TextLine> lines, string? format)
-    {
-        if (format is null)
-        {
-            var sb = new StringBuilder();
-            foreach (var line in lines)
-            {
-                if (sb.Length > 0 && sb[^1] != '-')
-                {
-                    sb.Append(' ');
-                }
-
-                sb.Append(line.Text);
-            }
-
-            return Normalize(sb.ToString(), null);
-        }
-
-        var regex = FormatRegex(format);
-        var container = Regex.Replace(format, "[ -]", string.Empty) is var compact && compact.Length == 11 && compact.StartsWith("AAAU", StringComparison.Ordinal);
-        var candidates = new List<(string Text, double Confidence)>();
-        for (var i = 0; i < lines.Count; i++)
-        {
-            candidates.Add((lines[i].Text, lines[i].Confidence));
-            if (i + 1 < lines.Count)
-            {
-                var confidence = Math.Min(lines[i].Confidence, lines[i + 1].Confidence);
-                candidates.Add((lines[i].Text + " " + lines[i + 1].Text, confidence));
-                candidates.Add((lines[i].Text + lines[i + 1].Text, confidence));
-            }
-        }
-
-        var best = string.Empty;
-        var bestConfidence = -1.0;
-        foreach (var (text, confidence) in candidates)
-        {
-            foreach (Match m in regex.Matches(text))
-            {
-                var value = Normalize(m.Value, format);
-                if (container && !Iso6346.IsValid(value))
-                {
-                    continue;
-                }
-
-                if (confidence > bestConfidence || (confidence == bestConfidence && value.Length > best.Length))
-                {
-                    best = value;
-                    bestConfidence = confidence;
-                }
-            }
-        }
-
-        return best;
-    }
+    /// <summary>The area's value from its lines: the readers' matcher (<see cref="TextMatcher"/>), normalized.</summary>
+    public static string ValueOf(IReadOnlyList<TextLine> lines, string? format) =>
+        Normalize(TextMatcher.MatchAll(lines, format is null ? ExpectedText.AnyText : ExpectedText.WithFormat(format)).Text, format);
 
     /// <summary>For a format: without spaces and dashes (they may be missing); for any text: single spaces.</summary>
     public static string Normalize(string text, string? format) =>
         format is null ? Regex.Replace(text.Trim(), @"\s+", " ") : Regex.Replace(text, "[ -]", string.Empty);
-
-    /// <summary>A regular expression of a format: its spaces and dashes optional, no other space allowed (docs/spec/ocr.md).</summary>
-    private static Regex FormatRegex(string format)
-    {
-        var parts = format.Select(ch => ch switch
-        {
-            '#' => "[0-9]",
-            'A' => @"\p{L}",
-            '*' => @"[\p{L}0-9]",
-            ' ' => " ?",
-            '-' => "-?",
-            _ => Regex.Escape(ch.ToString()),
-        });
-        return new Regex(string.Concat(parts), RegexOptions.CultureInvariant);
-    }
 
     public static int Levenshtein(string a, string b)
     {

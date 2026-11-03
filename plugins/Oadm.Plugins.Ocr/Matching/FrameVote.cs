@@ -30,6 +30,12 @@ public sealed class FrameVote
     public string Vote => _lastVote ?? string.Empty;
 
     /// <summary>
+    /// The reading that stands for the vote now (what the page shows between publications): the newest reading in the window
+    /// that read the voted value, else the newest of its length with the text replaced; null before the first reading.
+    /// </summary>
+    public TextMatch? Current => _lastVote is null ? null : SourceOf(_lastVote);
+
+    /// <summary>
     /// Adds the newest reading of the area and returns what to publish now, or null. The result is the newest reading in
     /// the window that read the voted value, else the newest of the voted length with its text replaced by the vote.
     /// </summary>
