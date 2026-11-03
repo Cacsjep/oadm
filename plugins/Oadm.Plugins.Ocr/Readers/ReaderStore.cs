@@ -62,7 +62,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
             try
             {
                 var reader = OcrJson.Deserialize<Reader>(json);
-                readers.Add(reader with { Id = key });
+                readers.Add(ReaderRules.Stored(reader) with { Id = key }); // "areas": null and the like read as none
             }
             catch (Exception ex) when (ex is JsonException or ArgumentException)
             {
@@ -128,7 +128,7 @@ internal sealed partial class ReaderStore(IPluginRecords records, ILogger logger
 
             if (reader.Mode == ReaderMode.Watching && await deviceOf(reader.DeviceId, ct).ConfigureAwait(false) is { SiteId: { } site } camera)
             {
-                // At a site every stream holds one of the node's large transfers: at most 4 watching readers per site.
+                // A site node's link carries every stream of its cameras: at most 4 watching readers per site.
                 var atSite = 0;
                 foreach (var other in others.Where(r => r.Mode == ReaderMode.Watching))
                 {

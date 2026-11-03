@@ -49,7 +49,7 @@ public sealed class PreviewTests
         Assert.Equal("B", Assert.Single(live.Reading.Areas).Text);
         var reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetPreview, new PreviewRequest { PreviewId = id }));
         Assert.Equal("Number", Assert.Single(reply.Reading!.Areas).Area);
-        Assert.Null(reply.Jpeg); // the live video shows the picture
+        Assert.DoesNotContain("jpeg", OcrJson.Serialize(reply), StringComparison.OrdinalIgnoreCase); // the live video shows the picture
 
         // A keep-alive with other areas takes them without opening the stream again.
         var opened = ocr.Frames.Opened;

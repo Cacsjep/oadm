@@ -170,7 +170,7 @@ public sealed class OcrPluginTests
     }
 
     [Fact]
-    public void AReadingWithItsPictureRoundTripsAsJson()
+    public void AReadingWithItsCutoutsRoundTripsAsJson()
     {
         var reply = new ReadingReply
         {
@@ -192,13 +192,13 @@ public sealed class OcrPluginTests
                     },
                 ],
             },
-            Jpeg = [0xFF, 0xD8, 0xFF, 0xD9],
+            Details = [new AreaDetails { Area = "Container number", Cutout = [0xFF, 0xD8, 0xFF, 0xD9] }],
         };
 
         var json = OcrJson.Serialize(reply);
         var back = OcrJson.Deserialize<ReadingReply>(json);
 
-        Assert.Equal(reply.Jpeg, back.Jpeg);
+        Assert.Equal(reply.Details[0].Cutout, back.Details[0].Cutout);
         Assert.Equal(json, OcrJson.Serialize(back));
         Assert.Equal(reply.Reading!.Areas[0].Lines, back.Reading!.Areas[0].Lines);
 

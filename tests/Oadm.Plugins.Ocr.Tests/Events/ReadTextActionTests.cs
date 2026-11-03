@@ -105,22 +105,22 @@ public sealed class ReadTextActionTests
     }
 
     [Fact]
-    public async Task AReadingIsKeptWithItsPictureForThePage()
+    public async Task AReadingIsKeptForThePageWithoutItsPicture()
     {
         await using var ocr = await OcrHarness.StartAsync();
         var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
         var empty = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id }));
         Assert.Null(empty.Reading);
-        Assert.Null(empty.Jpeg);
         ocr.Frames.Single = "0815";
 
         var reply = await ocr.ReadOnceAsync(reader.Id);
 
-        Assert.Equal("0815", Assert.Single(reply.Reading!.Areas).Text);
+        Assert.Equal("0815", Assert.Single(reply.Reading.Areas).Text);
         Assert.Equal("0815", Frame.TextOf(reply.Jpeg));
         Assert.Equal("815", Assert.Single(reply.Details).Number);
         Assert.Equal("0815", Assert.Single(ocr.TextRead).Data[OcrInfo.TextField]);
-        var last = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id }));
-        Assert.Equal(OcrJson.Serialize(reply), OcrJson.Serialize(last));
+        var json = await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id });
+        Assert.Equal(OcrJson.Serialize(new ReadingReply { Reading = reply.Reading, Details = reply.Details }), json);
+        Assert.DoesNotContain("jpeg", json, StringComparison.OrdinalIgnoreCase); // the page shows the live video, never the frame
     }
 }

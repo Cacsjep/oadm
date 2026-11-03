@@ -14,6 +14,15 @@ public interface ITextRecognizer
     /// whole picture.
     /// </summary>
     Task<RecognizedPicture> ReadAsync(ReadOnlyMemory<byte> jpeg, IReadOnlyList<Area> areas, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="ReadAsync(ReadOnlyMemory{byte}, IReadOnlyList{Area}, CancellationToken)"/> of a watching reader or a preview:
+    /// with <paramref name="reuseSource"/> (who reads: the reader's or the preview's id) an area whose pixels have barely
+    /// changed since that source's last reading gives that reading again without the models (docs/spec/ocr.md "Unchanged
+    /// areas", <see cref="RecognizedPicture.ReusedAreas"/>); null reads every area. The default reads every area.
+    /// </summary>
+    Task<RecognizedPicture> ReadAsync(ReadOnlyMemory<byte> jpeg, IReadOnlyList<Area> areas, string? reuseSource, CancellationToken ct) =>
+        ReadAsync(jpeg, areas, ct);
 }
 
 /// <summary>Which pictures a reader asks a camera for.</summary>
@@ -45,6 +54,14 @@ public interface IFrameSource
     /// token.
     /// </summary>
     IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, CancellationToken ct);
+
+    /// <summary>
+    /// <see cref="WatchAsync(FrameRequest, int, CancellationToken)"/> that also tells why the stream gives no pictures now
+    /// (<paramref name="problem"/> with the text for the page: a refusal of the camera, a resolution or video source it does
+    /// not offer, no answer) and null once pictures flow again. The default tells nothing.
+    /// </summary>
+    IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, Action<string?> problem, CancellationToken ct) =>
+        WatchAsync(request, fps, ct);
 }
 
 /// <summary>
@@ -53,8 +70,11 @@ public interface IFrameSource
 /// </summary>
 public interface ITextMatcher
 {
-    /// <summary>The value, whether it matches and the raw text of <paramref name="lines"/> for <paramref name="expected"/>.</summary>
-    AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected);
+    /// <summary>
+    /// The value of an area's <paramref name="lines"/> for <paramref name="expected"/>: whether it matches, the raw text, every
+    /// different match, the value's own confidence and its box.
+    /// </summary>
+    AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected);
 }
 
 /// <summary>An area's value with what the events need beyond <see cref="AreaMatch"/>.</summary>
@@ -65,31 +85,15 @@ public interface ITextMatcher
 public sealed record AreaValue(AreaMatch Match, IReadOnlyList<string> AllMatches, double Confidence, RelativeBox? MatchBox);
 
 /// <summary>
-/// Optional next to <see cref="ITextMatcher"/>: a matcher that also gives every different match, the value's own confidence
-/// and its box (<c>TextMatcher</c> does). Without it the readers take the single match, the lowest line confidence and the
-/// box around all lines.
+/// Optional next to <see cref="ITextRecognizer"/>: what reads the pictures and the setting "Use the graphics card"
+/// (docs/spec/ocr.md "GPU"). The plugin stores the setting and hands it over at start and on every change; the recognizer
+/// applies it (false: the CPU, <see cref="OnGpu"/> false). Without it the page shows the CPU and no graphics card.
 /// </summary>
-public interface IAreaValueMatcher
-{
-    /// <summary>The value of an area's <paramref name="lines"/> for <paramref name="expected"/>.</summary>
-    AreaValue MatchValue(IReadOnlyList<TextLine> lines, ExpectedText expected);
-}
-
-/// <summary>Optional next to <see cref="ITextRecognizer"/>: what the recognition runs on.</summary>
-public interface IRecognizerCapabilities
+public interface IEngineInfo
 {
     /// <summary>True while the recognition runs on a graphics card (more watching readers, higher frame rates).</summary>
     bool OnGpu { get; }
-}
 
-/// <summary>
-/// Optional next to <see cref="ITextRecognizer"/>: what reads the pictures and the setting "Use the graphics card"
-/// (docs/spec/ocr.md "GPU"). The plugin stores the setting and hands it over at start and on every change; the recognizer
-/// applies it (false: the CPU, <see cref="IRecognizerCapabilities.OnGpu"/> false). Without it the page shows the CPU and no
-/// graphics card.
-/// </summary>
-public interface IEngineInfo : IRecognizerCapabilities
-{
     /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") while it reads, else "CPU (8 cores)".</summary>
     string RunsOn { get; }
 

@@ -12,7 +12,7 @@ public sealed record TextLine(string Text, RelativeBox Box, double Confidence);
 
 /// <summary>What <see cref="ITextMatcher"/> makes of an area's lines.</summary>
 /// <param name="Value">The area's value: the match with a format (empty without one), else all lines joined with line breaks.</param>
-/// <param name="MatchesFormat">True when a format matched; true for Any text with text, false for an empty area.</param>
+/// <param name="MatchesFormat">True when the area's format matched; always false for Any text (no format to match).</param>
 /// <param name="RawText">All lines, top to bottom and left to right, joined with line breaks.</param>
 public sealed record AreaMatch(string Value, bool MatchesFormat, string RawText);
 
@@ -31,7 +31,7 @@ public sealed record AreaResult
     /// <summary>0 to 100: the lowest confidence of the lines that make the value; 0 without text.</summary>
     public double Confidence { get; init; }
 
-    /// <summary>Whether the format matched (Any text: there is text).</summary>
+    /// <summary>Whether the area's format matched; always false for Any text.</summary>
     public bool MatchesFormat { get; init; }
 
     /// <summary>The lines found in the area, with their boxes.</summary>

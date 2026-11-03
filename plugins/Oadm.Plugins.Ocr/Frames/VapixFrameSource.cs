@@ -83,11 +83,11 @@ public sealed partial class VapixFrameSource : IFrameSource
         using var message = new HttpRequestMessage(HttpMethod.Get, SingleUri(request));
         message.Options.Set(VapixRequestOptions.Timeout, RequestTimeout);
         using var response = await client.SendAsync(message, ct).ConfigureAwait(false);
-        EnsureSuccess(response);
+        await EnsureSuccessAsync(response, ct).ConfigureAwait(false);
         var jpeg = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
         if (jpeg.Length < 3 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 || jpeg.Length > MjpegParser.MaxFrameBytes)
         {
-            throw new InvalidOperationException(FrameTexts.NoPicture);
+            throw new InvalidOperationException(FrameTexts.RefusalOf(jpeg.AsSpan(0, Math.Min(jpeg.Length, MaxErrorBytes))) ?? FrameTexts.NoPicture);
         }
 
         return jpeg;
@@ -95,9 +95,18 @@ public sealed partial class VapixFrameSource : IFrameSource
 
     /// <inheritdoc />
     /// <remarks>The sequence ends quietly when <paramref name="ct"/> is cancelled.</remarks>
-    public async IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, [EnumeratorCancellation] CancellationToken ct)
+    public IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, CancellationToken ct) =>
+        WatchAsync(request, fps, static _ => { }, ct);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// <paramref name="problem"/> hears why the stream gives no pictures (the camera's refusal, a resolution or video source it
+    /// does not offer, no answer) and null once pictures flow again; only on a change.
+    /// </remarks>
+    public async IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, Action<string?> problem, [EnumeratorCancellation] CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(problem);
         ArgumentOutOfRangeException.ThrowIfLessThan(fps, 1);
         var newest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
         {
@@ -106,7 +115,7 @@ public sealed partial class VapixFrameSource : IFrameSource
             SingleWriter = true,
         });
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var pump = PumpAsync(request, fps, newest.Writer, stop.Token);
+        var pump = PumpAsync(request, fps, newest.Writer, new ProblemReport(problem), stop.Token);
         try
         {
             while (await WaitAsync(newest.Reader, ct).ConfigureAwait(false))
@@ -137,7 +146,7 @@ public sealed partial class VapixFrameSource : IFrameSource
     }
 
     /// <summary>Opens the stream again and again until <paramref name="ct"/> ends; never throws.</summary>
-    private async Task PumpAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, CancellationToken ct)
+    private async Task PumpAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, ProblemReport problem, CancellationToken ct)
     {
         await Task.Yield();
         var failures = 0;
@@ -148,16 +157,19 @@ public sealed partial class VapixFrameSource : IFrameSource
                 var delivered = false;
                 try
                 {
-                    delivered = await StreamOnceAsync(request, fps, newest, ct).ConfigureAwait(false);
+                    delivered = await StreamOnceAsync(request, fps, newest, problem, ct).ConfigureAwait(false);
                     LogStreamEnded(_logger, request.DeviceId);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     return;
                 }
+#pragma warning disable CA1031 // Every failure of one stream is logged and told; the stream is opened again after a pause.
                 catch (Exception ex)
+#pragma warning restore CA1031
                 {
                     LogStreamFailed(_logger, request.DeviceId, ex.Message);
+                    problem.Set(FrameTexts.ProblemOf(ex));
                 }
 
                 failures = delivered ? 1 : failures + 1;
@@ -178,12 +190,17 @@ public sealed partial class VapixFrameSource : IFrameSource
     }
 
     /// <summary>One stream until it ends, stalls or fails; true when it delivered at least one picture.</summary>
-    private async Task<bool> StreamOnceAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, CancellationToken ct)
+    private async Task<bool> StreamOnceAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, ProblemReport problem, CancellationToken ct)
     {
         var client = await _vapix.CreateAsync(request.DeviceId, ct).ConfigureAwait(false);
         using var message = new HttpRequestMessage(HttpMethod.Get, StreamUri(request, fps));
         message.Options.Set(VapixRequestOptions.Timeout, RequestTimeout);
         message.Options.Set(VapixRequestOptions.StreamResponse, true);
+
+        // Through a site the stream takes none of the site's large transfer slots (AXIS OS upgrades and applications need
+        // them); the readers limit their streams per site themselves (ReaderRules.MaxWatchingPerSite).
+        message.Options.Set(VapixRequestOptions.LiveStream, true);
+
         // Opening (login, a site's relay, the camera starting the stream) may take up to RequestTimeout; once pictures
         // flow, a gap longer than StallTimeout reopens the stream.
         using var stall = new CancellationTokenSource(RequestTimeout, _time);
@@ -192,32 +209,74 @@ public sealed partial class VapixFrameSource : IFrameSource
         try
         {
             using var response = await client.SendAsync(message, linked.Token).ConfigureAwait(false);
-            EnsureSuccess(response);
-            var boundary = MjpegParser.BoundaryOf(response.Content.Headers.ContentType)
-                ?? throw new InvalidOperationException(FrameTexts.NoPicture);
+            await EnsureSuccessAsync(response, linked.Token).ConfigureAwait(false);
+            if (MjpegParser.BoundaryOf(response.Content.Headers.ContentType) is not { } boundary)
+            {
+                throw new InvalidOperationException(await RefusalOfAsync(response, linked.Token).ConfigureAwait(false) ?? FrameTexts.NoPicture);
+            }
+
             await using var body = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
             await foreach (var frame in MjpegParser.ReadFramesAsync(body, boundary, MjpegParser.MaxFrameBytes, linked.Token).ConfigureAwait(false))
             {
                 stall.CancelAfter(StallTimeout);
                 delivered = true;
+                problem.Set(null);
                 newest.TryWrite(frame);
                 FrameReceived?.Invoke();
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && stall.IsCancellationRequested)
         {
-            LogStreamStalled(_logger, request.DeviceId, (int)StallTimeout.TotalSeconds);
+            if (delivered)
+            {
+                LogStreamStalled(_logger, request.DeviceId, (int)StallTimeout.TotalSeconds);
+            }
+            else
+            {
+                // The camera did not open the stream (or sent no first picture) within the request's time.
+                LogStreamNotOpened(_logger, request.DeviceId, (int)RequestTimeout.TotalSeconds);
+                problem.Set(FrameTexts.NoPictures);
+            }
         }
 
         return delivered;
     }
 
-    private static void EnsureSuccess(HttpResponseMessage response)
+    /// <summary>Bytes of a camera's error answer read at most (its text names what it refused).</summary>
+    private const int MaxErrorBytes = 1024;
+
+    private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken ct)
     {
         if (!response.IsSuccessStatusCode)
         {
             var status = (int)response.StatusCode;
-            throw new InvalidOperationException(DeviceMessages.ForHttpStatus(status) ?? DeviceMessages.ServerError(status));
+            throw new InvalidOperationException(await RefusalOfAsync(response, ct).ConfigureAwait(false)
+                ?? DeviceMessages.ForHttpStatus(status) ?? DeviceMessages.ServerError(status));
+        }
+    }
+
+    /// <summary>What the camera's error text refused (<see cref="FrameTexts.RefusalOf"/>), from the first bytes of its answer.</summary>
+    private static async Task<string?> RefusalOfAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            await using var body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            var buffer = new byte[MaxErrorBytes];
+            var read = 0;
+            while (read < buffer.Length && await body.ReadAsync(buffer.AsMemory(read), ct).ConfigureAwait(false) is var n and > 0)
+            {
+                read += n;
+            }
+
+            return FrameTexts.RefusalOf(buffer.AsSpan(0, read));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
         }
     }
 
@@ -229,6 +288,24 @@ public sealed partial class VapixFrameSource : IFrameSource
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The picture stream of {DeviceId} sent nothing for {Seconds} s.")]
     private static partial void LogStreamStalled(ILogger logger, Guid deviceId, int seconds);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The picture stream of {DeviceId} did not open within {Seconds} s.")]
+    private static partial void LogStreamNotOpened(ILogger logger, Guid deviceId, int seconds);
+
+    /// <summary>Tells a stream's problem only when it changed.</summary>
+    private sealed class ProblemReport(Action<string?> report)
+    {
+        private string? _last;
+
+        public void Set(string? problem)
+        {
+            if (!string.Equals(_last, problem, StringComparison.Ordinal))
+            {
+                _last = problem;
+                report(problem);
+            }
+        }
+    }
 }
 
 /// <summary>The texts of the picture source.</summary>
@@ -236,4 +313,48 @@ public static class FrameTexts
 {
     /// <summary>The camera answered without a picture.</summary>
     public const string NoPicture = "The camera sent no picture.";
+
+    /// <summary>The camera did not open the picture stream in time.</summary>
+    public const string NoPictures = "The camera sends no pictures.";
+
+    /// <summary>The camera refused the reader's resolution.</summary>
+    public const string ResolutionNotOffered = "The camera does not offer this resolution. Choose another one.";
+
+    /// <summary>The camera refused the reader's video source.</summary>
+    public const string SourceNotOffered = "The camera does not offer this video source. Choose another one.";
+
+    /// <summary>
+    /// What a camera's error text (an Axis CGI answers "Error: ..." in plain text) refused: the resolution or the video source;
+    /// null for any other text.
+    /// </summary>
+    public static string? RefusalOf(ReadOnlySpan<byte> answer)
+    {
+        if (answer.Length == 0 || (answer.Length > 1 && answer[0] == 0xFF && answer[1] == 0xD8))
+        {
+            return null;
+        }
+
+        var text = System.Text.Encoding.ASCII.GetString(answer);
+        if (text.Contains("resolution", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolutionNotOffered;
+        }
+
+        return text.Contains("camera", StringComparison.OrdinalIgnoreCase) || text.Contains("source", StringComparison.OrdinalIgnoreCase)
+            ? SourceNotOffered
+            : null;
+    }
+
+    /// <summary>The problem a failed stream shows on the page: the camera's refusal in plain words.</summary>
+    public static string ProblemOf(Exception error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return error switch
+        {
+            InvalidOperationException refused => refused.Message,
+            TimeoutException or OperationCanceledException => DeviceMessages.TimedOut,
+            _ when error.InnerException is TimeoutException => DeviceMessages.TimedOut,
+            _ => DeviceMessages.NotAnswering,
+        };
+    }
 }

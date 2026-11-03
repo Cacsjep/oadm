@@ -103,7 +103,10 @@ public static class OcrMethods
     /// <summary><see cref="ReaderRequest"/> -> {}: deletes a reader. Change.</summary>
     public const string DeleteReader = "deleteReader";
 
-    /// <summary><see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading with its picture (empty without one). View.</summary>
+    /// <summary>
+    /// <see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading with the values' cut-outs (only
+    /// for a user with Live view), never the picture (empty without one). View.
+    /// </summary>
     public const string GetReading = "getReading";
 
     /// <summary>
@@ -119,7 +122,7 @@ public static class OcrMethods
 
     /// <summary><see cref="PreviewRequest"/> (the id only) -> <see cref="ReadingReply"/>: the preview's last reading with the cut-outs, no picture. View.</summary>
     public const string GetPreview = "getPreview";
-
+    /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview, only to the user who started it (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
     /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
     public const string PreviewTopic = "preview";
 
@@ -133,8 +136,8 @@ public static class OcrMethods
     public const string GetCameraOptions = "getCameraOptions";
 
     /// <summary>
-    /// Event: <see cref="ReadingEvent"/> after every reading (without the picture; a page that shows the reader fetches it with
-    /// <see cref="GetReading"/>, at most at the reader's rate).
+    /// Event: <see cref="ReadingEvent"/> when a reading's values change, else at most once a second per reader (without the
+    /// cut-outs; a page that shows the reader fetches them with <see cref="GetReading"/>).
     /// </summary>
     public const string ReadingTopic = "reading";
 
@@ -395,16 +398,16 @@ public sealed record CameraOptions
     public IReadOnlyList<Resolution> Resolutions { get; init; } = [];
 }
 
-/// <summary>A reading with its picture.</summary>
+/// <summary>A reading with the cut-outs of its values (never the whole picture: the page shows the camera's live video).</summary>
 public sealed record ReadingReply
 {
     /// <summary>The reading; null when the reader has none yet.</summary>
     public Reading? Reading { get; init; }
 
-    /// <summary>The picture of the reading as JPEG (base64 in JSON); null without one.</summary>
-    public byte[]? Jpeg { get; init; }
-
-    /// <summary>The further values of each area (with the cut-outs), in the reader's area order; empty without a reading.</summary>
+    /// <summary>
+    /// The further values of each area, in the reader's area order; empty without a reading. With the cut-outs only for a
+    /// user with the host's Live view permission.
+    /// </summary>
     public IReadOnlyList<AreaDetails> Details { get; init; } = [];
 }
 

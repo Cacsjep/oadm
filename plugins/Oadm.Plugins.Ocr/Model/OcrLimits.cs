@@ -18,6 +18,12 @@ public static class OcrLimits
     /// <summary>Previews (a page that shows a reader reads it live, without events) per server at most.</summary>
     public const int MaxPreviews = 8;
 
+    /// <summary>Previews of one user at most; a further one ends that user's oldest (a page closed without a word).</summary>
+    public const int MaxPreviewsPerUser = 2;
+
+    /// <summary>An area's smallest width and height, relative to the picture (the drawing minimum of the page).</summary>
+    public const double MinAreaSide = 0.02;
+
     /// <summary>A preview ends this long after the page's last keep-alive (a closed client never leaves one running).</summary>
     public static readonly TimeSpan PreviewLease = TimeSpan.FromSeconds(30);
 

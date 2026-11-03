@@ -104,15 +104,22 @@ public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)
 
 /// <summary>
 /// The recognizer with every detail: character probabilities, the format match, the count of too small lines, Accurate, what
-/// runs (the accuracy set and the speed measurements). The readers need only <see cref="ITextRecognizer.ReadAsync"/>: its
+/// runs (the accuracy set and the speed measurements). The readers need only <see cref="ITextRecognizer"/>: its
 /// <see cref="TextLine.Confidence"/> is already the lowest character probability and <see cref="RecognizedPicture.TooSmallPerArea"/>
-/// the too small areas.
+/// the too small areas; its reading with a reuse source runs <see cref="ReadDetailedAsync"/> with
+/// <see cref="RecognitionOptions.ReuseUnchanged"/>.
 /// </summary>
 public interface IDetailedTextRecognizer : ITextRecognizer
 {
     /// <summary>What runs the recognition.</summary>
     RecognitionDevice RunsOn { get; }
 
-    /// <summary>Like <see cref="ITextRecognizer.ReadAsync"/>, with every detail.</summary>
+    /// <summary>Like <see cref="ITextRecognizer"/>'s reading, with every detail.</summary>
     Task<RecognitionResult> ReadDetailedAsync(ReadOnlyMemory<byte> jpeg, IReadOnlyList<Area> areas, RecognitionOptions options, CancellationToken ct);
+
+    /// <summary>The readers' reading of a watching reader or a preview: unchanged areas of the source give their last reading again.</summary>
+    async Task<RecognizedPicture> ITextRecognizer.ReadAsync(ReadOnlyMemory<byte> jpeg, IReadOnlyList<Area> areas, string? reuseSource, CancellationToken ct) =>
+        reuseSource is null
+            ? await ReadAsync(jpeg, areas, ct).ConfigureAwait(false)
+            : (await ReadDetailedAsync(jpeg, areas, new RecognitionOptions { ReuseUnchanged = true, Source = reuseSource }, ct).ConfigureAwait(false)).ToPicture();
 }

@@ -98,13 +98,24 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
     }
 }
 
-/// <summary>Matching of the fakes: the value is all lines; with a format it matches when there is text.</summary>
+/// <summary>
+/// Matching of the fakes: the value is all lines; with a format it matches when there is text (its one match), Any text never
+/// matches a format; the confidence is the lowest line's, the box the one around all lines.
+/// </summary>
 internal sealed class FakeMatcher : ITextMatcher
 {
-    public AreaMatch Match(IReadOnlyList<TextLine> lines, ExpectedText expected)
+    public AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected)
     {
         var text = string.Join('\n', lines.Select(l => l.Text));
-        return new AreaMatch(text, text.Length > 0, text);
+        var format = expected.Kind == ExpectedTextKind.Format && text.Length > 0;
+        RelativeBox? box = lines.Count == 0
+            ? null
+            : new RelativeBox(
+                lines.Min(l => l.Box.X),
+                lines.Min(l => l.Box.Y),
+                lines.Max(l => l.Box.X + l.Box.Width) - lines.Min(l => l.Box.X),
+                lines.Max(l => l.Box.Y + l.Box.Height) - lines.Min(l => l.Box.Y));
+        return new AreaValue(new AreaMatch(text, format, text), format ? [text] : [], lines.Count == 0 ? 0 : lines.Min(l => l.Confidence), box);
     }
 }
 
@@ -251,11 +262,8 @@ internal sealed class OcrHarness : IAsyncDisposable
     };
 
     /// <summary>Reads one picture of a stored reader now, like the action Read text (every area's event).</summary>
-    public async Task<ReadingReply> ReadOnceAsync(string readerId)
-    {
-        var reading = await Plugin.ReadOnceAsync(Plugin.FindReader(readerId) ?? throw new ArgumentException(ReaderRules.Gone), CancellationToken.None);
-        return new ReadingReply { Reading = reading.Reading, Jpeg = reading.Jpeg.ToArray(), Details = reading.Details };
-    }
+    public Task<ReaderReading> ReadOnceAsync(string readerId) =>
+        Plugin.ReadOnceAsync(Plugin.FindReader(readerId) ?? throw new ArgumentException(ReaderRules.Gone), CancellationToken.None);
 
     /// <summary>Starts or keeps a preview as <paramref name="caller"/>.</summary>
     public async Task<PreviewReply> PreviewAsync(Reader draft, string? previewId = null, FakeCallContext? caller = null) =>

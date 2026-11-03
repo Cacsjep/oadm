@@ -1,5 +1,6 @@
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Events;
+using Oadm.Plugins.Ocr.Matching;
 using Oadm.Plugins.Ocr.Model;
 
 namespace Oadm.Plugins.Ocr.Readers;
@@ -8,7 +9,11 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// <param name="Reading">Every area's result.</param>
 /// <param name="Details">Every area's further values with the cut-outs, in the same order.</param>
 /// <param name="Jpeg">The picture (memory only).</param>
-public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> Details, ReadOnlyMemory<byte> Jpeg);
+public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> Details, ReadOnlyMemory<byte> Jpeg)
+{
+    /// <summary>The reader as it read the picture (camera, areas); null when not known.</summary>
+    public Reader? Reader { get; init; }
+}
 
 /// <summary>
 /// Turns one picture into a reading: recognition per area, then the area's value from its lines. No cut-outs here: they are
@@ -29,13 +34,11 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
         if (areas.Count == 0)
         {
             // Text is read only inside areas: no area, no reading (the picture is not even decoded).
-            return new ReaderReading(new Reading { ReaderId = reader.Id, Time = taken, Resolution = reader.Resolution }, [], jpeg);
+            return new ReaderReading(new Reading { ReaderId = reader.Id, Time = taken, Resolution = reader.Resolution }, [], jpeg) { Reader = reader };
         }
 
         var started = time.GetTimestamp();
-        var picture = reuseSource is not null && recognizer is Recognition.IDetailedTextRecognizer detailed
-            ? (await detailed.ReadDetailedAsync(jpeg, areas, new Recognition.RecognitionOptions { ReuseUnchanged = true, Source = reuseSource }, ct).ConfigureAwait(false)).ToPicture()
-            : await recognizer.ReadAsync(jpeg, areas, ct).ConfigureAwait(false);
+        var picture = await recognizer.ReadAsync(jpeg, areas, reuseSource, ct).ConfigureAwait(false);
         if (picture.ReusedAreas >= areas.Count)
         {
             // Every area unchanged: no model ran, the picture is counted apart (pictures per second stays the real readings).
@@ -64,13 +67,13 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             Areas = results,
             Note = picture.TooManyTexts ? ReaderRules.TooManyTexts : null,
         };
-        return new ReaderReading(reading, details, jpeg);
+        return new ReaderReading(reading, details, jpeg) { Reader = reader };
     }
 
     /// <summary>The result and further values of one area.</summary>
     public (AreaResult Result, AreaDetails Details) Area(Area area, IReadOnlyList<TextLine> lines)
     {
-        var value = matcher is IAreaValueMatcher full ? full.MatchValue(lines, area.Expected) : Fallback(lines, area.Expected);
+        var value = matcher.Match(lines, area.Expected);
         var result = new AreaResult
         {
             Area = area.Name,
@@ -87,34 +90,8 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
     public static AreaDetails DetailsOf(AreaResult result, IReadOnlyList<string> allMatches, RelativeBox? matchBox) => new()
     {
         Area = result.Area,
-        AllMatches = string.Join(' ', allMatches.Distinct(StringComparer.Ordinal).Take(10)),
-        Number = TextReadEvents.Number(TextReadEvents.Join(result.Text)),
+        AllMatches = string.Join(' ', allMatches.Distinct(StringComparer.Ordinal).Take(TextMatcher.MaxMatches)),
+        Number = NumberText.Of(TextReadEvents.Join(result.Text)),
         MatchBox = result.Text.Length == 0 ? null : matchBox,
     };
-
-    /// <summary>
-    /// Without <see cref="IAreaValueMatcher"/>: the single match (with a format), the lowest line confidence and the box
-    /// around all lines.
-    /// </summary>
-    private AreaValue Fallback(IReadOnlyList<TextLine> lines, ExpectedText expected)
-    {
-        var match = matcher.Match(lines, expected);
-        var matches = expected.Kind == ExpectedTextKind.Format && match.MatchesFormat && match.Value.Length > 0 ? new[] { match.Value } : [];
-        var confidence = lines.Count == 0 ? 0 : lines.Min(l => l.Confidence);
-        return new AreaValue(match, matches, confidence, Around(lines));
-    }
-
-    private static RelativeBox? Around(IReadOnlyList<TextLine> lines)
-    {
-        if (lines.Count == 0)
-        {
-            return null;
-        }
-
-        var left = lines.Min(l => l.Box.X);
-        var top = lines.Min(l => l.Box.Y);
-        var right = lines.Max(l => l.Box.X + l.Box.Width);
-        var bottom = lines.Max(l => l.Box.Y + l.Box.Height);
-        return new RelativeBox(left, top, right - left, bottom - top);
-    }
 }

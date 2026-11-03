@@ -101,7 +101,7 @@ public sealed class WatchingTests
     }
 
     [Fact]
-    public async Task TheLastReadingIsKeptWithItsPictureAndToldToThePage()
+    public async Task TheLastReadingIsKeptAndToldToThePage()
     {
         await using var ocr = await OcrHarness.StartAsync();
         var reader = await WatchAsync(ocr, ocr.NewReader("Meter", ReaderMode.Watching));
@@ -110,7 +110,7 @@ public sealed class WatchingTests
         await ocr.SendAndWaitAsync(ocr.Inside.Id, "1234,5");
 
         var reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id }));
-        Assert.Equal("1234,5", Frame.TextOf(reply.Jpeg));
+        Assert.Equal("1234,5", Frame.TextOf(ocr.Plugin.Runtime!.Last(reader.Id)!.Jpeg)); // kept in memory, never sent
         Assert.Equal(ocr.Time.GetUtcNow(), reply.Reading!.Time);
         var area = Assert.Single(reply.Reading.Areas);
         Assert.Equal((OcrHarness.DefaultArea.Name, "1234,5", 90.0), (area.Area, area.Text, area.Confidence));

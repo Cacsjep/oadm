@@ -28,6 +28,9 @@ public static class ReaderRules
 
     public const int MaxSide = 7680;
 
+    /// <summary>The most pixels a picture may have (8K, 7680 x 4320): a larger one is never decoded (memory).</summary>
+    public const long MaxPixels = 7680L * 4320;
+
     public const string NameMissing = "Enter a name.";
 
     public static readonly string NameTooLong = string.Create(CultureInfo.InvariantCulture, $"Use at most {MaxNameLength} characters.");
@@ -44,6 +47,16 @@ public static class ReaderRules
     public const string ModeMissing = "Choose On action or Watching.";
 
     public const string AreaOutside = "An area lies outside the picture.";
+
+    /// <summary>An area narrower or lower than <see cref="OcrLimits.MinAreaSide"/> of the picture (the drawing minimum).</summary>
+    public static readonly string AreaTooSmall = string.Create(
+        CultureInfo.InvariantCulture, $"Draw the area at least {OcrLimits.MinAreaSide * 100:0} % of the picture wide and high.");
+
+    /// <summary>A name with a line break, a tab or another control character.</summary>
+    public const string NameInvalid = "Use letters, digits and signs only.";
+
+    /// <summary>The action Read text without a reader.</summary>
+    public const string ReaderMissing = "Choose a reader.";
 
     public const string FormatMissing = "Enter a format.";
 
@@ -102,7 +115,7 @@ public static class ReaderRules
 
     public static string AreaNameTaken(string name) => $"Two areas are named {name}.";
 
-    /// <summary>Watching readers at most per site (each stream holds one of the site node's large transfers).</summary>
+    /// <summary>Watching readers (and previews with a stream of their own) at most per site: the site node's link carries their streams.</summary>
     public const int MaxWatchingPerSite = 4;
 
     /// <summary>"At most 4 readers can watch at once at the site Building B. Set another reader there to On action first."</summary>
@@ -157,7 +170,8 @@ public static class ReaderRules
             throw new ArgumentException(SourceMissing);
         }
 
-        if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide)
+        if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide
+            || (long)reader.Resolution.Width * reader.Resolution.Height > MaxPixels)
         {
             throw new ArgumentException(ResolutionMissing);
         }
@@ -177,20 +191,51 @@ public static class ReaderRules
         return reader with { Mode = mode, Fps = fps, Areas = areas };
     }
 
-    /// <summary>The reader as it is stored: names trimmed, a format only with Format, no owner from the page.</summary>
+    /// <summary>
+    /// The reader as it is stored: names trimmed, a format only with Format, no owner from the page; missing parts (no area
+    /// list, an empty area) read as none; an On action reader's frame rate that is no choice becomes the default (it is
+    /// checked only while Watching).
+    /// </summary>
     public static Reader Normalize(Reader reader)
     {
         ArgumentNullException.ThrowIfNull(reader);
         return reader with
         {
             Name = reader.Name?.Trim() ?? string.Empty,
-            Areas = [.. (reader.Areas ?? []).Select(a => a with
-            {
-                Name = a.Name?.Trim() ?? string.Empty,
-                Expected = a.Expected is { Kind: ExpectedTextKind.Format } e ? e with { Format = e.Format?.Trim() } : ExpectedText.AnyText,
-            })],
+            Fps = reader.Mode == ReaderMode.OnAction && !FpsChoicesGpu.Contains(reader.Fps) ? OcrLimits.DefaultFps : reader.Fps,
+            Areas = Areas(reader),
             OwnerScopeKey = null,
         };
+    }
+
+    /// <summary>A stored reader as the runtime reads it: an area list and expected texts that are never null (older or hand-made records).</summary>
+    public static Reader Stored(Reader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        return reader with { Name = reader.Name ?? string.Empty, Areas = Areas(reader) };
+    }
+
+    private static IReadOnlyList<Area> Areas(Reader reader) => [.. (reader.Areas ?? []).OfType<Area>().Select(a => a with
+    {
+        Name = a.Name?.Trim() ?? string.Empty,
+        Expected = a.Expected is { Kind: ExpectedTextKind.Format } e ? e with { Format = e.Format?.Trim() } : ExpectedText.AnyText,
+    })];
+
+    /// <summary>
+    /// <paramref name="reader"/> at a frame rate the recognition offers now: its own, or the highest choice below it (a
+    /// graphics card turned off: 15 becomes 4). The runtime's loops read at it; the stored reader keeps its rate.
+    /// </summary>
+    public static Reader WithOfferedFps(Reader reader, bool onGpu)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        var choices = FpsChoices(onGpu);
+        if (choices.Contains(reader.Fps))
+        {
+            return reader;
+        }
+
+        var lower = choices.Where(c => c < reader.Fps).ToList();
+        return reader with { Fps = lower.Count > 0 ? lower.Max() : OcrLimits.DefaultFps };
     }
 
     /// <summary>The first problem of a normalized reader (<see cref="Normalize"/>), or null.</summary>
@@ -216,7 +261,8 @@ public static class ReaderRules
             problems.Add(new(OcrFields.VideoSource, SourceMissing));
         }
 
-        if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide)
+        if (reader.Resolution.Width is < MinSide or > MaxSide || reader.Resolution.Height is < MinSide or > MaxSide
+            || (long)reader.Resolution.Width * reader.Resolution.Height > MaxPixels)
         {
             problems.Add(new(OcrFields.Resolution, ResolutionMissing));
         }
@@ -226,8 +272,9 @@ public static class ReaderRules
             problems.Add(new(OcrFields.Mode, ModeMissing));
         }
 
-        if (!FpsChoices(onGpu).Contains(reader.Fps))
+        if (reader.Mode == ReaderMode.Watching && !FpsChoices(onGpu).Contains(reader.Fps))
         {
+            // The frame rate is set only while Watching (the page hides it for On action).
             problems.Add(new(OcrFields.Fps, FpsNotAllowed(onGpu)));
         }
 
@@ -253,6 +300,10 @@ public static class ReaderRules
             {
                 problems.Add(new(OcrFields.AreaBox(i), AreaOutside));
             }
+            else if (area.Box.Width < OcrLimits.MinAreaSide - 1e-9 || area.Box.Height < OcrLimits.MinAreaSide - 1e-9)
+            {
+                problems.Add(new(OcrFields.AreaBox(i), AreaTooSmall));
+            }
 
             if (area.Expected.Kind == ExpectedTextKind.Format && FormatProblem(area.Expected.Format) is { } format)
             {
@@ -263,7 +314,7 @@ public static class ReaderRules
         return problems;
     }
 
-    /// <summary>The problem of a reader's or an area's name, or null: not empty, at most 64 characters.</summary>
+    /// <summary>The problem of a reader's or an area's name, or null: not empty, at most 64 characters, no control characters.</summary>
     public static string? NameProblem(string? name)
     {
         var text = name?.Trim() ?? string.Empty;
@@ -272,7 +323,12 @@ public static class ReaderRules
             return NameMissing;
         }
 
-        return text.Length > MaxNameLength || text.Any(char.IsControl) ? NameTooLong : null;
+        if (text.Length > MaxNameLength)
+        {
+            return NameTooLong;
+        }
+
+        return text.Any(char.IsControl) ? NameInvalid : null;
     }
 
     /// <summary>The problem of a format, or null: not empty, at most 64 characters, at least one #, A or *.</summary>

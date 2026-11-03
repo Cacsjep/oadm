@@ -25,7 +25,22 @@ public sealed partial class OcrPlugin
         switch (method)
         {
             case OcrMethods.ListReaders:
-                return OcrJson.Serialize(ListOf(store.Visible(caller), runtime));
+            {
+                // What a reader read and why it does not read are about its camera: blank for a camera the caller cannot see
+                // (it left the caller's device group).
+                var visible = store.Visible(caller);
+                var seen = new HashSet<Guid>();
+                foreach (var id in visible.Select(r => r.DeviceId).Distinct())
+                {
+                    if (await caller.Devices.FindAsync(id, ct).ConfigureAwait(false) is not null)
+                    {
+                        seen.Add(id);
+                    }
+                }
+
+                return OcrJson.Serialize(ListOf(visible, runtime, seen.Contains));
+            }
+
             case OcrMethods.GetReader:
                 return OcrJson.Serialize(Visible(store, caller, payloadJson) with { OwnerScopeKey = null });
             case OcrMethods.SaveReader:
@@ -42,12 +57,14 @@ public sealed partial class OcrPlugin
                     return OcrJson.Serialize(new SaveReaderReply { Errors = ex.Errors });
                 }
 
-                if (before is not null && !SamePicture(before, saved))
+                // After the sync: a reading of the old camera or areas still in work is kept by nobody (it no longer fits the
+                // stored reader), and the last one goes.
+                await runtime.SyncAsync().ConfigureAwait(false);
+                if (before is not null && !ReaderRuntime.SamePicture(before, saved))
                 {
                     runtime.Forget(saved.Id);
                 }
 
-                await runtime.SyncAsync().ConfigureAwait(false);
                 EventTypesChanged?.Invoke(this, EventArgs.Empty);
                 PublishReaders(saved.OwnerScopeKey, before?.OwnerScopeKey);
                 return OcrJson.Serialize(new SaveReaderReply { Reader = saved with { OwnerScopeKey = null } });
@@ -77,29 +94,29 @@ public sealed partial class OcrPlugin
                 }
 
                 await CallDevices.RequireAsync(caller, [draft.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(await runtime.StartPreviewAsync(request.PreviewId, draft, OwnerScope.Of(caller.DeviceScopeKey)).ConfigureAwait(false));
+                return OcrJson.Serialize(await runtime.StartPreviewAsync(request.PreviewId, draft, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false));
             }
 
             case OcrMethods.StopPreview:
-                await runtime.StopPreviewAsync(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey)).ConfigureAwait(false);
+                await runtime.StopPreviewAsync(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false);
                 return "{}";
 
             case OcrMethods.GetPreview:
             {
-                if (runtime.PreviewOf(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey)) is not { } preview)
+                if (runtime.PreviewOf(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName) is not { } preview)
                 {
                     return OcrJson.Serialize(new ReadingReply());
                 }
 
                 await CallDevices.RequireAsync(caller, [preview.Reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(preview.Last is { } last ? runtime.ReplyOf(last) with { Jpeg = null } : new ReadingReply());
+                return OcrJson.Serialize(preview.Last is { } last ? runtime.ReplyOf(last, MaySeePictures(caller)) : new ReadingReply());
             }
 
             case OcrMethods.GetReading:
             {
                 var reader = Visible(store, caller, payloadJson);
                 await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? runtime.ReplyOf(last) : new ReadingReply());
+                return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? runtime.ReplyOf(last, MaySeePictures(caller)) : new ReadingReply());
             }
 
             case OcrMethods.GetStats:
@@ -205,16 +222,17 @@ public sealed partial class OcrPlugin
     private static Reader Visible(ReaderStore store, ICallContext caller, string? payloadJson) =>
         store.FindVisible(caller, OcrJson.Deserialize<ReaderRequest>(payloadJson).ReaderId) ?? throw new ArgumentException(ReaderRules.Gone);
 
-    private static ReaderList ListOf(IEnumerable<Reader> readers, ReaderRuntime runtime) => new()
+    /// <summary>The list; <paramref name="seesCamera"/> tells whether the watchers see a reader's camera (else its text and problem stay blank).</summary>
+    private static ReaderList ListOf(IEnumerable<Reader> readers, ReaderRuntime runtime, Func<Guid, bool> seesCamera) => new()
     {
-        Readers = [.. readers.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).Select(r => SummaryOf(r, runtime))],
+        Readers = [.. readers.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).Select(r => SummaryOf(r, runtime, seesCamera(r.DeviceId)))],
         FpsChoices = ReaderRules.FpsChoices(runtime.OnGpu),
         MaxWatching = ReaderRules.MaxWatching(runtime.OnGpu),
     };
 
-    private static ReaderSummary SummaryOf(Reader reader, ReaderRuntime runtime)
+    private static ReaderSummary SummaryOf(Reader reader, ReaderRuntime runtime, bool seesCamera)
     {
-        var last = runtime.Last(reader.Id)?.Reading;
+        var last = seesCamera ? runtime.Last(reader.Id)?.Reading : null;
         return new ReaderSummary
         {
             Id = reader.Id,
@@ -224,14 +242,12 @@ public sealed partial class OcrPlugin
             Fps = reader.Fps,
             LastText = last is { Areas.Count: > 0 } ? last.Areas[0].Text : string.Empty,
             LastTime = last?.Time,
-            Problem = runtime.ProblemOf(reader.Id),
+            Problem = seesCamera ? runtime.ProblemOf(reader.Id) : ReaderRules.Off,
         };
     }
 
-    /// <summary>Whether the last reading still fits: the same camera, source, resolution and areas.</summary>
-    private static bool SamePicture(Reader before, Reader now) =>
-        OcrJson.Serialize(before with { Name = string.Empty, Mode = ReaderMode.OnAction, Fps = 0 })
-        == OcrJson.Serialize(now with { Name = string.Empty, Mode = ReaderMode.OnAction, Fps = 0 });
+    /// <summary>The cut-outs are pieces of the camera's picture: only for users who may see its live video.</summary>
+    private static bool MaySeePictures(ICallContext caller) => caller.Has(HostPermissionKeys.DevicesLiveView);
 
     /// <summary>
     /// Tells the open pages the reader list after a change: users with all devices every reader, the users of each group
@@ -245,11 +261,15 @@ public sealed partial class OcrPlugin
         }
 
         var all = store.All;
-        events.Publish(OcrMethods.ReadersTopic, OcrJson.Serialize(ListOf(all, runtime)), PluginEventAudience.AllDevices);
+        events.Publish(OcrMethods.ReadersTopic, OcrJson.Serialize(ListOf(all, runtime, _ => true)), PluginEventAudience.AllDevices);
         foreach (var group in owners.Select(OwnerScope.Of).Where(o => o != ICallContext.AllDevicesScopeKey).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var mine = all.Where(r => string.Equals(OwnerScope.Of(r.OwnerScopeKey), group, StringComparison.OrdinalIgnoreCase));
-            events.Publish(OcrMethods.ReadersTopic, OcrJson.Serialize(ListOf(mine, runtime)), PluginEventAudience.DeviceScope(group));
+            var scopes = _ctx?.DeviceScopes;
+            events.Publish(
+                OcrMethods.ReadersTopic,
+                OcrJson.Serialize(ListOf(mine, runtime, id => scopes is not null && scopes.Contains(group, id))),
+                PluginEventAudience.DeviceScope(group));
         }
     }
 }

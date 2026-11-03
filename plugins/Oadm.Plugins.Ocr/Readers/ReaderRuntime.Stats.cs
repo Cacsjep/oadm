@@ -55,9 +55,10 @@ internal sealed partial class ReaderRuntime
             }
         }
 #pragma warning disable CA1031 // A timer callback never throws; the next tick tries again.
-        catch (Exception)
+        catch (Exception ex)
 #pragma warning restore CA1031
         {
+            LogBackgroundFailed(_logger, "the runtime stats", ex);
         }
     }
 
