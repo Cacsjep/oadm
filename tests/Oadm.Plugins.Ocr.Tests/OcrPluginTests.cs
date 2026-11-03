@@ -1,7 +1,7 @@
 using System.Text.Json;
 
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
+using Oadm.Server.AddOns;
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Sdk.Plugins;

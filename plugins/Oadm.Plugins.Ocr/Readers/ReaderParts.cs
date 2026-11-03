@@ -68,6 +68,6 @@ public sealed class ReaderParts
 /// <summary>The readers' log lines that are not about one reader.</summary>
 internal static partial class ReaderLog
 {
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: the plugin folder has no Models folder; nothing can be read until the add-on is installed again")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: the plugin folder has no Models folder; nothing can be read until the optional plugin is installed again")]
     public static partial void ModelsMissing(ILogger logger);
 }

@@ -409,10 +409,16 @@ often, from worse pictures, and never a wrong value reported as sure.
   `NativeAssets.Linux.NoDependencies`), the PP-OCRv5 mobile and server detection and Latin recognition models and the
   angle model as ONNX files with the character list (Apache-2.0, in the plugin's notices). The size is measured at the
   build (Linux x64 is the largest because of the CUDA provider). The client part has no native libraries.
+- DirectML itself (`DirectML.dll`, NuGet `Microsoft.AI.DirectML`, Windows only) is not open source: "MICROSOFT SOFTWARE
+  LICENSE TERMS – DIRECTML" allow passing it on inside applications for Windows, and its section 2a says the software
+  may collect data and send it to Microsoft. Its full license is in the plugin's notices (`OadmNoticePackage` item in
+  the csproj; `check-addon-zip.sh` fails a Windows ZIP without it). The user docs say that the graphics card on Windows
+  runs on Microsoft DirectML under Microsoft's terms; turning off **Use the graphics card** keeps it unused (CPU only:
+  ONNX Runtime MIT, SkiaSharp MIT, models Apache-2.0).
 - The models are never in git: the build downloads each from its pinned Hugging Face revision into a local cache, checks
   its SHA-256 (another hash fails the build) and copies it into the output's `Models/` (`Models/Models.targets`,
   `Models/README.md` "Download at build", `docs/spec/packaging.md` "Add-on ZIPs"). The plugin folder without `Models/`
-  reads nothing: every reading ends "Text recognition is not installed completely. Install the add-on again."
+  reads nothing: every reading ends "Text recognition is not installed completely. Install it again on the Plugins page."
 - No OpenCV, no Tesseract, no Python; the CUDA runtime is the server's own, never shipped.
 
 ## Parts and contract

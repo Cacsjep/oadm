@@ -96,7 +96,7 @@ public static class ReaderRules
     public const string Off = "The reader's camera is no longer in its device group.";
 
     /// <summary>Reading while the plugin folder has no <c>Models</c> folder (<see cref="ReaderParts.Real"/>).</summary>
-    public const string NotInstalled = "Text recognition is not installed completely. Install the add-on again.";
+    public const string NotInstalled = "Text recognition is not installed completely. Install it again on the Plugins page.";
 
     public static string NameTaken(string name) => $"A reader named {name} exists already.";
 
