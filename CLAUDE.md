@@ -242,6 +242,13 @@ must never break.
   the update record and shows the result after the restart; no rollback by OADM; only from an installed package (the
   ZIP and `dotnet run` keep Open download page); never a real installer in tests;
   site nodes are updated by hand (they run with few rights).
+- **[Add-on plugins](docs/spec/add-ons.md)** (spec, not built): OADM's own plugins outside the installers (the vision
+  plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
+  version from its GitHub release, checked by `SHA256SUMS.txt`, Administrators only; clients get the client part from the
+  server; updated with the server; never a file upload.
+- **[Text recognition](docs/spec/ocr.md)** (spec, not built; add-on `oadm.ocr`, free, off by default): readers (camera,
+  areas, Any text or a format such as `AAAU ###### #`) read text on the CPU (ONNX Runtime, PaddleOCR models) on demand
+  or watching the MJPEG stream at 1 to 4 fps; events Text read for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
