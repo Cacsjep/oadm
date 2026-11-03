@@ -9,7 +9,7 @@ namespace Oadm.Client.Api;
 
 /// <summary>
 /// Fake Dashboards plugin so <c>--fake</c> and the tests show the page: three sample device triggers with values
-/// (Temperature, Gate open, Number plate), the dashboard "Building A", list / save / delete in memory, and values for the
+/// (Temperature, Gate open, Number plate), the dashboard "Building A", list / save / delete in memory, a press of a button (no rule uses it), and values for the
 /// watched widgets that change every second (pushed like the server). The JSON is the plugin's (camelCase, enums as text);
 /// the rules are the plugin's own tests.
 /// </summary>
@@ -81,6 +81,8 @@ public sealed partial class FakeOadmApi
                 case "unwatch":
                     _dashboardKeys = [];
                     return Task.FromResult<string?>(null);
+                case "press":
+                    return Task.FromResult<string?>(new JsonObject { ["usedByRule"] = false }.ToJsonString()); // fake mode has no rule for a button
                 default:
                     throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown method '{method}'."));
             }

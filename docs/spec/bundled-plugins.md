@@ -470,7 +470,7 @@ also on Dashboards.
 `plugins/Oadm.Plugins.Dashboards` (+ `.Client`), id `oadm.dashboards`, rail page **Dashboards** (group Monitoring, icon
 `gauge`), **off by default**. Live values of OADM's events (mostly device triggers: a temperature, a plate, a gate open)
 and live video on saved dashboards: a grid of widgets, each one value of one device (On / Off, Text, Number, Gauge, Live
-video). Empty states for Device triggers off (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device
+video), and Button widgets that run event rules. Empty states for Device triggers off (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device
 triggers**) and no dashboard.
 
 - Rules that must hold: the plugin never talks to a device; the values come from `ICorePluginContext.EventSubscriptions`
@@ -482,8 +482,16 @@ triggers**) and no dashboard.
   widgets of their open tabs (renewed every 10 s, forgotten after 30 s), changes are pushed at most every 250 ms;
   dashboards live on the server like Live View's views (plugin setting `dashboards`, every change pushed, an older
   version refused), the grid is the shared `ui:TileGrid` (20 x 20, at least 2 x 2, never overlapping), at most 50 widgets
-  of them 16 live videos and 200 dashboards; colors and icons are theme names; the server checks every rule again
-  (`DashboardRules`).
+  of them 16 live videos and 20 buttons, and 200 dashboards; colors and icons are theme names; the server checks every rule
+  again (`DashboardRules`).
+- Buttons: a Button widget never touches a device and has none; it is one stateless server event per button for the event
+  rules (`IDynamicEventSource`, id `oadm.dashboards.button.<dashboard id>.<widget id>`, name = its label 1..32, folders
+  Dashboards / <dashboard name>, values user, dashboard, button), following every save and delete; a press (`press`)
+  fires it and says "Sent" or "No event rule uses this button." (`IEventPublisher.IsUsedByRule`) over the button, never
+  moving it; the audit entry names the button and its dashboard; any widget color, the label white or dark by the
+  fill's lightness; sizes Small (default), Medium, Large inside the same tile; no confirmation, no
+  lock after a press (the rule's Dead time and Max per minute); a press while editing does nothing; the plugin's own button
+  events are never dashboard values.
 - Device groups: each dashboard belongs to the group of the user who made it (none = all devices); group users see and
   change only their group's dashboards with the group's devices, get only the events of their devices and sites and only
   the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps the owner. Pushes
@@ -491,7 +499,8 @@ triggers**) and no dashboard.
   after 5 minutes), a device's membership is the host's check per device. At most 1,000 watches, 8 per login session (a
   new one replaces the session's oldest).
 - Roles: "show" (Operator and Viewer), **Change dashboards** (`manage`, Operator yes, Viewer no; save and delete
-  audited); video needs "Live view".
+  audited), **Press dashboard buttons** (`press`, Operator yes, Viewer no; every press audited; without it the button is
+  disabled with the reason); video needs "Live view". A group user presses the buttons of the group's dashboards only.
 
 ## Edge Recording Export (core plugin)
 

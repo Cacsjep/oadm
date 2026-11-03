@@ -504,7 +504,9 @@ lacks.
   `ViewerDefault`, `FullDeviceControl` for rights that act with the stored device login) and map methods to them with
   `RequiredPermission(method)`: a declared key or `PermissionKeys.Show`. Without an answer `RequiredRole` decides
   (Operator = "show", Admin = "manage"); a plugin that declares nothing but answers `RequiredRole` gets an automatic
-  "manage". Declare "show" only to change its defaults (Web View: off for Operator).
+  "manage". Declare "show" only to change its defaults (Web View: off for Operator). `IsAudited(method)` (default: the
+  Admin methods) writes a "Plugin action" entry after a call that succeeded, its detail the method or, when the plugin
+  answers `AuditDetail(method, payloadJson)` (SDK 0.10.0), that text ("Pressed Open gate on Gate house"; never a secret).
 - **Task plugins**: one permission "task:<id>" by default. A task whose choices differ in risk declares `Permissions`
   and answers `RequiredPermissions(payloadJson)` with the keys a run needs (Users: add / update / remove). The run is
   refused before any task starts when the role lacks one; no answer means every declared key.
@@ -806,7 +808,8 @@ filter on.
   counts as off. Types are read once at registration before `StartAsync`, so a plugin that loads its types from settings
   raises the event in `StartAsync`; rules that use them wait for them meanwhile.
 - Calls only queue; `IsWatched(typeId)` says whether an enabled rule or a subscriber uses the type (skip expensive work
-  otherwise).
+  otherwise). `IsUsedByRule(typeId)` (SDK 0.10.0) counts enabled rules only, never subscriptions such as Dashboards (a
+  Dashboards button says "No event rule uses this button." with it).
 - Sample: Device triggers
   (`plugins/Oadm.Plugins.DeviceTriggers`: dynamic types, a WebSocket per device, "connection lost" per trigger).
 

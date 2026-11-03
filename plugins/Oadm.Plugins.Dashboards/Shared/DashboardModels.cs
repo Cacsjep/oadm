@@ -23,6 +23,17 @@ public static class DashboardsPluginInfo
     /// <summary>Live videos in one dashboard (Live View's limit: decoding stays smooth on an average PC).</summary>
     public const int MaxVideos = 16;
 
+    /// <summary>Buttons in one dashboard (each is an event of the event rules).</summary>
+    public const int MaxButtons = 20;
+
+    /// <summary>The label of a button: 1..32 characters on one line.</summary>
+    public const int MaxLabelLength = 32;
+
+    /// <summary>A new button: 4 x 2 cells (smaller where the grid is full, at least 2 x 2).</summary>
+    public const int ButtonWidth = 4;
+
+    public const int ButtonHeight = 2;
+
     public const int MaxDashboards = 200;
     public const int MaxNameLength = 64;
     public const int MaxUnitLength = 10;
@@ -77,6 +88,25 @@ public static class DashboardsPluginInfo
     /// <summary>"Change dashboards": create, change and delete dashboards.</summary>
     public const string ManageKey = "manage";
 
+    /// <summary>"Press dashboard buttons": fire the event of a button.</summary>
+    public const string PressKey = "press";
+
+    /// <summary>The group and first folder of the buttons' events in the rule dialog.</summary>
+    public const string ButtonGroup = "Dashboards";
+
+    /// <summary>The start of a button's event type id: <c>oadm.dashboards.button.&lt;dashboard id&gt;.&lt;widget id&gt;</c>.</summary>
+    public const string ButtonTypePrefix = PluginId + ".button.";
+
+    /// <summary>The event type of a button (stable while the widget lives; a copy is a new widget with a new id).</summary>
+    public static string ButtonTypeId(string dashboardId, string widgetId) => ButtonTypePrefix + dashboardId + "." + widgetId;
+
+    /// <summary>The values of a button's event: who pressed it, the dashboard, the button's label.</summary>
+    public const string UserField = "user";
+
+    public const string DashboardField = "dashboard";
+
+    public const string ButtonField = "button";
+
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -108,6 +138,9 @@ public static class DashboardsMethods
     /// <summary><see cref="UnwatchRequest"/>: the page closed.</summary>
     public const string Unwatch = "unwatch";
 
+    /// <summary><see cref="PressRequest"/> -> <see cref="PressReply"/>: a button was pressed ("Press dashboard buttons").</summary>
+    public const string Press = "press";
+
     /// <summary>Event: the whole <see cref="DashboardList"/> after every change.</summary>
     public const string DashboardsTopic = "dashboards";
 
@@ -118,6 +151,9 @@ public static class DashboardsMethods
     public const string ValuesTopic = "values";
 
     public static bool IsChange(string method) => method is Save or Delete;
+
+    /// <summary>Written to the audit log: the changes and every press of a button.</summary>
+    public static bool IsAudited(string method) => method is Save or Delete or Press;
 }
 
 /// <summary>What a widget shows.</summary>
@@ -137,6 +173,44 @@ public enum WidgetKind
 
     /// <summary>A number on an arc from <see cref="Widget.Min"/> to <see cref="Widget.Max"/>, with the Number widget's settings.</summary>
     Gauge = 4,
+
+    /// <summary>
+    /// A button that fires an event of the event rules (no device, no value): its label is <see cref="Widget.Name"/>, with
+    /// <see cref="Widget.Icon"/> and <see cref="Widget.Color"/>.
+    /// </summary>
+    Button = 5,
+}
+
+/// <summary>How large a button is drawn inside its tile (the tile keeps its cells).</summary>
+public enum ButtonSize
+{
+    /// <summary>45 % of the tile, centred (the default).</summary>
+    Small = 0,
+
+    Medium = 1,
+
+    /// <summary>The button fills the tile.</summary>
+    Large = 2,
+}
+
+/// <summary>The sizes of a button: the share of its tile it takes (centred, the label shrinks with it). The one place for them.</summary>
+public static class ButtonSizes
+{
+    /// <summary>Size -> label, in the order of the select.</summary>
+    public static readonly IReadOnlyList<(ButtonSize Size, string Label)> All =
+    [
+        (ButtonSize.Large, "Large"),
+        (ButtonSize.Medium, "Medium"),
+        (ButtonSize.Small, "Small"),
+    ];
+
+    /// <summary>The share of the tile's width and height: Large 100 %, Medium 70 %, Small 45 %.</summary>
+    public static double Share(ButtonSize size) => size switch
+    {
+        ButtonSize.Medium => 0.7,
+        ButtonSize.Small => 0.45,
+        _ => 1.0,
+    };
 }
 
 /// <summary>The type the user chose for a field; Automatic takes the declared or suggested one.</summary>
@@ -226,11 +300,21 @@ public sealed record Widget
     /// <summary>The thickness of a gauge's arc, % of its radius.</summary>
     public int LineWidth { get; init; } = DashboardsPluginInfo.DefaultLineWidth;
 
+    /// <summary>The icon of a button before its label (a key of <see cref="WidgetIcons"/>); empty = none.</summary>
+    public string Icon { get; init; } = string.Empty;
+
+    /// <summary>How large a button is drawn in its tile; Large (the default) fills it.</summary>
+    public ButtonSize ButtonSize { get; init; }
+
     [JsonIgnore]
     public TileRect Rect => new(X, Y, Width, Height);
 
+    /// <summary>The widget shows a value of an event (not a live video, not a button).</summary>
     [JsonIgnore]
-    public bool IsValue => Kind != WidgetKind.Video;
+    public bool IsValue => Kind is not (WidgetKind.Video or WidgetKind.Button);
+
+    [JsonIgnore]
+    public bool IsButton => Kind == WidgetKind.Button;
 }
 
 /// <summary>A saved dashboard. <see cref="Version"/> grows with every save; a save of an older version is refused.</summary>
@@ -295,6 +379,12 @@ public sealed record ValueKey(string TypeId, Guid? DeviceId);
 public sealed record WatchRequest(string WatchId, IReadOnlyList<ValueKey> Keys);
 
 public sealed record UnwatchRequest(string WatchId);
+
+/// <summary>Method "press": the button <see cref="WidgetId"/> of the dashboard <see cref="DashboardId"/> was pressed.</summary>
+public sealed record PressRequest(string DashboardId, string WidgetId);
+
+/// <summary>The event was sent; <see cref="UsedByRule"/>: an enabled event rule uses it.</summary>
+public sealed record PressReply(bool UsedByRule);
 
 /// <summary>
 /// The latest of an event on a device: <see cref="On"/> for an on / off event (off when no event came: the server knows
@@ -535,6 +625,9 @@ public static class WidgetColors
 
     public static bool IsKnown(string? name) => name is not null && All.Any(c => c.Name == name);
 
+    /// <summary>The color of a new button (every color is a fill; the label takes white or dark text by the fill's lightness).</summary>
+    public const string ButtonDefault = "Accent";
+
     /// <summary>The theme brush of a color ("Oadm.Tag.GreenBrush").</summary>
     public static string BrushKey(string? name) => name switch
     {
@@ -604,6 +697,38 @@ public static class DashboardRules
     public static readonly string TooManyWidgets = $"A dashboard holds at most {DashboardsPluginInfo.MaxWidgets} widgets.";
 
     public static readonly string TooManyVideos = $"A dashboard holds at most {DashboardsPluginInfo.MaxVideos} live videos.";
+
+    public static readonly string TooManyButtons = $"A dashboard holds at most {DashboardsPluginInfo.MaxButtons} buttons.";
+
+    public const string LabelMissing = "Enter a label.";
+
+    public static readonly string LabelTooLong = $"Use at most {DashboardsPluginInfo.MaxLabelLength} characters on one line.";
+
+    /// <summary>A press of a button that another user removed or changed meanwhile.</summary>
+    public const string ButtonGone = "This button no longer exists. Another user changed the dashboard.";
+
+    /// <summary>The server has no event rules (a press cannot be sent).</summary>
+    public const string NoEventRules = "This OADM server has no event rules.";
+
+    /// <summary>The answers of a press, shown briefly below the button.</summary>
+    public const string Sent = "Sent";
+
+    public const string NoRule = "No event rule uses this button.";
+
+    /// <summary>The tooltip of a button the user's role may not press.</summary>
+    public const string PressNotAllowed = "Your role does not allow pressing dashboard buttons.";
+
+    /// <summary>The problem of a button's label, or null: required, 1..32 characters on one line.</summary>
+    public static string? LabelProblem(string? label)
+    {
+        var trimmed = label?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+        {
+            return LabelMissing;
+        }
+
+        return trimmed.Length > DashboardsPluginInfo.MaxLabelLength || trimmed.Any(char.IsControl) ? LabelTooLong : null;
+    }
 
     public const string Outside = "A widget lies outside the dashboard.";
 
@@ -699,6 +824,11 @@ public static class DashboardRules
             return TooManyVideos;
         }
 
+        if (widgets.Count(w => w.Kind == WidgetKind.Button) > DashboardsPluginInfo.MaxButtons)
+        {
+            return TooManyButtons;
+        }
+
         if (widgets.Any(w => !DashboardsPluginInfo.Layout.Fits(w.Rect)))
         {
             return Outside;
@@ -729,7 +859,7 @@ public static class DashboardRules
     public static string? WidgetProblem(Widget widget)
     {
         ArgumentNullException.ThrowIfNull(widget);
-        if (!Enum.IsDefined(widget.Kind) || !Enum.IsDefined(widget.Type))
+        if (!Enum.IsDefined(widget.Kind) || !Enum.IsDefined(widget.Type) || !Enum.IsDefined(widget.ButtonSize))
         {
             return BadSetting;
         }
@@ -742,7 +872,7 @@ public static class DashboardRules
         // Settings a request leaves out (null) or makes too long are refused for every kind, also those it does not use.
         if (widget.Unit is null || widget.OnText is null || widget.OffText is null || widget.Thresholds is null
             || widget.Color is null || widget.OnColor is null || widget.OffColor is null || widget.OnIcon is null || widget.OffIcon is null
-            || Bad(widget.Id) || Bad(widget.TypeId) || Bad(widget.Field) || Bad(widget.OnText) || Bad(widget.OffText))
+            || widget.Icon is null || Bad(widget.Id) || Bad(widget.TypeId) || Bad(widget.Field) || Bad(widget.OnText) || Bad(widget.OffText))
         {
             return BadSetting;
         }
@@ -755,6 +885,20 @@ public static class DashboardRules
             }
 
             if (widget.Camera is < 0 or > 64)
+            {
+                return BadSetting;
+            }
+        }
+        else if (widget.Kind == WidgetKind.Button)
+        {
+            // A button has nothing to do with a device or an event value: its label, icon and fill only.
+            if (LabelProblem(widget.Name) is { } label)
+            {
+                return label;
+            }
+
+            if (widget.DeviceId is not null || widget.TypeId is not null || widget.Field is not null
+                || (widget.Icon.Length > 0 && !WidgetIcons.IsKnown(widget.Icon)))
             {
                 return BadSetting;
             }
@@ -788,6 +932,7 @@ public static class DashboardRules
         var shares = new[] { widget.IconSize, widget.FontSize };
         var known = WidgetColors.IsKnown(widget.Color) && WidgetColors.IsKnown(widget.OnColor) && WidgetColors.IsKnown(widget.OffColor)
             && WidgetIcons.IsKnown(widget.OnIcon) && WidgetIcons.IsKnown(widget.OffIcon)
+            && (widget.Icon.Length == 0 || WidgetIcons.IsKnown(widget.Icon))
             && widget.Thresholds.All(t => t is not null && double.IsFinite(t.Value) && WidgetColors.IsKnown(t.Color))
             && shares.All(s => s is >= DashboardsPluginInfo.MinShare and <= DashboardsPluginInfo.MaxShare)
             && widget.LineWidth is >= DashboardsPluginInfo.MinLineWidth and <= DashboardsPluginInfo.MaxLineWidth

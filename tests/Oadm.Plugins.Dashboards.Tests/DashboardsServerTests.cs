@@ -148,7 +148,7 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Null(plugin.RequiredPermission("format"));
         Assert.True(plugin.IsAudited(DashboardsMethods.Save));
         Assert.False(plugin.IsAudited(DashboardsMethods.Watch));
-        var manage = Assert.Single(plugin.Permissions);
+        var manage = Assert.Single(plugin.Permissions, p => p.Key == DashboardsPluginInfo.ManageKey); // and "press" (ButtonServerTests)
         Assert.Equal(("manage", "Change dashboards", true, false), (manage.Key, manage.Name, manage.OperatorDefault, manage.ViewerDefault));
         Assert.Equal(CorePluginGroup.Monitoring, plugin.Group);
     }

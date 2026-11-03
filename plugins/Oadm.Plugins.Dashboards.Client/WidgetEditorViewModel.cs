@@ -91,6 +91,12 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     public static readonly IReadOnlyList<IconOption> IconOptions = [.. WidgetIcons.All.Select(i => new IconOption(i.Key, i.Label))];
 
+    /// <summary>The sizes of a button (Large fills the tile).</summary>
+    public static readonly IReadOnlyList<Choice<ButtonSize>> ButtonSizeOptions = [.. ButtonSizes.All.Select(s => new Choice<ButtonSize>(s.Size, s.Label))];
+
+    /// <summary>The icon of a button: none, or one of the widget icons.</summary>
+    public static readonly IReadOnlyList<IconOption> ButtonIconOptions = [new(string.Empty, "None"), .. IconOptions];
+
     /// <summary>The choices of "Show name".</summary>
     public static readonly IReadOnlyList<Choice<bool>> YesNoOptions = [new(true, "Yes"), new(false, "No")];
 
@@ -112,6 +118,8 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         FontSize = w.FontSize;
         LineWidth = w.LineWidth;
         Color = ColorNamed(w.Color);
+        ButtonIcon = ButtonIconOptions.FirstOrDefault(i => i.Key == w.Icon) ?? ButtonIconOptions[0];
+        ButtonSize = ButtonSizeOptions.First(s => s.Value == w.ButtonSize);
         OnIcon = IconNamed(w.OnIcon);
         OffIcon = IconNamed(w.OffIcon);
         OnColor = ColorNamed(w.OnColor);
@@ -127,7 +135,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             Thresholds.Add(new ThresholdRow(this, threshold.Value.ToString(CultureInfo.InvariantCulture), ColorNamed(threshold.Color)));
         }
 
-        Validation.Rule(nameof(Name), () => DashboardRules.WidgetNameProblem(Name));
+        Validation.Rule(nameof(Name), () => IsButton ? DashboardRules.LabelProblem(Name) : DashboardRules.WidgetNameProblem(Name));
         Validation.Rule(nameof(Unit), () => Unit.Length > DashboardsPluginInfo.MaxUnitLength ? DashboardRules.UnitTooLong : null);
         Validation.Rule(nameof(MinText), () => ParseNumber(MinText) is { } min && Math.Abs(min) <= DashboardRules.MaxRange ? null : DashboardRules.NotANumber);
         Validation.Rule(nameof(MaxText), () => ParseNumber(MaxText) is not { } max || Math.Abs(max) > DashboardRules.MaxRange ? DashboardRules.NotANumber
@@ -148,7 +156,13 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     public bool IsVideo => Target.Widget.Kind == WidgetKind.Video;
 
-    public bool IsValue => !IsVideo;
+    /// <summary>A button: Label, Icon and Color only.</summary>
+    public bool IsButton => Target.Widget.IsButton;
+
+    /// <summary>The name of a value or video widget (optional); a button has its label instead.</summary>
+    public bool ShowNameField => !IsButton;
+
+    public bool IsValue => Target.Widget.IsValue;
 
     /// <summary>The event of the widget, as the Events list names it.</summary>
     public string EventName => _page.FindEvent(Target.Widget.TypeId)?.Name ?? DashboardTexts.EventGone;
@@ -184,7 +198,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     /// <summary>Font size: Text and Number (a gauge sizes itself).</summary>
     public bool ShowText => IsValue && SelectedKind?.Value is WidgetKind.Text or WidgetKind.Number;
 
-    public bool ShowColor => IsValue && SelectedKind?.Value is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge;
+    public bool ShowColor => IsButton || (IsValue && SelectedKind?.Value is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge);
 
     /// <summary>Decimals, unit and thresholds: Number and Gauge share them (switching keeps them).</summary>
     public bool ShowNumber => IsValue && SelectedKind?.Value is WidgetKind.Number or WidgetKind.Gauge;
@@ -273,6 +287,14 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial IconOption OnIcon { get; set; }
 
+    /// <summary>The icon before a button's label ("None": no icon).</summary>
+    [ObservableProperty]
+    public partial IconOption ButtonIcon { get; set; }
+
+    /// <summary>How large the button is drawn in its tile.</summary>
+    [ObservableProperty]
+    public partial Choice<ButtonSize> ButtonSize { get; set; }
+
     [ObservableProperty]
     public partial IconOption OffIcon { get; set; }
 
@@ -299,9 +321,16 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     public bool CanAddThreshold => Thresholds.Count < DashboardsPluginInfo.MaxThresholds;
 
 #pragma warning disable CA1822 // Bound per row in XAML (compiled bindings need instance members).
+    public IReadOnlyList<IconOption> Icons => IconOptions;
+
+    public IReadOnlyList<IconOption> ButtonIcons => ButtonIconOptions;
+
+    public IReadOnlyList<Choice<ButtonSize>> SizeChoices => ButtonSizeOptions;
+#pragma warning restore CA1822
+
+#pragma warning disable CA1822 // Bound per row in XAML (compiled bindings need instance members).
     public IReadOnlyList<ColorOption> Colors => ColorOptions;
 
-    public IReadOnlyList<IconOption> Icons => IconOptions;
 
     public IReadOnlyList<Choice<int?>> DecimalChoices => DecimalOptions;
 
@@ -475,6 +504,10 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     partial void OnOnIconChanged(IconOption oldValue, IconOption newValue) => Keep(newValue, oldValue, v => OnIcon = v);
 
+    partial void OnButtonIconChanged(IconOption oldValue, IconOption newValue) => Keep(newValue, oldValue, v => ButtonIcon = v);
+
+    partial void OnButtonSizeChanged(Choice<ButtonSize> oldValue, Choice<ButtonSize> newValue) => Keep(newValue, oldValue, v => ButtonSize = v);
+
     partial void OnOffIconChanged(IconOption oldValue, IconOption newValue) => Keep(newValue, oldValue, v => OffIcon = v);
 
     partial void OnOnColorChanged(ColorOption oldValue, ColorOption newValue) => Keep(newValue, oldValue, v => OnColor = v);
@@ -550,12 +583,14 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             ShowName = ShowName,
             Field = IsValue ? SelectedField?.Value.Name ?? Target.Widget.Field : null,
             Type = IsValue ? SelectedType?.Value ?? FieldType.Automatic : FieldType.Automatic,
-            Kind = IsValue ? SelectedKind?.Value ?? Target.Widget.Kind : WidgetKind.Video,
+            Kind = IsValue ? SelectedKind?.Value ?? Target.Widget.Kind : Target.Widget.Kind,
             IconSize = Math.Clamp(IconSize, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare),
             FontSize = Math.Clamp(FontSize, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare),
             LineWidth = Math.Clamp(LineWidth, DashboardsPluginInfo.MinLineWidth, DashboardsPluginInfo.MaxLineWidth),
             Color = Color.Name,
             OnIcon = OnIcon.Key,
+            Icon = IsButton ? ButtonIcon.Key : Target.Widget.Icon,
+            ButtonSize = IsButton ? ButtonSize.Value : Target.Widget.ButtonSize,
             OffIcon = OffIcon.Key,
             OnColor = OnColor.Name,
             OffColor = OffColor.Name,
@@ -570,9 +605,9 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
                 .Select(t => new Threshold(FieldValues.TryNumber(t.ValueText, out var v) ? v : 0, t.Color.Name))
                 .OrderBy(t => t.Value)],
         };
-        if (DashboardRules.WidgetNameProblem(widget.Name) is not null)
+        if ((IsButton ? DashboardRules.LabelProblem(widget.Name) : DashboardRules.WidgetNameProblem(widget.Name)) is not null)
         {
-            widget = widget with { Name = Target.Widget.Name };
+            widget = widget with { Name = Target.Widget.Name }; // the field shows the error; the widget keeps its last good name
         }
 
         Target.Update(widget);
@@ -598,6 +633,11 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     /// <summary>"Temperature · 10.0.0.48"; a server event just the field.</summary>
     private string DefaultName()
     {
+        if (IsButton)
+        {
+            return string.Empty; // the label is the user's
+        }
+
         if (IsVideo)
         {
             return Target.Device?.Address ?? string.Empty;
@@ -636,6 +676,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         WidgetKind.Number => "Number",
         WidgetKind.Gauge => "Gauge",
         WidgetKind.Video => "Live video",
+        WidgetKind.Button => "Button",
         _ => "Text",
     };
 }

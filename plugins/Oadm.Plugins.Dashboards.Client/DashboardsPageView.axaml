@@ -113,6 +113,10 @@
                       Command="{Binding $parent[UserControl].((vm:DashboardsPageViewModel)DataContext).AddCamerasCommand}">
                 <ui:IconLabel Icon="{StaticResource Icon.video}" Text="Add cameras" />
               </Button>
+              <Button Classes="secondary" VerticalAlignment="Top" ToolTip.Tip="A button that runs event rules"
+                      Command="{Binding $parent[UserControl].((vm:DashboardsPageViewModel)DataContext).AddButtonCommand}">
+                <ui:IconLabel Icon="{StaticResource Icon.zap}" Text="Add button" />
+              </Button>
             </StackPanel>
 
             <ScrollViewer Grid.Column="2" Margin="8,0,0,0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" VerticalAlignment="Top">

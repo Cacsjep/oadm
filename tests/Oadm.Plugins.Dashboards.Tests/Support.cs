@@ -210,6 +210,7 @@ internal sealed class PluginHost : IDisposable
         ctx.Events.Returns(Events);
         ctx.Logger.Returns(NullLogger.Instance);
         ctx.EventSubscriptions.Returns(withEvents ? Feed : null);
+        ctx.EventPublisher.Returns(Publisher);
         Plugin = new DashboardsPlugin(Time, maxKeys);
         Plugin.StartAsync(ctx, CancellationToken.None).GetAwaiter().GetResult();
     }
@@ -222,6 +223,9 @@ internal sealed class PluginHost : IDisposable
     public ICorePluginContext Context { get; }
 
     public FakeEventSubscriptions Feed { get; } = new();
+
+    /// <summary>The event rules: the events the buttons fire and the types an enabled rule uses.</summary>
+    public FakePublisher Publisher { get; } = new();
 
     public MemorySettings Settings { get; } = new();
 
@@ -395,4 +399,25 @@ internal sealed class FakeVideo(LiveVideoPlace place) : ILiveVideo
     }
 
     public void Dispose() => IsDisposed = true;
+}
+
+/// <summary>The event rules as a source sees them: the fired events, and the types enabled rules use.</summary>
+internal sealed class FakePublisher : IEventPublisher
+{
+    public List<(string TypeId, Guid? DeviceId, IReadOnlyDictionary<string, string> Data)> Fired { get; } = [];
+
+    /// <summary>Types an enabled rule uses.</summary>
+    public HashSet<string> Rules { get; } = [];
+
+    public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null) => throw new NotSupportedException();
+
+    public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null) =>
+        Fired.Add((typeId, deviceId, data ?? new Dictionary<string, string>()));
+
+    public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) => throw new NotSupportedException();
+
+    /// <summary>Dashboards subscribes to every event: watched is always true, only a rule counts as used.</summary>
+    public bool IsWatched(string typeId) => true;
+
+    public bool IsUsedByRule(string typeId) => Rules.Contains(typeId);
 }

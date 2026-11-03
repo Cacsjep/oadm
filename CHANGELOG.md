@@ -7,6 +7,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## Unreleased
 
+### Added
+
+- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light.
+
 ### Changed
 
 - Event rules: events are chosen from a tree with search (Devices, Certificates, Sites), so an event is quick to find.

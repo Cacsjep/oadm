@@ -17,9 +17,10 @@ namespace Oadm.Plugins.Dashboards;
 /// second each. It never talks to a device. Device groups (docs/spec/device-scope.md, Shared objects): every dashboard
 /// belongs to the device scope of the user who made it (<see cref="Dashboard.Owner"/>); users of a group see and change only
 /// their group's dashboards with the group's devices, get only the events of their devices and sites, and only the values
-/// their own page watches.
+/// their own page watches. Every Button widget is an event of the event rules (<see cref="IDynamicEventSource"/>): a press
+/// fires it; the button never touches a device.
 /// </summary>
-public sealed class DashboardsPlugin : ICorePlugin, IDisposable
+public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDisposable
 {
     private const string DashboardsKey = "dashboards";
 
@@ -63,6 +64,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     /// <summary>What each group sees (<see cref="Reach"/>), built again only when the group's devices change.</summary>
     private ViewerScopes? _reaches;
     private List<Dashboard>? _dashboards;
+    private IReadOnlyList<EventTypeInfo> _buttonTypes = [];
     private bool _catalogDirty;
     private DateTimeOffset _catalogSent = DateTimeOffset.MinValue;
     private int _ticking;
@@ -88,29 +90,79 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 
-    /// <summary>"show" comes automatically (Viewer too, a monitoring page); changing dashboards is a right of its own.</summary>
+    /// <summary>
+    /// "show" comes automatically (Viewer too, a monitoring page); changing dashboards and pressing their buttons are rights
+    /// of their own (Operator yes, Viewer no).
+    /// </summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
         new(DashboardsPluginInfo.ManageKey, "Change dashboards", "Create, change and delete the dashboards of the Dashboards page."),
+        new(DashboardsPluginInfo.PressKey, "Press dashboard buttons", "Press the buttons of the dashboards, which run event rules."),
     ];
 
     public string? RequiredPermission(string method) => method switch
     {
         DashboardsMethods.List or DashboardsMethods.Catalog or DashboardsMethods.Devices or DashboardsMethods.Watch or DashboardsMethods.Unwatch => PermissionKeys.Show,
         DashboardsMethods.Save or DashboardsMethods.Delete => DashboardsPluginInfo.ManageKey,
+        DashboardsMethods.Press => DashboardsPluginInfo.PressKey,
         _ => null,
     };
 
-    public bool IsAudited(string method) => DashboardsMethods.IsChange(method);
+    /// <summary>Saves, deletes and every press of a button.</summary>
+    public bool IsAudited(string method) => DashboardsMethods.IsAudited(method);
+
+    /// <summary>
+    /// The audit entry of a press names the button and its dashboard ("Pressed Open gate on Gate house"); the other methods,
+    /// and a press whose ids are unknown, keep the method name.
+    /// </summary>
+    public string? AuditDetail(string method, string? payloadJson)
+    {
+        if (method != DashboardsMethods.Press || _dashboards is not { } dashboards)
+        {
+            return null;
+        }
+
+        PressRequest? request;
+        try
+        {
+            request = JsonSerializer.Deserialize<PressRequest>(payloadJson ?? "null", DashboardsPluginInfo.Json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+
+        var dashboard = request is null ? null : dashboards.Find(d => d.Id == request.DashboardId);
+        return dashboard?.Widgets.FirstOrDefault(w => w.Id == request!.WidgetId) is { IsButton: true } button
+            ? DashboardTexts.Pressed(button.Name, dashboard.Name)
+            : null;
+    }
+
+    /// <summary>One stateless server event per Button widget of every stored dashboard (<see cref="ButtonTypesOf"/>).</summary>
+    public IReadOnlyList<EventTypeInfo> EventTypes => Volatile.Read(ref _buttonTypes);
+
+    /// <summary>Raised when a save or delete added, renamed or removed buttons, and once at start.</summary>
+    public event EventHandler? EventTypesChanged;
 
     /// <summary>The values in memory (tests).</summary>
     internal ValueStore Values => _values;
 
-    public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
+    public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         _ctx = ctx;
         _dashboards = null;
+        await _storeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            SetButtonTypes(await LoadAsync(ct).ConfigureAwait(false), always: true); // the types are read before the start: the buttons follow now
+            _dashboards = null; // read again on first use, like before the buttons
+        }
+        finally
+        {
+            _storeGate.Release();
+        }
+
         _reaches = new ViewerScopes(ctx.DeviceScopes, _time);
         _subscriptions = ctx.EventSubscriptions;
         if (_subscriptions is not null)
@@ -120,7 +172,6 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         }
 
         _timer = _time.CreateTimer(_ => _ = TickAsync(), null, DashboardsPluginInfo.PushInterval, DashboardsPluginInfo.PushInterval);
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken ct)
@@ -193,6 +244,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
             case DashboardsMethods.Unwatch:
                 Unwatch(caller, Read<UnwatchRequest>(payloadJson).WatchId);
                 return null;
+            case DashboardsMethods.Press:
+                return Serialize(await PressAsync(caller, Read<PressRequest>(payloadJson), ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
@@ -380,6 +433,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         // Once the write started it finishes: a cancelled caller never leaves the cache and the stored list apart.
         await ctx.Settings.SetAsync(DashboardsKey, JsonSerializer.Serialize(dashboards, DashboardsPluginInfo.Json), CancellationToken.None).ConfigureAwait(false);
         _dashboards = dashboards;
+        SetButtonTypes(dashboards, always: false);
         if (ctx.Events is not { } events)
         {
             return;
@@ -403,10 +457,101 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
     private static IEnumerable<Dashboard> Sorted(IEnumerable<Dashboard> dashboards) =>
         dashboards.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase);
 
+    // ------------------------------------------------------------------ buttons
+
+    /// <summary>Presses a button (tests: a user with all devices).</summary>
+    internal Task<PressReply> PressAsync(PressRequest request, CancellationToken ct) => PressAsync(System, request, ct);
+
+    /// <summary>
+    /// A button was pressed: its event goes to the event rules with who pressed it, the dashboard and the label. The button
+    /// must exist on a dashboard the caller sees (a group user: the group's dashboards). The answer says whether an enabled
+    /// rule uses the event. Nothing here touches a device.
+    /// </summary>
+    internal async Task<PressReply> PressAsync(ICallContext caller, PressRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(request);
+        List<Dashboard> dashboards;
+        await _storeGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            dashboards = await LoadAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _storeGate.Release();
+        }
+
+        var dashboard = dashboards.Find(d => d.Id == request.DashboardId && OwnerScope.Sees(caller, d.Owner));
+        if (dashboard?.Widgets.FirstOrDefault(w => w.Id == request.WidgetId) is not { IsButton: true } button)
+        {
+            throw new ArgumentException(DashboardRules.ButtonGone);
+        }
+
+        if (Context.EventPublisher is not { } publisher)
+        {
+            throw new InvalidOperationException(DashboardRules.NoEventRules);
+        }
+
+        var typeId = DashboardsPluginInfo.ButtonTypeId(dashboard.Id, button.Id);
+        publisher.Fire(typeId, null, new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [DashboardsPluginInfo.UserField] = caller.UserName,
+            [DashboardsPluginInfo.DashboardField] = dashboard.Name,
+            [DashboardsPluginInfo.ButtonField] = button.Name,
+        });
+        Context.Logger.LogButtonPressed(button.Name, dashboard.Name, caller.UserName);
+        return new PressReply(publisher.IsUsedByRule(typeId));
+    }
+
+    /// <summary>
+    /// The event types of the buttons: one stateless server event per Button widget, named by its label, in the folders
+    /// Dashboards / &lt;dashboard name&gt;, owned by the dashboard's owner.
+    /// </summary>
+    internal static List<EventTypeInfo> ButtonTypesOf(IEnumerable<Dashboard> dashboards) =>
+    [
+        .. dashboards.SelectMany(d => d.Widgets.Where(w => w.IsButton).Select(w =>
+            new EventTypeInfo(DashboardsPluginInfo.ButtonTypeId(d.Id, w.Id), w.Name, DashboardsPluginInfo.ButtonGroup, EventKind.Stateless, EventScope.Server, ButtonFields)
+            {
+                Description = "Someone pressed this button on the dashboard.",
+                Path = [DashboardsPluginInfo.ButtonGroup, d.Name],
+                OwnerScopeKey = d.Owner ?? ICallContext.AllDevicesScopeKey,
+            })),
+    ];
+
+    private static readonly IReadOnlyList<EventField> ButtonFields =
+    [
+        new(DashboardsPluginInfo.UserField, "Pressed by"),
+        new(DashboardsPluginInfo.DashboardField, "Dashboard") { Filter = false },
+        new(DashboardsPluginInfo.ButtonField, "Button") { Filter = false },
+    ];
+
+    /// <summary>The buttons' types follow the stored dashboards; the host is told when a button came, went or was renamed.</summary>
+    private void SetButtonTypes(IEnumerable<Dashboard> dashboards, bool always)
+    {
+        var next = ButtonTypesOf(dashboards);
+        var before = Volatile.Read(ref _buttonTypes);
+        var same = next.Count == before.Count && next.Zip(before).All(p => p.First.Id == p.Second.Id && p.First.DisplayName == p.Second.DisplayName
+            && p.First.Folders.SequenceEqual(p.Second.Folders) && p.First.OwnerScopeKey == p.Second.OwnerScopeKey);
+        Volatile.Write(ref _buttonTypes, next);
+        if (always || !same)
+        {
+            EventTypesChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The plugin's own events (its buttons): never values of a dashboard.</summary>
+    private static bool IsOwn(string typeId) => typeId.StartsWith(DashboardsPluginInfo.ButtonTypePrefix, StringComparison.Ordinal);
+
     // ------------------------------------------------------------------ events and values
 
     private void OnEvent(PublishedEvent published)
     {
+        if (IsOwn(published.TypeId))
+        {
+            return; // a button's press is no value to show
+        }
+
         var newField = published.Data.Keys.Any(k => !_values.HasField(published.TypeId, k));
         var key = _values.Apply(published);
         if (published.DeviceId is null && SiteOf(published.TypeId) is { } site)
@@ -640,9 +785,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDisposable
         foreach (var type in Types().Values)
         {
             var info = type.Info;
-            if (reach is not null && !reach.Sees(type))
+            if (type.SourceId == DashboardsPluginInfo.PluginId || IsOwn(info.Id) || (reach is not null && !reach.Sees(type)))
             {
-                continue;
+                continue; // the buttons' own events are no values; a group user sees only the group's events
             }
 
             var declared = info.DataFields.ToDictionary(f => f.Name, StringComparer.Ordinal);
@@ -1237,6 +1382,9 @@ public static class DashboardTexts
 
     public const string EmptyDashboard = "Drag an event from the left onto the grid, or click it. Add cameras adds live video.";
 
+    /// <summary>The label of a new button.</summary>
+    public const string NewButton = "Button";
+
     public const string NoEvents = "No events with values yet.";
 
     public const string NotAllowed = "Your role does not allow live view.";
@@ -1257,6 +1405,9 @@ public static class DashboardTexts
 
     public static string SourceOff(string source) => source + " is turned off";
 
+    /// <summary>The audit entry of a press: "Pressed Open gate on Gate house".</summary>
+    public static string Pressed(string button, string dashboard) => "Pressed " + button + " on " + dashboard;
+
     public static string LoadFailed(string reason) => "The dashboards could not be read: " + reason;
 
     public static string DeleteFailed(string reason) => "The dashboard could not be deleted: " + reason;
@@ -1272,4 +1423,7 @@ internal static partial class DashboardsLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Dashboard values could not be sent to the pages")]
     public static partial void LogPushFailed(this ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dashboard button {Button} on {Dashboard} pressed by {User}")]
+    public static partial void LogButtonPressed(this ILogger logger, string button, string dashboard, string user);
 }

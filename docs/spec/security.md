@@ -124,7 +124,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   for a plugin without a page) and Admin methods "manage" (automatic for a plugin that declares nothing but answers
   `RequiredRole` itself). Anything else, and a plugin that throws, is Administrator only. `PluginService.Watch` needs
   "show"; `ListCorePlugins` leaves out pages the role may not show. Calls where `ICorePlugin.IsAudited(method)` (DIM: the
-  Admin methods) are audited as "Plugin action" (target the plugin, detail the method); VAPIX Commander `tryRequest`
+  Admin methods) are audited as "Plugin action" (target the plugin, detail the method, or `ICorePlugin.AuditDetail`
+  when the plugin names what the call did, SDK 0.10.0); VAPIX Commander `tryRequest`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
   starts), and so does a run a core plugin starts through `call.Tasks` of the user's call or job (`TaskRunPermissions`, the

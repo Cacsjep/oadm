@@ -89,6 +89,23 @@ public sealed class EventSubscriptionTests
     }
 
     [Fact]
+    public async Task OnlyAnEnabledRuleCountsAsUsedByARule()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        using var subscription = rig.Engine.SubscriptionsFor("test.dashboards").Subscribe(_ => { });
+        Assert.True(rig.Publisher.IsWatched(EventRulesRig.Pulse));
+        Assert.False(rig.Publisher.IsUsedByRule(EventRulesRig.Pulse)); // a subscription is no rule
+
+        var rule = await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, rig.WithoutDevice()));
+        Assert.True(rig.Publisher.IsUsedByRule(EventRulesRig.Pulse));
+        Assert.False(rig.Publisher.IsUsedByRule(EventRulesRig.Blur));
+
+        rule.Enabled = false;
+        await rig.SaveAsync(rule);
+        Assert.False(rig.Publisher.IsUsedByRule(EventRulesRig.Pulse));
+    }
+
+    [Fact]
     public async Task AnEndedSubscriptionReceivesNothingMore()
     {
         await using var rig = await EventRulesRig.StartAsync();

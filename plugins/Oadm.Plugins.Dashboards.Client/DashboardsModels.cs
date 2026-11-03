@@ -70,12 +70,14 @@ public sealed class EventListItem
 /// <summary>
 /// One widget of an open dashboard: its place in the grid, its settings and what it shows now. A value widget draws a
 /// <see cref="WidgetView"/>; a video widget is the host's live video component (none without it or the "Live view"
-/// right). A removed device keeps its place and says so.
+/// right); a button a <see cref="ButtonWidgetView"/>. A removed device keeps its place and says so.
 /// </summary>
 public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, IDisposable
 {
     private readonly DashboardTab _owner;
     private readonly WidgetView? _view;
+    private readonly ButtonWidgetView? _button;
+    private int _pressCount;
 
     internal WidgetViewModel(DashboardTab owner, Widget widget, IDeviceInfo? device)
     {
@@ -87,7 +89,54 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
             _view = new WidgetView();
             _view.Show(widget, Display);
         }
+        else if (widget.IsButton)
+        {
+            _button = new ButtonWidgetView { Command = PressCommand };
+            _button.Show(widget, owner.IsEditing, owner.MayPress, null, false);
+        }
     }
+
+    /// <summary>The answer of the last press below the button ("Sent", "No event rule uses this button.", a failure); null when none shows.</summary>
+    [ObservableProperty]
+    public partial string? PressNote { get; private set; }
+
+    /// <summary>The last press failed (the note is an error).</summary>
+    [ObservableProperty]
+    public partial bool PressFailed { get; private set; }
+
+    /// <summary>
+    /// A press of a button (not while editing): the server fires its event. No lock after a press: the rule's Dead time and
+    /// Max per minute handle repeats.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task PressAsync()
+    {
+        if (!Widget.IsButton || _owner.IsEditing || !_owner.MayPress)
+        {
+            return;
+        }
+
+        var press = ++_pressCount;
+        var (note, failed) = await _owner.PressAsync(this).ConfigureAwait(true);
+        if (press != _pressCount)
+        {
+            return; // a newer press answers
+        }
+
+        PressNote = note;
+        PressFailed = failed;
+        Redraw();
+        await _owner.WaitNoteAsync().ConfigureAwait(true);
+        if (press == _pressCount)
+        {
+            PressNote = null;
+            PressFailed = false;
+            Redraw();
+        }
+    }
+
+    /// <summary>The button view (tests).</summary>
+    internal ButtonWidgetView? ButtonView => _button;
 
     /// <summary>The settings; every change of the panel replaces it.</summary>
     public Widget Widget { get; private set; }
@@ -126,11 +175,12 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
 
     /// <summary>The name in the edit frame: the widget's name, else the device's address or the kind.</summary>
     public string? Title => !string.IsNullOrWhiteSpace(Widget.Name) ? Widget.Name
-        : Device?.Address ?? (Widget.Kind == WidgetKind.Video ? "Live video" : "Widget");
+        : Device?.Address ?? (Widget.Kind == WidgetKind.Video ? "Live video" : Widget.IsButton ? "Button" : "Widget");
 
-    /// <summary>The widget itself, or the live video.</summary>
+    /// <summary>The widget itself, the button, or the live video.</summary>
     public Control? Content => IsMissing ? null
         : Widget.Kind == WidgetKind.Video ? Video?.View
+        : Widget.IsButton ? _button
         : _view;
 
     /// <summary>A removed device, or the reason a video widget shows no picture.</summary>
@@ -158,8 +208,8 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
         }
     }
 
-    /// <summary>Value widgets are transparent on the card; video keeps the dark video background.</summary>
-    string? ITileGridItem.FrameClass => Widget.IsValue ? "valueTile" : null;
+    /// <summary>Value widgets and buttons are transparent on the card; video keeps the dark video background.</summary>
+    string? ITileGridItem.FrameClass => Widget.Kind != WidgetKind.Video ? "valueTile" : null;
 
     /// <summary>New settings (the panel, a move): the grid and the widget redraw.</summary>
     internal void Update(Widget widget)
@@ -206,7 +256,11 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
     }
 
     /// <summary>Draws the widget again; while editing without its name (the edit frame shows it).</summary>
-    internal void Redraw() => _view?.Show(Widget, Display, showName: !_owner.IsEditing);
+    internal void Redraw()
+    {
+        _view?.Show(Widget, Display, showName: !_owner.IsEditing);
+        _button?.Show(Widget, _owner.IsEditing, _owner.MayPress, PressNote, PressFailed);
+    }
 
     public void Dispose()
     {
@@ -349,6 +403,15 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     /// <summary>Why video widgets show no picture; null when they can.</summary>
     internal string? PictureProblem => _owner.PictureProblem.Length > 0 ? _owner.PictureProblem : null;
 
+    /// <summary>"Press dashboard buttons": the buttons can be pressed.</summary>
+    internal bool MayPress => _owner.MayPress;
+
+    /// <summary>A press of a button of this (saved) dashboard: the note to show and whether it failed.</summary>
+    internal Task<(string Note, bool Failed)> PressAsync(WidgetViewModel widget) => _owner.PressAsync(this, widget);
+
+    /// <summary>How long the answer of a press stays below the button.</summary>
+    internal Task WaitNoteAsync() => _owner.WaitNoteAsync();
+
     /// <summary>The grid moved, added or removed a widget: the view redraws.</summary>
     public event EventHandler? LayoutChanged;
 
@@ -433,6 +496,55 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
         }
 
         return added.Count;
+    }
+
+    /// <summary>
+    /// Add button (while editing): a button "Button" of 4 x 2 cells (smaller where the grid is full, at least 2 x 2) in the
+    /// first free place, selected for its panel. False and the reason below the toolbar at 20 buttons, 50 widgets or no room.
+    /// </summary>
+    public bool AddButton()
+    {
+        if (Widgets.Count(w => w.Widget.IsButton) >= DashboardsPluginInfo.MaxButtons)
+        {
+            Error = DashboardRules.TooManyButtons;
+            return false;
+        }
+
+        if (Widgets.Count >= DashboardsPluginInfo.MaxWidgets)
+        {
+            Error = DashboardRules.TooManyWidgets;
+            return false;
+        }
+
+        var min = DashboardsPluginInfo.Layout.MinTileSize;
+        TileRect? place = null;
+        for (var width = DashboardsPluginInfo.ButtonWidth; width >= min && place is null; width--)
+        {
+            place = DashboardsPluginInfo.Layout.PlaceSized(Rects(), width, Math.Min(DashboardsPluginInfo.ButtonHeight, width));
+        }
+
+        if (place is not { } rect)
+        {
+            Error = DashboardRules.NoRoom;
+            return false;
+        }
+
+        Error = null;
+        var model = _owner.CreateWidget(this, new Widget
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Kind = WidgetKind.Button,
+            X = rect.X,
+            Y = rect.Y,
+            Width = rect.Width,
+            Height = rect.Height,
+            Name = DashboardTexts.NewButton,
+            Color = WidgetColors.ButtonDefault,
+        });
+        Widgets.Add(model);
+        Changed();
+        Select(model);
+        return true;
     }
 
     /// <summary>The first free square of <paramref name="size"/> cells, else a smaller one; null when nothing is free.</summary>

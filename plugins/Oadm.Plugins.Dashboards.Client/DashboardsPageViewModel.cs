@@ -23,7 +23,11 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 {
     private static readonly LiveVideoPlace TilePlace = new() { ControlsOpen = false, FullscreenControlsOpen = true };
 
+    /// <summary>How long the answer of a press stays below the button.</summary>
+    internal static readonly TimeSpan NoteTime = TimeSpan.FromSeconds(3);
+
     private readonly ICorePluginClientContext _ctx;
+    private readonly TimeProvider _time;
     private readonly CancellationTokenSource _life = new();
     private readonly SemaphoreSlim _watchGate = new(1, 1);
     private readonly string _watchId = Guid.NewGuid().ToString("N");
@@ -36,9 +40,17 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     private bool _disposed;
 
     public DashboardsPageViewModel(ICorePluginClientContext ctx)
+        : this(ctx, TimeProvider.System)
+    {
+    }
+
+    /// <summary>The page with a clock of its own (tests: how long a press's answer shows).</summary>
+    internal DashboardsPageViewModel(ICorePluginClientContext ctx, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(ctx);
+        ArgumentNullException.ThrowIfNull(time);
         _ctx = ctx;
+        _time = time;
         _ctx.DevicesChanged += OnDevicesChanged;
         _ctx.PermissionsChanged += OnPermissionsChanged;
         _devices = ctx.Devices.ToDictionary(d => d.Id);
@@ -75,7 +87,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTabs), nameof(ShowEmptyState), nameof(IsEditing), nameof(CanEdit))]
-    [NotifyCanExecuteChangedFor(nameof(CloseAllTabsCommand), nameof(SaveDashboardCommand), nameof(CancelEditCommand), nameof(AddCamerasCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CloseAllTabsCommand), nameof(SaveDashboardCommand), nameof(CancelEditCommand), nameof(AddCamerasCommand), nameof(AddButtonCommand))]
     public partial DashboardTab? ActiveTab { get; set; }
 
     [ObservableProperty]
@@ -90,6 +102,9 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     /// <summary>"Change dashboards": New dashboard, Edit, Delete.</summary>
     public bool MayManage => _ctx.Has(PermissionKeys.Of(DashboardsPluginInfo.PluginId, DashboardsPluginInfo.ManageKey));
+
+    /// <summary>"Press dashboard buttons": the buttons of the dashboards can be pressed.</summary>
+    public bool MayPress => _ctx.Has(PermissionKeys.Of(DashboardsPluginInfo.PluginId, DashboardsPluginInfo.PressKey));
 
     /// <summary>"Live view": the pictures of video widgets.</summary>
     public bool MayWatch => _ctx.Has(HostPermissionKeys.DevicesLiveView);
@@ -155,6 +170,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
             SaveDashboardCommand.NotifyCanExecuteChanged();
             CancelEditCommand.NotifyCanExecuteChanged();
             AddCamerasCommand.NotifyCanExecuteChanged();
+            AddButtonCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -243,6 +259,57 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         if (ids is { Count: > 0 })
         {
             tab.AddCameras([.. ids.Select(id => _devices.GetValueOrDefault(id)).OfType<IDeviceInfo>()]);
+        }
+    }
+
+    /// <summary>Add button (while editing): a button in the first free place, its panel open.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddCameras))]
+    private void AddButton()
+    {
+        if (ActiveTab is { IsEditing: true } tab)
+        {
+            tab.AddButton();
+        }
+    }
+
+    /// <summary>
+    /// A press of a button of a saved dashboard: the server fires its event. The answer: "Sent" when an enabled event rule
+    /// uses it, else "No event rule uses this button."; a refusal shows its reason (failed).
+    /// </summary>
+    internal async Task<(string Note, bool Failed)> PressAsync(DashboardTab tab, WidgetViewModel widget)
+    {
+        if (tab.Id is not { } id)
+        {
+            return (DashboardRules.ButtonGone, true);
+        }
+
+        try
+        {
+            var json = await _ctx.InvokeAsync(DashboardsMethods.Press, JsonSerializer.Serialize(new PressRequest(id, widget.Id), DashboardsPluginInfo.Json), _life.Token).ConfigureAwait(true);
+            var reply = JsonSerializer.Deserialize<PressReply>(json ?? "null", DashboardsPluginInfo.Json);
+            return (reply?.UsedByRule == true ? DashboardRules.Sent : DashboardRules.NoRule, false);
+        }
+        catch (OperationCanceledException) when (_life.IsCancellationRequested)
+        {
+            return (string.Empty, false);
+        }
+#pragma warning disable CA1031 // Any failure of the server call is shown below the button.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            return (ServerErrors.Message(ex), true);
+        }
+    }
+
+    /// <summary>The answer of a press shows for <see cref="NoteTime"/> (the page's clock).</summary>
+    internal async Task WaitNoteAsync()
+    {
+        try
+        {
+            await Task.Delay(NoteTime, _time, _life.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -840,6 +907,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         }
 
         OnPropertyChanged(nameof(MayManage));
+        OnPropertyChanged(nameof(MayPress));
         OnPropertyChanged(nameof(MayWatch));
         OnPropertyChanged(nameof(PictureProblem));
         OnPropertyChanged(nameof(NoDashboardsText));
@@ -848,6 +916,10 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         NewDashboardCommand.NotifyCanExecuteChanged();
         EditDashboardCommand.NotifyCanExecuteChanged();
         DeleteDashboardCommand.NotifyCanExecuteChanged();
+        foreach (var button in Tabs.SelectMany(t => t.Widgets).Where(w => w.Widget.IsButton))
+        {
+            button.Redraw(); // enabled or disabled with the reason
+        }
 
         // The pictures follow the "Live view" right: video widgets get or lose their videos.
         if (_mayWatch == MayWatch)

@@ -29,7 +29,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields, the folders
   of the event tree `Path`) and
-  `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`; only queues).
+  `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`, `IsUsedByRule` (SDK 0.10.0: enabled rules only,
+  no subscriptions); only queues).
   `ICorePluginContext.EventSubscriptions` (`IEventSubscriptions.Subscribe(handler)`, `Core.Events.EventSubscription`):
   every event the engine handles (plugins' and built-in) reaches each subscription as `PublishedEvent` (On / Off / Fired,
   values, time), starting with a snapshot of the events that are on; each subscription has its own queue (10,000, oldest
@@ -134,7 +135,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   or tag"). The Rule step is one card in two columns: General with Name and Enabled "Turned on" left, Limits right. The event picker (`EventPicker`, `EventTree`) looks like a select and opens a panel below it: a search
   box, the events as a tree in one virtualized list and the description of the event under the pointer. The folders come
   from the sources (`EventTypeInfo.Path`, else the group): Devices (Selected devices, Any device, Compliance, Device
-  triggers), Certificates (Selected devices, Any device, 802.1X server, EST server), Sites, then any other area; Devices
+  triggers), Certificates (Selected devices, Any device, 802.1X server, EST server), Sites, then any other area (Dashboards
+  with a folder per dashboard for its buttons); Devices
   first, in an area Selected devices and Any device first, else by name; the top folders start open, the chosen event's
   folders open when the panel opens. An event shows without the folder it starts with ("Any device: unreachable" is
   "Unreachable" in Any device); the closed picker shows the folders grey before the name. The search keeps the events

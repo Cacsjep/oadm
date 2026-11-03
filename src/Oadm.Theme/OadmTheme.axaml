@@ -106,6 +106,7 @@
       <SolidColorBrush x:Key="Oadm.TextSecondaryBrush" Color="{StaticResource Oadm.TextSecondaryColor}" />
       <SolidColorBrush x:Key="Oadm.TextDisabledBrush" Color="{StaticResource Oadm.TextDisabledColor}" />
       <SolidColorBrush x:Key="Oadm.TextOnAccentBrush" Color="{StaticResource Oadm.TextOnAccentColor}" />
+      <SolidColorBrush x:Key="Oadm.TextOnLightBrush" Color="{StaticResource Oadm.TextOnLightColor}" />
       <SolidColorBrush x:Key="Oadm.IconBrush" Color="{StaticResource Oadm.IconColor}" />
       <SolidColorBrush x:Key="Oadm.StatusOkBrush" Color="{StaticResource Oadm.StatusOkColor}" />
       <SolidColorBrush x:Key="Oadm.StatusWarningBrush" Color="{StaticResource Oadm.StatusWarningColor}" />
@@ -1872,6 +1873,68 @@
   <Style Selector=":is(Border).dashboardWidget">
     <Setter Property="Padding" Value="10,6" />
     <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <!-- Dashboards: a Button widget, the widget's one main action: a filled button over the whole tile. The fill
+       (Border.dashboardButtonFill) takes the widget's color from WidgetColors with white text and icon like Button.primary,
+       dark text on a light fill (class onLight, chosen by ButtonWidgetView.IsLightFill); the answer of a press shows small
+       at the bottom of the fill (TextBlock.buttonNote) without moving the label. Hover and press lighten the fill, disabled
+       dims it to about 35 % like a disabled primary. -->
+  <Style Selector="Button.dashboardButton">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+  </Style>
+  <Style Selector="Button.dashboardButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.dashboardButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.dashboardButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Button.dashboardButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill">
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnAccentBrush}" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill.onLight TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnLightBrush}" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill.onLight ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextOnLightBrush}" />
+  </Style>
+  <Style Selector="Border.dashboardButtonFill TextBlock.buttonNote">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Button.dashboardButton:pointerover Border.dashboardButtonFill">
+    <Setter Property="Opacity" Value="0.88" />
+  </Style>
+  <Style Selector="Button.dashboardButton:pressed Border.dashboardButtonFill">
+    <Setter Property="Opacity" Value="0.75" />
+  </Style>
+  <Style Selector="Button.dashboardButton:disabled Border.dashboardButtonFill">
+    <Setter Property="Opacity" Value="0.35" />
   </Style>
   <!-- A tile that is no video (a value widget): no video background, it sits on the card -->
   <Style Selector=":is(Panel).tile.valueTile">

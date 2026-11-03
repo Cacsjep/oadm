@@ -551,6 +551,30 @@ public sealed partial class CorePluginHost : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// What the audit entry of an audited page call says (<see cref="ICorePlugin.AuditDetail"/>), else the method. A plugin
+    /// that throws gives the method.
+    /// </summary>
+    public string AuditDetailOf(string pluginId, string method, string? payloadJson)
+    {
+        if (!_registry.TryGetCorePlugin(pluginId, out var registered))
+        {
+            return method;
+        }
+
+        try
+        {
+            return registered.Plugin.AuditDetail(method, payloadJson) is { Length: > 0 } detail ? detail : method;
+        }
+#pragma warning disable CA1031 // The audit entry is written either way; a broken detail falls back to the method.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogInvokeFailed(ex, pluginId, method);
+            return method;
+        }
+    }
+
     /// <summary>The "show" permission of a plugin's page ("oadm.io-monitor:show"), or null for a plugin without a page.</summary>
     public string? ShowPermissionOf(string pluginId)
     {

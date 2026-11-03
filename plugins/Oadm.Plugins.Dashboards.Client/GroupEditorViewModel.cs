@@ -30,7 +30,9 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
         ShowValueSettings = all.All(w => w.IsValue);
         ShowOnOff = all.All(w => w.Kind == WidgetKind.OnOff);
         ShowText = all.All(w => w.Kind is WidgetKind.Text or WidgetKind.Number);
-        ShowColor = all.All(w => w.Kind is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge);
+        ShowColor = all.All(w => w.Kind is WidgetKind.Text or WidgetKind.Number or WidgetKind.Gauge or WidgetKind.Button);
+        ShowButton = all.All(w => w.IsButton);
+        ButtonSize = Same(all, w => (ButtonSize?)w.ButtonSize) is { } size ? WidgetEditorViewModel.ButtonSizeOptions.First(s => s.Value == size) : null;
         ShowNumber = all.All(w => w.Kind is WidgetKind.Number or WidgetKind.Gauge);
         ShowGauge = all.All(w => w.Kind == WidgetKind.Gauge);
         MinText = Same(all, w => (double?)w.Min)?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
@@ -88,6 +90,13 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
     public bool ShowNumber { get; }
 
     public bool ShowGauge { get; }
+
+    /// <summary>Every selected widget is a button: their Size.</summary>
+    public bool ShowButton { get; }
+
+    /// <summary>The size of every selected button; null while they differ ("Mixed").</summary>
+    [ObservableProperty]
+    public partial Choice<ButtonSize>? ButtonSize { get; set; }
 
     /// <summary>Min of every selected gauge; empty while they differ ("Mixed").</summary>
     [ObservableProperty]
@@ -228,6 +237,8 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
     public IReadOnlyList<Choice<int?>> DecimalChoices => WidgetEditorViewModel.DecimalOptions;
 
     public IReadOnlyList<Choice<bool>> YesNoChoices => WidgetEditorViewModel.YesNoOptions;
+
+    public IReadOnlyList<Choice<ButtonSize>> SizeChoices => WidgetEditorViewModel.ButtonSizeOptions;
 #pragma warning restore CA1822
 
     /// <summary>Copies of every selected widget for the chosen devices.</summary>
@@ -266,6 +277,8 @@ public sealed partial class GroupEditorViewModel : ValidatingViewModel
     partial void OnOffColorChanged(ColorOption? value) => Set(value, v => w => w with { OffColor = v.Name });
 
     partial void OnColorChanged(ColorOption? value) => Set(value, v => w => w with { Color = v.Name });
+
+    partial void OnButtonSizeChanged(Choice<ButtonSize>? value) => Set(value, v => w => w with { ButtonSize = v.Value });
 
     partial void OnOnTextChanged(string value) => Each(w => w with { OnText = value.Trim() });
 

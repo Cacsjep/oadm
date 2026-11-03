@@ -121,7 +121,8 @@ public sealed class OldFirmwareEvents : IEventSource
   holds: the operators of a check in a rule, the widget of a dashboard; without it, `Type` `Number` gives a number) and `Filter` (default true; false = a value only: a placeholder, no
   check in the rule dialog, for counts and names that are only for display).
 - **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule or a subscriber uses the type;
-  skip work nobody needs.
+  skip work nobody needs. `IsUsedByRule(type)` (SDK 0.10.0) counts enabled rules only, never subscribers such as
+  Dashboards.
 - **Types that change.** A source whose types the user creates (Device triggers) implements `IDynamicEventSource` and
   raises `EventTypesChanged`.
 

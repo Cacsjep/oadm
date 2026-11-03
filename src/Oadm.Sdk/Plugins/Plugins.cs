@@ -158,6 +158,12 @@ public interface ICorePlugin : IPlugin
     bool IsAudited(string method) => RequiredRole(method) == UserRole.Admin;
 
     /// <summary>
+    /// SDK 0.10.0: what the audit entry of an audited call (<see cref="IsAudited"/>) says instead of the method name, read
+    /// after the call succeeded ("Pressed Open gate on Gate house"); null (the default) = the method. Never a secret.
+    /// </summary>
+    string? AuditDetail(string method, string? payloadJson) => null;
+
+    /// <summary>
     /// Named rights of this plugin for the permission matrix, e.g. VAPIX Commander "send" and "rollout". A plugin with a
     /// page also gets <see cref="PermissionKeys.Show"/> automatically (on for Operator, for Viewer on monitoring and
     /// reporting pages); declare "show" only to change those defaults, its name and text are the host's. Empty (the

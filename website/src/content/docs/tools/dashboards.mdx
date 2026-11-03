@@ -53,6 +53,9 @@ see when it arrived.
    each copy gets its device and its address in the name, in the next free place.
 4. **Add cameras** chooses one or several cameras for live video (up to 16 per dashboard); they share the free space.
    Choose a camera's channel with the buttons on the picture.
+   **Add button** adds a button. Give it a **Label** and, if you want, an **Icon**, a **Color** and a **Size** (Small by default, Medium or Large
+   in the same space). See
+   [Buttons](#buttons).
 5. Drag a widget to move it, drag one of its edges or corners to resize it, and click its X to remove it. Click a widget
    to change its settings. Icons and text grow with the widget.
 6. To change several widgets at once, drag over empty cells to select every widget the frame touches, Ctrl+click to add
@@ -62,7 +65,21 @@ see when it arrived.
    shows **Mixed** until you change it. The icons at the top copy or remove them all.
 7. Enter a name and click **Save**. **Cancel** throws your changes away.
 
-A dashboard holds up to 50 widgets, of them up to 16 live videos.
+A dashboard holds up to 50 widgets, of them up to 16 live videos and 20 buttons.
+
+## Buttons
+
+A button runs your [event rules](../event-rules/), for example to open a gate, switch a light or sound a siren.
+Each button is an event of its own: in the rule's **When**, choose it under **Dashboards** and the dashboard's name, then
+add the action under **Then**, such as **Set output**. The event carries who pressed the button, so a rule can check
+**Pressed by**.
+
+Click the button to press it. On the button you see **Sent**, or **No event rule uses this button.** when no turned on rule
+uses it yet. Pressing again runs the rule again; use the rule's **Dead time** or **Max per minute** to limit repeats.
+While you edit the dashboard, a click selects the button instead.
+
+Pressing needs the permission **Press dashboard buttons**. Without it the button is greyed out. The audit log shows
+each press with the button and the dashboard.
 
 ## Any device
 
@@ -77,6 +94,7 @@ anything needs attention, a Number widget how many devices. Event rules can use 
   your tab follows.
 - Creating, changing and deleting dashboards needs the permission **Change dashboards** on the
   [Permissions page](../../admin/users/#permissions-page). Viewers only open dashboards. Seeing video needs **Live view**.
+  Pressing buttons needs **Press dashboard buttons** (Operators have it, Viewers do not).
 - OADM keeps the values in memory only. After a server restart, on / off values come back at once; other values show
   **No value yet** until the device sends the event again.
 - A device that was removed from OADM keeps its widget and says so.

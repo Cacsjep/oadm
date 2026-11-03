@@ -74,6 +74,9 @@
       <ComboBox ItemsSource="{Binding Colors}" SelectedItem="{Binding Color}" PlaceholderText="Mixed" ItemTemplate="{StaticResource DashboardColorTemplate}" />
     </ui:FormField>
 
+    <ui:FormField Classes="wide" Label="Size" IsVisible="{Binding ShowButton}">
+      <ComboBox ItemsSource="{Binding SizeChoices}" SelectedItem="{Binding ButtonSize}" PlaceholderText="Mixed" />
+    </ui:FormField>
     <StackPanel Spacing="10" IsVisible="{Binding ShowGauge}">
       <ui:FormField Classes="wide" Label="Min">
         <TextBox Text="{Binding MinText}" PlaceholderText="{Binding MinWatermark}" />

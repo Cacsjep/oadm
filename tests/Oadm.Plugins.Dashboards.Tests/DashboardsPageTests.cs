@@ -16,7 +16,7 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Dashboards.Tests;
 
 /// <summary>The page: what a widget shows, the empty states, editing with the widget panel, live values, roles, screenshots.</summary>
-public sealed class DashboardsPageTests
+public sealed partial class DashboardsPageTests
 {
     /// <summary>The page runs on the UI thread like in the client.</summary>
     private static readonly HeadlessUnitTestSession Ui = HeadlessEntry.Session;

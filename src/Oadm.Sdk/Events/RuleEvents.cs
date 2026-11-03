@@ -164,4 +164,10 @@ public interface IEventPublisher
 
     /// <summary>Whether an enabled rule or an event subscription uses the type: a source may skip work nobody needs.</summary>
     bool IsWatched(string typeId);
+
+    /// <summary>
+    /// SDK 0.10.0: whether an enabled event rule uses the type; <see cref="IsWatched"/> is also true for subscriptions such
+    /// as Dashboards.
+    /// </summary>
+    bool IsUsedByRule(string typeId) => IsWatched(typeId);
 }

@@ -355,15 +355,17 @@ public sealed class PluginGrpcService(PluginRegistry registry, CorePluginHost ho
         var caller = await CallerAsync(context).ConfigureAwait(false);
         try
         {
+            var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
             var result = await host.InvokeAsync(
                 caller,
                 request.PluginId,
                 request.Method,
-                string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
+                payload,
                 context.CancellationToken).ConfigureAwait(false);
             if (access is { Audited: true })
             {
-                await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, request.Method, context.CancellationToken).ConfigureAwait(false);
+                var detail = host.AuditDetailOf(request.PluginId, request.Method, payload); // the plugin's words, else the method
+                await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, detail, context.CancellationToken).ConfigureAwait(false);
             }
 
             return new Proto.InvokeReply { PayloadJson = result ?? string.Empty };

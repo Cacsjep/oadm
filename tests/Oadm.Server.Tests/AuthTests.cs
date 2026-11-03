@@ -166,6 +166,23 @@ public sealed class AuthTests
     }
 
     [Fact]
+    public async Task AnAuditedPluginCallWritesThePluginsDetailInsteadOfTheMethod()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        host.Get<PluginRegistry>().RegisterCorePlugin(new RolePlugin(), new PluginOrigin("tests", "1.0.0", null));
+        await host.Get<RoleStore>().SyncCatalogAsync(PermissionCatalog.Build(host.Get<PluginRegistry>()), CancellationToken.None);
+        await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
+
+        await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.roles", Method = "save", PayloadJson = "\"Gate\"" });
+        await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.roles", Method = "save", PayloadJson = "\"Yard\"" });
+        await host.Plugins.InvokeAsync(new Proto.InvokeRequest { PluginId = "test.roles", Method = "read" }); // not audited
+
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries.Where(e => e.Action == AuditActions.PluginCall).ToList();
+        Assert.Equal(["Saved Gate", "save"], audit.Select(e => e.Detail).Order(StringComparer.Ordinal));
+        Assert.All(audit, e => Assert.Equal(("admin", "Role test"), (e.UserName, e.Target)));
+    }
+
+    [Fact]
     public async Task FirstAdministratorOnlyWhileNoUserExists()
     {
         await using var host = await TestServerHost.StartAsync(createAdmin: false);
@@ -496,6 +513,9 @@ public sealed class AuthTests
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(method);
 
         public UserRole RequiredRole(string method) => method == "save" ? UserRole.Admin : UserRole.Operator;
+
+        /// <summary>A save of "Gate" says so in the audit; any other save keeps the method.</summary>
+        public string? AuditDetail(string method, string? payloadJson) => method == "save" && payloadJson == "\"Gate\"" ? "Saved Gate" : null;
     }
 }
 

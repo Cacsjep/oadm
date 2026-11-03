@@ -129,6 +129,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     /// <summary>Whether an enabled rule uses the event type, or a plugin subscribed to the events.</summary>
     public bool IsWatched(string typeId) => Volatile.Read(ref _subscriptionCount) > 0 || _watched.Contains(typeId);
 
+    /// <summary>Whether an enabled rule uses the event type (subscriptions do not count).</summary>
+    public bool IsUsedByRule(string typeId) => _watched.Contains(typeId);
+
     /// <summary>The event subscriptions handed to a core plugin (<c>ICorePluginContext.EventSubscriptions</c>).</summary>
     public IEventSubscriptions SubscriptionsFor(string owner)
     {
@@ -1345,6 +1348,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
             engine.Enqueue(new ReplaceCommand(sourceId, typeId, [.. onDevices ?? []]));
 
         public bool IsWatched(string typeId) => engine.IsWatched(typeId);
+
+        public bool IsUsedByRule(string typeId) => engine.IsUsedByRule(typeId);
     }
 
     private sealed class Subscriptions(RuleEngine engine, string owner) : IEventSubscriptions

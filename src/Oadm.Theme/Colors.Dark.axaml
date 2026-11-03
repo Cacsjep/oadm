@@ -43,6 +43,8 @@
   <Color x:Key="Oadm.TextSecondaryColor">#9A9A9A</Color>
   <Color x:Key="Oadm.TextDisabledColor">#5E5E5E</Color>
   <Color x:Key="Oadm.TextOnAccentColor">#FFFFFF</Color>
+  <!-- Text on a light fill (a dashboard button in a light color), the same in both appearances -->
+  <Color x:Key="Oadm.TextOnLightColor">#1A1A1A</Color>
   <Color x:Key="Oadm.IconColor">#CFCFCF</Color>
   <Color x:Key="Oadm.StatusOkColor">#3FB27F</Color>
   <Color x:Key="Oadm.StatusWarningColor">#E0A43A</Color>

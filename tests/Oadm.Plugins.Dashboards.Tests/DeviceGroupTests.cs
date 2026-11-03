@@ -42,6 +42,7 @@ public sealed class DeviceGroupTests
             .WithoutDevices(DashboardsMethods.Catalog, "the events of the caller's devices and sites")
             .WithoutDevices(DashboardsMethods.Devices, "the devices of an event, filtered to the caller's devices", """{"typeId":"t"}""")
             .WithoutDevices(DashboardsMethods.Unwatch, "only a watch of the caller's own session", """{"watchId":"page"}""")
+            .WithoutDevices(DashboardsMethods.Press, "only a button of a dashboard of the caller's own group, never a device", """{"dashboardId":"none","widgetId":"none"}""")
             .RunAsync();
     }
 
