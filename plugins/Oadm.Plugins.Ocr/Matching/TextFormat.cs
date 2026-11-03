@@ -23,35 +23,6 @@ public sealed class TextFormat
     /// <summary>The format as written.</summary>
     public string Pattern { get; }
 
-    /// <summary>
-    /// The page's "Use as format" (docs/spec/ocr.md "Page"): a read text turned into a format. Every digit becomes <c>#</c>,
-    /// every letter (umlauts too) <c>A</c>, everything else stays as written; line breaks and runs of spaces become one
-    /// space, the ends are trimmed. "MSKU 123456 7" gives "AAAA ###### #", "4/12" "#/##", "DECAF-FEINATO" "AAAAA-AAAAAAA".
-    /// </summary>
-    public static string FromText(string? text)
-    {
-        var format = new StringBuilder(text?.Length ?? 0);
-        var space = false;
-        foreach (var c in text ?? string.Empty)
-        {
-            if (char.IsWhiteSpace(c) || char.IsControl(c))
-            {
-                space = format.Length > 0;
-                continue;
-            }
-
-            if (space)
-            {
-                format.Append(' ');
-                space = false;
-            }
-
-            format.Append(char.IsDigit(c) ? '#' : char.IsLetter(c) ? 'A' : c);
-        }
-
-        return format.ToString();
-    }
-
     /// <summary>The format starts with <c>AAAU</c>: a container number whose last digit is its ISO 6346 check digit.</summary>
     public bool HasContainerCheckDigit { get; }
 

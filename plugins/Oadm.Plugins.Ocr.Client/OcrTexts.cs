@@ -20,6 +20,9 @@ public static class OcrTexts
 
     public const string NoAreas = "Draw one area around each text you want to read.";
 
+    /// <summary>The tooltip of New in the Areas header.</summary>
+    public const string NewAreaTip = "Draw an area on the video";
+
     public const string NoReading = "No reading yet";
 
     public const string WaitingForPicture = "Waiting for the first picture.";
@@ -34,9 +37,6 @@ public static class OcrTexts
     public const string NotSaved = "Not saved";
 
     public const string NoFormat = "No format";
-
-    /// <summary>The results' link: the read text becomes the area's format.</summary>
-    public const string UseAsFormat = "Use as format";
 
     public const string AnyText = "Any text";
 
@@ -56,9 +56,6 @@ public static class OcrTexts
     /// <summary>A watching reader slower than set: "Watching · 8 fps (reads 5.1)".</summary>
     public static string WatchingReads(int fps, double reads) =>
         string.Create(CultureInfo.InvariantCulture, $"{WatchingAt(fps)} (reads {reads:0.0})");
-
-    /// <summary>"2 of 8".</summary>
-    public static string AreaCount(int count) => string.Create(CultureInfo.InvariantCulture, $"{count} of {OcrLimits.MaxAreas}");
 
     /// <summary>"93 %".</summary>
     public static string Percent(double confidence) =>

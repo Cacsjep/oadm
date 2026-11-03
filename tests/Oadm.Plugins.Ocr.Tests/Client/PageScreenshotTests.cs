@@ -68,9 +68,9 @@ public sealed class PageScreenshotTests
                 Assert.True(fps.IsEffectivelyVisible);
                 Assert.Equal(1, fps.SelectedItem);
                 Assert.Equal(6, fps.ItemCount);
-                var draw = view.FindControl<ToolbarButton>("DrawAreaButton")!;
+                var draw = view.FindControl<ToolbarButton>("NewAreaButton")!;
                 Assert.True(draw.IsEffectivelyVisible);
-                Assert.Equal("Draw area", draw.Text);
+                Assert.Equal("New", draw.Text);
                 Assert.DoesNotContain(view.GetVisualDescendants().OfType<ToolbarButton>(), b => b.Text == "Read now");
 
                 // The runtime stats below Settings: green, the results below the video.
@@ -157,7 +157,7 @@ public sealed class PageScreenshotTests
                 editor.SelectedArea = lane;
                 lane.FormatText = "12";
                 Headless.Pump();
-                view.FindControl<ItemsControl>("AreaList")!.ContainerFromItem(lane)!.BringIntoView();
+                view.FindControl<ListBox>("AreaList")!.ContainerFromItem(lane)!.BringIntoView();
                 Headless.Pump();
                 Assert.Equal("A format needs at least one #, A or *.", lane.ErrorOf(nameof(AreaViewModel.FormatText)));
                 Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "A format needs at least one #, A or *.");

@@ -14,6 +14,7 @@ namespace Oadm.Plugins.Ocr.Client;
 public sealed partial class AreaViewModel : ValidatingViewModel
 {
     private readonly Func<AreaViewModel, string, bool> _nameTaken;
+    private string _keptFormat = string.Empty;
 
     public AreaViewModel(Area area, Func<AreaViewModel, string, bool> nameTaken)
     {
@@ -21,8 +22,10 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         _nameTaken = nameTaken ?? throw new ArgumentNullException(nameof(nameTaken));
         Name = area.Name;
         Box = area.Box;
-        IsFormat = area.Expected.Kind == ExpectedTextKind.Format;
-        FormatText = area.Expected.Format ?? string.Empty;
+        var isFormat = area.Expected.Kind == ExpectedTextKind.Format;
+        _keptFormat = area.Expected.Format ?? string.Empty;
+        FormatText = isFormat ? _keptFormat : string.Empty;
+        IsFormat = isFormat;
         Validation
             .Rule(nameof(Name), NameError)
             .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null);
@@ -40,13 +43,23 @@ public sealed partial class AreaViewModel : ValidatingViewModel
 
     /// <summary>Format instead of Any text.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAnyText))]
+    [NotifyPropertyChangedFor(nameof(Mode), nameof(FormatPlaceholder))]
     public partial bool IsFormat { get; set; }
 
-    public bool IsAnyText
+    /// <summary>The format field's example while Format is chosen; empty for Any text (the field is off then).</summary>
+    public string FormatPlaceholder => IsFormat ? FormatExample : string.Empty;
+
+    /// <summary>The example in the empty format field.</summary>
+    public const string FormatExample = "AAAU ###### #";
+
+    /// <summary>The choices of the area's Mode select.</summary>
+    public static IReadOnlyList<string> Modes { get; } = [OcrTexts.AnyText, OcrTexts.Format];
+
+    /// <summary>The Mode select: <see cref="OcrTexts.AnyText"/> or <see cref="OcrTexts.Format"/>.</summary>
+    public string Mode
     {
-        get => !IsFormat;
-        set => IsFormat = !value;
+        get => IsFormat ? OcrTexts.Format : OcrTexts.AnyText;
+        set => IsFormat = value == OcrTexts.Format;
     }
 
     [ObservableProperty]
@@ -56,6 +69,7 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>The format field's tooltip (no hint line below it: each area is one row).</summary>
     public static string FormatHint => OcrInfo.FormatHint;
 
     /// <summary>The longest name and format (the text boxes' limits).</summary>
@@ -102,6 +116,20 @@ public sealed partial class AreaViewModel : ValidatingViewModel
 
     partial void OnIsFormatChanged(bool value)
     {
+        // Any text: the format field is empty and off; the format typed before comes back with Format.
+        if (value)
+        {
+            if (FormatText.Length == 0)
+            {
+                FormatText = _keptFormat;
+            }
+        }
+        else
+        {
+            _keptFormat = FormatText;
+            FormatText = string.Empty;
+        }
+
         Validation.Validate();
         Changed?.Invoke(this, EventArgs.Empty);
     }

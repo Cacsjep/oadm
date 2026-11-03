@@ -204,8 +204,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     [ObservableProperty]
     public partial AreaViewModel? SelectedArea { get; set; }
 
-    public string AreaCountText => OcrTexts.AreaCount(Areas.Count);
-
     public bool HasAreas => Areas.Count > 0;
 
     /// <summary>
@@ -216,9 +214,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public static string NoAreasText => OcrTexts.NoAreas;
 
-    /// <summary>Draw area is on: the next drag on the live video adds an area.</summary>
+    /// <summary>Drawing (New in the Areas header): the next drag on the live video adds an area.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(DrawAreaCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NewAreaCommand))]
     [NotifyPropertyChangedFor(nameof(ShownLines), nameof(ShowStartHint))]
     public partial bool IsDrawing { get; set; }
 
@@ -232,8 +230,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public bool CanAddArea => MayChange && Areas.Count < OcrLimits.MaxAreas;
 
-    /// <summary>Why Draw area is off (its tooltip).</summary>
-    public string? DrawBlockedReason => Areas.Count >= OcrLimits.MaxAreas ? ReaderRules.TooManyAreas : null;
+    /// <summary>New's tooltip in the Areas header: what it does, or why it is off (8 areas).</summary>
+    public string NewAreaTip => Areas.Count >= OcrLimits.MaxAreas ? ReaderRules.TooManyAreas : OcrTexts.NewAreaTip;
 
     /// <summary>Raised to the overlay: areas, selection or lines changed (it draws again).</summary>
     [ObservableProperty]
@@ -455,7 +453,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     }
 
     [RelayCommand(CanExecute = nameof(CanDraw))]
-    private void DrawArea() => IsDrawing = !IsDrawing;
+    private void NewArea() => IsDrawing = !IsDrawing;
 
     private bool CanDraw() => IsDrawing || CanAddArea;
 
@@ -517,28 +515,6 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         {
             EditArea(area, AreaHandle.Move, dx, dy);
         }
-    }
-
-    /// <summary>Raised after "Use as format": the view selects the area's format field so the user can adjust it.</summary>
-    public event EventHandler<AreaViewModel>? FormatSuggested;
-
-    /// <summary>
-    /// "Use as format" on a result row: the row's text becomes its area's format (<see cref="Matching.TextFormat.FromText"/>),
-    /// the area switches to Format and is selected; the reader is Not saved like after any edit.
-    /// </summary>
-    [RelayCommand]
-    private void UseAsFormat(ResultRow? row)
-    {
-        if (!MayChange || row is not { CanUseAsFormat: true }
-            || Areas.FirstOrDefault(a => string.Equals(a.Name.Trim(), row.Area, StringComparison.OrdinalIgnoreCase)) is not { } area)
-        {
-            return;
-        }
-
-        area.FormatText = Matching.TextFormat.FromText(row.Text);
-        area.IsFormat = true;
-        SelectedArea = area;
-        FormatSuggested?.Invoke(this, area);
     }
 
     [RelayCommand]
@@ -946,7 +922,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             var detail = details?.FirstOrDefault(d => d.Area == area.Area);
             var hasFormat = formats.TryGetValue(area.Area, out var isFormat) && isFormat;
             IImage? cut = cutOuts is not null && cutOuts.TryGetValue(area.Area, out var served) ? served : null;
-            rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null, MayChange));
+            rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null));
         }
 
         Results.ReplaceAll(rows);
@@ -1059,13 +1035,12 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             OnPropertyChanged(nameof(HasResults));
         }
 
-        OnPropertyChanged(nameof(AreaCountText));
         OnPropertyChanged(nameof(HasAreas));
         OnPropertyChanged(nameof(ShowStartHint));
         OnPropertyChanged(nameof(ResultsEmptyText));
         OnPropertyChanged(nameof(CanAddArea));
-        OnPropertyChanged(nameof(DrawBlockedReason));
-        DrawAreaCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(NewAreaTip));
+        NewAreaCommand.NotifyCanExecuteChanged();
         OverlayVersion++;
         UpdateSaveState();
     }
