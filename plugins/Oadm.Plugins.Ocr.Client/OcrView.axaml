@@ -160,7 +160,7 @@
             <!-- The Areas header: the title left, New (it starts drawing on the video) at the right edge. -->
             <StackPanel Grid.Row="1" Spacing="6">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <TextBlock Classes="cardTitle subsection" Text="Areas" VerticalAlignment="Center" />
+                <TextBlock Classes="cardTitle" Text="Areas" VerticalAlignment="Center" />
                 <ui:ToolbarButton Grid.Column="1" x:Name="NewAreaButton" Classes="atEnd" IconKey="add" Text="New"
                                   Command="{Binding NewAreaCommand}" IsVisible="{Binding MayChange}"
                                   ToolTip.Tip="{Binding NewAreaTip}" ToolTip.ShowOnDisabled="True" />
