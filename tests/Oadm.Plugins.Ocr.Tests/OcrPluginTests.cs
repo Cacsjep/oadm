@@ -9,7 +9,7 @@ using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Ocr.Tests;
 
-/// <summary>The skeleton of Text recognition (docs/spec/ocr.md "Build plan", wave 1): manifest, loading, limits, payloads.</summary>
+/// <summary>The plugin as a whole: manifest, loading, limits, payloads (docs/spec/ocr.md).</summary>
 public sealed class OcrPluginTests
 {
     [Fact]

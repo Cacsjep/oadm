@@ -166,7 +166,11 @@ and actions before any plugin call.
 - Large read-only downloads (server reports, logs): `request.Options.Set(VapixRequestOptions.StreamResponse, true)`
   returns the answer after its headers, unbuffered. Read `response.Content.ReadAsStreamAsync(ct)` straight into a file
   (core plugins: `ctx.DataDirectory`), stop at your own size limit and bound the read with your own token (the timeout
-  covers the headers only). Dispose the response. Sample: `ServerReportDownloader` of the System report.
+  covers the headers only). Dispose the response. Sample: `ServerReportDownloader` of the System report. Through a
+  site such an answer holds one of the site's 2 large transfer slots until it is disposed.
+- Live streams that run for hours (an MJPEG stream of pictures): also set `VapixRequestOptions.LiveStream` (SDK 0.10.0),
+  so the stream holds no large transfer slot of a site (AXIS OS upgrades and exports need them), and limit your streams
+  per site yourself. Sample: Text recognition's `VapixFrameSource` (4 per site).
 - `ITaskPluginQuery.QueryAsync` serves the dialog (read-only, 30 s timeout on the server).
   `ITaskQueryContext.Devices` (may be null on other hosts) lists the devices of the user who asks; an address-in-use
   check asks `ITaskQueryContext.ManagedAddressesAsync(addresses, ct)` (every device on the route, none named).

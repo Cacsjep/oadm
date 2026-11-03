@@ -94,8 +94,10 @@ found. Only the first 30 are read. Draw smaller areas.**
 
 When you switch a reader to On action, OADM says once: **Reads only on an action**.
 
-**Frames per second**: 1, 2 or 4 when the CPU reads, also 8, 12 and 15 on a graphics card. Start with 1 or 2. A
-fast-moving text (a truck passing) needs more; a meter needs 1.
+**Frames per second**: 1, 2, 4, 8, 12 or 15. Start with 1 or 2. A fast-moving text (a truck passing) needs more; a meter
+needs 1. The **Recognition** panel tells when the server no longer keeps up.
+
+A rename of the reader or of an area keeps it reading without a break.
 
 ## Formats
 
@@ -124,8 +126,9 @@ The value is always written in the format's layout: with format `AAAU ###### #` 
 - **Several matches** in one area (the same order number on two receipts): the value is the match read most surely; the
   event's **All matches** lists every different match, at most 10.
 - **No match**: the area's value is empty and **Matches format** is No.
-- **Container numbers**: a format that starts with `AAAU` is a container number. Its last digit must be the right check
-  digit, so a misread number never matches. Use exactly `AAAU ###### #`.
+- **Container numbers**: a format that starts with `AAAU ###### #` is a container number. Its 11th character must be
+  the right check digit, so a misread number never matches; OADM never changes a character to make it fit. More may
+  follow, for example the size and type code: `AAAU ###### # 22G1`. `AAAU ######` has no check digit and is not checked.
 
 ### Examples
 
@@ -155,9 +158,9 @@ camera. One event per area and reading, with these values:
 | **Text** | Text | With a format: the match. Without: all lines | `{text}` |
 | **Text read** | Text | All lines, as read, without the format | `{textRead}` |
 | **All matches** | Text | Every different match of the format, separated by a space. Empty without a format | `{allMatches}` |
-| **Number** | Number | The value as a number when it is one, `.` or `,` as the decimal sign (`1234,5` gives `1234.5`). Empty otherwise | `{number}` |
+| **Number** | Number | The value as a number when it is one, `.` or `,` as the decimal sign (`1234,5` gives `1234.5`, `00815` gives `815`; long counters keep every digit). Empty otherwise | `{number}` |
 | **Confidence** | Number | 0 to 100: how sure the reading is, from its least sure character | `{confidence}` |
-| **Matches format** | Yes or no | Yes when the value matches the format. Without a format: yes when text was read | `{matchesFormat}` |
+| **Matches format** | Yes or no | Yes when the value matches the area's format. Always no for **Any text**: to check that text was read, check that **Text** is not empty | `{matchesFormat}` |
 
 Texts hold at most 500 characters. The placeholders work in every text of an action, together with OADM's own ones such
 as `{time}` and `{device}` (see [Placeholders](../event-rules/#placeholders)).
@@ -180,7 +183,9 @@ each of its areas. It works with On action and Watching readers.
 
 - A reader without an area reads nothing; the event log says **The reader has no area. Draw one on the Text recognition
   page.**
-- While the reader is still reading, the action is skipped with **Already reading**. Nothing is queued.
+- A **Watching** reader answers with what it read in the last second, or with the picture it is reading: no second
+  picture is taken.
+- While an **On action** reader is still reading, the action is skipped with **Already reading**. Nothing is queued.
 - The event log lists what each area read.
 
 ## Examples
@@ -198,24 +203,36 @@ each of its areas. It works with On action and Watching readers.
 
 </Steps>
 
-### Read a meter every hour and alert above a value
+### Read the container number when a truck stops at the scale
 
-OADM's rules start from an event; a schedule only limits when a rule may run. For a reading every hour, let the camera
-send an event every hour:
+The camera's AXIS Object Analytics sees the truck; OADM reads the number only then.
 
 <Steps>
 
-1. Create a reader on the meter camera, **On action**. Draw a small area tight around the digits, named `Meter`,
-   **Format** `#####` (or `####.#` with a decimal). **Save**.
-2. On the camera's web page add a recurrence every hour (**System** > **Events** > **Schedules**).
-3. In OADM create a [Device trigger](../device-triggers/) for the camera's recurrence event.
-4. Rule 1: **When** the recurrence event, **Then** **Read text** with the meter reader.
-5. Rule 2: **When** **Text read** of the meter reader, **Add check** **Number** > 5000, **Then** **Send email** or **Send
+1. On the camera, set up an AXIS Object Analytics scenario **Object in area** for vehicles over the scale.
+2. In OADM add the camera's scenario event as a [Device trigger](../device-triggers/).
+3. Create a reader on the camera, **On action**. Draw an area where the number is when a truck stands on the scale, named
+   `Container number`, **Format** `AAAU ###### #`. **Save**.
+4. Rule 1: **When** the scenario's event, **Then** **Read text** with the reader.
+5. Rule 2: **When** **Text read** of the reader, **Add check** **Matches format** is yes, **Then** **Send HTTP request**
+   to your weighing system with `{text}`.
+
+</Steps>
+
+### Read a meter and alert above a value
+
+<Steps>
+
+1. Create a reader on the meter camera, **Watching**, 1 frame per second. Draw a small area tight around the digits,
+   named `Meter`, **Format** `#####` (or `####.#` with a decimal). **Save**.
+2. Rule: **When** **Text read** of the meter reader, **Add check** **Number** > 5000, **Then** **Send email** or **Send
    HTTP request** with `{number}`.
 
 </Steps>
 
-To read on demand instead, put a button on a [dashboard](../dashboards/) that runs rule 1.
+The reader sends **Text read** only when the reading changes, so the rule runs once per new value. A meter that does not
+move costs almost nothing. To read on demand instead, put a button on a [dashboard](../dashboards/) whose rule runs
+**Read text** with the reader.
 
 ### Find an order code on receipts anywhere on the counter
 
@@ -305,13 +322,18 @@ Areas whose picture has not changed cost almost nothing: the reader keeps their 
 | What | At most |
 |---|---|
 | Readers per server | 50 |
-| Watching readers | 20 on the CPU, 50 on a graphics card |
+| Watching readers | 2 per CPU core of the server, at least 8 and at most 50 (8 cores: 16, 24 cores: 48) |
 | Watching readers per [site](../../sites/overview/) | 4 |
 | Areas per reader | 8 |
 | Texts read per picture | 30 |
-| Readers shown live on pages at once | 8 |
+| Readers shown live on pages at once | 8, of them 2 per user |
 
-A reader shown on a page that is not a saved, unchanged watching reader counts as watching while the page shows it.
+A reader shown on a page that is not a saved, unchanged watching reader counts as watching while the page shows it; the
+saved readers come first. The graphics card does not change the limits: the CPU reads every small area.
+
+At a site, the readers' picture streams never hold up AXIS OS upgrades, application installs or exports there.
+
+A reader beyond a limit (for example after a move to a smaller server) reads nothing and shows the limit in the list.
 
 ## Sizing the server
 
@@ -345,7 +367,8 @@ Plan for 75 % of it, where the light turns orange: about **6 pictures per second
 - A larger area costs more: keep areas tight, use a search only where the text moves.
 - A scene that does not change (a meter between two readings, an empty gate) costs about a fifth.
 - On action readers cost only when a rule runs them.
-- At most 20 readers watch on the CPU, whatever its size.
+- At most 2 readers per core watch (16 on 8 cores, 48 on this CPU); whether they keep up at the frames per second you
+  choose is what the light shows.
 
 These are estimates for planning. The **Recognition** panel shows the real load of your server: add readers until the
 light turns orange, then stop or lower the frames per second.
@@ -367,7 +390,7 @@ Measured on an NVIDIA GeForce RTX 5070 Ti with the Ryzen 9 3900X above, Windows:
 frame per second over full HD pictures. The text found is then read on the CPU: plan one full HD search like about 15
 small areas in the CPU table.
 
-On a graphics card up to 50 readers watch, at up to 15 frames per second each.
+A graphics card does not raise the number of watching readers or the frames per second: both follow the CPU.
 
 ## Permissions
 
@@ -375,6 +398,8 @@ On a graphics card up to 50 readers watch, at up to 15 frames per second each.
 |---|---|
 | **View text recognition** | The page, the readers and their results |
 | **Change text readers** | New, Delete, Save, drawing and moving areas, Use the graphics card |
+
+The cut-out of the text found is a piece of the camera's picture: only users with **Live view** see it.
 
 A user limited to a [device group](../../admin/device-groups/) sees only the readers of their group's cameras. Event rules
 are for users with all devices.
@@ -389,11 +414,15 @@ are for users with all devices.
 | A value split or missing on a busy picture | Draw smaller areas; with a large area use a format |
 | **More than 30 texts found. ...** | Draw smaller areas around the texts you need |
 | The reader shows **Not reachable** | The camera is offline or needs a login. Check it on the Devices page |
-| **At most 20 readers can watch at once. ...** | Set another reader to **On action**, or use a graphics card |
+| **At most 16 readers can watch at once. ...** | Set another reader to **On action**, or use a server with more cores |
+| **Unauthorized - HTTP 401 (check the credentials)** at a reader | OADM's account on the camera may not see video: check it on the Devices page |
+| **The camera does not offer this resolution. Choose another one.** | Choose another resolution under **Stream** |
+| **The camera does not offer this video source. Choose another one.** | Choose another video source under **Stream** |
+| **The camera sends no pictures.** | The camera did not start the picture stream within 15 seconds; check it in the live view |
 | **No live results now: OADM already reads as many cameras as it can.** | Close the page on another client or set a reader to On action |
 | Orange or red light | See [Recognition](#recognition) |
 | **Runs on** shows the CPU although the server has a graphics card | Check **Use the graphics card**; on Linux check CUDA and cuDNN (above); the server log says why |
-| **Text recognition is not installed completely. Install the add-on again.** | **Remove** it on the Plugins page, restart the server and **Install** it again |
+| **Text recognition is not installed completely. Install it again on the Plugins page.** | **Remove** it on the Plugins page, restart the server and **Install** it again |
 
 ## Good to know
 
