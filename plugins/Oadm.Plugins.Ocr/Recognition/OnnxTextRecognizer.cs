@@ -25,8 +25,11 @@ public sealed record OcrEngineOptions
     /// <summary>The models on the CPU (tests compare the sizes).</summary>
     internal ModelChoice CpuModels { get; init; } = ModelChoice.Mobile;
 
-    /// <summary>The models on a graphics card and for Accurate.</summary>
+    /// <summary>The models for Accurate; its text finder is the graphics card's for Search.</summary>
     internal ModelChoice AccurateModels { get; init; } = ModelChoice.Server;
+
+    /// <summary>The graphics card's memory cap (<see cref="GpuSessionBudget.MaxBytes"/>; measurements: less).</summary>
+    internal long GpuMaxBytes { get; init; } = GpuSessionBudget.MaxBytes;
 }
 
 /// <summary>
@@ -35,10 +38,12 @@ public sealed record OcrEngineOptions
 /// <see cref="TileSize"/> pixels in overlapping tiles, boxes found twice merged), turns each line level (90 degrees for tall
 /// boxes, the angle model for upside down), scales it to the reader's 48 pixels (small text enlarged, text below
 /// <see cref="MinTextHeight"/> pixels left out), reads it (PP-OCRv5 Latin, CTC) and, with a format, decodes the format's
-/// match with the characters limited per position. On the CPU every model call (a tile, a batch of lines) takes one of
+/// match with the characters limited per position. Every model call on the CPU (a tile, a batch of lines) takes one of
 /// <see cref="OcrLimits.Workers"/> workers with sessions of its own of <see cref="OcrLimits.ThreadsPerWorker"/> threads, so an
-/// idle server reads the tiles of one picture at once; on a graphics card one shared set whose model calls run one at a
-/// time, the lines of all waiting pictures read together. At most <see cref="OcrLimits.Workers"/> pictures are in work at once.
+/// idle server reads the tiles of one picture at once. With a graphics card only the text finder of Search (an area read in
+/// tiles) runs there, one call at a time within a memory cap by picture size (<see cref="GpuSessionBudget"/>); fixed-place
+/// areas, the reader and the angle model stay on the CPU workers (measured: the card is faster only for Search). At most
+/// <see cref="OcrLimits.Workers"/> pictures are in work at once.
 /// </summary>
 public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IRecognizerLoad, IDisposable
 {
@@ -46,8 +51,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The tile size for large areas.</summary>
     public const int TileSize = 960;
 
-    /// <summary>Tiles per text finder call on a graphics card at most (full HD: 6 tiles, one call).</summary>
-    private const int MaxTileBatch = 6;
+    /// <summary>Text finder calls of one area prepared for the graphics card at once (one runs, the next ones get ready).</summary>
+    private const int CardCallsAhead = 3;
 
     /// <summary>The overlap of neighbouring tiles.</summary>
     public const double TileOverlap = 0.15;
@@ -78,13 +83,14 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly CpuWorkers<ModelSet> _cpu;
     private readonly CharacterList _cpuCharacters;
     private readonly CharacterList _accurateCharacters;
-    private readonly ModelSet? _gpuSet;
+    private readonly CardTextFinder? _card;
     private readonly GpuSessionBudget? _gpuBudget;
-    private readonly LineBatcher? _gpuLines;
     private readonly RecognitionDevice _cpuDevice;
     private readonly UnchangedAreas _unchanged = new();
     private readonly RecognitionDevice? _gpuDevice;
-    private readonly BusyMeter _busy;
+    private readonly BusyMeter _cpuBusy;
+    private readonly BusyMeter _cardBusy;
+    private readonly CombinedBusy _busy;
     private volatile bool _useGpu = true;
     private bool _disposed;
 
@@ -94,15 +100,17 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         _logger = logger ?? NullLogger.Instance;
         Workers = OcrLimits.Workers(options.ProcessorCount);
         _pictures = new SemaphoreSlim(Workers, Workers);
-        _busy = new BusyMeter(options.Time);
+        _cpuBusy = new BusyMeter(options.Time);
+        _cardBusy = new BusyMeter(options.Time);
+        _busy = new CombinedBusy(_cpuBusy, _cardBusy, Workers);
         var folder = options.ModelDirectory;
         _cpuCharacters = CharacterList.Load(Path.Combine(folder, options.CpuModels.Characters));
         _accurateCharacters = CharacterList.Load(Path.Combine(folder, options.AccurateModels.Characters));
         _cpu = new CpuWorkers<ModelSet>(
             Workers,
             Math.Min(Workers, MaxAccurateCpuSets),
-            accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker),
-            _busy);
+            accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, OcrLimits.ThreadsPerWorker),
+            _cpuBusy);
 
         var gpu = options.UseGraphicsCard
             ? SessionFactory.TryGraphicsCard(Path.Combine(folder, ModelFiles.DetectionMobile), _logger)
@@ -112,42 +120,47 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             try
             {
                 _gpuBudget = target == ExecutionTarget.DirectMl
-                    ? new GpuSessionBudget(GpuSessionBudget.MaxSessions, options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max))
+                    ? new GpuSessionBudget(options.GpuMaxBytes, options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max / (1024 * 1024)))
                     : null;
-                _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker, _busy, _gpuBudget);
-                _gpuLines = new LineBatcher(_gpuSet.RecognizeAsync);
-                _gpuDevice = new RecognitionDevice(true, SessionFactory.GraphicsCardName(target));
+                _card = new CardTextFinder(Path.Combine(folder, options.AccurateModels.Detection), target, _cardBusy, _gpuBudget);
+                _gpuDevice = new RecognitionDevice(true, SearchOnCardName(options.ProcessorCount, SessionFactory.GraphicsCardName(target)));
             }
 #pragma warning disable CA1031 // A graphics card that fails with the real models falls back to the CPU too.
             catch (Exception ex)
 #pragma warning restore CA1031
             {
                 RecognitionLog.GraphicsCardFailed(_logger, ex.Message);
-                _gpuSet?.Dispose();
-                _gpuSet = null;
+                _card?.Dispose();
+                _card = null;
                 _gpuBudget?.Dispose();
                 _gpuBudget = null;
-                _gpuLines?.Dispose();
-                _gpuLines = null;
                 _gpuDevice = null;
             }
         }
 
-        _cpuDevice = new RecognitionDevice(false, $"CPU ({options.ProcessorCount} cores)");
+        _cpuDevice = new RecognitionDevice(false, CpuName(options.ProcessorCount));
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
 
-    /// <summary>What runs the recognition now: the graphics card while there is one and "Use the graphics card" is on.</summary>
+    private static string CpuName(int cores) => $"CPU ({cores} cores)";
+
+    /// <summary>What reads with a graphics card: "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti".</summary>
+    internal static string SearchOnCardName(int cores, string card) => $"{CpuName(cores)} · search on {card}";
+
+    /// <summary>
+    /// What runs the recognition now: the CPU, with Search on the graphics card while there is one and "Use the graphics card"
+    /// is on ("CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti").
+    /// </summary>
     public RecognitionDevice RunsOn => OnGpu ? _gpuDevice! : _cpuDevice;
 
     /// <inheritdoc />
     string IEngineInfo.RunsOn => RunsOn.Name;
 
     /// <summary>A graphics card passed the test reading and holds the models.</summary>
-    public bool GpuAvailable => _gpuSet is not null;
+    public bool GpuAvailable => _card is not null;
 
-    /// <summary>True while the readings run on the graphics card.</summary>
-    public bool OnGpu => _useGpu && _gpuSet is not null;
+    /// <summary>True while the text finder of Search runs on the graphics card.</summary>
+    public bool OnGpu => _useGpu && _card is not null;
 
     /// <summary>
     /// "Use the graphics card" (docs/spec/ocr.md "GPU"): off sends the next readings to the CPU, on back to the graphics card
@@ -164,11 +177,17 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
 
-    /// <summary>The time all model calls held their worker (the CPU's slots, the graphics card's one at a time).</summary>
+    /// <summary>
+    /// The time model calls held the CPU workers or the graphics card, in worker time (<see cref="CombinedBusy"/>: per sample
+    /// the larger of the two, the card's time counted <see cref="Workers"/> times as its calls run one at a time).
+    /// </summary>
     public TimeSpan BusyTime => _busy.Busy;
 
-    /// <summary>Model calls at once now: the CPU workers, 1 on a graphics card (its calls run one at a time).</summary>
-    public int Capacity => OnGpu ? 1 : Workers;
+    /// <summary>Model calls at once: the CPU workers (the graphics card's time is counted in worker time).</summary>
+    public int Capacity => Workers;
+
+    /// <summary>The graphics card's sessions (tests, measurements); null without DirectML.</summary>
+    internal GpuSessionBudget? GpuBudget => _gpuBudget;
 
     /// <summary>CPU workers: model calls at once (<see cref="OcrLimits.Workers"/>), and pictures in work at once.</summary>
     public int Workers { get; }
@@ -192,9 +211,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             return new RecognitionResult(default, []);
         }
 
-        IModelRunner runner = _useGpu && _gpuSet is { } gpuSet && _gpuLines is { } gpuLines
-            ? new GpuRunner(gpuSet, gpuLines)
-            : new CpuRunner(_cpu, options.Accurate ? _accurateCharacters : _cpuCharacters, options.Accurate);
+        IModelRunner runner = new CpuRunner(_cpu, options.Accurate ? _accurateCharacters : _cpuCharacters, options.Accurate, _useGpu ? _card : null);
         await _pictures.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -229,7 +246,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         {
             var area = areas[a];
             var rect = PixelRect(area.Box, picture.Width, picture.Height);
-            keys[a] = new UnchangedAreas.Key(options.Source, rect, picture.Width, picture.Height, area.Expected.Kind, area.Expected.Format, options.Accurate, runner is GpuRunner);
+            keys[a] = new UnchangedAreas.Key(options.Source, rect, picture.Width, picture.Height, area.Expected.Kind, area.Expected.Format, options.Accurate, runner.SearchOnCard);
             prints[a] = UnchangedAreas.Print(picture, rect);
             results[a] = _unchanged.TryReuse(keys[a], prints[a]);
             if (results[a] is null)
@@ -266,7 +283,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The areas whose last reading was used again (tests).</summary>
     internal UnchangedAreas Unchanged => _unchanged;
 
-    private static async Task<RecognitionResult> ReadWithAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner set, CancellationToken ct)
+    internal static async Task<RecognitionResult> ReadWithAsync(Picture picture, IReadOnlyList<Area> areas, IModelRunner set, CancellationToken ct)
     {
         var results = new AreaRecognition[areas.Count];
         var lineBitmaps = new List<SKBitmap>();
@@ -489,9 +506,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             return boxes;
         }
 
-        // Tiles of TileSize at full resolution, overlapping by TileOverlap; all tiles of the area in one call.
-        var (xs, tileW) = Tiles(rect.Left, rect.Width, set.DetectionSide);
-        var (ys, tileH) = Tiles(rect.Top, rect.Height, set.DetectionSide);
+        // Tiles of TileSize at full resolution, overlapping by TileOverlap, on the Search text finder (the graphics card's when
+        // it is used).
+        var finder = set.Search;
+        var (xs, tileW) = Tiles(rect.Left, rect.Width, finder.DetectionSide);
+        var (ys, tileH) = Tiles(rect.Top, rect.Height, finder.DetectionSide);
         var tiles = new List<(int X, int Y)>();
         foreach (var y in ys)
         {
@@ -504,24 +523,40 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var fillColor = picture.BorderColor(rect);
         var tileSize = tileW * tileH;
         var found = new List<RotatedBox>();
-        if (set.BatchTiles)
+        if (finder.BatchTiles)
         {
-            // A graphics card: the tiles in calls of up to MaxTileBatch, each call's count in the runner's steps (blank tiles
-            // fill it up), so the input shapes stay few.
-            for (var first = 0; first < tiles.Count; first += MaxTileBatch)
+            // A graphics card: the tiles in calls of one size that fits its memory cap (blank tiles fill the last one up), so
+            // an area uses one session and no call exceeds the cap whatever the picture's size. The calls' inputs and boxes are
+            // made on the CPU while the card runs another call (at most CardCallsAhead calls' buffers at once).
+            var batch = finder.TilesPerCall(tiles.Count, tileW, tileH);
+            using var ahead = new SemaphoreSlim(CardCallsAhead, CardCallsAhead);
+            var calls = Enumerable.Range(0, (tiles.Count + batch - 1) / batch).Select(call => Task.Run(
+                async () =>
+                {
+                    var chunk = tiles.GetRange(call * batch, Math.Min(batch, tiles.Count - (call * batch)));
+                    await ahead.WaitAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        var inputStart = Stopwatch.GetTimestamp();
+                        using var input = PooledFloats.Rent(batch * 3 * tileSize, clear: batch > chunk.Count);
+                        Parallel.For(0, chunk.Count, i => picture.WriteTile(input.Array, i, chunk[i].X, chunk[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
+                        StageClock.Add(Stage.DetectInput, inputStart);
+                        using var maps = await finder.DetectAsync(input, batch, tileH, tileW, ct).ConfigureAwait(false);
+                        var boxesStart = Stopwatch.GetTimestamp();
+                        var perTile = new List<RotatedBox>[chunk.Count];
+                        Parallel.For(0, chunk.Count, i => perTile[i] = DbPostProcess.Boxes(maps.Array.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, chunk[i].X, chunk[i].Y)).ToList());
+                        StageClock.Add(Stage.DetectBoxes, boxesStart);
+                        return perTile.SelectMany(b => b).ToList();
+                    }
+                    finally
+                    {
+                        ahead.Release();
+                    }
+                },
+                ct)).ToList();
+            foreach (var boxes in await Task.WhenAll(calls).ConfigureAwait(false))
             {
-                var chunk = tiles.GetRange(first, Math.Min(MaxTileBatch, tiles.Count - first));
-                var batch = set.TileBatch(chunk.Count);
-                var inputStart = Stopwatch.GetTimestamp();
-                using var input = PooledFloats.Rent(batch * 3 * tileSize, clear: batch > chunk.Count);
-                Parallel.For(0, chunk.Count, i => picture.WriteTile(input.Array, i, chunk[i].X, chunk[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
-                StageClock.Add(Stage.DetectInput, inputStart);
-                using var maps = await set.DetectAsync(input, batch, tileH, tileW, ct).ConfigureAwait(false);
-                var boxesStart = Stopwatch.GetTimestamp();
-                var perTile = new List<RotatedBox>[chunk.Count];
-                Parallel.For(0, chunk.Count, i => perTile[i] = DbPostProcess.Boxes(maps.Array.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, chunk[i].X, chunk[i].Y)).ToList());
-                found.AddRange(perTile.SelectMany(b => b));
-                StageClock.Add(Stage.DetectBoxes, boxesStart);
+                found.AddRange(boxes);
             }
         }
         else
@@ -534,7 +569,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                     using var input = PooledFloats.Rent(3 * tileSize, clear: false);
                     picture.WriteTile(input.Array, 0, tile.X, tile.Y, tileW, tileH, rect, fillColor, Tensors.ImageNet);
                     StageClock.Add(Stage.DetectInput, inputStart);
-                    using var map = await set.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
+                    using var map = await finder.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
                     var boxesStart = Stopwatch.GetTimestamp();
                     var boxes = DbPostProcess.Boxes(map.Span, tileW, tileH).Select(b => b.Map(1, tile.X, tile.Y)).ToList();
                     StageClock.Add(Stage.DetectBoxes, boxesStart);
@@ -695,7 +730,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     /// <summary>
     /// Waits for the readings in work (at most <see cref="DisposeWait"/>), then frees the models; readings asked for later end
-    /// with <see cref="ObjectDisposedException"/>. A graphics card set still in use after the wait is left to the process
+    /// with <see cref="ObjectDisposedException"/>. The graphics card's text finder still in use after the wait is left to the process
     /// rather than freed under a running call.
     /// </summary>
     public void Dispose()
@@ -712,15 +747,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             taken++;
         }
 
-        var idle = taken == Workers;
-        if (_gpuLines?.Stop(DisposeWait) == false)
+        // The card's calls run inside the readings: once all readings are out, none runs.
+        if (taken == Workers)
         {
-            idle = false;
-        }
-
-        if (idle)
-        {
-            _gpuSet?.Dispose();
+            _card?.Dispose();
             _gpuBudget?.Dispose();
         }
         else

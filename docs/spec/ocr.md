@@ -76,12 +76,14 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 1. Decode the JPEG (SkiaSharp), only the part the areas need (each area with a margin of 16 px plus its shorter side:
    rows above skipped, rows below never read, columns outside cut by the JPEG decoder; full HD with one small area 2.5
    instead of 16 ms), and cut out each area at full resolution. The page's cut-out of a value is decoded the same way.
-2. **Find text**: the PP-OCRv5 detection model per area (mobile on the CPU, server on a graphics card and for Accurate),
+2. **Find text**: the PP-OCRv5 detection model per area (mobile on the CPU, server for Search on a graphics card and for
+   Accurate),
    sides a multiple of 32, turn its map into line boxes (threshold 0.3, box score 0.6, box enlarged by 1.5; own C#, no
    OpenCV). An area up to 960 px on its long side is read as it is (a small one scaled up to 64 px, a 16 px margin
    around it); a larger one (Search over the whole picture) in tiles at full resolution: the fewest tiles that cover it
    at up to 960 px each with at least 15 % overlap, all of one size and spread evenly (full HD: 3 x 2 = 6 tiles of
-   736 x 608). On the CPU each tile is a model call of its own, on a graphics card all tiles are one call.
+   736 x 608). On the CPU each tile is a model call of its own; with a graphics card an area read in tiles goes to the
+   card, its tiles in calls of one size within the card's memory cap ("GPU").
 3. **At most 30 text boxes** per reading, over all areas together: the boxes with the highest detection scores are
    read, the others dropped, and the reading carries the note "More than 30 texts found. Only the first 30 are read. Draw
    smaller areas." (`Reading.Note`, `ReaderRules.TooManyTexts`), shown on the page below the video. A busy picture (a
@@ -115,10 +117,10 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 
 Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the output read where it lies). On the CPU
 the lines go to the reader in pairs of similar width, each pair a call of its own, so the lines of one picture spread
-over the free workers. On DirectML the text finder's sides (areas and tiles) come in the steps 256, 512, 768 and 1024
-and the tiles of a call in the steps 1, 2, 4 and 6 (at most 6 per call), so few input sizes exist (each is a session of
-its own there, bounded: "GPU", graphics card memory). Session sets of a CPU worker unused for 2 minutes are freed; stopping the recognizer waits for the
-readings in work (at most 30 s) before it frees the models.
+over the free workers. On DirectML the card's text finder sides come in the steps 256, 512, 768 and 1024, and the
+tiles of an area go in calls of one size (`GpuSessionBudget.TilesPerCall`), so few input sizes exist (each is a session
+of its own there, bounded by memory: "GPU"). Session sets of a CPU worker unused for 2 minutes are freed; stopping the
+recognizer waits for the readings in work (at most 30 s) before it frees the models.
 
 There is no Latin server recognition model: PaddleOCR publishes Latin PP-OCRv5 recognition as mobile only, and the
 multilingual server model read Latin text worse (no spaces between words). Every device reads with the mobile Latin
@@ -299,10 +301,10 @@ after the start). All time through the plugin's `TimeProvider`.
   - A reader is judged only once it watched for the whole 10 s (a reader that just started is never orange).
 - **Recognition load** (bar with %): the share of the last 10 s the recognition was busy: the sum of the time every model
   call held its worker (`IRecognizerLoad.BusyTime`, `Recognition/BusyMeter`) divided by the window times the capacity
-  (`IRecognizerLoad.Capacity`). On the CPU the capacity is the workers (`max(1, cores / 2)`), each call counted while it
-  holds its slot; on a graphics card it is 1, because the recognizer runs its model calls there one at a time on one
-  shared set (the time a call holds the card counts). So 100 % means no more model calls fit: on the CPU every worker,
-  on a graphics card the card itself never idles.
+  (`IRecognizerLoad.Capacity`, the CPU workers `max(1, cores / 2)`), each CPU call counted while it holds its slot. With a
+  graphics card (Search's text finder there, one call at a time) the busy time grows per sample by the larger of the
+  workers' time and the card's time times the workers (`Recognition/CombinedBusy`): the load is the larger of the CPU's
+  and the card's. So 100 % still means no more fits: every CPU worker busy, or the card never idle.
 - **Numbers** (in `getStats` only, never shown on the page: decision 2026-11-03, the traffic light already says whether
   all is well): pictures per second (all readers, previews included; pictures whose areas were all unchanged are not
   counted here); unchanged pictures per second (their last reading given again, no model ran: `ReaderStats.CountReused`,
@@ -372,82 +374,98 @@ often, from worse pictures, and never a wrong value reported as sure.
 | Linux x64 with NVIDIA | CUDA | the NVIDIA driver and the CUDA 12 and cuDNN 9 runtime on the server (the docs say how); without them the CPU |
 | Linux arm64, macOS x64 | CPU | nothing |
 
-- The plugin picks at start: GPU when the provider loads and a test reading succeeds, else the CPU. Settings card of the
-  page: "Runs on: NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8 cores)", and **Use the graphics card** (on by default)
-  to force the CPU. `getEngine` / `setUseGpu` answer `{runsOn, gpuAvailable, useGpu, fpsChoices}`; `setUseGpu` is
-  server-wide: the change right and all devices (`RequiresAllDevices`; the page disables the box for a user with a device
-  group), audited. The setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change; the
-  next readings run where it says, the graphics card keeps its models until the plugin stops. Without a recognizer: the
-  CPU, no graphics card.
-- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): one model set on the card (server text finder,
-  reader, angle model), shared by all readers. On DirectML every input size is a session of its own, and each session keeps
-  its own copy of the model and its own buffers for that size on the card until it is disposed (the provider frees
-  nothing while a session lives). The old cache of 12 sizes per model (up to 12 text finder sessions of up to 6 tiles of
-  1024 x 1024, plus 8 reader and 2 angle sessions, never freed) explains about 10 GB on a 16 GB card. Now:
-  - at most 6 sessions over the three models together, of them at most 3 of the text finder; the least recently used
-    goes (made again when needed, a few hundred ms) and the first time the server logs "Text recognition keeps at most 6
-    model sessions on the graphics card";
+- The plugin picks at start: the graphics card when the provider loads and a test reading succeeds, else the CPU only.
+  Settings card of the page: "Runs on: CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8
+  cores)", and **Use the graphics card** (on by default) to force the CPU. `getEngine` / `setUseGpu` answer
+  `{runsOn, gpuAvailable, useGpu, fpsChoices}`; `setUseGpu` is server-wide: the change right and all devices
+  (`RequiresAllDevices`; the page disables the box for a user with a device group), audited. The setting is a plugin
+  setting handed to the recognizer (`IEngineInfo`) at start and on change; the next readings run where it says, the
+  graphics card keeps its sessions until they idle or the plugin stops. Without a recognizer: the CPU, no graphics card.
+- **The graphics card reads Search only** (decision 2026-11-03, by the measurements below): the text finder of an area
+  read in tiles (larger than 960 px on its long side, `OnnxTextRecognizer.TileSize`; Search over the whole picture)
+  runs on the card with the server text finder (`Recognition/CardTextFinder`, one call at a time). Everything else runs
+  on the CPU workers as without a card: the text finder of fixed-place areas (mobile, Accurate: server), the reader and
+  the angle model for every line, Search's lines too. Measured: fixed areas are as fast on the card as on the CPU, 20
+  readers at once slower (the card's calls run one at a time), and Search's lines on the card would make one full HD
+  Search about 80 ms faster (the card read 32 lines in one call of 82 ms, the old path's reader 29 ms per picture) but
+  take a fifth more of the card's time per picture, which several Search readers share, and need reader sessions on
+  the card; on the CPU's 12 workers they run beside the card's next text finder call.
+- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): the card holds only the text finder's sessions.
+  On DirectML every input size is a session of its own that keeps its own copy of the model and its buffers on the card
+  until it is disposed (the provider frees nothing while a session lives). The budget counts each session by the pixels
+  of its calls: `512 MB + 1,500 bytes x count x height x width` (`Estimate`, never below a measured session), and keeps
+  the sum at or below **4 GB** (`MaxBytes`) whatever the cameras' resolution:
+  - a Search is split into calls of one size of at most half the cap (`TilesPerCall`: the fewest calls, the tiles spread
+    evenly, blank tiles fill the last one), so two Search sizes (two cameras' resolutions) stay on the card together; a
+    single tile of 1024 x 1024 (1.96 GB estimated) always fits. Full HD: 6 calls of one 768 x 768 tile (two would be
+    2.15 GB); QHD: 6 calls of one 1024 x 1024 tile; 4K: 15. The calls' inputs and boxes are made on the CPU while the card
+    runs another call (at most 3 calls ahead);
+  - before a new session the least recently used ones go until it fits (made again when needed, 0.5 to 1 s) and the
+    first time the server logs "Text recognition keeps at most 4096 MB of model sessions on the graphics card"; a session
+    larger than the cap is never made;
   - a session unused for 2 minutes is freed (like the CPU workers' sets), so an idle server gives the card back;
-  - every model call of the set runs inside the budget's gate (the card's calls run one at a time anyway), so a session is
-    never freed while it runs; memory pattern off and sequential execution as the DirectML provider asks;
-  - CUDA: one session per model takes every size; its memory pool grows by what a call needs
-    (`arena_extend_strategy=kSameAsRequested`, not the next power of two).
-  - Measured (2026-11-03, development PC, RTX 5070 Ti 16 GB, DirectML, the desktop holds 1.5 GB): one text finder
-    session holds about 1.4 KB per input pixel of its call, plus about 0.2 GB:
+  - every call runs inside the budget's gate, so a session is never freed while it runs; memory pattern off and
+    sequential execution as the DirectML provider asks;
+  - CUDA: one session takes every size; its memory pool grows by what a call needs
+    (`arena_extend_strategy=kSameAsRequested`, not the next power of two), bounded by the same calls per Search.
+  - Measured (2026-11-03, development PC, RTX 5070 Ti 16 GB, DirectML, the desktop holds 1.5 GB), the text finder's
+    session on the card:
 
-    | Text finder input | On the card |
-    |---|---|
-    | 1 x 256 x 256 (a small fixed area) | 0.3 GB |
-    | 1 x 512 x 512 | 0.65 GB |
-    | 1 x 768 x 768 | 1.3 GB |
-    | 1 x 1024 x 1024 | 1.7 GB |
-    | 6 x 512 x 512 | 2.4 GB |
-    | 6 x 768 x 768 (Search over full HD) | 5.0 GB |
-    | 2, 4, 6 x 1024 x 1024 (Search over more than full HD) | 3.1, 6.0, 8.6 GB |
+    | Text finder input | On the card | Estimate |
+    |---|---|---|
+    | 1 x 256 x 256 | 0.3 GB | 0.59 GB |
+    | 1 x 512 x 512 | 0.65 GB | 0.87 GB |
+    | 1 x 768 x 768 (a full HD Search tile) | 1.25 to 1.3 GB | 1.32 GB |
+    | 1 x 1024 x 1024 (a QHD or 4K Search tile) | 1.5 to 1.7 GB | 1.96 GB |
+    | 2 x 768 x 768 | 2.1 GB | 2.15 GB |
+    | 6 x 768 x 768 (the old full HD call) | 5.0 GB | 5.44 GB |
+    | 2, 4, 6 x 1024 x 1024 (the old calls above full HD) | 3.1, 6.0, 8.6 GB | 3.43, 6.36, 9.29 GB |
 
-    A session is made in 0.5 to 1 s. The benchmark's readers (fixed place, 4 areas) keep 0.7 to 0.9 GB on the card with
-    reader and angle sessions; with a full HD Search 5.7 GB (steady), 7.3 GB at the peak; the accuracy set (69 pictures
-    of many sizes) 7.3 GB at the peak. The cap freed no session while the same cases repeated (2 when Search came in),
-    26 while the accuracy set ran (many picture sizes, 17.6 s for 69 pictures). All sessions were freed 2.5 minutes after
-    the last reading, the card back at the desktop's 1.5 GB with the process still running.
-  - Open: the cap counts sessions, not memory. A Search over a picture larger than full HD makes 1024 x 1024 tiles (QHD:
-    one call of 6, 8.6 GB; 4K: 15 tiles in calls of 6, 6 and 4, 8.6 + 6.0 GB), so one 4K Search reader alone fills a
-    16 GB card, and 3 text finder sessions of Search sizes do too (the driver resets, TDR). Fewer sessions do not fix it
-    (1: a session made anew at every change between a fixed area and a Search; 2: a 4K Search still 14.6 GB). Needed: a
-    budget by input pixels (and fewer tiles per call at 1024).
-- On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
-  recognition together. Limits on a GPU: frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
+    Before (until 2026-11-03) at most 6 sessions were kept by count: one 4K Search alone needed 14.6 GB and 3 Search
+    sizes filled the 16 GB card (the driver reset, TDR).
+  - Measured with the cap (same PC and day, the process's share of the card at its peak, the desktop not counted):
+    fixed place, 4 areas and 20 readers 0.1 GB (no session on the card); full HD Search 1.25 GB; QHD and 4K Search after
+    it 2.7 GB (the full HD and the 1024 x 1024 sessions, 3.29 GB estimated, none freed); the accuracy set 1.3 GB. No
+    driver reset in any run.
+- Limits on a GPU (`ReaderRules`): frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
-  CPU; 20 fixed-place readers at 4 frames per second on the GPU.
-- Measured (2026-11-03, development PC, 24 cores, RTX 5070 Ti with nothing else on the card, `RecognitionBenchmarkTests`,
-  Perf; a full HD picture of the coffee box, ms per picture, one after the other; 20 readers: all at once, ms per picture
-  in all):
+  CPU; 20 fixed-place readers at 4 frames per second.
+- Measured (2026-11-03, development PC: Ryzen 9 3900X, 24 cores, RTX 5070 Ti with nothing else on the card,
+  `RecognitionBenchmarkTests`, Perf; the full HD picture of the coffee box, QHD and 4K the same picture scaled up; ms per
+  picture, one after the other; 20 readers: all at once, ms per picture in all; other work ran on the PC, the best of 2
+  runs):
 
-  | Case | CPU before | CPU now | DirectML |
-  |---|---|---|---|
-  | Fixed place, 1 area | 53 | 28 | 26 |
-  | Reader with 4 areas | 225 | 78 | 75 |
-  | Search, full HD | 643 | 471 | 207 (4.8 per second) |
-  | 20 fixed-place readers at once | 16.6 (60 per second) | 10.1 (99 per second) | 14.2 (71 per second) |
-  | Fixed place, unchanged (watching) | 53 | 5 | 5 |
-  | 4 areas, unchanged (watching) | 225 | 13 | 13 |
-  | 20 readers, unchanged (watching) | 16.6 | 1.0 | 1.4 |
+  | Case | CPU before | CPU now | All on DirectML (before) | Search on DirectML (now) |
+  |---|---|---|---|---|
+  | Fixed place, 1 area | 53 | 28 | 26 | 28 (CPU) |
+  | Reader with 4 areas | 225 | 79 | 75 | 79 (CPU) |
+  | Search, full HD | 643 | 483 | 207 (5 GB on the card) | 321 (3.1 per second) |
+  | Search, QHD | | 945 | (8.6 GB) | 377 (2.7 per second) |
+  | Search, 4K | | 2,190 | (14.6 GB) | 923 (1.1 per second) |
+  | 20 fixed-place readers at once | 16.6 (60 per second) | 7.3 (138 per second) | 14.2 (71 per second) | 8.8 (113 per second, CPU) |
+  | Fixed place, unchanged (watching) | 53 | 5 | 5 | 5 |
+  | 4 areas, unchanged (watching) | 225 | 13 | 13 | 13 |
+  | 20 readers, unchanged (watching) | 16.6 | 1.0 | 1.4 | 0.9 |
 
-  On the graphics card per stage (ms per picture): Search: text finder 130, reader 29, decode 15; fixed place: text
-  finder 11, reader 8. `RecognitionSpeedTests` on the card: Search 211 ms, fixed place 27 ms, 20 readers 56 per second.
-  Where the time goes now (CPU, fixed place): decode 2.5, text finder 10, reader 15 ms. Kept: the partial decode (fixed
-  place 53 to 38 ms), the angle model only for unsure lines (38 to 30 ms, a reader with 4 areas 197 to 147), the lines
-  in pairs (4 areas 147 to 87), unchanged areas, rented buffers (no large objects per picture). Tried and left out:
-  ONNX Runtime threads that sleep instead of spinning (20 readers 97 to 76 per second), batches of 1 or 4 lines (no
-  better than 2), reusing the line boxes of a changed area (a new line in a small part of the area would be missed
-  until the next search). Earlier DirectML runs while another OADM server held 10 GB of the card made the driver reset
-  (TDR); with the card free no reset.
-  The CPU goal holds. On the graphics card the Search goal (10 per second) and 20 readers at 4 per second (80 per
-  second) are still open: Search is 2.3 times faster than the CPU, fixed areas about as fast, and 20 readers at once
-  slower than on the 24-core CPU (the card's calls run one at a time).
-- Accuracy set on the graphics card (server text finder, 2026-11-03): as the CPU baseline in every group except
-  camera-box 75 % exact (CPU 100 %; "NESPRESSO® COMPATIBLE" read without the ®, "DECAF-FEINATO" without the hyphen),
-  hard-receipt-search 50 % (CPU 37.5 %), hard-sign 66.7 % with 4.8 % character errors (CPU 3.2 %).
+  Rows marked CPU run the same CPU path in both columns (the difference is the other work on the PC). Search on the card
+  per stage (ms per picture, the CPU's summed over threads): full HD text finder on the card 175 (6 calls; 146 in 3 calls
+  of 2 tiles, which the cap does not allow), reader on the CPU 280, decode 15; QHD text finder 257, 4K 645. The card's
+  time per Search picture bounds the Search readers of one card: about 5.7 full HD, 3.9 QHD or 1.5 4K pictures per
+  second in all. Where the time goes on the CPU (fixed place): decode 2.5, text finder 10, reader 15 ms. Kept: the partial
+  decode (fixed place 53 to 38 ms), the angle model only for unsure lines (38 to 30 ms, a reader with 4 areas 197 to 147),
+  the lines in pairs (4 areas 147 to 87), unchanged areas, rented buffers (no large objects per picture). Tried and left
+  out: ONNX Runtime threads that sleep instead of spinning (20 readers 97 to 76 per second), batches of 1 or 4 lines (no
+  better than 2), reusing the line boxes of a changed area (a new line in a small part of the area would be missed until
+  the next search), all models on the card (above), the card's calls of one area one after the other without preparing
+  the next (full HD 369 instead of 321 ms). Earlier DirectML runs while another OADM server held 10 GB of the card made
+  the driver reset (TDR).
+  The CPU goal holds. On the graphics card the Search goal (10 per second) is open: Search is 1.5 (full HD) to 2.5 (QHD,
+  4K) times faster than on the CPU; 20 fixed-place readers at 4 per second (80 per second) hold on the CPU.
+- Accuracy set with the graphics card (Search on the card, 2026-11-03, `RecognitionBenchmarkTests.Accuracy_set_with_the_graphics_card`,
+  6.0 s for 69 pictures): every group at or above the CPU baseline; hard-receipt-search 50 % exact (CPU 37.5 %, the
+  server text finder), the other groups as the CPU (camera-box 100 %, hard-sign 66.7 % with 3.2 % character errors).
+  The old all-card path read camera-box 75 % and hard-sign with 4.8 % character errors (its server text finder on the
+  fixed areas).
 
 ## Packaging and dependencies
 
@@ -513,7 +531,8 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   runs late, racing saves and deletes end with the stored readers streaming, a stop cancels and awaits a single reading,
   cut-outs only on request and once, the `reading` event on change or once a second, a group's preview only to its
   group, the page's own preview id, a late start answer ended, an older reading never over a newer one.
-- Runtime stats (`Readers/StatsTests`, `FakeTimeProvider`): the 10 s window, the load on the CPU and a graphics card, the
+- Runtime stats (`Readers/StatsTests`, `FakeTimeProvider`): the 10 s window, the load on the CPU and a graphics card
+  (`Recognition/SearchRoutingTests`: the larger of the CPU workers' and the card's busy time), the
   server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
   live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).
 - Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU, 4 per site; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
@@ -526,10 +545,12 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   test unit`): the numbers of "GPU".
 - Partial decode (`PictureTests`: the same pixels as a full decode), unchanged areas (`UnchangedAreasTests`: reuse,
   a changed area read anew, other readers, 10 uses in a row), the angle model's skip rule, idle session sets freed
-  (`FakeTimeProvider`), a set in use freed only after its call, the graphics card's round awaited on stop.
+  (`FakeTimeProvider`), a set in use freed only after its call.
 - Watching readers and previews reuse under their own source, the action never, unchanged pictures counted apart
-  (`UnchangedReuseTests`); the graphics card's session caps, least recently used out, idle sessions freed
-  (`GpuSessionBudgetTests`, fake sessions, no graphics card).
+  (`UnchangedReuseTests`); the graphics card's memory: sessions counted by pixels and never above the cap, least
+  recently used out, a session over the cap never made, Search split into calls of half the cap, idle sessions freed
+  (`GpuSessionBudgetTests`, fake sessions); fixed-place areas on the CPU and Search on the card, full HD, QHD and 4K
+  Search within the cap, the runs-on text (`SearchRoutingTests`, fake runners, no graphics card).
 
 ## Build plan (parallel work)
 

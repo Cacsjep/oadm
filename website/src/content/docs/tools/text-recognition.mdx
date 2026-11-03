@@ -243,9 +243,13 @@ To read on demand instead, put a button on a [dashboard](../dashboards/) that ru
 
 ## Speed and graphics card
 
-**Runs on** says what reads: the graphics card's name, for example `Runs on: NVIDIA GeForce RTX 5070 Ti`, or the CPU,
-for example `Runs on: CPU (8 cores)`. On the CPU Text recognition limits how much it reads at once, so OADM stays
-responsive.
+**Runs on** says what reads, for example `Runs on: CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti`, or
+`Runs on: CPU (8 cores)` without a graphics card. The graphics card reads only areas larger than about 960 pixels, such
+as a search over the whole picture: there it is 1.5 to 2.5 times faster than the CPU. Smaller areas are read on the CPU,
+which is as fast for them. Text recognition limits how much it reads at once on the CPU, so OADM stays responsive.
+
+Text recognition uses at most 4 GB of the graphics card's memory, whatever the cameras' resolution, and gives it back
+after 2 minutes without a search.
 
 | Server | Graphics card | What you need |
 |---|---|---|
@@ -292,7 +296,7 @@ A reader that falls behind shows it in the list, for example **Watching · 8 fps
 - lower the frames per second, most readers need 1 or 2;
 - set readers that do not need to watch to **On action**;
 - draw smaller areas: a tight area reads many times faster than a search over the whole picture;
-- use a graphics card.
+- for searches, use a graphics card.
 
 Areas whose picture has not changed cost almost nothing: the reader keeps their last result.
 
@@ -348,15 +352,20 @@ light turns orange, then stop or lower the frames per second.
 
 ### On a graphics card
 
-<Aside type="caution">
-To be filled with the measurement on an NVIDIA GeForce RTX 5070 Ti. The rows for other cards will be estimates.
-</Aside>
+The graphics card reads only searches (areas larger than about 960 pixels). Small areas are read on the CPU, as without
+a card: plan them with the CPU table above.
 
-| Card | 1 small area | 4 small areas | Search over the whole picture | Pictures per second in all |
-|---|---|---|---|---|
-| NVIDIA GeForce RTX 5070 Ti (measured) | | | | |
-| Other cards of the same class (estimate) | | | | |
-| Entry cards (estimate) | | | | |
+Measured on an NVIDIA GeForce RTX 5070 Ti with the Ryzen 9 3900X above, Windows:
+
+| Search over the whole picture | Time on its own | Searches per second in all |
+|---|---|---|
+| Full HD (1920 x 1080) | 321 ms (CPU only: 483 ms) | about 5.7 |
+| QHD (2560 x 1440) | 377 ms (CPU only: 945 ms) | about 4 |
+| 4K (3840 x 2160) | 923 ms (CPU only: 2,190 ms) | about 1.5 |
+
+**Searches per second in all** is what one card reads for all search readers together, for example 5 readers at 1
+frame per second over full HD pictures. The text found is then read on the CPU: plan one full HD search like about 15
+small areas in the CPU table.
 
 On a graphics card up to 50 readers watch, at up to 15 frames per second each.
 

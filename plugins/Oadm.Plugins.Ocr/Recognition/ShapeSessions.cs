@@ -5,9 +5,9 @@ namespace Oadm.Plugins.Ocr.Recognition;
 /// <summary>
 /// The sessions of one model. On the CPU and with CUDA one session takes every input size. DirectML runs a session fast only
 /// for the input size it saw first (measured: a small area read after a full HD search took 160 instead of 38 ms), so there
-/// each input size gets a session of its own, kept in the set's <see cref="GpuSessionBudget"/> (at most
-/// <see cref="GpuSessionBudget.MaxSessions"/> over all models of the set, freed after 2 idle minutes). The callers keep the
-/// sizes few (sizes in steps, lines padded to fixed batches).
+/// each input size gets a session of its own, kept in the card's <see cref="GpuSessionBudget"/> (counted by its input pixels,
+/// at most <see cref="GpuSessionBudget.MaxBytes"/> together, freed after 2 idle minutes). The callers keep the sizes few
+/// (sides in steps, the tiles of an area in calls of one size).
 /// </summary>
 internal sealed class ShapeSessions : IDisposable
 {
@@ -15,16 +15,13 @@ internal sealed class ShapeSessions : IDisposable
     private readonly ExecutionTarget _target;
     private readonly int _threads;
     private readonly GpuSessionBudget? _budget;
-    private readonly int? _maxSessions;
     private readonly InferenceSession? _single;
     private readonly RunOptions _runOptions = new();
     private InferenceSession? _fresh;
 
-    /// <param name="budget">DirectML: the set's sessions on the card (required there); else unused.</param>
-    /// <param name="maxSessions">DirectML: this model's sessions at most within the budget; null: only the budget's cap.</param>
-    public ShapeSessions(string path, ExecutionTarget target, int threads, GpuSessionBudget? budget = null, int? maxSessions = null)
+    /// <param name="budget">DirectML: the sessions on the card (required there); else unused.</param>
+    public ShapeSessions(string path, ExecutionTarget target, int threads, GpuSessionBudget? budget = null)
     {
-        _maxSessions = maxSessions;
         _path = path;
         _target = target;
         _threads = threads;
@@ -63,7 +60,9 @@ internal sealed class ShapeSessions : IDisposable
         // DirectML: the session of this size, held in the budget's gate for the call (never freed while it runs).
         lock (_budget!.Gate)
         {
-            var session = _budget.Get(this, string.Join('x', shape), () => Interlocked.Exchange(ref _fresh, null) ?? SessionFactory.Create(_path, _target, _threads), _maxSessions);
+            // Counted by the input's pixels: [count, channels, height, width].
+            var bytes = GpuSessionBudget.Estimate(shape[0] * shape[2] * shape[3]);
+            var session = _budget.Get(this, string.Join('x', shape), bytes, () => Interlocked.Exchange(ref _fresh, null) ?? SessionFactory.Create(_path, _target, _threads));
             return RunOn(session, input, shape, read);
         }
     }
