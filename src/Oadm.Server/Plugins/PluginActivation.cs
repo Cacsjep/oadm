@@ -20,8 +20,8 @@ public sealed partial class PluginActivation(
     CorePluginHost host,
     ServerSettingsStore settings,
     ILogger<PluginActivation> logger,
-    Core.Auth.RoleStore? roles = null,
-    PluginLicenses? licenses = null) : IDisposable
+    Core.Auth.RoleStore roles,
+    PluginLicenses licenses) : IDisposable
 {
     public const string SettingKey = "Plugins.Enabled";
 
@@ -75,25 +75,23 @@ public sealed partial class PluginActivation(
 
     private async Task FollowAsync(string packageId)
     {
-        await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        var entered = false;
         try
         {
+            await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            entered = true;
             using (Core.Auth.CallerContext.Suppress())
             {
-                if (licenses is not null)
-                {
-                    await licenses.PackageAddedAsync(packageId, CancellationToken.None).ConfigureAwait(false);
-                }
-
-                if (roles is not null)
-                {
-                    await roles.SyncCatalogAsync(Core.Auth.PermissionCatalog.Build(registry), CancellationToken.None).ConfigureAwait(false);
-                }
-
+                await licenses.PackageAddedAsync(packageId, CancellationToken.None).ConfigureAwait(false);
+                await roles.SyncCatalogAsync(Core.Auth.PermissionCatalog.Build(registry), CancellationToken.None).ConfigureAwait(false);
                 await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
             }
 
             LogAdded(logger, packageId, registry.IsEnabled(packageId) ? "on" : "off");
+        }
+        catch (ObjectDisposedException)
+        {
+            LogAddStopped(logger, packageId); // the server stops: the next start reads the package like any other
         }
 #pragma warning disable CA1031 // A failed follow is logged; the next start reads the package like any other.
         catch (Exception ex)
@@ -103,7 +101,23 @@ public sealed partial class PluginActivation(
         }
         finally
         {
+            if (entered)
+            {
+                ReleaseQuietly();
+            }
+        }
+    }
+
+    /// <summary>Releases the gate, which a stopping server may have disposed already.</summary>
+    private void ReleaseQuietly()
+    {
+        try
+        {
             _gate.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The server stops.
         }
     }
 
@@ -199,7 +213,15 @@ public sealed partial class PluginActivation(
 
     private async Task SyncAsync(bool proActive)
     {
-        await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            await _gate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            return; // the server stops: the next start applies the license
+        }
+
         try
         {
             await host.SyncEnabledAsync(CancellationToken.None).ConfigureAwait(false);
@@ -216,7 +238,7 @@ public sealed partial class PluginActivation(
         }
         finally
         {
-            _gate.Release();
+            ReleaseQuietly();
         }
     }
 
@@ -224,6 +246,9 @@ public sealed partial class PluginActivation(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} was added while the server runs and is {State}")]
     private static partial void LogAdded(ILogger logger, string packageId, string state);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The added plugin {PackageId} is followed at the next start: the server stops")]
+    private static partial void LogAddStopped(ILogger logger, string packageId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The added plugin {PackageId} could not be followed; it is read again at the next start")]
     private static partial void LogAddFailed(ILogger logger, Exception ex, string packageId);

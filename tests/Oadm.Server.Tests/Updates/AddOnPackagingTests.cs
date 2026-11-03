@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
-using Oadm.Core.Plugins.AddOns;
+using Oadm.Server.AddOns;
 using Oadm.Tests.Shared;
 
 namespace Oadm.Server.Tests.Updates;

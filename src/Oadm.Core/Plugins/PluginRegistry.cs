@@ -131,7 +131,7 @@ public sealed record PluginLoadError(string Source, string Message, Exception? E
 /// A package loaded after <see cref="MarkStarted"/> (an add-on installed while the server runs) raises
 /// <see cref="PackageAdded"/> and <see cref="EnabledChanged"/>: every reader follows it as it follows Turn on and off.
 /// </summary>
-public sealed partial class PluginRegistry : AddOns.IPluginRegistryChanges
+public sealed partial class PluginRegistry
 {
     private readonly Lock _sync = new();
     private readonly List<RegisteredTaskPlugin> _tasks = [];

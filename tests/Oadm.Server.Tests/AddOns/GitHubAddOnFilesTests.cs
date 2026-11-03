@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 using System.Text;
 
 using Oadm.Contracts.Updates;
-using Oadm.Core.Plugins.AddOns;
 using Oadm.Server.AddOns;
 
 namespace Oadm.Server.Tests.AddOns;

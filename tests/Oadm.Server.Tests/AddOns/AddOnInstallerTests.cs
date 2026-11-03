@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
+using Oadm.Sdk.Testing;
 using Oadm.Server.AddOns;
 
 namespace Oadm.Server.Tests.AddOns;
@@ -319,9 +319,10 @@ public sealed class AddOnInstallerTests
     public async Task AnAddOnThatCannotBeFetchedAfterAnUpdateStaysUnloaded()
     {
         using var rig = new AddOnRig();
-        rig.PlaceFolder();
+        rig.PlaceFolder(version: "4.10.0");
         rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
         rig.Files.Reachable = false;
+        rig.Activation.Choices.Add(Id); // the administrator had turned it on
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
         await rig.Installer.FetchAfterUpdateAsync(CancellationToken.None);
@@ -339,6 +340,8 @@ public sealed class AddOnInstallerTests
         var installed = await rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None);
         Assert.Equal(AddOnState.Installed, installed.State);
         Assert.True(rig.Registry.HasPackage(Id));
+        Assert.Empty(rig.Activation.Calls); // Install again keeps the stored choice: never turned off
+        Assert.Equal([Id], rig.Added);
     }
 
     [Fact]
@@ -387,6 +390,191 @@ public sealed class AddOnInstallerTests
             ["plugin.json", "Oadm.Plugins.Ocr.Client.dll", "Oadm.Plugins.Ocr.Server.dll", "Oadm.Plugins.Ocr.Server.pdb", "client/Ocr.Helpers.dll"],
             part.Files.Select(f => f.RelativePath));
         Assert.All(part.Files, f => Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(f.Content.Span)), f.Sha256));
+    }
+
+    [Fact]
+    public async Task TheClientSyncListNeverWaitsForTheReachCheck()
+    {
+        using var rig = await StartedAsync();
+        rig.Files.ReachHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var row = Assert.Single(await rig.Installer.ListAsync(checkReach: false, CancellationToken.None));
+
+        Assert.Equal(0, rig.Files.ReachCalls);
+        Assert.Equal(AddOnState.NotInstalled, row.State);
+    }
+
+    [Fact]
+    public async Task OneReachCheckAtATimeAndTheOthersTakeItsAnswer()
+    {
+        using var rig = await StartedAsync();
+        rig.Files.ReachHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = rig.Installer.ListAsync(CancellationToken.None);
+        var second = rig.Installer.ListAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Files.ReachCalls == 1, "the reach check started");
+        rig.Files.ReachHold.SetResult();
+        await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(1, rig.Files.ReachCalls);
+        Assert.True(Assert.Single(await second).CanInstall);
+    }
+
+    [Fact]
+    public async Task APreReleaseFolderIsNotTheAddOnOfTheRelease()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.11.0-rc.1");
+        rig.List.Items = [new InstalledAddOn(Id, "4.11.0-rc.1")];
+        rig.Files.Publish(AddOnRig.Version, AddOnRig.Runtime, AddOnRig.Zip());
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        Assert.False(rig.Registry.HasPackage(Id));
+        await rig.Installer.FetchAfterUpdateAsync(CancellationToken.None);
+
+        Assert.Equal([FileName], rig.Files.Downloads);
+        Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
+    }
+
+    [Fact]
+    public async Task AFolderPutInByHandIsRecordedWithTheReleaseOfItsVersionFile()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.10.0");
+        rig.Files.Publish(AddOnRig.Version, AddOnRig.Runtime, AddOnRig.Zip());
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
+        Assert.False(rig.Registry.HasPackage(Id)); // not this release: downloaded first
+        await rig.Installer.FetchAfterUpdateAsync(CancellationToken.None);
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
+    }
+
+    [Fact]
+    public async Task AFolderWithoutAVersionFileIsDownloadedAgain()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: null);
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal([new InstalledAddOn(Id, string.Empty)], rig.List.Items);
+        Assert.False(rig.Registry.HasPackage(Id));
+    }
+
+    [Fact]
+    public async Task ADownloadOfAnotherReleaseIsRefused()
+    {
+        using var rig = new AddOnRig();
+        rig.Files.Publish(AddOnRig.Version, AddOnRig.Runtime, AddOnRig.Zip(version: "4.10.0"));
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        var failed = await Assert.ThrowsAsync<AddOnException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
+
+        Assert.Equal(AddOnTexts.WrongPackage, failed.Message);
+        AssertNothingInstalled(rig);
+    }
+
+    [Fact]
+    public async Task FoldersPutInByHandAreNotTakenUpWhenTheDataFolderWasFixedAtThisStart()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder();
+
+        await rig.Installer.LoadInstalledAsync(takeUpFolders: false, CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Empty(rig.List.Items);
+        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(checkReach: false, CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task AFetchedAddOnStaysLoadedWhenItCannotBeStored()
+    {
+        using var rig = new AddOnRig();
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        rig.Files.Publish(AddOnRig.Version, AddOnRig.Runtime, AddOnRig.Zip());
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        rig.List.FailWrites = true;
+
+        await rig.Installer.FetchAfterUpdateAsync(CancellationToken.None);
+
+        Assert.True(rig.Registry.HasPackage(Id));
+        var row = Assert.Single(await rig.Installer.ListAsync(checkReach: false, CancellationToken.None));
+        Assert.Equal((AddOnState.Installed, AddOnRig.Version), (row.State, row.Version));
+    }
+
+    [Fact]
+    public async Task ADevelopmentBuildKeepsARemovedAddOnWithoutADownload()
+    {
+        using var rig = new AddOnRig("0.1.0-dev");
+        rig.PlaceFolder();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        await rig.Installer.RemoveAsync(Id, CancellationToken.None);
+
+        var removed = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var again = await rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None);
+
+        Assert.True(removed.CanInstall);
+        Assert.Equal(AddOnState.Installed, again.State);
+        Assert.Empty(rig.Files.Downloads);
+    }
+
+    [Fact]
+    public async Task UnknownIdsAndTheirFoldersGoAtTheStart()
+    {
+        using var rig = new AddOnRig();
+        var unknown = Path.Combine(rig.Root, "oadm.gone");
+        Directory.CreateDirectory(unknown);
+        await File.WriteAllTextAsync(Path.Combine(unknown, "plugin.json"), "{}");
+        rig.List.Items = [new InstalledAddOn("oadm.gone", "4.10.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.False(Directory.Exists(unknown));
+        Assert.Empty(rig.List.Items);
+    }
+
+    [Theory]
+    [InlineData("a:b.dll")]
+    [InlineData("plugin.json")]
+    public async Task ANameWithAColonOrAFileTwiceMakesTheDownloadDamaged(string extraEntry)
+    {
+        using var rig = new AddOnRig();
+        rig.Files.Publish(AddOnRig.Version, AddOnRig.Runtime, AddOnRig.Zip(extraEntry: extraEntry));
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        var failed = await Assert.ThrowsAsync<AddOnException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
+
+        Assert.Equal(AddOnTexts.Damaged, failed.Message);
+        AssertNothingInstalled(rig);
+    }
+
+    [Fact]
+    public async Task TheClientPartIsReadOncePerVersion()
+    {
+        using var rig = await StartedAsync();
+        await rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None);
+
+        var first = await rig.Installer.GetClientPartAsync(Id, "session-a", CancellationToken.None);
+        var second = await rig.Installer.GetClientPartAsync(Id, "session-a", CancellationToken.None);
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public async Task AFetchAfterTheServerStoppedEndsQuietly()
+    {
+        using var rig = new AddOnRig();
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        rig.Installer.Dispose();
+
+        await rig.Installer.FetchAfterUpdateAsync(CancellationToken.None);
+
+        Assert.Empty(rig.Files.Downloads);
     }
 
     private static void AssertNothingInstalled(AddOnRig rig)

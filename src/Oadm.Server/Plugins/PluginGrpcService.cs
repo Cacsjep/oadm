@@ -23,10 +23,10 @@ namespace Oadm.Server.Plugins;
 /// built for the call context, never the methods a plugin keeps for users with all devices, and receives only the events
 /// whose audience covers the user. The add-on methods (docs/spec/add-ons.md) are in src/Oadm.Server/AddOns.
 /// </summary>
-public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, Core.Plugins.AddOns.IAddOnInstaller addOns) : Proto.PluginService.PluginServiceBase
+public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, AddOns.IAddOnInstaller addOns) : Proto.PluginService.PluginServiceBase
 {
     /// <summary>The add-on installer (the add-on methods: src/Oadm.Server/AddOns/PluginGrpcService.AddOns.cs).</summary>
-    private readonly Core.Plugins.AddOns.IAddOnInstaller _addOns = addOns;
+    private readonly AddOns.IAddOnInstaller _addOns = addOns;
 
     /// <summary>The caller of the call with the caller's device view.</summary>
     private async Task<PluginCaller> CallerAsync(ServerCallContext context) =>
@@ -127,6 +127,12 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         if (string.IsNullOrWhiteSpace(request.Id))
         {
             throw GrpcGuard.InvalidArgument("id is required.");
+        }
+
+        if (request.Enabled && _addOns.IsRemoved(request.Id))
+        {
+            // A removed optional plugin stays off until its files go at the restart; Install on its card keeps it.
+            throw GrpcGuard.FailedPrecondition(AddOns.AddOnTexts.Removed);
         }
 
         PluginPackageState changed;

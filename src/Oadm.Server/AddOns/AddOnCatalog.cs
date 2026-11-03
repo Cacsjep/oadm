@@ -1,4 +1,4 @@
-namespace Oadm.Core.Plugins.AddOns;
+namespace Oadm.Server.AddOns;
 
 /// <summary>
 /// An add-on plugin this OADM version offers (docs/spec/add-ons.md): not in the installers, installed on demand on the
@@ -7,17 +7,7 @@ namespace Oadm.Core.Plugins.AddOns;
 /// <param name="Id">The plugin.json id; also the folder under <c>&lt;datafolder&gt;/addons/</c>.</param>
 /// <param name="DisplayName">The name on the Plugins page and in the audit log ("Text recognition").</param>
 /// <param name="Description">One line what it adds.</param>
-public sealed record AddOnEntry(string Id, string DisplayName, string Description)
-{
-    /// <summary>
-    /// The size of the download per server platform (runtime id "win-x64", "linux-x64", "linux-arm64", "osx-x64") in bytes;
-    /// a platform not listed shows no size.
-    /// </summary>
-    public IReadOnlyDictionary<string, long> SizeByRuntime { get; init; } = new Dictionary<string, long>(StringComparer.Ordinal);
-
-    /// <summary>The download size for <paramref name="runtimeId"/>, or null when unknown.</summary>
-    public long? SizeFor(string runtimeId) => SizeByRuntime.TryGetValue(runtimeId, out var size) ? size : null;
-}
+public sealed record AddOnEntry(string Id, string DisplayName, string Description);
 
 /// <summary>
 /// The add-ons of this OADM version, kept in the server so the Plugins page lists them without internet

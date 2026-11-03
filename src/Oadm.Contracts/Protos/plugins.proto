@@ -25,8 +25,9 @@ service PluginService {
   // Admin: removes the license of a package (the plugin falls back to its trial or to no license). Reply: the whole list.
   rpc RemovePackageLicense (PackageIdRequest) returns (PluginPackageList);
   // Add-on plugins (docs/spec/add-ons.md): plugins of this OADM version that are not in its installers. Any logged-in user:
-  // the add-ons of this version (AddOnCatalog) with their state on this server.
-  rpc ListAddOns (Empty) returns (AddOnList);
+  // the add-ons of this version (AddOnCatalog) with their state on this server. check_reach: whether the server reaches
+  // the release now (the Plugins page's card; one check at a time, kept for minutes); without it the last answer is used.
+  rpc ListAddOns (ListAddOnsRequest) returns (AddOnList);
   // Admin: downloads the add-on of the server's version from OADM's release, checks it and loads it (off). Streams
   // the progress; the last message has done or error set (a failure leaves nothing behind). NOT_FOUND unknown add-on,
   // FAILED_PRECONDITION already installed, another install or remove running, or a self update running.
@@ -35,7 +36,7 @@ service PluginService {
   // FAILED_PRECONDITION not installed or a self update running. Reply: the whole list.
   rpc RemoveAddOn (AddOnIdRequest) returns (AddOnList);
   // Any logged-in user: the client part of an installed add-on, every file with its SHA-256 (the client checks each).
-  // NOT_FOUND unknown or not installed add-on.
+  // NOT_FOUND unknown or not installed add-on, FAILED_PRECONDITION while the same session waits for one already.
   rpc GetAddOnClientPart (AddOnIdRequest) returns (AddOnClientPart);
 }
 
@@ -104,7 +105,8 @@ message PluginPackageList { repeated PluginPackageInfo packages = 1; string serv
 message SetPackageLicenseRequest { string id = 1; string license = 2; }
 message PackageIdRequest { string id = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }
-// The state of an add-on on this server (Oadm.Core.Plugins.AddOns.AddOnState).
+message ListAddOnsRequest { bool check_reach = 1; }
+// The state of an add-on on this server (Oadm.Server.AddOns.AddOnState).
 enum AddOnState {
   ADD_ON_NOT_INSTALLED = 0;
   ADD_ON_INSTALLING = 1;
@@ -112,19 +114,21 @@ enum AddOnState {
   ADD_ON_REMOVED = 3;      // turned off, its files go at the next server start
   ADD_ON_FAILED = 4;       // installed before, but the download after an update failed: not loaded (message says so)
 }
-// One add-on of this OADM version: id = plugin.json id; description: one line what it adds; size_bytes: the download for
-// the server's platform (0 unknown); percent while installing; message: why it is not loaded or cannot be installed
-// ("The server cannot reach github.com."), empty otherwise; can_install: false while the server cannot reach the release.
+// One add-on of this OADM version: id = plugin.json id; description: one line what it adds; percent while installing;
+// message: why it is not loaded or cannot be installed ("The server cannot reach github.com."), empty otherwise;
+// can_install: whether Install works now; client_digest: the digest of its client part (AddOnClientPart.digest) while
+// installed, empty otherwise.
 message AddOnInfo {
+  reserved 4; // size_bytes
   string id = 1;
   string display_name = 2;
   string description = 3;
-  int64 size_bytes = 4;
   AddOnState state = 5;
   int32 percent = 6;
   string message = 7;
   string version = 8;
   bool can_install = 9;
+  string client_digest = 10;
 }
 message AddOnList { repeated AddOnInfo add_ons = 1; }
 message AddOnIdRequest { string id = 1; }
@@ -144,5 +148,7 @@ message AddOnProgress {
 // A file of an add-on's client part: path relative to the add-on folder ("/" separated), its bytes and SHA-256
 // (lowercase hex).
 message AddOnFile { string path = 1; bytes data = 2; string sha256 = 3; }
-// The client part of an add-on for the server's version (the client keeps it per version).
-message AddOnClientPart { string id = 1; string version = 2; repeated AddOnFile files = 3; }
+// The client part of an add-on for the server's version (the client keeps it per server and version). digest: SHA-256
+// (lowercase hex) over one "<path> <sha256>\n" line per file sorted by path (Oadm.Contracts.AddOnLayout.Digest); the
+// client checks its cached copy against it.
+message AddOnClientPart { string id = 1; string version = 2; repeated AddOnFile files = 3; string digest = 4; }

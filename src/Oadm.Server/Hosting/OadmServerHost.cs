@@ -392,7 +392,7 @@ public static partial class OadmServerHost
         // Add-ons (docs/spec/add-ons.md): installed on the Plugins page from OADM's own release, loaded at once (off). The
         // load raises the registry's PackageAdded; the installer waits for PluginActivation to follow it.
         services.TryAddSingleton<AddOns.IAddOnListStore>(sp => new AddOns.SettingsAddOnListStore(sp.GetRequiredService<ServerSettingsStore>()));
-        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnFiles>(sp => new AddOns.GitHubAddOnFiles(
+        services.TryAddSingleton<AddOns.IAddOnFiles>(sp => new AddOns.GitHubAddOnFiles(
             sp.GetRequiredService<Contracts.Updates.IReleaseFeed>(),
             sp.GetRequiredService<Contracts.Updates.UpdateDownloader>()));
         services.TryAddSingleton<AddOns.IAddOnActivation>(sp => new AddOns.PluginActivationAddOns(
@@ -404,14 +404,14 @@ public static partial class OadmServerHost
             AddOns.AddOnInstallerOptions.CurrentRuntimeId()));
         services.AddSingleton(sp => new AddOns.AddOnInstaller(
             sp.GetRequiredService<AddOns.AddOnInstallerOptions>(),
-            sp.GetRequiredService<Core.Plugins.AddOns.IAddOnFiles>(),
+            sp.GetRequiredService<AddOns.IAddOnFiles>(),
             sp.GetRequiredService<AddOns.IAddOnListStore>(),
             sp.GetRequiredService<AddOns.IAddOnActivation>(),
             sp.GetRequiredService<PluginLoader>(),
             sp.GetRequiredService<Updates.UpdateGate>(),
             sp.GetRequiredService<ILogger<AddOns.AddOnInstaller>>(),
             sp.GetRequiredService<TimeProvider>()));
-        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnInstaller>(sp => sp.GetRequiredService<AddOns.AddOnInstaller>());
+        services.TryAddSingleton<AddOns.IAddOnInstaller>(sp => sp.GetRequiredService<AddOns.AddOnInstaller>());
         // OADM PRO license (docs/spec/licensing.md): for the server ID plugin licenses use; OADM itself never depends on it.
         services.AddSingleton(sp => new Core.Licensing.ProLicense(
             sp.GetRequiredService<ServerSettingsStore>(),
@@ -613,9 +613,10 @@ public static partial class OadmServerHost
 
         // 0. Installed service: the data and extraction folders must be admin-only (fixed, else the server does not start).
         var folderGuard = sp.GetService<FolderGuard>();
+        var dataFolderFixed = false;
         if (folderGuard is not null)
         {
-            await folderGuard.EnsureServerFoldersAsync(ServiceHosting.ServerFolders(paths.DataDirectory), ct).ConfigureAwait(false);
+            dataFolderFixed = await folderGuard.EnsureServerFoldersAsync(ServiceHosting.ServerFolders(paths.DataDirectory), ct).ConfigureAwait(false);
         }
 
         // 0b. A restore staged before the restart: its database, key and plugin data replace the server's (the replaced files
@@ -635,9 +636,11 @@ public static partial class OadmServerHost
         // As a service every plugin folder must be admin-only, and the repository's artifacts/plugins is never used.
         var loader = sp.GetRequiredService<PluginLoader>();
         var roots = options.PluginRoots ?? DefaultPluginRoots(paths, includeDevelopment: !sp.GetRequiredService<ServerRunMode>().IsService);
+        var addOns = sp.GetRequiredService<AddOns.AddOnInstaller>();
         if (folderGuard is not null)
         {
-            var refused = await folderGuard.CheckPluginFoldersAsync(roots, ct).ConfigureAwait(false);
+            // The add-on folders too (docs/spec/add-ons.md "Server"): each addons/<id> is a plugin folder the service loads.
+            var refused = await folderGuard.CheckPluginFoldersAsync([.. roots, addOns.Root], ct).ConfigureAwait(false);
             loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));
         }
 
@@ -657,9 +660,10 @@ public static partial class OadmServerHost
 
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
-        // one of another version (after an update or a restore) waits for the download in the background (step 4d).
-        var addOns = sp.GetRequiredService<AddOns.AddOnInstaller>();
-        await addOns.LoadInstalledAsync(ct).ConfigureAwait(false);
+        // one of another version (after an update or a restore) waits for the download in the background (step 4d). A folder
+        // put in by hand is taken up only when the service did not have to fix the data folder at this start (until now
+        // others could write it).
+        await addOns.LoadInstalledAsync(takeUpFolders: !dataFolderFixed, ct).ConfigureAwait(false);
         foreach (var plugin in registry.TaskPlugins)
         {
             LogTaskPlugin(logger, plugin.Id, plugin.Origin.Directory ?? "built-in");
@@ -856,7 +860,7 @@ public static partial class OadmServerHost
             .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The add-ons of this version could not be fetched; they are tried again at the next start")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The optional plugins of this version could not be downloaded; they are tried again at the next start")]
     private static partial void LogAddOnFetchFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Plugin loaded from the development folder {Directory}; it wins over an installed copy")]

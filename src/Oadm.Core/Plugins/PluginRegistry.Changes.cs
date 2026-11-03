@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
 
-using Oadm.Core.Plugins.AddOns;
-
 namespace Oadm.Core.Plugins;
 
 /// <summary>
@@ -14,11 +12,11 @@ public sealed partial class PluginRegistry
     private readonly HashSet<string> _addedAtRunTime = new(StringComparer.OrdinalIgnoreCase);
     private bool _started;
 
-    /// <inheritdoc />
+    /// <summary>Raised after a package was added to the registry while the server runs (<see cref="PackageRegistered"/>).</summary>
     public event EventHandler<PluginPackageAddedEventArgs>? PackageAdded;
 
-    /// <summary>Whether the start's loading is over (<see cref="MarkStarted"/>): a package registered now is added at run time.</summary>
-    public bool IsStarted
+    /// <summary>Whether the start's loading is over (<see cref="MarkStarted"/>): a package registered now is added at run time (tests).</summary>
+    internal bool IsStarted
     {
         get
         {
@@ -68,4 +66,12 @@ public sealed partial class PluginRegistry
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Plugin package {PackageId} added while the server runs")]
     private partial void LogPackageAdded(string packageId);
+}
+
+/// <summary>The package <see cref="PluginRegistry.PackageAdded"/> reports.</summary>
+/// <param name="packageId">The plugin.json id of the added package.</param>
+public sealed class PluginPackageAddedEventArgs(string packageId) : EventArgs
+{
+    /// <summary>The plugin.json id of the added package.</summary>
+    public string PackageId { get; } = packageId;
 }

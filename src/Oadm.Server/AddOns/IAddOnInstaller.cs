@@ -1,4 +1,4 @@
-namespace Oadm.Core.Plugins.AddOns;
+namespace Oadm.Server.AddOns;
 
 /// <summary>
 /// Installs and removes the add-ons of this OADM version (docs/spec/add-ons.md "Server"). One install or remove at a time;
@@ -7,8 +7,15 @@ namespace Oadm.Core.Plugins.AddOns;
 /// </summary>
 public interface IAddOnInstaller
 {
-    /// <summary>Every add-on of <see cref="AddOnCatalog"/> with its state on this server.</summary>
-    Task<IReadOnlyList<AddOnStatus>> ListAsync(CancellationToken ct);
+    /// <summary>
+    /// Every add-on of <see cref="AddOnCatalog"/> with its state on this server. <paramref name="checkReach"/>: whether the
+    /// server reaches the release now (one check at a time, kept for a few minutes; the Plugins page's card); without it
+    /// the last answer is used (a client's sync of its client parts never waits for GitHub).
+    /// </summary>
+    Task<IReadOnlyList<AddOnStatus>> ListAsync(bool checkReach, CancellationToken ct);
+
+    /// <summary>An add-on that was removed and is still loaded (off until the restart): it cannot be turned on.</summary>
+    bool IsRemoved(string packageId);
 
     /// <summary>
     /// Downloads the add-on of the server's version, checks it, swaps it in and loads it (off). Reports each step on
@@ -27,10 +34,11 @@ public interface IAddOnInstaller
     Task<AddOnStatus> RemoveAsync(string id, CancellationToken ct);
 
     /// <summary>
-    /// The client part of an installed add-on with each file's SHA-256. <see cref="KeyNotFoundException"/> for an unknown
-    /// or not installed add-on.
+    /// The client part of an installed add-on with each file's SHA-256, read and hashed once per version.
+    /// <see cref="KeyNotFoundException"/> for an unknown or not installed add-on, <see cref="InvalidOperationException"/>
+    /// (<see cref="AddOnTexts.ClientPartBusy"/>) while the same <paramref name="caller"/> (a session) waits for one already.
     /// </summary>
-    Task<AddOnClientPart> GetClientPartAsync(string id, CancellationToken ct);
+    Task<AddOnClientPart> GetClientPartAsync(string id, string caller, CancellationToken ct);
 }
 
 /// <summary>
@@ -50,23 +58,4 @@ public interface IAddOnFiles
     /// target file does not exist after a failure.
     /// </summary>
     Task DownloadAsync(string version, string fileName, string targetPath, IProgress<int>? progress, CancellationToken ct);
-}
-
-/// <summary>
-/// Changes of the plugin registry at run time that are not Turn on and off: a package loaded while the server runs (an
-/// add-on just installed). Raised by the registry; every reader of the registry (permissions, event and action catalogue,
-/// pages) follows it like Turn on.
-/// </summary>
-public interface IPluginRegistryChanges
-{
-    /// <summary>Raised after a package was added to the registry while the server runs.</summary>
-    event EventHandler<PluginPackageAddedEventArgs>? PackageAdded;
-}
-
-/// <summary>The package <see cref="IPluginRegistryChanges.PackageAdded"/> reports.</summary>
-/// <param name="packageId">The plugin.json id of the added package.</param>
-public sealed class PluginPackageAddedEventArgs(string packageId) : EventArgs
-{
-    /// <summary>The plugin.json id of the added package.</summary>
-    public string PackageId { get; } = packageId;
 }

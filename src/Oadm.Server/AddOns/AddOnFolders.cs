@@ -2,7 +2,6 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Server.AddOns;
@@ -24,9 +23,47 @@ public static class AddOnFolders
     public const long MaxClientPartBytes = 24L * 1024 * 1024;
 
     /// <summary>A client part's own folder in the add-on folder: everything below it goes to the clients.</summary>
-    public const string ClientFolder = "client";
+    public const string ClientFolder = Contracts.AddOnLayout.ClientFolder;
 
     public const string DownloadFolderName = ".download";
+
+    /// <summary>
+    /// The file "manage package addons" writes at the top of every add-on folder: the OADM release it belongs to ("4.11.0",
+    /// one line). A folder put in by hand is recorded with it.
+    /// </summary>
+    public const string VersionFileName = "oadm-version.txt";
+
+    /// <summary>The release in <see cref="VersionFileName"/> of an add-on folder; null when the file is missing or empty.</summary>
+    public static string? ReadVersion(string folder)
+    {
+        try
+        {
+            var path = Path.Combine(folder, VersionFileName);
+            if (!File.Exists(path) || new FileInfo(path).Length > 256)
+            {
+                return null;
+            }
+
+            var text = File.ReadAllText(path).Trim();
+            return text.Length == 0 ? null : text;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A downloaded add-on whose <see cref="VersionFileName"/> names another release than <paramref name="release"/>:
+    /// <see cref="AddOnException"/> with <see cref="AddOnTexts.WrongPackage"/>. A folder without the file passes.
+    /// </summary>
+    public static void CheckVersion(string folder, string release)
+    {
+        if (ReadVersion(folder) is { } version && !string.Equals(version, release, StringComparison.Ordinal))
+        {
+            throw new AddOnException(AddOnTexts.WrongPackage);
+        }
+    }
 
     /// <summary><c>&lt;datafolder&gt;/addons</c>.</summary>
     public static string Root(string dataDirectory)
@@ -37,8 +74,9 @@ public static class AddOnFolders
 
     /// <summary>
     /// Unpacks <paramref name="zipPath"/> into the new folder <paramref name="target"/>. A ZIP whose files sit in one top
-    /// folder is unpacked from that folder. A broken ZIP, a path outside the folder or more than the limits:
-    /// <see cref="AddOnException"/> with <see cref="AddOnTexts.Damaged"/>, the folder deleted.
+    /// folder is unpacked from that folder. A broken ZIP, a name with ':' (an alternate data stream on Windows) or a file twice,
+    /// a path outside the folder or more than the limits: <see cref="AddOnException"/> with <see cref="AddOnTexts.Damaged"/>,
+    /// the folder deleted.
     /// </summary>
     public static async Task UnpackAsync(string zipPath, string target, CancellationToken ct)
     {
@@ -56,6 +94,7 @@ public static class AddOnFolders
                 }
 
                 var top = CommonTopFolder(zip.Entries);
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 long total = 0;
                 var buffer = new byte[81920];
                 foreach (var entry in zip.Entries)
@@ -70,6 +109,11 @@ public static class AddOnFolders
                     if (name.Length == 0)
                     {
                         continue;
+                    }
+
+                    if (name.Contains(':', StringComparison.Ordinal) || !seen.Add(name.TrimEnd('/')))
+                    {
+                        throw new AddOnException(AddOnTexts.Damaged);
                     }
 
                     var path = Path.GetFullPath(Path.Combine(full, name));
@@ -107,7 +151,8 @@ public static class AddOnFolders
                 }
             }
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or AddOnException or OperationCanceledException)
+        catch (Exception ex) when (ex is InvalidDataException or ArgumentException or NotSupportedException or IOException
+                                       or UnauthorizedAccessException or AddOnException or OperationCanceledException)
         {
             TryDelete(full);
             if (ex is AddOnException or OperationCanceledException)
@@ -115,7 +160,8 @@ public static class AddOnFolders
                 throw;
             }
 
-            throw new AddOnException(ex is InvalidDataException ? AddOnTexts.Damaged : AddOnTexts.CouldNotInstall, ex);
+            // A name the file system refuses (ArgumentException, NotSupportedException) is a damaged ZIP, like a broken one.
+            throw new AddOnException(ex is InvalidDataException or ArgumentException or NotSupportedException ? AddOnTexts.Damaged : AddOnTexts.CouldNotInstall, ex);
         }
     }
 

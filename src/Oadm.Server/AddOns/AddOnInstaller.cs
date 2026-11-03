@@ -2,9 +2,9 @@ using System.Runtime.InteropServices;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Contracts;
 using Oadm.Contracts.Updates;
 using Oadm.Core.Plugins;
-using Oadm.Core.Plugins.AddOns;
 using Oadm.Server.Updates;
 
 namespace Oadm.Server.AddOns;
@@ -47,7 +47,7 @@ public sealed record AddOnInstallerOptions(string DataDirectory, string ServerVe
 /// follow it (<see cref="IAddOnActivation.PackageFollowedAsync"/>). Remove turns the add-on off at once and deletes its folder at the next start. One install or
 /// remove at a time, none while a self update runs; any failure leaves nothing behind.
 /// <para>
-/// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync"/> right after the bundled plugins are loaded,
+/// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync(bool, CancellationToken)"/> right after the bundled plugins are loaded,
 /// <see cref="FetchAfterUpdateAsync"/> in the background once the start is over (<see cref="PluginRegistry.MarkStarted"/>: the
 /// stored plugin choices applied, the licenses read; an add-on of an older version, after a self update or a restore, is
 /// downloaded again before it loads and is followed like one installed now).
@@ -64,9 +64,13 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _turn = new(1, 1);
+    private readonly SemaphoreSlim _partRead = new(1, 1);
+    private readonly CancellationTokenSource _stopping = new();
     private readonly Lock _sync = new();
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _partCallers = new(StringComparer.Ordinal);
     private (DateTimeOffset At, bool Value)? _reach;
+    private Task<bool>? _reachRun;
 
     public AddOnInstaller(
         AddOnInstallerOptions options,
@@ -103,18 +107,42 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     // ----- Server start -----
 
+    /// <summary>The start of a server whose data folder was not fixed at this start (tests, a console run).</summary>
+    public Task LoadInstalledAsync(CancellationToken ct) => LoadInstalledAsync(takeUpFolders: true, ct);
+
     /// <summary>
-    /// Server start, right after the bundled plugins are loaded: deletes the folders of removed add-ons and the leftovers of
-    /// an install that stopped, takes up folders put in by hand, and loads every installed add-on of this version (no event:
-    /// the start reads the registry afterwards). An id a bundled plugin has is not loaded (log line). Add-ons of another
-    /// version or without their folder wait for <see cref="FetchAfterUpdateAsync"/>.
+    /// Server start, right after the bundled plugins are loaded: deletes the folders of removed add-ons, of ids this version
+    /// does not offer and the leftovers of an install that stopped, takes up folders put in by hand (only with
+    /// <paramref name="takeUpFolders"/>: not when the service had to fix the data folder's permissions at this start, a folder
+    /// put there before could come from anyone), and loads every installed add-on of this version (no event: the start reads
+    /// the registry afterwards). An id a bundled plugin has is not loaded (log line). Add-ons of another version or without
+    /// their folder wait for <see cref="FetchAfterUpdateAsync"/>.
     /// </summary>
-    public async Task LoadInstalledAsync(CancellationToken ct)
+    public async Task LoadInstalledAsync(bool takeUpFolders, CancellationToken ct)
     {
         Directory.CreateDirectory(Root);
         AddOnFolders.CleanTemporary(Root);
         var list = (await _list.ReadAsync(ct).ConfigureAwait(false)).ToList();
-        var changed = false;
+        var changed = list.RemoveAll(a => !AddOnCatalog.Contains(a.Id)) > 0;
+
+        // Folders of ids this version does not offer (an add-on an older release had, a folder put in by mistake).
+        foreach (var folder in Directory.GetDirectories(Root))
+        {
+            var name = Path.GetFileName(folder);
+            if (name.StartsWith('.') || AddOnCatalog.Contains(name))
+            {
+                continue;
+            }
+
+            if (AddOnFolders.TryDelete(folder))
+            {
+                LogUnknownDeleted(_logger, name);
+            }
+            else
+            {
+                LogUnknownKept(_logger, name);
+            }
+        }
 
         // Removed: the folder goes now (no load context holds it yet).
         foreach (var removed in list.Where(a => a.Removed).ToList())
@@ -131,15 +159,24 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             }
         }
 
-        // Put in by hand from the release ZIP: installed, of this version.
+        // Put in by hand from the release ZIP: installed, of the release its version file names.
         foreach (var entry in AddOnCatalog.Entries)
         {
-            if (!list.Exists(a => Same(a.Id, entry.Id)) && File.Exists(Path.Combine(FolderOf(entry), PluginLoader.ManifestFileName)))
+            if (list.Exists(a => Same(a.Id, entry.Id)) || !File.Exists(Path.Combine(FolderOf(entry), PluginLoader.ManifestFileName)))
             {
-                list.Add(new InstalledAddOn(entry.Id, _options.ReleaseVersion ?? _options.ServerVersion));
-                changed = true;
-                LogTakenUp(_logger, entry.Id);
+                continue;
             }
+
+            if (!takeUpFolders)
+            {
+                LogNotTakenUp(_logger, entry.Id);
+                continue;
+            }
+
+            var version = AddOnFolders.ReadVersion(FolderOf(entry)) ?? (_options.ReleaseVersion is null ? _options.ServerVersion : string.Empty);
+            list.Add(new InstalledAddOn(entry.Id, version));
+            changed = true;
+            LogTakenUp(_logger, entry.Id, version);
         }
 
         var release = _options.ReleaseVersion;
@@ -162,14 +199,9 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 continue;
             }
 
-            if (installed is null)
+            if (installed is null || installed.Removed)
             {
-                continue;
-            }
-
-            if (installed.Removed)
-            {
-                // Its folder could not be deleted: not loaded, gone at a later start.
+                // Removed: its folder could not be deleted; not loaded, gone at a later start.
                 continue;
             }
 
@@ -190,7 +222,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 continue;
             }
 
-            if (!folderThere || UpdateVersions.Parse(installed.Version) != UpdateVersions.Parse(release))
+            // The exact release: the folder of a pre-release ("4.11.0-rc.1") is not the add-on of 4.11.0.
+            if (!folderThere || !string.Equals(installed.Version, release, StringComparison.Ordinal))
             {
                 lock (_sync)
                 {
@@ -236,7 +269,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     /// After the start (the stored plugin choices applied): downloads the add-on of this version for every installed add-on
     /// of another version or without its folder (after a self update or a restore), loads it and lets it follow its choice.
     /// One that cannot be downloaded stays unloaded with <see cref="AddOnTexts.NotLoadedAfterUpdate"/>; OADM runs on.
-    /// Never throws but for <paramref name="ct"/>.
+    /// Never throws but for <paramref name="ct"/>; a server that stops meanwhile ends it with a log line.
     /// </summary>
     public async Task FetchAfterUpdateAsync(CancellationToken ct)
     {
@@ -252,6 +285,36 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             return;
         }
 
+        CancellationTokenSource linked;
+        try
+        {
+            linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _stopping.Token);
+        }
+        catch (ObjectDisposedException)
+        {
+            LogFetchStopped(_logger);
+            return;
+        }
+
+        using (linked)
+        {
+            try
+            {
+                await FetchPendingAsync(pending, release, linked.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException || (ex is OperationCanceledException && linked.IsCancellationRequested))
+            {
+                LogFetchStopped(_logger); // the installer was disposed: the server stops, the next start tries again
+            }
+        }
+    }
+
+    private async Task FetchPendingAsync(List<AddOnEntry> pending, string release, CancellationToken ct)
+    {
         await _turn.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -270,29 +333,26 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 {
                     var folder = await FetchAsync(entry, release, slot, null, ct).ConfigureAwait(false);
                     LoadNow(entry, folder);
-                    await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, release), CancellationToken.None).ConfigureAwait(false);
-                    lock (_sync)
-                    {
-                        slot.Version = release;
-                        slot.Loaded = true;
-                        slot.Failed = null;
-                    }
+                    MarkLoaded(slot, release);
+                    LogFetched(_logger, entry.Id, release);
 
                     // The load raised PackageAdded: its stored choice applies (its core plugins start when it is on).
-                    await _activation.PackageFollowedAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
-                    LogFetched(_logger, entry.Id, release);
+                    await RecordAsync(entry, release, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     throw;
                 }
 #pragma warning disable CA1031 // A failed add-on never stops the server.
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not ObjectDisposedException)
 #pragma warning restore CA1031
                 {
                     lock (_sync)
                     {
-                        slot.Failed = AddOnTexts.NotLoadedAfterUpdate(entry.DisplayName, release);
+                        if (!slot.Loaded)
+                        {
+                            slot.Failed = AddOnTexts.NotLoadedAfterUpdate(entry.DisplayName, release);
+                        }
                     }
 
                     LogFetchFailed(_logger, ex, entry.Id, release);
@@ -309,27 +369,39 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         finally
         {
-            _turn.Release();
+            ReleaseQuietly(_turn);
         }
     }
 
     // ----- IAddOnInstaller -----
 
-    public async Task<IReadOnlyList<AddOnStatus>> ListAsync(CancellationToken ct)
+    /// <summary>Every add-on with its state; checks whether the server reaches the release (the Plugins page's card).</summary>
+    public Task<IReadOnlyList<AddOnStatus>> ListAsync(CancellationToken ct) => ListAsync(checkReach: true, ct);
+
+    public async Task<IReadOnlyList<AddOnStatus>> ListAsync(bool checkReach, CancellationToken ct)
     {
-        var reach = await CanReachAsync(ct).ConfigureAwait(false);
+        var reach = checkReach ? await CanReachAsync(ct).ConfigureAwait(false) : KnownReach();
         return [.. AddOnCatalog.Entries.Select(e => StatusOf(e, reach))];
+    }
+
+    public bool IsRemoved(string packageId)
+    {
+        lock (_sync)
+        {
+            return _slots.TryGetValue(packageId ?? string.Empty, out var slot) && slot.Loaded && slot.Removed;
+        }
     }
 
     public async Task<AddOnStatus> InstallAsync(string id, IProgress<AddOnProgress> progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(progress);
         var entry = EntryOf(id);
-        var release = _options.ReleaseVersion ?? throw new InvalidOperationException(AddOnTexts.NoRelease);
         await EnterAsync().ConfigureAwait(false);
         try
         {
             var slot = SlotOf(entry);
+            bool keep;
+            string loadedVersion;
             lock (_sync)
             {
                 if (slot.Bundled)
@@ -341,17 +413,16 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 {
                     throw new InvalidOperationException(AddOnTexts.AlreadyInstalled(entry.DisplayName));
                 }
+
+                keep = slot.Loaded;
+                loadedVersion = slot.Version;
             }
 
-            if (IsBundled(entry) && !slot.Loaded)
+            if (keep)
             {
-                throw new InvalidOperationException(AddOnTexts.PartOfServer(entry.DisplayName));
-            }
-
-            if (slot.Loaded)
-            {
-                // Removed but still loaded (off): installing it again keeps it, nothing is downloaded.
-                await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, slot.Version), CancellationToken.None).ConfigureAwait(false);
+                // Removed but still loaded (off): installing it again keeps it, nothing is downloaded (also in a development
+                // build or a pre-release).
+                await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, loadedVersion), CancellationToken.None).ConfigureAwait(false);
                 lock (_sync)
                 {
                     slot.Removed = false;
@@ -362,6 +433,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 return StatusOf(entry, reach: true);
             }
 
+            var release = _options.ReleaseVersion ?? throw new InvalidOperationException(AddOnTexts.NoRelease);
             bool wasPending;
             lock (_sync)
             {
@@ -369,6 +441,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 slot.Pending = false; // waiting for the fetch after an update: this install does it
             }
 
+            // A first install starts off; Install again after a failed fetch keeps the administrator's choice.
+            var firstInstall = !_activation.HasChoice(entry.Id);
             try
             {
                 var folder = await FetchAsync(entry, release, slot, progress, ct).ConfigureAwait(false);
@@ -392,25 +466,21 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 }
             }
 
-            lock (_sync)
+            MarkLoaded(slot, release);
+            if (firstInstall)
             {
-                slot.Version = release;
-                slot.Loaded = true;
-                slot.Removed = false;
-                slot.Failed = null;
+                await _activation.TurnOffAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
             }
 
-            // Installed off; then the registry's readers follow the new package.
-            await _activation.TurnOffAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
-            await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, release), CancellationToken.None).ConfigureAwait(false);
-            await _activation.PackageFollowedAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
+            // The registry's readers follow the new package.
+            await RecordAsync(entry, release, CancellationToken.None).ConfigureAwait(false);
             progress.Report(new AddOnProgress(AddOnStep.Install, 100));
             LogInstalled(_logger, entry.Id, release);
             return StatusOf(entry, reach: true);
         }
         finally
         {
-            _turn.Release();
+            ReleaseQuietly(_turn);
         }
     }
 
@@ -447,6 +517,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 lock (_sync)
                 {
                     slot.Failed = null;
+                    slot.Pending = false;
                     slot.Version = string.Empty;
                 }
 
@@ -467,13 +538,17 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         finally
         {
-            _turn.Release();
+            ReleaseQuietly(_turn);
         }
     }
 
-    public async Task<AddOnClientPart> GetClientPartAsync(string id, CancellationToken ct)
+    /// <summary>The client part for a caller without a session (tests).</summary>
+    public Task<AddOnClientPart> GetClientPartAsync(string id, CancellationToken ct) => GetClientPartAsync(id, string.Empty, ct);
+
+    public async Task<AddOnClientPart> GetClientPartAsync(string id, string caller, CancellationToken ct)
     {
         var entry = EntryOf(id);
+        caller ??= string.Empty;
         string version;
         lock (_sync)
         {
@@ -483,11 +558,61 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 throw new KeyNotFoundException(AddOnTexts.NotInstalled(entry.DisplayName));
             }
 
+            if (slot.ClientPart is { } cached && string.Equals(cached.Version, slot.Version, StringComparison.Ordinal))
+            {
+                return cached;
+            }
+
+            if (caller.Length > 0 && !_partCallers.Add(caller))
+            {
+                throw new InvalidOperationException(AddOnTexts.ClientPartBusy);
+            }
+
             version = slot.Version;
         }
 
-        var files = await AddOnFolders.ReadClientPartAsync(FolderOf(entry), ct).ConfigureAwait(false);
-        return new AddOnClientPart(entry.Id, version, files);
+        try
+        {
+            // One read at a time: the first caller reads and hashes the files, the others take its result.
+            await _partRead.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                lock (_sync)
+                {
+                    if (_slots[entry.Id].ClientPart is { } done && string.Equals(done.Version, version, StringComparison.Ordinal))
+                    {
+                        return done;
+                    }
+                }
+
+                var files = await AddOnFolders.ReadClientPartAsync(FolderOf(entry), ct).ConfigureAwait(false);
+                var part = new AddOnClientPart(entry.Id, version, files);
+                lock (_sync)
+                {
+                    var slot = _slots[entry.Id];
+                    if (string.Equals(slot.Version, version, StringComparison.Ordinal))
+                    {
+                        slot.ClientPart = part;
+                    }
+                }
+
+                return part;
+            }
+            finally
+            {
+                ReleaseQuietly(_partRead);
+            }
+        }
+        finally
+        {
+            if (caller.Length > 0)
+            {
+                lock (_sync)
+                {
+                    _partCallers.Remove(caller);
+                }
+            }
+        }
     }
 
     // ----- Steps -----
@@ -515,11 +640,12 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         {
             Directory.CreateDirectory(DownloadFolder);
             Report(AddOnStep.Download, 0, 0);
-            await _files.DownloadAsync(release, fileName, zip, new InlineProgress(p => Report(AddOnStep.Download, p, p * 90 / 100)), ct).ConfigureAwait(false);
+            await _files.DownloadAsync(release, fileName, zip, new SyncProgress<int>(p => Report(AddOnStep.Download, p, p * 90 / 100)), ct).ConfigureAwait(false);
 
             Report(AddOnStep.Check, 0, 90);
             await AddOnFolders.UnpackAsync(zip, staged, ct).ConfigureAwait(false);
             AddOnFolders.CheckManifest(staged, entry.Id);
+            AddOnFolders.CheckVersion(staged, release);
             Report(AddOnStep.Check, 100, 95);
 
             Report(AddOnStep.Install, 0, 95);
@@ -564,6 +690,26 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         throw new AddOnException(AddOnTexts.CouldNotLoad(entry.DisplayName));
     }
 
+    /// <summary>The package is in the registry now: the state says so whatever follows (storing it, the follow).</summary>
+    private void MarkLoaded(Slot slot, string version)
+    {
+        lock (_sync)
+        {
+            slot.Version = version;
+            slot.Loaded = true;
+            slot.Removed = false;
+            slot.Failed = null;
+            slot.ClientPart = null;
+        }
+    }
+
+    /// <summary>Stores the loaded add-on in the list and waits until the registry's readers follow it.</summary>
+    private async Task RecordAsync(AddOnEntry entry, string version, CancellationToken ct)
+    {
+        await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, version), ct).ConfigureAwait(false);
+        await _activation.PackageFollowedAsync(entry.Id, ct).ConfigureAwait(false);
+    }
+
     private async Task SaveAsync(string id, InstalledAddOn? entry, CancellationToken ct)
     {
         var list = (await _list.ReadAsync(ct).ConfigureAwait(false)).Where(a => !Same(a.Id, id)).ToList();
@@ -589,11 +735,15 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
         if (_update.UpdatingTo is not null)
         {
-            _turn.Release();
+            ReleaseQuietly(_turn);
             throw new InvalidOperationException(AddOnTexts.Updating);
         }
     }
 
+    /// <summary>
+    /// Whether the server reaches the release, kept for <see cref="AddOnInstallerOptions.ReachCacheTime"/>. One check at a
+    /// time: callers meanwhile wait for the same answer.
+    /// </summary>
     private async Task<bool> CanReachAsync(CancellationToken ct)
     {
         if (_options.ReleaseVersion is not { } release)
@@ -601,20 +751,35 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             return false;
         }
 
+        Task<bool> run;
         lock (_sync)
         {
             if (_reach is { } cached && _time.GetUtcNow() - cached.At < AddOnInstallerOptions.ReachCacheTime)
             {
                 return cached.Value;
             }
+
+            if (_reachRun is null || _reachRun.IsCompleted)
+            {
+                _reachRun = Task.Run(() => CheckReachAsync(release), CancellationToken.None);
+            }
+
+            run = _reachRun;
         }
 
+        return await run.WaitAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> CheckReachAsync(string release)
+    {
         bool reach;
         try
         {
-            reach = await _files.CanReachAsync(release, ct).ConfigureAwait(false);
+            reach = await _files.CanReachAsync(release, _stopping.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+#pragma warning disable CA1031 // Any failure is "cannot reach".
+        catch (Exception)
+#pragma warning restore CA1031
         {
             reach = false;
         }
@@ -627,13 +792,28 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         return reach;
     }
 
+    /// <summary>The last answer of the reach check without a new one (a client's sync of its client parts); true before the first.</summary>
+    private bool KnownReach()
+    {
+        if (_options.ReleaseVersion is null)
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            return _reach?.Value ?? true;
+        }
+    }
+
     private AddOnStatus StatusOf(AddOnEntry entry, bool reach)
     {
         var updating = _update.UpdatingTo is not null;
+        var release = _options.ReleaseVersion is not null;
         lock (_sync)
         {
             var slot = _slots[entry.Id];
-            var canInstall = reach && !updating && !slot.Bundled;
+            var canInstall = reach && release && !updating && !slot.Bundled;
             if (slot.Installing is { } percent)
             {
                 return new AddOnStatus(entry, AddOnState.Installing, slot.Version) { Percent = percent, CanInstall = false };
@@ -646,7 +826,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
             if (slot.Loaded && slot.Removed)
             {
-                return new AddOnStatus(entry, AddOnState.Removed, slot.Version) { Message = AddOnTexts.Removed, CanInstall = canInstall };
+                // Install keeps the loaded add-on: nothing to download.
+                return new AddOnStatus(entry, AddOnState.Removed, slot.Version) { Message = AddOnTexts.Removed, CanInstall = !updating };
             }
 
             if (slot.Loaded)
@@ -659,7 +840,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 return new AddOnStatus(entry, AddOnState.Failed, slot.Version) { Message = failed, CanInstall = canInstall };
             }
 
-            var message = _options.ReleaseVersion is null ? AddOnTexts.NoRelease : reach ? null : AddOnTexts.CannotReach;
+            var message = !release ? AddOnTexts.NoRelease : reach ? null : AddOnTexts.CannotReach;
             return new AddOnStatus(entry, AddOnState.NotInstalled) { Message = message, CanInstall = canInstall };
         }
     }
@@ -697,7 +878,34 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
     }
 
-    public void Dispose() => _turn.Dispose();
+    /// <summary>Releases a gate that a stopping server may have disposed already.</summary>
+    private static void ReleaseQuietly(SemaphoreSlim gate)
+    {
+        try
+        {
+            gate.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The server stops.
+        }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            _stopping.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            return; // disposed before
+        }
+
+        _stopping.Dispose();
+        _turn.Dispose();
+        _partRead.Dispose();
+    }
 
     /// <summary>The state of one add-on in this process; read and written under <see cref="_sync"/>.</summary>
     private sealed class Slot
@@ -715,50 +923,59 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         public int? Installing { get; set; }
 
         public string? Failed { get; set; }
+
+        /// <summary>The client part of <see cref="Version"/>, read and hashed once.</summary>
+        public AddOnClientPart? ClientPart { get; set; }
     }
 
-    /// <summary>Reports on the caller's thread.</summary>
-    private sealed class InlineProgress(Action<int> report) : IProgress<int>
-    {
-        public void Report(int value) => report(value);
-    }
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} {Version} installed")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Version} installed")]
     private static partial void LogInstalled(ILogger logger, string id, string version);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} removed: off now, its folder goes at the next start")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} removed: off now, its folder goes at the next start")]
     private static partial void LogRemoved(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} was installed again before the restart: kept")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} was installed again before the restart: kept")]
     private static partial void LogKeptAgain(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Folder of the removed add-on {Id} deleted")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Folder of the removed optional plugin {Id} deleted")]
     private static partial void LogRemovedDeleted(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Folder of the removed add-on {Id} could not be deleted; tried again at the next start")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Folder of the removed optional plugin {Id} could not be deleted; tried again at the next start")]
     private static partial void LogRemovedKept(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} found in the add-on folder: installed")]
-    private static partial void LogTakenUp(ILogger logger, string id);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Folder {Name} of the optional plugins is no optional plugin of this version: deleted")]
+    private static partial void LogUnknownDeleted(ILogger logger, string name);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} is not loaded: a plugin that came with the server has the same id")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Folder {Name} of the optional plugins is no optional plugin of this version and could not be deleted; tried again at the next start")]
+    private static partial void LogUnknownKept(ILogger logger, string name);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} found in the folder of the optional plugins: installed ({Version})")]
+    private static partial void LogTakenUp(ILogger logger, string id, string version);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} found in the folder of the optional plugins is not loaded: the data folder's permissions were reset at this start. Install it on the Plugins page")]
+    private static partial void LogNotTakenUp(ILogger logger, string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} is not loaded: a plugin that came with the server has the same id")]
     private static partial void LogBundledWins(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} {Version} loaded")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Version} loaded")]
     private static partial void LogLoaded(ILogger logger, string id, string version);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Add-on {Id} could not be loaded (see the plugin errors)")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} could not be loaded (see the plugin errors)")]
     private static partial void LogLoadFailed(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} {Installed} waits for the download of {Release}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Installed} waits for the download of {Release}")]
     private static partial void LogFetchPending(ILogger logger, string id, string installed, string release);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Add-on {Id} {Release} downloaded and loaded after the update")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Release} downloaded and loaded after the update")]
     private static partial void LogFetched(ILogger logger, string id, string release);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Add-on {Id} {Release} could not be downloaded after the update; not loaded")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} {Release} could not be downloaded or followed after the update")]
     private static partial void LogFetchFailed(ILogger logger, Exception ex, string id, string release);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Add-on {Id} not installed: {Reason} {Detail}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "The download of the optional plugins stopped with the server; the next start tries again")]
+    private static partial void LogFetchStopped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} not installed: {Reason} {Detail}")]
     private static partial void LogInstallFailed(ILogger logger, string id, string reason, string detail);
 }
