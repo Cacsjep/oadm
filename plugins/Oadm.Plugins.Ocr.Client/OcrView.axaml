@@ -1,8 +1,232 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Ocr.Client"
              x:Class="Oadm.Plugins.Ocr.Client.OcrView"
+             x:DataType="vm:OcrViewModel"
              ui:PageHeader.Subtitle="Reads text in camera pictures for the event rules.">
-  <!-- Placeholder until the page is built (docs/spec/ocr.md "Page"): the empty page's line. -->
-  <TextBlock Classes="secondary" Text="Create a reader to read text from a camera." />
+  <!-- Own cards (ICorePluginPage.HasOwnCards), docs/spec/ocr.md "Page": left the readers (New, red Delete, search, the list,
+       Runs on and Use the graphics card below it), right the selected reader (Read now, Draw area and its mode; the form in
+       two columns; the picture with areas and lines next to the areas; the results; the save status left of Save).
+       Shared controls and theme classes only. -->
+  <Grid x:Name="Panes" ColumnDefinitions="9*,Auto,20*">
+
+    <!-- Left: the readers. -->
+    <Border Grid.Column="0" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+          <TextBlock Grid.Column="0" Classes="cardTitle" Text="Readers" VerticalAlignment="Center" Margin="0,0,2,0" />
+          <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayChange}">
+            <ui:ToolbarButton IconKey="add" Text="New" Command="{Binding NewCommand}" ToolTip.Tip="Start from a camera" />
+            <ui:ToolbarSeparator />
+            <ui:ToolbarButton Classes="danger" IconKey="remove" Text="Delete" Command="{Binding DeleteCommand}" />
+          </ui:ToolbarOverflowPanel>
+        </Grid>
+        <ui:SearchBox Grid.Row="1" Classes="stretch" Text="{Binding SearchText}" Placeholder="Search readers" />
+
+        <Panel Grid.Row="2">
+          <!-- At most 50 readers, virtualized all the same; the selection follows the reader on the right. -->
+          <ListBox x:Name="ReaderList" Classes="deviceTree" ItemsSource="{Binding Readers}" SelectedItem="{Binding SelectedReader}" SelectionMode="Single">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ReaderRow">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
+                  <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <ui:StatusChip Grid.Column="1" Text="{Binding ModeText}" IsOk="{Binding IsWatching}" IsError="{Binding IsProblem}" ToolTip.Tip="{Binding Problem}" />
+                  <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="secondary" Text="{Binding Camera}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="mono" Text="{Binding LastText}" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <ui:ProgressRing Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsLoading}" />
+          <TextBlock Classes="secondary" Text="{x:Static vm:OcrViewModel.NoMatchText}" TextWrapping="Wrap" IsVisible="{Binding ShowNoMatch}" />
+          <TextBlock Classes="error" VerticalAlignment="Bottom" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+        </Panel>
+
+        <!-- What reads the pictures (docs/spec/ocr.md "GPU"). -->
+        <StackPanel Grid.Row="3" Spacing="4" IsVisible="{Binding RunsOnText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Classes="cardTitle subsection" Text="Settings" />
+          <TextBlock Classes="secondary" Text="{Binding RunsOnText}" TextWrapping="Wrap" />
+          <CheckBox Content="Use the graphics card" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}"
+                    ToolTip.Tip="{Binding GpuBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <GridSplitter Grid.Column="1" Classes="paneSplitter vertical" Margin="4,0" />
+
+    <!-- Right: the selected reader. -->
+    <Border Grid.Column="2" Classes="card">
+      <Panel>
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:OcrViewModel.EmptyText}"
+                   IsVisible="{Binding ShowEmpty}" />
+        <ui:ProgressRing Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsOpening}" />
+
+        <Grid x:Name="EditorPanel" DataContext="{Binding Editor}" x:DataType="vm:ReaderEditorViewModel"
+              IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).HasEditor, FallbackValue=False}"
+              RowDefinitions="Auto,Auto,*,Auto,Auto" RowSpacing="10">
+
+          <!-- Read now and Draw area; the mode right. -->
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4" IsVisible="{Binding MayChange}">
+              <ui:ToolbarButton IconKey="snapshot" Text="Read now" Command="{Binding ReadNowCommand}"
+                                ToolTip.Tip="{Binding ReadNowBlockedReason}" ToolTip.ShowOnDisabled="True" />
+              <ui:ToolbarButton IconKey="focusArea" Text="Draw area" Command="{Binding DrawAreaCommand}"
+                                ToolTip.Tip="{Binding DrawBlockedReason}" ToolTip.ShowOnDisabled="True" />
+            </ui:ToolbarOverflowPanel>
+            <ui:StatusChip Grid.Column="1" Text="{Binding ModeChipText}" IsOk="{Binding IsModeOk}" IsError="{Binding IsModeError}" />
+          </Grid>
+
+          <!-- The form in two columns. -->
+          <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding MayChange}">
+            <StackPanel Grid.Column="0" Spacing="8">
+              <ui:FormField Classes="wide" Label="Name">
+                <TextBox Text="{Binding Name}" MaxLength="64" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Camera" Error="{Binding CameraError}">
+                <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ChooseCameraCommand}"
+                        ToolTip.Tip="Find a camera by address or model">
+                  <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="{Binding CameraText}" />
+                </Button>
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Video source">
+                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding VideoSources}" SelectedItem="{Binding SelectedSource}"
+                          IsEnabled="{Binding !IsLoadingCamera}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CameraSource">
+                      <TextBlock Text="{Binding Name}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </ui:FormField>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="8">
+              <ui:FormField Classes="wide" Label="Resolution">
+                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Resolutions}" SelectedItem="{Binding SelectedResolution}"
+                          IsEnabled="{Binding !IsLoadingCamera}" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Mode" Error="{Binding ModeError}">
+                <StackPanel Classes="inputRow">
+                  <RadioButton Content="On demand" IsChecked="{Binding IsOnDemand}" />
+                  <RadioButton Content="Watching" IsChecked="{Binding IsWatching}" />
+                </StackPanel>
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="Frames per second" IsVisible="{Binding IsWatching}">
+                <ItemsControl ItemsSource="{Binding FpsOptions}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Classes="inputRow" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:FpsOption">
+                      <RadioButton GroupName="ocrFps" Content="{Binding Text}" IsChecked="{Binding IsChecked}" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ui:FormField>
+            </StackPanel>
+          </Grid>
+
+          <!-- The picture with the areas and the lines; the areas next to it. -->
+          <Grid Grid.Row="2" ColumnDefinitions="*,280" ColumnSpacing="12" MinHeight="200">
+            <Panel Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Top">
+              <vm:ReadingPicture x:Name="Picture" Source="{Binding Picture}" PictureSize="{Binding PictureSize}"
+                                 Areas="{Binding Areas}" Lines="{Binding Lines}" IsDrawing="{Binding IsDrawing}" Version="{Binding OverlayVersion}" />
+              <Border Classes="videoOverlay videoDetails" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8" IsHitTestVisible="False">
+                <TextBlock Classes="videoDetails" Text="{Binding PictureText}" />
+              </Border>
+              <ui:ProgressRing Width="32" Height="32" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsReading}" />
+            </Panel>
+
+            <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="cardTitle subsection" Text="Areas" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding AreaCountText}" VerticalAlignment="Center" />
+              </Grid>
+              <Panel Grid.Row="1">
+                <TextBlock Classes="secondary" Text="{x:Static vm:ReaderEditorViewModel.NoAreasText}" TextWrapping="Wrap" IsVisible="{Binding !HasAreas}" />
+                <ScrollViewer IsVisible="{Binding HasAreas}">
+                <ItemsControl x:Name="AreaList" ItemsSource="{Binding Areas}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AreaViewModel">
+                      <StackPanel Spacing="6" Margin="0,0,8,16" IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
+                            <TextBox Text="{Binding Name}" MaxLength="64" />
+                          </ui:FormField>
+                          <Button Grid.Column="1" Classes="toolbar iconOnly" VerticalAlignment="Bottom" ToolTip.Tip="Delete area" CommandParameter="{Binding}"
+                                  Command="{Binding $parent[ItemsControl].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
+                            <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                          </Button>
+                        </Grid>
+                        <StackPanel Classes="inputRow">
+                          <RadioButton Content="Any text" IsChecked="{Binding IsAnyText}" />
+                          <RadioButton Content="Format" IsChecked="{Binding IsFormat}" />
+                        </StackPanel>
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Hint="{x:Static vm:AreaViewModel.FormatHint}" IsVisible="{Binding IsFormat}">
+                          <TextBox Classes="mono" Text="{Binding FormatText}" PlaceholderText="AAAU ###### #" MaxLength="40" />
+                        </ui:FormField>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                </ScrollViewer>
+              </Panel>
+            </Grid>
+          </Grid>
+
+          <!-- The results of the last reading, one row per area. -->
+          <StackPanel Grid.Row="3" Spacing="8">
+            <DataGrid x:Name="ResultsGrid" Classes="wrapRows" ItemsSource="{Binding Results}" IsReadOnly="True" CanUserSortColumns="False"
+                      CanUserReorderColumns="False" CanUserResizeColumns="True" SelectionMode="Single" MaxHeight="240"
+                      HeadersVisibility="Column">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Area" Width="1.2*" MinWidth="110" Binding="{Binding Area}" x:DataType="vm:ResultRow" />
+                <DataGridTemplateColumn Header="Text" Width="3*" MinWidth="180">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:ResultRow">
+                      <StackPanel Spacing="4" Margin="0,4" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Image Source="{Binding CutOut}" Height="28" MaxWidth="160" Stretch="Uniform" IsVisible="{Binding HasCutOut}"
+                                 VerticalAlignment="Center" />
+                          <TextBlock Classes="mono" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ui:StatusChip Text="{x:Static vm:ResultRow.TooSmallText}" IsWarning="True" MaxLines="2" IsVisible="{Binding TooSmall}" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="130" MinWidth="125" Binding="{Binding ConfidenceText}" CellStyleClasses="number" x:DataType="vm:ResultRow">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Confidence" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="Matches format" Width="140" MinWidth="130">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:ResultRow">
+                      <Panel>
+                        <ui:StatusChip Text="{Binding MatchText}" IsOk="{Binding IsMatch}" IsWarning="{Binding IsNoMatch}" IsVisible="{Binding HasFormat}" />
+                        <TextBlock Classes="secondary" Text="{Binding MatchText}" VerticalAlignment="Center" IsVisible="{Binding !HasFormat}" />
+                      </Panel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Time" Width="90" MinWidth="80" Binding="{Binding Time}" x:DataType="vm:ResultRow" />
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Classes="secondary" HorizontalAlignment="Center" Text="{Binding ResultsEmptyText}" IsVisible="{Binding !HasResults}" />
+          </StackPanel>
+
+          <!-- The save status directly left of Save. -->
+          <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" IsVisible="{Binding MayChange}">
+            <ui:StatusChip Grid.Column="1" VerticalAlignment="Center" Text="{Binding SaveStatus}" IsOk="{Binding IsSaveStatusOk}"
+                           IsWarning="{Binding !IsSaveStatusOk}" IsVisible="{Binding HasSaveStatus}" />
+            <Button Grid.Column="2" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                    ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+          </Grid>
+        </Grid>
+      </Panel>
+    </Border>
+  </Grid>
 </UserControl>
