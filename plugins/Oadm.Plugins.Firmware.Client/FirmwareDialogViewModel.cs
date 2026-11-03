@@ -27,7 +27,7 @@ public sealed record FactoryDefaultModeOption(FactoryDefaultMode Mode, string La
 }
 
 /// <summary>
-/// "Upgrade firmware" dialog: one table of the selected devices, each with the version from axis.com or the chosen file it
+/// "Upgrade AXIS OS" dialog: one table of the selected devices, each with the version from axis.com or the chosen file it
 /// installs (README "Dialog", "Firmware online"), the preview per device and the options; uploads the chosen files to the
 /// server and returns the task payload.
 /// </summary>
@@ -112,7 +112,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     /// <summary>The factory default choices the role may use (only "None" without the permission).</summary>
     public IReadOnlyList<FactoryDefaultModeOption> Modes { get; }
 
-    public string Title { get; } = "Upgrade firmware";
+    public string Title { get; } = AxisOsTexts.UpgradeTask;
 
     /// <summary>The host offers the MyAxis sign-in (older hosts: chosen files only).</summary>
     public bool CanSignIn { get; }
@@ -121,7 +121,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
     [NotifyPropertyChangedFor(nameof(ShowSignIn), nameof(ShowRules))]
     public partial bool IsSignedIn { get; private set; }
 
-    /// <summary>The command button "Sign in to MyAxis to download firmware" right in the header of the device card (not signed in).</summary>
+    /// <summary>The command button "Sign in to MyAxis to download AXIS OS" right in the header of the device card (not signed in).</summary>
     public bool ShowSignIn => CanSignIn && !IsSignedIn;
 
     /// <summary>The select "Set versions" right in the header: signed in and the versions of axis.com arrived.</summary>
@@ -247,7 +247,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         : FileError is not null ? FileError
         : _checking.Count > 0 ? "Checking the version on axis.com."
         : _chosenCount == 0 ? NothingChosenText
-        : _installCount == 0 ? "None of the selected devices can install the chosen firmware (see Result)."
+        : _installCount == 0 ? "None of the selected devices can install the chosen AXIS OS version (see Result)."
         : null;
 
 
@@ -934,7 +934,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
         Error = null;
         IsUploading = true;
         UploadProgress = 0;
-        UploadText = files.Count > 0 ? "Uploading firmware to the server" : null;
+        UploadText = files.Count > 0 ? "Uploading AXIS OS to the server" : null;
         var uploadCts = new CancellationTokenSource();
         _uploadCts = uploadCts;
         try
@@ -951,7 +951,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
                 // The SDK does not specify the unit: accept a fraction (0..1) or a percentage. Several files: one bar.
                 var percent = Math.Clamp(p <= 1.0 ? p * 100 : p, 0, 100);
                 UploadProgress = Math.Clamp(((current * 100) + percent) / Math.Max(1, files.Count), 0, 100);
-                UploadText = string.Create(CultureInfo.InvariantCulture, $"Uploading firmware to the server ({UploadProgress:0} %)");
+                UploadText = string.Create(CultureInfo.InvariantCulture, $"Uploading AXIS OS to the server ({UploadProgress:0} %)");
             });
 
             // Each local file once, also when several devices install it.
@@ -988,7 +988,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 #pragma warning restore CA1031
         {
             UploadText = null;
-            Error = "The firmware file could not be uploaded to the server: " + ex.Message;
+            Error = "The AXIS OS file could not be uploaded to the server: " + ex.Message;
         }
         finally
         {
@@ -1129,7 +1129,7 @@ public sealed partial class FirmwareDialogViewModel : ObservableObject, IDisposa
 
         if (!row.Supported)
         {
-            return (new FirmwareCheck(FirmwareVerdict.InvalidFile, "This device's firmware cannot be updated from OADM."), null);
+            return (new FirmwareCheck(FirmwareVerdict.InvalidFile, "AXIS OS on this device cannot be updated from OADM."), null);
         }
 
         if (choice is FileChoice file)

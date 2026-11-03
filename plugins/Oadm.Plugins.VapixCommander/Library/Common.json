@@ -118,9 +118,9 @@
     {
       "id": "common.firmware.status",
       "version": 1,
-      "name": "Get firmware status",
+      "name": "Get AXIS OS status",
       "category": "Common",
-      "description": "Active AXIS OS version and firmware part number.",
+      "description": "Active AXIS OS version and part number.",
       "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
       "requires": [
         {
@@ -147,11 +147,11 @@
         "kind": "json-rpc",
         "extract": [
           {
-            "label": "Active firmware",
+            "label": "Active AXIS OS",
             "path": "data.activeFirmwareVersion"
           },
           {
-            "label": "Firmware part",
+            "label": "AXIS OS part",
             "path": "data.activeFirmwarePart"
           }
         ]

@@ -18,7 +18,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 | `Scan.TimeoutMs` | 1500 | Discovery "Scan timeout (ms)" (range scans and the first contact of imported lines), `scan_timeout_ms = 3` |
 | `Discovery.ZeroConfSeconds` | 30, 5..300 | Discovery "Discovery duration (s)": Discovery on the add page ends after this time, `zero_conf_seconds = 8` |
 | `Devices.WaitingRetryMinutes` | 15, 1..1440 | Discovery "Try waiting devices every (min)", `optional waiting_retry_minutes = 10`; `docs/spec/add-devices.md` "Waiting list" |
-| `Tasks.MaxParallelPerPlugin` | 16, 1..256 | Tasks "Parallel tasks per plugin" ("How many devices a task runs on at the same time, e.g. restarts or firmware updates."), `optional max_parallel_tasks_per_plugin = 9` |
+| `Tasks.MaxParallelPerPlugin` | 16, 1..256 | Tasks "Parallel tasks per plugin" ("How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades."), `optional max_parallel_tasks_per_plugin = 9` |
 | `Devices.AllowBasicOverHttp` | false | Security "Device login", check box "Allow Basic login over HTTP" ("Sends passwords unencrypted. Only for devices without HTTPS."), `optional allow_basic_over_http = 11` |
 | `Server.Name` | the host name | Server "Server name", `server_name = 4` |
 | `Server.ListenUrl` | `https://0.0.0.0:5080` | Server "Listen URL" ("Takes effect after the server restarts"), `listen_url = 5` |

@@ -306,7 +306,7 @@ public sealed class FirmwareDialogViewModelTests
         var payload = ClientPayload.Parse(vm.Result);
         Assert.Equal(2, payload.Files!.Count);
         Assert.Equal([Devices[0].Id, Devices[2].Id], vm.RunDevices); // not the one up to date, not the blocked downgrade
-        Assert.Equal("Upgrade firmware to 12.11.77", payload.TaskName());
+        Assert.Equal("Upgrade AXIS OS to 12.11.77", payload.TaskName());
     }
 
     [Fact]
@@ -399,7 +399,7 @@ public sealed class FirmwareDialogViewModelTests
 
         // One device upgrades, another downgrades: the task name does not claim either.
         Assert.Equal(ClientDirection.Unknown, payload.Direction);
-        Assert.Equal("Install firmware 12.11.77 (factory default)", server.TaskName());
+        Assert.Equal("Install AXIS OS 12.11.77 (factory default)", server.TaskName());
     }
 
     [Fact]
@@ -469,7 +469,7 @@ public sealed class FirmwareDialogViewModelTests
         Assert.Equal("12.11.77", vm.Devices[0].CurrentVersion);
         Assert.Equal(ClientVerdict.AlreadyUpToDate, vm.Devices[0].Check!.Verdict);
         Assert.False(vm.Devices[1].WillInstall);
-        Assert.Equal("This device's firmware cannot be updated from OADM.", vm.Devices[1].Message);
+        Assert.Equal("AXIS OS on this device cannot be updated from OADM.", vm.Devices[1].Message);
         Assert.Equal("12.20.10", vm.Devices[3].CurrentVersion); // the query failed: the cached version stays
     }
 
@@ -564,7 +564,7 @@ public sealed class FirmwareDialogHeadlessTests
 
             vm.IsUploading = true;
             vm.UploadProgress = 42;
-            vm.UploadText = "Uploading firmware to the server (42 %)";
+            vm.UploadText = "Uploading AXIS OS to the server (42 %)";
             await PumpAsync();
             Capture(window, outDir, "firmware-dialog-uploading.png");
 

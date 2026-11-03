@@ -32,7 +32,7 @@ PDF report. Read-only for devices. Rules: [Bundled plugins](../../docs/spec/bund
   **Refresh all**, **Select all**, **Export PDF**; on the right "Size" (200-720 px) and `ui:SearchBox`. Status line "14
   pictures from 9 cameras · 13 selected · 3 failed"; `ui:ProgressRow` "Loading snapshots 5 of 14".
 - Tiles (`Border.tile`) in virtualized rows: picture (click = large preview with facts and "Take new snapshot"), check
-  box + title + refresh button, facts line (model · firmware · MAC), then capture time and size or a `ui:StatusChip`
+  box + title + refresh button, facts line (model · AXIS OS version · MAC), then capture time and size or a `ui:StatusChip`
   (Loading, error with the message). A failed snapshot keeps the older picture. All tiles start selected.
 - Export dialog "Export maintenance report": Site / customer (required), Technician, Date (yyyy-MM-dd, today), the file
   name; site, technician and the last folder are kept in
@@ -40,7 +40,7 @@ PDF report. Read-only for devices. Rules: [Bundled plugins](../../docs/spec/bund
   progress and downloads the PDF; failed snapshots keep the dialog open with a warning.
 - PDF (PDFsharp + MigraDoc 6, MIT; QuestPDF rejected for its license; Roboto embedded), A4 portrait. Cover: "Maintenance report", site, technician, date,
   creation time, OADM version, summary (cameras, video sources, online, offline or not OK, snapshots taken / failed),
-  firmware versions with counts, certificates expired or expiring within 30 days. Then two snapshots per page: "<title> ·
+  AXIS OS versions with counts, certificates expired or expiring within 30 days. Then two snapshots per page: "<title> ·
   <model>", the JPEG embedded unchanged (DCTDecode) in a 17 x 8.5 cm box, a facts table; a failed snapshot is a grey box
   "No snapshot: <error>". Footer "<site> · <date> · Maintenance report" and "Page n of m". About 250 KB per full-HD snapshot.
 

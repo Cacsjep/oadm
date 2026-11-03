@@ -12,7 +12,7 @@ address (IPv4, IPv6) is probed before the first write (`IAddressProbe`: ping, 2 
 device's own addresses are not probed); an answer fails "<address> is already in use (answers ping). Nothing was
 changed.".
 
-Device groups (`docs/spec/device-scope.md`): every bundled package sets `minSdkVersion` 0.4.0 (Upgrade firmware 0.9.0: downloads from axis.com). Tasks run only on devices
+Device groups (`docs/spec/device-scope.md`): every bundled package sets `minSdkVersion` 0.4.0 (Upgrade AXIS OS 0.9.0: downloads from axis.com). Tasks run only on devices
 of the user's view (the host refuses the whole run otherwise) and touch only their own device; queries read only the
 queried device, which the host checks. Packages of task plugins and actions only run no `PluginCanary`: the host scopes
 their runs and queries (server `CanaryTests.PluginsConverted`); plugins with a page run one. Event rules are for users
@@ -35,10 +35,10 @@ change a password or role, or remove users on every selected device.
   known ("Nothing was changed"); passwords only in memory and the POST body, never in a step, log, warning, error or URL;
   every change is read back.
 
-## Upgrade firmware
+## Upgrade AXIS OS
 
 `plugins/Oadm.Plugins.Firmware` (+ `.Client`), id `oadm.firmware`, always on, toolbar and context menu (Maintenance)
-**Upgrade firmware**: installs AXIS OS images on the selected devices, one file per model
+**Upgrade AXIS OS**: installs AXIS OS images on the selected devices, one file per model
 (`FirmwareCompatibility.Choose`; a device without one shows "No file for this model."), waits for the restart, verifies
 the version and commits it.
 
@@ -46,7 +46,7 @@ the version and commits it.
   the decision table runs in the dialog and again on the server before the upload; downgrades need "Allow downgrade" and
   a factory default; a device with an uncommitted earlier upgrade is not touched; tasks start only for devices that
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
-  verified and committed (Commit firmware waits up to 5 minutes while AXIS OS has not finished booting); at most 4
+  verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); at most 4
   devices at a time.
 - Upgrade path (README "Upgrade path"): advice only, never refused; "Not recommended" only when an upgrade jumps over
   an LTS track, leaving the device's LTS track is a note in Details (OADM does not know the latest version of a track). A
@@ -54,11 +54,11 @@ the version and commits it.
 - AXIS OS 13 and later: a device with an installed application that is unsigned or does not declare the target version
   (bundled ones excepted, README "Installed applications") is "Apps block it" and gets no task; the task checks again
   before the upload and refuses with "Nothing was changed.".
-- Firmware online (built, verified 2026-11-02 on Windows with a real MyAxis account; README "Firmware online"): one device table, per
+- AXIS OS online (built, verified 2026-11-02 on Windows with a real MyAxis account; README "AXIS OS online"): one device table, per
   device a version from axis.com (Recommended = newest on its own track, Latest LTS, Latest active) or a
   chosen file; choosing on one device changes only that device; the lookup reads only the selected models' public listings (query `online`, 8 models at a time, no
   cache); the server reads URL, size and SHA-256 from axis.com itself and downloads with the starting user's MyAxis
-  sign-in ([myaxis.md](myaxis.md), step "Download firmware"; a device with a version from axis.com is refused without
+  sign-in ([myaxis.md](myaxis.md), step "Download AXIS OS from axis.com"; a device with a version from axis.com is refused without
   one, before any write; a device with a chosen file never needs it), one read of axis.com per version per run; the
   decision table, upgrade path and apps check apply unchanged.
 

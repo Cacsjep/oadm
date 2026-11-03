@@ -155,7 +155,7 @@ America/Denver, America/Coyhaique -> America/Punta_Arenas, Asia/Urumqi -> Asia/D
 Asia/Tashkent; Windows Server 2025 lacks Vostok and Troll). A zone the OS does not know at all (Antarctica/Troll) stays
 in the list without an offset: "Troll - Antarctica/Troll", offset column "Unknown", sorted last, no daylight saving
 option. Devices with the Time API get it by IANA id and apply their own rules. A POSIX string (daylight saving off,
-legacy firmware) cannot be built, so the task fails "... not known to this server ... Nothing was changed.".
+older AXIS OS versions) cannot be built, so the task fails "... not known to this server ... Nothing was changed.".
 
 Standard offset, "observes daylight saving" and the POSIX rule come from the instants at which the OS changes the
 offset in the current year (`ZoneYear`: day-by-day scan, each change pinned to the second), not from

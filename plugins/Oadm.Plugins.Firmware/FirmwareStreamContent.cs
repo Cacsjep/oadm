@@ -47,7 +47,7 @@ public sealed class FirmwareStreamContent : HttpContent
 
                 if (BytesSent + read > _length)
                 {
-                    throw new FirmwareFileChangedException("The firmware file is larger than announced; it changed during the upload.");
+                    throw new FirmwareFileChangedException("The AXIS OS file is larger than announced; it changed during the upload.");
                 }
 
                 await stream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
@@ -58,7 +58,7 @@ public sealed class FirmwareStreamContent : HttpContent
 
         if (BytesSent != _length)
         {
-            throw new FirmwareFileChangedException("The firmware file is shorter than announced; it changed during the upload.");
+            throw new FirmwareFileChangedException("The AXIS OS file is shorter than announced; it changed during the upload.");
         }
     }
 

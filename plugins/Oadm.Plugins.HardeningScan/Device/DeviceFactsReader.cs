@@ -115,7 +115,7 @@ public sealed class DeviceFactsReader
 
         var policy = HasRest("user-management", 2)
             ? await ReadAsync(async ct2 => DeviceParsers.ParsePasswordPolicy(await GetJsonAsync(vapix, "config/rest/user-management/v2", ct2).ConfigureAwait(false)) ?? string.Empty, ct).ConfigureAwait(false)
-            : Fact.NotAvailable<string>("No password policy setting on this firmware");
+            : Fact.NotAvailable<string>("No password policy setting on this AXIS OS version");
 
         Fact<CurrentTimeSettings> time;
         if (TimeApis.HasNtpApi(apis))
@@ -156,7 +156,7 @@ public sealed class DeviceFactsReader
 
         var firewall = HasRest("firewall", 1)
             ? await ReadAsync(async ct2 => DeviceParsers.ParseFirewall(await GetJsonAsync(vapix, "config/rest/firewall/v1", ct2).ConfigureAwait(false)), ct).ConfigureAwait(false)
-            : Fact.NotAvailable<FirewallInfo>("No firewall on this firmware");
+            : Fact.NotAvailable<FirewallInfo>("No firewall on this AXIS OS version");
 
         bool? lldp = null;
         if (HasRest("lldp", 1))
@@ -272,7 +272,7 @@ public sealed class DeviceFactsReader
         var read = await ReadAsync(ct2 => WebServerTls.GetAsync(vapix, ct2), ct).ConfigureAwait(false);
         // Firmware without the SOAP web server service answers 404 or a SOAP fault for an unknown action.
         return read.Error is { } error && (error.Contains("HTTP 404", StringComparison.Ordinal) || error.Contains("ActionNotSupported", StringComparison.OrdinalIgnoreCase))
-            ? Fact.NotAvailable<WebServerTlsConfiguration>("No web server settings service on this firmware")
+            ? Fact.NotAvailable<WebServerTlsConfiguration>("No web server settings service on this AXIS OS version")
             : read;
     }
 

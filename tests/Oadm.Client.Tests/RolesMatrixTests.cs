@@ -11,6 +11,7 @@ using Oadm.Client.Dialogs;
 using Oadm.Client.Settings;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Tests;
 
@@ -226,6 +227,21 @@ public sealed class RolesMatrixTests
         vm.ToggleGroupCommand.Execute(vm.Rows[0]);
         Assert.Equal("Devices", vm.Rows[0].Title);
         Assert.False(vm.Rows[1].IsGroup); // the Devices rows are shown
+    }
+
+    [Fact]
+    public async Task Search_finds_Upgrade_AXIS_OS_by_firmware()
+    {
+        var (vm, _, _) = Create();
+        await vm.LoadAsync();
+
+        vm.SearchText = "firmware";
+        Assert.Contains(vm.Rows, r => r.Key == "task:oadm.firmware:upgrade" && r.Title == AxisOsTexts.UpgradeTask);
+        Assert.Contains(vm.Rows, r => r.Key == "task:oadm.firmware:downgrade");
+        Assert.DoesNotContain(vm.Rows, r => r.Key == "task:oadm.users:remove");
+
+        vm.SearchText = "upgrade FIRMWARE";
+        Assert.Contains(vm.Rows, r => r.Key == "task:oadm.firmware:upgrade");
     }
 
     [Fact]

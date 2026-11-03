@@ -121,7 +121,7 @@ public sealed class FirmwareOnlineDialogTests
         Assert.All(payload.AllOnline(), o => Assert.Null(o.Devices)); // by product and major: no device ids
         Assert.Equal(["11.11.238 11", "12.11.147 12"], payload.AllOnline().Select(o => o.Version + " " + o.FromMajor).Order());
         Assert.Equal([devices[0].Id, devices[1].Id, devices[2].Id], vm.RunDevices);
-        Assert.Equal("Upgrade firmware", payload.TaskName()); // two versions, every device upgrades
+        Assert.Equal("Upgrade AXIS OS", payload.TaskName()); // two versions, every device upgrades
         ServerAgrees(vm);
     }
 

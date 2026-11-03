@@ -34,14 +34,14 @@ The bundled commands of the [VAPIX Commander](../README.md), in the format of
   `listAll`, `status`, `systemready`) or a SOAP `Get*` operation. Every param.cgi and JSON reader has
   `response.extract` so the technician sees the current values in the step detail.
 - **Setters** are named "Set ..." or say what they do ("Restart device"). Restart, factory default,
-  firmware rollback, capture mode (restarts), network addressing/DNS/host name, HTTP security policies
+  AXIS OS rollback, capture mode (restarts), network addressing/DNS/host name, HTTP security policies
   and all user changes are `dangerous: true`. Formatting a disk and removing an application are too.
 - **Video**: every Video, Image and PTZ command sets `hasVideoOnly: true`, and so do the tampering commands.
 - **Indexes**: `source` = `ImageSource.I#` (0-based sensor), `channel` = `Image.I#` (0-based video
   channel), `camera` = VAPIX camera number (1-based, ptz.cgi, overlays, Zipstream).
 - **JSON APIs** send `"apiVersion": "1.0"` (`"2.0"` for supervised I/O) and `"context": "oadm"`.
   Axis devices answer with the highest minor they support (the development camera answers 1.38 to a 1.0
-  network-settings request), so the lowest major.0 works on every firmware that has the method.
+  network-settings request), so the lowest major.0 works on every AXIS OS version that has the method.
 - **requires** names the `apidiscovery.cgi getApiList` id with `minVersion` `<major>.0`.
   Legacy CGIs without an own id (`systemlog.cgi`, `serverreport.cgi`, `geolocation/*.cgi`,
   `io/port.cgi`, `virtualinput/*.cgi`, `/vapix/services` SOAP) require `param-cgi 1.0` as the
@@ -63,7 +63,7 @@ The bundled commands of the [VAPIX Commander](../README.md), in the format of
 - **Passwords** (`users.add`, `users.password.set`, `events.mqtt.client.configure`) only travel in POST
   bodies (form or JSON), never in the URL; a test enforces this.
 - **Siren and light** (`siren_and_light.cgi`, API `siren-and-light` 1.0; AXIS D4100-E, D4200-VE and other strobes and
-  sirens): pattern names differ between models and firmware ("Alarm: Horror", "Alarm Horror"), so pattern fields are
+  sirens): pattern names differ between models and AXIS OS versions ("Alarm: Horror", "Alarm Horror"), so pattern fields are
   text with **Get siren and light capabilities** named in the description, never a fixed list. `start` with a siren and a
   light, and `setMaintenanceMode` with an optional duration, are split into commands without optional JSON values
   (an empty optional value would be sent as null). Light colors are one color (`colors: ["{{color}}"]`); profiles with
@@ -148,7 +148,7 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Ha
 | Id | Name | Category | Writes | Verification |
 |---|---|---|---|---|
 | `common.device.info` | Get device information | Common | no | executed on the development camera |
-| `common.firmware.status` | Get firmware status | Common | no | executed on the development camera |
+| `common.firmware.status` | Get AXIS OS status | Common | no | executed on the development camera |
 | `common.identify.flash` | Identify device (flash status LED) | Common | yes | param names and values checked on the development camera (listdefinitions, not sent) |
 | `common.identify.get` | Get status LED setting | Common | no | executed on the development camera |
 | `common.statusled.set` | Set status LED | Common | yes | param names and values checked on the development camera (listdefinitions, not sent) |
@@ -318,8 +318,8 @@ dotnet test tests/Oadm.Plugins.VapixCommander.Library.Tests --filter Category=Ha
 | `apps.stop` | Stop application | Applications | yes | docs only (API present on the development camera, never sent) |
 | `maintenance.auditlog.get` | Get audit log | Maintenance | no | executed on the development camera |
 | `maintenance.factorydefault` | Factory default | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
-| `maintenance.firmware.commit` | Commit firmware | Maintenance | yes | docs only (API present on the development camera, never sent) |
-| `maintenance.firmware.rollback` | Roll back firmware | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
+| `maintenance.firmware.commit` | Commit AXIS OS | Maintenance | yes | docs only (API present on the development camera, never sent) |
+| `maintenance.firmware.rollback` | Roll back AXIS OS | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
 | `maintenance.restart` | Restart device | Maintenance | yes (dangerous) | docs only (API present on the development camera, never sent) |
 | `maintenance.serverreport.get` | Get server report | Maintenance | no | executed on the development camera |
 | `maintenance.systemlog.get` | Get system log | Maintenance | no | executed on the development camera |

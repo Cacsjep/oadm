@@ -9,7 +9,7 @@ public sealed class FirmwareOverviewPage : ICorePluginPage
 {
     public string PluginId => FirmwareOverview.PluginId;
 
-    public string Title => "Firmware overview";
+    public string Title => "AXIS OS overview";
 
     // Called for every view of the page (the rail page and each "Open in new window"), each with its own context.
     public Control CreateView(ICorePluginClientContext ctx) => new FirmwareOverviewView { DataContext = new FirmwareOverviewViewModel(ctx) };

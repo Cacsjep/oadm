@@ -180,7 +180,7 @@
               </DataGridTemplateColumn>
               <DataGridTextColumn Header="On" Width="60" Binding="{Binding OnText}" x:DataType="vm:RuleMemberRow" />
               <DataGridTextColumn Header="Settings" Width="*" MinWidth="220" Binding="{Binding ValuesText}" x:DataType="vm:RuleMemberRow" />
-              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:RuleMemberRow" />
+              <DataGridTextColumn Header="AXIS OS" Width="100" Binding="{Binding Firmware}" x:DataType="vm:RuleMemberRow" />
             </DataGrid.Columns>
           </DataGrid>
           <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
@@ -197,7 +197,7 @@
               <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:PresetMemberRow" />
               <DataGridTextColumn Header="Model" Width="120" Binding="{Binding Model}" x:DataType="vm:PresetMemberRow" />
               <DataGridTextColumn Header="Settings" Width="*" MinWidth="220" Binding="{Binding Detail}" x:DataType="vm:PresetMemberRow" />
-              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="AXIS OS" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
             </DataGrid.Columns>
           </DataGrid>
           <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
@@ -214,7 +214,7 @@
               <DataGridTextColumn Header="Address" Width="130" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:PresetMemberRow" />
               <DataGridTextColumn Header="Model" Width="120" Binding="{Binding Model}" x:DataType="vm:PresetMemberRow" />
               <DataGridTextColumn Header="When" Width="*" MinWidth="220" Binding="{Binding Detail}" x:DataType="vm:PresetMemberRow" />
-              <DataGridTextColumn Header="Firmware" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
+              <DataGridTextColumn Header="AXIS OS" Width="100" Binding="{Binding Firmware}" x:DataType="vm:PresetMemberRow" />
             </DataGrid.Columns>
           </DataGrid>
           <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"

@@ -5,7 +5,7 @@ description: Add a kind of compliance check with the plugin SDK.
 
 The Compliance page shows which devices need attention. Users add **checks**: a kind of check with its settings, the
 devices it is for, Problem or Warning, and how often it runs. The kinds come from the host (Reachable, Login works,
-Certificate, Firmware) and from plugins (Application running, Matches configuration file, SD card). Your plugin can add
+Certificate, AXIS OS) and from plugins (Application running, Matches configuration file, SD card). Your plugin can add
 its own kind with one class. You write how one device is checked. The host does the rest:
 
 ```mermaid
@@ -106,8 +106,8 @@ there and one per line in the tooltip ("2 settings differ" then the differences)
 ### Checks without device reads
 
 Set `UsesCachedDataOnly` to true when the type decides from what the server already knows about the device
-(`ctx.Device`: status, firmware, certificate, tags, the API list). Then `ctx.Vapix` is null, the host checks the type on
-every device change without an interval, and the check dialog asks for no interval. The host's Certificate and Firmware
+(`ctx.Device`: status, AXIS OS version, certificate, tags, the API list). Then `ctx.Vapix` is null, the host checks the type on
+every device change without an interval, and the check dialog asks for no interval. The host's Certificate and AXIS OS
 checks work this way.
 
 ## Settings

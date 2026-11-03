@@ -111,7 +111,7 @@ public sealed partial class AxisComClient : IDisposable
         }
 
         var bin = files.FirstOrDefault(u => u.AbsolutePath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
-            ?? throw new HttpRequestException("The first product on axis.com has no firmware file in latest/.");
+            ?? throw new HttpRequestException("The first product on axis.com has no AXIS OS file in latest/.");
         using var request = Request(HttpMethod.Head, bin, session);
         using var response = await SendAsync(request, ct).ConfigureAwait(false);
         return Classify(response);

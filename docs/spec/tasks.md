@@ -11,14 +11,14 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `Tasks.RetentionDays` = 90 or beyond the newest `Tasks.MaxHistory` = 50,000; hourly, see
   [settings-backup.md](settings-backup.md)).
 - **Steps: a task always tells the user exactly what it is doing.** Every device request and every
-  wait of a task plugin is its own short, imperative, named step ("Read users", "Upload firmware",
+  wait of a task plugin is its own short, imperative, named step ("Read users", "Upload AXIS OS to the device",
   "Wait for the device to come back"); five requests = five steps. Plugins plan their steps up front
   (`PlanSteps`, shown Pending) and may add steps on the way; steps that do not apply are Skipped with a
   reason ("Keep unchanged"). Engine rules: beginning a step completes the running one; when the plugin
   returns, a running step ends Done and planned steps never reached end Skipped ("Not run."); when it
   throws, the running step (or the one its `using` just ended) ends Failed with the exception message and
   pending ones Skipped ("Not run: an earlier step failed." / "... the task was cancelled."; a cancelled
-  running step is Failed "Cancelled."). The running step is also the device message ("Upload firmware -
+  running step is Failed "Cancelled."). The running step is also the device message ("Upload AXIS OS to the device -
   12 of 80 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
   **Completed** (Done, `TaskStepList.CompletedStepName`, also for plugins without own steps), so the
   tasks pane reads just "Completed"; Failed and Cancelled tasks get none (the failed step stays
@@ -28,13 +28,13 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   transition. Recovery after a server restart marks a Running step Failed ("Server stopped while the
   task was running.") and Pending ones Skipped ("Not run: the server stopped.").
 - **Task names: the task list says exactly what a task does** ("Add user joe", "Set static IP
-  10.0.0.60", "Upgrade firmware to 12.11.77 (factory default)"), never the plugin's menu name: the engine
+  10.0.0.60", "Upgrade AXIS OS to 12.11.77 (factory default)"), never the plugin's menu name: the engine
   names each task with `ITaskPlugin.GetTaskName(payloadJson)` once per Run (trimmed, trailing "..."
   stripped, at most `TaskPluginNames.MaxTaskNameLength` = 48 characters, longer names shortened with
   "…" and a warning logged; empty or throwing = `DisplayName`). Names never contain secrets.
 - Task engine parallelism: at most `Tasks.MaxParallelPerPlugin` running tasks (= devices) per plugin, a
   **server setting** (default 16, 1..256, Settings page "Parallel tasks per plugin"). A plugin's
-  `ITaskPlugin.MaxParallelDevices` can only lower it: limit = min(setting, MaxParallelDevices) (firmware
+  `ITaskPlugin.MaxParallelDevices` can only lower it: limit = min(setting, MaxParallelDevices) (Upgrade AXIS OS
   sets 4: large uploads share the server's link). Further tasks wait in Queued (FIFO per plugin,
   `Core/Tasks/PluginSlots`) and a cancel while queued ends them as Cancelled ("Cancelled before start.").
   The engine reads the setting live (`TaskParallelismSetting` -> `TaskEngineOptions.MaxParallelTasksPerPluginSource`)

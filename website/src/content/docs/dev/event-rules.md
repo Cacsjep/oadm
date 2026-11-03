@@ -67,7 +67,7 @@ available while the plugin is on. VAPIX Commander's "Run VAPIX command" works th
 ## Publish events
 
 A core plugin declares its event types by implementing `IEventSource` and publishes through `ctx.EventPublisher`.
-This one declares "Old AXIS OS" and reports it after every check round of the firmware overview of the
+This one declares "Old AXIS OS" and reports it after every check round of the AXIS OS overview of the
 [plugin page tutorial](../tutorial-page/):
 
 ```csharp
@@ -81,7 +81,7 @@ public sealed class OldFirmwareEvents : IEventSource
 
     public IReadOnlyList<EventTypeInfo> EventTypes { get; } =
     [
-        new(OldFirmware, "Old AXIS OS", "Firmware overview", EventKind.Stateful, EventScope.Device)
+        new(OldFirmware, "Old AXIS OS", "AXIS OS overview", EventKind.Stateful, EventScope.Device)
         {
             Description = "The device runs an AXIS OS older than 12.0.",
         },

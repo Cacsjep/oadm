@@ -143,7 +143,7 @@ public sealed class DevicesViewModelTests
 
         await f.SetPluginsAsync(
             Grouped("oadm.restart", "Restart", "Maintenance", "restart"),
-            Grouped("oadm.firmware", "Upgrade firmware...", "Maintenance", "firmware"),
+            Grouped("oadm.firmware", "Upgrade AXIS OS...", "Maintenance", "firmware"),
             Grouped("oadm.network", "Network settings…", "Network", "network"),
             Grouped("oadm.network.assign-ip", "Assign IP address", "Network", "network"),
             Grouped("oadm.users", "Users......", "Users", "users"),
@@ -161,7 +161,7 @@ public sealed class DevicesViewModelTests
         Assert.Equal("plugin", entries.Single(e => e.Header == "Custom tools").IconKey);
 
         MenuEntryViewModel Group(string name) => entries.Single(e => e.Header == name);
-        Assert.Equal(["Restart", "Upgrade firmware"], Group("Maintenance").Items!.Select(e => e.Header).ToArray());
+        Assert.Equal(["Restart", "Upgrade AXIS OS"], Group("Maintenance").Items!.Select(e => e.Header).ToArray());
         Assert.Equal(["Assign IP address", "Network settings"], Group("Network").Items!.Select(e => e.Header).ToArray());
         Assert.Equal("Users", Group("Users").Items!.Single().Header);
         Assert.Equal("Identify", Group("General").Items!.Single().Header);

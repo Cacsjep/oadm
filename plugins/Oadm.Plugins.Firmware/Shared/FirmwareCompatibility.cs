@@ -91,7 +91,7 @@ public static class FirmwareCompatibility
             if (mode != FactoryDefaultMode.None && !allowDowngrade)
             {
                 return new(FirmwareVerdict.UnknownVersionRefused,
-                    $"The firmware version could not be compared, so a downgrade cannot be ruled out. Turn on \"{AllowDowngradeName}\" to use a factory default with this file.");
+                    $"The AXIS OS version could not be compared, so a downgrade cannot be ruled out. Turn on \"{AllowDowngradeName}\" to use a factory default with this file.");
             }
 
             return new(FirmwareVerdict.DeviceValidates, "Version not known from the file name; the device checks the image before installing it.");

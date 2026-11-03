@@ -17,7 +17,7 @@ import vulnerabilities from '../../../assets/screens/client-vulnerabilities-wind
 |---|---|
 | Icon | Device type. Amber or red when the device needs attention. Click it on a camera for the [live preview](../live-view/). |
 | Address | IP address or host name. Click it to open the device's web interface. |
-| Model, MAC address, Firmware | From the device. |
+| Model, MAC address, AXIS OS | From the device. |
 | SoC | The chip of the device, short: A8 for ARTPEC-8, CV25 for Ambarella CV25. The search finds both names. Off by default. |
 | Status | OK, Unreachable, Credentials required, Password not set, Certificate changed, Site offline. |
 | Tags | Your [tags](../tags/). |
@@ -28,19 +28,19 @@ import vulnerabilities from '../../../assets/screens/client-vulnerabilities-wind
 | Certificate | Trusted, Self-signed, Untrusted or Expired. |
 | Clock | OK, or an amber warning icon when the device clock differs from the OADM server by more than the allowed clock difference in **Settings** (2 s by default) or NTP is not synced. Hover it to see how far. The export has the difference. |
 | Compliance | The worst result of the [compliance checks](../compliance/). Off by default. |
-| Vulnerabilities | The published Axis CVEs the device's firmware may be affected by: the count and the worst severity, red for High and Critical, amber for Medium, and the possible ones apart, for example +3 possible. Hover it for each CVE and the firmware that fixes it on the device's track. See [Vulnerabilities](#vulnerabilities). |
+| Vulnerabilities | The published Axis CVEs the device's AXIS OS version may be affected by: the count and the worst severity, red for High and Critical, amber for Medium, and the possible ones apart, for example +3 possible. Hover it for each CVE and the version that fixes it on the device's track. See [Vulnerabilities](#vulnerabilities). |
 | Architecture | The processor type, for example aarch64. Off by default. |
 
 Click a header to sort. Choose columns with the columns button right of the toolbar. Order and widths are kept per
 computer. OADM checks every device, waits 60 seconds after each round and checks again; it reads all details in rounds
-with a 10 minute pause, and at once after a task, a new firmware or when a device is back. A device that does not answer
+with a 10 minute pause, and at once after a task, a new AXIS OS version or when a device is back. A device that does not answer
 within 3 s is asked once more before it shows Unreachable. Large installations need no settings for this.
 
 ## Toolbar
 
 - **Add**: [Add devices](../add/).
 - **Remove**, **Refresh**, **Export** (the selected devices, or every device the search shows, as CSV).
-- **Restart**, **Upgrade firmware**, **Assign IP address** and **System report** for the selection.
+- **Restart**, **Upgrade AXIS OS**, **Assign IP address** and **System report** for the selection.
 - On the right: AXIS OS release notes, **Group by tag**, columns and search. The search also finds tags.
 
 Entries that do not fit move into the **More** menu.
@@ -75,14 +75,14 @@ certificate**.
 
 <Image src={vulnerabilities} alt="Vulnerabilities window for several devices" class="screen" />
 
-OADM knows the published Axis CVEs of AXIS OS and other Axis device firmware. It matches them by model, firmware
-version and chip, so a device "may be affected": whether the affected feature is in use is not known.
+OADM knows the published Axis CVEs of AXIS OS and of Axis devices with their own software, such as door controllers.
+It matches them by model, AXIS OS version and chip, so a device "may be affected": whether the affected feature is in use is not known.
 
 - **Vulnerabilities column**: the count and the worst level of the device, for example 2 · High. Hover it for each CVE.
   Possible ones are not counted: they show as +3 possible.
 - **Search**: type a CVE ID, for example CVE-2024-6509, to see the devices it may affect, possible ones included.
 - **Vulnerabilities window**: right-click one or more devices and choose **Vulnerabilities**. Each CVE is listed once,
-  worst first, with its level, score, the firmware that fixes it, the full description and **Advisory**, the Axis
+  worst first, with its level, score, the version that fixes it, the full description and **Advisory**, the Axis
   security advisory. Possible ones come last. With several devices, **Devices** says how many of them it affects; hover
   the number to see which.
 
@@ -90,7 +90,7 @@ version and chip, so a device "may be affected": whether the affected feature is
 Axis often fixes LTS tracks too, with a version only the advisory names. Open **Advisory** to see the fixed version for
 your LTS.
 
-**Fixed in** is the first fixed version on the device's firmware track. When Axis lists no fix for that track, it is the
+**Fixed in** is the first fixed version on the device's AXIS OS track. When Axis lists no fix for that track, it is the
 first fixed version of a newer track. Upgrade to that version or later.
 
 Every release ships the list of its day. To get new CVEs between releases, turn on **Update the list online** in

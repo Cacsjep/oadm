@@ -114,7 +114,7 @@ Verified: AXIS P3265-V on AXIS OS 12.11 reports ProdType `Dome Camera` (also ano
 `Image.I0.Type=Source,Radar`); only live view, Live view, Dashboards and the RTSP port use it, everything else (snapshots,
 exposure, optics, Image Health) stays on `HasVideo`.
 Filled by the anonymous probe on the add page (discovered list shows the icon), on add and on
-every device information poll (basicdeviceinfo, or its parameters on older firmware).
+every device information poll (basicdeviceinfo, or its parameters on older AXIS OS versions).
 
 Certificate trust enum: `Trusted` (chain builds to a root in the server OS trust store, or to a
 trust anchor of a core plugin such as the PKI CA: `ITrustAnchors`, `Oadm.Core.Vapix.TrustAnchorRegistry`),

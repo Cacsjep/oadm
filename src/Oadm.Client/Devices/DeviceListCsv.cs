@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Devices;
 
@@ -23,7 +24,7 @@ public static class DeviceListCsv
 
     public static IReadOnlyList<string> Columns { get; } =
     [
-        "MAC address", "Status", AddressColumn, TagsColumn, SiteColumn, "Host name", "Model", "Firmware", "SoC", "Architecture", "Clock", "Category", "Product type",
+        "MAC address", "Status", AddressColumn, TagsColumn, SiteColumn, "Host name", "Model", AxisOsTexts.Name, "SoC", "Architecture", "Clock", "Category", "Product type",
         "DHCP", "HTTPS", "Certificate expires", "Certificate", "IEEE 802.1X", "Compliance",
     ];
 

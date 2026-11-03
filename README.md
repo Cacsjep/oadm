@@ -18,7 +18,7 @@
 **OADM is an independent open source project. Not affiliated with or endorsed by Axis Communications AB. AXIS is a trademark of Axis AB.**
 
 OADM manages Axis cameras, speakers, intercoms and I/O devices like AXIS Device Manager: find and add devices, upgrade
-firmware, set users, network, date and time, certificates and applications on many devices at once, with one task per
+AXIS OS, set users, network, date and time, certificates and applications on many devices at once, with one task per
 device. A server runs as a service and manages up to 100,000 devices; the client connects to it from any computer. The
 user guide is at [oadm.app](https://oadm.app/).
 

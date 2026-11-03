@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Devices;
 
@@ -49,6 +50,9 @@ public sealed class ColumnLayoutViewModel
     /// <summary>The IEEE 802.1X column (Enabled / Disabled), off until turned on in the column chooser.</summary>
     public const string Dot1xKey = "dot1x";
 
+    /// <summary>The AXIS OS column ("12.11.77"); the key stays "firmware" (saved layouts).</summary>
+    public const string FirmwareKey = "firmware";
+
     /// <summary>The DHCP column (Yes / No), off until turned on in the column chooser.</summary>
     public const string DhcpKey = "dhcp";
 
@@ -61,7 +65,7 @@ public sealed class ColumnLayoutViewModel
         ("status", "Status"),
         (ComplianceKey, "Compliance"),
         ("mac", "MAC address"),
-        ("firmware", "Firmware"),
+        (FirmwareKey, AxisOsTexts.Name),
         (VulnerabilitiesKey, "Vulnerabilities"),
         (SocKey, "SoC"),
         (ArchitectureKey, "Architecture"),

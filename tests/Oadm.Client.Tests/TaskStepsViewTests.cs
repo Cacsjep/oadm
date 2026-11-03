@@ -150,7 +150,7 @@ public sealed class TaskStepsViewTests
         IReadOnlyList<TaskInfo> tasks = await seeded.ListTasksAsync(CancellationToken.None);
 
         TaskInfo firmware = tasks.Single(t => t.PluginId == "oadm.firmware");
-        Assert.Equal("Upload firmware", firmware.Steps[firmware.CurrentStepIndex].Name);
+        Assert.Equal("Upload AXIS OS to the device", firmware.Steps[firmware.CurrentStepIndex].Name);
         Assert.EndsWith("of 82 MB", firmware.Steps[firmware.CurrentStepIndex].Detail, StringComparison.Ordinal);
         TaskInfo failed = tasks.Single(t => t.State == TaskState.Failed);
         Assert.Equal(

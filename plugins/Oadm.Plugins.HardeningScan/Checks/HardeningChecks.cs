@@ -444,9 +444,9 @@ public static class HardeningChecks
 
         return facts.Params.Value.Bool("Network.Filter.Enabled") switch
         {
-            true => Result(id, CheckState.Warn, "IP address filter on (no firewall on this firmware)"),
+            true => Result(id, CheckState.Warn, "IP address filter on (no firewall on this AXIS OS version)"),
             false => Result(id, CheckState.Fail, "No firewall, IP address filter off"),
-            null => Result(id, CheckState.NotApplicable, "No firewall or IP address filter on this firmware"),
+            null => Result(id, CheckState.NotApplicable, "No firewall or IP address filter on this AXIS OS version"),
         };
     }
 
@@ -537,7 +537,7 @@ public static class HardeningChecks
         var p = facts.Params.Value;
         if (p.Bool("API.RemoteSyslog1.Enabled") is not { } enabled)
         {
-            return Result(id, CheckState.NotApplicable, "No remote syslog on this firmware");
+            return Result(id, CheckState.NotApplicable, "No remote syslog on this AXIS OS version");
         }
 
         if (!enabled)
@@ -625,7 +625,7 @@ public static class HardeningChecks
         }
 
         return Toggle(HardeningCatalog.Rtsps, facts, "Network.RTSPS.Enabled", onIsGood: true,
-            on: "RTSPS on", off: "RTSPS off", offState: CheckState.Warn, missing: "No RTSPS on this firmware");
+            on: "RTSPS on", off: "RTSPS off", offState: CheckState.Warn, missing: "No RTSPS on this AXIS OS version");
     }
 
     private static CheckResult OAuth(DeviceFacts facts)
@@ -684,11 +684,11 @@ public static class HardeningChecks
 
     private static CheckResult BruteForce(DeviceFacts facts) =>
         Toggle(HardeningCatalog.BruteForce, facts, "System.PreventDoSAttack.ActivatePasswordThrottling", onIsGood: true,
-            on: "Password throttling on", off: "Password throttling off", offState: CheckState.Fail, missing: "No brute-force protection setting on this firmware");
+            on: "Password throttling on", off: "Password throttling off", offState: CheckState.Fail, missing: "No brute-force protection setting on this AXIS OS version");
 
     private static CheckResult AccessLog(DeviceFacts facts) =>
         Toggle(HardeningCatalog.AccessLog, facts, "System.AccessLog", onIsGood: true,
-            on: "Access log on", off: "Access log off", offState: CheckState.Warn, missing: "No access log setting on this firmware");
+            on: "Access log on", off: "Access log off", offState: CheckState.Warn, missing: "No access log setting on this AXIS OS version");
 
     private static CheckResult SignedVideo(DeviceFacts facts)
     {
@@ -732,7 +732,7 @@ public static class HardeningChecks
         {
             true => Result(id, CheckState.Pass, "NTS on"),
             false => Result(id, CheckState.Warn, "NTS off"),
-            null => Result(id, CheckState.NotApplicable, "No NTS on this firmware (needs the NTP API 1.5)"),
+            null => Result(id, CheckState.NotApplicable, "No NTS on this AXIS OS version (needs the NTP API 1.5)"),
         };
     }
 

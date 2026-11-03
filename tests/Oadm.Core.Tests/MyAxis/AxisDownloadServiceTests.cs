@@ -390,7 +390,7 @@ public sealed class AxisDownloadServiceTests : IAsyncLifetime, IDisposable
 
         var error = await Assert.ThrowsAsync<AxisDownloadException>(() => anna.DownloadAsync(FileUri, Sha, Content.Length, null, CancellationToken.None));
 
-        Assert.Equal("The firmware could not be downloaded from axis.com (no connection to axis.com). Nothing was changed.", error.Message);
+        Assert.Equal("AXIS OS could not be downloaded from axis.com (no connection to axis.com). Nothing was changed.", error.Message);
         Assert.False(error.NeedsSignIn);
         Assert.True(anna.HasSession);
     }

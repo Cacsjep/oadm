@@ -7,6 +7,7 @@
              xmlns:vuln="using:Oadm.Client.Vulnerabilities"
              xmlns:tasks="using:Oadm.Client.Tasks"
              xmlns:lv="using:Oadm.Client.LiveView"
+             xmlns:sdkdev="using:Oadm.Sdk.Devices"
                       x:Class="Oadm.Client.Devices.DevicesView"
              x:DataType="dev:DevicesViewModel">
   <!-- Rows: title, then the shared TasksPaneLayout (device card above, splitter, tasks pane below). -->
@@ -155,7 +156,7 @@
                 </DataGridTemplateColumn.CellTemplate>
               </DataGridTemplateColumn>
               <DataGridTextColumn Tag="mac" Header="MAC address" Width="140*" MinWidth="130" Binding="{Binding Row.Serial}" CellStyleClasses="dimmed" x:DataType="dev:IDeviceGridItem" />
-              <DataGridTextColumn Tag="firmware" Header="Firmware" Width="100*" MinWidth="96" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
+              <DataGridTextColumn Tag="firmware" Header="{x:Static sdkdev:AxisOsTexts.Name}" Width="100*" MinWidth="96" Binding="{Binding Row.FirmwareVersion}" x:DataType="dev:IDeviceGridItem" />
               <DataGridTemplateColumn Tag="vulnerabilities" Header="Vulnerabilities" Width="190*" MinWidth="180" SortMemberPath="Row.Vulnerabilities.SortKey">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">

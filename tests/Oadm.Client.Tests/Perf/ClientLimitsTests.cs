@@ -119,9 +119,9 @@ public sealed class ClientLimitsTests(ITestOutputHelper output) : IDisposable
                     grid.SelectAll();
                     Dispatcher.UIThread.RunJobs();
                 });
-                Time(log, "Sort by Firmware in group mode, all selected", () =>
+                Time(log, "Sort by AXIS OS in group mode, all selected", () =>
                 {
-                    grid.Columns.First(c => c.Header as string == "Firmware").Sort(ListSortDirection.Ascending);
+                    grid.Columns.First(c => c.Header as string == "AXIS OS").Sort(ListSortDirection.Ascending);
                     Dispatcher.UIThread.RunJobs();
                 });
                 Time(log, "Collapse and expand the first group, all selected", () =>

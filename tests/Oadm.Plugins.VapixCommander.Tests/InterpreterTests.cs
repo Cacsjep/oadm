@@ -177,7 +177,7 @@ public sealed class InterpreterTests
     [InlineData(400, "Bad Request - HTTP 400")]
     [InlineData(401, "Unauthorized - HTTP 401 (check the credentials)")]
     [InlineData(403, "Forbidden - HTTP 403 (administrator rights are required)")]
-    [InlineData(404, "Not Found - HTTP 404 (API not available on this firmware)")]
+    [InlineData(404, "Not Found - HTTP 404 (API not available on this AXIS OS version)")]
     [InlineData(500, "Server error - HTTP 500")]
     [InlineData(503, "Server error - HTTP 503")]
     public void Http_statuses_map_to_readable_texts(int status, string expected)
@@ -190,7 +190,7 @@ public sealed class InterpreterTests
     {
         Assert.Equal("Server error - HTTP 500: Error -1: could not set day/night level", Run(Spec(ResponseKinds.Text), "Error -1: could not set day/night level\n", 500).Summary);
         Assert.Equal("Bad Request - HTTP 400: Error: invalid group", Run(Spec(ResponseKinds.ParamCgi), "# Error: invalid group", 400).Summary);
-        Assert.Equal("Not Found - HTTP 404 (API not available on this firmware): 404 Not Found",
+        Assert.Equal("Not Found - HTTP 404 (API not available on this AXIS OS version): 404 Not Found",
             Run(Spec(ResponseKinds.Raw), "<html><head><title>404 Not Found</title></head><body>x</body></html>", 404, "text/html").Summary);
         Assert.Equal("Unauthorized - HTTP 401 (check the credentials)",
             Run(Spec(ResponseKinds.Raw), "<html><body>no</body></html>", 401, "text/html").Summary);

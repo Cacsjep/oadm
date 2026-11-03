@@ -98,7 +98,7 @@ Layout, top to bottom:
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
    Columns: Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Start time, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
-   "Step 3/6 · Upload firmware" plus " · 45 %" while the running step reports progress (tooltip: the text
+   "Step 3/6 · Upload AXIS OS to the device" plus " · 45 %" while the running step reports progress (tooltip: the text
    and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's
    device by its device grid address (IP or host name, resolved through the client device store
    and updated live); a device removed since shows as "Removed device 1a2b3c4d" (id shortened).
@@ -132,7 +132,9 @@ its limits Information (`ActionRunner.Write`, `RuleEngine.LogRule`). Fake mode: 
 `RuleEngineTests.ActionsRunInOrderAndAFailureDoesNotStopTheNext`.
 
 Device grid columns, default order (Address first: installers find a device by address and model; the column chooser
-and the saved per-client order cover other preferences):
+and the saved per-client order cover other preferences). The AXIS OS column keeps the key `firmware` (saved layouts).
+Searches over names (Roles: Search permissions) read "firmware" as AXIS OS (`AxisOsTexts.Contains`), so Upgrade AXIS OS
+is found by its ADM name:
 
 | Column | Source |
 |---|---|
@@ -141,9 +143,9 @@ and the saved per-client order cover other preferences):
 | Model | ProdNbr |
 | Status | computed, see enum |
 | Compliance | off by default (column chooser; greyed there while compliance is off): the worst compliance result ("2 problems, 1 warning" chip, "OK" plain text, failed checks as tooltip; sorted problems first); while it is on the toolbar toggle **Show each compliance check** shows one column per check instead; hidden without "See compliance". See [compliance.md](compliance.md) |
-| MAC address | SerialNumber from basicdeviceinfo (or its parameters on older firmware); dimmed (`CellStyleClasses="dimmed"`, the secondary text colour) |
-| Firmware | Version |
-| Vulnerabilities | on by default: the Axis CVEs the firmware may be affected by, "2 · High" (count, worst severity; red for High and Critical, amber for Medium), the CVEs in the tooltip with the fixed build; a CVE id in the search shows the devices it may affect (`docs/spec/vulnerabilities.md`) |
+| MAC address | SerialNumber from basicdeviceinfo (or its parameters on older AXIS OS versions); dimmed (`CellStyleClasses="dimmed"`, the secondary text colour) |
+| AXIS OS | Version |
+| Vulnerabilities | on by default: the Axis CVEs the device's AXIS OS version may be affected by, "2 · High" (count, worst severity; red for High and Critical, amber for Medium), the CVEs in the tooltip with the fixed build; a CVE id in the search shows the devices it may affect (`docs/spec/vulnerabilities.md`) |
 | SoC | off by default (column chooser): basicdeviceinfo `Soc` (status poll and full refresh), shown short without the brand: "Axis Artpec-8" = "A8", "Ambarella CV25" = "CV25", other chips as reported (`DeviceTexts.Soc` of the client SDK, also the Applications page); empty until read; in the export; the search finds the short and the full name ("A8", "ARTPEC-8"); dimmed |
 | Architecture | off by default (column chooser): basicdeviceinfo `Architecture` (= `root.Properties.System.Architecture`, status poll and full refresh) as reported ("aarch64", "armv7hf"); empty until read; in the search and the export; dimmed |
 | Clock | on by default: the device clock against the server's (see "Clock" below): "OK", or the warning icon alone while off (beyond the tolerance, or NTP not synced); the tooltip gives how far ("50 s ahead", "2 min behind", "3 h ahead"; "Within 1 s of the server") and the NTP state (`DeviceClockText.Tooltip`); the export and the search use `DeviceRowViewModel.ClockDetail` (the offset beyond the tolerance, else "NTP not synced" or "OK"); a device that is not Ok shows its last measured value as plain text; seconds rounded up (an off clock never reads as within the tolerance), minutes, hours and days rounded down, the same texts as the Clock compliance check (`Oadm.Sdk.Devices.ClockTexts`, SDK 0.7.0); empty until measured; sorted by the absolute offset |
@@ -169,7 +171,7 @@ was not refreshed within the last 10 minutes, then a **10 min** pause (`DevicePo
 setting; the former `Polling.FullRefreshMinutes` is unused since 4.8), then the next round (about 10 min for 1,000
 devices, about 15 min for 50,000, measured 171 per second). Outside the rounds a full refresh runs on add, after a task
 finishes on that device, immediately when a status poll sees a device go from any non-Ok status back to Ok, and
-immediately when it sees a new firmware version or model (a new API list); those go through one deduplicating queue, and
+immediately when it sees a new AXIS OS version or model (a new API list); those go through one deduplicating queue, and
 the next round skips devices refreshed this way within the pause. Rounds and queue share one limit: at most
 `RefreshParallelism` = 64 full refreshes at once. The support report shows the last status round and the last full
 refresh round (devices, length). Status and details are two loops on purpose: a full round is about five times longer,

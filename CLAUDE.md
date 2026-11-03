@@ -64,7 +64,7 @@ src/
   Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
 plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.Restart/   first Task plugin (server only)
-  Oadm.Plugins.Firmware(.Client)/         Upgrade firmware
+  Oadm.Plugins.Firmware(.Client)/         Upgrade AXIS OS
   Oadm.Plugins.Users(.Client)/            Users (accounts on the devices)
   Oadm.Plugins.DateTime(.Client)/         Date and time
   Oadm.Plugins.Network(.Client)/          Network settings, Assign IP address
@@ -173,8 +173,8 @@ must never break.
   for devices that are not Ok), **[Event rules](docs/spec/event-rules.md)** (events and actions from plugins, the engine,
   limits, the log; field checks on event values: at most 5 per condition, all must hold), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
   parallelism per plugin).
-- **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of device firmware, Vulnerabilities column ("2 · High")
-  and search by CVE id, matched by model, firmware and chip in the client; data only from the CVE records and NVD (never
+- **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of the devices' AXIS OS, Vulnerabilities column ("2 · High")
+  and search by CVE id, matched by model, AXIS OS version and chip in the client; data only from the CVE records and NVD (never
   advisory PDFs or HTML); a match on an LTS track the record gives no fix for is "possible", shown apart and not counted
   ("+3 possible"); a base list ships with every release, the online update
   is opt-in ("Update the list online": Off by default, By the server, By the clients) and never sends device data.
@@ -234,7 +234,7 @@ must never break.
   settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
 - **[MyAxis sign-in](docs/spec/myaxis.md)** (built; verified 2026-11-02 on Windows with a real MyAxis account, WebKitGTK glue not yet): each user signs in to their own MyAxis account (title
   bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
-  server, sent only to axis.com, never to plugins; Upgrade firmware downloads AXIS OS with it (Recommended, Latest LTS,
+  server, sent only to axis.com, never to plugins; Upgrade AXIS OS downloads the versions from axis.com with it (Recommended, Latest LTS,
   Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
 - **[Self update](docs/spec/self-update.md)**: Install now in the new version dialog updates the server
   and the Administrator's client with their own installers run silently by the same program in update mode
@@ -248,7 +248,7 @@ must never break.
 
 # HARD RULE: device safety for task plugins
 
-Any plugin that changes a device (users, network, firmware, ACAP, ...) must never risk
+Any plugin that changes a device (users, network, AXIS OS, ACAP, ...) must never risk
 breaking it:
 1. **Compatibility first.** Declare the VAPIX API ids and minimum versions it needs. `CanRun`
    checks them against the cached `device.Apis` (from `apidiscovery.cgi getApiList`, refreshed
@@ -410,7 +410,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   or Release (`MessageWindow.IsDestructive`, `IsDanger` overrides). Destructive entries sit apart from everyday ones
   (separator, last in a menu).
 - `ui:DialogFooter` with no visible action puts its lone Close / Cancel on the right.
-- Grids whose status text explains a problem (add page, address tables, firmware, certificate install, system report,
+- Grids whose status text explains a problem (add page, address tables, Upgrade AXIS OS, certificate install, system report,
   hardening detail) have the class `wrapRows`: rows grow and `ui:StatusChip` shows up to two lines (`MaxLines`).
   Numeric columns (days, offsets, scores, durations) are right-aligned: `CellStyleClasses="number"` plus a header
   `TextBlock.numberHeader`. Empty lists say in one line what to do first.

@@ -20,4 +20,4 @@ Anything that weakens how OADM protects devices and their access, for example:
 - the client trusting a server certificate it should not trust
 - a plugin or a device answer that can run code on the server or the client
 
-Problems in a camera's own firmware belong to Axis: https://www.axis.com/support/cybersecurity.
+Problems in AXIS OS itself belong to Axis: https://www.axis.com/support/cybersecurity.

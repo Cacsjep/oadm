@@ -103,5 +103,5 @@ public static class AxisDownloadTexts
 
     /// <summary>axis.com could not be reached or refused the file; <paramref name="reason"/> is short ("no connection to axis.com").</summary>
     public static string NotDownloaded(string reason) =>
-        $"The firmware could not be downloaded from axis.com ({reason}). Nothing was changed.";
+        $"AXIS OS could not be downloaded from axis.com ({reason}). Nothing was changed.";
 }

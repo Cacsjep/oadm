@@ -19,7 +19,7 @@ internal static partial class Scaffold
     public static readonly IReadOnlyList<Sample> Samples =
     [
         new("task", "UpnpName", "acme.upnp-name", "Set UPnP name", "a task plugin with a dialog (context menu, one task per device)"),
-        new("page", "FirmwareOverview", "acme.firmware-overview", "Firmware overview", "a core plugin with its own page in the navigation rail"),
+        new("page", "FirmwareOverview", "acme.firmware-overview", "AXIS OS overview", "a core plugin with its own page in the navigation rail"),
         new("action", "VirtualInput", "acme.virtual-input", "Set virtual input", "an event rule action"),
     ];
 

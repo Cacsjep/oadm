@@ -11,7 +11,7 @@ const { assets, version } = await latestRelease();
 // The newsletter lives on the support forum; the form here subscribes without an account there.
 const portal = 'https://support.oadm.app/';
 const youtube = 'https://www.youtube.com/@oadm-ca';
-// The Chrome extension that downloads AXIS firmware for OADM.
+// The Chrome extension that downloads AXIS OS for OADM.
 const firmwareDownloader = 'https://chromewebstore.google.com/detail/ecpnmknfgnpkndjcnjfbihfnfhhekfcg';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
@@ -94,7 +94,7 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 		<button class="dl dl-main" type="button" aria-haspopup="dialog" aria-controls="download-dialog">
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="dl-arrow"><path d="M12 15V3" /><path d="m7 10 5 5 5-5" /></g><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></svg>Download
 		</button>
-		<a class="dl fw-open" href={firmwareDownloader} target="_blank" rel="noopener" title="Chrome extension for AXIS firmware" aria-haspopup="dialog" aria-controls="firmware-dialog">
+		<a class="dl fw-open" href={firmwareDownloader} target="_blank" rel="noopener" title="Chrome extension for AXIS OS" aria-haspopup="dialog" aria-controls="firmware-dialog">
 			<Icon name="chrome" />Firmware Downloader
 		</a>
 	</div>
@@ -146,7 +146,7 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 			<button class="dl-close" type="button" aria-label="Close"><Icon name="close" /></button>
 		</div>
 		<div class="fw-body">
-			<p>Find AXIS OS firmware, import devices from OADM or AXIS Device Manager and batch-download updates with your My Axis account.</p>
+			<p>Find AXIS OS versions, import devices from OADM or AXIS Device Manager and batch-download updates with your My Axis account.</p>
 			<a class="dl fw-store" href={firmwareDownloader} target="_blank" rel="noopener"><Icon name="chrome" />Download from Chrome Store</a>
 		</div>
 	</dialog>

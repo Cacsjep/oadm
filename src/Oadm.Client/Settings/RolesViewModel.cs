@@ -11,6 +11,7 @@ using Oadm.Client.Infrastructure;
 using Oadm.Client.Shell;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Settings;
 
@@ -790,17 +791,20 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         }
     }
 
-    /// <summary>The search matches permission names, descriptions and group names; a collapsed group shows only its header.</summary>
+    /// <summary>
+    /// The search matches permission names, descriptions and group names ("firmware" finds Upgrade AXIS OS); a collapsed
+    /// group shows only its header.
+    /// </summary>
     private void ApplyFilter()
     {
         string text = SearchText.Trim();
         var visible = new List<PermissionRowViewModel>(_allRows.Count);
         foreach (var group in _allRows.Where(r => r.IsGroup))
         {
-            bool groupMatches = text.Length == 0 || group.Title.Contains(text, StringComparison.CurrentCultureIgnoreCase);
+            bool groupMatches = text.Length == 0 || AxisOsTexts.Contains(group.Title, text);
             var children = group.Children.Where(r => groupMatches
-                || r.Title.Contains(text, StringComparison.CurrentCultureIgnoreCase)
-                || (r.Description?.Contains(text, StringComparison.CurrentCultureIgnoreCase) ?? false)).ToList();
+                || AxisOsTexts.Contains(r.Title, text)
+                || AxisOsTexts.Contains(r.Description, text)).ToList();
             if (children.Count == 0)
             {
                 continue;

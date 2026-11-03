@@ -777,7 +777,7 @@ public sealed partial class DevicePollingService : IDisposable
     [LoggerMessage(Level = LogLevel.Error, Message = "A full refresh round failed")]
     private partial void LogScheduleFailed(Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} has new firmware or model ({Old} -> {New}), queuing a full refresh")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Device {DeviceId} has a new AXIS OS version or model ({Old} -> {New}), queuing a full refresh")]
     private partial void LogFirmwareChanged(Guid deviceId, string old, string @new);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Most devices do not answer ({Failed} of {Polled}). Check the server's network.")]

@@ -4,6 +4,8 @@ using MigraDoc.DocumentObjectModel;
 using MigraDoc.DocumentObjectModel.Tables;
 using MigraDoc.Rendering;
 
+using Oadm.Sdk.Devices;
+
 namespace Oadm.Plugins.SnapshotReport.Report;
 
 /// <summary>One picture of the report: the tile (device facts and source label) and its snapshot.</summary>
@@ -226,8 +228,8 @@ public static class ReportDocument
             ? Count(summary.Snapshots)
             : string.Create(CultureInfo.InvariantCulture, $"{summary.Snapshots} of {summary.Sources} ({summary.FailedSnapshots} failed)"), summary.FailedSnapshots > 0 ? Error : null);
 
-        section.AddParagraph("Firmware versions in use", StyleNames.Heading1);
-        var firmware = NewGridTable(section, ("Firmware", 6), ("Cameras", 3));
+        section.AddParagraph("AXIS OS versions in use", StyleNames.Heading1);
+        var firmware = NewGridTable(section, (AxisOsTexts.Name, 6), ("Cameras", 3));
         foreach (var (version, devices) in summary.Firmware)
         {
             AddGridRow(firmware, null, version, Count(devices));
@@ -298,7 +300,7 @@ public static class ReportDocument
         facts.AddColumn(Unit.FromCentimeter(2.4));
         facts.AddColumn(Unit.FromCentimeter(6.1));
         AddFactsRow(facts, "Model", device.Model ?? "Unknown", "MAC address", FactsText.Mac(device.Serial));
-        AddFactsRow(facts, "Address", FactsText.Address(device), "Firmware", device.Firmware ?? "Unknown");
+        AddFactsRow(facts, "Address", FactsText.Address(device), AxisOsTexts.Name, device.Firmware ?? "Unknown");
         AddFactsRow(facts, "Status", FactsText.Status(device.Status), "Certificate", FactsText.Certificate(device, nowUtc),
             leftColor: FactsText.IsOnline(device) ? null : Warning,
             rightColor: FactsText.IsCertificateDue(device.CertNotAfterUtc, nowUtc) ? Warning : null);

@@ -70,18 +70,18 @@ public sealed class FwmgrException : Exception
         {
             // AXIS OS 13 and later: an installed application does not declare support for the new version.
             402 when method == "upgrade" => "An installed application does not support this AXIS OS version. Update or remove it with Applications (ACAP), then try again.",
-            409 when method == "upgrade" => "The device refuses to install an older firmware version without a factory default.",
-            410 => "This firmware version has been revoked by Axis and cannot be installed.",
+            409 when method == "upgrade" => "The device refuses to install an older AXIS OS version without a factory default.",
+            410 => "This AXIS OS version has been revoked by Axis and cannot be installed.",
             412 when method == "upgrade" => "A previous upgrade has not been committed yet. Commit or roll it back first.",
-            412 => "The active firmware is not committed.",
+            412 => "The active AXIS OS version is not committed.",
             415 => "The file is not a valid AXIS OS image.",
-            421 => "The firmware image does not match this device (wrong product).",
-            422 => "The firmware image is missing the mandatory Axis signature.",
-            423 => "The device is busy with another firmware operation.",
-            424 => "The firmware is signed with an unknown custom certificate.",
-            404 when method == "rollback" => "There is no previous firmware to roll back to.",
-            417 => "The device does not support this firmware management API version.",
-            _ => "Firmware management request failed.",
+            421 => "The AXIS OS file does not match this device (wrong product).",
+            422 => "The AXIS OS file is missing the mandatory Axis signature.",
+            423 => "The device is busy with another AXIS OS operation.",
+            424 => "The AXIS OS file is signed with an unknown custom certificate.",
+            404 when method == "rollback" => "There is no previous AXIS OS version to roll back to.",
+            417 => "The device does not support this version of the firmware management API.",
+            _ => "The AXIS OS request to the device failed.",
         };
         var detail = string.IsNullOrWhiteSpace(deviceMessage) ? string.Empty : $" Device: \"{deviceMessage}\"";
         return string.Create(CultureInfo.InvariantCulture, $"{text} (fwmgr {method} error {code}.){detail}");
@@ -216,7 +216,7 @@ public sealed class FwmgrClient(IVapixClient vapix)
         var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
-            throw new UnauthorizedAccessException("The device rejected the stored credentials (firmware management needs an administrator account).");
+            throw new UnauthorizedAccessException("The device rejected the stored credentials (installing AXIS OS needs an administrator account).");
         }
 
         JsonDocument doc;

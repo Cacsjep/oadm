@@ -115,7 +115,7 @@ naming several ADM servers asks first (`DevicesViewModel.MultiServerText`: devic
 found). The add page says "Import from ADM" and "Devices from <file> (ADM server <name>). Logins in the export are tried
 first."; a row whose device answers with
 another MAC address is "Not added: Another device answers at this address (X). The file lists Y." and the server sent that
-device no password. Model, firmware, host name, product type, apiMode and securityMode of the export are not used (read
+device no password. Model, AXIS OS version, host name, product type, apiMode and securityMode of the export are not used (read
 from the device). Tests `AdmDeviceExportTests`, `AddDevicesPageTests`, `FastAddTests`.
 
 **DNS names**: Discovery and Network range have the check box **Use DNS names instead of IP addresses** (below the info
@@ -188,7 +188,7 @@ the credential that worked (server memory); `Commit` stores that credential for 
 stored; RetryAuth credentials travel only client -> server and are kept in server memory (or the
 credential list when asked). Adding devices is not a task; the first full refresh is queued in the
 background. The add's one login with the stored credential (`DeviceAdder.VerifyAsync`, basicdeviceinfo or its parameters)
-also stores model, firmware, ProdType, category, Soc and Architecture at once, so a device that tells nothing anonymously
+also stores model, AXIS OS version, ProdType, category, Soc and Architecture at once, so a device that tells nothing anonymously
 (401 with the realm only) is never Unknown, and offered live video, while the refresh waits.
 
 **Device groups** ([device-scope.md](device-scope.md), Decisions "New devices"): the server builds an `AddReach` from the caller

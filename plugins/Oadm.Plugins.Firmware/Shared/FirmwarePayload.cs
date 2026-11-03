@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Devices;
+
 namespace Oadm.Plugins.Firmware;
 
 /// <summary>fwmgr <c>factoryDefaultMode</c> of the upgrade method.</summary>
@@ -46,7 +48,7 @@ public sealed record FirmwareFile(string FileId, string? FileName, IReadOnlyList
 /// <param name="Devices">The devices it is for; null: by product and major.</param>
 public sealed record FirmwareOnline(string Source, string Product, string Version, int? FromMajor, IReadOnlyList<Guid>? Devices = null);
 
-/// <summary>Payload of the "Upgrade firmware" task, written by the dialog.</summary>
+/// <summary>Payload of the "Upgrade AXIS OS" task, written by the dialog.</summary>
 public sealed record FirmwarePayload
 {
     /// <summary>Id of the uploaded firmware file (<c>ITaskDialogContext.UploadAsync</c>); the first one of <see cref="Files"/>.</summary>
@@ -77,8 +79,8 @@ public sealed record FirmwarePayload
     public FirmwareDirection Direction { get; init; }
 
     /// <summary>
-    /// The task name: "Upgrade firmware to 12.11.77", "Downgrade firmware to 10.12.236", "Install firmware
-    /// 12.11.77" (mixed), "Install firmware" (version unknown), plus " (factory default)" with a soft or hard
+    /// The task name: "Upgrade AXIS OS to 12.11.77", "Downgrade AXIS OS to 10.12.236", "Install AXIS OS
+    /// 12.11.77" (mixed), "Install AXIS OS" (version unknown), plus " (factory default)" with a soft or hard
     /// factory default.
     /// </summary>
     public string TaskName()
@@ -87,14 +89,14 @@ public sealed record FirmwarePayload
             .Concat(AllOnline().Select(o => AxisOsVersion.TryParse(o.Version)?.Text)).Distinct().ToList();
         var version = versions.Count == 1 ? versions[0] : null;
         var name = versions.Count > 1
-            ? Direction == FirmwareDirection.Downgrade ? "Downgrade firmware" : "Upgrade firmware"
+            ? Direction == FirmwareDirection.Downgrade ? AxisOsTexts.DowngradeTask : AxisOsTexts.UpgradeTask
             : version is null
-            ? "Install firmware"
+            ? "Install AXIS OS"
             : Direction switch
             {
-                FirmwareDirection.Downgrade => "Downgrade firmware to " + version,
-                FirmwareDirection.Unknown when AllowDowngrade => "Install firmware " + version,
-                _ => "Upgrade firmware to " + version,
+                FirmwareDirection.Downgrade => AxisOsTexts.DowngradeTask + " to " + version,
+                FirmwareDirection.Unknown when AllowDowngrade => "Install " + AxisOsTexts.Version(version),
+                _ => AxisOsTexts.UpgradeTask + " to " + version,
             };
         return FactoryDefaultMode == FactoryDefaultMode.None ? name : name + " (factory default)";
     }
@@ -115,7 +117,7 @@ public sealed record FirmwarePayload
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            throw new ArgumentException("No firmware file was selected. Nothing was changed.", nameof(json));
+            throw new ArgumentException("No AXIS OS file was selected. Nothing was changed.", nameof(json));
         }
 
         FirmwarePayload? payload;
@@ -131,7 +133,7 @@ public sealed record FirmwarePayload
         if (payload is null || payload.AllFiles().Any(f => string.IsNullOrWhiteSpace(f.FileId))
             || (payload.AllFiles().Count == 0 && payload.AllOnline().Count == 0))
         {
-            throw new ArgumentException("No firmware file was selected. Nothing was changed.", nameof(json));
+            throw new ArgumentException("No AXIS OS file was selected. Nothing was changed.", nameof(json));
         }
 
         foreach (var online in payload.AllOnline())
@@ -139,7 +141,7 @@ public sealed record FirmwarePayload
             if (online is null || !OnlineFirmware.IsValidSource(online.Source) || !OnlineFirmware.IsValidProduct(online.Product)
                 || OnlineListing.ParseVerTxt(online.Version) is null)
             {
-                throw new ArgumentException("The firmware version from axis.com is not valid. Nothing was changed.", nameof(json));
+                throw new ArgumentException("The AXIS OS version from axis.com is not valid. Nothing was changed.", nameof(json));
             }
         }
 

@@ -7,7 +7,7 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import menu from '../../../assets/screens/client-context-menu-groups.png';
 
-A device task changes something on your devices: firmware, network settings, users, applications, certificates. You
+A device task changes something on your devices: AXIS OS, network settings, users, applications, certificates. You
 start it from the device list, like in AXIS Device Manager.
 
 <Image src={menu} alt="The device context menu with one submenu per task group" class="screen" />
@@ -24,7 +24,7 @@ start it from the device list, like in AXIS Device Manager.
 
 </Steps>
 
-Some tasks also have a toolbar button: **Restart**, **Upgrade firmware** and **Assign IP address**.
+Some tasks also have a toolbar button: **Restart**, **Upgrade AXIS OS** and **Assign IP address**.
 
 A greyed entry cannot run on the selection. Hover it to see why, for example "Needs AXIS OS 11.11 or later (this device
 has 11.9.65)". With several devices selected, the tooltip names the most common reason and how many devices it
@@ -34,7 +34,7 @@ concerns.
 
 - **One task per device.** Running a task on 20 devices creates 20 tasks. A failing device never marks the others as
   failed.
-- **Steps.** Every task shows each request and each wait as its own step, for example "Upload firmware" or "Wait for
+- **Steps.** Every task shows each request and each wait as its own step, for example "Upload AXIS OS to the device" or "Wait for
   the device to come back". The **Current step** column and the task details show where a task is.
 - **Compatibility first.** Before the first change, OADM checks again what the device supports. If something is
   missing, the task fails with "Nothing was changed".
@@ -52,7 +52,7 @@ status first, for example with **Log in**, **Set password** or **Trust new certi
 | Task | Group | What it does |
 |---|---|---|
 | **Restart** | Maintenance | Restarts the device and waits until it answers again. |
-| [**Upgrade firmware**](../firmware/) | Maintenance | Installs an AXIS OS file, verifies the new version and commits it. |
+| [**Upgrade AXIS OS**](../firmware/) | Maintenance | Installs an AXIS OS file, verifies the new version and commits it. |
 | [**Date and time**](../date-and-time/) | Maintenance | Sets the time zone and the time mode: server time, NTP server or manual. |
 | [**Export configuration**, **Import configuration**](../device-configuration/) | Maintenance | Saves the configuration of devices and imports it into devices of the same model. |
 | [**Configure devices**, **Create configuration file**](../device-configuration/#configure-devices) | Maintenance | Sets parameters, action rules and stream profiles on many devices, like ADM; reads and writes ADM configuration files. |

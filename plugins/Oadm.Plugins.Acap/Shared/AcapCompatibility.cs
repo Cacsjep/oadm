@@ -342,7 +342,7 @@ public static class AcapCompatibility
         {
             if (needsFirmware)
             {
-                problems.Add("The device firmware version is unknown.");
+                problems.Add("The AXIS OS version of the device is unknown.");
             }
 
             return;

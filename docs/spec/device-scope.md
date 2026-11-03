@@ -400,7 +400,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
 
 ## Code: task plugins
 
-- Restart, Users, Date and time, Upgrade firmware, Applications, Network settings, Assign IP address, Device
+- Restart, Users, Date and time, Upgrade AXIS OS, Applications, Network settings, Assign IP address, Device
   configuration, Set output and the VAPIX Commander implement the call overload of their queries and read only the
   queried device; tasks touch only their own device. The host scopes their runs and queries (server canary cases of
   TaskService); `CanaryTests.PluginsConverted` names these packages with that reason (a `PluginCanary` over them would

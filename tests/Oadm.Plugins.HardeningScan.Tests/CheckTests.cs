@@ -132,7 +132,7 @@ public sealed class CheckTests
 
         var results = await ScanAsync(camera, device);
 
-        Expect(results, HardeningCatalog.PasswordPolicy, CheckState.NotApplicable, "No password policy setting on this firmware");
+        Expect(results, HardeningCatalog.PasswordPolicy, CheckState.NotApplicable, "No password policy setting on this AXIS OS version");
         Expect(results, HardeningCatalog.IpConfiguration, CheckState.Pass, "Static IP address");
         Expect(results, HardeningCatalog.TimeSync, CheckState.Warn, "NTP on, 1 server");
         Expect(results, HardeningCatalog.StorageEncryption, CheckState.NotApplicable, "No edge storage on this device");
@@ -143,9 +143,9 @@ public sealed class CheckTests
         Expect(results, HardeningCatalog.SdCardSlot, CheckState.NotApplicable, "No SD card slot");
         Expect(results, HardeningCatalog.Ssh, CheckState.Pass, "SSH off");
         Expect(results, HardeningCatalog.Uart, CheckState.Warn, "AXIS OS 9.80.3 is older than 10.11");
-        Expect(results, HardeningCatalog.Firewall, CheckState.Warn, "IP address filter on (no firewall on this firmware)");
+        Expect(results, HardeningCatalog.Firewall, CheckState.Warn, "IP address filter on (no firewall on this AXIS OS version)");
         Expect(results, HardeningCatalog.Ciphers, CheckState.Warn, "1 other cipher: AES128-SHA");
-        Expect(results, HardeningCatalog.RemoteSyslog, CheckState.NotApplicable, "No remote syslog on this firmware");
+        Expect(results, HardeningCatalog.RemoteSyslog, CheckState.NotApplicable, "No remote syslog on this AXIS OS version");
         Expect(results, HardeningCatalog.Snmp, CheckState.Fail, "SNMP v2c on");
         Expect(results, HardeningCatalog.OAuth, CheckState.NotApplicable, "Needs AXIS OS 11.6 or later");
         Expect(results, HardeningCatalog.AccessLog, CheckState.Pass, "Access log on");

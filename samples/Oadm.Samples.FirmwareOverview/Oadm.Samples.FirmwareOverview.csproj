@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OadmPluginId>acme.firmware-overview</OadmPluginId>
     <Version>1.0.0</Version>
-    <OadmDisplayName>Firmware overview</OadmDisplayName>
+    <OadmDisplayName>AXIS OS overview</OadmDisplayName>
     <OadmDescription>The AXIS OS version of every device on one page.</OadmDescription>
   </PropertyGroup>
 </Project>

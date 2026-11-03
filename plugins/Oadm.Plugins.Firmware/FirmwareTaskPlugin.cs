@@ -44,7 +44,7 @@ public sealed record FirmwareTaskTimings
 }
 
 /// <summary>
-/// "Upgrade firmware..." task: installs an uploaded AXIS OS image through the fwmgr API, waits for the
+/// "Upgrade AXIS OS" task: installs an uploaded AXIS OS image through the fwmgr API, waits for the
 /// device to restart, verifies the new version and commits it. See README.md for the decision table.
 /// </summary>
 public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
@@ -83,7 +83,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     public string Id => PluginId;
 
-    public string DisplayName => "Upgrade firmware";
+    public string DisplayName => AxisOsTexts.UpgradeTask;
 
     public string Group => TaskGroups.Maintenance;
 
@@ -109,9 +109,9 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     /// </summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(FirmwarePermissions.Upgrade, "Upgrade firmware", "Install new firmware on devices; their settings stay."),
+        new(FirmwarePermissions.Upgrade, AxisOsTexts.UpgradeTask, "Install a newer AXIS OS version on devices; their settings stay."),
         new(FirmwarePermissions.FactoryDefault, "Upgrade with factory default", "Reset the devices to factory default together with the upgrade.") { OperatorDefault = false },
-        new(FirmwarePermissions.Downgrade, "Downgrade firmware", "Install older firmware; this always resets the devices to factory default.") { OperatorDefault = false },
+        new(FirmwarePermissions.Downgrade, AxisOsTexts.DowngradeTask, "Install an older AXIS OS version; this always resets the devices to factory default.") { OperatorDefault = false },
     ];
 
     /// <summary>Every run needs "upgrade"; a factory default and "Allow downgrade" need their own.</summary>
@@ -132,7 +132,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return keys;
     }
 
-    /// <summary>"Upgrade firmware to 12.11.77" etc., see <see cref="FirmwarePayload.TaskName"/>.</summary>
+    /// <summary>"Upgrade AXIS OS to 12.11.77" etc., see <see cref="FirmwarePayload.TaskName"/>.</summary>
     public string GetTaskName(string? payloadJson)
     {
         try
@@ -167,14 +167,14 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         public const string CheckCompatibility = "Check compatibility";
         public const string ReadDeviceInfo = "Read device info";
         public const string ValidateFile = "Validate file";
-        public const string Download = "Download firmware";
-        public const string ReadFirmwareStatus = "Read firmware status";
-        public const string Upload = "Upload firmware";
-        public const string Install = "Install firmware";
+        public const string Download = "Download AXIS OS from axis.com";
+        public const string ReadFirmwareStatus = "Read the AXIS OS status";
+        public const string Upload = "Upload AXIS OS to the device";
+        public const string Install = "Install AXIS OS";
         public const string WaitForDevice = "Wait for the device to come back";
         public const string VerifyVersion = "Verify version";
         public const string ReadCommitState = "Read commit state";
-        public const string Commit = "Commit firmware";
+        public const string Commit = "Commit AXIS OS";
         public const string WaitBeforeRetry = "Wait before retrying the commit";
 
         public static readonly string[] Planned =
@@ -196,7 +196,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             if (device.Status != DeviceStatus.Ok)
             {
-                throw new InvalidOperationException($"The device status is {device.Status}; firmware is only installed on devices with status OK. Nothing was changed.");
+                throw new InvalidOperationException($"The device status is {device.Status}; AXIS OS is only installed on devices with status OK. Nothing was changed.");
             }
 
             var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
@@ -223,7 +223,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             foreach (var f in run.Files)
             {
                 var found = await ctx.Files.FindAsync(f.FileId, ct).ConfigureAwait(false)
-                    ?? throw new FileNotFoundException("The uploaded firmware file is no longer available on the server. Upload it again. Nothing was changed.");
+                    ?? throw new FileNotFoundException("The uploaded AXIS OS file is no longer available on the server. Upload it again. Nothing was changed.");
                 files.Add(found);
                 images.Add(FirmwareImageInspector.Inspect(f.FileName ?? found.Name, found.Size));
             }
@@ -352,7 +352,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
     }
 
-    /// <summary>"Download firmware": the host's download with progress in MB; its refusals end the task (nothing was changed).</summary>
+    /// <summary>"Download AXIS OS from axis.com": the host's download with progress in MB; its refusals end the task (nothing was changed).</summary>
     private static async Task<AxisDownloadedFile> DownloadAsync(ITaskExecutionContext ctx, OnlineFileInfo online, CancellationToken ct)
     {
         using var step = ctx.BeginStep(Steps.Download);
@@ -413,10 +413,10 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             if (before.HasUncommittedUpgrade)
             {
                 throw new InvalidOperationException(
-                    $"A previous firmware upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). Wait for it to finish or commit it first. Nothing was changed.");
+                    $"A previous AXIS OS upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). Wait for it to finish or commit it first. Nothing was changed.");
             }
 
-            step.Complete("AXIS OS " + (before.ActiveFirmwareVersion ?? info.Version) + ", committed");
+            step.Complete(AxisOsTexts.Version(before.ActiveFirmwareVersion ?? info.Version) + ", committed");
         }
 
         // 2. Upload. From here on the device may change.
@@ -438,11 +438,11 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 if (parsed is not null && parsed == old)
                 {
                     throw new InvalidOperationException(
-                        $"The device came back with its previous firmware {info.Version}: the new firmware{(expected is null ? string.Empty : " " + expected)} did not start and the device rolled back. Settings are unchanged.");
+                        $"The device came back with its previous AXIS OS version {info.Version}: the new version{(expected is null ? string.Empty : " " + expected)} did not start and the device rolled back. Settings are unchanged.");
                 }
 
                 throw new InvalidOperationException(
-                    $"The device reports firmware {backVersionText ?? "unknown"} after the upgrade, expected {expected?.Text ?? "a new version"}. Check the device; the previous firmware {info.Version} is kept for rollback.");
+                    $"The device reports AXIS OS {backVersionText ?? "unknown"} after the upgrade, expected {expected?.Text ?? "a new version"}. Check the device; the previous AXIS OS version {info.Version} is kept for rollback.");
             }
 
             actual = parsed;
@@ -464,7 +464,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 : "Soft factory default applied: settings and users were reset (network settings kept). Set a password for the device.");
         }
 
-        ctx.Log(TaskLogLevel.Info, Invariant($"Firmware {actual} installed (previous {info.Version} kept as rollback image)."));
+        ctx.Log(TaskLogLevel.Info, Invariant($"AXIS OS {actual} installed (previous {info.Version} kept as rollback image)."));
     }
 
     /// <summary>Marks every planned step after the current one as Skipped with <paramref name="reason"/>.</summary>
@@ -636,7 +636,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             switch (e)
             {
                 case FirmwareFileChangedException:
-                    return "the firmware file changed while it was sent";
+                    return "the AXIS OS file changed while it was sent";
                 case TimeoutException or TaskCanceledException:
                     return "the device did not answer in time";
                 case System.Net.Sockets.SocketException:
@@ -647,11 +647,11 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         return "the connection to the device was lost";
     }
 
-    [Microsoft.Extensions.Logging.LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Warning, Message = "Upgrade firmware: the upload to the device broke off")]
+    [Microsoft.Extensions.Logging.LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Warning, Message = "Upgrade AXIS OS: the upload to the device broke off")]
     private static partial void LogUploadError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
 
     /// <summary>
-    /// Two steps sharing one timeout: "Install firmware" waits until the device goes offline to restart
+    /// Two steps sharing one timeout: "Install AXIS OS" waits until the device goes offline to restart
     /// (or already answers with another version), "Wait for the device to come back" until it answers again.
     /// </summary>
     private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, string oldVersion, FactoryDefaultMode mode, CancellationToken ct)
@@ -684,7 +684,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     throw new TimeoutException($"The device did not restart within {minutes} minutes after the upload and still runs {oldVersion}.");
                 }
 
-                step.ReportProgress(Percent(elapsed), "The device installs the firmware");
+                step.ReportProgress(Percent(elapsed), "The device installs AXIS OS");
             }
         }
 
@@ -712,10 +712,10 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     var hint = mode switch
                     {
                         FactoryDefaultMode.Hard => " A hard factory default resets the IP configuration, so the device may be at another address.",
-                        FactoryDefaultMode.None => Invariant($" If the new firmware starts but is not committed, the device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting."),
+                        FactoryDefaultMode.None => Invariant($" If the new AXIS OS version starts but is not committed, the device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting."),
                         _ => string.Empty,
                     };
-                    throw new TimeoutException($"The device did not come back within {minutes} minutes after the firmware upload.{hint}");
+                    throw new TimeoutException($"The device did not come back within {minutes} minutes after the AXIS OS upload.{hint}");
                 }
 
                 step.ReportProgress(Percent(elapsed), "Not answering yet");
@@ -761,7 +761,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     }
 
     /// <summary>
-    /// Per attempt one "Read commit state" and one "Commit firmware" step (retries are suffixed
+    /// Per attempt one "Read commit state" and one "Commit AXIS OS" step (retries are suffixed
     /// "(attempt n)"), with a "Wait before retrying the commit" step in between.
     /// </summary>
     private async Task CommitAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, AxisOsVersion actual, string oldVersion, CancellationToken ct)
@@ -784,7 +784,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 if (status.IsCommitted == true && status.PendingCommit is null && status.TimeToRollback is null)
                 {
                     ctx.SkipStep(commitName, "Already committed by the device.");
-                    ctx.Log(TaskLogLevel.Info, "Firmware already committed by the device.");
+                    ctx.Log(TaskLogLevel.Info, "AXIS OS already committed by the device.");
                     return;
                 }
 
@@ -795,7 +795,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     step.Complete($"AXIS OS {version ?? actual.Text}");
                     return version;
                 }).ConfigureAwait(false);
-                ctx.Log(TaskLogLevel.Info, $"Committed firmware {committed ?? actual.Text}.");
+                ctx.Log(TaskLogLevel.Info, $"Committed AXIS OS {committed ?? actual.Text}.");
                 return;
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -811,7 +811,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         }
 
         throw new InvalidOperationException(
-            Invariant($"Firmware {actual} is running but could not be committed ({last?.Message}). The device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting unless the firmware is committed."),
+            Invariant($"AXIS OS {actual} is running but could not be committed ({last?.Message}). The device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting unless it is committed."),
             last);
     }
 

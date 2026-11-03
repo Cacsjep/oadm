@@ -18,7 +18,7 @@ public sealed class FirmwareOverviewPlugin : ICorePlugin
     private int _version;
 
     public string Id => FirmwareOverview.PluginId;
-    public string DisplayName => "Firmware overview";
+    public string DisplayName => "AXIS OS overview";
     public string? IconKey => "firmware";
     public CorePluginGroup Group => CorePluginGroup.Maintenance;
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];

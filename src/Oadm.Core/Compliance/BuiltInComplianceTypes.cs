@@ -246,7 +246,7 @@ public static class BuiltInComplianceTypes
     {
         public override string Id => FirmwareId;
 
-        public override string DisplayName => "Firmware";
+        public override string DisplayName => AxisOsTexts.Name;
 
         public override string IconKey => "firmware";
 
@@ -261,7 +261,7 @@ public static class BuiltInComplianceTypes
                 : new Dictionary<string, string>();
 
         public override string Describe(JsonElement settings) =>
-            "AXIS OS " + new ComplianceInvocation(Guid.Empty, string.Empty, settings).Get("minimum")?.Trim() + " or later";
+            AxisOsTexts.Name + " " + new ComplianceInvocation(Guid.Empty, string.Empty, settings).Get("minimum")?.Trim() + " or later";
 
         protected override ComplianceResult Evaluate(IDeviceInfo device, ComplianceInvocation invocation, DateTimeOffset now)
         {
@@ -278,8 +278,8 @@ public static class BuiltInComplianceTypes
             }
 
             return CompareVersions(version, minimum) >= 0
-                ? ComplianceResult.Passed("AXIS OS " + device.FirmwareVersion)
-                : ComplianceResult.Failed("AXIS OS " + device.FirmwareVersion + ", needs " + invocation.Get("minimum")!.Trim());
+                ? ComplianceResult.Passed(AxisOsTexts.Version(device.FirmwareVersion!))
+                : ComplianceResult.Failed(AxisOsTexts.Version(device.FirmwareVersion!) + ", needs " + invocation.Get("minimum")!.Trim());
         }
     }
 

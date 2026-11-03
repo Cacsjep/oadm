@@ -62,7 +62,7 @@ Refused with "Nothing was changed" (device fails, other devices continue):
 - removing, demoting, or changing the password of the account OADM is authenticated as
   (from usergroup.cgi, case-insensitive);
 - removing or demoting the last administrator;
-- removing `root` on AXIS OS older than 11.5 (or unknown firmware);
+- removing `root` on AXIS OS older than 11.5 (or an unknown version);
 - changing or removing any user when the OADM account cannot be determined.
 Remove payloads: `userNames` (list, at most 50, duplicates dropped; `userName` alone when the list is empty).
 The dialog shows no general warning text; in Change mode it warns when the user name is the OADM

@@ -99,7 +99,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   has a rule in `AccessPolicy` (Open, SignedIn, a permission, InCall, Admin; a test checks that every contract method is
   listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
   task runs are checked in the call (`InCall`). The operator default withholds the risky rights:
-  Web View, remove users on devices, firmware factory default and downgrade, application downgrade and removal, connection
+  Web View, remove users on devices, AXIS OS factory default and downgrade, application downgrade and removal, connection
   settings import, event rules, tag management and Delete all. `RolesUpgradeNotice` records what
   operators lost at the first start of an installation that had users; administrators see it as a banner with "Check
   roles" until they dismiss it (per client).
@@ -265,7 +265,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 
 - Device HTTP answers at most 16 MB (`VapixClient.MaxResponseBytes` = HttpClient `MaxResponseContentBufferSize`; over it
   `VapixResponseTooLargeException` "The device answer is larger than 16 MB and was not read."). Streamed answers (`VapixRequestOptions.StreamResponse`) go to disk with the caller's own limit (System
-  report: 256 MB per device). Upload requests (firmware, ACAP) are streamed and not limited.
+  report: 256 MB per device). Upload requests (AXIS OS, ACAP) are streamed and not limited.
 - XML from a device only through `Oadm.Sdk.Vapix.DeviceXml.Parse` / `ParseElement`: 1 MB of characters, DTD prohibited,
   no resolver; callers cannot lift the limits. `CodeView` keeps its own 512 K plain-text limit.
 - RTSP / video access units at most 8 MB (`NalDepacketizer.MaxAccessUnitBytes`: a larger one is dropped like a damaged

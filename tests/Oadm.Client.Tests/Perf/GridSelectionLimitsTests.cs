@@ -36,7 +36,7 @@ public sealed class GridSelectionLimitsTests(ITestOutputHelper output)
             Dispatcher.UIThread.RunJobs();
             var grid = window.GetVisualDescendants().OfType<DataGrid>().First(g => g.Name == "DeviceGrid");
             var model = grid.Columns.First(c => c.Header as string == "Model");
-            var firmware = grid.Columns.First(c => c.Header as string == "Firmware");
+            var firmware = grid.Columns.First(c => c.Header as string == "AXIS OS");
 
             async Task TimeAsync(string what, Action action)
             {
@@ -54,11 +54,11 @@ public sealed class GridSelectionLimitsTests(ITestOutputHelper output)
             }
 
             await TimeAsync("Sort by Model, nothing selected", () => model.Sort(ListSortDirection.Descending));
-            await TimeAsync("Sort by Firmware, nothing selected", () => firmware.Sort(ListSortDirection.Ascending));
+            await TimeAsync("Sort by AXIS OS, nothing selected", () => firmware.Sort(ListSortDirection.Ascending));
             await TimeAsync("Select 10 rows", () => vm.SelectedDevices.ReplaceAll(vm.FilteredDevices.Take(10)));
             await TimeAsync("Sort by Model, 10 selected", () => model.Sort(ListSortDirection.Ascending));
             await TimeAsync("Select all", grid.SelectAll);
-            await TimeAsync("Sort by Firmware, all selected", () => firmware.Sort(ListSortDirection.Descending));
+            await TimeAsync("Sort by AXIS OS, all selected", () => firmware.Sort(ListSortDirection.Descending));
             await TimeAsync("Select none", () => grid.SelectedItems.Clear());
             f.Store.Tags.Reset(Enumerable.Range(0, 10).Select(i => new Oadm.Contracts.V1.DeviceTag { Name = $"Building {(char)('A' + i)}", Color = (Oadm.Contracts.V1.TagColor)(i % 8 + 1), Defined = true }));
             var tagged = ClientScale.MakeDevices(30_000);

@@ -609,7 +609,7 @@ Rules:
 Certificates, HTTPS and IEEE 802.1X run on **AXIS OS 6.53 and later** (researched on hardware on 6.53, 8.40, 9.80, 10.12,
 11.9, 11.11 and 12.11; the recorded answers, sanitized, in `tests/Oadm.Plugins.Pki.Tests/Fixtures/Legacy/<version>/`). EST
 needs 12.10 (`docs/spec/est-server.md`). One decision per device, `Tasks/PkiCompatibility` (`Decide`, `Dot1xApiOf`), made
-fresh in Check compatibility before the first write; the menus use the cached firmware version only (6.53 or later).
+fresh in Check compatibility before the first write; the menus use the cached AXIS OS version only (6.53 or later).
 
 | | Certificates | HTTPS web server | IEEE 802.1X on/off, identity, EAPOL | 802.1X certificates | Keys | EAPOL |
 |---|---|---|---|---|---|---|

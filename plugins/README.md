@@ -103,7 +103,7 @@ and actions before any plugin call.
   sorted by name, even with one task.
 - **Task name (rule): the task list says exactly what the task does**, never the menu name. Implement
   `string GetTaskName(string? payloadJson)` (the default returns `DisplayName`): "Add user joe", "Set static IP
-  10.0.0.60", "Upgrade firmware to 12.11.77 (factory default)", "Install AXIS Video Motion Detection 4.5.2", "Restart
+  10.0.0.60", "Upgrade AXIS OS to 12.11.77 (factory default)", "Install AXIS Video Motion Detection 4.5.2", "Restart
   device". At most `TaskPluginNames.MaxTaskNameLength` (48) characters; the engine shortens longer names with "…" and
   logs a warning. An empty name or an exception falls back to `DisplayName`. It is called once per Run, so all devices
   of a run share the name: put what the name needs (app name, upgrade or downgrade) into the payload. **No secrets**:
@@ -112,8 +112,8 @@ and actions before any plugin call.
 - `NotSupportedReason(device)` (optional, default null): why `CanRun` is false. Called only then, on cached data only.
   The context menu always lists the task; when it cannot run on the selection it is greyed out with this text as
   tooltip (the toolbar button too). Say what is missing or what to do, no trailing period: "Needs AXIS OS 11.11 or
-  later (this device has 11.9.65)", "Needs the Time API", "The device does not answer". Name a firmware version only
-  when your check really is a version check (or you verified the API's first firmware); otherwise name the missing
+  later (this device has 11.9.65)", "Needs the Time API", "The device does not answer". Name an AXIS OS version only
+  when your check really is a version check (or you verified the API's first AXIS OS version); otherwise name the missing
   function. Details about this one device go last as " (this device ...)": the host drops them when it sums up several
   devices ("Needs AXIS OS 11.11 or later: 3 of 5 selected devices"). Helpers in `TaskSupportReasons`:
   `ForStatus(device, requireOk)` (unreachable, no login, no password, certificate changed, site offline),
@@ -127,8 +127,8 @@ and actions before any plugin call.
 - `ExecuteAsync(ctx, device, payloadJson, ct)` runs once per device; every device is its own task. Re-check
   `(await ctx.Vapix.GetApiListAsync(ct)).Require(...)` before the first write.
 - **Steps (rule): every device request and every wait is its own named step.** Plan them up front with
-  `ctx.PlanSteps("Check compatibility", "Upload firmware", ...)`, then per step
-  `using var step = ctx.BeginStep("Upload firmware")` (or `await ctx.StepAsync("Read users", async step => ...)`),
+  `ctx.PlanSteps("Check compatibility", "Upload AXIS OS to the device", ...)`, then per step
+  `using var step = ctx.BeginStep("Upload AXIS OS to the device")` (or `await ctx.StepAsync("Read users", async step => ...)`),
   `step.ReportProgress(45, "37 of 82 MB")`, and end with `step.Complete(detail)`, `step.Warn(message)`,
   `step.Skip(reason)` or `step.Fail(message)`. Dispose alone = Done; an exception escaping the step = Failed. A step
   that does not apply: `ctx.SkipStep(name, "Keep unchanged")`. Planned steps never reached end Skipped. Names are

@@ -172,7 +172,7 @@ the device is read again; when it cannot be asked, Settings stays (the window th
 ## Several packages per install (stage 2)
 
 The Applications (ACAP) dialog and task take several `.eap` files of the same application at once, one per architecture
-(e.g. the `aarch64` and the `armv7hf` build), like Upgrade firmware takes one file per model:
+(e.g. the `aarch64` and the `armv7hf` build), like Upgrade AXIS OS takes one file per model:
 
 - All files must name the same application (`appName`) and version; two files for the same architecture, or a file of
   another application, are refused in the dialog before any upload. A package without an architecture (`all`,

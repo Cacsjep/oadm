@@ -1,6 +1,6 @@
-# Upgrade firmware (`oadm.firmware`)
+# Upgrade AXIS OS (`oadm.firmware`)
 
-Task plugin with a dialog (`.Client`), always on: **Upgrade firmware** in the toolbar and the context menu group
+Task plugin with a dialog (`.Client`), always on: **Upgrade AXIS OS** in the toolbar and the context menu group
 Maintenance. Installs AXIS OS images on the selected devices, one file per model, waits for the restart, verifies the new
 version and commits it. Common task rules: [Tasks](../../docs/spec/tasks.md).
 
@@ -12,10 +12,10 @@ version and commits it. Common task rules: [Tasks](../../docs/spec/tasks.md).
 The decision logic (`Shared/`: version compare, file checks, compatibility, upgrade path, payload) is compiled into both
 assemblies, so the dialog preview and the server always agree.
 
-Task names (`FirmwarePayload.TaskName`): "Upgrade firmware to 12.11.77"; "Downgrade firmware to 10.12.236" (every
-installing device downgrades, payload `direction` from the dialog preview); "Install firmware 12.11.77" (mixed);
-"Install firmware" (no version in the file name); several files of different versions: "Upgrade firmware" /
-"Downgrade firmware". A soft or hard factory default adds " (factory default)".
+Task names (`FirmwarePayload.TaskName`): "Upgrade AXIS OS to 12.11.77"; "Downgrade AXIS OS to 10.12.236" (every
+installing device downgrades, payload `direction` from the dialog preview); "Install AXIS OS 12.11.77" (mixed);
+"Install AXIS OS" (no version in the file name); several files of different versions: "Upgrade AXIS OS" /
+"Downgrade AXIS OS". A soft or hard factory default adds " (factory default)".
 
 ## Device API
 
@@ -38,7 +38,7 @@ Everything the plugin uses (`status`, `upgrade`, `commit`) is in 1.0, so it requ
 Errors: `{"error":{"code":N,"message":...}}`. 400 bad request, 405 unknown method, 417 API version, 423 busy, 500
 internal; upgrade: 402 an installed application does not support the new version (AXIS OS 13), 409 downgrade without factory default, 410 revoked version, 412 previous upgrade not committed, 415
 invalid image, 421 image does not match the device, 422 missing mandatory signature, 424 unknown custom firmware
-certificate. All upgrade errors come before the installation, so the device still runs its old firmware (the plugin says
+certificate. All upgrade errors come before the installation, so the device still runs its old version (the plugin says
 so).
 
 ### AXIS OS background
@@ -151,15 +151,15 @@ ones were allowed report `SignatureStatus="Unknown"`; Axis applications `Signed`
 
 ## Dialog
 
-One table of the selected devices (virtualized, up to 100,000): Address, Model, Firmware, **Version**, Result (with
+One table of the selected devices (virtualized, up to 100,000): Address, Model, AXIS OS, **Version**, Result (with
 tooltip), Details. Version is the select of that device: the versions axis.com lists for its model grouped by track
-(details in "Firmware online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin`: it
+(details in "AXIS OS online"), the files chosen for devices of that model, and **Choose file** last (a local `.bin`: it
 is set for every device of that model, devices of other models are untouched; a device changed by hand later keeps its
 own choice). The list is one per model and shared by its devices. The card header has no summary line; the Result of
 each device says what happens. Choosing on one device changes only that device; the
 select **Set versions** right in the header of the device card (same row as the title) sets every device. The right of
 that header shows either that select (signed in and the versions of axis.com arrived; hidden while the lookup runs and
-when it failed) or the command button **Sign in to MyAxis to download firmware** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
+when it failed) or the command button **Sign in to MyAxis to download AXIS OS** (not signed in); there is no sign-in text line. A device without a choice shows "No file" ("No file for this model.") once
 another device has one. A chosen file is judged per device in its Result (Invalid file, Wrong product). Files given
 together (`SelectFilesAsync`, drag and drop and tests) go to the devices of their model; a refused file or two files for
 one product ("Two files are for P3265-V. Choose one file per model.") show directly below the table and block Upgrade.
@@ -167,7 +167,7 @@ From 2,000 selected devices (`BackgroundFrom`), the select, the options and the 
 off the UI thread behind a ring over the table ("Setting the versions", "Checking the devices"; the select and Upgrade
 wait); at 100,000 devices each entry takes about 1 s. One device's choice judges only that device.
 
-The Firmware column is refreshed by the status query: read for the first 50 devices when the dialog opens, for other rows
+The AXIS OS column is refreshed by the status query: read for the first 50 devices when the dialog opens, for other rows
 when the grid shows them, at most 4 queries at a time; a row shows the chip "Reading" until its query answered.
 
 Options below the table in one row: Factory default none (default) / soft / hard (label left of the select, normal form
@@ -178,9 +178,9 @@ that install a file, none for devices already up to date, without a file for the
 Downgrade blocked). It uploads the files with `ITaskDialogContext.UploadAsync` (only those a device installs, one after
 the other, one progress bar, cancellable) and returns `{"fileId","fileName","factoryDefaultMode","allowDowngrade"}`,
 with several files also `"files":[{"fileId","fileName","devices"}]`, with versions from axis.com also `"online":[...]`
-("Payload" in "Firmware online"). Each local file is uploaded once, also when several devices install it.
+("Payload" in "AXIS OS online"). Each local file is uploaded once, also when several devices install it.
 
-## Firmware online
+## AXIS OS online
 
 Status: built 2026-11-02 and verified 2026-11-02 on Windows with a real MyAxis account: the lookup, the download and the upgrade of
 two M3206-LVE to 10.12.363; tested against fakes and recorded listing pages. Decisions of 2026-11-02 (a clean-room build; the version
@@ -241,7 +241,7 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   ("AXIS OS 11.11.192 is no longer on axis.com."). While the lookup runs, a progress line shows "Reading the versions on
   axis.com, 40 of 120 models" and Upgrade waits. Signed in, the dialog opens with Recommended; not signed in, every
   device starts on Choose file, the versions show for information, choosing one says "Sign in to MyAxis to download from
-  axis.com." in its Result, and the header has the button **Sign in to MyAxis to download firmware** (`ITaskDialogContext.MyAxis.SignInAsync`);
+  axis.com." in its Result, and the header has the button **Sign in to MyAxis to download AXIS OS** (`ITaskDialogContext.MyAxis.SignInAsync`);
   after a sign-in (in the dialog or elsewhere while it is open) the dialog reads axis.com again when it had not or
   failed (with its progress line), then sets Recommended on every device without a choice and the select shows
   Recommended, like opening the dialog signed in. The decision table, the upgrade path advice and the apps
@@ -267,11 +267,11 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   longer run parses and reads again), at most 16 runs. The payload still grows with the devices that deviate from the
   version of their product and major (about 40 bytes per named device: 100,000 named devices are about 4 MB, below the
   server's 16 MB message limit); the usual select (Recommended, Latest LTS, Latest active) names none.
-- **Download firmware** (task step before Upload firmware, Skipped "A file was chosen." for a chosen file): the host's
+- **Download AXIS OS from axis.com** (task step before Upload AXIS OS to the device, Skipped "A file was chosen." for a chosen file): the host's
   `DownloadAsync` with progress ("68 of 225 MB", the step's percent); tasks of the same file share one download, a second
   run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225 MB from
   axis.com, checksum matches"). It runs after Validate file (the decision table first: nothing is downloaded for a device
-  that is up to date or refused) and before Read firmware status. An `AxisDownloadException` ends the task with its
+  that is up to date or refused) and before Read the AXIS OS status. An `AxisDownloadException` ends the task with its
   message (ending with "Nothing was changed."); the file is uploaded with `AxisDownloadedFile.OpenRead` and its real `Length` (never the rounded size of the
   listing, which only goes to the host's download) and the handle is
   disposed after the upload, also when it fails. Sites: the server sends
@@ -279,7 +279,7 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
 
 ## Task steps
 
-Online files add "Download firmware" before Upload firmware ("Firmware online" above).
+Online files add "Download AXIS OS from axis.com" before Upload AXIS OS to the device ("AXIS OS online" above).
 
 Every device request and every wait is a named step (`FirmwareTaskPlugin.Steps`, all planned up front and shown as
 Pending).
@@ -289,20 +289,20 @@ Pending).
 | Check compatibility | status OK, fresh `getApiList` + `Require("fwmgr", "1.0")`; detail "fwmgr 1.10" |
 | Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
 | Validate file | uploaded files present, the file for the device (`ChooseFor`: its version from axis.com, read again from the listing once per run, after the MyAxis sign-in check, else `Choose`), name and size checks (never the content), decision table. No file for this model or already up to date: Warning and all later steps Skipped |
-| Download firmware | a version from axis.com: the host's download with the user's MyAxis sign-in ("68 of 225 MB"); Skipped "A file was chosen." |
-| Read firmware status | fwmgr `status`: no uncommitted previous upgrade |
-| Upload firmware | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12 of 80 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
-| Install firmware | anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
+| Download AXIS OS from axis.com | a version from axis.com: the host's download with the user's MyAxis sign-in ("68 of 225 MB"); Skipped "A file was chosen." |
+| Read the AXIS OS status | fwmgr `status`: no uncommitted previous upgrade |
+| Upload AXIS OS to the device | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12 of 80 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
+| Install AXIS OS | anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
 | Wait for the device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back: Failed |
-| Read commit state / Commit firmware | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts with "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." Commit firmware asks again every 10 s for up to **5 min** (`BootWait`), not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password, check the address) |
+| Read commit state / Commit AXIS OS | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts with "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." Commit AXIS OS asks again every 10 s for up to **5 min** (`BootWait`), not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password, check the address) |
 
 Failure messages say what the device runs now and what happens next: upload refused or interrupted ("The upload was
 interrupted after 120 of 225 MB: the connection to the device was lost. The device still runs X."; the reason in plain
-words: the firmware file changed while it was sent, the device did not answer in time, the connection was lost; the
+words: the AXIS OS file changed while it was sent, the device did not answer in time, the connection was lost; the
 exception only in the server log),
 did not restart, did not come back (with the auto-rollback time or the hard-reset address hint), rolled back, not
-committed ("rolls back to X by itself 30 minutes after booting unless the firmware is committed"). If the upload answer
+committed ("rolls back to X by itself 30 minutes after booting unless it is committed"). If the upload answer
 is lost after the whole body was sent (the device may already reboot), the task goes on and decides by the version after
 the restart.
 

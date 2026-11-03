@@ -32,4 +32,4 @@ how to reproduce it and the OADM version. We answer within a week.
 
 Only the latest release gets security fixes.
 
-Problems in a camera's own firmware belong to Axis: [axis.com/support/cybersecurity](https://www.axis.com/support/cybersecurity).
+Problems in AXIS OS itself belong to Axis: [axis.com/support/cybersecurity](https://www.axis.com/support/cybersecurity).

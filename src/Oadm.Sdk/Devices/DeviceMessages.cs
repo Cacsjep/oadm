@@ -72,7 +72,7 @@ public static class DeviceMessages
     public const string Forbidden = "Forbidden - HTTP 403 (administrator rights are required)";
 
     /// <summary>HTTP 404.</summary>
-    public const string NotFound = "Not Found - HTTP 404 (API not available on this firmware)";
+    public const string NotFound = "Not Found - HTTP 404 (API not available on this AXIS OS version)";
 
     /// <summary>HTTP 400.</summary>
     public const string BadRequest = "Bad Request - HTTP 400";

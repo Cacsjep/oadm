@@ -39,18 +39,18 @@ neighbors trimmed) in `tests/Oadm.Plugins.HardeningScan.Tests/Fixtures/` (`confi
 | `apidiscovery-getApiList.json` | `apidiscovery.cgi getApiList` | ntp 1.5, signed-video 1.0, application 1.0, disk-management 1.0, remote-syslog 1.2, ... |
 
 Findings that shaped the design:
-- One `param.cgi action=list` with every group answers half of the checks. A group the firmware lacks does not fail the
+- One `param.cgi action=list` with every group answers half of the checks. A group the device lacks does not fail the
   request: the answer has `# Error: Error -1 getting param in group 'Network.Filter'` and the other groups, but the group
   right after the error line lacks the `root.` prefix (`System.WebInterfaceDisabled=no`). `ParamList` accepts both forms
   and reads an error line as "not available".
 - `System.HTTPServerHeaderComments` does not exist on 12.11 (B11 is information only).
-- `config/discover` lists the REST APIs per firmware; the REST reads use it to decide "not available" instead of probing.
+- `config/discover` lists the REST APIs per AXIS OS version; the REST reads use it to decide "not available" instead of probing.
 
 ## Checks
 
 Every grid cell is an icon-only `ui:StatusChip`: pass green, warning amber, fail red, read error red, does not apply / info
 neutral, empty = not scanned at that level. Its tooltip (built when it opens) gives the state and value found, the rule,
-the guide's recommendation with its section, and a note (Bonjour). "Does not apply" = the model or firmware lacks the
+the guide's recommendation with its section, and a note (Bonjour). "Does not apply" = the model or AXIS OS version lacks the
 feature or API. Info rows are not shown on the page.
 
 ### Basic
@@ -71,7 +71,7 @@ feature or API. Info rows are not shown on the page.
 | B12 | Audio | `Audio.A<n>.Enabled`, `Properties.Audio.Audio`, category | pass: no audio / off; warn: on; n/a for speakers, intercoms, audio devices |
 | B13 | SD slot | `Storage.S<n>.Enabled` + the disks list | pass: slot off or card in use; warn: slot on without a card; n/a without a slot |
 | B14 | SSH | `Network.SSH.Enabled` | pass off; **fail on** |
-| B15 | UART | firmware version | pass >= 10.11; warn older |
+| B15 | UART | AXIS OS version | pass >= 10.11; warn older |
 | B16-B19 | - | - | Info (network ports, USB, Wi-Fi, Bluetooth) |
 | B20 | Firewall | GET firewall v1 (else `Network.Filter.*`) | pass: on, default DROP; warn: on with ACCEPT, or IP filter on; fail: off |
 | B21 | Ciphers | `HTTPS.Ciphers` (else the SOAP list), `HttpsEnabled` | pass: only the guide's TLS 1.2 ciphers; warn: others (named); fail: HTTPS off |
@@ -175,7 +175,7 @@ Every method works on the user's view. One scan at a time per device scope (all 
 
 ## Tests
 
-`tests/Oadm.Plugins.HardeningScan.Tests`: `CanaryTests` (the device-group canary, a group's scan and results), `CheckTests` (every rule from the recorded answers, old firmware without REST APIs
+`tests/Oadm.Plugins.HardeningScan.Tests`: `CanaryTests` (the device-group canary, a group's scan and results), `CheckTests` (every rule from the recorded answers, old AXIS OS versions without REST APIs
 with `# Error` lines and unprefixed parameters, hardened and weak variants, failures isolated per read, unreachable and refused
 devices, catalog), `ParserTests`, `ScanServiceTests` (bounded parallelism, device timeout, refused statuses, stop, persistence
 across a restart, removed devices, event batches, parallelism setting, store bound; the fake camera records a violation for

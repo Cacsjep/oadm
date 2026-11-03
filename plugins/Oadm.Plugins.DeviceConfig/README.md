@@ -58,7 +58,7 @@ The export contains values that belong to **one device** and some that cannot be
   `Network.BootProto`, `Network.Bonjour.FriendlyName`, `Network.UPnP.FriendlyName` (contains the MAC address),
   `Network.VolatileHostName.*`. Imported as they are, one file would give every device the same host name and, with
   `BootProto=none`, the same IP address.
-- Read-only or runtime: `Network.DHCP.VendorClass` (model and firmware), `SNMP.EngineBoots`, `SNMP.InitialUserPasswdSet`,
+- Read-only or runtime: `Network.DHCP.VendorClass` (model and AXIS OS version), `SNMP.EngineBoots`, `SNMP.InitialUserPasswdSet`,
   `power-settings` `powerStatus`.
 - Derived from the MAC address: the multicast addresses `Network.RTPCollection.R<n>.VideoAddress` / `AudioAddress`.
 - **Connection settings** decide whether OADM can still reach and log in to the device: `HTTPS.Enabled`, `HTTPS.Port`,
@@ -81,7 +81,7 @@ The export contains values that belong to **one device** and some that cannot be
 ### Export
 
 - `oadm.device-config.export` (icon `export`) is dialog only, never a task. `CanRun`: status Ok and AXIS OS 12.5 or
-  later (cached firmware version); reason "Needs AXIS OS 12.5 or later (this device has ...)".
+  later (cached AXIS OS version); reason "Needs AXIS OS 12.5 or later (this device has ...)".
 - The save dialog comes first: one device `<address>_<MAC>_<model>_config.json`, several devices
   `oadm-config-<yyyy-MM-dd>.zip` with one file each plus `summary.txt` when some failed.
 - The window (`ExportConfigWindow`, like System report: Devices card with progress row, result chip, virtualized grid
@@ -183,7 +183,7 @@ strings and other names with "pass", "secret" or "community" are masked like pas
 | Workflow | ADM's: wizard Settings (tabs Parameters, Action rules, Stream profiles; "Use configuration from: Device / Configuration file" on the right) and Overview, then Apply: one task per selected device. |
 | Values | From the source only (a device, default the first selected one, or a file), like ADM. A checked parameter writes that value to every device. Typing a value checks the parameter. |
 | Several models | Definitions are read once per model and AXIS OS of the selection (the source's group from its read): shown are the parameters every group has (check box "Show parameters that not every selected device has"), choices every group shares (info icon "Only the choices every selected device has."), ranges narrowed to the overlap. A group that cannot be read is a note; its devices check the settings when they run. |
-| Not configurable | Type flags `internal`, `hidden`, `readonly`, `const`, `writeonly`, and write level 7 (the last digit of `securityLevel`: Brand, firmware version, serial number "7707"). AXIS P3265-V 12.11.77: 879 of 1,518 parameters; M3215-LVE 12.11.77: 874. |
+| Not configurable | Type flags `internal`, `hidden`, `readonly`, `const`, `writeonly`, and write level 7 (the last digit of `securityLevel`: Brand, AXIS OS version, serial number "7707"). AXIS P3265-V 12.11.77: 879 of 1,518 parameters; M3215-LVE 12.11.77: 874. |
 | Dangerous parameters | Every writable parameter is offered. `DangerousParameters` names the network identity (addresses, subnet, router, IPv6, host name, DNS, DHCP, device names) and the connection (HTTPS, `Network.HTTP.*`, 802.1X, RTSP port, the IP address filter `Network.Filter.*`): amber icon with the reason, the overview warns, Apply asks ("Apply anyway"), written last in their own step, permission `dangerous` (Operator no). |
 | The source device | When the source is one of the selected devices it keeps its own action rules, schedules and stream profiles (the task skips those steps there: "This is the source device", payload `SourceDeviceId`); writing them back would only remove and recreate them. Its parameters are set like on every device. With only the source selected, the two tabs offer nothing ("These are the own settings of 10.0.0.48; they are already on it."). |
 | Addresses and names | Values that must differ per device (`Network.IPAddress`, `Network.IPv6.IPAddress`, `Network.HostName`, the Bonjour, UPnP and DNS update names; `DangerousParameters.IsPerDevice`) are not offered when several devices are selected (no note, like ADM), and left out of a file with the note "Addresses and names differ per device: use Network settings or Assign IP address."; for one device they stay, with the warning. |
@@ -291,10 +291,10 @@ own run): the server keeps no shared file with saved passwords. Tests: server `D
 `tests/Oadm.Plugins.DeviceConfig.Tests`. Not in fake mode.
 
 - Fixtures `export-all.json`, `discover.json` recorded read-only from an AXIS P3265-V.
-- File format, identity filter, file names and MAC notations, models, firmware check, payload, discover, device answers and
+- File format, identity filter, file names and MAC notations, models, AXIS OS version check, payload, discover, device answers and
   error texts, verify comparison.
 - Import task against a stateful fake camera (`ConfigCamera`): every area as merge without identity, chosen areas, ZIP
-  entry, other model / old firmware / feature off with no write, missing areas skipped, a refused area while the others
+  entry, other model / old AXIS OS version / feature off with no write, missing areas skipped, a refused area while the others
   run, device warnings and differing values, devices left out, broken or missing file, connection settings only when
   chosen and last, a timeout failing one area, a changed certificate stopping, verify unreadable, ZIP entry of another
   device, upload removed meanwhile.

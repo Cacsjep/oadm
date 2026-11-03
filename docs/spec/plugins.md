@@ -24,7 +24,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 
 - `IPlugin`: `Id` ("oadm.restart"), `DisplayName`, `IconKey`.
 - `IDeviceInfo`: the read-only device view for plugins (server and client): id, serial, address, host name, model,
-  firmware, status, category, `HasVideo`, `HasLiveVideo` (SDK 0.8.0, DIM: adds radars, for live video only; also `DeviceCategories.HasLiveVideo`), `Apis` (API list of the last full refresh), `CredentialUserName` (never a
+  AXIS OS version, status, category, `HasVideo`, `HasLiveVideo` (SDK 0.8.0, DIM: adds radars, for live video only; also `DeviceCategories.HasLiveVideo`), `Apis` (API list of the last full refresh), `CredentialUserName` (never a
   password), certificate end and trust, `DhcpEnabled` / `HttpsEnabled` / `Dot1xEnabled` (null = not known),
   `ConnectsOverHttps` (how OADM connects: false = HTTP, what it sends is unencrypted), `Tags`, `SiteId` / `SiteName`,
   `AddedByAllDevices`, `Soc` / `Architecture` (SDK 0.7.0, DIM null: basicdeviceinfo as reported, filled by the server).
@@ -40,7 +40,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   the task, "task:<id>:<key>"; empty = one "task:<id>") and `RequiredPermissions(payload)` (the keys one run needs; no
   answer = all declared), `ExecuteAsync`. Optional `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog
   (`ITaskQueryContext.Devices`: every managed device; for a user with a device group only the devices of the user's
-  view). The host calls the overload with the user's call. Declared today: Upgrade firmware (upgrade, factoryDefault,
+  view). The host calls the overload with the user's call. Declared today: Upgrade AXIS OS (upgrade, factoryDefault,
   downgrade), Users (add, update, remove), Applications (install, downgrade, startStop, remove, license), Import
   configuration (import, connection), Configure devices (configure, dangerous).
 - `ICorePlugin`: `TaskPlugins` (contributed tasks), `StartAsync` / `StopAsync`, `InvokeAsync` (the page backend),
@@ -191,7 +191,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
 registry strips trailing "..." / "…" and shortens longer names to 31 characters + "…" (logged); empty groups become
-`General`. Bundled task plugins: Restart, Upgrade firmware, Date and time, Export and Import configuration, Configure
+`General`. Bundled task plugins: Restart, Upgrade AXIS OS, Date and time, Export and Import configuration, Configure
 devices, Use OADM as NTP server (Maintenance), Applications (ACAP) (Applications), Users (Users), Network settings and
 Assign IP address (Network), the PKI tasks and EST - Certificate Enrollment (Security, contributed by `oadm.pki` and
 `oadm.est`); `TaskPluginNamesTests` checks every plugin deployed to `artifacts/plugins`.
@@ -203,10 +203,10 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
 - `ITaskPluginDialog.ShowAsync(ctx, devices, owner)` returns the payload JSON (null = cancel). The default member
   `ShowForDevicesAsync` returns a `TaskDialogResult(PayloadJson, DeviceIds)`: the payload and the selected devices the
   task runs on. The host calls it and starts tasks only for those devices (ids not selected are ignored; none left:
-  nothing runs). Its default runs on every selected device. Upgrade firmware leaves out devices that are up to date,
+  nothing runs). Its default runs on every selected device. Upgrade AXIS OS leaves out devices that are up to date,
   have no file for their model or cannot install (no task that changes nothing). `ITaskDialogContext` gives `QueryAsync`
   (TaskService.Query), `UploadAsync` (FileService.Upload with progress), `Has(permission)` (the dialog hides the choices
-  the role lacks: Users modes, firmware factory default and downgrade, application actions, the connection settings area,
+  the role lacks: Users modes, AXIS OS factory default and downgrade, application actions, the connection settings area,
   dangerous parameters), `AllDevices` (every device of the client, e.g. a source device that is not selected; DIM empty)
   and `CanRunTasks` + `RunTaskAsync(deviceIds, payload, progress, ct)` (DIM false / throws): a dialog that stays open
   starts its task itself (TaskService.Run, the tasks show in the tasks pane too) and follows it in the client's task
@@ -284,7 +284,7 @@ The Devices page toolbar is made of toolbar plugins. Built in (compiled into the
   "Refresh" uses the same flow.
 - **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`): the selected devices, or every device the
   search shows when none is selected, the tooltip says which. `Devices/DeviceListCsv`: header + every grid column as text
-  (MAC address, Status, Address, Tags, Site, Host name, Model, Firmware, SoC, Architecture, Category, Product type, DHCP,
+  (MAC address, Status, Address, Tags, Site, Host name, Model, AXIS OS, SoC, Architecture, Category, Product type, DHCP,
   HTTPS, Certificate expires as ISO date yyyy-MM-dd, Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order,
   RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with BOM, a cell starting with = + - @ gets a leading `'` (no
   formula injection), no password (the client has none); save picker `IDialogService.SaveFileAsync`, default name
@@ -311,7 +311,7 @@ talk to devices from the client; payloads go to the server. gRPC errors reach th
 is the message).
 
 `VapixRequestOptions.Timeout` (`HttpRequestOptionsKey<TimeSpan>` "Oadm.RequestTimeout") on a request passed to
-`IVapixClient.SendAsync` overrides the default 15 s timeout for that request (firmware and ACAP uploads use minutes;
+`IVapixClient.SendAsync` overrides the default 15 s timeout for that request (AXIS OS and ACAP uploads use minutes;
 plugins use the SDK constant, never their own key); request bodies are streamed, never buffered.
 `VapixRequestOptions.StreamResponse` (`HttpRequestOptionsKey<bool>` "Oadm.StreamResponse") returns the answer after its
 headers without buffering it (`HttpCompletionOption.ResponseHeadersRead`): the caller reads the body as a stream (e.g.
@@ -328,7 +328,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
 - `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.9.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.9.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
-  packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade firmware:
+  packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade AXIS OS:
   `ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
@@ -396,7 +396,7 @@ restart. Own rail page (not a Settings card); core functionality is always on.
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
-- **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade firmware, Date and time, Applications
+- **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade AXIS OS, Date and time, Applications
   (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
   FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:

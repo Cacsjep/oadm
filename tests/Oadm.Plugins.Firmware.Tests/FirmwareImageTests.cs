@@ -207,12 +207,12 @@ public sealed class FirmwarePayloadTests
     }
 
     [Theory]
-    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Upgrade, "Upgrade firmware to 12.11.77")]
-    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Upgrade firmware to 12.11.77")]
-    [InlineData("P3265-V_10_12_236.bin", FactoryDefaultMode.Soft, true, FirmwareDirection.Downgrade, "Downgrade firmware to 10.12.236 (factory default)")]
-    [InlineData("P3265-V_11_11_160.bin", FactoryDefaultMode.Hard, true, FirmwareDirection.Unknown, "Install firmware 11.11.160 (factory default)")]
-    [InlineData("firmware.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Install firmware")]
-    [InlineData("M3206-LVE_10_12_338.bin", FactoryDefaultMode.Hard, false, FirmwareDirection.Upgrade, "Upgrade firmware to 10.12.338 (factory default)")]
+    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Upgrade, "Upgrade AXIS OS to 12.11.77")]
+    [InlineData("P3265-V_12_11_77.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Upgrade AXIS OS to 12.11.77")]
+    [InlineData("P3265-V_10_12_236.bin", FactoryDefaultMode.Soft, true, FirmwareDirection.Downgrade, "Downgrade AXIS OS to 10.12.236 (factory default)")]
+    [InlineData("P3265-V_11_11_160.bin", FactoryDefaultMode.Hard, true, FirmwareDirection.Unknown, "Install AXIS OS 11.11.160 (factory default)")]
+    [InlineData("firmware.bin", FactoryDefaultMode.None, false, FirmwareDirection.Unknown, "Install AXIS OS")]
+    [InlineData("M3206-LVE_10_12_338.bin", FactoryDefaultMode.Hard, false, FirmwareDirection.Upgrade, "Upgrade AXIS OS to 10.12.338 (factory default)")]
     public void Task_name_says_exactly_what_is_installed(string file, FactoryDefaultMode mode, bool allowDowngrade, FirmwareDirection direction, string expected)
     {
         var json = new FirmwarePayload { FileId = "f", FileName = file, FactoryDefaultMode = mode, AllowDowngrade = allowDowngrade, Direction = direction }.ToJson();
@@ -223,7 +223,7 @@ public sealed class FirmwarePayloadTests
 
     [Fact]
     public void Task_name_without_a_valid_payload_is_the_display_name() =>
-        Assert.Equal("Upgrade firmware", new FirmwareTaskPlugin().GetTaskName("{}"));
+        Assert.Equal("Upgrade AXIS OS", new FirmwareTaskPlugin().GetTaskName("{}"));
 
     [Fact]
     public void Defaults_are_safe()

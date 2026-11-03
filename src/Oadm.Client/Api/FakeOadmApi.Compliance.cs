@@ -65,7 +65,7 @@ public sealed partial class FakeOadmApi
         clock.Fields.Add(new ActionFieldEntry { Key = "allowedSeconds", Label = "Allowed difference (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 3600, DefaultValue = "2" });
         clock.Fields.Add(new ActionFieldEntry { Key = "ntpSynced", Label = "NTP must be synced", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "true" });
         catalog.Entries.Add(clock);
-        var firmware = Type(FirmwareType, "Firmware", "Devices", "The device runs at least the AXIS OS version you set.", false);
+        var firmware = Type(FirmwareType, Oadm.Sdk.Devices.AxisOsTexts.Name, "Devices", "The device runs at least the AXIS OS version you set.", false);
         firmware.Fields.Add(new ActionFieldEntry { Key = "minimum", Label = "At least AXIS OS", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 32, Hint = "For example 12.5.56" });
         catalog.Entries.Add(firmware);
         var app = Type(AppType, "Application running", "Applications", "The application is installed and running on the device.", true, source: "Applications (ACAP)");
@@ -473,7 +473,7 @@ public sealed partial class FakeOadmApi
                 LoginType => "Login works",
                 CertificateType => "Certificate",
                 ClockType => "Clock",
-                FirmwareType => "Firmware",
+                FirmwareType => Oadm.Sdk.Devices.AxisOsTexts.Name,
                 AppType => "Application running",
                 ConfigType => "Matches configuration file",
                 _ => "SD card",

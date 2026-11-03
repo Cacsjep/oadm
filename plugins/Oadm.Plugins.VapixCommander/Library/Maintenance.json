@@ -91,7 +91,7 @@
     {
       "id": "maintenance.firmware.commit",
       "version": 1,
-      "name": "Commit firmware",
+      "name": "Commit AXIS OS",
       "category": "Maintenance",
       "description": "Commits a newly installed AXIS OS so it is not rolled back automatically.",
       "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",
@@ -123,7 +123,7 @@
     {
       "id": "maintenance.firmware.rollback",
       "version": 1,
-      "name": "Roll back firmware",
+      "name": "Roll back AXIS OS",
       "category": "Maintenance",
       "description": "Returns to the previously installed AXIS OS. The device restarts.",
       "docs": "https://developer.axis.com/vapix/network-video/firmware-management-api/",

@@ -363,7 +363,7 @@ public sealed class FormValidationTests
             window.Show();
             OpenCards(window); // the Settings cards are closed by default
             FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin" && x.IsEffectivelyVisible);
-            Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or firmware updates.", field.Hint);
+            Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.", field.Hint);
 
             foreach (decimal? bad in new decimal?[] { null, 0m, 257m, 2.5m })
             {

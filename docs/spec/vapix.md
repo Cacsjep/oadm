@@ -49,9 +49,9 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   when `Properties.EmbeddedDevelopment.Version`, user-management when `Properties.API.Browser.UserGroup=yes`; status "from
   parameters"); an API list without "param-cgi", "application" or "user-management" gets them the same way from one read
   of `Properties` (VAPIX identifies these by parameters, not by the API list; an AXIS OS 11.9 camera did not list
-  "application"), so Upgrade firmware, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
+  "application"), so Upgrade AXIS OS, Users, Applications and (through their param.cgi fallbacks) Network settings and Date
   and time run; Device configuration (12.5) stays greyed with its reason. PKI runs from 6.53 through the SOAP certificate
-  service ([pki.md](pki.md) "Older AXIS OS"). Other writes on such firmware are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
+  service ([pki.md](pki.md) "Older AXIS OS"). Other writes on such AXIS OS versions are not tested yet; the discovered row has no model (no anonymous properties); a factory-default 8.x device is not recognized
   (no systemready).
 - **Firmware without basicdeviceinfo** (AXIS OS before 8.x, the A1001 door controller line; verified read-only on an AXIS
   Q2901-E with 6.50.5.18 and an AXIS A1001 with 1.65.6, `tests/Oadm.Core.Tests/Vapix/LegacyFirmwareHardwareTests`, fixtures

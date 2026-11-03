@@ -15,7 +15,7 @@ using DialogViewModel = fwclient::Oadm.Plugins.Firmware.Client.FirmwareDialogVie
 namespace Oadm.FirmwareDialogTests;
 
 /// <summary>
-/// HARD RULE "scale to thousands of devices": the Upgrade firmware dialog with the most selected devices (DeviceLimits.MaxDevices) reads the
+/// HARD RULE "scale to thousands of devices": the Upgrade AXIS OS dialog with the most selected devices (DeviceLimits.MaxDevices) reads the
 /// status of a bounded number of devices with bounded parallelism, evaluates every row in one pass, and CanRun stays cheap.
 /// </summary>
 public sealed class FirmwareScaleTests

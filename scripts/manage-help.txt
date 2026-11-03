@@ -214,7 +214,7 @@ the samples are in samples/). Existing folders are never overwritten.
 
 Targets:
   task      A task in the device context menu with a dialog (sample "Set UPnP name")
-  page      A core plugin with its own page in the navigation rail (sample "Firmware overview")
+  page      A core plugin with its own page in the navigation rail (sample "AXIS OS overview")
   action    An event rule action (sample "Set virtual input")
 
 Options:

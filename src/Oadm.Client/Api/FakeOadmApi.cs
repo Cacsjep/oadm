@@ -1679,7 +1679,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         _jobs[identify.Id] = new FakeJob(identify, 1, null, IdentifySteps);
 
         // A firmware upgrade in the middle of its upload: many small steps, byte progress on the running one.
-        TaskInfo firmware = AddTask(FirmwarePluginId, "Upgrade firmware to 12.11.77", OwnerName, TaskState.Running, 42, _devices[2].Id);
+        TaskInfo firmware = AddTask(FirmwarePluginId, Oadm.Sdk.Devices.AxisOsTexts.UpgradeTask + " to 12.11.77", OwnerName, TaskState.Running, 42, _devices[2].Id);
         firmware.Started = Timestamp.FromDateTime(now.AddSeconds(-95));
         SetSteps(firmware, FirmwareSteps, firmware.Progress);
         AddLog(firmware, firmware.DeviceId, TaskLogLevel.Info, "Compatible: fwmgr 1.4, AXIS OS 12.6.94 can be upgraded to 12.11.77", now.AddSeconds(-94));
@@ -1845,11 +1845,13 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     private static readonly string[] IdentifySteps = ["Check device", "Flash LED", "Wait 10 s", "Stop flashing"];
 
-    /// <summary>The steps of the Firmware task plugin on its normal path.</summary>
+    private const string UploadFirmwareStep = "Upload AXIS OS to the device";
+
+    /// <summary>The steps of the Upgrade AXIS OS task plugin on its normal path.</summary>
     private static readonly string[] FirmwareSteps =
     [
-        "Check compatibility", "Read device info", "Validate file", "Read firmware status", "Upload firmware",
-        "Install firmware", "Wait for the device to come back", "Verify version", "Read commit state", "Commit firmware",
+        "Check compatibility", "Read device info", "Validate file", "Read the AXIS OS status", UploadFirmwareStep,
+        "Install AXIS OS", "Wait for the device to come back", "Verify version", "Read commit state", "Commit AXIS OS",
     ];
 
     private static readonly string[] GenericSteps = ["Check compatibility", "Read current settings", "Apply change", "Verify device"];
@@ -1900,7 +1902,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 step.Finished = Timestamp.FromDateTime(start.AddSeconds((i * 7) + 6));
             }
 
-            if (state == TaskStepState.Running && names[i] == "Upload firmware")
+            if (state == TaskStepState.Running && names[i] == UploadFirmwareStep)
             {
                 step.Detail = string.Create(CultureInfo.InvariantCulture, $"{step.Progress * 82 / 100} of 82 MB");
             }

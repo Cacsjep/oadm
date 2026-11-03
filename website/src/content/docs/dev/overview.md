@@ -36,7 +36,7 @@ A plugin follows the same split: a **server part** (`*.Server.dll`) does the dev
 
 | You want to | Build | Example in the repository |
 |---|---|---|
-| Change or read something on many devices from the context menu | [Task plugin](../tasks/) | Restart, Users, Upgrade firmware |
+| Change or read something on many devices from the context menu | [Task plugin](../tasks/) | Restart, Users, Upgrade AXIS OS |
 | Ask the user first (a form, a file) | Task plugin with a [dialog](../tasks/#the-dialog) | Date and time, Applications |
 | Run a service or show a page in the navigation rail | [Core plugin](../core-plugins/) | NTP server, Edge storage, PKI |
 | Add a button to the Devices toolbar | [Toolbar plugin](../core-plugins/#toolbar-buttons) | System report |
@@ -46,7 +46,7 @@ A plugin follows the same split: a **server part** (`*.Server.dll`) does the dev
 
 Inside these, the SDK gives you:
 
-- every managed device with its model, firmware, status, tags and API list ([Devices and VAPIX](../devices/));
+- every managed device with its model, AXIS OS version, status, tags and API list ([Devices and VAPIX](../devices/));
 - a logged-in VAPIX client per device, with WebSockets, RTSP event streams and video source lists;
 - tasks with named steps, progress, a log and warnings, one task per device;
 - settings per plugin, encrypted secrets, a private data folder;

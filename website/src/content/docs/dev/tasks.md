@@ -49,7 +49,7 @@ sequenceDiagram
 | `NotSupportedReason(device)` | Why `CanRun` is false; shown as the tooltip of the greyed entry |
 | `GetTaskName(payload)` | The task's name in the tasks pane |
 | `ExecuteAsync(ctx, device, payload, ct)` | The work, once per device |
-| `MaxParallelDevices` | Lowers how many devices run at once (firmware uses 4); null = the server setting (16) |
+| `MaxParallelDevices` | Lowers how many devices run at once (Upgrade AXIS OS uses 4); null = the server setting (16) |
 | `ShowInMenus` | False: not in menus; a core plugin starts it from its page |
 | `Permissions`, `RequiredPermissions(payload)` | Finer rights for choices of different risk, see [Permissions](#permissions) |
 | `SiteSupport` | Whether this task works for devices at a site; null = the package's `siteSupport`, see [Sites](../sites/) |
@@ -78,7 +78,7 @@ public string? NotSupportedReason(IDeviceInfo device) =>
 ### Task names
 
 The tasks pane shows what each task does, not the menu name: "Add user joe", "Set static IP 10.0.0.60", "Upgrade
-firmware to 12.11.77". At most 48 characters, no secrets (names are stored and shown to every user). It is called once
+AXIS OS to 12.11.77". At most 48 characters, no secrets (names are stored and shown to every user). It is called once
 per run, so put everything the name needs into the payload.
 
 ## Steps
@@ -87,12 +87,12 @@ per run, so put everything the name needs into the payload.
 where it failed.
 
 ```csharp
-ctx.PlanSteps("Check compatibility", "Upload firmware", "Wait for the device to come back");
+ctx.PlanSteps("Check compatibility", "Upload AXIS OS to the device", "Wait for the device to come back");
 
 await ctx.StepAsync("Check compatibility", async _ =>
     (await ctx.Vapix.GetApiListAsync(ct)).Require("fwmgr", "1.0"));
 
-using (var step = ctx.BeginStep("Upload firmware"))
+using (var step = ctx.BeginStep("Upload AXIS OS to the device"))
 {
     // ...
     step.ReportProgress(45, "37 of 82 MB");
@@ -129,7 +129,7 @@ public sealed class MyDialog : ITaskPluginDialog
 
 A dialog that leaves out some of the selected devices (already up to date, no file for them) implements
 `ShowForDevicesAsync` instead and returns a `TaskDialogResult` with the payload and the ids of the devices the task runs
-on. The host calls `ShowForDevicesAsync`; its default runs `ShowAsync` on every selected device. The firmware dialog
+on. The host calls `ShowForDevicesAsync`; its default runs `ShowAsync` on every selected device. The Upgrade AXIS OS dialog
 works this way. It needs SDK 0.5.0.
 
 `ITaskDialogContext` gives the dialog:
@@ -137,7 +137,7 @@ works this way. It needs SDK 0.5.0.
 | Member | Use |
 |---|---|
 | `QueryAsync(deviceId, method, payload, ct)` | Read the device's current state through your `ITaskPluginQuery` on the server |
-| `UploadAsync(path, progress, ct)` | Upload a local file (firmware, a package); put the returned id into the payload |
+| `UploadAsync(path, progress, ct)` | Upload a local file (an AXIS OS file, a package); put the returned id into the payload |
 | `Has(permission)`, `HasAllDevices` | Hide choices the user's role does not allow, or that only users with all devices may make |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
 | `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there; then return null from `ShowAsync` |

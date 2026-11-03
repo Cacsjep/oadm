@@ -99,7 +99,7 @@
         <c:CollapsibleCard Title="Tasks">
           <StackPanel Classes="form">
             <ui:FormField Label="Parallel tasks per plugin" IsVisible="{Binding IsAdmin}"
-                          Hint="How many devices a task runs on at the same time, e.g. restarts or firmware updates.">
+                          Hint="How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.">
               <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
             </ui:FormField>
             <ui:FormField Label="Parallel tasks per plugin" IsVisible="{Binding IsOperator}">

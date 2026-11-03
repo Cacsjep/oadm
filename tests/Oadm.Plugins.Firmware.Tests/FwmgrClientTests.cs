@@ -54,7 +54,7 @@ public sealed class FwmgrClientTests
     }
 
     [Theory]
-    [InlineData(409, "older firmware version without a factory default")]
+    [InlineData(409, "older AXIS OS version without a factory default")]
     [InlineData(410, "revoked")]
     [InlineData(415, "not a valid AXIS OS image")]
     [InlineData(421, "does not match this device")]

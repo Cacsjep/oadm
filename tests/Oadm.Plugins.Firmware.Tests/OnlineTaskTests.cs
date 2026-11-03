@@ -44,8 +44,8 @@ public sealed class OnlineTaskTests : IDisposable
         await Run(ctx, Online());
 
         Assert.Equal(
-            ["Check compatibility: Done", "Read device info: Done", "Validate file: Done", "Download firmware: Done", "Read firmware status: Done", "Upload firmware: Done",
-             "Install firmware: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit firmware: Done", "Completed: Done"],
+            ["Check compatibility: Done", "Read device info: Done", "Validate file: Done", "Download AXIS OS from axis.com: Done", "Read the AXIS OS status: Done", "Upload AXIS OS to the device: Done",
+             "Install AXIS OS: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit AXIS OS: Done", "Completed: Done"],
             StepRun.Lines(ctx.Steps));
 
         // The server read URL, size and SHA-256 from axis.com itself.
@@ -122,8 +122,8 @@ public sealed class OnlineTaskTests : IDisposable
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, Online()));
 
         Assert.Equal(expected, ex.Message);
-        Assert.Equal("Download firmware: Failed", StepRun.Lines(ctx.Steps)[3]);
-        Assert.Equal("Upload firmware: Skipped", StepRun.Lines(ctx.Steps)[5]);
+        Assert.Equal("Download AXIS OS from axis.com: Failed", StepRun.Lines(ctx.Steps)[3]);
+        Assert.Equal("Upload AXIS OS to the device: Skipped", StepRun.Lines(ctx.Steps)[5]);
         Assert.DoesNotContain("upgrade", device.Methods);
         Assert.DoesNotContain("status", device.Methods);
     }
@@ -172,7 +172,7 @@ public sealed class OnlineTaskTests : IDisposable
         device.Version = "12.11.147";
         await Run(ctx, Online(fromMajor: 12));
         Assert.Contains("Already up to date", ctx.Steps.Snapshot()[2].Detail, StringComparison.Ordinal);
-        Assert.Equal("Download firmware: Skipped", StepRun.Lines(ctx.Steps)[3]);
+        Assert.Equal("Download AXIS OS from axis.com: Skipped", StepRun.Lines(ctx.Steps)[3]);
         Assert.Empty(_downloads.Calls);
 
         // Older without Allow downgrade: refused before the download.
@@ -257,7 +257,7 @@ public sealed class OnlineTaskTests : IDisposable
     }
 
     [Theory]
-    [InlineData("changed", "the firmware file changed while it was sent")]
+    [InlineData("changed", "the AXIS OS file changed while it was sent")]
     [InlineData("timeout", "the device did not answer in time")]
     [InlineData("reset", "the connection to the device was lost")]
     [InlineData("other", "the connection to the device was lost")]
@@ -265,7 +265,7 @@ public sealed class OnlineTaskTests : IDisposable
     {
         Exception ex = kind switch
         {
-            "changed" => new HttpRequestException("Error while copying content to a stream.", new FirmwareFileChangedException("The firmware file is shorter than announced; it changed during the upload.")),
+            "changed" => new HttpRequestException("Error while copying content to a stream.", new FirmwareFileChangedException("The AXIS OS file is shorter than announced; it changed during the upload.")),
             "timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 1200 seconds elapsing.", new TimeoutException()),
             "reset" => new HttpRequestException("Error while copying content to a stream.", new IOException("Unable to write data to the transport connection.", new System.Net.Sockets.SocketException(10054))),
             _ => new IOException("Unable to read data from the transport connection."),
@@ -280,7 +280,7 @@ public sealed class OnlineTaskTests : IDisposable
         var online = FirmwarePayload.Parse(Online());
         Assert.Empty(online.AllFiles());
         Assert.Equal(new FirmwareOnline("MPQT", "P3265-V", "12.11.147", 11), Assert.Single(online.AllOnline()));
-        Assert.Equal("Upgrade firmware to 12.11.147", online.TaskName());
+        Assert.Equal("Upgrade AXIS OS to 12.11.147", online.TaskName());
 
         var old = FirmwarePayload.Parse("""{"fileId":"abc","fileName":"P3265-V_12_11_77.bin","factoryDefaultMode":"none","allowDowngrade":false}""");
         Assert.Equal("abc", Assert.Single(old.AllFiles()).FileId);

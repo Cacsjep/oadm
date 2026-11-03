@@ -43,7 +43,7 @@ public sealed partial class SnapshotPreviewViewModel : ObservableObject, IDispos
                 new("Model", device.Model ?? "Unknown"),
                 new("MAC address", FactsText.Mac(device.Serial)),
                 new("Address", FactsText.Address(device)),
-                new("Firmware", device.Firmware ?? "Unknown"),
+                new(Oadm.Sdk.Devices.AxisOsTexts.Name, device.Firmware ?? "Unknown"),
                 new("Status", FactsText.Status(device.Status)),
                 new("Certificate", FactsText.Certificate(device, now)),
                 new("Source", Tile.Tile.SourceLabel ?? "Single source"),

@@ -203,10 +203,10 @@ public sealed class ComplianceEngineTests
     {
         await using var rig = await ComplianceRig.StartAsync();
         var device = await rig.AddDeviceAsync("10.0.0.1");
-        rig.Plugin.Read.ThrowWith = "Not Found - HTTP 404 (API not available on this firmware)";
+        rig.Plugin.Read.ThrowWith = "Not Found - HTTP 404 (API not available on this AXIS OS version)";
         var check = await rig.SaveAsync("test.read");
         await rig.WaitForAsync(check.Id, device.Id, ComplianceOutcome.CouldNotCheck);
-        Assert.Equal("Not Found - HTTP 404 (API not available on this firmware)", rig.Result(check.Id, device.Id)!.Detail);
+        Assert.Equal("Not Found - HTTP 404 (API not available on this AXIS OS version)", rig.Result(check.Id, device.Id)!.Detail);
 
         rig.Plugin.Read.ThrowWith = null;
         rig.Plugin.Read.Hold = new TaskCompletionSource(); // never answers

@@ -237,7 +237,7 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
     maintainer; its rules are documented in the forum's own repository); while the forum does not answer or the request
     fails, the form says so and links contact@acs-dev.org with the request filled into the mail.
 - **Search:** the landing title names "AXIS Device Manager alternative"; the page `start/axis-device-manager-alternative`
-  compares with ADM (the same work, more in OADM, "More in OADM" names Sites; "Not in OADM yet": firmware lookup,
+  compares with ADM (the same work, more in OADM, "More in OADM" names Sites; "Not in OADM yet": AXIS OS lookup,
   warranty data; no claims about ADM); `StructuredData.astro` (SoftwareApplication JSON-LD).
 - **Changelog** (Project > Changelog, `project/changelog`) is written from `CHANGELOG.md` by
   `website/scripts/changelog.mjs` before every build and dev start (npm `prebuild` / `predev`, git-ignored).

@@ -83,9 +83,9 @@ All fields optional and combined with AND; an empty filter means every device th
 previews, never for lists without a cursor).
 
 - `oadm_server_info`: version, user, role, the permissions, Read only, the limits, the device count. The first call.
-- `oadm_devices_summary(filter, group_by)`: counts by status, model, firmware, site, tag or category (at most 50 groups,
+- `oadm_devices_summary(filter, group_by)`: counts by status, model, AXIS OS version, site, tag or category (at most 50 groups,
   the rest as "Other").
-- `oadm_devices_search(filter, fields, sort, cursor, limit)`: rows with id, name, address, model, firmware, status and the
+- `oadm_devices_search(filter, fields, sort, cursor, limit)`: rows with id, name, address, model, AXIS OS version, status and the
   requested fields; `total`, `next_cursor`. The cursor is bound to the key and the device-table version; after a change it
   answers "The device list changed. Search again." Truncated answers say how to narrow ("312 more. Add a filter, e.g.
   site or model.").
@@ -146,7 +146,7 @@ New default interface members (SDK minor version up, `docs/spec/plugins.md`):
   dialog view model). Called by MCP preview **and by `TaskService.Run`**, which then refuses an invalid payload with
   INVALID_ARGUMENT before any task starts.
 - `ITaskPlugin.PlanAsync(payload, devices, ct)` → per device run or skip with a reason, from cached data only (no device
-  request). The server-side twin of `ITaskPluginDialog.ShowForDevicesAsync` (Upgrade firmware: `FirmwareCompatibility.Choose`).
+  request). The server-side twin of `ITaskPluginDialog.ShowForDevicesAsync` (Upgrade AXIS OS: `FirmwareCompatibility.Choose`).
   Default: `CanRun` / `NotSupportedReason`.
 - `ICorePlugin.McpTools`: tool descriptors (name, title, description, input and output type, read only or change,
   permission, the `InvokeAsync` method). Changes get the preview/run pair from the host; the plugin implements a
@@ -155,7 +155,7 @@ New default interface members (SDK minor version up, `docs/spec/plugins.md`):
 
 ## Skill
 
-One skill `oadm` (`SKILL.md` plus a few workflow files: firmware rollout, network change, certificates, health check),
+One skill `oadm` (`SKILL.md` plus a few workflow files: AXIS OS rollout, network change, certificates, health check),
 kept in `src/Oadm.Server/Mcp/Skill/`, served over MCP (skills extension `io.modelcontextprotocol/skills` and resource
 `oadm://skill/SKILL.md`) and as **Download skill** on the Settings card. It says: call `oadm_server_info` first; start
 with summaries, narrow with filters; always preview, show the plan and the skipped reasons to the user, then run; never

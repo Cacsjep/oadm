@@ -42,7 +42,7 @@ The payload stays in memory only; password values are never logged and are maske
   and interprets the answer per response kind (`ResponseInterpreter`): Axis devices often answer an error with HTTP 200.
 - Errors: the device text (`# Error: ...` line, JSON `message (code N)`, REST error / problem+json, SOAP fault, Axis
   `GeneralError`, first text line, HTML title) or the shared transport texts of `DeviceMessages` ("Timeout after 15 s",
-  "Unreachable - Connection refused", "Not Found - HTTP 404 (API not available on this firmware)", ...). HTTP 204 / an
+  "Unreachable - Connection refused", "Not Found - HTTP 404 (API not available on this AXIS OS version)", ...). HTTP 204 / an
   empty 2xx is success.
 
 ## Page

@@ -147,7 +147,7 @@ revocation").
 ## PKI Security tasks
 
 Context menu group **Security** (icon key), no toolbar, `CanRun` on cached data only: AXIS OS 6.53 or later from the
-firmware version (all tasks, 802.1X too). Compatibility (`docs/spec/pki.md` "Older AXIS OS"), decided in
+cached version (all tasks, 802.1X too). Compatibility (`docs/spec/pki.md` "Older AXIS OS"), decided in
 `Tasks/PkiCompatibility` fresh in every Check compatibility (`RequireAsync` -> `PkiDeviceSupport`: certificate API, AXIS OS
 version, the web server roles before 7.10, the highest EAPOL version) and cached 10 min for queries (`CachedAsync`). Device
 APIs (`Device/`): `DeviceCertificates` (one facade, `CertificateApiKind` Rest / Soap) over REST `cert` v1 (`CertApi`) or SOAP

@@ -61,7 +61,7 @@ public sealed partial class ImportHelpViewModel
             new("Addresses", "With their ports. A device is only added when it answers with the MAC address of the export."),
             new("Logins", "Tried first and never saved. Devices without one use the credential list."),
             new("Tags", "Given to the devices you add. Missing tags are created."),
-            new("Everything else", "OADM reads the model, firmware and settings from the devices."),
+            new("Everything else", "OADM reads the model, AXIS OS version and settings from the devices."),
             new("Servers", "OADM is one server. Devices it cannot reach show Not found, for example cameras of another ADM server."),
         ],
         null,

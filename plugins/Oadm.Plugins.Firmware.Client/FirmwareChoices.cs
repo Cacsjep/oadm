@@ -184,7 +184,7 @@ public sealed partial class FirmwareDeviceRow(IDeviceInfo device) : ObservableOb
     [ObservableProperty]
     public partial string? CurrentVersion { get; set; } = device.FirmwareVersion;
 
-    /// <summary>True while the status query of this row runs (the Firmware cell shows "Reading").</summary>
+    /// <summary>True while the status query of this row runs (the AXIS OS cell shows "Reading").</summary>
     [ObservableProperty]
     public partial bool IsReadingStatus { get; set; }
 

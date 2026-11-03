@@ -6,7 +6,7 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Firmware.Client;
 
-/// <summary>Client part of "Upgrade firmware...": shows <see cref="FirmwareDialogWindow"/> and returns the payload.</summary>
+/// <summary>Client part of "Upgrade AXIS OS": shows <see cref="FirmwareDialogWindow"/> and returns the payload.</summary>
 public sealed class FirmwareTaskDialog : ITaskPluginDialog
 {
     public string PluginId => FirmwareTaskPluginIds.PluginId;
@@ -69,11 +69,11 @@ public sealed class StorageFirmwareFileSource(TopLevel topLevel) : IFirmwareFile
     {
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Choose AXIS OS firmware",
+            Title = "Choose AXIS OS files",
             AllowMultiple = true,
             FileTypeFilter =
             [
-                new FilePickerFileType("AXIS OS firmware (*.bin)") { Patterns = ["*.bin"] },
+                new FilePickerFileType("AXIS OS files (*.bin)") { Patterns = ["*.bin"] },
                 FilePickerFileTypes.All,
             ],
         }).ConfigureAwait(true);

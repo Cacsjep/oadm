@@ -4,21 +4,21 @@ Status: **built**, verified 2026-11-02 on Windows with a real MyAxis account (We
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmware downloads AXIS OS from axis.com
-(plugin README "Firmware online"). Decisions of 2026-11-02, asked one by one. A clean-room build: the version parked on
+Each OADM user can sign in to their own MyAxis account. With it, Upgrade AXIS OS downloads AXIS OS from axis.com
+(plugin README "AXIS OS online"). Decisions of 2026-11-02, asked one by one. A clean-room build: the version parked on
 2026-10-29 (`git stash` "firmware-online-beta") is not reused.
 
 ## Rules that never break
 
 1. **OADM never sees the MyAxis password or one-time code.** The user types them on Axis's own page in OADM's sign-in
    window. OADM keeps only the session cookie `axis_connect_session_sid` of www.axis.com. That one cookie is enough for
-   the firmware downloads: the MIT tool rs4a (`crates/authentication`, `crates/firmware-inventory`) sends only it.
+   the AXIS OS downloads: the MIT tool rs4a (`crates/authentication`, `crates/firmware-inventory`) sends only it.
 2. **Per OADM user.** Each user has their own sign-in; no user sees, uses or ends another user's sign-in, an
    Administrator included. A download always uses the session of the user who started the task.
 3. **Kept on the server, encrypted.** The session is a secret like a device password (AES-256-GCM with the master key,
    [security.md](security.md)): never logged, never in a gRPC answer, never in a backup. It lasts across client and
    server restarts until the user signs out, Axis ends it or the user is deleted.
-4. **Sent only to axis.com.** Only over HTTPS to `www.axis.com`, only as the one `Cookie` header of a firmware download
+4. **Sent only to axis.com.** Only over HTTPS to `www.axis.com`, only as the one `Cookie` header of an AXIS OS download
    below `/ftp/pub_soft/MPQT/` or `/ftp/pub_soft/PACS/` and of the sign-in check. The HTTP handler keeps no cookies
    (`UseCookies = false`) and follows no redirect.
 5. **Plugins never get the session.** They ask the host to download a file (see "For plugins").
@@ -54,7 +54,7 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 - The browser keeps nothing on disk: WebView2 InPrivate, WKWebView a non-persistent store, WebKitGTK ephemeral, WPE a
   temporary folder deleted when the window closes (the package has no ephemeral option for WPE).
 - No embedded browser (the Help texts `EmbeddedBrowserTexts`) or no way to the cookies: the button's window says
-  "Sign-in is not available here." and Upgrade firmware works with chosen files only.
+  "Sign-in is not available here." and Upgrade AXIS OS works with chosen files only.
 
 ## Reading the cookie
 
@@ -72,7 +72,7 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
 
 ## On the server
 
-- **Sign-in check**: before keeping a session, the server asks axis.com for the headers (HEAD) of one firmware file (the
+- **Sign-in check**: before keeping a session, the server asks axis.com for the headers (HEAD) of one AXIS OS file (the
   `latest/` .bin of the first product in the MPQT listing; both listings are read with the session too) and follows no
   redirect. 2xx: kept. Anything else: refused, nothing kept; no answer at all: UNAVAILABLE. The client may try again a
   moment later (the cookie can come before axis.com finished the sign-in); the server checks once per call.
@@ -87,7 +87,7 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade firmwar
   signed in at, last accepted at, expired); EF migration `MyAxisSessions`. Deleted on Sign out, with the user (foreign
   key, cascade), and when axis.com refuses it (the row stays with expired set and no session, so the button shows it).
   Removed from every backup copy.
-- **Expired**: a firmware download answered with a 3xx to a login page, 401 or 403 deletes the user's session; the task
+- **Expired**: an AXIS OS download answered with a 3xx to a login page, 401 or 403 deletes the user's session; the task
   fails with "Your MyAxis sign-in has expired. Sign in to MyAxis again. Nothing was changed." and the button shows it.
   A sign-in lasts about 4 weeks: `axis_connect_session_sid` expires about 27 days after the sign-in.
 
@@ -107,7 +107,7 @@ Server SDK, default interface members (`plugins.md`): `ctx.AxisDownloads` of a t
   uses it.
 - **Size and checksum**: the download stops when it grows 2 % + 1 MB over the listed size; a size more than 1 % (at
   least 64 KB) off the listed one (the listings round it, "225.5M"; `AxisDownloadTexts.SizeFits`) or another SHA-256 fails with "The download did not match the checksum on axis.com. Nothing was changed." and nothing is kept.
-- **No connection**: "The firmware could not be downloaded from axis.com (<short reason>). Nothing was changed." (no
+- **No connection**: "AXIS OS could not be downloaded from axis.com (<short reason>). Nothing was changed." (no
   connection to axis.com, axis.com was not found, no answer in time, the connection was lost, axis.com answered 404).
   axis.com has 60 s for the headers and between two reads of the body.
 - **Texts**: `AxisDownloadTexts` of the SDK (`Oadm.Sdk.Plugins`), the same for the host and `FakeAxisDownloads`.
@@ -135,7 +135,7 @@ offer Sign in to MyAxis.
 ## Verified
 
 2026-11-02 on Windows (WebView2) with a real MyAxis account: the login returns to `axis_destination`, the session cookie
-is read and accepted, a wrong one-time code or password shows Axis's own page, the listings parse, a firmware download
+is read and accepted, a wrong one-time code or password shows Axis's own page, the listings parse, an AXIS OS download
 passes the checksum (the listings round sizes, hence `SizeFits`) and two M3206-LVE were upgraded to 10.12.363. HEAD on a
 .bin works; a sign-in lasts about 4 weeks (from the cookie's expiry). Still to check: the WebKitGTK glue on Ubuntu 24.04
 (client README) and macOS (WKWebView).

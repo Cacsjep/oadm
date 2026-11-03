@@ -39,7 +39,7 @@ six; **Reload** reads them again.
 | Scan timeout (ms) | 1500 | How long **Network range** and imports wait for each address. |
 | Discovery duration (s) | 30 | How long **Discovery** on the add page searches (5 to 300). |
 | Try waiting devices every (min) | 15 | How often OADM tries the devices of imports that did not answer (1 to 1440). |
-| Parallel tasks per plugin | 16 | How many devices a task runs on at the same time, for example restarts or firmware updates. Takes effect at once. |
+| Parallel tasks per plugin | 16 | How many devices a task runs on at the same time, for example restarts or AXIS OS upgrades. Takes effect at once. |
 | Update the list online | Off | Who updates the list of Axis CVEs of the **Vulnerabilities** column. **Off**: the list that came with your OADM version, nothing goes online. **By the server**: the server fetches it once a day. **By the clients**: a client with internet fetches it and hands it to the server, for a server without internet. Only the public CVE list is fetched, nothing about your devices. **Check now** fetches it at once. |
 | Allow Basic login over HTTP | Off | For devices without HTTPS that accept only Basic login. OADM then sends their password unencrypted. Turn on HTTPS on the devices instead when you can. **Disable HTTPS** on such a device runs only while it is on. Takes effect at once. |
 | Server name | Computer name | Shown in the login window. |

@@ -7,7 +7,7 @@ The dialog lists the applications on the first selected device (device picker fo
 stops or removes one, installs / upgrades an `.eap` package (or one per architecture) or installs license keys. The
 Applications page (`oadm.app-management`, [spec](../../docs/spec/app-management.md)) also starts the action Change
 settings; the dialog does not offer it. Each action runs on all selected
-devices, one task per device. The package preview reads at most 25 devices (first the first device of every model and firmware, 4 queries at
+devices, one task per device. The package preview reads at most 25 devices (first the first device of every model and AXIS OS version, 4 queries at
 a time); the other rows say "Checked at install", and the task checks every device before it writes.
 The package facts in the card header show Package, Vendor, Architecture, AXIS OS (when the package names a range) and
 Manifest: the `schemaVersion` of `manifest.json` ("1.3", "2.1"), or `package.conf` for a package without `manifest.json`
@@ -31,7 +31,7 @@ devices.
 | Package source | Uploaded by the dialog (`ITaskDialogContext.UploadAsync`), read in the task from `ctx.Files`; SHA-256 and app name must match what the dialog checked. |
 | Package parsing | `manifest.json` wins, `package.conf` fills gaps; top-level entries only; metadata max 1 MB; app name `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`; version required. Not an `.eap` -> Failed, nothing changed. |
 | Architecture | Package arch (`architecture` / `APPTYPE`) must equal basicdeviceinfo `Architecture` (`arm64`=`aarch64`, `armhf`=`armv7hf`). Missing / `all` / `noarch` = independent. Device arch unknown + native package -> refuse. |
-| Firmware | AXIS OS must be inside one `compatibleOsVersions` range (bounds inclusive at their own precision: max `12` = any 12.x) **and** at least the schema's minimum OS. Newer unknown schema -> highest known minimum + warning. Legacy `package.conf` only: `REQEMBDEVVERSION` <= `Properties.EmbeddedDevelopment.Version`. Unknown firmware with requirements -> refuse. |
+| AXIS OS | AXIS OS must be inside one `compatibleOsVersions` range (bounds inclusive at their own precision: max `12` = any 12.x) **and** at least the schema's minimum OS. Newer unknown schema -> highest known minimum + warning. Legacy `package.conf` only: `REQEMBDEVVERSION` <= `Properties.EmbeddedDevelopment.Version`. Unknown AXIS OS version with requirements -> refuse. |
 | Root apps | Package user `root`: refuse on AXIS OS >= 12.0; warning (AllowRoot needed) on 11.8-11.x. |
 | Signing | Signature cannot be checked locally. `AllowUnsigned=false`, or AXIS OS 13+ (the setting is gone, signed only) -> warning in the dialog; device error 2 becomes "The package signature is missing or invalid; the device accepts only signed applications.". |
 | Install kind | Not installed -> Install; lower -> Upgrade; equal -> Reinstall (allowed); higher -> Downgrade, refused unless the dialog's "Allow downgrade" is set. Vendor change -> warning (device refuses with error 27). |

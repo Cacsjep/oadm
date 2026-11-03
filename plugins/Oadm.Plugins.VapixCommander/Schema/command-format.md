@@ -82,7 +82,7 @@ does not follow the listed major (PTZ `ptz-control` 1.x / 2.x, `privacy-mask` 2.
 ## Multipart and file fields
 
 A `multipart` body is sent as `multipart/form-data` (quoted part names and file names, unquoted boundary, like the
-firmware upload). It is an array of 1 to 10 parts; each part has a `name` and exactly one of:
+AXIS OS upload). It is an array of 1 to 10 parts; each part has a `name` and exactly one of:
 
 | Property | Part content |
 |---|---|

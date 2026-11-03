@@ -105,7 +105,8 @@ public sealed class DeviceImportFile
     public const int MaxTagLength = 64;
 
     private static readonly string[] KnownHeaders =
-        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. SiteHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant())];
+        [.. AddressHeaders, .. UserHeaders, .. PasswordHeaders, .. TagHeaders, .. SiteHeaders, .. DeviceListCsv.Columns.Select(c => c.ToLowerInvariant()),
+        AxisOsTexts.SearchAlias]; // device lists exported before the column was called AXIS OS
 
     private DeviceImportFile(string fileName, IReadOnlyList<ImportLine> lines, bool fromAdm = false, IReadOnlyList<string>? admServers = null)
     {
