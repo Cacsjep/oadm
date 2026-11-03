@@ -760,9 +760,10 @@
   <!-- Toolbar buttons (command buttons, Fluent; decision 2026-10-25): no background, the icon in the accent colour, the
        text neutral. Icon-only buttons have the text colour (never the dim grey of disabled ones) and take the accent only on hover. No filled buttons in toolbars. -->
   <!-- A command button at the right end of a panel header: its text ends level with the fields below (the padding sits
-       outside), e.g. New in the Areas header of Text recognition. -->
+       outside), and its text sits on the title's baseline (the larger title font puts its baseline 2 px lower), e.g. New in the
+       Areas header of Text recognition. -->
   <Style Selector="Button.toolbar.atEnd">
-    <Setter Property="Margin" Value="0,0,-10,0" />
+    <Setter Property="Margin" Value="0,4,-10,0" />
   </Style>
   <Style Selector="Button.toolbar">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
