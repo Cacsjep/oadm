@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
 
@@ -74,12 +75,13 @@ internal sealed class ModelSet : IDisposable
     public async Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct)
     {
         var tensor = new DenseTensor<float>(input, [count, 3, height, width]);
-        return await RunAsync(() => _detection.Run(tensor).Output, ct).ConfigureAwait(false);
+        return await RunAsync(() => _detection.Run(tensor).Output, Stage.DetectModel, ct).ConfigureAwait(false);
     }
 
     /// <summary>The probability that each line is upside down (0 to 1).</summary>
     public async Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
     {
+        var angleStart = Stopwatch.GetTimestamp();
         var result = new float[lines.Count];
         const int Batch = 32;
         for (var start = 0; start < lines.Count; start += Batch)
@@ -94,13 +96,14 @@ internal sealed class ModelSet : IDisposable
             }
 
             var tensor = new DenseTensor<float>(input, [size, 3, OrientationHeight, OrientationWidth]);
-            var probabilities = await RunAsync(() => _orientation.Run(tensor).Output, ct).ConfigureAwait(false);
+            var probabilities = await RunAsync(() => _orientation.Run(tensor).Output, null, ct).ConfigureAwait(false);
             for (var i = 0; i < count; i++)
             {
                 result[start + i] = probabilities[i * 2 + 1];
             }
         }
 
+        StageClock.Add(Stage.Angle, angleStart);
         return result;
     }
 
@@ -119,6 +122,7 @@ internal sealed class ModelSet : IDisposable
                 widest = Math.Max(widest, lines[order[start + i]].Width);
             }
 
+            var inputStart = Stopwatch.GetTimestamp();
             var width = FixedSizes ? DirectMlWidths.First(w => w >= Math.Min(widest, MaxLineWidth)) : Math.Max(MinLineWidth, (widest + 31) / 32 * 32);
             var size = FixedSizes ? DirectMlBatches.First(b => b >= count) : count;
             var input = new float[size * 3 * LineHeight * width];
@@ -128,7 +132,8 @@ internal sealed class ModelSet : IDisposable
             }
 
             var tensor = new DenseTensor<float>(input, [size, 3, LineHeight, width]);
-            var (output, dimensions) = await RunAsync(() => _recognition.Run(tensor), ct).ConfigureAwait(false);
+            StageClock.Add(Stage.RecognizeInput, inputStart);
+            var (output, dimensions) = await RunAsync(() => _recognition.Run(tensor), Stage.RecognizeModel, ct).ConfigureAwait(false);
             var frames = dimensions[1];
             var classes = dimensions[2];
             for (var i = 0; i < count; i++)
@@ -144,23 +149,35 @@ internal sealed class ModelSet : IDisposable
         return result;
     }
 
-    private async Task<T> RunAsync<T>(Func<T> run, CancellationToken ct)
+    private async Task<T> RunAsync<T>(Func<T> run, Stage? stage, CancellationToken ct)
     {
         if (_serial is null)
         {
             ct.ThrowIfCancellationRequested();
-            return run();
+            return Timed(run, stage);
         }
 
         await _serial.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            return run();
+            return Timed(run, stage);
         }
         finally
         {
             _serial.Release();
         }
+    }
+
+    private static T Timed<T>(Func<T> run, Stage? stage)
+    {
+        var start = Stopwatch.GetTimestamp();
+        var result = run();
+        if (stage is { } s)
+        {
+            StageClock.Add(s, start);
+        }
+
+        return result;
     }
 
     public void Dispose()
