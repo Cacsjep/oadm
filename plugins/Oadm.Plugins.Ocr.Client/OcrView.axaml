@@ -149,9 +149,10 @@
                             HorizontalAlignment="Stretch" />
                 </ui:FormField>
               </Grid>
-              <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Label="{x:Static vm:OcrTexts.Stream}" Hint="{Binding StreamSummary}" Error="{Binding StreamError}">
-                <Button x:Name="StreamButton" Classes="secondary" HorizontalAlignment="Left" Command="{Binding EditStreamCommand}">
-                  <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{x:Static vm:OcrTexts.Configure}" />
+              <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Label="{x:Static vm:OcrTexts.Stream}" Error="{Binding StreamError}">
+                <Button x:Name="StreamButton" Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding EditStreamCommand}">
+                  <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding StreamSummary}" />
                 </Button>
               </ui:FormField>
             </StackPanel>
@@ -160,7 +161,7 @@
             <StackPanel Grid.Row="1" Spacing="6">
               <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                 <TextBlock Classes="cardTitle subsection" Text="Areas" VerticalAlignment="Center" />
-                <ui:ToolbarButton Grid.Column="1" x:Name="NewAreaButton" IconKey="add" Text="New"
+                <ui:ToolbarButton Grid.Column="1" x:Name="NewAreaButton" Classes="atEnd" IconKey="add" Text="New"
                                   Command="{Binding NewAreaCommand}" IsVisible="{Binding MayChange}"
                                   ToolTip.Tip="{Binding NewAreaTip}" ToolTip.ShowOnDisabled="True" />
               </Grid>

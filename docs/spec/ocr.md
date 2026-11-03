@@ -211,11 +211,11 @@ Per area: **Any text** (default) or **Format**.
   - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream settings**), the Areas
     header, the area rows (the only part that scrolls: with many areas New above and Save below stay in reach), then the
     save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
-  - **Stream settings**: a secondary button (video icon) that opens a small dialog (single operation: no card,
+  - **Stream**: a secondary button (video icon) that opens a small dialog (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
     as a select of the server's choices (1, 2, 4, on a graphics card also 8, 12, 15). OK hands them to the reader (Not
-    saved like any edit, the preview and the live video follow); Cancel changes nothing. Below the button a one-line
-    summary in secondary text, "View area 1 · 1920x1080 · 4 fps" (no rate for On action); a refusal of the server for the
+    saved like any edit, the preview and the live video follow); Cancel changes nothing. The field is labelled Stream and spans the column; the
+    button itself shows the summary, "Configure · 1920x1080 @ 4 fps" (no rate for On action; no hint below); a refusal of the server for the
     video source, the resolution or the frame rate shows in the summary's place and, in the dialog, below its field.
   - **Name and Mode** side by side (decision 2026-11-03): the reader's name, and Mode as a select (Watching, On action).
     No status line under the video: the reader's state is in the reader list.

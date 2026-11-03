@@ -144,7 +144,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial string CameraText { get; private set; }
 
     /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings (no frame rate for On action).</summary>
-    public string StreamSummary => OcrTexts.StreamSummary(SelectedSource?.Name ?? SourceName(1), SelectedResolution, IsWatching ? Fps : null);
+    public string StreamSummary => OcrTexts.StreamSummary(SelectedResolution, IsWatching ? Fps : null);
 
     /// <summary>A refusal of the server for the video source, the resolution or the frame rate, in the summary's place.</summary>
     public string? StreamError => ErrorOf(nameof(SelectedSource)) ?? ErrorOf(nameof(SelectedResolution)) ?? ErrorOf(nameof(Fps));

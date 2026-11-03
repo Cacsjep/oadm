@@ -57,8 +57,8 @@ public sealed class PageLayoutTests
             Assert.Equal(["Name", "Mode", "Stream"], labels);
             var stream = view.FindControl<Button>("StreamButton")!;
             Assert.Contains("secondary", stream.Classes);
-            Assert.Equal(OcrTexts.Configure, stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
-            Assert.Equal("View area 1 · 1920x1080 · 1 fps", view.FindControl<FormField>("StreamField")!.Hint);
+            Assert.Equal("Configure · 1920x1080 @ 1 fps", stream.GetVisualDescendants().OfType<IconLabel>().Single().Text);
+            Assert.Null(view.FindControl<FormField>("StreamField")!.Hint); // the summary is the button itself
             Assert.DoesNotContain(settings.GetVisualDescendants().OfType<ComboBox>(), c => c.IsEffectivelyVisible && c.Name is not ("ModeBox" or "ReaderModeBox"));
             // The reader's mode is a select next to the name (decision 2026-11-03).
             var readerMode = view.FindControl<ComboBox>("ReaderModeBox")!;
@@ -156,7 +156,9 @@ public sealed class PageLayoutTests
             Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
             Assert.Equal(2, Grid.GetRow(list));
             Assert.True(column.RowDefinitions[2].Height.IsStar);
-            Assert.True(Inside(view.FindControl<ToolbarButton>("NewAreaButton")!));
+            // New ends level with the fields: its padding lies outside the column (theme class atEnd), so only check it is in reach.
+            var newArea = view.FindControl<ToolbarButton>("NewAreaButton")!;
+            Assert.True(newArea.TranslatePoint(new Point(0, 0), column) is { } newTop && bounds.Contains(newTop) && newArea.IsEffectivelyVisible);
             Assert.True(Inside(view.FindControl<Button>("StreamButton")!));
             Assert.True(Inside(column.GetVisualDescendants().OfType<Button>().Single(b => Equals(b.Content, "Save"))));
             Headless.Capture(window, $"ocr-eight-areas-{Headless.Appearance}.png");

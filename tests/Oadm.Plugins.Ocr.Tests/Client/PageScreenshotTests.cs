@@ -64,7 +64,7 @@ public sealed class PageScreenshotTests
                 Assert.True(picture.PictureRect.Width > 100);
                 Assert.Equal(16.0 / 9, picture.PictureRect.Width / picture.PictureRect.Height, 2);
                 Assert.Equal(3, editor.Lines.Count);
-                Assert.Equal("View area 1 · 1920x1080 · 1 fps", view.FindControl<FormField>("StreamField")!.Hint);
+                Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
                 var draw = view.FindControl<ToolbarButton>("NewAreaButton")!;
                 Assert.True(draw.IsEffectivelyVisible);
                 Assert.Equal("New", draw.Text);
@@ -176,7 +176,7 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 Assert.Equal("Water meter", vm.Editor!.Name);
                 Assert.True(vm.Editor.IsOnAction);
-                Assert.Equal("View area 1 · 1920x1080", view.FindControl<FormField>("StreamField")!.Hint); // no frame rate
+                Assert.Equal("Configure · 1920x1080", ((Oadm.Plugins.Ocr.Client.ReaderEditorViewModel)view.FindControl<Grid>("EditorPanel")!.DataContext!).StreamSummary); // no frame rate
                 Headless.Capture(window, $"ocr-on-action-{suffix}.png");
 
                 // A refusal of the server for the resolution: in the summary's place below Stream settings.

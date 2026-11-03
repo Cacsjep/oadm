@@ -706,7 +706,7 @@ public sealed class PageViewModelTests
         vm.Dialogs = dialogs;
         var editor = vm.Editor!;
         Assert.Same(dialogs, editor.Dialogs);
-        Assert.Equal("View area 1 · 1920x1080 · 1 fps", editor.StreamSummary);
+        Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
 
         // Cancel: nothing changes, the reader stays saved.
         dialogs.Stream = form =>
@@ -720,7 +720,7 @@ public sealed class PageViewModelTests
             return false;
         };
         await editor.EditStreamCommand.ExecuteAsync(null);
-        Assert.Equal("View area 1 · 1920x1080 · 1 fps", editor.StreamSummary);
+        Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
         Assert.False(editor.IsDirty);
 
         // OK: the values go to the reader, Not saved, the preview and the live video follow.
@@ -732,7 +732,7 @@ public sealed class PageViewModelTests
             return true;
         };
         await editor.EditStreamCommand.ExecuteAsync(null);
-        Assert.Equal("View area 2 · 1280x720 · 4 fps", editor.StreamSummary);
+        Assert.Equal("Configure · 1280x720 @ 4 fps", editor.StreamSummary);
         Assert.Equal((2, new Resolution(1280, 720), 4), (editor.ToReader().VideoSource, editor.ToReader().Resolution, editor.ToReader().Fps));
         Assert.True(editor.IsDirty);
         Assert.Equal(OcrTexts.NotSaved, editor.SaveStatus);
@@ -740,7 +740,7 @@ public sealed class PageViewModelTests
 
         // On action: no frame rate in the dialog or the summary.
         editor.IsOnAction = true;
-        Assert.Equal("View area 2 · 1280x720", editor.StreamSummary);
+        Assert.Equal("Configure · 1280x720", editor.StreamSummary);
         dialogs.Stream = form =>
         {
             Assert.False(form.ShowFps);

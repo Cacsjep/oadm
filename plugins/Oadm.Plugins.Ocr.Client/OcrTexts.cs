@@ -62,9 +62,11 @@ public static class OcrTexts
     public const string Rename = "Rename";
 
     /// <summary>"View area 1 · 1920x1080 · 4 fps" below Stream settings; without the rate for On action.</summary>
-    public static string StreamSummary(string source, Resolution resolution, int? fps) => fps is { } rate
-        ? string.Create(CultureInfo.InvariantCulture, $"{source} · {resolution} · {rate} fps")
-        : string.Create(CultureInfo.InvariantCulture, $"{source} · {resolution}");
+    /// <summary>The stream button: "Configure · 1920x1080 @ 10 fps" (no rate for On action; the video source is in its
+    /// dialog).</summary>
+    public static string StreamSummary(Resolution resolution, int? fps) => fps is { } rate
+        ? string.Create(CultureInfo.InvariantCulture, $"{Configure} · {resolution} @ {rate} fps")
+        : string.Create(CultureInfo.InvariantCulture, $"{Configure} · {resolution}");
 
     /// <summary>"Watching · 2 fps".</summary>
     public static string WatchingAt(int fps) => string.Create(CultureInfo.InvariantCulture, $"{Watching} · {fps} fps");
