@@ -287,6 +287,46 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void AnAddOnListsThePackagesItShipsOutsideItsDepsFileWithTheirFullLicense()
+    {
+        var folder = Path.Combine(_dir, "oadm.ocr-win");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "plugin.json"), """{ "id": "oadm.ocr", "displayName": "Text recognition" }""");
+        File.WriteAllText(Path.Combine(folder, "Oadm.Plugins.Ocr.Server.deps.json"), """
+            { "libraries": { "Microsoft.ML.OnnxRuntime.DirectML/1.24.4": { "type": "package" } } }
+            """);
+        // The answers of "dotnet msbuild -getItem:OadmNoticePackage" of the server and the client project.
+        File.WriteAllText(Path.Combine(folder, AddOnNotices.ExtraFileName), """
+            [ { "Items": { "OadmNoticePackage": [ { "Identity": "Microsoft.AI.DirectML", "Version": "1.15.4", "FullPath": "x" } ] } },
+              { "Items": { "OadmNoticePackage": [] } } ]
+            """);
+        const string license = "MICROSOFT SOFTWARE LICENSE TERMS\r\nMICROSOFT DIRECTX MACHINE LEARNING (DIRECTML)\r\nThe software may collect information about you and your use of the software.";
+        var packages = new Dictionary<string, PackageInfo>
+        {
+            ["Microsoft.ML.OnnxRuntime.DirectML"] = Info("Microsoft.ML.OnnxRuntime.DirectML", "1.24.4", "MIT"),
+            ["Microsoft.AI.DirectML"] = new("Microsoft.AI.DirectML", "1.15.4", true, null, "LICENSE.txt", null, "Microsoft Corporation", null, null,
+                [new PackageFile("LICENSE.txt", PackageReader.Normalize(license))]),
+        };
+
+        var result = AddOnNotices.Build(folder, "4.11.0", "win-x64", (id, _) => packages[id], Templates());
+
+        Assert.Empty(result.Warnings);
+        Assert.Equal(2, result.PackageCount);
+        Assert.Contains("Microsoft.AI.DirectML 1.15.4\n  License: see the file LICENSE.txt of the package (section 4)\n", result.Text, StringComparison.Ordinal);
+        Assert.Contains(PackageReader.Normalize(license), result.Text, StringComparison.Ordinal); // the full proprietary text
+    }
+
+    [Fact]
+    public void AnExtraPackageWithoutAVersionIsRefused()
+    {
+        var path = Path.Combine(_dir, AddOnNotices.ExtraFileName);
+        File.WriteAllText(path, """{ "Items": { "OadmNoticePackage": [ { "Identity": "Microsoft.AI.DirectML" } ] } }""");
+
+        Assert.Throws<InvalidDataException>(() => AddOnNotices.ReadExtra(path, "plugin x"));
+        Assert.Empty(AddOnNotices.ReadExtra(Path.Combine(_dir, "missing.json"), "plugin x"));
+    }
+
+    [Fact]
     public void AnAddOnWithoutModelsSaysSo()
     {
         var folder = Path.Combine(_dir, "acme.addon");
