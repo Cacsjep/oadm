@@ -110,7 +110,11 @@ public sealed partial class PluginLoader
         }
     }
 
-    /// <summary>Loads one plugin folder. Returns null when it was rejected (see registry errors).</summary>
+    /// <summary>
+    /// Loads one plugin folder. Returns null when it was rejected (see registry errors). Also while the server runs (an
+    /// add-on installed): after <see cref="PluginRegistry.MarkStarted"/> the registry then raises
+    /// <see cref="PluginRegistry.PackageAdded"/>. A package is never unloaded while the server runs.
+    /// </summary>
     public LoadedPluginPackage? LoadPackage(string pluginDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginDirectory);
@@ -181,6 +185,12 @@ public sealed partial class PluginLoader
             }
 
             LogPackageLoaded(manifest.Id, manifest.Version, directory, registered);
+            if (registered > 0)
+            {
+                // Loaded while the server runs (an add-on just installed): every reader of the registry follows it.
+                _registry.PackageRegistered(manifest.Id);
+            }
+
             return package;
         }
 #pragma warning disable CA1031 // A broken plugin must never stop the host.

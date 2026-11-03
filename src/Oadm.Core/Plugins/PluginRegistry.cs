@@ -128,8 +128,10 @@ public sealed record PluginLoadError(string Source, string Message, Exception? E
 /// (case-insensitive); the first registration wins. Thread-safe.
 /// Packages can be turned off (Settings page, Plugins): <see cref="TaskPlugins"/>, <see cref="CorePlugins"/> and the
 /// lookups only see enabled packages; <see cref="AllTaskPlugins"/> and <see cref="AllCorePlugins"/> see every one.
+/// A package loaded after <see cref="MarkStarted"/> (an add-on installed while the server runs) raises
+/// <see cref="PackageAdded"/> and <see cref="EnabledChanged"/>: every reader follows it as it follows Turn on and off.
 /// </summary>
-public sealed partial class PluginRegistry
+public sealed partial class PluginRegistry : AddOns.IPluginRegistryChanges
 {
     private readonly Lock _sync = new();
     private readonly List<RegisteredTaskPlugin> _tasks = [];
@@ -242,7 +244,11 @@ public sealed partial class PluginRegistry
         }
     }
 
-    /// <summary>Raised after <see cref="SetEnabled"/> or <see cref="ApplyEnabledStates"/>.</summary>
+    /// <summary>
+    /// Raised after <see cref="SetEnabled"/>, <see cref="ApplyEnabledStates"/>, <see cref="RestoreChoice"/>,
+    /// <see cref="ProChanged"/> and after a package was added at run time (<see cref="PackageRegistered"/>): the packages
+    /// that are on, or the set of packages, may have changed.
+    /// </summary>
     public event EventHandler? EnabledChanged;
 
     /// <summary>Whether a package is known and on: the administrator's choice, else the manifest default.</summary>
