@@ -250,8 +250,11 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   developers); phones narrower than 40rem see icons only; fixed, no border.
 - **Download** (`Downloads.astro`): one accent button "Download <version>" that opens a dialog with every file of the
   latest release: tabs Windows, Linux x64, Linux ARM64, macOS (the visitor's system first, each icon in the system's
-  color), each a plain list of its files without group headings (Windows "Server and Client Installer", "Site Node
-  Installer"; Linux: Server, Client, Site Node, Site Node App; the site node has no macOS build), and a tab Portable with
+  color), each a plain list of its OADM files without a heading (Windows "Server and Client Installer", "Site Node
+  Installer"; Linux: Server, Client, Site Node, Site Node App; the site node has no macOS build), below them in each
+  system tab a group "Optional plugins" (the add-on ZIPs of that platform, `oadm-addon-<id>-<version>-<rid>.zip`, with
+  one line "Install them on the Plugins page of OADM. Download a ZIP only for a server without internet." and links to
+  each plugin's docs and the Plugins page's "Without internet"), and a tab Portable with
   the server and client ZIPs of every system under a heading per system; one row per file with its name, file name and
   size; a group or row whose file the release lacks is hidden. Below them How to install, Release notes (the changelog
   page), Checksums (`SHA256SUMS.txt`) and All files on GitHub.

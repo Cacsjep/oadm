@@ -1,7 +1,7 @@
 ---
-// One Download button for the latest release. It opens a dialog with every file per system: OADM, the OADM Site Node
-// and the portable ZIPs. The files are read from GitHub when the site is built and again in the browser, so a new
-// release shows up without a website rebuild. Without either, every link opens the release page.
+// One Download button for the latest release. It opens a dialog with every file per system: OADM, the OADM Site Node,
+// the optional plugins and the portable ZIPs. The files are read from GitHub when the site is built and again in the
+// browser, so a new release shows up without a website rebuild. Without either, every link opens the release page.
 import { Icon } from '@astrojs/starlight/components';
 
 import { latestRelease, releasePage, repo } from '../lib/release';
@@ -16,7 +16,8 @@ const firmwareDownloader = 'https://chromewebstore.google.com/detail/ecpnmknfgnp
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 type Row = { name: string; note?: string; pattern: string };
-type Group = { title?: string; rows: Row[] };
+type Link = { label: string; href: string };
+type Group = { title?: string; rows: Row[]; note?: string; links?: Link[] };
 type Tab = { id: string; label: string; icon: 'seti:windows' | 'linux' | 'apple' | 'seti:zip'; iconClass: string; groups: Group[]; note?: string };
 
 const portable = (title: string, rid: string): Group => ({
@@ -24,6 +25,17 @@ const portable = (title: string, rid: string): Group => ({
 	rows: [
 		{ name: 'Server', pattern: `^OADM-Server-.*-${rid}\\.zip$` },
 		{ name: 'Client', pattern: `^OADM-Client-.*-${rid}\\.zip$` },
+	],
+});
+// The optional plugins of one server system (oadm-addon-<id>-<version>-<rid>.zip, AddOnCatalog.ReleaseFileName), below
+// the OADM files of each system tab. Hidden while the latest release has none.
+const optional = (rid: string): Group => ({
+	title: 'Optional plugins',
+	rows: [{ name: 'Text recognition', pattern: `^oadm-addon-oadm\\.ocr-.*-${rid}\\.zip$` }],
+	note: 'Install them on the Plugins page of OADM. Download a ZIP only for a server without internet.',
+	links: [
+		{ label: 'Text recognition', href: `${base}tools/text-recognition/` },
+		{ label: 'Without internet', href: `${base}admin/plugins/#without-internet` },
 	],
 });
 const linux = (id: string, label: string, deb: string): Tab => ({
@@ -40,6 +52,7 @@ const linux = (id: string, label: string, deb: string): Tab => ({
 				{ name: 'Site Node App', note: 'Optional, needs a desktop', pattern: `^oadm-site-node-app_.*_${deb}\\.deb$` },
 			],
 		},
+		optional(id),
 	],
 });
 const tabs: Tab[] = [
@@ -55,6 +68,7 @@ const tabs: Tab[] = [
 					{ name: 'Site Node Installer', pattern: '^OADM-SiteNode-.*-win-x64\\.msi$' },
 				],
 			},
+			optional('win-x64'),
 		],
 	},
 	linux('linux-x64', 'Linux x64', 'amd64'),
@@ -64,7 +78,7 @@ const tabs: Tab[] = [
 		label: 'macOS',
 		icon: 'apple',
 		iconClass: 'os-macos',
-		groups: [{ rows: [{ name: 'Server and Client Installer', pattern: 'osx-x64\\.pkg$' }] }],
+		groups: [{ rows: [{ name: 'Server and Client Installer', pattern: 'osx-x64\\.pkg$' }] }, optional('osx-x64')],
 		note: 'The Site Node runs on Windows and Linux.',
 	},
 	{
@@ -128,6 +142,17 @@ const checksums = asset('^SHA256SUMS\\.txt$')?.browser_download_url ?? releasePa
 								</a>
 							);
 						})}
+						{group.note && (
+							<p class="dl-panel-note">
+								{group.note}
+								{group.links?.map((link, i) => (
+									<>
+										{i === 0 ? ' ' : ' · '}
+										<a href={link.href}>{link.label}</a>
+									</>
+								))}
+							</p>
+						)}
 					</section>
 				))}
 				{tab.note && <p class="dl-panel-note">{tab.note}</p>}
