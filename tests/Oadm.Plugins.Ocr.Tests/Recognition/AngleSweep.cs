@@ -67,7 +67,7 @@ internal static class AngleSweep
     private static readonly ConcurrentDictionary<string, SKTypeface> Typefaces = new();
 
     /// <summary>A container number with its valid check digit ("MSKU 123456 x").</summary>
-    public static readonly string Container = "MSKU 123456 " + Iso6346.CheckDigit("MSKU123456".AsSpan()).ToString(CultureInfo.InvariantCulture);
+    public static readonly string Container = "MSKU 123456 " + Oadm.Plugins.Ocr.Matching.ContainerCheck.CheckDigit("MSKU123456".AsSpan()).ToString(CultureInfo.InvariantCulture);
 
     public static readonly SweepText[] Texts =
     [

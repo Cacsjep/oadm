@@ -226,8 +226,8 @@ Per area: **Any text** (default) or **Format**.
   Settings (Runs on, Use the graphics card) and the runtime stats ("Runtime stats"). The "Runs on" text is the server's.
   - The reader's chip: "Watching · 2 fps" (green), "Watching · 8 fps (reads 5.1)" (orange, slower than set), "On action",
     or a short red chip per kind of problem with the server's full text as its tooltip (`OcrTexts.ProblemChip`, one
-    phrase per concept): Limit reached (the watching limits, also per site), Login refused (credentials required, no
-    password, Basic only, HTTP 401 and 403), Certificate changed and Site offline (the device list's names), Not reachable
+    phrase per concept): Limit reached (the watching limits, also per site), Credentials required (the stored login is refused, no
+    password, Basic only, HTTP 401 and 403), Certificate changed and Site offline (the device list's names), Unreachable
     (timeouts, no answer, no route), Stream error (no pictures, a resolution or video source not offered, other HTTP
     errors), Not in device group, Not installed; a text the page does not know: Not reading.
   - The camera texts ("AXIS Q1798-LE · 10.0.0.48") are kept for the readers' cameras only (at most 50), found in one pass

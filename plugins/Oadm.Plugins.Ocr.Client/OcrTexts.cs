@@ -20,14 +20,14 @@ public static class OcrTexts
 
     public const string Watching = "Watching";
 
-    /// <summary>The reader list's chip of a reader whose camera does not answer.</summary>
-    public const string NotReachable = "Not reachable";
+    /// <summary>The reader list's chip of a reader whose camera does not answer: the device grid's status name.</summary>
+    public static readonly string NotReachable = DeviceMessages.StatusText(DeviceStatus.Unreachable);
 
     /// <summary>The chip of a reader beyond the watching limits (of the server or of a site).</summary>
     public const string LimitReached = "Limit reached";
 
-    /// <summary>The chip of a reader whose camera refuses the stored login.</summary>
-    public const string LoginRefused = "Login refused";
+    /// <summary>The chip of a reader whose camera refuses the stored login: the device grid's status name.</summary>
+    public static readonly string LoginRefused = DeviceMessages.StatusText(DeviceStatus.CredentialsRequired);
 
     /// <summary>The chip of a reader whose camera does not give the pictures asked for (resolution, video source, no pictures).</summary>
     public const string StreamError = "Stream error";

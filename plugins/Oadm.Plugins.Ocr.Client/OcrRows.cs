@@ -49,7 +49,7 @@ public sealed partial class ReaderRow : ObservableObject
 
     public DateTimeOffset? LastTime { get; private set; }
 
-    /// <summary>On action / Watching · 2 fps / Watching · 8 fps (reads 5.1) / the problem's short chip (Limit reached, Login refused, ...).</summary>
+    /// <summary>On action / Watching · 2 fps / Watching · 8 fps (reads 5.1) / the problem's short chip (Limit reached, Credentials required, ...).</summary>
     public string ModeText => IsProblem ? OcrTexts.ProblemChip(Problem!)
         : Mode != ReaderMode.Watching ? OcrTexts.OnAction
         : IsSlow ? OcrTexts.WatchingReads(Fps, Reads ?? 0)
