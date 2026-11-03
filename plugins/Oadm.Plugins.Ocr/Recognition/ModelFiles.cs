@@ -63,7 +63,17 @@ internal static class SessionFactory
                     options.AppendExecutionProvider_DML(0);
                     break;
                 case ExecutionTarget.Cuda:
-                    options.AppendExecutionProvider_CUDA(0);
+                    // The card's memory pool grows by what a call needs, not to the next power of two (spec "GPU").
+                    using (var cuda = new OrtCUDAProviderOptions())
+                    {
+                        cuda.UpdateOptions(new Dictionary<string, string>
+                        {
+                            ["device_id"] = "0",
+                            ["arena_extend_strategy"] = "kSameAsRequested",
+                        });
+                        options.AppendExecutionProvider_CUDA(cuda);
+                    }
+
                     break;
                 case ExecutionTarget.Cpu:
                 default:

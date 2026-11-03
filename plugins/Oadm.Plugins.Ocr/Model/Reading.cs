@@ -73,4 +73,7 @@ public sealed record RecognizedPicture(Resolution Resolution, IReadOnlyList<IRea
 
     /// <summary>More than <see cref="OcrLimits.MaxTextBoxes"/> texts were found over all areas; only that many were read.</summary>
     public bool TooManyTexts { get; init; }
+
+    /// <summary>Areas whose pixels had not changed: their last reading was given again without the models (watching only).</summary>
+    public int ReusedAreas { get; init; }
 }

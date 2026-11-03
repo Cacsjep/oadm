@@ -184,6 +184,12 @@ public sealed record OcrStats
     /// <summary>Pictures read per second over the last 10 s, previews included.</summary>
     public double PicturesPerSecond { get; init; }
 
+    /// <summary>
+    /// Pictures per second over the last 10 s whose areas had not changed: their last reading was given again without the
+    /// models (watching readers and previews). Not in <see cref="PicturesPerSecond"/>.
+    /// </summary>
+    public double UnchangedPerSecond { get; init; }
+
     /// <summary>Milliseconds per picture read over the last 10 s; 0 without one.</summary>
     public double AverageReadMs { get; init; }
 

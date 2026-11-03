@@ -13,12 +13,13 @@ internal sealed class LineBatcher : IDisposable
     private readonly Func<IReadOnlyList<SKBitmap>, CancellationToken, Task<LineScores[]>> _recognize;
     private readonly Channel<Request> _queue = Channel.CreateUnbounded<Request>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _stop = new();
+    private readonly Task _loop;
 
     /// <param name="recognize">Reads lines (the graphics card's set).</param>
     public LineBatcher(Func<IReadOnlyList<SKBitmap>, CancellationToken, Task<LineScores[]>> recognize)
     {
         _recognize = recognize;
-        _ = Task.Run(LoopAsync);
+        _loop = Task.Run(LoopAsync);
     }
 
     /// <summary>The number of reader rounds so far (tests: several calls in one round).</summary>
@@ -93,8 +94,12 @@ internal sealed class LineBatcher : IDisposable
         _stop.Dispose();
     }
 
-    /// <summary>Stops the loop; calls still waiting end as cancelled. Never waits for a running round.</summary>
-    public void Dispose()
+    /// <summary>
+    /// Stops the loop; calls still waiting end as cancelled. Waits for a running round (at most <paramref name="timeout"/>,
+    /// default 30 s) so the models it reads with can be disposed afterwards.
+    /// </summary>
+    /// <returns>True when the loop has ended.</returns>
+    public bool Stop(TimeSpan? timeout = null)
     {
         _queue.Writer.TryComplete();
         try
@@ -105,7 +110,12 @@ internal sealed class LineBatcher : IDisposable
         {
             // The loop has ended already.
         }
+
+        return _loop.Wait(timeout ?? TimeSpan.FromSeconds(30));
     }
+
+    /// <inheritdoc cref="Stop"/>
+    public void Dispose() => Stop();
 
     private sealed record Request(IReadOnlyList<SKBitmap> Lines, TaskCompletionSource<LineScores[]> Done, CancellationToken Ct);
 }

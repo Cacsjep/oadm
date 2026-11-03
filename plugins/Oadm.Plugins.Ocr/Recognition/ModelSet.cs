@@ -1,4 +1,4 @@
-using Microsoft.ML.OnnxRuntime.Tensors;
+using System.Diagnostics;
 using SkiaSharp;
 
 namespace Oadm.Plugins.Ocr.Recognition;
@@ -48,19 +48,30 @@ internal sealed class ModelSet : IDisposable
     private readonly ShapeSessions _orientation;
     private readonly SemaphoreSlim? _serial;
     private readonly BusyMeter? _busy;
+    private readonly GpuSessionBudget? _ownBudget;
 
     /// <param name="busy">On a graphics card: counts the time each call holds the card (the recognition load); the CPU's
     /// sets are measured by their worker slots.</param>
-    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads, BusyMeter? busy = null)
+    /// <param name="budget">On DirectML: the sessions on the card of all three models together; null: a budget of its own.</param>
+    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads, BusyMeter? busy = null, GpuSessionBudget? budget = null)
     {
         _busy = target == ExecutionTarget.Cpu ? null : busy;
         Target = target;
         Characters = CharacterList.Load(Path.Combine(folder, choice.Characters));
-        _detection = new ShapeSessions(Path.Combine(folder, choice.Detection), target, threads);
-        _recognition = new ShapeSessions(Path.Combine(folder, choice.Recognition), target, threads);
-        _orientation = new ShapeSessions(Path.Combine(folder, ModelFiles.Orientation), target, threads);
+        if (target == ExecutionTarget.DirectMl && budget is null)
+        {
+            budget = _ownBudget = new GpuSessionBudget();
+        }
+
+        Budget = target == ExecutionTarget.DirectMl ? budget : null;
+        _detection = new ShapeSessions(Path.Combine(folder, choice.Detection), target, threads, Budget, GpuSessionBudget.MaxDetectionSessions);
+        _recognition = new ShapeSessions(Path.Combine(folder, choice.Recognition), target, threads, Budget);
+        _orientation = new ShapeSessions(Path.Combine(folder, ModelFiles.Orientation), target, threads, Budget);
         _serial = target == ExecutionTarget.Cpu ? null : new SemaphoreSlim(1, 1);
     }
+
+    /// <summary>On DirectML: the set's sessions on the card; else null.</summary>
+    public GpuSessionBudget? Budget { get; }
 
     /// <summary>Where it runs.</summary>
     public ExecutionTarget Target { get; }
@@ -74,37 +85,54 @@ internal sealed class ModelSet : IDisposable
     /// <summary>On DirectML every call has a fixed batch and the widths come in steps: few input sizes, each fast.</summary>
     private bool FixedSizes => Target == ExecutionTarget.DirectMl;
 
-    /// <summary>The text finder's probability maps of <paramref name="count"/> pictures of one size, [count, height, width].</summary>
-    public async Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct)
-    {
-        var tensor = new DenseTensor<float>(input, [count, 3, height, width]);
-        return await RunAsync(() => _detection.Run(tensor).Output, ct).ConfigureAwait(false);
-    }
+    /// <summary>
+    /// The text finder's probability maps of <paramref name="count"/> pictures of one size, [count, height, width], in a rented
+    /// buffer the caller disposes.
+    /// </summary>
+    public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
+        RunAsync(
+            () => _detection.Run(input.Array, [count, 3, height, width], static (output, _) =>
+            {
+                var map = PooledFloats.Rent(output.Length, clear: false);
+                output.CopyTo(map.Span);
+                return map;
+            }),
+            Stage.DetectModel,
+            ct);
 
     /// <summary>The probability that each line is upside down (0 to 1).</summary>
     public async Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
     {
+        var angleStart = Stopwatch.GetTimestamp();
         var result = new float[lines.Count];
         const int Batch = 32;
         for (var start = 0; start < lines.Count; start += Batch)
         {
             var count = Math.Min(Batch, lines.Count - start);
             var size = FixedSizes ? DirectMlBatches.First(b => b >= count) : count;
-            var input = new float[size * 3 * OrientationHeight * OrientationWidth];
+            using var input = PooledFloats.Rent(size * 3 * OrientationHeight * OrientationWidth, clear: size > count);
             for (var i = 0; i < count; i++)
             {
                 using var small = lines[start + i].Resize(new SKImageInfo(OrientationWidth, OrientationHeight, SKColorType.Rgba8888, SKAlphaType.Premul), new SKSamplingOptions(SKFilterMode.Linear));
-                Tensors.Write(small, input, i, OrientationHeight, OrientationWidth, Tensors.ImageNet);
+                Tensors.Write(small, input.Array, i, OrientationHeight, OrientationWidth, Tensors.ImageNet);
             }
 
-            var tensor = new DenseTensor<float>(input, [size, 3, OrientationHeight, OrientationWidth]);
-            var probabilities = await RunAsync(() => _orientation.Run(tensor).Output, ct).ConfigureAwait(false);
-            for (var i = 0; i < count; i++)
-            {
-                result[start + i] = probabilities[i * 2 + 1];
-            }
+            var first = start;
+            await RunAsync(
+                () => _orientation.Run(input.Array, [size, 3, OrientationHeight, OrientationWidth], (output, _) =>
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        result[first + i] = output[i * 2 + 1];
+                    }
+
+                    return true;
+                }),
+                null,
+                ct).ConfigureAwait(false);
         }
 
+        StageClock.Add(Stage.Angle, angleStart);
         return result;
     }
 
@@ -123,44 +151,52 @@ internal sealed class ModelSet : IDisposable
                 widest = Math.Max(widest, lines[order[start + i]].Width);
             }
 
+            var inputStart = Stopwatch.GetTimestamp();
             var width = FixedSizes ? DirectMlWidths.First(w => w >= Math.Min(widest, MaxLineWidth)) : Math.Max(MinLineWidth, (widest + 31) / 32 * 32);
             var size = FixedSizes ? DirectMlBatches.First(b => b >= count) : count;
-            var input = new float[size * 3 * LineHeight * width];
+            using var input = PooledFloats.Rent(size * 3 * LineHeight * width, clear: true);
             for (var i = 0; i < count; i++)
             {
-                Tensors.Write(lines[order[start + i]], input, i, LineHeight, width, Tensors.Symmetric);
+                Tensors.Write(lines[order[start + i]], input.Array, i, LineHeight, width, Tensors.Symmetric);
             }
 
-            var tensor = new DenseTensor<float>(input, [size, 3, LineHeight, width]);
-            var (output, dimensions) = await RunAsync(() => _recognition.Run(tensor), ct).ConfigureAwait(false);
-            var frames = dimensions[1];
-            var classes = dimensions[2];
-            for (var i = 0; i < count; i++)
-            {
-                // Only the frames of the line itself (and a little after it); the padding's frames are blank.
-                var own = Math.Min(frames, (lines[order[start + i]].Width + 7) / 8 + 2);
-                var scores = new float[own * classes];
-                Array.Copy(output, i * frames * classes, scores, 0, own * classes);
-                result[order[start + i]] = new LineScores(scores, own, classes);
-            }
+            StageClock.Add(Stage.RecognizeInput, inputStart);
+            var first = start;
+            await RunAsync(
+                () => _recognition.Run(input.Array, [size, 3, LineHeight, width], (output, shape) =>
+                {
+                    var frames = (int)shape[1];
+                    var classes = (int)shape[2];
+                    for (var i = 0; i < count; i++)
+                    {
+                        // Only the frames of the line itself (and a little after it); the padding's frames are blank.
+                        var line = order[first + i];
+                        var own = Math.Min(frames, (lines[line].Width + 7) / 8 + 2);
+                        result[line] = new LineScores(output.Slice(i * frames * classes, own * classes).ToArray(), own, classes);
+                    }
+
+                    return true;
+                }),
+                Stage.RecognizeModel,
+                ct).ConfigureAwait(false);
         }
 
         return result;
     }
 
-    private async Task<T> RunAsync<T>(Func<T> run, CancellationToken ct)
+    private async Task<T> RunAsync<T>(Func<T> run, Stage? stage, CancellationToken ct)
     {
         if (_serial is null)
         {
             ct.ThrowIfCancellationRequested();
-            return run();
+            return Timed(run, stage);
         }
 
         await _serial.WaitAsync(ct).ConfigureAwait(false);
         var started = _busy?.Start() ?? 0;
         try
         {
-            return run();
+            return Timed(run, stage);
         }
         finally
         {
@@ -169,11 +205,24 @@ internal sealed class ModelSet : IDisposable
         }
     }
 
+    private static T Timed<T>(Func<T> run, Stage? stage)
+    {
+        var start = Stopwatch.GetTimestamp();
+        var result = run();
+        if (stage is { } s)
+        {
+            StageClock.Add(s, start);
+        }
+
+        return result;
+    }
+
     public void Dispose()
     {
         _detection.Dispose();
         _recognition.Dispose();
         _orientation.Dispose();
+        _ownBudget?.Dispose();
         _serial?.Dispose();
     }
 }

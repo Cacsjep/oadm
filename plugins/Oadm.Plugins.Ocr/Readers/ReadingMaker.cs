@@ -17,7 +17,12 @@ public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> D
 internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, TimeProvider time, ReaderStats? stats = null)
 {
     /// <summary>Reads <paramref name="jpeg"/> with the areas of <paramref name="reader"/>.</summary>
-    public async Task<ReaderReading> ReadAsync(Reader reader, ReadOnlyMemory<byte> jpeg, CancellationToken ct)
+    /// <param name="reuseSource">
+    /// Watching and previews: who reads (the reader's or the preview's id); an area whose pixels have barely changed since that
+    /// source's last reading gives that reading again without the models (docs/spec/ocr.md "Unchanged areas"). Null (the
+    /// action's single reading): every area is read.
+    /// </param>
+    public async Task<ReaderReading> ReadAsync(Reader reader, ReadOnlyMemory<byte> jpeg, string? reuseSource, CancellationToken ct)
     {
         var taken = time.GetUtcNow();
         var areas = reader.Areas;
@@ -28,8 +33,19 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
         }
 
         var started = time.GetTimestamp();
-        var picture = await recognizer.ReadAsync(jpeg, areas, ct).ConfigureAwait(false);
-        stats?.CountPicture(time.GetElapsedTime(started));
+        var picture = reuseSource is not null && recognizer is Recognition.IDetailedTextRecognizer detailed
+            ? (await detailed.ReadDetailedAsync(jpeg, areas, new Recognition.RecognitionOptions { ReuseUnchanged = true, Source = reuseSource }, ct).ConfigureAwait(false)).ToPicture()
+            : await recognizer.ReadAsync(jpeg, areas, ct).ConfigureAwait(false);
+        if (picture.ReusedAreas >= areas.Count)
+        {
+            // Every area unchanged: no model ran, the picture is counted apart (pictures per second stays the real readings).
+            stats?.CountReused();
+        }
+        else
+        {
+            stats?.CountPicture(time.GetElapsedTime(started));
+        }
+
         var results = new List<AreaResult>(areas.Count);
         var details = new List<AreaDetails>(areas.Count);
         for (var i = 0; i < areas.Count; i++)

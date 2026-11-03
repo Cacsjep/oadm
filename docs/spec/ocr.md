@@ -16,7 +16,8 @@ that better (the docs say so).
 ## Rules that never break
 
 1. **Read only.** The plugin only receives pictures from the cameras; it never changes a setting on a device.
-2. **Pictures never stored.** Frames live in server memory while they are read; the last result of each reader (text,
+2. **Pictures never stored.** Frames live in server memory while they are read (with a coarse brightness print per area
+   for unchanged areas, "Reading" step 8); the last result of each reader (text,
    boxes, the frame for the page) is kept in memory only. The texts reach the event log as event fields, never the frames.
 3. **Choose the camera first.** A reader starts from one camera (`DevicePickerWindow.ShowOneAsync`) and one of its video
    sources; nothing streams before that. Only cameras of the user's device group; readers are owned by the device scope
@@ -65,7 +66,9 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 
 ## Reading
 
-1. Decode the JPEG (SkiaSharp), cut out each area at full resolution.
+1. Decode the JPEG (SkiaSharp), only the part the areas need (each area with a margin of 16 px plus its shorter side:
+   rows above skipped, rows below never read, columns outside cut by the JPEG decoder; full HD with one small area 2.5
+   instead of 16 ms), and cut out each area at full resolution. The page's cut-out of a value is decoded the same way.
 2. **Find text**: the PP-OCRv5 detection model per area (mobile on the CPU, server on a graphics card and for Accurate),
    sides a multiple of 32, turn its map into line boxes (threshold 0.3, box score 0.6, box enlarged by 1.5; own C#, no
    OpenCV). An area up to 960 px on its long side is read as it is (a small one scaled up to 64 px, a 16 px margin
@@ -80,8 +83,10 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
    meter) become one line: same direction, about the same height, on one line, overlapping or closer than 0.6 line
    heights.
 5. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
-   by 90 degrees) is turned by 90 degrees. The angle model names the lines that may be upside down (probability at
-   least 0.3): those are read both ways and the reading the recognition is surer of wins (the angle model alone turned
+   by 90 degrees) is turned by 90 degrees. Each line is read first as it is; the angle model looks only at the lines
+   not read surely upright (fewer than 3 characters, a character below 90 %, or fewer than 2 letters that read as
+   nothing upside down, so lines of digits always): it names the lines that may be upside down (probability at least
+   0.3), those are read turned too and the reading the recognition is surer of wins (the angle model alone turned
    coloured print).
 6. **Contrast**: a dark or flat line (brightness spanning less than 100 of 255) is stretched so its darkest and brightest
    percent become black and white, at most 4 times; lines with contrast and the text finder's input stay as they are.
@@ -91,6 +96,22 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 8. **Second reading of a fixed-place area**: an area with a format whose lines gave no match, a strip (at least 1.5
    times wider than tall, up to 960 px), is read once more as one line; the text finder can miss a part of a value (a
    dark drum of a meter), the whole strip often still reads. That reading counts only when its format match holds.
+9. **Unchanged areas** (watching readers and previews: `RecognitionOptions.ReuseUnchanged` with the reader's id or the
+   preview's own id as `Source`; never the action's single reading): an area whose pixels have barely changed since its last real reading gives that reading
+   again without running the models. The print is the mean brightness of cells of about 8 x 8 px (at most 48 x 48
+   cells); unchanged means no cell moved by more than 6 of 255 levels and the mean change is at most 1.5 (a changed
+   digit moves its cells by tens of levels, compression noise by about one). Compared with the print of the last real
+   reading, so a slow drift ends in a new reading too; after 10 uses in a row the area is read anew anyway. Only the
+   changed areas of a picture are read. A reading cut at 30 text boxes is never kept (the next picture reads again and
+   carries the note). Prints and readings live in memory only (at most 512 areas). A picture whose areas were all
+   unchanged runs no model and counts in the runtime stats as "Unchanged pictures per second", not as a picture read.
+
+Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the output read where it lies). On the CPU
+the lines go to the reader in pairs of similar width, each pair a call of its own, so the lines of one picture spread
+over the free workers. On DirectML the text finder's sides (areas and tiles) come in the steps 256, 512, 768 and 1024
+and the tiles of a call in the steps 1, 2, 4 and 6 (at most 6 per call), so few input sizes exist (each is a session of
+its own there, bounded: "GPU", graphics card memory). Session sets of a CPU worker unused for 2 minutes are freed; stopping the recognizer waits for the
+readings in work (at most 30 s) before it frees the models.
 
 There is no Latin server recognition model: PaddleOCR publishes Latin PP-OCRv5 recognition as mobile only, and the
 multilingual server model read Latin text worse (no spaces between words). Every device reads with the mobile Latin
@@ -262,13 +283,15 @@ after the start). All time through the plugin's `TimeProvider`.
   shared set (the time a call holds the card counts). So 100 % means no more model calls fit: on the CPU every worker,
   on a graphics card the card itself never idles.
 - **Numbers** (in `getStats` only, never shown on the page: decision 2026-11-03, the traffic light already says whether
-  all is well): pictures per second (all readers, previews included); the average reading time (ms per picture);
-  readers watching and its limit; previews and their limit; camera streams open, per site with the site's limit; the
-  OADM server process's CPU (`Environment.CpuUsage.TotalTime` growth divided by the window times the processor count).
+  all is well): pictures per second (all readers, previews included; pictures whose areas were all unchanged are not
+  counted here); unchanged pictures per second (their last reading given again, no model ran: `ReaderStats.CountReused`,
+  JSON `unchangedPerSecond`); the average reading time (ms per picture read); readers watching and its limit; previews
+  and their limit; camera streams open, per site with the site's limit; the OADM server process's CPU
+  (`Environment.CpuUsage.TotalTime` growth divided by the window times the processor count).
 - **Per reader**: each watching reader's pictures per second over the last 10 s; below 90 % of its rate its list chip
   turns orange: "Watching · 8 fps (reads 5.1)".
 - `getStats` `{}` → the stats (permission "View text recognition"):
-  `{"state":"Busy","stateText":"Busy: 1 reader reads slower than set","load":42.5,"picturesPerSecond":12.3,"averageReadMs":85,"watching":3,"maxWatching":50,"previews":1,"maxPreviews":8,"streams":4,"sites":[{"name":"Harbour","streams":2,"max":4}],"serverCpu":23.1,"readers":[{"readerId":"9f3c...","fps":8,"reads":5.1,"slow":true}]}`.
+  `{"state":"Busy","stateText":"Busy: 1 reader reads slower than set","load":42.5,"picturesPerSecond":12.3,"unchangedPerSecond":4.5,"averageReadMs":85,"watching":3,"maxWatching":50,"previews":1,"maxPreviews":8,"streams":4,"sites":[{"name":"Harbour","streams":2,"max":4}],"serverCpu":23.1,"readers":[{"readerId":"9f3c...","fps":8,"reads":5.1,"slow":true}]}`.
   Each call keeps the live event `stats` (the same JSON every 2 s) on for the caller's scope for 30 s; the page calls it
   on open and every 10 s, so the event runs only while a page is open.
 - Device groups: a group user sees the counts, sites and readers of their own group only, plus the server-wide load, CPU,
@@ -335,14 +358,49 @@ often, from worse pictures, and never a wrong value reported as sure.
   group), audited. The setting is a plugin setting handed to the recognizer (`IEngineInfo`) at start and on change; the
   next readings run where it says, the graphics card keeps its models until the plugin stops. Without a recognizer: the
   CPU, no graphics card.
+- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): one model set on the card (server text finder,
+  reader, angle model), shared by all readers. On DirectML every input size is a session of its own, and each session keeps
+  its own copy of the model and its own buffers for that size on the card until it is disposed (the provider frees
+  nothing while a session lives). The old cache of 12 sizes per model (up to 12 text finder sessions of up to 6 tiles of
+  1024 x 1024, plus 8 reader and 2 angle sessions, never freed) explains about 10 GB on a 16 GB card. Now:
+  - at most 6 sessions over the three models together, of them at most 3 of the text finder; the least recently used
+    goes (made again when needed, a few hundred ms) and the first time the server logs "Text recognition keeps at most 6
+    model sessions on the graphics card";
+  - a session unused for 2 minutes is freed (like the CPU workers' sets), so an idle server gives the card back;
+  - every model call of the set runs inside the budget's gate (the card's calls run one at a time anyway), so a session is
+    never freed while it runs; memory pattern off and sequential execution as the DirectML provider asks;
+  - CUDA: one session per model takes every size; its memory pool grows by what a call needs
+    (`arena_extend_strategy=kSameAsRequested`, not the next power of two).
+  - Expected budget (estimated from the model sizes, to be measured): weights per session 88 MB (text finder), 8 MB
+    (reader), 7 MB (angle model); the text finder's buffers about 0.2 to 0.4 GB per 1024 x 1024 picture of a call. A fixed
+    area (256 to 512 px): about 0.15 GB per text finder session; Search over full HD (6 tiles of 768 x 768): about 1 to
+    1.5 GB; reader and angle sessions together below 0.5 GB. Typical: 1 to 2 GB; worst case (3 text finder sessions of 6
+    tiles of 1024 x 1024): about 5 GB.
 - On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
   recognition together. Limits on a GPU: frames per second 1, 2, 4, 8, 12 or 15; at most 50 watching readers.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
   CPU; 20 fixed-place readers at 4 frames per second on the GPU.
-- Measured at the build (2026-11-03, development PC, RTX 5070 Ti, `RecognitionSpeedTests`, Perf): CPU, Search over full
-  HD 1.6 pictures per second, a fixed-place area 20 per second; DirectML, Search about 6 per second, a fixed-place area
-  23 per second, 20 fixed-place readers together about 50 pictures per second (2.5 per reader). The CPU goal holds; the
-  GPU's Search goal does not yet (the server text finder on 6 tiles), nor 20 readers at 4 per second.
+- Measured (2026-11-03, development PC, 24 cores, RTX 5070 Ti, `RecognitionBenchmarkTests`, Perf; a full HD picture of
+  the coffee box, ms per picture, one after the other; 20 readers: all at once, ms per picture in all):
+
+  | Case | CPU before | CPU now | DirectML (before) |
+  |---|---|---|---|
+  | Fixed place, 1 area | 53 | 31 | 47 |
+  | Reader with 4 areas | 225 | 87 | 94 |
+  | Search, full HD | 643 | 546 | 883 * |
+  | 20 fixed-place readers at once | 16.6 (60 per second) | 10.8 (92 per second) | 25.5 (39 per second) |
+  | Fixed place, unchanged (watching) | 53 | 6 | |
+  | 4 areas, unchanged (watching) | 225 | 16 | |
+  | 20 readers, unchanged (watching) | 16.6 | 1.0 | |
+
+  Where the time goes now (CPU, fixed place): decode 2.5, text finder 10, reader 15 ms. Kept: the partial decode (fixed
+  place 53 to 38 ms), the angle model only for unsure lines (38 to 30 ms, a reader with 4 areas 197 to 147), the lines
+  in pairs (4 areas 147 to 87), unchanged areas, rented buffers (no large objects per picture). Tried and left out:
+  ONNX Runtime threads that sleep instead of spinning (20 readers 97 to 76 per second), batches of 1 or 4 lines (no
+  better than 2), reusing the line boxes of a changed area (a new line in a small part of the area would be missed
+  until the next search). * DirectML was measured while another OADM server held 10 GB of the card; with the card
+  that full the measurement made the driver reset (TDR), so the DirectML numbers after these changes are open.
+  The CPU goal holds; the GPU's Search goal and 20 readers at 4 per second are still open on the GPU.
 
 ## Packaging and dependencies
 
@@ -409,7 +467,14 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   each value once and an empty value once when the box is gone; the action Read text reads a container number with its
   format and the page gets its cut-out.
 - The model sources: `Models.targets` and `Models/README.md` name the same files, revisions and SHA-256.
-- Speeds (`RecognitionSpeedTests`, Perf, not in `manage test unit`): the numbers of "GPU".
+- Speeds (`RecognitionSpeedTests` and `RecognitionBenchmarkTests` with the time of each stage, Perf, not in `manage
+  test unit`): the numbers of "GPU".
+- Partial decode (`PictureTests`: the same pixels as a full decode), unchanged areas (`UnchangedAreasTests`: reuse,
+  a changed area read anew, other readers, 10 uses in a row), the angle model's skip rule, idle session sets freed
+  (`FakeTimeProvider`), a set in use freed only after its call, the graphics card's round awaited on stop.
+- Watching readers and previews reuse under their own source, the action never, unchanged pictures counted apart
+  (`UnchangedReuseTests`); the graphics card's session caps, least recently used out, idle sessions freed
+  (`GpuSessionBudgetTests`, fake sessions, no graphics card).
 
 ## Build plan (parallel work)
 
