@@ -481,6 +481,7 @@ public sealed class HeadlessDialogTests
                 Assert.Equal(5, caVm.Rows.Count);
                 Assert.Equal(2, caVm.Rows.Count(r => r.IsError));
                 caWindow.Close();
+                return true;
             }, CancellationToken.None);
         }
         finally

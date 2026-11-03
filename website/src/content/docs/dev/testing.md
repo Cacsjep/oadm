@@ -97,6 +97,22 @@ await session.Dispatch(() =>
 }, CancellationToken.None);
 ```
 
+A body that awaits must return a value. `Dispatch` has no overload for a plain `Task`: an `async () => { ... }` without
+a value is only started, so every assertion in it is lost, also the ones before the first await. End it with
+`return true;`:
+
+```csharp
+await session.Dispatch(async () =>
+{
+    await viewModel.LoadAsync(CancellationToken.None);
+    Assert.Equal(7, viewModel.Rows.Count);
+    return true;
+}, CancellationToken.None);
+```
+
+`HeadlessDispatchConventionTests` (in `tests/Oadm.ApiDocs.Tests`) fails on an async body without a value in `tests/`
+and `samples/`.
+
 `HeadlessEntry`, `Headless.Host`, `Pump` and `Capture` are in the `Support.cs` of a page plugin's tests, e.g.
 `tests/Oadm.Plugins.ImageHealth.Tests/Support.cs`; copy them.
 Screenshots are written only when `OADM_SCREENSHOT_DIR` is set:

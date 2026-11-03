@@ -83,7 +83,8 @@ internal static class TestSupport
 /// <summary>Builds a DevicesViewModel with its collaborators, all without Avalonia.</summary>
 internal sealed class DevicesFixture : IDisposable
 {
-    public DevicesFixture(IOadmApi? api = null, IClientPluginRegistry? registry = null, Oadm.Client.Shell.UserSession? session = null)
+    // catalogUi: the task plugin list's UI thread; headless tests that show its controls pass AvaloniaUiDispatcher.
+    public DevicesFixture(IOadmApi? api = null, IClientPluginRegistry? registry = null, Oadm.Client.Shell.UserSession? session = null, IUiDispatcher? catalogUi = null)
     {
         Api = api ?? Substitute.For<IOadmApi>();
         Ui = new ImmediateUiDispatcher();
@@ -103,7 +104,7 @@ internal sealed class DevicesFixture : IDisposable
         }
 
         Registry = registry;
-        Catalog = new TaskPluginCatalog(Api, Ui, NullLogger<TaskPluginCatalog>.Instance) { DebounceDelay = TimeSpan.FromHours(1) };
+        Catalog = new TaskPluginCatalog(Api, catalogUi ?? Ui, NullLogger<TaskPluginCatalog>.Instance) { DebounceDelay = TimeSpan.FromHours(1) };
         Runner = new TaskPluginRunner(Api, Registry, Dialogs, NullLogger<TaskPluginRunner>.Instance);
         TasksVm = new TasksViewModel(Tasks, Store, Api, Dialogs, Settings, NullLogger<TasksViewModel>.Instance);
         LiveView = new LiveViewViewModel(Api, Substitute.For<IVideoDecoderFactory>(), Ui, NullLogger<LiveViewViewModel>.Instance);

@@ -822,6 +822,7 @@ public sealed class PageTests : IAsyncLifetime
             Pump();
             Capture(window, outDir, "est-setup-dialog-result.png");
             window.Close();
+            return true;
         }, CancellationToken.None);
         GC.KeepAlive(session);
     }
