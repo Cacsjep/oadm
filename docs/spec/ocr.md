@@ -9,7 +9,7 @@ Reads text in the cameras' pictures (signs, container and wagon numbers, display
 to the event rules. The first vision plugin, an add-on (`docs/spec/add-ons.md`): not in the OADM installers, installed on
 demand on the Plugins page.
 
-Core plugin `plugins/Oadm.Plugins.Ocr` (+ `.Client`), id `oadm.ocr`, rail page **Text recognition** (the new rail group **Vision**, after Monitoring, for every vision add-on; SDK 0.11.0),
+Core plugin `plugins/Oadm.Plugins.Ocr` (+ `.Client`), id `oadm.ocr`, rail page **Text recognition** (the new rail group **Vision**, after Monitoring, for every vision add-on; SDK 0.10.0),
 free (Apache-2.0), **off by default**. License plates are not its job: AXIS License Plate Verifier on the camera does
 that better (the docs say so).
 

@@ -115,7 +115,7 @@ public sealed class PluginListTests
             ["DHCP server", "NTP server", "Device triggers", "VAPIX Commander", "Hardening scan", "Dashboards", "I/O Monitor", "Image Health Dashboard", "Live View", "Load test", "Metadata Monitor", "Snapshot report", "Edge Recording Export", "Edge storage", "Web View", "Site reports"],
             vm.Plugins.Select(p => p.Name));
         Assert.Equal("Extensions", PluginGroupKey.Parse("NoSuchGroup").ToString()); // like the rail
-        // Vision (SDK 0.11.0, appended to the enum) sits right after Monitoring, in the rail and on this page.
+        // Vision (SDK 0.10.0, appended to the enum) sits right after Monitoring, in the rail and on this page.
         Assert.Equal("Vision", PluginGroupKey.Parse("Vision").ToString());
         Assert.Equal(PluginGroupKey.Parse("Monitoring").Order + 1, PluginGroupKey.Parse("Vision").Order);
         Assert.Equal(PluginGroupKey.Parse("Vision").Order + 1, PluginGroupKey.Parse("Reporting").Order);

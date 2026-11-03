@@ -621,7 +621,7 @@ public enum CorePluginGroup
 
     /// <summary>
     /// Plugins that analyse the cameras' pictures on the server: Text recognition. Shown in the rail right after
-    /// <see cref="Monitoring"/>, whatever its value. New in SDK 0.11.0: an older client shows it under Extensions.
+    /// <see cref="Monitoring"/>, whatever its value. New in SDK 0.10.0: an older client shows it under Extensions.
     /// </summary>
     Vision = 9,
 }
