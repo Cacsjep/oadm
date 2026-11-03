@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Microsoft.ML.OnnxRuntime.Tensors;
 using SkiaSharp;
 
 namespace Oadm.Plugins.Ocr.Recognition;
@@ -71,12 +70,20 @@ internal sealed class ModelSet : IDisposable
     /// <summary>On DirectML every call has a fixed batch and the widths come in steps: few input sizes, each fast.</summary>
     private bool FixedSizes => Target == ExecutionTarget.DirectMl;
 
-    /// <summary>The text finder's probability maps of <paramref name="count"/> pictures of one size, [count, height, width].</summary>
-    public async Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct)
-    {
-        var tensor = new DenseTensor<float>(input, [count, 3, height, width]);
-        return await RunAsync(() => _detection.Run(tensor).Output, Stage.DetectModel, ct).ConfigureAwait(false);
-    }
+    /// <summary>
+    /// The text finder's probability maps of <paramref name="count"/> pictures of one size, [count, height, width], in a rented
+    /// buffer the caller disposes.
+    /// </summary>
+    public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
+        RunAsync(
+            () => _detection.Run(input.Array, [count, 3, height, width], static (output, _) =>
+            {
+                var map = PooledFloats.Rent(output.Length, clear: false);
+                output.CopyTo(map.Span);
+                return map;
+            }),
+            Stage.DetectModel,
+            ct);
 
     /// <summary>The probability that each line is upside down (0 to 1).</summary>
     public async Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
@@ -88,19 +95,26 @@ internal sealed class ModelSet : IDisposable
         {
             var count = Math.Min(Batch, lines.Count - start);
             var size = FixedSizes ? DirectMlBatches.First(b => b >= count) : count;
-            var input = new float[size * 3 * OrientationHeight * OrientationWidth];
+            using var input = PooledFloats.Rent(size * 3 * OrientationHeight * OrientationWidth, clear: size > count);
             for (var i = 0; i < count; i++)
             {
                 using var small = lines[start + i].Resize(new SKImageInfo(OrientationWidth, OrientationHeight, SKColorType.Rgba8888, SKAlphaType.Premul), new SKSamplingOptions(SKFilterMode.Linear));
-                Tensors.Write(small, input, i, OrientationHeight, OrientationWidth, Tensors.ImageNet);
+                Tensors.Write(small, input.Array, i, OrientationHeight, OrientationWidth, Tensors.ImageNet);
             }
 
-            var tensor = new DenseTensor<float>(input, [size, 3, OrientationHeight, OrientationWidth]);
-            var probabilities = await RunAsync(() => _orientation.Run(tensor).Output, null, ct).ConfigureAwait(false);
-            for (var i = 0; i < count; i++)
-            {
-                result[start + i] = probabilities[i * 2 + 1];
-            }
+            var first = start;
+            await RunAsync(
+                () => _orientation.Run(input.Array, [size, 3, OrientationHeight, OrientationWidth], (output, _) =>
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        result[first + i] = output[i * 2 + 1];
+                    }
+
+                    return true;
+                }),
+                null,
+                ct).ConfigureAwait(false);
         }
 
         StageClock.Add(Stage.Angle, angleStart);
@@ -125,25 +139,31 @@ internal sealed class ModelSet : IDisposable
             var inputStart = Stopwatch.GetTimestamp();
             var width = FixedSizes ? DirectMlWidths.First(w => w >= Math.Min(widest, MaxLineWidth)) : Math.Max(MinLineWidth, (widest + 31) / 32 * 32);
             var size = FixedSizes ? DirectMlBatches.First(b => b >= count) : count;
-            var input = new float[size * 3 * LineHeight * width];
+            using var input = PooledFloats.Rent(size * 3 * LineHeight * width, clear: true);
             for (var i = 0; i < count; i++)
             {
-                Tensors.Write(lines[order[start + i]], input, i, LineHeight, width, Tensors.Symmetric);
+                Tensors.Write(lines[order[start + i]], input.Array, i, LineHeight, width, Tensors.Symmetric);
             }
 
-            var tensor = new DenseTensor<float>(input, [size, 3, LineHeight, width]);
             StageClock.Add(Stage.RecognizeInput, inputStart);
-            var (output, dimensions) = await RunAsync(() => _recognition.Run(tensor), Stage.RecognizeModel, ct).ConfigureAwait(false);
-            var frames = dimensions[1];
-            var classes = dimensions[2];
-            for (var i = 0; i < count; i++)
-            {
-                // Only the frames of the line itself (and a little after it); the padding's frames are blank.
-                var own = Math.Min(frames, (lines[order[start + i]].Width + 7) / 8 + 2);
-                var scores = new float[own * classes];
-                Array.Copy(output, i * frames * classes, scores, 0, own * classes);
-                result[order[start + i]] = new LineScores(scores, own, classes);
-            }
+            var first = start;
+            await RunAsync(
+                () => _recognition.Run(input.Array, [size, 3, LineHeight, width], (output, shape) =>
+                {
+                    var frames = (int)shape[1];
+                    var classes = (int)shape[2];
+                    for (var i = 0; i < count; i++)
+                    {
+                        // Only the frames of the line itself (and a little after it); the padding's frames are blank.
+                        var line = order[first + i];
+                        var own = Math.Min(frames, (lines[line].Width + 7) / 8 + 2);
+                        result[line] = new LineScores(output.Slice(i * frames * classes, own * classes).ToArray(), own, classes);
+                    }
+
+                    return true;
+                }),
+                Stage.RecognizeModel,
+                ct).ConfigureAwait(false);
         }
 
         return result;

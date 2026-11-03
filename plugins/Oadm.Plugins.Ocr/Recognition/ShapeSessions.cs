@@ -1,5 +1,4 @@
 using Microsoft.ML.OnnxRuntime;
-using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace Oadm.Plugins.Ocr.Recognition;
 
@@ -20,6 +19,7 @@ internal sealed class ShapeSessions : IDisposable
     private readonly object _lock = new();
     private readonly Dictionary<string, (InferenceSession Session, long Used)> _bySize = [];
     private readonly InferenceSession? _single;
+    private readonly RunOptions _runOptions = new();
     private long _clock;
 
     public ShapeSessions(string path, ExecutionTarget target, int threads)
@@ -44,24 +44,36 @@ internal sealed class ShapeSessions : IDisposable
     /// <summary>The model's input.</summary>
     public string InputName { get; }
 
-    /// <summary>Runs the model on <paramref name="input"/> and returns its first output as an array with its dimensions.</summary>
-    public (float[] Output, int[] Dimensions) Run(DenseTensor<float> input)
+    /// <summary>Reads a model's first output in place (valid only during the call).</summary>
+    public delegate T OutputReader<out T>(ReadOnlySpan<float> output, ReadOnlySpan<long> shape);
+
+    /// <summary>
+    /// Runs the model on the first values of <paramref name="input"/> (shape <paramref name="shape"/>) and hands its first output
+    /// to <paramref name="read"/> where ONNX Runtime left it: the input is pinned, not copied, the output never copied whole.
+    /// </summary>
+    public T Run<T>(float[] input, long[] shape, OutputReader<T> read)
     {
-        var session = SessionFor(input.Dimensions);
-        using var results = session.Run([NamedOnnxValue.CreateFromTensor(InputName, input)]);
-        var tensor = results[0].AsTensor<float>();
-        var output = tensor is DenseTensor<float> dense ? dense.Buffer.ToArray() : tensor.ToArray();
-        return (output, tensor.Dimensions.ToArray());
+        var length = 1L;
+        foreach (var d in shape)
+        {
+            length *= d;
+        }
+
+        var session = SessionFor(shape);
+        using var value = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, input.AsMemory(0, (int)length), shape);
+        using var results = session.Run(_runOptions, [InputName], [value], [session.OutputNames[0]]);
+        var output = results[0];
+        return read(output.GetTensorDataAsSpan<float>(), output.GetTensorTypeAndShape().Shape);
     }
 
-    private InferenceSession SessionFor(ReadOnlySpan<int> dimensions)
+    private InferenceSession SessionFor(long[] dimensions)
     {
         if (_single is not null)
         {
             return _single;
         }
 
-        var key = string.Join('x', dimensions.ToArray());
+        var key = string.Join('x', dimensions);
         lock (_lock)
         {
             _clock++;
@@ -94,6 +106,7 @@ internal sealed class ShapeSessions : IDisposable
     public void Dispose()
     {
         _single?.Dispose();
+        _runOptions.Dispose();
         lock (_lock)
         {
             foreach (var (session, _) in _bySize.Values)

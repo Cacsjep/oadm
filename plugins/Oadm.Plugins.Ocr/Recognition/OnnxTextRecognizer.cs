@@ -43,6 +43,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The tile size for large areas.</summary>
     public const int TileSize = 960;
 
+    /// <summary>Tiles per text finder call on a graphics card at most (full HD: 6 tiles, one call).</summary>
+    private const int MaxTileBatch = 6;
+
     /// <summary>The overlap of neighbouring tiles.</summary>
     public const double TileOverlap = 0.15;
 
@@ -372,21 +375,19 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             var inputStart = Stopwatch.GetTimestamp();
             var fill = picture.BorderColor(rect);
             using var bitmap = picture.Render(matrix, w, h, scale, fill, new SKRect(Margin, Margin, Margin + rect.Width * scale, Margin + rect.Height * scale));
-            var input = new float[3 * w * h];
-            Tensors.Write(bitmap, input, 0, h, w, Tensors.ImageNet);
+            using var input = PooledFloats.Rent(3 * w * h, clear: false);
+            Tensors.Write(bitmap, input.Array, 0, h, w, Tensors.ImageNet);
             StageClock.Add(Stage.DetectInput, inputStart);
-            var map = await set.DetectAsync(input, 1, h, w, ct).ConfigureAwait(false);
+            using var map = await set.DetectAsync(input, 1, h, w, ct).ConfigureAwait(false);
             var boxesStart = Stopwatch.GetTimestamp();
-            var boxes = BoxMerger.Merge(DbPostProcess.Boxes(map, w, h).Select(b => b.Map(1 / scale, rect.Left - Margin / scale, rect.Top - Margin / scale)));
+            var boxes = BoxMerger.Merge(DbPostProcess.Boxes(map.Span, w, h).Select(b => b.Map(1 / scale, rect.Left - Margin / scale, rect.Top - Margin / scale)));
             StageClock.Add(Stage.DetectBoxes, boxesStart);
             return boxes;
         }
 
         // Tiles of TileSize at full resolution, overlapping by TileOverlap; all tiles of the area in one call.
-        var (xs, tw) = Tiles(rect.Left, rect.Width);
-        var (ys, th) = Tiles(rect.Top, rect.Height);
-        var tileW = RoundUp32(tw);
-        var tileH = RoundUp32(th);
+        var (xs, tileW) = Tiles(rect.Left, rect.Width, set.DetectionSide);
+        var (ys, tileH) = Tiles(rect.Top, rect.Height, set.DetectionSide);
         var tiles = new List<(int X, int Y)>();
         foreach (var y in ys)
         {
@@ -401,17 +402,23 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var found = new List<RotatedBox>();
         if (set.BatchTiles)
         {
-            // A graphics card: every tile in one call.
-            var inputStart = Stopwatch.GetTimestamp();
-            var input = new float[tiles.Count * 3 * tileSize];
-            Parallel.For(0, tiles.Count, i => picture.WriteTile(input, i, tiles[i].X, tiles[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
-            StageClock.Add(Stage.DetectInput, inputStart);
-            var maps = await set.DetectAsync(input, tiles.Count, tileH, tileW, ct).ConfigureAwait(false);
-            var boxesStart = Stopwatch.GetTimestamp();
-            var perTile = new List<RotatedBox>[tiles.Count];
-            Parallel.For(0, tiles.Count, i => perTile[i] = DbPostProcess.Boxes(maps.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, tiles[i].X, tiles[i].Y)).ToList());
-            found.AddRange(perTile.SelectMany(b => b));
-            StageClock.Add(Stage.DetectBoxes, boxesStart);
+            // A graphics card: the tiles in calls of up to MaxTileBatch, each call's count in the runner's steps (blank tiles
+            // fill it up), so the input shapes stay few.
+            for (var first = 0; first < tiles.Count; first += MaxTileBatch)
+            {
+                var chunk = tiles.GetRange(first, Math.Min(MaxTileBatch, tiles.Count - first));
+                var batch = set.TileBatch(chunk.Count);
+                var inputStart = Stopwatch.GetTimestamp();
+                using var input = PooledFloats.Rent(batch * 3 * tileSize, clear: batch > chunk.Count);
+                Parallel.For(0, chunk.Count, i => picture.WriteTile(input.Array, i, chunk[i].X, chunk[i].Y, tileW, tileH, rect, fillColor, Tensors.ImageNet));
+                StageClock.Add(Stage.DetectInput, inputStart);
+                using var maps = await set.DetectAsync(input, batch, tileH, tileW, ct).ConfigureAwait(false);
+                var boxesStart = Stopwatch.GetTimestamp();
+                var perTile = new List<RotatedBox>[chunk.Count];
+                Parallel.For(0, chunk.Count, i => perTile[i] = DbPostProcess.Boxes(maps.Array.AsSpan(i * tileSize, tileSize), tileW, tileH).Select(b => b.Map(1, chunk[i].X, chunk[i].Y)).ToList());
+                found.AddRange(perTile.SelectMany(b => b));
+                StageClock.Add(Stage.DetectBoxes, boxesStart);
+            }
         }
         else
         {
@@ -420,12 +427,12 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 async () =>
                 {
                     var inputStart = Stopwatch.GetTimestamp();
-                    var input = new float[3 * tileSize];
-                    picture.WriteTile(input, 0, tile.X, tile.Y, tileW, tileH, rect, fillColor, Tensors.ImageNet);
+                    using var input = PooledFloats.Rent(3 * tileSize, clear: false);
+                    picture.WriteTile(input.Array, 0, tile.X, tile.Y, tileW, tileH, rect, fillColor, Tensors.ImageNet);
                     StageClock.Add(Stage.DetectInput, inputStart);
-                    var map = await set.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
+                    using var map = await set.DetectAsync(input, 1, tileH, tileW, ct).ConfigureAwait(false);
                     var boxesStart = Stopwatch.GetTimestamp();
-                    var boxes = DbPostProcess.Boxes(map, tileW, tileH).Select(b => b.Map(1, tile.X, tile.Y)).ToList();
+                    var boxes = DbPostProcess.Boxes(map.Span, tileW, tileH).Select(b => b.Map(1, tile.X, tile.Y)).ToList();
                     StageClock.Add(Stage.DetectBoxes, boxesStart);
                     return boxes;
                 },
@@ -442,18 +449,25 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>
     /// The tiles along one side: as few as cover it with tiles of at most <see cref="TileSize"/> pixels overlapping by at least
     /// <see cref="TileOverlap"/>, all of one size (a multiple of 32) and spread evenly, so no pixel is read more often than
-    /// needed (1920 x 1080: 3 x 2 tiles of 736 x 608).
+    /// needed (1920 x 1080: 3 x 2 tiles of 736 x 608). <paramref name="side"/> turns a size into the text finder's input side
+    /// (DirectML: in steps); a stepped tile overlaps its neighbours more, never pads.
     /// </summary>
-    /// <returns>The left (or top) edges and the tile size.</returns>
-    internal static (List<int> Starts, int Size) Tiles(int start, int length)
+    /// <returns>The left (or top) edges and the tile size (the text finder's input side).</returns>
+    internal static (List<int> Starts, int Size) Tiles(int start, int length, Func<int, int>? side = null)
     {
+        side ??= RoundUp32;
         if (length <= TileSize)
         {
-            return ([start], length);
+            return ([start], side(length));
         }
 
         var n = (int)Math.Ceiling((length - TileOverlap * TileSize) / (TileSize * (1 - TileOverlap)));
-        var size = Math.Min(TileSize, RoundUp32((int)Math.Ceiling(length / (n - (n - 1) * TileOverlap))));
+        var size = side(Math.Min(TileSize, RoundUp32((int)Math.Ceiling(length / (n - (n - 1) * TileOverlap)))));
+        if (size >= length)
+        {
+            return ([start], size);
+        }
+
         var step = (length - size) / (double)(n - 1);
         var starts = new List<int>(n);
         for (var i = 0; i < n; i++)

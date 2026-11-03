@@ -15,8 +15,11 @@ internal interface IModelRunner
     /// <summary>The side of the text finder's input for an area of <paramref name=pixels/> (a multiple of 32, on DirectML in a few steps).</summary>
     int DetectionSide(int pixels);
 
-    /// <summary>The text finder's maps of <paramref name="count"/> pictures of one size ([count, height, width]).</summary>
-    Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct);
+    /// <summary>The batch of a text finder call for <paramref name="count"/> tiles (DirectML: in steps, the rest blank).</summary>
+    int TileBatch(int count) => count;
+
+    /// <summary>The text finder's maps of <paramref name="count"/> pictures of one size ([count, height, width]), rented: the caller disposes them.</summary>
+    Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct);
 
     /// <summary>The probability that each line is upside down.</summary>
     Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct);
@@ -126,7 +129,7 @@ internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList char
 
     public int DetectionSide(int pixels) => OnnxTextRecognizer.RoundUp32(pixels);
 
-    public Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct) =>
+    public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
         workers.RunAsync(accurate, set => set.DetectAsync(input, count, height, width, ct), ct);
 
     public Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct) =>
@@ -166,13 +169,19 @@ internal sealed class GpuRunner(ModelSet set, LineBatcher lines) : IModelRunner
 
     public bool BatchTiles => true;
 
-    /// <summary>On DirectML each input size is a session of its own: areas in four steps.</summary>
+    /// <summary>On DirectML each input size is a session of its own: areas and tiles in four steps.</summary>
     public int DetectionSide(int pixels) =>
         set.Target == ExecutionTarget.DirectMl ? Steps.FirstOrDefault(s => s >= pixels, OnnxTextRecognizer.RoundUp32(pixels)) : OnnxTextRecognizer.RoundUp32(pixels);
 
+    /// <summary>On DirectML the tiles of a call in steps.</summary>
+    public int TileBatch(int count) =>
+        set.Target == ExecutionTarget.DirectMl ? TileBatches.FirstOrDefault(b => b >= count, count) : count;
+
     private static readonly int[] Steps = [256, 512, 768, 1024];
 
-    public Task<float[]> DetectAsync(float[] input, int count, int height, int width, CancellationToken ct) =>
+    private static readonly int[] TileBatches = [1, 2, 4, 6];
+
+    public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
         set.DetectAsync(input, count, height, width, ct);
 
     public Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> list, CancellationToken ct) => set.UpsideDownAsync(list, ct);
