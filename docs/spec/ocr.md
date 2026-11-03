@@ -208,6 +208,40 @@ Per area: **Any text** (default) or **Format**.
     the cut-outs), to users with all devices and the preview's scope; the page fetches with `getPreview` only its own,
     one call at a time (newest wins).
 
+## Runtime stats
+
+The page shows whether the recognition keeps up, in the readers column below Settings, live every 2 s while the page is
+open. Measured on the server, cheap: each reading adds to counters (no allocation per picture); every 2 s a sample takes
+the counters (`Readers/ReaderStats`); every figure is the newest sample against the oldest of the last 10 s (shorter right
+after the start). All time through the plugin's `TimeProvider`.
+
+- **Traffic light** (`ui:StatusChip` ok, warning, error; `ReaderRules` texts):
+  - green "All readers keep up": every watching reader reaches at least 90 % of its frame rate and the load is below 75 %;
+  - orange "Busy: 2 readers read slower than set" ("Busy: 1 reader reads slower than set") when a reader reads below
+    90 % of its rate; "Busy: recognition is at 82 %" when only the load is 75 % or more;
+  - red "Overloaded: lower the frames per second or the number of readers" when a reader reads below 50 % of its rate,
+    or the load stayed at 95 % or more for 30 s (every sample from the first at 95 % on).
+  - A reader is judged only once it watched for the whole 10 s (a reader that just started is never orange).
+- **Recognition load** (bar with %): the share of the last 10 s the recognition was busy: the sum of the time every model
+  call held its worker (`IRecognizerLoad.BusyTime`, `Recognition/BusyMeter`) divided by the window times the capacity
+  (`IRecognizerLoad.Capacity`). On the CPU the capacity is the workers (`max(1, cores / 2)`), each call counted while it
+  holds its slot; on a graphics card it is 1, because the recognizer runs its model calls there one at a time on one
+  shared set (the time a call holds the card counts). So 100 % means no more model calls fit: on the CPU every worker,
+  on a graphics card the card itself never idles.
+- **Numbers**: pictures per second (all readers, previews included); the average reading time (ms per picture, the
+  recognizer's call per picture); readers watching "3 of 50" (the limit of the CPU or the graphics card); previews "1 of
+  8"; camera streams open (watching readers and previews with a stream of their own), per site "Harbour 2 of 4" when
+  sites exist; the OADM server process's CPU ("Server CPU": `Environment.CpuUsage.TotalTime` growth divided by the window
+  times the processor count, cross-platform).
+- **Per reader**: each watching reader's pictures per second over the last 10 s; below 90 % of its rate its list chip
+  turns orange: "Watching · 8 fps (reads 5.1)".
+- `getStats` `{}` → the stats (permission "View text recognition"):
+  `{"state":"Busy","stateText":"Busy: 1 reader reads slower than set","load":42.5,"picturesPerSecond":12.3,"averageReadMs":85,"watching":3,"maxWatching":50,"previews":1,"maxPreviews":8,"streams":4,"sites":[{"name":"Harbour","streams":2,"max":4}],"serverCpu":23.1,"readers":[{"readerId":"9f3c...","fps":8,"reads":5.1,"slow":true}]}`.
+  Each call keeps the live event `stats` (the same JSON every 2 s) on for the caller's scope for 30 s; the page calls it
+  on open and every 10 s, so the event runs only while a page is open.
+- Device groups: a group user sees the counts, sites and readers of their own group only, plus the server-wide load, CPU,
+  pictures per second and reading time (no other scope's reader); each scope's event goes to that scope.
+
 ## Permissions
 
 - **View text recognition**: the page, the readers and their results.
@@ -298,6 +332,7 @@ the real parts once per start (`ReaderParts.Real`), the tests hand fakes:
 
 | Contract | Real part | What it does |
 |---|---|---|
+| `IRecognizerLoad` (optional) | `Recognition/OnnxTextRecognizer` (`BusyMeter` in the CPU slots and the graphics card's calls) | busy time and capacity for the runtime stats |
 | `IFrameSource` | `Frames/VapixFrameSource` (the plugin's full device access, `ctx.System.Vapix`) | single pictures and the MJPEG stream of a camera |
 | `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas; what reads, Use the graphics card |
 | `ITextMatcher` (+ `IAreaValueMatcher`) | `Matching/TextMatcher` | an area's value, every match, its confidence and box |
@@ -323,6 +358,9 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   only the newest reading fetched, moving, resizing and nudging areas held inside the picture, the On action message
   once, new readers watching, the frame rate select; headless screenshots dark and light (the live video as a still
   frame).
+- Runtime stats (`Readers/StatsTests`, `FakeTimeProvider`): the 10 s window, the load on the CPU and a graphics card, the
+  server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
+  live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).
 - Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU, 4 per site; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
 - End to end with the real parts (`EndToEndTests`): recorded pictures of the coffee box through a watching reader give

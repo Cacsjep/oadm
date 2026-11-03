@@ -38,6 +38,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<string, ReaderReading> _last = new(StringComparer.Ordinal);
     private readonly ITimer _recheck;
     private readonly ITimer _sweep;
+    private readonly ITimer _statsTimer;
+    private readonly ReaderStats _stats;
     private readonly TimeProvider _time;
     private volatile Dictionary<string, string> _problems = [];
     private volatile IReadOnlyList<Reader> _readers = [];
@@ -54,9 +56,11 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _frames = parts.Frames?.Invoke(ctx);
         _recognizer = parts.Recognizer?.Invoke(ctx);
-        _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Cutter, parts.Time) : null;
+        _stats = new ReaderStats(parts.Time, parts.ProcessorTime, parts.ProcessorCount);
+        _maker = _recognizer is not null && parts.Matcher is not null ? new ReadingMaker(_recognizer, parts.Matcher, parts.Cutter, parts.Time, _stats) : null;
         using (ExecutionContext.SuppressFlow())
         {
+            _statsTimer = parts.Time.CreateTimer(_ => TickStats(), null, ReaderStats.SampleInterval, ReaderStats.SampleInterval);
             _recheck = parts.Time.CreateTimer(_ => _ = SyncAsync(_readers), null, RecheckInterval, RecheckInterval);
             _sweep = parts.Time.CreateTimer(_ => _ = SweepPreviewsAsync(), null, PreviewSweepInterval, PreviewSweepInterval);
         }
@@ -167,6 +171,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             _stopped = true;
             await _recheck.DisposeAsync().ConfigureAwait(false);
             await _sweep.DisposeAsync().ConfigureAwait(false);
+            await _statsTimer.DisposeAsync().ConfigureAwait(false);
             await StopLoopsAsync(_ => true).ConfigureAwait(false);
             await EndPreviewsAsync(_ => true).ConfigureAwait(false);
         }
@@ -226,7 +231,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
             _readers = readers;
             var problems = new Dictionary<string, string>(StringComparer.Ordinal);
-            var wanted = new Dictionary<string, Reader>(StringComparer.Ordinal);
+            var wanted = new Dictionary<string, (Reader Reader, IDeviceInfo? Camera)>(StringComparer.Ordinal);
             var perSite = new Dictionary<Guid, int>();
             var limit = ReaderRules.MaxWatching(OnGpu);
             foreach (var reader in readers)
@@ -239,7 +244,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 else if (reader.Mode == ReaderMode.Watching && reader.Areas.Count > 0 && _maker is not null && _frames is not null && wanted.Count < limit
                     && (camera?.SiteId is not { } site || (perSite[site] = perSite.GetValueOrDefault(site) + 1) <= ReaderRules.MaxWatchingPerSite))
                 {
-                    wanted[reader.Id] = reader;
+                    wanted[reader.Id] = (reader, camera);
                 }
             }
 
@@ -249,13 +254,18 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             {
                 ProblemsChanged?.Invoke(this, EventArgs.Empty);
             }
-            await StopLoopsAsync(loop => !wanted.TryGetValue(loop.Reader.Id, out var now) || !Same(now, loop.Reader)).ConfigureAwait(false);
+            await StopLoopsAsync(loop => !wanted.TryGetValue(loop.Reader.Id, out var now) || !Same(now.Reader, loop.Reader)).ConfigureAwait(false);
             lock (_loops)
             {
-                foreach (var reader in wanted.Values.Where(r => !_loops.ContainsKey(r.Id)))
+                foreach (var (reader, camera) in wanted.Values.Where(r => !_loops.ContainsKey(r.Reader.Id)))
                 {
                     var stop = new CancellationTokenSource();
-                    _loops[reader.Id] = new WatchLoop(reader, stop, Task.Run(() => WatchAsync(reader, stop.Token), CancellationToken.None));
+                    _stats.ReaderStarted(reader.Id);
+                    _loops[reader.Id] = new WatchLoop(reader, stop, Task.Run(() => WatchAsync(reader, stop.Token), CancellationToken.None))
+                    {
+                        Site = camera?.SiteId,
+                        SiteName = camera?.SiteName,
+                    };
                 }
             }
 
@@ -278,6 +288,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             foreach (var loop in stopping)
             {
                 _loops.Remove(loop.Reader.Id);
+                _stats.ReaderStopped(loop.Reader.Id);
             }
         }
 
@@ -295,7 +306,11 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
     /// <summary>A saved watching reader: votes per area and publishes its events (<see cref="LoopAsync"/>).</summary>
     private Task WatchAsync(Reader reader, CancellationToken ct) =>
-        LoopAsync(reader, () => reader, vote: true, (r, reading) => Keep(r, reading), SlotOf(reader.Id), ct);
+        LoopAsync(reader, () => reader, vote: true, (r, reading) =>
+        {
+            _stats.CountReading(r.Id);
+            Keep(r, reading);
+        }, SlotOf(reader.Id), ct);
 
     /// <summary>
     /// One stream of a camera: a pump takes the frames into a slot of one (the newest replaces an unread one), the loop
@@ -471,7 +486,13 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: the pictures of the reader {Reader} ended")]
     private static partial void LogStreamFailed(ILogger logger, string reader, Exception ex);
 
-    private sealed record WatchLoop(Reader Reader, CancellationTokenSource Stop, Task Run);
+    private sealed record WatchLoop(Reader Reader, CancellationTokenSource Stop, Task Run)
+    {
+        /// <summary>The camera's site; null on the server's own network.</summary>
+        public Guid? Site { get; init; }
+
+        public string? SiteName { get; init; }
+    }
 
     /// <summary>One reading at a time per reader.</summary>
     private sealed class ReaderSlot

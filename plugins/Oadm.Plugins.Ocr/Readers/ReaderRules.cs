@@ -61,6 +61,21 @@ public static class ReaderRules
         CultureInfo.InvariantCulture,
         $"More than {OcrLimits.MaxTextBoxes} texts found. Only the first {OcrLimits.MaxTextBoxes} are read. Draw smaller areas.");
 
+    /// <summary>The runtime stats' traffic light: green.</summary>
+    public const string KeepUp = "All readers keep up";
+
+    /// <summary>Red.</summary>
+    public const string Overloaded = "Overloaded: lower the frames per second or the number of readers";
+
+    /// <summary>Orange because readers fall behind: "Busy: 2 readers read slower than set".</summary>
+    public static string BusySlow(int readers) => readers == 1
+        ? "Busy: 1 reader reads slower than set"
+        : string.Create(CultureInfo.InvariantCulture, $"Busy: {readers} readers read slower than set");
+
+    /// <summary>Orange because of the load only: "Busy: recognition is at 82 %".</summary>
+    public static string BusyLoad(double load) =>
+        string.Create(CultureInfo.InvariantCulture, $"Busy: recognition is at {Math.Round(Math.Clamp(load, 0, 100))} %");
+
     /// <summary>The action Read text with a reader without areas: text is read only inside areas.</summary>
     public const string NoAreas = "The reader has no area. Draw one on the Text recognition page.";
 

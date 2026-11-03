@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Recognition;
 using Oadm.Sdk.Testing;
@@ -30,6 +32,30 @@ public sealed class WorkerTests
     {
         Assert.Equal(workers, OcrLimits.Workers(cores));
         Assert.Equal(2, OcrLimits.ThreadsPerWorker);
+    }
+
+    [Fact]
+    public async Task Every_call_adds_the_time_it_held_its_slot_to_the_load()
+    {
+        // The recognition load (docs/spec/ocr.md "Runtime stats"): two calls held for 3 s of the fake clock are 6 s busy.
+        var time = new FakeTimeProvider();
+        var busy = new BusyMeter(time);
+        using var workers = new CpuWorkers<FakeSet>(2, 1, accurate => new FakeSet { Accurate = accurate }, busy);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = 0;
+        var calls = Enumerable.Range(0, 2).Select(_ => workers.RunAsync(false, async set =>
+        {
+            Interlocked.Increment(ref running);
+            await release.Task;
+            return set;
+        }, CancellationToken.None)).ToList();
+
+        await Eventually.TrueAsync(() => Volatile.Read(ref running) == 2, "both calls hold a slot");
+        time.Advance(TimeSpan.FromSeconds(3));
+        release.SetResult();
+        await Task.WhenAll(calls);
+
+        Assert.Equal(TimeSpan.FromSeconds(6), busy.Busy);
     }
 
     [Fact]

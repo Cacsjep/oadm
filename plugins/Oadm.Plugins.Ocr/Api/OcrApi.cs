@@ -140,6 +140,102 @@ public static class OcrMethods
 
     /// <summary>Event: <see cref="ReaderList"/> after a reader was created, changed or deleted.</summary>
     public const string ReadersTopic = "readers";
+
+    /// <summary>
+    /// {} -> <see cref="OcrStats"/>: how the recognition keeps up (docs/spec/ocr.md "Runtime stats"), for the caller's
+    /// readers plus the server-wide load and CPU. Each call keeps <see cref="StatsTopic"/> on for the caller's scope for
+    /// <see cref="Model.OcrLimits.PreviewLease"/> (the page calls it every <see cref="Model.OcrLimits.PreviewKeepAlive"/>). View.
+    /// </summary>
+    public const string GetStats = "getStats";
+
+    /// <summary>Event: <see cref="OcrStats"/> every 2 s while a page of the scope keeps it on with <see cref="GetStats"/>.</summary>
+    public const string StatsTopic = "stats";
+}
+
+/// <summary>The traffic light of the runtime stats.</summary>
+public enum LoadState
+{
+    /// <summary>Green: every watching reader keeps its frame rate and the load is below 75 %.</summary>
+    Ok = 0,
+
+    /// <summary>Orange: a reader reads slower than set, or the load is 75 % or more.</summary>
+    Busy = 1,
+
+    /// <summary>Red: the load stayed at 95 % or more for 30 s, or a reader reads less than half of its frame rate.</summary>
+    Overloaded = 2,
+}
+
+/// <summary>
+/// The answer of <see cref="OcrMethods.GetStats"/> and the live event <see cref="OcrMethods.StatsTopic"/> (docs/spec/ocr.md
+/// "Runtime stats"). Load, server CPU, pictures per second and reading time are server-wide; the counts and the readers are
+/// the caller's (a user with a device group sees only their group's readers).
+/// </summary>
+public sealed record OcrStats
+{
+    /// <summary>The traffic light.</summary>
+    public LoadState State { get; init; }
+
+    /// <summary>"All readers keep up", "Busy: 2 readers read slower than set", ... (<see cref="Readers.ReaderRules"/>).</summary>
+    public string StateText { get; init; } = string.Empty;
+
+    /// <summary>0 to 100: the share of the last 10 s the recognition workers were busy (graphics card: its one at a time).</summary>
+    public double Load { get; init; }
+
+    /// <summary>Pictures read per second over the last 10 s, previews included.</summary>
+    public double PicturesPerSecond { get; init; }
+
+    /// <summary>Milliseconds per picture read over the last 10 s; 0 without one.</summary>
+    public double AverageReadMs { get; init; }
+
+    /// <summary>The caller's watching readers that read now.</summary>
+    public int Watching { get; init; }
+
+    /// <summary>Watching readers per server at most (20 on the CPU, 50 on a graphics card).</summary>
+    public int MaxWatching { get; init; }
+
+    /// <summary>The caller's page previews now.</summary>
+    public int Previews { get; init; }
+
+    /// <summary>Previews per server at most.</summary>
+    public int MaxPreviews { get; init; }
+
+    /// <summary>The caller's camera streams open now (watching readers and previews with a stream of their own).</summary>
+    public int Streams { get; init; }
+
+    /// <summary>The caller's streams per site ("Harbour 2 of 4"); empty without sites.</summary>
+    public IReadOnlyList<SiteStreams> Sites { get; init; } = [];
+
+    /// <summary>0 to 100: the OADM server process's share of all cores over the last 10 s.</summary>
+    public double ServerCpu { get; init; }
+
+    /// <summary>Each of the caller's watching readers: its frame rate and what it reads.</summary>
+    public IReadOnlyList<ReaderRate> Readers { get; init; } = [];
+}
+
+/// <summary>Streams at one site.</summary>
+public sealed record SiteStreams
+{
+    public string Name { get; init; } = string.Empty;
+
+    public int Streams { get; init; }
+
+    /// <summary>Watching readers per site at most.</summary>
+    public int Max { get; init; }
+}
+
+/// <summary>A watching reader's frame rate and what it reached over the last 10 s.</summary>
+public sealed record ReaderRate
+{
+    public string ReaderId { get; init; } = string.Empty;
+
+    /// <summary>The frame rate set.</summary>
+    public int Fps { get; init; }
+
+    /// <summary>Pictures read per second over the last 10 s.</summary>
+    public double Reads { get; init; }
+
+    /// <summary>Watching for the whole window and below 90 % of <see cref="Fps"/>: its list chip turns orange.</summary>
+    public bool Slow { get; init; }
 }
 
 /// <summary>A reader in the list.</summary>

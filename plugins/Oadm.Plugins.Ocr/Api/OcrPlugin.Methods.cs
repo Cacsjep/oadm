@@ -102,6 +102,10 @@ public sealed partial class OcrPlugin
                 return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? ReplyOf(last) : new ReadingReply());
             }
 
+            case OcrMethods.GetStats:
+                // The caller's own readers and the server-wide load; the live event for the caller's scope for 30 s.
+                return OcrJson.Serialize(runtime.GetStats(OwnerScope.Of(caller.DeviceScopeKey)));
+
             case OcrMethods.GetEngine:
                 return OcrJson.Serialize(EngineOf(runtime));
 

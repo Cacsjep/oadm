@@ -196,6 +196,8 @@ internal sealed class OcrHarness : IAsyncDisposable
             Matcher = matcher ?? new FakeMatcher(),
             Cutter = cutter,
             Time = Time,
+            ProcessorTime = () => TimeSpan.Zero,
+            ProcessorCount = 8,
         };
         Plugin = new OcrPlugin(Parts);
     }

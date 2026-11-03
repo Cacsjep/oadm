@@ -241,6 +241,7 @@ internal sealed partial class ReaderRuntime
 
         var stop = new CancellationTokenSource();
         preview.Site = site;
+        preview.SiteName = camera?.SiteName;
         preview.Problem = null;
         preview.Loop = new WatchLoop(reader, stop, Task.Run(
             () => LoopAsync(reader, () => preview.Reader, vote: false, (_, reading) => KeepPreview(preview, reading), slot: null, stop.Token),
@@ -331,6 +332,8 @@ internal sealed partial class ReaderRuntime
         public WatchLoop? Loop { get; set; }
 
         public Guid? Site { get; set; }
+
+        public string? SiteName { get; set; }
 
         public string? Problem { get; set; }
     }

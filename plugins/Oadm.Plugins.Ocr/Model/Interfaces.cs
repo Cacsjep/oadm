@@ -100,6 +100,23 @@ public interface IEngineInfo : IRecognizerCapabilities
     void SetUseGpu(bool useGpu);
 }
 
+/// <summary>
+/// Optional next to <see cref="ITextRecognizer"/>: how busy the recognition is (docs/spec/ocr.md "Runtime stats"). The load
+/// over a window is the growth of <see cref="BusyTime"/> divided by the window times <see cref="Capacity"/>; 100 % means no
+/// more model calls fit.
+/// </summary>
+public interface IRecognizerLoad
+{
+    /// <summary>The time all model calls held their worker since the start (a running sum).</summary>
+    TimeSpan BusyTime { get; }
+
+    /// <summary>
+    /// Model calls that run at once now: the CPU workers (<see cref="OcrLimits.Workers"/>), 1 on a graphics card (its calls
+    /// run one at a time on one shared set).
+    /// </summary>
+    int Capacity { get; }
+}
+
 /// <summary>Cuts the picture of a found value out of a frame for the page. Optional.</summary>
 public interface IPictureCutter
 {

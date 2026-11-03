@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Ocr.Readers;
 public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> Details, ReadOnlyMemory<byte> Jpeg);
 
 /// <summary>Turns one picture into a reading: recognition per area, then the area's value from its lines.</summary>
-internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, IPictureCutter? cutter, TimeProvider time)
+internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, IPictureCutter? cutter, TimeProvider time, ReaderStats? stats = null)
 {
     /// <summary>Reads <paramref name="jpeg"/> with the areas of <paramref name="reader"/>.</summary>
     public async Task<ReaderReading> ReadAsync(Reader reader, ReadOnlyMemory<byte> jpeg, CancellationToken ct)
@@ -24,7 +24,9 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             return new ReaderReading(new Reading { ReaderId = reader.Id, Time = taken, Resolution = reader.Resolution }, [], jpeg);
         }
 
+        var started = time.GetTimestamp();
         var picture = await recognizer.ReadAsync(jpeg, areas, ct).ConfigureAwait(false);
+        stats?.CountPicture(time.GetElapsedTime(started));
         var results = new List<AreaResult>(areas.Count);
         var details = new List<AreaDetails>(areas.Count);
         for (var i = 0; i < areas.Count; i++)

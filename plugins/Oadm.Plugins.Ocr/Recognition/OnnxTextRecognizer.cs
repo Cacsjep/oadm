@@ -15,6 +15,9 @@ public sealed record OcrEngineOptions
     /// <summary>The page's "Use the graphics card" (on by default); off forces the CPU.</summary>
     public bool UseGraphicsCard { get; init; } = true;
 
+    /// <summary>The clock of the load measurement (tests pass a fake one).</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
     /// <summary>The processor count the worker limit is computed from (<see cref="Environment.ProcessorCount"/>).</summary>
     public int ProcessorCount { get; init; } = Environment.ProcessorCount;
 
@@ -36,7 +39,7 @@ public sealed record OcrEngineOptions
 /// idle server reads the tiles of one picture at once; on a graphics card one shared set whose model calls run one at a
 /// time, the lines of all waiting pictures read together. At most <see cref="OcrLimits.Workers"/> pictures are in work at once.
 /// </summary>
-public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IDisposable
+public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IRecognizerLoad, IDisposable
 {
 
     /// <summary>The tile size for large areas.</summary>
@@ -75,6 +78,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly LineBatcher? _gpuLines;
     private readonly RecognitionDevice _cpuDevice;
     private readonly RecognitionDevice? _gpuDevice;
+    private readonly BusyMeter _busy;
     private volatile bool _useGpu = true;
     private bool _disposed;
 
@@ -84,13 +88,15 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         _logger = logger ?? NullLogger.Instance;
         Workers = OcrLimits.Workers(options.ProcessorCount);
         _pictures = new SemaphoreSlim(Workers, Workers);
+        _busy = new BusyMeter(options.Time);
         var folder = options.ModelDirectory;
         _cpuCharacters = CharacterList.Load(Path.Combine(folder, options.CpuModels.Characters));
         _accurateCharacters = CharacterList.Load(Path.Combine(folder, options.AccurateModels.Characters));
         _cpu = new CpuWorkers<ModelSet>(
             Workers,
             Math.Min(Workers, MaxAccurateCpuSets),
-            accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker));
+            accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker),
+            _busy);
 
         var gpu = options.UseGraphicsCard
             ? SessionFactory.TryGraphicsCard(Path.Combine(folder, ModelFiles.DetectionMobile), _logger)
@@ -99,7 +105,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         {
             try
             {
-                _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker);
+                _gpuSet = new ModelSet(folder, options.AccurateModels, target, OcrLimits.ThreadsPerWorker, _busy);
                 _gpuLines = new LineBatcher(_gpuSet.RecognizeAsync);
                 _gpuDevice = new RecognitionDevice(true, SessionFactory.GraphicsCardName(target));
             }
@@ -146,6 +152,12 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         _useGpu = useGpu;
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
+
+    /// <summary>The time all model calls held their worker (the CPU's slots, the graphics card's one at a time).</summary>
+    public TimeSpan BusyTime => _busy.Busy;
+
+    /// <summary>Model calls at once now: the CPU workers, 1 on a graphics card (its calls run one at a time).</summary>
+    public int Capacity => OnGpu ? 1 : Workers;
 
     /// <summary>CPU workers: model calls at once (<see cref="OcrLimits.Workers"/>), and pictures in work at once.</summary>
     public int Workers { get; }

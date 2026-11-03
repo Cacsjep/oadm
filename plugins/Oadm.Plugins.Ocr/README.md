@@ -21,6 +21,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | Graphics card | DirectML on Windows x64, CUDA on Linux x64 when a test reading passes, else the CPU (one log line). "Use the graphics card" is a plugin setting, server-wide (all devices only), applied at run time. |
 | Limits | 50 readers, 20 watching on the CPU (50 on a graphics card), 4 watching per site; 8 areas per reader; 1, 2 or 4 frames per second (also 8, 12, 15 on a graphics card); 8 page previews, their own streams counted with the watching readers. |
 | Page | Readers, the host's live video of the reader's camera with the areas and lines drawn over it (`ReadingPicture`: draw, select, move, resize, nudge; `AreaGeometry` keeps areas inside the picture), the settings column. No Read now: the shown reader is read live as a preview (the draft, saved or not, no events, a 30 s lease kept alive every 10 s). |
+| Runtime stats | `Readers/ReaderStats`: counters per picture and per watching reader, a sample every 2 s, figures over 10 s; load = busy time of the model calls (`BusyMeter`) / (window x capacity: the CPU workers, 1 on a graphics card); server CPU from `Environment.CpuUsage`. `getStats` keeps the live topic `stats` on for the caller's scope for 30 s. |
 | Models | Never in git: downloaded at build into a checked cache (`Models/README.md`); missing `Models/` in the plugin folder means "Text recognition is not installed completely. Install the add-on again." |
 
 ## How it works
@@ -32,6 +33,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Readers/ReaderParts.cs` | The parts; `ReaderParts.Real` builds the installed ones from the context |
 | `Readers/ReaderRuntime.cs` | Watching loops, single readings, the last reading per reader, the limits per server and site |
 | `Readers/ReaderRuntime.Previews.cs` | The page's previews: the draft read live without events, its own stream or a watching reader's, the 30 s lease, 8 at most |
+| `Readers/ReaderStats.cs`, `ReaderRuntime.Stats.cs` | The runtime stats: the samples, the traffic light, each scope's view and the live event |
 | `Readers/AreaWatch.cs` | One area of a watching reader over `FrameVote` |
 | `Readers/ReaderStore.cs`, `ReaderRules.cs` | Stored readers (plugin records, collection `readers`, with the owner scope), checks and texts |
 | `Recognition/OnnxTextRecognizer.cs` | Decode, tiles, text finder, boxes, straighten, angle, read, format decoding; CPU workers and the graphics card |
@@ -52,12 +54,14 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `stopPreview` | show | Ends a preview of the caller's scope |
 | `getPreview` | show | The preview's last reading with cut-outs, no picture |
 | `getReading` | show | The last reading with picture and cut-outs |
+| `getStats` | show | The runtime stats of the caller's readers and the server-wide load; keeps the live topic `stats` on for 30 s |
 | `getEngine` | show | `{runsOn, gpuAvailable, useGpu, fpsChoices}` |
 | `setUseGpu` | change, all devices | Use the graphics card, audited |
 | `getCameraOptions` | show | Video sources and sizes of a camera of the caller, kept 10 minutes |
 
 Events to the page: `readers` (the list after a change), `reading` (each reading without cut-outs), `preview` (each
-reading of a preview, with its id, without cut-outs). They go to users with
+reading of a preview, with its id, without cut-outs), `stats` (the runtime stats every 2 s while a page of the scope asked
+within 30 s). They go to users with
 all devices and to the reader's owner scope (a preview: the scope that started it).
 
 ## Tests

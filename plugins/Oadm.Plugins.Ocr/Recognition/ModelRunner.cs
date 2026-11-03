@@ -37,14 +37,17 @@ internal sealed class CpuWorkers<TSet> : IDisposable
     private readonly SemaphoreSlim _slots;
     private readonly SemaphoreSlim _accurate;
     private readonly Func<bool, TSet> _create;
+    private readonly BusyMeter? _busy;
     private readonly ConcurrentBag<TSet> _idle = [];
     private readonly ConcurrentBag<TSet> _idleAccurate = [];
 
     /// <param name="slots">Model calls at once.</param>
     /// <param name="accurateSets">Calls with the accurate (large) models at once, within <paramref name="slots"/>.</param>
     /// <param name="create">Makes a session set: the accurate models when true.</param>
-    public CpuWorkers(int slots, int accurateSets, Func<bool, TSet> create)
+    /// <param name="busy">Counts the time each call holds its slot (the recognition load); null: not measured.</param>
+    public CpuWorkers(int slots, int accurateSets, Func<bool, TSet> create, BusyMeter? busy = null)
     {
+        _busy = busy;
         _slots = new SemaphoreSlim(slots, slots);
         _accurate = new SemaphoreSlim(accurateSets, accurateSets);
         _create = create;
@@ -79,7 +82,15 @@ internal sealed class CpuWorkers<TSet> : IDisposable
 
                 // Off the caller's thread: the model call blocks its thread for the length of the call.
                 var taken = set;
-                return await Task.Run(() => work(taken), ct).ConfigureAwait(false);
+                var started = _busy?.Start() ?? 0;
+                try
+                {
+                    return await Task.Run(() => work(taken), ct).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _busy?.Stop(started);
+                }
             }
             finally
             {

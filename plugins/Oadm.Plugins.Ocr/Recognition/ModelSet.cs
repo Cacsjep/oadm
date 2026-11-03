@@ -47,9 +47,13 @@ internal sealed class ModelSet : IDisposable
     private readonly ShapeSessions _recognition;
     private readonly ShapeSessions _orientation;
     private readonly SemaphoreSlim? _serial;
+    private readonly BusyMeter? _busy;
 
-    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads)
+    /// <param name="busy">On a graphics card: counts the time each call holds the card (the recognition load); the CPU's
+    /// sets are measured by their worker slots.</param>
+    public ModelSet(string folder, ModelChoice choice, ExecutionTarget target, int threads, BusyMeter? busy = null)
     {
+        _busy = target == ExecutionTarget.Cpu ? null : busy;
         Target = target;
         Characters = CharacterList.Load(Path.Combine(folder, choice.Characters));
         _detection = new ShapeSessions(Path.Combine(folder, choice.Detection), target, threads);
@@ -153,12 +157,14 @@ internal sealed class ModelSet : IDisposable
         }
 
         await _serial.WaitAsync(ct).ConfigureAwait(false);
+        var started = _busy?.Start() ?? 0;
         try
         {
             return run();
         }
         finally
         {
+            _busy?.Stop(started);
             _serial.Release();
         }
     }

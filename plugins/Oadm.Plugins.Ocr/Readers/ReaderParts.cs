@@ -31,6 +31,12 @@ public sealed class ReaderParts
     /// <summary>The clock of the readings' times and of the frame source.</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
 
+    /// <summary>The OADM server process's CPU time so far (the runtime stats' server CPU; cross-platform).</summary>
+    public Func<TimeSpan> ProcessorTime { get; init; } = static () => Environment.CpuUsage.TotalTime;
+
+    /// <summary>The processor count the server CPU share is computed with.</summary>
+    public int ProcessorCount { get; init; } = Environment.ProcessorCount;
+
     /// <summary>
     /// The parts of the installed plugin: the cameras' pictures through VAPIX (<see cref="VapixFrameSource"/> with the
     /// plugin's full device access, the readers work without a user's call), the ONNX recognition with the models of the
@@ -44,7 +50,7 @@ public sealed class ReaderParts
         {
             Frames = ctx => new VapixFrameSource(ctx.System.Vapix, clock, ctx.Logger),
             Recognizer = ctx => ctx.PluginDirectory is { } folder && Directory.Exists(ModelFiles.Folder(folder))
-                ? new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = ModelFiles.Folder(folder) }, ctx.Logger)
+                ? new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = ModelFiles.Folder(folder), Time = clock }, ctx.Logger)
                 : LogNotInstalled(ctx.Logger),
             Matcher = new TextMatcher(),
             Cutter = new PictureCutter(),
