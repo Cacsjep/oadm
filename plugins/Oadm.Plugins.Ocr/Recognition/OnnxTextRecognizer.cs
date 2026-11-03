@@ -268,31 +268,31 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
             StageClock.Add(Stage.CutLines, cutStart);
 
-            // Upside down lines (a receipt laid the other way round): the angle model names the candidates; each candidate is
-            // read both ways and the reading the reader is surer of wins (the angle model alone turns some coloured print).
-            var turnedOf = new int[lineBitmaps.Count];
-            Array.Fill(turnedOf, -1);
             var own = lineBitmaps.Count;
-            if (own > 0)
+            var scores = own == 0 ? [] : await set.RecognizeAsync(lineBitmaps, ct).ConfigureAwait(false);
+
+            // Upside down lines (a receipt laid the other way round): the angle model names the candidates among the lines not
+            // read surely upright; each candidate is read turned too and the reading the reader is surer of wins (the angle
+            // model alone turns some coloured print).
+            var unsure = Enumerable.Range(0, own).Where(i => !SurelyUpright(scores[i], set.Characters)).ToList();
+            if (unsure.Count > 0)
             {
-                var upsideDown = await set.UpsideDownAsync(lineBitmaps, ct).ConfigureAwait(false);
-                for (var i = 0; i < own; i++)
+                var upsideDown = await set.UpsideDownAsync([.. unsure.Select(i => lineBitmaps[i])], ct).ConfigureAwait(false);
+                var candidates = unsure.Where((_, k) => upsideDown[k] >= UpsideDownCandidate).ToList();
+                if (candidates.Count > 0)
                 {
-                    if (upsideDown[i] >= UpsideDownCandidate)
+                    var turned = candidates.Select(i => Turn180(lineBitmaps[i])).ToList();
+                    lineBitmaps.AddRange(turned);
+                    var turnedScores = await set.RecognizeAsync(turned, ct).ConfigureAwait(false);
+                    for (var k = 0; k < candidates.Count; k++)
                     {
-                        turnedOf[i] = lineBitmaps.Count;
-                        lineBitmaps.Add(Turn180(lineBitmaps[i]));
+                        var i = candidates[k];
+                        if (Sureness(turnedScores[k], set.Characters) > Sureness(scores[i], set.Characters))
+                        {
+                            scores[i] = turnedScores[k];
+                        }
                     }
                 }
-            }
-
-            var allScores = lineBitmaps.Count == 0 ? [] : await set.RecognizeAsync(lineBitmaps, ct).ConfigureAwait(false);
-            var scores = new LineScores[own];
-            for (var i = 0; i < own; i++)
-            {
-                scores[i] = turnedOf[i] >= 0 && Sureness(allScores[turnedOf[i]], set.Characters) > Sureness(allScores[i], set.Characters)
-                    ? allScores[turnedOf[i]]
-                    : allScores[i];
             }
 
             var perArea = new List<RecognizedLine>[areas.Count];
@@ -545,6 +545,39 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var line = picture.Render(matrix, outW, ModelSet.LineHeight, Math.Min(scale, scaleX), SKColors.Black);
         Levels.Stretch(line, Levels.LineContrast);
         return line;
+    }
+
+    /// <summary>Characters that read as another plausible character upside down (6 and 9, n and u, digits that look like letters).</summary>
+    private const string Turnable = "0123456789HINOSXZMWnuoszxlpdbqhy-.,:;/'\" ";
+
+    /// <summary>
+    /// True when a line is read surely the right way up, so the angle model is not needed: at least 3 characters, every one
+    /// at least 90 % likely, and at least 2 of them letters that turned upside down read as nothing plausible (a line of digits
+    /// such as a meter always asks the angle model).
+    /// </summary>
+    internal static bool SurelyUpright(LineScores scores, CharacterList characters)
+    {
+        var chars = CtcDecoder.Greedy(scores, characters);
+        if (chars.Count < 3)
+        {
+            return false;
+        }
+
+        var telling = 0;
+        foreach (var c in chars)
+        {
+            if (c.Probability < 0.9f)
+            {
+                return false;
+            }
+
+            if (c.Text.Length == 1 && char.IsLetter(c.Text[0]) && !Turnable.Contains(c.Text[0], StringComparison.Ordinal))
+            {
+                telling++;
+            }
+        }
+
+        return telling >= 2;
     }
 
     /// <summary>How sure the reader is of a line: the mean probability of its characters, less for fewer than 3 characters.</summary>
