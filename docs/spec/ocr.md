@@ -22,8 +22,11 @@ that better (the docs say so).
    that made them (`docs/spec/device-scope.md`).
 4. **Bounded load.** Recognition runs on the CPU in at most `max(1, cores / 2)` workers at once, each with at most 2
    threads, so OADM stays responsive. Per reader one frame at a time: the newest frame wins, older ones are dropped,
-   never queued. At most 50 readers per server, at most 20 of them watching.
-5. **No GPU, nothing downloaded at run time.** ONNX Runtime (CPU) and the models come with the add-on.
+   never queued. At most 50 readers per server, at most 20 of them watching on the CPU, 50 on a GPU.
+5. **GPU when there is one, the CPU always works.** ONNX Runtime and the models come with the add-on; nothing is
+   downloaded at run time. A missing or failing GPU falls back to the CPU (one log line); the page says what reads.
+6. **Measured accuracy.** Every change to reading keeps or raises the accuracy on the recorded test set ("Accuracy"
+   below); a test fails when it drops.
 
 ## Readers
 
@@ -100,7 +103,7 @@ Per area: **Any text** (default) or **Format**.
   Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading;
   empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
   of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence).
-- **Watching** publishes an area's event only when its value changes, and only once the same value was read in 2 frames
+- **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
   in a row (no flicker between two readings of one picture). An area that becomes empty publishes once with Text empty.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On demand or Watching). Reads one picture now and
   publishes every area's event, changed or not. A reading already running for that reader: the action ends "Already
@@ -124,25 +127,65 @@ Per area: **Any text** (default) or **Format**.
 - **Change text readers**: New, Delete, Save, Read now.
 - Running the action is part of the event rules' own permissions.
 
+## Accuracy
+
+The goal is to read better than the commercial readers (VAXTOR Generic Reader as the benchmark): the right value more
+often, from worse pictures, and never a wrong value reported as sure.
+
+- **Format-guided reading**: with a format, the recognition's character choice is limited per position (digits where
+  `#`, letters where `A`) while decoding, not fixed afterwards; the look-alike table stays as a last step. A check
+  digit is checked where the format has one (ISO 6346 for container numbers: a format starting `AAAU` checks its last
+  digit; a wrong check digit is no match).
+- **Several frames vote** (Watching): per area the last 5 readings are combined character by character, weighted by
+  confidence; the value is published once it holds: the vote must give the same value in 2 frames in a row.
+  A single bad frame (motion blur, a hand in front) changes nothing.
+- **Small text is enlarged** before reading: a line lower than 24 px is scaled up (bicubic) to the model's 48 px; lines
+  below 10 px are left out with "Text too small. Draw a smaller area or choose a higher resolution." on the page.
+- **Two model sizes**: the PP-OCRv5 mobile models on the CPU, the PP-OCRv5 server models (more accurate, slower) on a
+  GPU. A reader can force the accurate models on the CPU ("Accurate", slower).
+- **Confidence that means something**: the area's confidence is the lowest character probability of its value, not the
+  mean; rules can require "Confidence greater than 90".
+- **Test set and score**: `tests/Oadm.Plugins.Ocr.Tests/Fixtures/AccuracySet` holds recorded pictures (development
+  cameras, read only; the box on 10.0.0.48; receipts, labels, signs, meters, container numbers printed and filmed; day,
+  dim, slanted, blurred) with the expected value of each area. A test reads them all and writes exact-value rate and
+  character error rate per group to the test output; the build plan's measurement sets the baseline, a drop fails the
+  test. Target: at least 98 % exact values with a format, at least 95 % without.
+
+## GPU
+
+| Server | Runs on | Needs |
+|---|---|---|
+| Windows x64 | DirectML (any graphics card: NVIDIA, AMD, Intel) | nothing; DirectML comes with the add-on |
+| Linux x64 with NVIDIA | CUDA | the NVIDIA driver and the CUDA 12 and cuDNN 9 runtime on the server (the docs say how); without them the CPU |
+| Linux arm64, macOS x64 | CPU | nothing |
+
+- The plugin picks at start: GPU when the provider loads and a test reading succeeds, else the CPU. Settings card of the
+  page: "Runs on: NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8 cores)", and **Use the graphics card** (on by default)
+  to force the CPU.
+- On a GPU the readers' work is batched: the lines of all areas of all readers waiting at that moment go through
+  recognition together. Limits on a GPU: frames per second 1, 2, 4, 8 or 15; at most 50 watching readers.
+- Speed targets (measured at the build on the development PC, RTX 5070 Ti): one Search reader over a full HD picture
+  at 10 frames per second or more on the GPU, at least 1 on the CPU; 20 fixed-place readers at 4 frames per second on
+  the GPU.
+
 ## Packaging and dependencies
 
-- Add-on (`docs/spec/add-ons.md`): one ZIP per server platform with `Microsoft.ML.OnnxRuntime` (CPU, MIT) native library
-  for that platform, SkiaSharp (MIT; Linux: `NativeAssets.Linux.NoDependencies`), the PP-OCRv5 mobile detection, Latin
-  recognition and angle models as ONNX files and the character list (Apache-2.0, in the plugin's notices). About 30 to
-  50 MB per platform. The client part has no native libraries.
-- No OpenCV, no Tesseract, no Python, no GPU libraries.
-- Expected speed (to measure at the build): 100 to 500 ms per area on one worker; one watching reader with 2 areas at
-  1 frame per second is a small part of one core.
+- Add-on (`docs/spec/add-ons.md`): one ZIP per server platform with ONNX Runtime (MIT: `Microsoft.ML.OnnxRuntime.DirectML`
+  on Windows, the GPU build with the CUDA provider on Linux x64, the CPU build elsewhere), SkiaSharp (MIT; Linux:
+  `NativeAssets.Linux.NoDependencies`), the PP-OCRv5 mobile and server detection and Latin recognition models and the
+  angle model as ONNX files with the character list (Apache-2.0, in the plugin's notices). The size is measured at the
+  build (Linux x64 is the largest because of the CUDA provider). The client part has no native libraries.
+- No OpenCV, no Tesseract, no Python; the CUDA runtime is the server's own, never shipped.
 
 ## Tests
 
 - Recognition from recorded camera pictures with known text (`tests/Oadm.Plugins.Ocr.Tests/Fixtures`, recorded read-only
   from the development cameras): lines found, text and order, several lines, a slanted line.
 - Format: the syntax, look-alike fixes by position, a number split over two lines, no match.
-- Watching: a value published only after 2 equal frames and only on change; newest frame wins; a dropped stream reopens
+- Watching: the vote over 5 frames (a single bad frame changes nothing), a value published only when the vote holds in 2 frames and only on change; newest frame wins; a dropped stream reopens
   with the growing pause (`FakeTimeProvider`).
 - The action: one reading, "Already reading", the events of every area.
-- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching; device groups.
+- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, 20 watching on the CPU and 50 on a GPU; GPU fallback to the CPU; the accuracy set and its score; device groups.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
 
 ## Build plan (parallel work)
@@ -164,7 +207,7 @@ event and action ids, the permissions.
 | O1 Recognition | `Recognition/`, `Models/`, its tests and fixtures | ONNX Runtime sessions, JPEG decode and crop (SkiaSharp), detection pre and post (contours in C#), straightening, recognition with CTC, the worker gate | `ITextRecognizer`; fixtures recorded read-only from the development cameras |
 | O2 Matching | `Matching/`, its tests | line order, several lines, the format syntax, look-alike fixes, a number over two lines | `ITextMatcher` (pure C#, no I/O) |
 | O3 Frames | `Frames/`, its tests | MJPEG `multipart/x-mixed-replace` parser, the stream through `ctx.Vapix` (streamed answer), reopening with the growing pause, single picture | `IFrameSource`; a recorded MJPEG answer |
-| O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, 2 equal frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
+| O4 Readers | `Readers/`, `Events/`, `Api/` handlers, its tests | reader store and limits, watching (newest frame wins, the vote over 5 frames, only changes), events, the action Read text, device groups, permissions | fakes of `ITextRecognizer`, `IFrameSource`, `ITextMatcher` |
 | O5 Page | `plugins/Oadm.Plugins.Ocr.Client/`, client tests | reader list, camera choice, picture with areas and lines, Draw area, results, Read now, Save; headless screenshots | the `Api/` payloads with a fake server |
 
 **Wave 3:** the real parts wired in place of the fakes, the add-on ZIP (A4), a measurement of the speed on the

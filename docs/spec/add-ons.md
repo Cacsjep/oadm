@@ -34,9 +34,10 @@ itself stays free of models and inference libraries; no extra installer.
    context while connected (the pages follow as on Turn on), else at the next connect. A removed add-on's client files go
    at the client's next start.
    A client never installs anything on its computer and needs no rights for it.
-7. **No GPU, no own service.** Vision plugins run on the CPU inside the server's plugin; their native libraries (ONNX
-   Runtime) and model files are in the plugin's own folder for the server's platform and load through the plugin's load
-   context (`PluginLoadContext.LoadUnmanagedDll`). Nothing else is downloaded at run time.
+7. **GPU when there is one, the CPU always works, no own service.** Vision plugins run inside the server's plugin; their
+   native libraries (ONNX Runtime with its GPU providers) and model files are in the plugin's own folder for the server's
+   platform and load through the plugin's load context (`PluginLoadContext.LoadUnmanagedDll`). A missing or failing GPU
+   falls back to the CPU with one log line, never an error. Nothing else is downloaded at run time.
 
 ## Release files
 
