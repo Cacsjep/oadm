@@ -485,8 +485,11 @@ triggers**) and no dashboard.
   of them 16 live videos and 20 buttons, and 200 dashboards; colors and icons are theme names; the server checks every rule
   again (`DashboardRules`).
 - Buttons: a Button widget never touches a device and has none; it is one stateless server event per button for the event
-  rules (`IDynamicEventSource`, id `oadm.dashboards.button.<dashboard id>.<widget id>`, name = its label 1..32, folders
-  Dashboards / <dashboard name>, values user, dashboard, button), following every save and delete; a press (`press`)
+  rules (`IDynamicEventSource`, id `oadm.dashboards.button.<dashboard id>.<widget id>`, name = its label 1..32, used once
+  per dashboard ("Another button of this dashboard has this label."), folders
+  Dashboards / <dashboard name> (a device group's: Dashboards / <group name> / <dashboard name>), values user, dashboard,
+  button), following every save and delete; at most 10 presses per user in 10 s ("Too many presses. Wait a moment.", no
+  event, no audit entry); a press (`press`)
   fires it and says "Sent" or "No event rule uses this button." (`IEventPublisher.IsUsedByRule`) over the button, never
   moving it; the audit entry names the button and its dashboard; any widget color, the label white or dark by the
   fill's lightness; sizes Small (default), Medium, Large inside the same tile; no confirmation, no

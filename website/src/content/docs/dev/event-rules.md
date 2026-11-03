@@ -117,12 +117,19 @@ public sealed class OldFirmwareEvents : IEventSource
   event did not send fails, so a state set by `ReplaceStates` alone never passes one.
 - **Devices.** `DeviceIds` on the type lists the devices that can send it now (null: any device); raise `EventTypesChanged`
   when they change. Dashboards offers only these devices for a widget.
+- **Folders.** `Path` (SDK 0.10.0) puts the event in the rule dialog's tree, top first: `["Certificates", "EST server"]`.
+  At most 4 folders, none of them blank; a path that breaks this is dropped (the server logs it) and the event sits in
+  its `Group`. Without a path and without a group the folder is "Other". At the top Devices, Certificates and Sites come
+  first, then the other areas by name.
 - **Fields.** An `EventField` has a name, a label, `Kind` (`EventValueKind`: `Text`, `Number`, `YesNo`; what the value
   holds: the operators of a check in a rule, the widget of a dashboard; without it, `Type` `Number` gives a number) and `Filter` (default true; false = a value only: a placeholder, no
   check in the rule dialog, for counts and names that are only for display).
 - **Cheap when unused.** Calls only queue. `IsWatched(type)` says whether an enabled rule or a subscriber uses the type;
   skip work nobody needs. `IsUsedByRule(type)` (SDK 0.10.0) counts enabled rules only, never subscribers such as
   Dashboards.
+- **Tests.** `Oadm.Sdk.Testing.FakeEventPublisher` records what the source fires and switches (`Published`, `States`);
+  `UseInRule(type)` makes `IsUsedByRule` true, `Watched` sets what `IsWatched` answers. Hand it to the context:
+  `new FakeCoreContext { EventPublisher = new FakeEventPublisher() }`.
 - **Types that change.** A source whose types the user creates (Device triggers) implements `IDynamicEventSource` and
   raises `EventTypesChanged`.
 

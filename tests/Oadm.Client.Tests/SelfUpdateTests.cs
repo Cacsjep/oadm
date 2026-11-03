@@ -591,14 +591,18 @@ public sealed class SelfUpdateTests
         public void Start(string fileName, IReadOnlyList<string> arguments, IReadOnlyDictionary<string, string>? environment = null) => Starts.Enqueue((fileName, arguments));
     }
 
-    private sealed class FakeProbe(params string?[] answers) : IServerVersionProbe
+    private sealed class FakeProbe(params ServerAnswer?[] answers) : IServerVersionProbe
     {
         private int _calls;
 
         public int Calls => Volatile.Read(ref _calls);
 
-        public Task<string?> VersionAsync(Uri server, CancellationToken ct) => Task.FromResult(answers[Math.Min(Interlocked.Increment(ref _calls) - 1, answers.Length - 1)]);
+        public Task<ServerAnswer?> AnswerAsync(Uri server, CancellationToken ct) => Task.FromResult(answers[Math.Min(Interlocked.Increment(ref _calls) - 1, answers.Length - 1)]);
+
+        public async Task<string?> VersionAsync(Uri server, CancellationToken ct) => (await AnswerAsync(server, ct))?.Version;
     }
+
+    private static ServerAnswer Answer(string version, string? updatingTo = null) => new(version, updatingTo);
 
     private static ClientHelperArguments InstallArgs(string installer) =>
         new() { Mode = ClientHelperArguments.Install, Start = @"C:\Program Files\OADM\Client\Oadm.Client.exe", From = "4.8.0", To = "4.9.0", Installer = installer };
@@ -661,11 +665,11 @@ public sealed class SelfUpdateTests
         }
     }
 
-    [Fact]
-    public async Task The_helper_on_the_servers_computer_waits_for_the_new_server_then_starts_the_client()
+    private static async Task<(FakeProbe Probe, FakeProcesses Processes, TimeSpan Waited)> WaitForServerAsync(params ServerAnswer?[] answers)
     {
         var time = new FakeTimeProvider();
-        var probe = new FakeProbe(null, "4.8.0", "4.9.0");
+        var started = time.GetUtcNow();
+        var probe = new FakeProbe(answers);
         var processes = new FakeProcesses();
         var helper = new ClientUpdateHelper(UpdateOs.Windows, Facts(UpdateOs.Windows, "/"), new FakeInstaller(0), probe, processes, time);
         var args = new ClientHelperArguments { Mode = ClientHelperArguments.Wait, Start = "Oadm.Client.exe", From = "4.8.0", To = "4.9.0", Server = "localhost:5080" };
@@ -683,10 +687,71 @@ public sealed class SelfUpdateTests
             },
             "the helper ends");
         await run;
+        return (probe, processes, time.GetUtcNow() - started);
+    }
+
+    [Fact]
+    public async Task The_helper_on_the_servers_computer_waits_for_the_new_server_then_starts_the_client()
+    {
+        var (probe, processes, _) = await WaitForServerAsync(Answer("4.8.0", "4.9.0"), null, Answer("4.9.0"));
 
         Assert.Equal(3, probe.Calls);
         var updated = UpdatedArguments.Parse(Assert.Single(processes.Starts).Args)!;
         Assert.Equal(UpdatedArguments.Server, updated.Kind);
+    }
+
+    [Fact]
+    public async Task An_installer_that_fails_while_the_old_server_runs_brings_the_client_back_at_once()
+    {
+        // The installer found another installation running: the old server never stopped and its update ended.
+        var (probe, processes, _) = await WaitForServerAsync(Answer("4.8.0", "4.9.0"), Answer("4.8.0", "4.9.0"), Answer("4.8.0"));
+
+        Assert.Equal(3, probe.Calls);
+        Assert.Equal(UpdatedArguments.Server, UpdatedArguments.Parse(Assert.Single(processes.Starts).Args)!.Kind);
+    }
+
+    [Fact]
+    public async Task The_old_server_back_after_a_rollback_brings_the_client_back()
+    {
+        var (probe, processes, _) = await WaitForServerAsync(Answer("4.8.0", "4.9.0"), null, null, Answer("4.8.0"));
+
+        Assert.Equal(4, probe.Calls);
+        Assert.Single(processes.Starts);
+    }
+
+    [Fact]
+    public async Task A_server_that_never_updated_brings_the_client_back_after_a_minute()
+    {
+        var (_, processes, waited) = await WaitForServerAsync(Answer("4.8.0"));
+
+        Assert.InRange(waited, ClientUpdateHelper.NoUpdateWait, ClientUpdateHelper.ServerWait - TimeSpan.FromSeconds(1)); // ended before the ten minutes
+        Assert.Single(processes.Starts);
+    }
+
+    [Fact]
+    public async Task A_server_that_stays_silent_brings_the_client_back_after_ten_minutes()
+    {
+        var (_, processes, waited) = await WaitForServerAsync((ServerAnswer?)null);
+
+        Assert.True(waited >= ClientUpdateHelper.ServerWait, $"waited {waited}");
+        Assert.Single(processes.Starts);
+    }
+
+    [Fact]
+    public async Task A_helper_that_fails_still_starts_the_client_with_the_failed_result()
+    {
+        var processes = new FakeProcesses();
+        var helper = new ClientUpdateHelper(UpdateOs.Windows, Facts(UpdateOs.Windows, "/"), new ThrowingInstaller(), new FakeProbe(), processes, new FakeTimeProvider());
+
+        await helper.RunAsync(InstallArgs(Path.Combine(Path.GetTempPath(), "oadm-client-update-tests", "OADM-4.9.0.msi")), CancellationToken.None);
+
+        var updated = UpdatedArguments.Parse(Assert.Single(processes.Starts).Args)!;
+        Assert.Equal((UpdatedArguments.Client, UpdateTexts.HelperStopped), (updated.Kind, updated.Reason));
+    }
+
+    private sealed class ThrowingInstaller : IInstallerRunner
+    {
+        public Task<(int ExitCode, string Output)> RunAsync(InstallerCommand command, CancellationToken ct) => throw new NotSupportedException("unexpected");
     }
 
     [Fact]

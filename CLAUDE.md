@@ -38,7 +38,7 @@ src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects, Layout/TileLayout (tile grid rules). No Avalonia, no EF
   Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice, FakeSettings,
-                       FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext,
+                       FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext, FakeEventPublisher,
                        FakeDeviceScopes, FakeSites, FakeHostRules, FakePluginJobs, FakePluginServices, FakeProtectedTags,
                        FakeStreamProbes, FakeAxisDownloads, PluginCanary, TaskPluginCanaryHost
   Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK

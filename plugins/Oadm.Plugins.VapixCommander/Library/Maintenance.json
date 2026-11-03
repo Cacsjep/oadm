@@ -90,7 +90,7 @@
     },
     {
       "id": "maintenance.firmware.commit",
-      "version": 1,
+      "version": 2,
       "name": "Commit AXIS OS",
       "category": "Maintenance",
       "description": "Commits a newly installed AXIS OS so it is not rolled back automatically.",
@@ -122,7 +122,7 @@
     },
     {
       "id": "maintenance.firmware.rollback",
-      "version": 1,
+      "version": 2,
       "name": "Roll back AXIS OS",
       "category": "Maintenance",
       "description": "Returns to the previously installed AXIS OS. The device restarts.",

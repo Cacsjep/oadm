@@ -67,8 +67,18 @@ public sealed partial class DashboardsPageTests
             Assert.Equal(ButtonSize.Medium, button.Widget.ButtonSize);
             Assert.Equal(0.7, button.ButtonView.Share);
 
+            // Every label once: a new button gets a free label, a taken one shows below the Label field.
+            Assert.True(tab.AddButton());
+            var second = tab.Widgets[1];
+            Assert.Equal(DashboardTexts.NewButton, second.Widget.Name); // "Open gate" took the first one's place
+            tab.Editor!.Name = "open gate";
+            Assert.Equal([DashboardRules.LabelTaken], tab.Editor.GetErrors(nameof(WidgetEditorViewModel.Name)).Cast<string>());
+            Assert.Equal(DashboardTexts.NewButton, second.Widget.Name); // keeps its last good label
+            Assert.True(tab.AddButton());
+            Assert.Equal(DashboardTexts.NewButton + " 2", tab.Widgets[2].Widget.Name);
+
             // 20 buttons at most: the 21st is refused with the reason below the toolbar.
-            for (var i = 1; i < DashboardsPluginInfo.MaxButtons; i++)
+            for (var i = tab.Widgets.Count; i < DashboardsPluginInfo.MaxButtons; i++)
             {
                 Assert.True(tab.AddButton());
             }

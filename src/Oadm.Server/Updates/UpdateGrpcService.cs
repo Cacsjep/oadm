@@ -67,7 +67,7 @@ public sealed class UpdateGrpcService(ServerUpdateCoordinator updates, TaskEngin
             info.Running = running;
         }
 
-        if (updates.Last is { } last)
+        if (await updates.LastAsync(ct).ConfigureAwait(false) is { } last)
         {
             info.Last = ToProto(last);
         }

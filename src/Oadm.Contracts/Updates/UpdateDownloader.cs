@@ -95,9 +95,20 @@ public sealed class UpdateDownloader(IReleaseFeed feed, IDiskSpace disk)
             await using (file.ConfigureAwait(false))
             {
                 var size = Math.Max(asset.Size, 1);
+                var reported = 0; // 0 % went out above: each whole percent goes out once
+                void Report(long bytes)
+                {
+                    var percent = (int)Math.Clamp(bytes * 100 / size, 0, 100);
+                    if (percent != reported)
+                    {
+                        reported = percent;
+                        progress?.Invoke(UpdateStep.Download, percent);
+                    }
+                }
+
                 try
                 {
-                    await feed.DownloadAsync(asset.Url, file, Math.Min(MaxInstallerBytes, asset.Size > 0 ? asset.Size : MaxInstallerBytes), new SyncProgress(bytes => progress?.Invoke(UpdateStep.Download, (int)Math.Clamp(bytes * 100 / size, 0, 100))), ct).ConfigureAwait(false);
+                    await feed.DownloadAsync(asset.Url, file, Math.Min(MaxInstallerBytes, asset.Size > 0 ? asset.Size : MaxInstallerBytes), new SyncProgress(Report), ct).ConfigureAwait(false);
                 }
                 catch (HttpRequestException)
                 {

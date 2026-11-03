@@ -9,7 +9,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light. Update every client: older clients cannot open dashboards with buttons.
+- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light. Update every client: older clients cannot open Dashboards once a dashboard has a button.
 - Plugin SDK 0.10.0.
 - Administrators update the server and their client from inside OADM with Install now.
 - The Sites page says which site nodes are older than the server, with a link to the download page.
@@ -18,6 +18,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Firmware is now called AXIS OS, as Axis names it: Upgrade AXIS OS, the AXIS OS column.
+- The device list export names its Firmware column AXIS OS now; scripts that read the export need the new header.
 - Event rules: events are chosen from a tree with search (Devices, Certificates, Sites), so an event is quick to find.
 - Event rules: the info of Dead time and Max per minute shows a small pulse diagram of what they do, following the number you type.
 

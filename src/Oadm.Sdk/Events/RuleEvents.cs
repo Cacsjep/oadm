@@ -108,7 +108,9 @@ public sealed record EventTypeInfo(
     /// <summary>
     /// Optional (SDK 0.10.0): the folders of the event in the event tree of the rule dialog, top first
     /// (<c>["Certificates", "EST server"]</c>, <c>["Devices", "Any device"]</c>). Null or empty: one folder, <see cref="Group"/>.
-    /// A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there.
+    /// A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there. At most 4
+    /// folders, none blank: the host drops another path (a load error) and uses <see cref="Group"/>; without a path and a
+    /// group the folder is "Other".
     /// </summary>
     public IReadOnlyList<string>? Path { get; init; }
 

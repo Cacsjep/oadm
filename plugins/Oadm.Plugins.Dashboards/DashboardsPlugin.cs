@@ -49,6 +49,9 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     private readonly Dictionary<string, int> _registering = new(StringComparer.Ordinal);
     private readonly HashSet<ValueKey> _watched = [];
 
+    /// <summary>The times of each user's presses within the last <see cref="DashboardsPluginInfo.PressWindow"/>.</summary>
+    private readonly Dictionary<string, Queue<DateTimeOffset>> _presses = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary><see cref="_watched"/> by device: a device's status event marks only its own keys (no walk over every key).</summary>
     private readonly Dictionary<Guid, List<ValueKey>> _watchedByDevice = [];
     private readonly HashSet<ValueKey> _dirty = [];
@@ -58,6 +61,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     private Dictionary<string, SubscribedEventType>? _types;
     private ICorePluginContext? _ctx;
     private IEventSubscriptions? _subscriptions;
+    private IDeviceScopes? _scopes;
     private IDisposable? _subscription;
     private ITimer? _timer;
 
@@ -164,6 +168,12 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         }
 
         _reaches = new ViewerScopes(ctx.DeviceScopes, _time);
+        _scopes = ctx.DeviceScopes;
+        if (_scopes is not null)
+        {
+            _scopes.Changed += OnScopeChanged;
+        }
+
         _subscriptions = ctx.EventSubscriptions;
         if (_subscriptions is not null)
         {
@@ -193,6 +203,12 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         _subscription?.Dispose();
         _subscription = null;
         _reaches?.Dispose();
+        if (_scopes is not null)
+        {
+            _scopes.Changed -= OnScopeChanged;
+            _scopes = null;
+        }
+
         _reaches = null;
         if (_subscriptions is not null)
         {
@@ -493,6 +509,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             throw new InvalidOperationException(DashboardRules.NoEventRules);
         }
 
+        if (!TryPress(caller.UserName))
+        {
+            throw new InvalidOperationException(DashboardRules.TooManyPresses); // no event, no audit entry
+        }
+
         var typeId = DashboardsPluginInfo.ButtonTypeId(dashboard.Id, button.Id);
         publisher.Fire(typeId, null, new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -506,18 +527,28 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
 
     /// <summary>
     /// The event types of the buttons: one stateless server event per Button widget, named by its label, in the folders
-    /// Dashboards / &lt;dashboard name&gt;, owned by the dashboard's owner.
+    /// Dashboards / &lt;dashboard name&gt;, owned by the dashboard's owner. A dashboard of a device group lies in
+    /// Dashboards / &lt;group name&gt; / &lt;dashboard name&gt; (names are unique per owner only); <paramref name="groupName"/>
+    /// names a group's scope key, null for a group it does not know.
     /// </summary>
-    internal static List<EventTypeInfo> ButtonTypesOf(IEnumerable<Dashboard> dashboards) =>
+    internal static List<EventTypeInfo> ButtonTypesOf(IEnumerable<Dashboard> dashboards, Func<string, string?>? groupName = null) =>
     [
         .. dashboards.SelectMany(d => d.Widgets.Where(w => w.IsButton).Select(w =>
             new EventTypeInfo(DashboardsPluginInfo.ButtonTypeId(d.Id, w.Id), w.Name, DashboardsPluginInfo.ButtonGroup, EventKind.Stateless, EventScope.Server, ButtonFields)
             {
                 Description = "Someone pressed this button on the dashboard.",
-                Path = [DashboardsPluginInfo.ButtonGroup, d.Name],
+                Path = FoldersOf(d, groupName),
                 OwnerScopeKey = OwnerScope.Of(d.Owner),
             })),
     ];
+
+    private static IReadOnlyList<string> FoldersOf(Dashboard dashboard, Func<string, string?>? groupName)
+    {
+        var owner = OwnerScope.Of(dashboard.Owner);
+        return owner != ICallContext.AllDevicesScopeKey && groupName?.Invoke(owner) is { Length: > 0 } group
+            ? [DashboardsPluginInfo.ButtonGroup, group, dashboard.Name]
+            : [DashboardsPluginInfo.ButtonGroup, dashboard.Name];
+    }
 
     private static readonly IReadOnlyList<EventField> ButtonFields =
     [
@@ -526,10 +557,70 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         new(DashboardsPluginInfo.ButtonField, "Button") { Filter = false },
     ];
 
+    /// <summary>
+    /// Counts a press of <paramref name="user"/>; false (nothing counted) when the user pressed
+    /// <see cref="DashboardsPluginInfo.MaxPresses"/> times within the last <see cref="DashboardsPluginInfo.PressWindow"/>.
+    /// </summary>
+    private bool TryPress(string user)
+    {
+        var now = _time.GetUtcNow();
+        lock (_gate)
+        {
+            if (!_presses.TryGetValue(user, out var times))
+            {
+                _presses[user] = times = new Queue<DateTimeOffset>();
+            }
+
+            while (times.Count > 0 && now - times.Peek() >= DashboardsPluginInfo.PressWindow)
+            {
+                times.Dequeue();
+            }
+
+            if (times.Count >= DashboardsPluginInfo.MaxPresses)
+            {
+                return false;
+            }
+
+            times.Enqueue(now);
+            return true;
+        }
+    }
+
+    /// <summary>The name of a device group (a folder of its dashboards' buttons); null without the host's groups.</summary>
+    private string? GroupName(string scopeKey) => _ctx?.DeviceScopes?.NameOf(scopeKey);
+
+    /// <summary>A group changed (renamed, deleted): its buttons' folders follow.</summary>
+    private void OnScopeChanged(object? sender, string scopeKey) => _ = RefreshButtonTypesAsync();
+
+    private async Task RefreshButtonTypesAsync()
+    {
+        try
+        {
+            await _storeGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                if (_ctx is not null)
+                {
+                    SetButtonTypes(await LoadAsync(CancellationToken.None).ConfigureAwait(false), always: false);
+                }
+            }
+            finally
+            {
+                _storeGate.Release();
+            }
+        }
+#pragma warning disable CA1031 // A refresh that fails leaves the folders as they were; the next save sets them.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            // The plugin stopped meanwhile, or the settings cannot be read now.
+        }
+    }
+
     /// <summary>The buttons' types follow the stored dashboards; the host is told when a button came, went or was renamed.</summary>
     private void SetButtonTypes(IEnumerable<Dashboard> dashboards, bool always)
     {
-        var next = ButtonTypesOf(dashboards);
+        var next = ButtonTypesOf(dashboards, GroupName);
         var before = Volatile.Read(ref _buttonTypes);
         var same = next.Count == before.Count && next.Zip(before).All(p => p.First.Id == p.Second.Id && p.First.DisplayName == p.Second.DisplayName
             && p.First.Folders.SequenceEqual(p.Second.Folders) && p.First.OwnerScopeKey == p.Second.OwnerScopeKey);

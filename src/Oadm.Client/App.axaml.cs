@@ -76,7 +76,18 @@ public partial class App : Application
             catch (Exception ex)
 #pragma warning restore CA1031
             {
+                // Even the helper's own start of the client failed: one more try, so the user is never left with nothing.
                 Serilog.Log.Error(ex, "The update helper failed");
+                try
+                {
+                    new Contracts.Updates.SystemProcessLauncher().Start(helper.Start, Updates.ClientUpdateHelper.Stopped(helper).ToList());
+                }
+#pragma warning disable CA1031 // Nothing more the helper can do; the log says why.
+                catch (Exception again)
+#pragma warning restore CA1031
+                {
+                    Serilog.Log.Error(again, "The update helper could not start the client");
+                }
             }
             finally
             {

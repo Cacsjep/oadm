@@ -39,6 +39,17 @@ public sealed class FakeDeviceScopes : IDeviceScopes
         return key;
     }
 
+    /// <summary>Renames a group (its devices stay) and raises <see cref="Changed"/>.</summary>
+    public void Rename(string key, string name)
+    {
+        lock (_groups)
+        {
+            _groups[key] = (name, _groups[key].Devices);
+        }
+
+        Changed?.Invoke(this, key);
+    }
+
     /// <summary>Deletes a group and raises <see cref="Changed"/>.</summary>
     public void Delete(string key)
     {

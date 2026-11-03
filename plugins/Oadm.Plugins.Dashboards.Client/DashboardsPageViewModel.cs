@@ -509,7 +509,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         }
     }
 
-    internal WidgetEditorViewModel CreateEditor(DashboardTab tab, WidgetViewModel widget) => new(this, widget);
+    internal WidgetEditorViewModel CreateEditor(DashboardTab tab, WidgetViewModel widget) => new(this, widget, tab.WidgetList);
 
     /// <summary>The panel changed a widget: Save follows its errors.</summary>
     internal void EditorChanged() => SaveDashboardCommand.NotifyCanExecuteChanged();

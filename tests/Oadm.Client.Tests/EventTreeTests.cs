@@ -48,11 +48,29 @@ public sealed class EventTreeTests(ITestOutputHelper output)
             "v Certificates",
             "  > Any device",
             "  > EST server",
-            "v Image Health",
-            "  - Older plugin event",
             "v Sites",
             "  - Site offline: Yard",
+            "v Image Health",
+            "  - Older plugin event",
         ], Lines(tree));
+    }
+
+    [Fact]
+    public void The_area_names_rank_only_at_their_level()
+    {
+        var tree = new EventTree(
+        [
+            Event("1", "Open", "Dashboards", "Dashboards", "Sites"),
+            Event("2", "Close", "Dashboards", "Dashboards", "Devices"),
+            Event("3", "Stop", "Dashboards", "Dashboards", "Any device"),
+            Event("4", "Ring", "Dashboards", "Dashboards", "Certificates"),
+            Event("5", "Alarm", "Alarms", "Alarms"),
+            Event("6", "Device unreachable", "Device status", "Devices", "Selected devices"),
+        ]);
+
+        Assert.Equal(
+            ["v Devices", "  > Selected devices", "v Alarms", "  - Alarm", "v Dashboards", "  > Any device", "  > Certificates", "  > Devices", "  > Sites"],
+            Lines(tree));
     }
 
     [Fact]

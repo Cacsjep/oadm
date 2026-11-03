@@ -51,6 +51,7 @@ message AuthStatus {
   string version = 2;
   bool needs_first_admin = 3;     // no user exists yet
   bool setup_code_required = 4;   // this client is not on the server computer: CreateFirstAdmin needs the setup code
+  string updating_to = 5;         // from Install now until the update's result: the version the server updates to ("4.9.0"); empty otherwise
 }
 
 message LoginRequest {

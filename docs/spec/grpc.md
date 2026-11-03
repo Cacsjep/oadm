@@ -18,7 +18,7 @@ used again.
 
 ## Services
 
-- **`AuthService`** (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `setup_code_required` when the
+- **`AuthService`** (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `updating_to` from Install now until the update's result, `setup_code_required` when the
   caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for wrong
   password, unknown and disabled user; RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password, setup_code,
   remember)` (FAILED_PRECONDITION users exist, PERMISSION_DENIED setup code, INVALID_ARGUMENT), `Logout` (revokes the

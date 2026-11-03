@@ -182,7 +182,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     outside device (`plugins/README.md` "Call context"). Tests: `tests/Oadm.Core.Tests/Plugins/PluginCallContextTests`,
     `HostDeviceScopesTests`, `PluginEventAudienceTests`, `TaskQueryCallTests`, `PluginCanaryTests`,
     `tests/Oadm.Server.Tests/DeviceGroups/PluginServiceGroupTests`, `tests/Oadm.Plugins.EdgeStorage.Tests/DeviceSweepsTests`.
-- Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource`
+- Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource`; an event's
+  folders (`EventTypeInfo.Path`, SDK 0.10.0) are at most 4 (`PluginRegistry.MaxEventFolders`), none blank, else the path
+  is dropped with a load error and the group is the folder; no path and no group: "Other". Tests:
+  `Oadm.Sdk.Testing.FakeEventPublisher` (`FakeCoreContext.EventPublisher`, `UseInRule` for `IsUsedByRule`)
   (`docs/spec/event-rules.md`).
 - Compliance: `IComplianceCheckType` (standalone in a `*.Server.dll`, or through `IComplianceSource` of a core plugin),
   `IComplianceContext` with shared `Reads`, `ComplianceResult`; `ActionField.File` and `ChoicesFromDevice` for its
@@ -325,11 +328,13 @@ for server reports.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.9.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.9.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.10.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.10.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
-  packages keep their own `plugin.json`: 0.4.0, and 0.5.0 for one that uses a 0.5.0 member (Upgrade AXIS OS:
-  `ShowForDevicesAsync`).
+  packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
+  (0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Dashboards `EventTypeInfo.Path`, `IEventPublisher.IsUsedByRule`,
+  `ICorePlugin.AuditDetail`, Device triggers and PKI `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
+  compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
   button (toolbars have no filled buttons); `IPluginEvents.Publish(topic, payload)` without an audience reaches only

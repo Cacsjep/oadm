@@ -27,6 +27,7 @@ public static class UpdateTexts
     public const string TooBig = "The installer is larger than 400 MB. It was deleted.";
     public const string NoChecksum = "The release lists no checksum for the installer. Nothing was downloaded.";
     public const string HelperFailed = "The update could not start the installer.";
+    public const string HelperStopped = "The update stopped before it finished.";
 
     /// <summary>"3 tasks are running" (Install now's tooltip and the refusal).</summary>
     public static string TasksRunning(int count) => count == 1 ? "1 task is running" : $"{count:N0} tasks are running";

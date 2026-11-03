@@ -108,6 +108,21 @@ public sealed class PluginServiceGroupTests
     }
 
     [Fact]
+    public async Task ATaskAPluginStartsWhileTheServerUpdatesIsRefusedWithTheUpdateText()
+    {
+        await using var canary = await CanaryTests.Canary.StartAsync();
+        await CanaryPlugin.EnsureAsync(canary);
+        var held = Contracts.Updates.UpdateTexts.Updating("4.9.0") + ". Try again after the update.";
+        canary.Host.Get<Core.Tasks.TaskEngine>().HoldStarts(held);
+
+        var refused = await Assert.ThrowsAsync<RpcException>(() => canary.Host.Plugins.InvokeAsync(Request(CanaryPlugin.Id, "task.run", canary.Inside.ToString())).ResponseAsync);
+
+        Assert.Equal((StatusCode.FailedPrecondition, "Updating the server to V4.9.0. Try again after the update."), (refused.StatusCode, refused.Status.Detail));
+        canary.Host.Get<Core.Tasks.TaskEngine>().ResumeStarts();
+        Assert.Equal("1", (await canary.Host.Plugins.InvokeAsync(Request(CanaryPlugin.Id, "task.run", canary.Inside.ToString()))).PayloadJson);
+    }
+
+    [Fact]
     public async Task AJobOfAGroupUserIsForgottenWhenTheGroupsRulesChange()
     {
         await using var canary = await CanaryTests.Canary.StartAsync();
@@ -257,6 +272,8 @@ internal sealed class CanaryPlugin : ICorePlugin, ICorePluginDownloads
                 ctx.Events.Publish("end", null, PluginEventAudience.User("canary"));
                 ctx.Events.Publish("end", null, PluginEventAudience.User(caller.UserName));
                 return null;
+            case "task.run":
+                return (await caller.Tasks.RunAsync(CanaryTests.CanaryTaskPlugin.PluginId, [Guid.Parse(payloadJson!)], null, caller.UserName, ct)).Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
             case "job.start":
                 return ctx.Jobs!.Start(caller, "report", (_, _) => Task.CompletedTask).Id;
             case "job.find":

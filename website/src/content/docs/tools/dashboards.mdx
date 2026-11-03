@@ -70,12 +70,14 @@ A dashboard holds up to 50 widgets, of them up to 16 live videos and 20 buttons.
 ## Buttons
 
 A button runs your [event rules](../event-rules/), for example to open a gate, switch a light or sound a siren.
-Each button is an event of its own: in the rule's **When**, choose it under **Dashboards** and the dashboard's name, then
+Each button is an event of its own, so each label is used once per dashboard. In the rule's **When**, choose it under
+**Dashboards** and the dashboard's name (for a dashboard of a device group, under the group's name first), then
 add the action under **Then**, such as **Set output**. The event carries who pressed the button, so a rule can check
 **Pressed by**.
 
 Click the button to press it. On the button you see **Sent**, or **No event rule uses this button.** when no turned on rule
 uses it yet. Pressing again runs the rule again; use the rule's **Dead time** or **Max per minute** to limit repeats.
+After 10 presses within 10 seconds a user sees **Too many presses. Wait a moment.**
 While you edit the dashboard, a click selects the button instead.
 
 Pressing needs the permission **Press dashboard buttons**. Without it the button is greyed out. The audit log shows

@@ -114,7 +114,7 @@ for s in postinst prerm postrm; do
   tr -d '\r' < "$HERE/$s" > "$ROOT/DEBIAN/$s"
 done
 build_package "$ROOT" oadm-server "$RUNTIME_DEPENDS" "Description: Open AXIS Device Management server
- OADM manages Axis network devices: discovery, credentials, AXIS OS, users,
+ OADM manages Axis network devices: discovery, credentials, AXIS OS upgrades, users,
  network settings and more. This package is the server: the systemd service
  oadm-server.service (gRPC on TCP 5080, data in /var/lib/oadm)." "$TAKES_OVER" \
   opt/oadm/server/Oadm.Server DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm

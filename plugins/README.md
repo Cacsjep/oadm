@@ -797,7 +797,9 @@ filter on.
 - **Folders** (`EventTypeInfo.Path`, SDK 0.10.0): the event's place in the event tree of the rule dialog, top first, e.g.
   `["Devices", "Device triggers"]` or `["Certificates", "EST server"]`; without it the event sits in a top folder named
   by its group. Use an existing area (Devices with Selected devices, Any device; Certificates; Sites) where the event fits.
-  A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there.
+  A name that starts with its last folder ("Any device: unreachable" in "Any device") shows without it there. At most 4
+  folders, none blank: another path is dropped (a load error) and the group is the folder; without a
+  path and a group the folder is "Other".
 - **Devices** (`EventTypeInfo.DeviceIds`): the devices that can send the event now (null = any device); raise
   `EventTypesChanged` when they change. Dashboards offers only these devices for a widget.
 - **Data fields** (`EventField`): name, label, `Kind` (`EventValueKind` Text, Number, YesNo: what the value holds, so a
@@ -810,6 +812,10 @@ filter on.
 - Calls only queue; `IsWatched(typeId)` says whether an enabled rule or a subscriber uses the type (skip expensive work
   otherwise). `IsUsedByRule(typeId)` (SDK 0.10.0) counts enabled rules only, never subscriptions such as Dashboards (a
   Dashboards button says "No event rule uses this button." with it).
+- **Tests**: `Oadm.Sdk.Testing.FakeEventPublisher` records every `Fire` / `SetState` (`Published`) and `ReplaceStates`
+  (`States`); `UseInRule(typeId)` / `StopUsingInRule` set what `IsUsedByRule` answers, `Watched` what `IsWatched` answers
+  (true by default). Give it to the context: `new FakeCoreContext { EventPublisher = new FakeEventPublisher() }` (the
+  default is null, like a host without event rules).
 - Sample: Device triggers
   (`plugins/Oadm.Plugins.DeviceTriggers`: dynamic types, a WebSocket per device, "connection lost" per trigger).
 

@@ -321,6 +321,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IProtectedTags? ProtectedTags => FakeProtectedTags;
 
+    /// <summary>
+    /// The event rules the plugin publishes to; null (the default) like a host without event rules. Set a
+    /// <see cref="FakeEventPublisher"/> (<c>new FakeCoreContext { EventPublisher = new FakeEventPublisher() }</c>).
+    /// </summary>
+    public Events.IEventPublisher? EventPublisher { get; init; }
+
     /// <summary>A call of a user with all devices (<see cref="FakeCallContext.AllDevices"/>).</summary>
     public FakeCallContext CallAsAllDevices(string userName = "admin") => FakeCallContext.AllDevices(this, userName);
 

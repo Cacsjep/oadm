@@ -103,7 +103,7 @@ public sealed partial class ServerUpdateCoordinator(
     }
 
     /// <summary>The record of the last update; null without one.</summary>
-    public UpdateRecord? Last => records.Read();
+    public Task<UpdateRecord?> LastAsync(CancellationToken ct) => records.ReadAsync(ct);
 
     public string Folder => records.Folder;
 
@@ -168,9 +168,9 @@ public sealed partial class ServerUpdateCoordinator(
     /// The reason Install now is refused now (rules 1 to 6 before anything is downloaded), or null. Used by Start and by
     /// the tests of each refusal.
     /// </summary>
-    public string? Refusal(string version)
+    public async Task<string?> RefusalAsync(string version, CancellationToken ct)
     {
-        if (records.Read() is { IsRunning: true } || Current is not null)
+        if (Current is not null || await records.ReadAsync(ct).ConfigureAwait(false) is { IsRunning: true })
         {
             return UpdateTexts.Running;
         }
@@ -222,7 +222,7 @@ public sealed partial class ServerUpdateCoordinator(
 
         try
         {
-            if (Refusal(version) is { } refusal)
+            if (await RefusalAsync(version, ct).ConfigureAwait(false) is { } refusal)
             {
                 LogRefused(version, refusal);
                 throw new UpdateRefusedException(refusal);
@@ -264,13 +264,9 @@ public sealed partial class ServerUpdateCoordinator(
                 Step = step == UpdateStep.Download ? Contracts.V1.UpdateStepKind.UpdateStepDownload : Contracts.V1.UpdateStepKind.UpdateStepCheck,
                 Percent = percent,
             }), ct, DatabaseBytes()).ConfigureAwait(false);
-            foreach (var old in Directory.EnumerateFiles(records.Folder).Where(f => IsOldInstaller(f, installer)))
-            {
-                File.Delete(old);
-            }
-
+            DeleteOldInstallers(installer);
             var copy = await DatabaseCopy.CopyAsync(environment.ConnectionString, records.Folder, from, ct).ConfigureAwait(false);
-            records.Write(new UpdateRecord
+            var record = new UpdateRecord
             {
                 From = from,
                 To = to,
@@ -282,7 +278,8 @@ public sealed partial class ServerUpdateCoordinator(
                 InstallerLog = environment.Platform.Os == UpdateOs.MacOs ? InstallerCommands.MacInstallLog : Path.Combine(records.Folder, "install.log"),
                 RequestedBy = requestedBy,
                 ClientAddress = clientAddress,
-            });
+            };
+            await records.WriteAsync(record, ct).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Before the record exists every failure ends the update with nothing changed.
         catch (Exception ex)
@@ -324,9 +321,32 @@ public sealed partial class ServerUpdateCoordinator(
 #pragma warning restore CA1031
         {
             LogHelperFailed(ex, to);
-            records.UpdateRunning(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.HelperFailed, FinishedUtc = time.GetUtcNow() });
-            await CompleteAsync(CancellationToken.None).ConfigureAwait(false);
-            Release(UpdateTexts.HelperFailed); // also when the record could not be completed
+            try
+            {
+                await records.UpdateRunningAsync(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.HelperFailed, FinishedUtc = time.GetUtcNow() }, CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The server never stays closed: the record is completed by the next start at the latest.
+            catch (Exception recordFailed)
+#pragma warning restore CA1031
+            {
+                LogRecordFailed(recordFailed);
+            }
+
+            try
+            {
+                await CompleteAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // As above: the audit entry is written by the next start.
+            catch (Exception completeFailed)
+#pragma warning restore CA1031
+            {
+                LogRecordFailed(completeFailed);
+            }
+            finally
+            {
+                Release(UpdateTexts.HelperFailed); // also when the record could not be completed
+            }
+
             throw new UpdateRefusedException(UpdateTexts.HelperFailed, ex);
         }
 
@@ -347,6 +367,29 @@ public sealed partial class ServerUpdateCoordinator(
         await using (stream.ConfigureAwait(false))
         {
             return Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(stream, ct).ConfigureAwait(false));
+        }
+    }
+
+    /// <summary>The installers of earlier updates go; one that cannot be deleted now stays (never a reason to stop).</summary>
+    private void DeleteOldInstallers(string current)
+    {
+        try
+        {
+            foreach (var old in Directory.EnumerateFiles(records.Folder).Where(f => IsOldInstaller(f, current)))
+            {
+                try
+                {
+                    File.Delete(old);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    LogOldInstallerKept(old, ex.Message);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogOldInstallerKept(records.Folder, ex.Message);
         }
     }
 
@@ -376,7 +419,7 @@ public sealed partial class ServerUpdateCoordinator(
 
     private async Task CompleteOnStartCoreAsync(CancellationToken ct)
     {
-        var record = records.Read();
+        var record = await records.ReadAsync(ct).ConfigureAwait(false);
         if (record is null)
         {
             return;
@@ -387,21 +430,33 @@ public sealed partial class ServerUpdateCoordinator(
             HelperCopy.CleanUp(records.Folder);
         }
 
-        var runsTarget = UpdateVersions.Parse(environment.ServerVersion) is { } v && UpdateVersions.Parse(record.To) == v;
-        var gaveUp = record.Result == UpdateRecord.Failed && record.Reason == UpdateTexts.InstallerDidNotFinish;
-        if (runsTarget && (record.IsRunning || (record.Result == UpdateRecord.NotBack && !record.Audited) || gaveUp))
+        if (UpdateVersions.Parse(environment.ServerVersion) is { } v && UpdateVersions.Parse(record.To) == v)
         {
             // The new version runs: done (a note such as "Restart the computer" stays; a give-up is audited again as done).
-            records.Write(record with
-            {
-                Result = UpdateRecord.Done,
-                Reason = record.Result == UpdateRecord.NotBack || gaveUp ? null : record.Reason,
-                FinishedUtc = record.FinishedUtc ?? time.GetUtcNow(),
-                Audited = !gaveUp && record.Audited,
-            });
+            // Decided on the record as it is under the lock: a result the helper wrote meanwhile counts.
+            await records.ChangeAsync(
+                r =>
+                {
+                    if (r is null)
+                    {
+                        return null;
+                    }
+
+                    var gaveUp = r.Result == UpdateRecord.Failed && r.Reason == UpdateTexts.InstallerDidNotFinish;
+                    return r.IsRunning || (r.Result == UpdateRecord.NotBack && !r.Audited) || gaveUp
+                        ? r with
+                        {
+                            Result = UpdateRecord.Done,
+                            Reason = r.Result == UpdateRecord.NotBack || gaveUp ? null : r.Reason,
+                            FinishedUtc = r.FinishedUtc ?? time.GetUtcNow(),
+                            Audited = !gaveUp && r.Audited,
+                        }
+                        : null;
+                },
+                ct).ConfigureAwait(false);
         }
 
-        if (records.Read() is { IsRunning: true } running)
+        if (await records.ReadAsync(ct).ConfigureAwait(false) is { IsRunning: true } running)
         {
             // The old server runs again while the helper still works (e.g. the MSI rolled back): hold until its result.
             Hold(running.To);
@@ -415,7 +470,7 @@ public sealed partial class ServerUpdateCoordinator(
     /// <summary>Writes the audit entry of a finished record once and lets tasks and calls start again in this process.</summary>
     private async Task CompleteAsync(CancellationToken ct)
     {
-        var record = records.Read();
+        var record = await records.ReadAsync(ct).ConfigureAwait(false);
         if (record is null || record.IsRunning)
         {
             return;
@@ -431,7 +486,7 @@ public sealed partial class ServerUpdateCoordinator(
                 "OADM " + record.To,
                 detail,
                 ct).ConfigureAwait(false);
-            records.Write(record with { Audited = true });
+            await records.ChangeAsync(r => r is { IsRunning: false } ? r with { Audited = true } : null, ct).ConfigureAwait(false);
             LogCompleted(record.To, record.Result, record.Reason ?? string.Empty);
         }
 
@@ -484,7 +539,7 @@ public sealed partial class ServerUpdateCoordinator(
         {
             try
             {
-                var record = records.Read();
+                var record = await records.ReadAsync(ct).ConfigureAwait(false);
                 if (record is { IsRunning: false })
                 {
                     await CompleteAsync(ct).ConfigureAwait(false);
@@ -493,7 +548,8 @@ public sealed partial class ServerUpdateCoordinator(
 
                 if (record is not null && time.GetUtcNow() - record.StartedUtc > GiveUpAfter)
                 {
-                    records.UpdateRunning(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerDidNotFinish, FinishedUtc = time.GetUtcNow() });
+                    // Under the lock: a result the helper wrote meanwhile stays.
+                    await records.UpdateRunningAsync(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerDidNotFinish, FinishedUtc = time.GetUtcNow() }, ct).ConfigureAwait(false);
                     continue;
                 }
             }
@@ -514,6 +570,7 @@ public sealed partial class ServerUpdateCoordinator(
     private void Hold(string to)
     {
         Volatile.Write(ref _holding, 1);
+        gate.Begin(to);
         tasks.HoldStarts(UpdateTexts.Updating(to) + ". Try again after the update.");
         actions.IsHeld = true;
     }
@@ -526,7 +583,7 @@ public sealed partial class ServerUpdateCoordinator(
             return;
         }
 
-        gate.Open();
+        gate.End();
         tasks.ResumeStarts();
         actions.IsHeld = false;
         string to;
@@ -575,4 +632,10 @@ public sealed partial class ServerUpdateCoordinator(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Server update: the record of the last update could not be completed at start")]
     private partial void LogStartRecordFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Server update: the record could not be completed after the helper failed to start; the next start completes it")]
+    private partial void LogRecordFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Server update: the old installer {File} could not be deleted ({Detail})")]
+    private partial void LogOldInstallerKept(string file, string detail);
 }

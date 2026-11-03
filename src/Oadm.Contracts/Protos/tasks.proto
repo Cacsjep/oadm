@@ -116,7 +116,7 @@ enum TaskStepState {
   TASK_STEP_STATE_FAILED = 6;
 }
 
-// One named step of a task (ITaskExecutionContext.PlanSteps / BeginStep), e.g. "Upload firmware".
+// One named step of a task (ITaskExecutionContext.PlanSteps / BeginStep), e.g. "Upload AXIS OS to the device".
 message TaskStep {
   int32 index = 1;                          // position in TaskInfo.steps, 0-based
   string name = 2;

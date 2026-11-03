@@ -105,7 +105,7 @@ internal sealed class RunningTask : IDisposable
     }
 
     /// <summary>
-    /// The running step becomes the device message ("Upload firmware - 12 of 80 MB") so the tooltip and
+    /// The running step becomes the device message ("Upload AXIS OS to the device - 12 of 80 MB") so the tooltip and
     /// older clients show what the task is doing. Returns false when the device is not running.
     /// </summary>
     public bool SetStepMessage(Guid deviceId, TaskStepInfo? running)
@@ -124,7 +124,7 @@ internal sealed class RunningTask : IDisposable
     }
 
     /// <summary>
-    /// While a request of the device waits for its site's link: "Upload firmware - Waiting for the site link"; after the
+    /// While a request of the device waits for its site's link: "Upload AXIS OS to the device - Waiting for the site link"; after the
     /// wait the running step again. Returns false when the device is not running.
     /// </summary>
     public bool SetSiteLinkWait(Guid deviceId, TaskStepInfo? running, bool waiting)

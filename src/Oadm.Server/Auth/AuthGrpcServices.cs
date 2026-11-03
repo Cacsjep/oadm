@@ -109,7 +109,7 @@ internal static class AuthMapping
 }
 
 /// <summary>gRPC AuthService: status, login, logout and the first administrator.</summary>
-public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings, DeviceGroupStore groups) : Proto.AuthService.AuthServiceBase
+public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings, DeviceGroupStore groups, Updates.UpdateGate gate) : Proto.AuthService.AuthServiceBase
 {
     private static readonly string Version =
         typeof(AuthGrpcService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
@@ -124,6 +124,7 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
             Version = Version,
             NeedsFirstAdmin = needsAdmin,
             SetupCodeRequired = needsAdmin && !AuthInterceptor.IsLoopback(context),
+            UpdatingTo = gate.UpdatingTo ?? string.Empty, // the update helpers wait for its end
         };
     }
 

@@ -104,12 +104,14 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         [new(null, "As received"), .. Enumerable.Range(0, DashboardsPluginInfo.MaxDecimals + 1).Select(n => new Choice<int?>(n, n.ToString(CultureInfo.CurrentCulture)))];
 
     private readonly DashboardsPageViewModel _page;
+    private readonly Func<IReadOnlyList<Widget>> _dashboardWidgets;
     private bool _loading = true;
     private string _defaultName = string.Empty;
 
-    internal WidgetEditorViewModel(DashboardsPageViewModel page, WidgetViewModel target)
+    internal WidgetEditorViewModel(DashboardsPageViewModel page, WidgetViewModel target, Func<IReadOnlyList<Widget>>? dashboardWidgets = null)
     {
         _page = page;
+        _dashboardWidgets = dashboardWidgets ?? (() => []);
         Target = target;
         var w = target.Widget;
         Name = w.Name;
@@ -135,7 +137,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             Thresholds.Add(new ThresholdRow(this, threshold.Value.ToString(CultureInfo.InvariantCulture), ColorNamed(threshold.Color)));
         }
 
-        Validation.Rule(nameof(Name), () => IsButton ? DashboardRules.LabelProblem(Name) : DashboardRules.WidgetNameProblem(Name));
+        Validation.Rule(nameof(Name), () => IsButton ? LabelProblem(Name) : DashboardRules.WidgetNameProblem(Name));
         Validation.Rule(nameof(Unit), () => Unit.Length > DashboardsPluginInfo.MaxUnitLength ? DashboardRules.UnitTooLong : null);
         Validation.Rule(nameof(MinText), () => ParseNumber(MinText) is { } min && Math.Abs(min) <= DashboardRules.MaxRange ? null : DashboardRules.NotANumber);
         Validation.Rule(nameof(MaxText), () => ParseNumber(MaxText) is not { } max || Math.Abs(max) > DashboardRules.MaxRange ? DashboardRules.NotANumber
@@ -605,7 +607,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
                 .Select(t => new Threshold(FieldValues.TryNumber(t.ValueText, out var v) ? v : 0, t.Color.Name))
                 .OrderBy(t => t.Value)],
         };
-        if ((IsButton ? DashboardRules.LabelProblem(widget.Name) : DashboardRules.WidgetNameProblem(widget.Name)) is not null)
+        if ((IsButton ? LabelProblem(widget.Name) : DashboardRules.WidgetNameProblem(widget.Name)) is not null)
         {
             widget = widget with { Name = Target.Widget.Name }; // the field shows the error; the widget keeps its last good name
         }
@@ -613,6 +615,10 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         Target.Update(widget);
         _page.EditorChanged();
     }
+
+    /// <summary>The problem of a button's label: the rules of one label, then no other button of the dashboard has it.</summary>
+    private string? LabelProblem(string? label) =>
+        DashboardRules.LabelProblem(label) ?? DashboardRules.LabelTakenProblem(_dashboardWidgets(), Target.Widget.Id, label);
 
     /// <summary>Min and Max of the fields while they form a range; else null (the widget keeps the last good one).</summary>
     private (double Min, double Max)? GaugeRange() =>

@@ -160,6 +160,19 @@ public sealed class UpdateSharedTests
     }
 
     [Fact]
+    public async Task TheDownloadReportsEachWholePercentOnce()
+    {
+        using var folder = new TempFolder();
+        var feed = FakeReleaseFeed.With("OADM-4.9.0-win-x64.msi", new byte[1000]);
+        feed.ReportEachByte = true;
+        var percents = new List<int>();
+        await new UpdateDownloader(feed, new FakeDiskSpace(long.MaxValue)).DownloadAsync(
+            feed.Release, "OADM-4.9.0-win-x64.msi", folder.Path, (s, p) => { if (s == UpdateStep.Download) { percents.Add(p); } }, CancellationToken.None);
+
+        Assert.Equal(Enumerable.Range(0, 101), percents); // 1,000 reports of the bytes, 101 steps
+    }
+
+    [Fact]
     public async Task AWrongChecksumDeletesTheDownload()
     {
         using var folder = new TempFolder();
@@ -324,6 +337,9 @@ internal sealed class FakeReleaseFeed : IReleaseFeed
 
     public bool Unreachable { get; set; }
 
+    /// <summary>Reports the bytes one by one (a real download reports many times per percent).</summary>
+    public bool ReportEachByte { get; set; }
+
     public static FakeReleaseFeed With(string name, byte[] content, byte[]? sumsOf = null, string? url = null, long? size = null, string version = "4.9.0")
     {
         var prefix = GitHubReleaseFeed.DownloadPrefix + "v" + version + "/";
@@ -367,6 +383,14 @@ internal sealed class FakeReleaseFeed : IReleaseFeed
         }
 
         await target.WriteAsync(content, ct);
+        if (ReportEachByte)
+        {
+            for (long i = 1; i < content.Length; i++)
+            {
+                progress?.Report(i);
+            }
+        }
+
         progress?.Report(content.Length);
     }
 }

@@ -59,60 +59,88 @@ public sealed record UpdateRecord
     public bool IsRunning => Result == Running;
 }
 
-/// <summary>Reads and writes <c>update/state.json</c> (written whole through a temporary file, never half).</summary>
-public sealed class UpdateRecordFile(string dataDirectory)
+/// <summary>
+/// Reads and writes <c>update/state.json</c> (written whole through a temporary file, never half). Server and helper both
+/// write it: a change re-reads the record under <c>state.json.lock</c> and decides on what it holds then, and a file the
+/// other process holds open is tried again a few times (short pauses on the given clock, never a blocked thread).
+/// </summary>
+public sealed class UpdateRecordFile(string dataDirectory, TimeProvider? time = null)
 {
     public const string FolderName = "update";
     public const string FileName = "state.json";
 
+    /// <summary>How often a file in use is tried, and the pause between two tries.</summary>
+    internal const int Attempts = 20;
+    internal static readonly TimeSpan RetryPause = TimeSpan.FromMilliseconds(50);
+
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
 
     /// <summary>The update folder: installers, the database copy, the installer log, the helper.</summary>
     public string Folder { get; } = Path.Combine(dataDirectory, FolderName);
 
     public string FilePath => System.IO.Path.Combine(Folder, FileName);
 
-    /// <summary>
-    /// The record; null without one (or a damaged file: an update that cannot be read is no update). A file that is being
-    /// replaced (in use) is read again a few times.
-    /// </summary>
-    public UpdateRecord? Read()
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            try
-            {
-                if (!File.Exists(FilePath))
-                {
-                    return null;
-                }
+    private string LockPath => FilePath + ".lock";
 
-                return JsonSerializer.Deserialize<UpdateRecord>(File.ReadAllText(FilePath), Json);
-            }
-            catch (IOException) when (attempt < ReadAttempts)
+    /// <summary>
+    /// The record now, without waiting; null without one (or a damaged file: an update that cannot be read is no update; a
+    /// file being replaced right now also reads as null). Tests and quick looks; the server and the helper use
+    /// <see cref="ReadAsync"/>.
+    /// </summary>
+    public UpdateRecord? Read() => TryRead(out var record) ? record : null;
+
+    /// <summary>The record; a file that is being replaced (in use) is read again a few times, without blocking a thread.</summary>
+    public async Task<UpdateRecord?> ReadAsync(CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            if (TryRead(out var record) || attempt >= Attempts)
             {
-                Thread.Sleep(ReadRetryPause);
+                return record;
             }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-            {
-                return null;
-            }
+
+            await Task.Delay(RetryPause, _time, ct).ConfigureAwait(false);
         }
     }
 
-    private const int ReadAttempts = 5;
-    private static readonly TimeSpan ReadRetryPause = TimeSpan.FromMilliseconds(50);
+    /// <summary>False while the file is in use (try again); true with the record, or null without a readable one.</summary>
+    private bool TryRead(out UpdateRecord? record)
+    {
+        record = null;
+        try
+        {
+            if (!File.Exists(FilePath))
+            {
+                return true;
+            }
 
-    /// <summary>Writes the whole record through a temporary file of its own (server and helper may write at once).</summary>
+            record = JsonSerializer.Deserialize<UpdateRecord>(File.ReadAllText(FilePath), Json);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>Writes the whole record at once, without a pause between tries (test seeds); the server and the helper use the async calls.</summary>
     public void Write(UpdateRecord record)
     {
         ArgumentNullException.ThrowIfNull(record);
-        Directory.CreateDirectory(Folder);
-        var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var temp = WriteTemp(record);
         try
         {
-            File.WriteAllText(temp, JsonSerializer.Serialize(record, Json));
-            File.Move(temp, FilePath, overwrite: true);
+            var attempt = 1;
+            while (!TryReplace(temp, last: attempt >= Attempts))
+            {
+                attempt++;
+            }
         }
         finally
         {
@@ -120,17 +148,104 @@ public sealed class UpdateRecordFile(string dataDirectory)
         }
     }
 
+    /// <summary>Writes the whole record (whatever the file holds now); a file in use is tried again a few times.</summary>
+    public async Task WriteAsync(UpdateRecord record, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        await ChangeAsync(_ => record, ct).ConfigureAwait(false);
+    }
+
     /// <summary>Changes a running record; a finished one stays (the server or the helper got there first).</summary>
-    public UpdateRecord? UpdateRunning(Func<UpdateRecord, UpdateRecord> change)
+    public Task<UpdateRecord?> UpdateRunningAsync(Func<UpdateRecord, UpdateRecord> change, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(change);
-        if (Read() is not { IsRunning: true } record)
-        {
-            return null;
-        }
+        return ChangeAsync(r => r is { IsRunning: true } ? change(r) : null, ct);
+    }
 
-        var next = change(record);
-        Write(next);
-        return next;
+    /// <summary>
+    /// Read, change and write as one step against the other process: under the lock the record is read again and
+    /// <paramref name="change"/> decides on what it holds now (null: leave it). Returns the record written, or null.
+    /// </summary>
+    public async Task<UpdateRecord?> ChangeAsync(Func<UpdateRecord?, UpdateRecord?> change, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        Directory.CreateDirectory(Folder);
+        var held = await LockAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var next = change(await ReadAsync(ct).ConfigureAwait(false));
+            if (next is null)
+            {
+                return null;
+            }
+
+            var temp = WriteTemp(next);
+            try
+            {
+                for (var attempt = 1; !TryReplace(temp, last: attempt >= Attempts); attempt++)
+                {
+                    await Task.Delay(RetryPause, _time, ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                File.Delete(temp);
+            }
+
+            return next;
+        }
+        finally
+        {
+            if (held is not null)
+            {
+                await held.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The lock of a change (the other process waits for it); null when it cannot be had in time (e.g. a lock file another
+    /// account left without rights): the change then goes on without it rather than never.
+    /// </summary>
+    private async Task<FileStream?> LockAsync(CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return new FileStream(LockPath, FileMode.OpenOrCreate, FileAccess.Read, FileShare.None);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= Attempts)
+                {
+                    return null;
+                }
+            }
+
+            await Task.Delay(RetryPause, _time, ct).ConfigureAwait(false);
+        }
+    }
+
+    private string WriteTemp(UpdateRecord record)
+    {
+        Directory.CreateDirectory(Folder);
+        var temp = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(record, Json));
+        return temp;
+    }
+
+    /// <summary>Replaces the record with <paramref name="temp"/>; false while the other process holds it open (the last try throws).</summary>
+    private bool TryReplace(string temp, bool last)
+    {
+        try
+        {
+            File.Move(temp, FilePath, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (!last && ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }

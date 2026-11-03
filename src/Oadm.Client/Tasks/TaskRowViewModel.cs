@@ -77,7 +77,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
     /// <summary>Index of the running step, else of the last started one; -1 without one.</summary>
     [ObservableProperty] public partial int CurrentStepIndex { get; private set; } = -1;
 
-    /// <summary>The Current step cell: "Step 3/6 · Upload firmware · 45 %"; empty without steps.</summary>
+    /// <summary>The Current step cell: "Step 3/6 · Upload AXIS OS to the device · 45 %"; empty without steps.</summary>
     [ObservableProperty] public partial string CurrentStepText { get; private set; } = "";
 
     /// <summary>The full current step text plus its detail (progress detail, result or error); null without steps.</summary>
@@ -120,7 +120,7 @@ public sealed partial class TaskRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// "Step 3/6 · Upload firmware", plus " · 45 %" while a running step reports progress; a successful task
+    /// "Step 3/6 · Upload AXIS OS to the device", plus " · 45 %" while a running step reports progress; a successful task
     /// (its last step is the engine's Done step "Completed") shows just "Completed".
     /// </summary>
     public static string FormatCurrentStep(TaskStep? step, int count)

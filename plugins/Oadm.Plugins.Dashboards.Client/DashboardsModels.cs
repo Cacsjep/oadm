@@ -538,7 +538,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             Y = rect.Y,
             Width = rect.Width,
             Height = rect.Height,
-            Name = DashboardTexts.NewButton,
+            Name = DashboardRules.FreeLabel(WidgetList(), DashboardTexts.NewButton),
             Color = WidgetColors.ButtonDefault,
         });
         Widgets.Add(model);

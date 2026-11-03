@@ -85,7 +85,10 @@ installer results, disk space; no offline path).
 6. **Client on the server's computer.** The Windows MSI and the macOS .pkg hold the client too, so the update replaces it.
    Clients on that computer (the server tells each one in its Watch stream: it connects from a loopback address or one of
    the server's own addresses and names the server's machine name) start their own helper as the user and close; the
-   helper waits for the server's result and starts the new client, which shows it. On Linux the client is a package of
+   helper waits for the server's result and starts the client, which shows it: the new version answers, or the old one
+   answers again with no update running (`AuthService.Status` `updating_to` empty: the installer failed), or a server that
+   never began one after 1 minute, at most 10 minutes. Whatever stops a helper (server or client), it ends with a result:
+   the server's writes Failed "The update stopped before it finished.", the client's starts the installed client. On Linux the client is a package of
    its own and updates like a client on another computer.
 
 ## Client on another computer
@@ -140,7 +143,8 @@ the reconnect.
   `https://github.com/Cacsjep/oadm/releases/download/` (`GitHubReleaseFeed`, `UpdateDownloader`).
 - **Server** (`Oadm.Server/Updates`): `ServerUpdateCoordinator` (checks, download into `update/`, the database copy
   `DatabaseCopy`, the record `UpdateRecordFile`, the hold of tasks and event rule actions, the follow of the record, the
-  audit), `UpdateGate` (UNAVAILABLE for every call but Status and UpdateService once the helper started),
+  audit), `UpdateGate` (`updating_to` of Status from Install now until the result; UNAVAILABLE for every call but Status
+  and UpdateService once the helper started; a helper that cannot start always opens the server again),
   `ServerHelperStarter` (rule 9), `ServerUpdateHelper` (`Oadm.Server --update --data <folder> --to <version> --status
   <url>`, its log `update/helper.log`). The helper's copy lies in `update/helper-*` of the data folder (SYSTEM / root
   only), never a folder other users can write. The helper runs only the installer in `update/` whose SHA-256 the record
@@ -149,13 +153,18 @@ the reconnect.
   asks the server for its version with the server's own pinned certificate. A record still running longer than the
   helper's worst case plus 5 minutes (`GiveUpAfter`, about 40 minutes) is failed ("The installer did not finish."); a
   not-back or given-up record of a server that runs the new version is done. The record is written through a temporary
-  file of its own and read again when it is being replaced; the server follows a running record until it is finished
+  file of its own; a change is read, decided and written under `update/state.json.lock` (the give-up never overwrites the
+  helper's result), and a file the other process holds open is read or replaced again a few times (async pauses, never a
+  blocked thread). The server follows a running record until it is finished
   and always lets tasks, event rule actions and calls start again; an old server that starts while the record still runs
   (the MSI rolled back) holds task starts and event rule actions until the helper's result. A task that started between
   the check and the hold is counted before the download ("1 task is running."). A download that receives nothing for 60
   seconds or takes longer than 30 minutes stops ("Could not download the update. ..."); after GitHub's redirects a file
   may only come from github.com, objects.githubusercontent.com or release-assets.githubusercontent.com
-  (`GitHubReleaseFeed.AllowedHosts`).
+  (`GitHubReleaseFeed.AllowedHosts`). Progress goes out once per whole percent. An old installer that cannot be deleted
+  stays (never a reason to stop); the earlier database copy goes only once the new one is complete. A task a plugin
+  starts during the update is refused like Run (FAILED_PRECONDITION "Updating the server to V4.9.0. Try again after the
+  update."). A macOS helper with bad arguments removes its launchd job before it ends.
 - **Client** (`Oadm.Client/Updates`): `UpdateNotifier` (which dialog), `UpdateViewModel` (offer, steps, away, result),
   `ServerUpdateTracker` (the Watch stream, the banner "Updating the server to V4.9.0", "The server did not come back"
   after 10 minutes), `ClientUpdater` (Update client, the close for the server's installer) and `ClientUpdateHelper`

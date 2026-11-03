@@ -82,24 +82,48 @@ public sealed class ServerUpdateHelper(
     public string LogPath => Path.Combine(records.Folder, LogName);
 
     /// <summary><c>Oadm.Server --update ...</c>: the helper with the real installer, processes and clock.</summary>
-    public static async Task<int> RunFromCommandLineAsync(IReadOnlyList<string> args)
+    public static Task<int> RunFromCommandLineAsync(IReadOnlyList<string> args) =>
+        RunFromCommandLineAsync(args, UpdatePlatform.Current.Os, new ProcessCommandRunner(), Console.Error);
+
+    /// <summary>As above with the platform and the command runner of a test (bad arguments end before the helper exists).</summary>
+    internal static async Task<int> RunFromCommandLineAsync(IReadOnlyList<string> args, UpdateOs os, ICommandRunner commands, TextWriter error)
     {
+        ArgumentNullException.ThrowIfNull(commands);
+        ArgumentNullException.ThrowIfNull(error);
         if (HelperArguments.Parse(args) is not { } arguments)
         {
-            await Console.Error.WriteLineAsync("Usage: Oadm.Server --update --data <folder> --to <version> --status <url>").ConfigureAwait(false);
+            await error.WriteLineAsync("Usage: Oadm.Server --update --data <folder> --to <version> --status <url>").ConfigureAwait(false);
+            if (os == UpdateOs.MacOs)
+            {
+                // A submitted job with bad arguments would be started again and again: it goes before the helper ends.
+                await RemoveJobAsync(commands).ConfigureAwait(false);
+            }
+
             return 2;
         }
 
         var helper = new ServerUpdateHelper(
             new UpdateRecordFile(arguments.DataDirectory),
-            UpdatePlatform.Current.Os,
+            os,
             InstallFacts.Current(isService: true),
             new ProcessInstallerRunner(),
-            new SystemClientProcesses(SystemClientProcesses.InstalledClientFolder(UpdatePlatform.Current.Os)),
+            new SystemClientProcesses(SystemClientProcesses.InstalledClientFolder(os)),
             new GrpcServerVersionProbe(Auth.ServerTlsCertificate.FingerprintOf(arguments.DataDirectory)),
-            new ProcessCommandRunner(),
+            commands,
             TimeProvider.System);
         return await helper.RunAsync(arguments, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    private static async Task RemoveJobAsync(ICommandRunner commands)
+    {
+        try
+        {
+            _ = await commands.RunAsync(ServerHelperStarter.Launchctl, ["remove", ServerHelperStarter.LaunchdLabel], CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+        {
+            // Nothing more the helper can do.
+        }
     }
 
     public async Task<int> RunAsync(HelperArguments arguments, CancellationToken ct)
@@ -110,20 +134,38 @@ public sealed class ServerUpdateHelper(
             await RunCoreAsync(arguments, ct).ConfigureAwait(false);
             return 0;
         }
+#pragma warning disable CA1031 // Whatever stops the helper, the record ends with a result: the server never waits for nothing.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Write("The helper stopped: " + ex.Message);
+            try
+            {
+                await FinishAsync(UpdateRecord.Failed, ex is OperationCanceledException ? UpdateTexts.Cancelled : UpdateTexts.HelperStopped, null, CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The server gives up on its own after its limit.
+            catch (Exception recordFailed)
+#pragma warning restore CA1031
+            {
+                Write("The result could not be written: " + recordFailed.Message);
+            }
+
+            return 1;
+        }
         finally
         {
             if (os == UpdateOs.MacOs)
             {
                 // launchctl submit keeps a job alive: the helper removes it (this ends the helper too).
                 Write("Removing the job " + ServerHelperStarter.LaunchdLabel);
-                _ = await commands.RunAsync(ServerHelperStarter.Launchctl, ["remove", ServerHelperStarter.LaunchdLabel], CancellationToken.None).ConfigureAwait(false);
+                await RemoveJobAsync(commands).ConfigureAwait(false);
             }
         }
     }
 
     private async Task RunCoreAsync(HelperArguments arguments, CancellationToken ct)
     {
-        var record = records.Read();
+        var record = await records.ReadAsync(ct).ConfigureAwait(false);
         if (record is not { IsRunning: true } || record.To != arguments.To || string.IsNullOrEmpty(record.Installer))
         {
             Write($"Nothing to do: no running update to {arguments.To}.");
@@ -144,7 +186,7 @@ public sealed class ServerUpdateHelper(
         {
             // Only the checked download of the server runs, nothing else in its place.
             Write("The installer is not the checked download; nothing was installed.");
-            Finish(UpdateRecord.Failed, UpdateTexts.WrongChecksum, record.InstallerLog ?? string.Empty);
+            await FinishAsync(UpdateRecord.Failed, UpdateTexts.WrongChecksum, record.InstallerLog ?? string.Empty, ct).ConfigureAwait(false);
             return;
         }
 
@@ -160,7 +202,7 @@ public sealed class ServerUpdateHelper(
         var log = record.InstallerLog ?? Path.Combine(records.Folder, "install.log");
         var command = InstallerCommands.For(os, InstallMode.Silent, installerPath, log, choices);
         Write($"Running {command.FileName} {string.Join(' ', command.Arguments)}");
-        records.UpdateRunning(r => r with { Step = UpdateRecord.StepInstalling });
+        await records.UpdateRunningAsync(r => r with { Step = UpdateRecord.StepInstalling }, ct).ConfigureAwait(false);
         int code;
         string output;
         try
@@ -170,20 +212,28 @@ public sealed class ServerUpdateHelper(
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {
             Write("The installer could not be started: " + ex.Message);
-            Finish(UpdateRecord.Failed, UpdateTexts.HelperFailed, command.LogPath);
+            await FinishAsync(UpdateRecord.Failed, UpdateTexts.HelperFailed, command.LogPath, ct).ConfigureAwait(false);
             return;
         }
 
         if (!command.WritesOwnLog && output.Length > 0)
         {
-            await File.AppendAllTextAsync(command.LogPath == InstallerCommands.MacInstallLog ? Path.Combine(records.Folder, "install.log") : command.LogPath, output + Environment.NewLine, ct).ConfigureAwait(false);
+            try
+            {
+                await File.AppendAllTextAsync(command.LogPath == InstallerCommands.MacInstallLog ? Path.Combine(records.Folder, "install.log") : command.LogPath, output + Environment.NewLine, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The installer ran: its result counts, the copy of its output is a help only.
+                Write("The installer output could not be added to its log: " + ex.Message);
+            }
         }
 
         var result = InstallerCommands.Read(os, InstallMode.Silent, code, output, command.LogPath);
         Write(string.Create(CultureInfo.InvariantCulture, $"Installer exit code {code}: {result.Outcome}"));
         if (!result.Succeeded)
         {
-            Finish(UpdateRecord.Failed, result.Text ?? UpdateTexts.InstallerFailed, result.LogPath);
+            await FinishAsync(UpdateRecord.Failed, result.Text ?? UpdateTexts.InstallerFailed, result.LogPath, ct).ConfigureAwait(false);
             return;
         }
 
@@ -193,7 +243,7 @@ public sealed class ServerUpdateHelper(
 
     private async Task WaitForNewVersionAsync(HelperArguments arguments, UpdateRecord record, string log, string? note, CancellationToken ct)
     {
-        records.UpdateRunning(r => r with { Step = UpdateRecord.StepWait, Reason = note ?? r.Reason, InstallerLog = log });
+        await records.UpdateRunningAsync(r => r with { Step = UpdateRecord.StepWait, Reason = note ?? r.Reason, InstallerLog = log }, ct).ConfigureAwait(false);
         var target = UpdateVersions.Parse(record.To);
         var deadline = time.GetUtcNow() + NewVersionWait;
         while (true)
@@ -201,7 +251,7 @@ public sealed class ServerUpdateHelper(
             if (UpdateVersions.Parse(await probe.VersionAsync(arguments.StatusUrl, ct).ConfigureAwait(false)) == target)
             {
                 Write("The new version answers.");
-                Finish(UpdateRecord.Done, note ?? records.Read()?.Reason, log);
+                await FinishAsync(UpdateRecord.Done, note, log, ct, keepReason: note is null).ConfigureAwait(false);
                 return;
             }
 
@@ -214,7 +264,7 @@ public sealed class ServerUpdateHelper(
         }
 
         Write("The new version did not answer.");
-        Finish(UpdateRecord.NotBack, UpdateTexts.NewVersionSilent, log);
+        await FinishAsync(UpdateRecord.NotBack, UpdateTexts.NewVersionSilent, log, ct).ConfigureAwait(false);
     }
 
     /// <summary>The installer lies directly in the update folder (the server downloaded it there).</summary>
@@ -250,8 +300,9 @@ public sealed class ServerUpdateHelper(
         }
     }
 
-    private void Finish(string result, string? reason, string log) =>
-        records.UpdateRunning(r => r with { Result = result, Reason = reason, InstallerLog = log, FinishedUtc = time.GetUtcNow() });
+    /// <summary>The result into a running record (one the server finished already stays); a null log keeps the record's.</summary>
+    private Task<UpdateRecord?> FinishAsync(string result, string? reason, string? log, CancellationToken ct, bool keepReason = false) =>
+        records.UpdateRunningAsync(r => r with { Result = result, Reason = keepReason ? r.Reason : reason, InstallerLog = log ?? r.InstallerLog, FinishedUtc = time.GetUtcNow() }, ct);
 
     private void Write(string line)
     {
@@ -260,7 +311,7 @@ public sealed class ServerUpdateHelper(
             Directory.CreateDirectory(records.Folder);
             File.AppendAllText(LogPath, time.GetUtcNow().ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture) + " " + line + Environment.NewLine);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // The log is a help only.
         }

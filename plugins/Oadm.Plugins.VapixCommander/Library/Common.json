@@ -117,7 +117,7 @@
     },
     {
       "id": "common.firmware.status",
-      "version": 1,
+      "version": 2,
       "name": "Get AXIS OS status",
       "category": "Common",
       "description": "Active AXIS OS version and part number.",
@@ -151,7 +151,7 @@
             "path": "data.activeFirmwareVersion"
           },
           {
-            "label": "AXIS OS part",
+            "label": "AXIS OS part number",
             "path": "data.activeFirmwarePart"
           }
         ]

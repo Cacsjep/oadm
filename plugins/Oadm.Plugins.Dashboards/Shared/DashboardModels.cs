@@ -26,6 +26,11 @@ public static class DashboardsPluginInfo
     /// <summary>Buttons in one dashboard (each is an event of the event rules).</summary>
     public const int MaxButtons = 20;
 
+    /// <summary>Presses of one user within <see cref="PressWindow"/> (a stuck key or a script never floods the event rules).</summary>
+    public const int MaxPresses = 10;
+
+    public static readonly TimeSpan PressWindow = TimeSpan.FromSeconds(10);
+
     /// <summary>The label of a button: 1..32 characters on one line.</summary>
     public const int MaxLabelLength = 32;
 
@@ -715,6 +720,9 @@ public static class DashboardRules
 
     public const string NoRule = "No event rule uses this button.";
 
+    /// <summary>A user pressed more than <see cref="DashboardsPluginInfo.MaxPresses"/> times within <see cref="DashboardsPluginInfo.PressWindow"/>.</summary>
+    public const string TooManyPresses = "Too many presses. Wait a moment.";
+
     /// <summary>The tooltip of a button the user's role may not press.</summary>
     public const string PressNotAllowed = "Your role does not allow pressing dashboard buttons.";
 
@@ -728,6 +736,39 @@ public static class DashboardRules
         }
 
         return trimmed.Length > DashboardsPluginInfo.MaxLabelLength || trimmed.Any(char.IsControl) ? LabelTooLong : null;
+    }
+
+    /// <summary>Two buttons of one dashboard would be one event to the event rules: every label is used once.</summary>
+    public const string LabelTaken = "Another button of this dashboard has this label.";
+
+    /// <summary>Labels compare without the spaces around them and ignoring case.</summary>
+    public static bool SameLabel(string? a, string? b) => string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary><see cref="LabelTaken"/> when another button of <paramref name="widgets"/> has <paramref name="label"/>, else null.</summary>
+    public static string? LabelTakenProblem(IEnumerable<Widget> widgets, string widgetId, string? label)
+    {
+        ArgumentNullException.ThrowIfNull(widgets);
+        return widgets.Any(w => w is { IsButton: true } && w.Id != widgetId && SameLabel(w.Name, label)) ? LabelTaken : null;
+    }
+
+    /// <summary>"Button", else "Button 2", "Button 3", ...: the first label no button of <paramref name="widgets"/> has.</summary>
+    public static string FreeLabel(IEnumerable<Widget> widgets, string label)
+    {
+        ArgumentNullException.ThrowIfNull(widgets);
+        var taken = widgets.Where(w => w is { IsButton: true }).Select(w => w.Name.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!taken.Contains(label))
+        {
+            return label;
+        }
+
+        for (var n = 2; ; n++)
+        {
+            var next = string.Create(CultureInfo.InvariantCulture, $"{label} {n}");
+            if (!taken.Contains(next))
+            {
+                return next;
+            }
+        }
     }
 
     public const string Outside = "A widget lies outside the dashboard.";
@@ -827,6 +868,12 @@ public static class DashboardRules
         if (widgets.Count(w => w.Kind == WidgetKind.Button) > DashboardsPluginInfo.MaxButtons)
         {
             return TooManyButtons;
+        }
+
+        var buttons = widgets.Where(w => w.Kind == WidgetKind.Button).Select(w => w.Name?.Trim() ?? string.Empty).Where(n => n.Length > 0).ToList();
+        if (buttons.Distinct(StringComparer.OrdinalIgnoreCase).Count() != buttons.Count)
+        {
+            return LabelTaken;
         }
 
         if (widgets.Any(w => !DashboardsPluginInfo.Layout.Fits(w.Rect)))

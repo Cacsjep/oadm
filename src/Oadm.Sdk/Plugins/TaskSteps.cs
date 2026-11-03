@@ -21,7 +21,7 @@ public enum TaskStepState
 
 /// <summary>Immutable view of one step. <see cref="Index"/> is the position in the task's step list (0-based).</summary>
 /// <param name="Index">Position in the task's step list, 0-based.</param>
-/// <param name="Name">The step name ("Upload firmware").</param>
+/// <param name="Name">The step name ("Upload AXIS OS to the device").</param>
 /// <param name="State">Its state.</param>
 /// <param name="Detail">The result, progress detail, skip reason or error.</param>
 /// <param name="Progress">0 to 100 while it runs.</param>
@@ -43,7 +43,7 @@ public sealed record TaskStepInfo(
 /// <summary>
 /// One named step of a task, started with <see cref="ITaskExecutionContext.BeginStep"/>. Every device
 /// request and every wait of a task plugin is its own step, so the user always sees what the task is
-/// doing ("Upload firmware", "Wait for the device to come back").
+/// doing ("Upload AXIS OS to the device", "Wait for the device to come back").
 /// <para>
 /// End a step with exactly one of <see cref="Complete"/>, <see cref="Warn"/>, <see cref="Skip"/> or
 /// <see cref="Fail"/>; later calls are ignored. <see cref="IDisposable.Dispose"/> without an explicit end

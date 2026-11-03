@@ -134,10 +134,12 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   plus every device with one of the tags (`DeviceSelector.ChoiceMatches`, `IsEmptyChoice`: "choose at least one device
   or tag"). The Rule step is one card in two columns: General with Name and Enabled "Turned on" left, Limits right. The event picker (`EventPicker`, `EventTree`) looks like a select and opens a panel below it: a search
   box, the events as a tree in one virtualized list and the description of the event under the pointer. The folders come
-  from the sources (`EventTypeInfo.Path`, else the group): Devices (Selected devices, Any device, Compliance, Device
+  from the sources (`EventTypeInfo.Path`: at most 4 folders, none blank, else the group; no path and no group: "Other"):
+  Devices (Selected devices, Any device, Compliance, Device
   triggers), Certificates (Selected devices, Any device, 802.1X server, EST server), Sites, then any other area (Dashboards
-  with a folder per dashboard for its buttons); Devices
-  first, in an area Selected devices and Any device first, else by name; the top folders start open, the chosen event's
+  with a folder per dashboard for its buttons, a group's dashboards inside a folder of the group); at the top Devices,
+  Certificates, Sites, then the other areas by name (these names rank only at the top),
+  in an area Selected devices and Any device first, else by name; the top folders start open, the chosen event's
   folders open when the panel opens. An event shows without the folder it starts with ("Any device: unreachable" is
   "Unreachable" in Any device); the closed picker shows the folders grey before the name. The search keeps the events
   whose name or folders contain the text, their folders open ("No event matches the search."); Enter takes the only

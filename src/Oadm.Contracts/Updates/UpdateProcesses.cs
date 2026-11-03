@@ -24,10 +24,19 @@ public interface IClientProcesses
     int Count();
 }
 
+/// <summary>What the OADM server on an address answers with <c>AuthService.Status</c>.</summary>
+/// <param name="Version">"4.8.0".</param>
+/// <param name="UpdatingTo">While its update's helper runs: the version it updates to; null otherwise.</param>
+public sealed record ServerAnswer(string Version, string? UpdatingTo);
+
 /// <summary>The version the OADM server on an address answers with <c>AuthService.Status</c>; null while it does not answer.</summary>
 public interface IServerVersionProbe
 {
     Task<string?> VersionAsync(Uri server, CancellationToken ct);
+
+    /// <summary>The whole answer (version and the update it runs); null while the server does not answer.</summary>
+    async Task<ServerAnswer?> AnswerAsync(Uri server, CancellationToken ct) =>
+        await VersionAsync(server, ct).ConfigureAwait(false) is { } version ? new ServerAnswer(version, null) : null;
 }
 
 /// <summary>The real installer run: no shell, output captured, at most 30 minutes.</summary>
@@ -173,9 +182,11 @@ public sealed class GrpcServerVersionProbe(string? pinnedFingerprint = null) : I
         pinnedFingerprint is null
         || (certificate is not null && string.Equals(Security.ServerCertificatePinning.Fingerprint(certificate), pinnedFingerprint, StringComparison.OrdinalIgnoreCase));
 
+    public async Task<string?> VersionAsync(Uri server, CancellationToken ct) => (await AnswerAsync(server, ct).ConfigureAwait(false))?.Version;
+
     [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The update helper asks the OADM server for its version, not a device.")]
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "CA5359:Do not disable certificate validation", Justification = "Only the open Status call; nothing is sent and only the version is read.")]
-    public async Task<string?> VersionAsync(Uri server, CancellationToken ct)
+    public async Task<ServerAnswer?> AnswerAsync(Uri server, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(server);
         var handler = new SocketsHttpHandler
@@ -188,7 +199,7 @@ public sealed class GrpcServerVersionProbe(string? pinnedFingerprint = null) : I
         try
         {
             var status = await auth.StatusAsync(new V1.Empty(), deadline: DateTime.UtcNow.Add(Timeout), cancellationToken: ct).ConfigureAwait(false);
-            return status.Version;
+            return new ServerAnswer(status.Version, string.IsNullOrEmpty(status.UpdatingTo) ? null : status.UpdatingTo);
         }
         catch (Grpc.Core.RpcException)
         {

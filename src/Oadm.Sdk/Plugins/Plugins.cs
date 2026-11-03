@@ -14,7 +14,7 @@ public interface IPlugin
     string Id { get; }
 
     /// <summary>
-    /// Name shown in menus and the toolbar, e.g. "Restart" or "Upgrade firmware" (the tasks pane shows
+    /// Name shown in menus and the toolbar, e.g. "Restart" or "Upgrade AXIS OS" (the tasks pane shows
     /// <see cref="ITaskPlugin.GetTaskName"/> of task plugins).
     /// Task plugins: at most <see cref="TaskPluginNames.MaxDisplayNameLength"/> characters and no
     /// trailing "..." (the host never appends one and strips it defensively); the loader logs a
@@ -76,7 +76,7 @@ public interface ITaskPlugin : IPlugin
 
     /// <summary>
     /// The name of one task in the tasks pane: exactly what this task does with this payload, e.g.
-    /// "Add user joe", "Set static IP 10.0.0.60", "Upgrade firmware to 12.11.77", not the menu name.
+    /// "Add user joe", "Set static IP 10.0.0.60", "Upgrade AXIS OS to 12.11.77", not the menu name.
     /// At most <see cref="TaskPluginNames.MaxTaskNameLength"/> characters (the host shortens longer names
     /// with an ellipsis and logs a warning). Never include secrets such as passwords: the name is persisted
     /// and shown to every user. Called once per Run (all devices of a run share the name); return
@@ -236,7 +236,7 @@ public interface ITaskExecutionContext
     /// <summary>
     /// Announces the steps the task will (probably) run, in order, so the user sees them as Pending from the
     /// start. Optional: <see cref="BeginStep"/> also adds steps that were not planned. Planned steps that never
-    /// run end as Skipped. Name steps in the imperative, short and specific ("Upload firmware").
+    /// run end as Skipped. Name steps in the imperative, short and specific ("Upload AXIS OS to the device").
     /// </summary>
     void PlanSteps(params string[] names)
     {

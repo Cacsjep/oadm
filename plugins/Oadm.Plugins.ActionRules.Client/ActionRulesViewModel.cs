@@ -657,6 +657,9 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         }
     }
 
+    // A read is waiting for its final rows (GetState): it is not done before them.
+    private bool _awaitingRows;
+
     private void Apply(RulesState state, bool replaceRows)
     {
         _state = state;
@@ -671,7 +674,8 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             Rebuild();
         }
 
-        IsReading = state.Reading;
+        // While a read waits for its final rows, a "done" from the progress or a pushed state does not end it.
+        IsReading = state.Reading || (!replaceRows && _awaitingRows);
         ProgressValue = state.Total == 0 ? 0 : 100.0 * state.Done / state.Total;
         ProgressText = string.Create(CultureInfo.CurrentCulture, $"Reading action rules {state.Done:N0} of {state.Total:N0}");
         UpdateTexts();
@@ -767,18 +771,29 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             ErrorText = null;
             // The rows come as events; the page asks only for the progress while the read runs (an event sent before the
             // watch connected is lost) and takes every row once at the end.
-            while (IsReading)
+            // The read counts as done only with the final rows below: a progress answer that says "done" is not shown,
+            // so the page never shows the end of the read with the rows of only some devices.
+            var reading = IsReading;
+            _awaitingRows = true;
+            while (reading)
             {
                 await Task.Delay(StatePollInterval, ct).ConfigureAwait(true);
                 json = await _ctx.InvokeAsync(ActionRulesMethods.GetProgress, null, ct).ConfigureAwait(true);
-                ApplyState(ActionRulesJson.Deserialize<RulesState>(json), replaceRows: false);
+                var progress = ActionRulesJson.Deserialize<RulesState>(json);
+                reading = progress.Reading;
+                if (reading)
+                {
+                    ApplyState(progress, replaceRows: false);
+                }
             }
 
             json = await _ctx.InvokeAsync(ActionRulesMethods.GetState, null, ct).ConfigureAwait(true);
+            _awaitingRows = false;
             ApplyState(ActionRulesJson.Deserialize<RulesState>(json), replaceRows: true);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            _awaitingRows = false;
             IsReading = false;
         }
 #pragma warning disable CA1031 // Shown on the page.
@@ -786,6 +801,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
 #pragma warning restore CA1031
         {
             ErrorText = ServerErrors.Message(ex);
+            _awaitingRows = false;
             IsReading = false;
             UpdateTexts();
         }

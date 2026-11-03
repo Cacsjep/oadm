@@ -38,10 +38,14 @@ public sealed class ServerUpdateServiceTests
 
         public bool Fails { get; set; }
 
+        /// <summary>Runs before a failing start (e.g. takes the update folder away).</summary>
+        public Action? BeforeFailing { get; set; }
+
         public Task StartAsync(string helper, IReadOnlyList<string> arguments, CancellationToken ct)
         {
             if (Fails)
             {
+                BeforeFailing?.Invoke();
                 throw new InvalidOperationException("no");
             }
 
@@ -234,6 +238,7 @@ public sealed class ServerUpdateServiceTests
 
         Assert.NotNull(host.Get<TaskEngine>().HeldReason);
         Assert.True(host.Get<ActionRunner>().IsHeld);
+        Assert.Equal("4.9.0", host.Get<UpdateGate>().UpdatingTo); // the client's helper waits on
         Assert.NotNull(await host.Devices.ListAsync(new Proto.Empty())); // calls work: only starts are held
 
         var records = host.Get<UpdateRecordFile>();
@@ -322,7 +327,7 @@ public sealed class ServerUpdateServiceTests
         var refused = await Assert.ThrowsAsync<RpcException>(async () => await host.Devices.ListAsync(new Proto.Empty()));
         Assert.Equal(StatusCode.Unavailable, refused.StatusCode);
         Assert.Equal("Updating the server to V4.9.0", refused.Status.Detail);
-        Assert.NotNull(await new Proto.AuthService.AuthServiceClient(host.Channel).StatusAsync(new Proto.Empty()));
+        Assert.Equal("4.9.0", (await new Proto.AuthService.AuthServiceClient(host.Channel).StatusAsync(new Proto.Empty())).UpdatingTo); // the update helpers read it
 
         await Eventually.TrueAsync(() => { lock (steps) { return steps.Any(s => s.Step == Proto.UpdateStepKind.UpdateStepInstall); } }, "the clients hear of the install");
         lock (steps)
@@ -362,6 +367,34 @@ public sealed class ServerUpdateServiceTests
     }
 
     [Fact]
+    public async Task AFailedCopyKeepsTheCopyOfTheLastUpdate()
+    {
+        using var folder = new TempFolder();
+        var copies = Path.Combine(folder.Path, "update");
+        Directory.CreateDirectory(copies);
+        var earlier = Path.Combine(copies, "oadm-4.7.0.db");
+        await File.WriteAllTextAsync(earlier, "the copy of 4.7.0");
+
+        var missing = Path.Combine(folder.Path, "missing.db");
+        await Assert.ThrowsAsync<Microsoft.Data.Sqlite.SqliteException>(() => DatabaseCopy.CopyAsync($"Data Source={missing};Mode=ReadOnly", copies, "4.8.0", CancellationToken.None));
+
+        Assert.Equal([earlier], Directory.GetFiles(copies));
+    }
+
+    [Fact]
+    public async Task ACancelledCopyChangesNothing()
+    {
+        using var folder = new TempFolder();
+        var copies = Path.Combine(folder.Path, "update");
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => DatabaseCopy.CopyAsync($"Data Source={Path.Combine(folder.Path, "source.db")}", copies, "4.8.0", cancelled.Token));
+
+        Assert.Empty(Directory.GetFiles(copies));
+    }
+
+    [Fact]
     public async Task AHelperThatCannotStartEndsTheUpdate()
     {
         var fakes = new Fakes();
@@ -375,6 +408,65 @@ public sealed class ServerUpdateServiceTests
         Assert.Null(host.Get<TaskEngine>().HeldReason);
         Assert.NotNull(await host.Devices.ListAsync(new Proto.Empty()));
         Assert.Contains(await AuditAsync(host), e => e.Action == AuditActions.ServerUpdateFailed);
+    }
+
+    [Fact]
+    public async Task AHelperThatCannotStartOpensTheServerEvenWhenTheRecordCannotBeWritten()
+    {
+        var fakes = new Fakes();
+        fakes.Starter.Fails = true;
+        await using var host = await StartAsync(fakes);
+        var records = host.Get<UpdateRecordFile>();
+        fakes.Starter.BeforeFailing = () =>
+        {
+            // The update folder is gone and a file has its name: the record can be neither read nor written.
+            Directory.Delete(records.Folder, recursive: true);
+            File.WriteAllText(records.Folder, "in the way");
+        };
+
+        Assert.Equal(UpdateTexts.HelperFailed, await RefusalAsync(host, "4.9.0"));
+
+        Assert.Null(host.Get<UpdateGate>().ClosedFor);
+        Assert.Null(host.Get<TaskEngine>().HeldReason);
+        Assert.False(host.Get<ActionRunner>().IsHeld);
+        Assert.NotNull(await host.Devices.ListAsync(new Proto.Empty()));
+    }
+
+    [Fact]
+    public async Task TheGiveUpNeverOverwritesTheHelpersResult()
+    {
+        using var folder = new TempFolder();
+        var records = new UpdateRecordFile(folder.Path);
+        records.Write(Running());
+
+        // The helper's result lands between the server's look and its change: the change decides on what the file holds now.
+        records.Write(Running() with { Result = UpdateRecord.Done });
+        Assert.Null(await records.UpdateRunningAsync(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerDidNotFinish }, CancellationToken.None));
+
+        Assert.Equal((UpdateRecord.Done, (string?)null), (records.Read()!.Result, records.Read()!.Reason));
+    }
+
+    [Fact]
+    public async Task ARecordHeldOpenByTheOtherProcessIsWrittenOnceItIsFree()
+    {
+        using var folder = new TempFolder();
+        var time = new FakeTimeProvider();
+        var records = new UpdateRecordFile(folder.Path, time);
+        records.Write(Running());
+        var reader = new FileStream(records.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read); // the helper reads it right now
+        var write = records.WriteAsync(Running() with { Result = UpdateRecord.Done }, CancellationToken.None);
+
+        await reader.DisposeAsync();
+        await Eventually.TrueAsync(
+            () =>
+            {
+                time.Advance(TimeSpan.FromMilliseconds(50));
+                return write.IsCompleted;
+            },
+            "the write goes through once the file is free");
+        await write;
+
+        Assert.Equal(UpdateRecord.Done, (await records.ReadAsync(CancellationToken.None))!.Result);
     }
 
     [Fact]
@@ -398,6 +490,7 @@ public sealed class ServerUpdateServiceTests
         Assert.Null(host.Get<UpdateGate>().ClosedFor);
         Assert.Null(host.Get<TaskEngine>().HeldReason);
         Assert.NotNull(await host.Devices.ListAsync(new Proto.Empty()));
+        Assert.Equal(string.Empty, (await new Proto.AuthService.AuthServiceClient(host.Channel).StatusAsync(new Proto.Empty())).UpdatingTo); // the client's helper starts the client
         var failed = Assert.Single(await AuditAsync(host), e => e.Action == AuditActions.ServerUpdateFailed);
         Assert.Equal("From 4.8.0 to 4.9.0: " + UpdateTexts.InstallerBusy, failed.Detail);
         var last = (await Client(host).GetAsync(new Proto.Empty())).Last;

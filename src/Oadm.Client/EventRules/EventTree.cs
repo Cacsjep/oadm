@@ -103,19 +103,31 @@ public sealed partial class EventTree : ObservableObject
     }
 
     /// <summary>
-    /// The order of the folders: Devices first, then the other areas; in an area Selected devices, then Any device, then the
-    /// rest; each by name otherwise. The events of a folder keep the catalog's order (by name).
+    /// The order of the folders (docs/spec/event-rules.md): at the top Devices, Certificates, Sites, then the other areas;
+    /// in an area Selected devices, then Any device, then the rest; each by name otherwise. The names rank only at their
+    /// level (a dashboard named "Devices" inside Dashboards sorts by name). The events of a folder keep the catalog's order
+    /// (by name).
     /// </summary>
-    internal static int Rank(string folder) => folder switch
-    {
-        "Devices" or "Selected devices" => 0,
-        "Any device" => 1,
-        _ => 2,
-    };
+    internal static int Rank(string folder, int depth) => depth == 0
+        ? folder switch
+        {
+            "Devices" => 0,
+            "Certificates" => 1,
+            "Sites" => 2,
+            _ => 3,
+        }
+        : folder switch
+        {
+            "Selected devices" => 0,
+            "Any device" => 1,
+            _ => 2,
+        };
 
     private static void Sort(List<EventTreeFolder> folders)
     {
-        folders.Sort((a, b) => Rank(a.Text) != Rank(b.Text) ? Rank(a.Text).CompareTo(Rank(b.Text)) : StringComparer.CurrentCultureIgnoreCase.Compare(a.Text, b.Text));
+        folders.Sort((a, b) => Rank(a.Text, a.Depth) != Rank(b.Text, b.Depth)
+            ? Rank(a.Text, a.Depth).CompareTo(Rank(b.Text, b.Depth))
+            : StringComparer.CurrentCultureIgnoreCase.Compare(a.Text, b.Text));
         foreach (var folder in folders)
         {
             Sort(folder.Folders);

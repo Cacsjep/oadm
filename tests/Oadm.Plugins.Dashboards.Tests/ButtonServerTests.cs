@@ -165,6 +165,56 @@ public sealed class ButtonServerTests
     }
 
     [Fact]
+    public async Task A_user_presses_at_most_10_times_in_10_seconds_and_a_refused_press_fires_nothing()
+    {
+        using var host = new PluginHost();
+        var gate = await host.Plugin.SaveAsync(New("Gate house", Button("open", 0, 0)), CancellationToken.None);
+        var anna = Substitute.For<ICallContext>();
+        anna.UserName.Returns("anna");
+        anna.HasAllDevices.Returns(true);
+        anna.DeviceScopeKey.Returns(ICallContext.AllDevicesScopeKey);
+        var bob = Substitute.For<ICallContext>();
+        bob.UserName.Returns("bob");
+        bob.HasAllDevices.Returns(true);
+        bob.DeviceScopeKey.Returns(ICallContext.AllDevicesScopeKey);
+        var press = JsonSerializer.Serialize(new PressRequest(gate.Id, "open"), DashboardsPluginInfo.Json);
+
+        for (var i = 0; i < DashboardsPluginInfo.MaxPresses; i++)
+        {
+            await host.Plugin.InvokeAsync(anna, DashboardsMethods.Press, press, CancellationToken.None);
+            host.Time.Advance(TimeSpan.FromMilliseconds(500));
+        }
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => host.Plugin.InvokeAsync(anna, DashboardsMethods.Press, press, CancellationToken.None));
+        Assert.Equal("Too many presses. Wait a moment.", refused.Message);
+        Assert.Equal(10, host.Publisher.Fired.Count); // the refused press fired nothing
+
+        await host.Plugin.InvokeAsync(bob, DashboardsMethods.Press, press, CancellationToken.None); // per user
+        Assert.Equal(11, host.Publisher.Fired.Count);
+
+        host.Time.Advance(TimeSpan.FromSeconds(5)); // the first press is 10 s old now
+        await host.Plugin.InvokeAsync(anna, DashboardsMethods.Press, press, CancellationToken.None);
+        Assert.Equal(12, host.Publisher.Fired.Count);
+    }
+
+    [Fact]
+    public async Task The_sdk_fake_publisher_records_the_press_and_answers_whether_a_rule_uses_it()
+    {
+        var publisher = new Testing.FakeEventPublisher();
+        var fake = new Testing.FakeCoreContext { EventPublisher = publisher };
+        using var plugin = new DashboardsPlugin(new FakeTimeProvider());
+        await plugin.StartAsync(fake, CancellationToken.None);
+        var gate = await plugin.SaveAsync(New("Gate house", Button("open", 0, 0)), CancellationToken.None);
+
+        Assert.False((await plugin.PressAsync(new PressRequest(gate.Id, "open"), CancellationToken.None)).UsedByRule);
+        var fired = Assert.Single(publisher.Published);
+        Assert.Equal((DashboardsPluginInfo.ButtonTypeId(gate.Id, "open"), (Guid?)null, (bool?)null), (fired.TypeId, fired.DeviceId, fired.IsOn));
+
+        publisher.UseInRule(fired.TypeId);
+        Assert.True((await plugin.PressAsync(new PressRequest(gate.Id, "open"), CancellationToken.None)).UsedByRule);
+    }
+
+    [Fact]
     public void Pressing_is_a_right_of_its_own_and_audited()
     {
         using var host = new PluginHost();
@@ -186,18 +236,20 @@ public sealed class ButtonServerTests
         async Task<string> Refused(params Widget[] widgets) =>
             (await Assert.ThrowsAsync<ArgumentException>(() => host.Plugin.SaveAsync(New("X", widgets), CancellationToken.None))).Message;
 
-        var twenty = Enumerable.Range(0, 20).Select(i => Button("b" + i, i % 5 * 4, i / 5 * 2)).ToArray();
+        var twenty = Enumerable.Range(0, 20).Select(i => Button("b" + i, i % 5 * 4, i / 5 * 2, "Button " + i)).ToArray();
         await host.Plugin.SaveAsync(New("Twenty", twenty), CancellationToken.None);
         Assert.Equal(20, host.Plugin.EventTypes.Count);
         Assert.Equal(DashboardRules.TooManyButtons, await Refused([.. twenty, Button("b20", 0, 10)]));
         Assert.Equal("A dashboard holds at most 20 buttons.", DashboardRules.TooManyButtons);
 
         Assert.Equal(DashboardRules.LabelMissing, await Refused(Button("a", 0, 0, " ")));
+        Assert.Equal(DashboardRules.LabelTaken, await Refused(Button("a", 0, 0, "Open"), Button("b", 4, 0, " open "))); // one event per label
+        Assert.Equal("Another button of this dashboard has this label.", DashboardRules.LabelTaken);
         Assert.Equal(DashboardRules.LabelTooLong, await Refused(Button("a", 0, 0, new string('x', 33))));
         await host.Plugin.SaveAsync(New("Long", Button("a", 0, 0, new string('x', 32))), CancellationToken.None);
         Assert.Equal(DashboardRules.BadSetting, await Refused(Button("a", 0, 0) with { DeviceId = Guid.NewGuid() })); // a button has no device
         Assert.Equal(DashboardRules.BadSetting, await Refused(Button("a", 0, 0) with { TypeId = Types.Temperature }));
-        await host.Plugin.SaveAsync(New("Light", Button("a", 0, 0) with { Color = "Text" }, Button("b", 4, 0) with { Color = "Secondary" }), CancellationToken.None); // every color is a fill
+        await host.Plugin.SaveAsync(New("Light", Button("a", 0, 0) with { Color = "Text" }, Button("b", 4, 0, "Close gate") with { Color = "Secondary" }), CancellationToken.None); // every color is a fill
         Assert.Equal(DashboardRules.BadSetting, await Refused(Button("a", 0, 0) with { Color = "Gold" }));
         Assert.Equal(DashboardRules.BadSetting, await Refused(Button("a", 0, 0) with { Icon = "rocket" }));
         await host.Plugin.SaveAsync(New("Icon", Button("a", 0, 0) with { Icon = "lockOpen", Color = "Red" }), CancellationToken.None);
@@ -238,6 +290,9 @@ public sealed class ButtonServerTests
         var saved = Read<Dashboard>(await plugin.InvokeAsync(anna, DashboardsMethods.Save,
             JsonSerializer.Serialize(New("Doors", Button("open", 0, 0)), DashboardsPluginInfo.Json), CancellationToken.None));
         Assert.Equal(keyA, plugin.EventTypes.Single().OwnerScopeKey);
+        Assert.Equal(["Dashboards", "Building A", "Doors"], plugin.EventTypes.Single().Folders); // two groups may both have "Doors"
+        fake.FakeScopes.Rename(keyA, "Hall A");
+        await Testing.Eventually.TrueAsync(() => plugin.EventTypes.Single().Folders[1] == "Hall A", "the folder follows the group's name");
         var press = JsonSerializer.Serialize(new PressRequest(saved.Id, "open"), DashboardsPluginInfo.Json);
 
         await plugin.InvokeAsync(anna, DashboardsMethods.Press, press, CancellationToken.None);

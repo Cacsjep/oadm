@@ -23,12 +23,20 @@ public sealed class ServerUpdateHelperTests
 
         public UpdateRecordFile? Records { get; set; }
 
+        /// <summary>A failure the helper does not expect.</summary>
+        public Exception? Throws { get; set; }
+
         /// <summary>The record's step while the installer ran.</summary>
         public string? StepDuringRun { get; private set; }
 
         public Task<(int ExitCode, string Output)> RunAsync(InstallerCommand command, CancellationToken ct)
         {
             StepDuringRun = Records?.Read()?.Step;
+            if (Throws is { } ex)
+            {
+                throw ex;
+            }
+
             Runs.Enqueue(command);
             return Task.FromResult((exitCode, output));
         }
@@ -143,6 +151,46 @@ public sealed class ServerUpdateHelperTests
         Assert.Equal(UpdateRecord.Done, record.Result);
         Assert.Null(record.Reason);
         Assert.Equal(os == UpdateOs.MacOs, setup.Commands.Runs.Any(r => r.File == ServerHelperStarter.Launchctl && r.Args.SequenceEqual(["remove", "com.oadm.update"])));
+    }
+
+    [Theory]
+    [InlineData(UpdateOs.Windows)]
+    [InlineData(UpdateOs.MacOs)]
+    public async Task AnyFailureOfTheHelperEndsTheRecordWithAReason(UpdateOs os)
+    {
+        using var setup = new Setup(os, 0);
+        setup.Installer.Throws = new NotSupportedException("unexpected");
+
+        Assert.Equal(1, await setup.RunAsync());
+
+        var record = setup.Records.Read()!;
+        Assert.Equal((UpdateRecord.Failed, UpdateTexts.HelperStopped), (record.Result, record.Reason));
+        Assert.NotNull(record.FinishedUtc);
+        Assert.Equal(os == UpdateOs.MacOs, setup.Commands.Runs.Any(r => r.Args.SequenceEqual(["remove", "com.oadm.update"])));
+    }
+
+    [Fact]
+    public async Task AMacHelperWithBadArgumentsRemovesItsJob()
+    {
+        var commands = new FakeCommands();
+        using var error = new StringWriter();
+
+        Assert.Equal(2, await ServerUpdateHelper.RunFromCommandLineAsync(["--update", "--to", "4.9.0"], UpdateOs.MacOs, commands, error));
+
+        var (file, args) = Assert.Single(commands.Runs);
+        Assert.Equal(ServerHelperStarter.Launchctl, file);
+        Assert.Equal(["remove", "com.oadm.update"], args);
+        Assert.Contains("Usage", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AWindowsHelperWithBadArgumentsRunsNothing()
+    {
+        var commands = new FakeCommands();
+        using var error = new StringWriter();
+
+        Assert.Equal(2, await ServerUpdateHelper.RunFromCommandLineAsync(["--update"], UpdateOs.Windows, commands, error));
+        Assert.Empty(commands.Runs);
     }
 
     [Fact]

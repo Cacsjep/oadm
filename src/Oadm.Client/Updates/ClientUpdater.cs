@@ -198,29 +198,51 @@ public sealed class ClientUpdater(IReleaseFeed feed, UpdateDownloader downloader
 /// <summary>
 /// The client's helper (<c>Oadm.Client --update-helper ...</c>, as the user): <see cref="ClientHelperArguments.Install"/>
 /// runs the installer with the system's elevation prompt and visible progress, reads its exit code (rule 12) and starts the
-/// client that is installed now; <see cref="ClientHelperArguments.Wait"/> waits up to 10 minutes for the server to answer
-/// with the new version, then starts the new client. The started client shows the result.
+/// client that is installed now; <see cref="ClientHelperArguments.Wait"/> waits until the server answers with the new
+/// version, or its update ended without it (it answers its old version again and updates no longer), at most 10 minutes,
+/// then starts the client. The started client shows the result; whatever stops the helper, the client is started.
 /// </summary>
 public sealed class ClientUpdateHelper(UpdateOs os, InstallFacts facts, IInstallerRunner installer, IServerVersionProbe probe, IProcessLauncher processes, TimeProvider time)
 {
     public static readonly TimeSpan ServerWait = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan Poll = TimeSpan.FromSeconds(3);
 
+    /// <summary>A server that answers its old version without an update this long from the start never began one.</summary>
+    public static readonly TimeSpan NoUpdateWait = TimeSpan.FromMinutes(1);
+
     public async Task RunAsync(ClientHelperArguments arguments, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         UpdatedArguments started;
-        if (arguments.Mode == ClientHelperArguments.Install)
+        try
         {
-            started = await InstallAsync(arguments, ct).ConfigureAwait(false);
+            if (arguments.Mode == ClientHelperArguments.Install)
+            {
+                started = await InstallAsync(arguments, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                await WaitForServerAsync(arguments, ct).ConfigureAwait(false);
+                started = new UpdatedArguments(UpdatedArguments.Server, arguments.From, arguments.To, null);
+            }
         }
-        else
+#pragma warning disable CA1031 // The user is never left without a client: it starts and shows the failed result.
+        catch (Exception)
+#pragma warning restore CA1031
         {
-            await WaitForServerAsync(arguments, ct).ConfigureAwait(false);
-            started = new UpdatedArguments(UpdatedArguments.Server, arguments.From, arguments.To, null);
+            started = Stopped(arguments);
         }
 
         processes.Start(arguments.Start, started.ToList());
+    }
+
+    /// <summary>What the client says when the helper stopped: its own update failed, or the server's result (from its record).</summary>
+    public static UpdatedArguments Stopped(ClientHelperArguments arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        return arguments.Mode == ClientHelperArguments.Install
+            ? new UpdatedArguments(UpdatedArguments.Client, arguments.From, arguments.To, UpdateTexts.HelperStopped)
+            : new UpdatedArguments(UpdatedArguments.Server, arguments.From, arguments.To, null);
     }
 
     private async Task<UpdatedArguments> InstallAsync(ClientHelperArguments arguments, CancellationToken ct)
@@ -260,10 +282,27 @@ public sealed class ClientUpdateHelper(UpdateOs os, InstallFacts facts, IInstall
     {
         var server = Contracts.Security.OadmChannel.NormalizeAddress(arguments.Server);
         var target = UpdateVersions.Parse(arguments.To);
-        var deadline = time.GetUtcNow() + ServerWait;
+        var start = time.GetUtcNow();
+        var deadline = start + ServerWait;
+        var began = false; // the server said it updates, or went silent (the installer stopped it)
         while (true)
         {
-            if (UpdateVersions.Parse(await probe.VersionAsync(server, ct).ConfigureAwait(false)) == target || time.GetUtcNow() >= deadline)
+            var answer = await probe.AnswerAsync(server, ct).ConfigureAwait(false);
+            if (answer is not null && UpdateVersions.Parse(answer.Version) == target)
+            {
+                return; // the new version runs
+            }
+
+            if (answer is null || answer.UpdatingTo is not null)
+            {
+                began = true;
+            }
+            else if (began || time.GetUtcNow() - start >= NoUpdateWait)
+            {
+                return; // the old version answers and updates no longer: the update ended without the new version
+            }
+
+            if (time.GetUtcNow() >= deadline)
             {
                 return;
             }
