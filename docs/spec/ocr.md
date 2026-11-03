@@ -8,7 +8,7 @@ Reads text in the cameras' pictures (signs, container and wagon numbers, display
 to the event rules. The first vision plugin, an add-on (`docs/spec/add-ons.md`): not in the OADM installers, installed on
 demand on the Plugins page.
 
-Core plugin `plugins/Oadm.Plugins.Ocr` (+ `.Client`), id `oadm.ocr`, rail page **Text recognition** (group Monitoring),
+Core plugin `plugins/Oadm.Plugins.Ocr` (+ `.Client`), id `oadm.ocr`, rail page **Text recognition** (the new rail group **Vision**, after Monitoring, for every vision add-on; SDK 0.11.0),
 free (Apache-2.0), **off by default**. License plates are not its job: AXIS License Plate Verifier on the camera does
 that better (the docs say so).
 
@@ -31,6 +31,12 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 
 - **Areas**: rectangles drawn on the picture, each with a name ("Container number") and an expected text. Stored relative
   to the picture (0 to 1), so a change of resolution keeps them in place. No area: the whole picture is one area.
+- **Two ways to read**, both with the same areas:
+  - **Fixed place**: a small area around where the text always is (a meter, a sign, the number on a gate lane). The
+    best reading: nothing else gets in, and it is fast.
+  - **Search**: a large area or the whole picture with a **Format**; the reader finds the text that matches wherever
+    it is (an order number on a receipt laid anywhere on a counter, a label on a parcel). Any text over a large area is
+    allowed but rarely useful for rules.
 - **Mode**:
   - **On demand**: reads one picture when an event rule runs the action **Read text** (below). No stream.
   - **Watching**: reads continuously at 1, 2 or 4 frames per second (default 1) from the camera's MJPEG stream
@@ -43,9 +49,13 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 ## Reading
 
 1. Decode the JPEG (SkiaSharp), cut out each area at full resolution.
-2. **Find text**: the PP-OCRv5 mobile detection model per area (scaled to at most 960 px on the long side, sides a
-   multiple of 32), turn its map into line boxes (threshold, contours, box enlarged; own C#, no OpenCV).
-3. **Straighten** each box (rotate slanted lines; a line taller than wide is turned by the angle model).
+2. **Find text**: the PP-OCRv5 mobile detection model per area, sides a multiple of 32, turn its map into line boxes
+   (threshold, contours, box enlarged; own C#, no OpenCV). An area up to 960 px on its long side is read as it is; a
+   larger one (Search over the whole picture) in overlapping tiles of 960 px at full resolution (overlap 15 %, boxes
+   found twice merged), so small text in a large picture is not lost. Tiles cost time: a 1920x1080 picture is 6 tiles.
+3. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
+   by 90 degrees) is turned by 90 degrees; the angle model then decides whether the line is upside down and turns it
+   by 180 degrees.
 4. **Read**: the PP-OCRv5 Latin recognition model per line (height 48 px), CTC decoding with its character list, a
    confidence per line (mean of the characters' probabilities). Lines below 50 % are dropped.
 
@@ -54,9 +64,17 @@ model (later, as a choice per reader).
 
 ### Several lines
 
-An area can hold several lines. Its text is its lines from top to bottom, left to right, joined with line breaks; each
-line also keeps its box and confidence (shown on the page). Vertical text with one character per line (container doors)
-is not read in this version.
+An area can hold several lines. Its lines are ordered top to bottom, left to right; each keeps its box and confidence
+(shown on the page, one line per row). For the events the lines are joined with a space, a line ending in "-" joined
+without one ("DECAF-" and "FEINATO" give "DECAF-FEINATO"), so a rule's "contains" finds a word on any line; at most 500
+characters.
+
+- **One area per value**, never line numbers: lines are found anew in each picture and their count changes with light
+  and focus, so "line 2" would point at another line. The page's empty area list says "Draw one area around each text
+  you want to read."
+- An area full of text (a sign, a label) is read whole and fits rules that look for a word (contains). Reading
+  documents or long paragraphs is not the purpose.
+- Vertical text with one character per line (container doors) is not read in this version.
 
 ### Expected text
 
@@ -65,9 +83,12 @@ Per area: **Any text** (default) or **Format**.
 - Format: `#` a digit, `A` a letter, `*` a letter or digit; every other character must appear as written, except spaces
   and dashes, which may be missing in the text. Example: container number `AAAU ###### #`, wagon `## ## #### ###-#`,
   counter `#####`.
-- With a format the area's value is the first match: each line on its own, then all lines joined (for a number split
-  over two lines). The match fixes look-alike characters by position: where a digit is expected O becomes 0, I and L 1,
-  S 5, B 8, Z 2, G 6; where a letter is expected the reverse.
+- With a format the reader looks for matches in each line on its own, then in neighbouring lines joined (for a number
+  split over two lines). The match fixes look-alike characters by position: where a digit is expected O becomes 0, I
+  and L 1, S 5, B 8, Z 2, G 6; where a letter is expected the reverse.
+- Several matches (the same order number on two receipts, two parcels): the area's value is the match read with the
+  highest confidence, on a tie the larger text; the event field All matches lists every different match, at most 10.
+- The page shows the matched text's cut-out picture next to its value (in memory only, like the frames).
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
 - The page's field hint: "# digit, A letter, * letter or digit".
 
@@ -75,8 +96,10 @@ Per area: **Any text** (default) or **Format**.
 
 - Event **Text read** per reader (folder Text recognition / reader name), stateless, one event per area and reading,
   fields: Area (choice of the reader's areas), Text (the value: the match with a format, else all lines), Text read (all
-  lines, raw), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks of
-  `docs/spec/event-rules.md`.
+  lines, raw), All matches (every different match of the format, separated by a space; empty without a format),
+  Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading;
+  empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
+  of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence).
 - **Watching** publishes an area's event only when its value changes, and only once the same value was read in 2 frames
   in a row (no flicker between two readings of one picture). An area that becomes empty publishes once with Text empty.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On demand or Watching). Reads one picture now and
