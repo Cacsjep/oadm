@@ -68,7 +68,7 @@ public sealed class GitHubAddOnFilesTests : IDisposable
     {
         Assert.Equal(AddOnTexts.Damaged, GitHubAddOnFiles.TextOf(UpdateTexts.WrongChecksum));
         Assert.Equal(AddOnTexts.Damaged, GitHubAddOnFiles.TextOf(UpdateTexts.NoChecksum));
-        Assert.Equal(AddOnInstallTexts.NotEnoughSpace, GitHubAddOnFiles.TextOf(UpdateTexts.NotEnoughSpace));
+        Assert.Equal(AddOnTexts.NotEnoughSpace, GitHubAddOnFiles.TextOf(UpdateTexts.NotEnoughSpace));
         Assert.Equal(AddOnTexts.DownloadFailed, GitHubAddOnFiles.TextOf(UpdateTexts.DownloadFailed));
         Assert.Equal(AddOnTexts.DownloadFailed, GitHubAddOnFiles.TextOf(UpdateTexts.NoInstaller));
     }

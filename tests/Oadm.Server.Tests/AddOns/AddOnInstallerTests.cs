@@ -87,7 +87,7 @@ public sealed class AddOnInstallerTests
 
         var failed = await Assert.ThrowsAsync<AddOnException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
 
-        Assert.Equal(AddOnInstallTexts.WrongPackage, failed.Message);
+        Assert.Equal(AddOnTexts.WrongPackage, failed.Message);
         AssertNothingInstalled(rig);
     }
 
@@ -100,7 +100,7 @@ public sealed class AddOnInstallerTests
 
         var failed = await Assert.ThrowsAsync<AddOnException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
 
-        Assert.Equal(AddOnInstallTexts.NeedsNewerServer, failed.Message);
+        Assert.Equal(AddOnTexts.NeedsNewerServer, failed.Message);
         AssertNothingInstalled(rig);
     }
 
@@ -178,7 +178,7 @@ public sealed class AddOnInstallerTests
         await first.WaitAsync(TimeSpan.FromSeconds(30));
 
         Assert.Equal(AddOnState.Installing, installing.State);
-        Assert.Equal((AddOnInstallTexts.Busy, AddOnInstallTexts.Busy), (second.Message, remove.Message));
+        Assert.Equal((AddOnTexts.Busy, AddOnTexts.Busy), (second.Message, remove.Message));
         Assert.Single(rig.Files.Downloads);
         Assert.True(rig.Registry.HasPackage(Id));
     }
@@ -191,7 +191,7 @@ public sealed class AddOnInstallerTests
 
         var again = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
 
-        Assert.Equal(AddOnInstallTexts.AlreadyInstalled("Text recognition"), again.Message);
+        Assert.Equal(AddOnTexts.AlreadyInstalled("Text recognition"), again.Message);
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Installer.InstallAsync("oadm.nope", new ProgressLog(), CancellationToken.None));
     }
 
@@ -210,7 +210,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version, Removed: true)], rig.List.Items);
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Installer.GetClientPartAsync(Id, CancellationToken.None));
         var twice = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.RemoveAsync(Id, CancellationToken.None));
-        Assert.Equal(AddOnInstallTexts.NotInstalled("Text recognition"), twice.Message);
+        Assert.Equal(AddOnTexts.NotInstalled("Text recognition"), twice.Message);
 
         rig.Restart();
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
@@ -295,7 +295,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal([FileName], rig.Files.Downloads);
         Assert.True(rig.Registry.HasPackage(Id));
         Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
-        Assert.Equal(["follow " + Id], rig.Activation.Calls); // keeps the administrator's choice
+        Assert.Empty(rig.Activation.Calls); // the administrator's choice stays: the registry's follow applies it
         Assert.Equal([Id], rig.Added);
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Installed, AddOnRig.Version), (row.State, row.Version));
@@ -355,7 +355,7 @@ public sealed class AddOnInstallerTests
 
         Assert.Equal(Path.GetFullPath(bundled), Assert.Single(rig.Loader.Packages).Directory);
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
-        Assert.Equal(AddOnInstallTexts.PartOfServer("Text recognition"), refused.Message);
+        Assert.Equal(AddOnTexts.PartOfServer("Text recognition"), refused.Message);
         Assert.False(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).CanInstall);
     }
 
@@ -367,13 +367,13 @@ public sealed class AddOnInstallerTests
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None));
 
-        Assert.Equal((false, AddOnInstallTexts.NoRelease), (row.CanInstall, row.Message));
-        Assert.Equal(AddOnInstallTexts.NoRelease, refused.Message);
+        Assert.Equal((false, AddOnTexts.NoRelease), (row.CanInstall, row.Message));
+        Assert.Equal(AddOnTexts.NoRelease, refused.Message);
         Assert.Equal(0, rig.Files.ReachCalls);
     }
 
     [Fact]
-    public async Task TheClientPartHoldsOnlyTheClientFilesWithTheirHashes()
+    public async Task TheClientPartHoldsTheClientFilesAndTheManagedServerPartWithTheirHashes()
     {
         using var rig = await StartedAsync();
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Installer.GetClientPartAsync(Id, CancellationToken.None));
@@ -382,7 +382,10 @@ public sealed class AddOnInstallerTests
         var part = await rig.Installer.GetClientPartAsync(Id, CancellationToken.None);
 
         Assert.Equal((Id, AddOnRig.Version), (part.Id, part.Version));
-        Assert.Equal(["plugin.json", "Oadm.Plugins.Ocr.Client.dll", "client/Ocr.Helpers.dll"], part.Files.Select(f => f.RelativePath));
+        // The client part references its server project: the server part goes along, never its dependencies, natives or models.
+        Assert.Equal(
+            ["plugin.json", "Oadm.Plugins.Ocr.Client.dll", "Oadm.Plugins.Ocr.Server.dll", "Oadm.Plugins.Ocr.Server.pdb", "client/Ocr.Helpers.dll"],
+            part.Files.Select(f => f.RelativePath));
         Assert.All(part.Files, f => Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(f.Content.Span)), f.Sha256));
     }
 

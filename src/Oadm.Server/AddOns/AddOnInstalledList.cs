@@ -59,14 +59,20 @@ public sealed class SettingsAddOnListStore(ServerSettingsStore settings) : IAddO
     }
 }
 
-/// <summary>Turns an add-on off and lets a package loaded late follow the administrator's choice (Turn on and off path).</summary>
+/// <summary>
+/// Turns an add-on off and waits until a package loaded while the server runs is followed (the Turn on and off path). The
+/// load itself raises <see cref="PluginRegistry.PackageAdded"/> (<see cref="PluginLoader.LoadPackage"/>), never the installer.
+/// </summary>
 public interface IAddOnActivation
 {
     /// <summary>Turns the package off and stores that (an installed add-on starts off; Remove turns it off at once).</summary>
     Task TurnOffAsync(string packageId, CancellationToken ct);
 
-    /// <summary>A package loaded after the server started (fetched after an update): starts its core plugins when it is on.</summary>
-    Task FollowChoiceAsync(string packageId, CancellationToken ct);
+    /// <summary>
+    /// Waits until the roles, the license and the core plugins follow the package just loaded (its stored choice: a package
+    /// fetched after an update starts its core plugins when it is on). Never faults.
+    /// </summary>
+    Task PackageFollowedAsync(string packageId, CancellationToken ct);
 }
 
 /// <summary><see cref="IAddOnActivation"/> over <see cref="Plugins.PluginActivation"/>, the Plugins page's Turn on and off.</summary>
@@ -80,21 +86,5 @@ public sealed class PluginActivationAddOns(Plugins.PluginActivation activation, 
         }
     }
 
-    public async Task FollowChoiceAsync(string packageId, CancellationToken ct)
-    {
-        if (!registry.HasPackage(packageId) || !registry.IsEnabled(packageId))
-        {
-            return;
-        }
-
-        try
-        {
-            // Stores the same choice and starts the package's core plugins (CorePluginHost.SyncEnabledAsync).
-            await activation.SetEnabledAsync(packageId, true, ct).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException)
-        {
-            // A PRO package without OADM PRO stays off; the registry already says so.
-        }
-    }
+    public Task PackageFollowedAsync(string packageId, CancellationToken ct) => activation.AddedPackagesFollowed.WaitAsync(ct);
 }

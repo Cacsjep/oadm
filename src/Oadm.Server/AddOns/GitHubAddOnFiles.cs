@@ -62,7 +62,7 @@ public sealed class GitHubAddOnFiles(IReleaseFeed feed, UpdateDownloader downloa
     public static string TextOf(string updateText) => updateText switch
     {
         UpdateTexts.WrongChecksum or UpdateTexts.NoChecksum or UpdateTexts.TooBig or UpdateTexts.WrongName => AddOnTexts.Damaged,
-        UpdateTexts.NotEnoughSpace => AddOnInstallTexts.NotEnoughSpace,
+        UpdateTexts.NotEnoughSpace => AddOnTexts.NotEnoughSpace,
         _ => AddOnTexts.DownloadFailed,
     };
 

@@ -115,7 +115,7 @@ public static class AddOnFolders
                 throw;
             }
 
-            throw new AddOnException(ex is InvalidDataException ? AddOnTexts.Damaged : AddOnInstallTexts.CouldNotInstall, ex);
+            throw new AddOnException(ex is InvalidDataException ? AddOnTexts.Damaged : AddOnTexts.CouldNotInstall, ex);
         }
     }
 
@@ -153,7 +153,7 @@ public static class AddOnFolders
 
     /// <summary>
     /// Checks the unpacked add-on's plugin.json: the expected id and a <c>minSdkVersion</c> this server meets. Otherwise
-    /// <see cref="AddOnException"/> (<see cref="AddOnInstallTexts.WrongPackage"/>, <see cref="AddOnInstallTexts.NeedsNewerServer"/>).
+    /// <see cref="AddOnException"/> (<see cref="AddOnTexts.WrongPackage"/>, <see cref="AddOnTexts.NeedsNewerServer"/>).
     /// </summary>
     public static PluginManifest CheckManifest(string folder, string expectedId)
     {
@@ -164,17 +164,17 @@ public static class AddOnFolders
         }
         catch (PluginLoadException ex)
         {
-            throw new AddOnException(AddOnInstallTexts.WrongPackage, ex);
+            throw new AddOnException(AddOnTexts.WrongPackage, ex);
         }
 
         if (!string.Equals(manifest.Id, expectedId, StringComparison.OrdinalIgnoreCase))
         {
-            throw new AddOnException(AddOnInstallTexts.WrongPackage);
+            throw new AddOnException(AddOnTexts.WrongPackage);
         }
 
         if (!PluginLoader.IsSdkCompatible(manifest.MinSdkVersion))
         {
-            throw new AddOnException(AddOnInstallTexts.NeedsNewerServer);
+            throw new AddOnException(AddOnTexts.NeedsNewerServer);
         }
 
         return manifest;
@@ -214,13 +214,23 @@ public static class AddOnFolders
     }
 
     /// <summary>
-    /// The client part of an add-on folder: plugin.json, every <c>*.Client.dll</c> next to it and everything below
-    /// <see cref="ClientFolder"/>, each with its SHA-256. Never the server part, native libraries or models.
+    /// The files next to plugin.json that go to the clients: the client part (<c>*.Client.dll</c>) and the managed server
+    /// part it references (<c>*.Server.dll</c>: its contracts and texts), each with its symbols.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ClientPartPatterns = ["*.Client.dll", "*.Client.pdb", "*.Server.dll", "*.Server.pdb"];
+
+    /// <summary>
+    /// The client part of an add-on folder: plugin.json, the files of <see cref="ClientPartPatterns"/> next to it and
+    /// everything below <see cref="ClientFolder"/>, each with its SHA-256. Never native libraries, models or the server
+    /// part's other dependencies.
     /// </summary>
     public static async Task<IReadOnlyList<AddOnClientFile>> ReadClientPartAsync(string folder, CancellationToken ct)
     {
         var paths = new List<string> { Path.Combine(folder, PluginLoader.ManifestFileName) };
-        paths.AddRange(Directory.GetFiles(folder, "*.Client.dll", SearchOption.TopDirectoryOnly).Order(StringComparer.Ordinal));
+        paths.AddRange(ClientPartPatterns
+            .SelectMany(pattern => Directory.GetFiles(folder, pattern, SearchOption.TopDirectoryOnly))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal));
         var client = Path.Combine(folder, ClientFolder);
         if (Directory.Exists(client))
         {
@@ -235,7 +245,7 @@ public static class AddOnFolders
             total += content.Length;
             if (total > MaxClientPartBytes)
             {
-                throw new InvalidOperationException(AddOnInstallTexts.ClientPartTooBig);
+                throw new InvalidOperationException(AddOnTexts.ClientPartTooBig);
             }
 
             var relative = Path.GetRelativePath(folder, path).Replace(Path.DirectorySeparatorChar, '/');

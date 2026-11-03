@@ -97,9 +97,12 @@ internal sealed class RecordingActivation : IAddOnActivation
         return Task.CompletedTask;
     }
 
-    public Task FollowChoiceAsync(string packageId, CancellationToken ct)
+    /// <summary>The packages whose follow the installer waited for, in order.</summary>
+    public List<string> Followed { get; } = [];
+
+    public Task PackageFollowedAsync(string packageId, CancellationToken ct)
     {
-        Calls.Add("follow " + packageId);
+        Followed.Add(packageId);
         return Task.CompletedTask;
     }
 }
@@ -142,7 +145,8 @@ internal sealed class AddOnRig : IDisposable
 
     public AddOnInstaller Installer { get; private set; } = null!;
 
-    public List<string> Added { get; private set; } = [];
+    /// <summary>The packages the installer waited to be followed (<see cref="IAddOnActivation.PackageFollowedAsync"/>).</summary>
+    public List<string> Added => Activation.Followed;
 
     /// <summary>A new process on the same data folder and stored list (the bundled plugins loaded by <paramref name="bundled"/>).</summary>
     public void Restart(Action<PluginLoader>? bundled = null)
@@ -152,8 +156,6 @@ internal sealed class AddOnRig : IDisposable
         Loader = new PluginLoader(Registry);
         bundled?.Invoke(Loader);
         Activation = new RecordingActivation();
-        Added = [];
-        var added = Added;
         Installer = new AddOnInstaller(
             new AddOnInstallerOptions(DataDirectory, _version, Runtime),
             Files,
@@ -161,12 +163,11 @@ internal sealed class AddOnRig : IDisposable
             Activation,
             Loader,
             Gate,
-            added.Add,
             NullLogger<AddOnInstaller>.Instance,
             Time);
     }
 
-    /// <summary>The release ZIP of an add-on: plugin.json, a server part that loads, a client part, a native library.</summary>
+    /// <summary>The release ZIP of an add-on: plugin.json, a server part that loads, its dependency, a client part, a native library.</summary>
     public static byte[] Zip(string id = AddOnCatalog.TextRecognitionId, string minSdk = "0.10.0", string? topFolder = null, string? extraEntry = null)
     {
         var prefix = topFolder is null ? string.Empty : topFolder + "/";
@@ -177,6 +178,8 @@ internal sealed class AddOnRig : IDisposable
                 $$"""{ "id": "{{id}}", "version": "0.1.0", "minSdkVersion": "{{minSdk}}", "displayName": "Text recognition", "enabledByDefault": false }"""));
             // A real server part: the Restart plugin's assembly under the add-on's name.
             Add(zip, prefix + "Oadm.Plugins.Ocr.Server.dll", File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Oadm.Plugins.Restart.Server.dll")));
+            Add(zip, prefix + "Oadm.Plugins.Ocr.Server.pdb", [8]);
+            Add(zip, prefix + "Microsoft.ML.OnnxRuntime.dll", [6, 6]); // a dependency of the server part only
             Add(zip, prefix + "Oadm.Plugins.Ocr.Client.dll", [1, 2, 3]);
             Add(zip, prefix + "client/Ocr.Helpers.dll", [4, 5]);
             Add(zip, prefix + "onnxruntime.dll", [9, 9, 9]);

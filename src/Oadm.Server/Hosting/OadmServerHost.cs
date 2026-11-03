@@ -389,8 +389,29 @@ public static partial class OadmServerHost
         services.AddSingleton<TaskPluginRunnableCache>();
         services.AddSingleton<PluginActivation>();
         services.AddSingleton<PluginLicenses>();
-        // Add-ons (docs/spec/add-ons.md): the real installer replaces this one (TryAdd: a test or the host may register its own).
-        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnInstaller, Core.Plugins.AddOns.UnavailableAddOnInstaller>();
+        // Add-ons (docs/spec/add-ons.md): installed on the Plugins page from OADM's own release, loaded at once (off). The
+        // load raises the registry's PackageAdded; the installer waits for PluginActivation to follow it.
+        services.TryAddSingleton<AddOns.IAddOnListStore>(sp => new AddOns.SettingsAddOnListStore(sp.GetRequiredService<ServerSettingsStore>()));
+        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnFiles>(sp => new AddOns.GitHubAddOnFiles(
+            sp.GetRequiredService<Contracts.Updates.IReleaseFeed>(),
+            sp.GetRequiredService<Contracts.Updates.UpdateDownloader>()));
+        services.TryAddSingleton<AddOns.IAddOnActivation>(sp => new AddOns.PluginActivationAddOns(
+            sp.GetRequiredService<PluginActivation>(),
+            sp.GetRequiredService<PluginRegistry>()));
+        services.TryAddSingleton(sp => new AddOns.AddOnInstallerOptions(
+            sp.GetRequiredService<OadmPaths>().DataDirectory,
+            Mapping.Mappers.ServerVersion,
+            AddOns.AddOnInstallerOptions.CurrentRuntimeId()));
+        services.AddSingleton(sp => new AddOns.AddOnInstaller(
+            sp.GetRequiredService<AddOns.AddOnInstallerOptions>(),
+            sp.GetRequiredService<Core.Plugins.AddOns.IAddOnFiles>(),
+            sp.GetRequiredService<AddOns.IAddOnListStore>(),
+            sp.GetRequiredService<AddOns.IAddOnActivation>(),
+            sp.GetRequiredService<PluginLoader>(),
+            sp.GetRequiredService<Updates.UpdateGate>(),
+            sp.GetRequiredService<ILogger<AddOns.AddOnInstaller>>(),
+            sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<Core.Plugins.AddOns.IAddOnInstaller>(sp => sp.GetRequiredService<AddOns.AddOnInstaller>());
         // OADM PRO license (docs/spec/licensing.md): for the server ID plugin licenses use; OADM itself never depends on it.
         services.AddSingleton(sp => new Core.Licensing.ProLicense(
             sp.GetRequiredService<ServerSettingsStore>(),
@@ -635,6 +656,10 @@ public static partial class OadmServerHost
         }
 
         loader.LoadFromRoots(roots);
+        // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
+        // one of another version (after an update or a restore) waits for the download in the background (step 4d).
+        var addOns = sp.GetRequiredService<AddOns.AddOnInstaller>();
+        await addOns.LoadInstalledAsync(ct).ConfigureAwait(false);
         foreach (var plugin in registry.TaskPlugins)
         {
             LogTaskPlugin(logger, plugin.Id, plugin.Origin.Directory ?? "built-in");
@@ -725,6 +750,8 @@ public static partial class OadmServerHost
         // 4d. From here a package loaded while the server runs (an add-on installed) is followed like Turn on.
         sp.GetRequiredService<PluginActivation>().FollowAddedPackages();
         registry.MarkStarted();
+        // The add-ons of an older version are downloaded again (after an update or a restore); OADM runs meanwhile.
+        _ = Task.Run(() => FetchAddOnsAsync(addOns, logger, app.Lifetime.ApplicationStopping), CancellationToken.None);
 
         // 5. Background services and Kestrel.
         var listenUrl = options.ListenUrl
@@ -797,6 +824,25 @@ public static partial class OadmServerHost
         return roots;
     }
 
+    /// <summary>The background fetch of add-ons after an update or a restore: never stops the server.</summary>
+    private static async Task FetchAddOnsAsync(AddOns.AddOnInstaller addOns, ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            await addOns.FetchAfterUpdateAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The server stops; the next start tries again.
+        }
+#pragma warning disable CA1031 // A failed add-on never stops the server.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogAddOnFetchFailed(logger, ex);
+        }
+    }
+
     /// <summary>The configuration key of plugin folders loaded straight from a build output (several separated by ";").</summary>
     public const string PluginDirKey = "Oadm:PluginDir";
 
@@ -809,6 +855,9 @@ public static partial class OadmServerHost
             .Select(Path.GetFullPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)];
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The add-ons of this version could not be fetched; they are tried again at the next start")]
+    private static partial void LogAddOnFetchFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Plugin loaded from the development folder {Directory}; it wins over an installed copy")]
     private static partial void LogPluginDirLoaded(ILogger logger, string directory);

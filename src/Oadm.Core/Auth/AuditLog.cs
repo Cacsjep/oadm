@@ -44,8 +44,8 @@ public static class AuditActions
     public const string PluginTurnedOff = "Turned plugin off";
     public const string PluginLicenseEntered = "Entered plugin license";
     public const string PluginLicenseRemoved = "Removed plugin license";
-    public const string AddOnInstalled = "Installed add-on";
-    public const string AddOnRemoved = "Removed add-on";
+    public const string AddOnInstalled = "Installed optional plugin";
+    public const string AddOnRemoved = "Removed optional plugin";
     public const string ProLicenseImported = "Imported license";
     public const string ProLicenseRemoved = "Removed license";
     public const string ProTrialStarted = "Started trial";

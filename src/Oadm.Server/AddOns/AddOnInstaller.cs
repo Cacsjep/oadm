@@ -42,13 +42,15 @@ public sealed record AddOnInstallerOptions(string DataDirectory, string ServerVe
 /// <summary>
 /// Installs and removes the add-ons of this OADM version (docs/spec/add-ons.md "Server"): downloads the release file into
 /// <c>addons/.download/</c> (<see cref="IAddOnFiles"/>: own release only, SHA-256 checked), unpacks it into a new folder,
-/// checks its plugin.json, swaps it into <c>addons/&lt;id&gt;/</c>, loads it (<see cref="PluginLoader.LoadPackage"/>, off) and
-/// reports the added package. Remove turns the add-on off at once and deletes its folder at the next start. One install or
+/// checks its plugin.json, swaps it into <c>addons/&lt;id&gt;/</c>, loads it (<see cref="PluginLoader.LoadPackage"/>, off; the
+/// load raises the registry's <see cref="PluginRegistry.PackageAdded"/>) and reports Installed once the registry's readers
+/// follow it (<see cref="IAddOnActivation.PackageFollowedAsync"/>). Remove turns the add-on off at once and deletes its folder at the next start. One install or
 /// remove at a time, none while a self update runs; any failure leaves nothing behind.
 /// <para>
 /// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync"/> right after the bundled plugins are loaded,
-/// <see cref="FetchAfterUpdateAsync"/> in the background once the stored plugin choices are applied (an add-on of an older
-/// version, after a self update or a restore, is downloaded again before it loads).
+/// <see cref="FetchAfterUpdateAsync"/> in the background once the start is over (<see cref="PluginRegistry.MarkStarted"/>: the
+/// stored plugin choices applied, the licenses read; an add-on of an older version, after a self update or a restore, is
+/// downloaded again before it loads and is followed like one installed now).
 /// </para>
 /// </summary>
 public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
@@ -60,17 +62,12 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     private readonly PluginLoader _loader;
     private readonly UpdateGate _update;
     private readonly TimeProvider _time;
-    private readonly Action<string> _packageAdded;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _turn = new(1, 1);
     private readonly Lock _sync = new();
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.OrdinalIgnoreCase);
     private (DateTimeOffset At, bool Value)? _reach;
 
-    /// <param name="packageAdded">
-    /// Called with the package id after an add-on was loaded while the server runs: raises
-    /// <see cref="IPluginRegistryChanges.PackageAdded"/> (the registry's readers follow it).
-    /// </param>
     public AddOnInstaller(
         AddOnInstallerOptions options,
         IAddOnFiles files,
@@ -78,7 +75,6 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         IAddOnActivation activation,
         PluginLoader loader,
         UpdateGate update,
-        Action<string> packageAdded,
         ILogger<AddOnInstaller> logger,
         TimeProvider? time = null)
     {
@@ -89,7 +85,6 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         _activation = activation;
         _loader = loader;
         _update = update;
-        _packageAdded = packageAdded;
         _logger = logger;
         _time = time ?? TimeProvider.System;
         Root = AddOnFolders.Root(options.DataDirectory);
@@ -224,7 +219,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         {
             slot.Version = version;
             slot.Loaded = loaded;
-            slot.Failed = loaded ? null : AddOnInstallTexts.CouldNotLoad(entry.DisplayName);
+            slot.Failed = loaded ? null : AddOnTexts.CouldNotLoad(entry.DisplayName);
         }
 
         if (loaded)
@@ -283,8 +278,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                         slot.Failed = null;
                     }
 
-                    await _activation.FollowChoiceAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
-                    _packageAdded(entry.Id);
+                    // The load raised PackageAdded: its stored choice applies (its core plugins start when it is on).
+                    await _activation.PackageFollowedAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
                     LogFetched(_logger, entry.Id, release);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -330,7 +325,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     {
         ArgumentNullException.ThrowIfNull(progress);
         var entry = EntryOf(id);
-        var release = _options.ReleaseVersion ?? throw new InvalidOperationException(AddOnInstallTexts.NoRelease);
+        var release = _options.ReleaseVersion ?? throw new InvalidOperationException(AddOnTexts.NoRelease);
         await EnterAsync().ConfigureAwait(false);
         try
         {
@@ -339,18 +334,18 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             {
                 if (slot.Bundled)
                 {
-                    throw new InvalidOperationException(AddOnInstallTexts.PartOfServer(entry.DisplayName));
+                    throw new InvalidOperationException(AddOnTexts.PartOfServer(entry.DisplayName));
                 }
 
                 if (slot.Loaded && !slot.Removed)
                 {
-                    throw new InvalidOperationException(AddOnInstallTexts.AlreadyInstalled(entry.DisplayName));
+                    throw new InvalidOperationException(AddOnTexts.AlreadyInstalled(entry.DisplayName));
                 }
             }
 
             if (IsBundled(entry) && !slot.Loaded)
             {
-                throw new InvalidOperationException(AddOnInstallTexts.PartOfServer(entry.DisplayName));
+                throw new InvalidOperationException(AddOnTexts.PartOfServer(entry.DisplayName));
             }
 
             if (slot.Loaded)
@@ -408,7 +403,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             // Installed off; then the registry's readers follow the new package.
             await _activation.TurnOffAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
             await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, release), CancellationToken.None).ConfigureAwait(false);
-            _packageAdded(entry.Id);
+            await _activation.PackageFollowedAsync(entry.Id, CancellationToken.None).ConfigureAwait(false);
             progress.Report(new AddOnProgress(AddOnStep.Install, 100));
             LogInstalled(_logger, entry.Id, release);
             return StatusOf(entry, reach: true);
@@ -432,12 +427,12 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             {
                 if (slot.Bundled)
                 {
-                    throw new InvalidOperationException(AddOnInstallTexts.PartOfServer(entry.DisplayName));
+                    throw new InvalidOperationException(AddOnTexts.PartOfServer(entry.DisplayName));
                 }
 
                 if (slot.Removed || (!slot.Loaded && slot.Failed is null))
                 {
-                    throw new InvalidOperationException(AddOnInstallTexts.NotInstalled(entry.DisplayName));
+                    throw new InvalidOperationException(AddOnTexts.NotInstalled(entry.DisplayName));
                 }
 
                 loaded = slot.Loaded;
@@ -485,7 +480,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             var slot = _slots[entry.Id];
             if (!slot.Loaded || slot.Removed)
             {
-                throw new KeyNotFoundException(AddOnInstallTexts.NotInstalled(entry.DisplayName));
+                throw new KeyNotFoundException(AddOnTexts.NotInstalled(entry.DisplayName));
             }
 
             version = slot.Version;
@@ -534,7 +529,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                throw new AddOnException(AddOnInstallTexts.CouldNotInstall, ex);
+                throw new AddOnException(AddOnTexts.CouldNotInstall, ex);
             }
 
             return FolderOf(entry);
@@ -546,8 +541,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            LogInstallFailed(_logger, entry.Id, AddOnInstallTexts.CouldNotInstall, ex.Message);
-            throw new AddOnException(AddOnInstallTexts.CouldNotInstall, ex);
+            LogInstallFailed(_logger, entry.Id, AddOnTexts.CouldNotInstall, ex.Message);
+            throw new AddOnException(AddOnTexts.CouldNotInstall, ex);
         }
         finally
         {
@@ -566,7 +561,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
         LogLoadFailed(_logger, entry.Id);
         AddOnFolders.TryDelete(folder);
-        throw new AddOnException(AddOnInstallTexts.CouldNotLoad(entry.DisplayName));
+        throw new AddOnException(AddOnTexts.CouldNotLoad(entry.DisplayName));
     }
 
     private async Task SaveAsync(string id, InstalledAddOn? entry, CancellationToken ct)
@@ -589,7 +584,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
         if (!await _turn.WaitAsync(TimeSpan.Zero).ConfigureAwait(false))
         {
-            throw new InvalidOperationException(AddOnInstallTexts.Busy);
+            throw new InvalidOperationException(AddOnTexts.Busy);
         }
 
         if (_update.UpdatingTo is not null)
@@ -664,7 +659,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 return new AddOnStatus(entry, AddOnState.Failed, slot.Version) { Message = failed, CanInstall = canInstall };
             }
 
-            var message = _options.ReleaseVersion is null ? AddOnInstallTexts.NoRelease : reach ? null : AddOnTexts.CannotReach;
+            var message = _options.ReleaseVersion is null ? AddOnTexts.NoRelease : reach ? null : AddOnTexts.CannotReach;
             return new AddOnStatus(entry, AddOnState.NotInstalled) { Message = message, CanInstall = canInstall };
         }
     }
@@ -678,7 +673,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     }
 
     private static AddOnEntry EntryOf(string id) =>
-        AddOnCatalog.Find(id ?? string.Empty) ?? throw new KeyNotFoundException($"Unknown add-on '{id}'.");
+        AddOnCatalog.Find(id ?? string.Empty) ?? throw new KeyNotFoundException(AddOnTexts.Unknown(id ?? string.Empty));
 
     private Slot SlotOf(AddOnEntry entry)
     {

@@ -10,8 +10,8 @@ namespace Oadm.Server.Plugins;
 
 /// <summary>
 /// The add-on methods of PluginService (docs/spec/add-ons.md, rules in <c>AccessPolicy</c>): the Plugins page's Add-ons
-/// card and the client parts. Every call goes to <see cref="IAddOnInstaller"/>; an installer that is not built answers
-/// UNIMPLEMENTED (<see cref="NotSupportedException"/>).
+/// card and the client parts. Every call goes to <see cref="IAddOnInstaller"/> (<see cref="NotSupportedException"/>:
+/// UNIMPLEMENTED).
 /// </summary>
 public sealed partial class PluginGrpcService
 {
@@ -92,7 +92,7 @@ public sealed partial class PluginGrpcService
             throw GrpcGuard.InvalidArgument("id is required.");
         }
 
-        return AddOnCatalog.Find(id) ?? throw GrpcGuard.NotFound($"Unknown add-on '{id}'.");
+        return AddOnCatalog.Find(id) ?? throw GrpcGuard.NotFound(AddOnTexts.Unknown(id));
     }
 
     /// <summary>Runs an installer call and maps its refusals to gRPC errors (an <see cref="AddOnException"/> passes on).</summary>
@@ -119,7 +119,7 @@ public sealed partial class PluginGrpcService
     private static Proto.AddOnList ToProto(IReadOnlyList<AddOnStatus> list)
     {
         var reply = new Proto.AddOnList();
-        var runtime = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
+        var runtime = AddOns.AddOnInstallerOptions.CurrentRuntimeId();
         reply.AddOns.AddRange(list.Select(s => new Proto.AddOnInfo
         {
             Id = s.Entry.Id,

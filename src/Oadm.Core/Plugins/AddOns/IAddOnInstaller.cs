@@ -70,26 +70,3 @@ public sealed class PluginPackageAddedEventArgs(string packageId) : EventArgs
     /// <summary>The plugin.json id of the added package.</summary>
     public string PackageId { get; } = packageId;
 }
-
-/// <summary>
-/// The installer until the real one is wired (wave 3 of docs/spec/add-ons.md "Build plan"): lists every add-on as not
-/// installed and refuses the rest with <see cref="NotSupportedException"/> (gRPC UNIMPLEMENTED).
-/// </summary>
-public sealed class UnavailableAddOnInstaller : IAddOnInstaller
-{
-    private const string NotBuilt = "Add-ons are not available on this server yet.";
-
-    /// <inheritdoc />
-    public Task<IReadOnlyList<AddOnStatus>> ListAsync(CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<AddOnStatus>>([.. AddOnCatalog.Entries.Select(e => new AddOnStatus(e, AddOnState.NotInstalled) { CanInstall = false })]);
-
-    /// <inheritdoc />
-    public Task<AddOnStatus> InstallAsync(string id, IProgress<AddOnProgress> progress, CancellationToken ct) =>
-        throw new NotSupportedException(NotBuilt);
-
-    /// <inheritdoc />
-    public Task<AddOnStatus> RemoveAsync(string id, CancellationToken ct) => throw new NotSupportedException(NotBuilt);
-
-    /// <inheritdoc />
-    public Task<AddOnClientPart> GetClientPartAsync(string id, CancellationToken ct) => throw new NotSupportedException(NotBuilt);
-}

@@ -65,14 +65,17 @@ public sealed record AddOnClientFile(string RelativePath, ReadOnlyMemory<byte> C
 /// <param name="Files">The files of the client part.</param>
 public sealed record AddOnClientPart(string Id, string Version, IReadOnlyList<AddOnClientFile> Files);
 
-/// <summary>The texts of add-ons (docs/spec/add-ons.md), one phrase per case.</summary>
+/// <summary>
+/// The texts of add-ons on the server (docs/spec/add-ons.md), one phrase per case. Users see add-ons as "optional plugins",
+/// never "add-on".
+/// </summary>
 public static class AddOnTexts
 {
     /// <summary>The row's text while the server cannot reach the release.</summary>
     public const string CannotReach = "The server cannot reach github.com.";
 
     /// <summary>A download that failed.</summary>
-    public const string DownloadFailed = "Could not download the add-on. Check that the server can reach github.com.";
+    public const string DownloadFailed = "Could not download the optional plugin. Check that the server can reach github.com.";
 
     /// <summary>A download whose SHA-256 does not match the release's list.</summary>
     public const string Damaged = "The download is damaged. Try again.";
@@ -86,6 +89,42 @@ public static class AddOnTexts
     /// <summary>An installed add-on whose new version could not be downloaded after an update.</summary>
     public static string NotLoadedAfterUpdate(string name, string version) =>
         $"Could not download {name} V{version}. Try again on the Plugins page.";
+
+    /// <summary>A second install or remove while one runs.</summary>
+    public const string Busy = "An optional plugin is being installed or removed. Try again when it is done.";
+
+    /// <summary>A development build or a pre-release: there is no release of this version with add-ons.</summary>
+    public const string NoRelease = "This OADM version has no optional plugins to download.";
+
+    /// <summary>The data folder has too little room for the download.</summary>
+    public const string NotEnoughSpace = "Not enough free disk space for the optional plugin.";
+
+    /// <summary>The download holds another plugin or no readable plugin.json.</summary>
+    public const string WrongPackage = "The download is not the optional plugin of this server. It was deleted.";
+
+    /// <summary>The add-on's minSdkVersion is newer than the server's SDK.</summary>
+    public const string NeedsNewerServer = "The optional plugin needs a newer OADM server. It was deleted.";
+
+    /// <summary>Unpacking or swapping in failed on the server's disk.</summary>
+    public const string CouldNotInstall = "Could not install the optional plugin. The server log has the details.";
+
+    /// <summary>The client part is larger than a client takes in one answer.</summary>
+    public const string ClientPartTooBig = "The optional plugin is too large to send to the clients.";
+
+    /// <summary>The add-on's folder is there but the loader refused it.</summary>
+    public static string CouldNotLoad(string name) => $"{name} could not be loaded. Remove it and install it again.";
+
+    /// <summary>Install of an add-on that is installed.</summary>
+    public static string AlreadyInstalled(string name) => $"{name} is installed.";
+
+    /// <summary>Remove of an add-on that is not installed.</summary>
+    public static string NotInstalled(string name) => $"{name} is not installed.";
+
+    /// <summary>The add-on's id is a plugin that came with the server (bundled or development folder).</summary>
+    public static string PartOfServer(string name) => $"{name} is part of this server.";
+
+    /// <summary>An id that is no add-on of this version.</summary>
+    public static string Unknown(string id) => $"Unknown optional plugin '{id}'.";
 }
 
 /// <summary>A failure of an install or a download with a message for the user (<see cref="AddOnTexts"/>).</summary>
