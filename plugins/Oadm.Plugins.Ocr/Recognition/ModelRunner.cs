@@ -198,7 +198,7 @@ internal sealed class CpuWorkers<TSet> : IDisposable
     }
 }
 
-/// <summary>The CPU runner: each call through <see cref="CpuWorkers"/>; lines in batches of the set's size, the batches at once.</summary>
+/// <summary>The CPU runner: each call through <see cref="CpuWorkers"/>; lines in pairs of similar width, the pairs at once.</summary>
 internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList characters, bool accurate) : IModelRunner
 {
     public CharacterList Characters => characters;
