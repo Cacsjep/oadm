@@ -58,6 +58,7 @@ and the event log.
 | Any device: clock off | On while at least one device clock differs from the OADM server by more than the allowed clock difference, or its NTP is not synced; `{count}` says how many. No device |
 | Certificate expires soon, Certificate expired, and their Any device events (group Certificates) | The HTTPS certificate of the device, with the days of the **Expiry warning** policy on the [PKI](../pki/) page |
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
+| Text read (group Text recognition, one per reader): Area, Text, Text read, All matches, Number, Confidence, Matches format | The readers of [Text recognition](../text-recognition/#event-text-read) |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.
@@ -93,6 +94,8 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
   listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end and TLS. **Wait for an
   answer** with **Answer must contain** fails the action when the other side does not confirm.
+- **Read text**: reads one picture with a reader of [Text recognition](../text-recognition/#action-read-text) now
+  and sends its **Text read** events. No devices to choose: the reader names its camera.
 
 Email, HTTP and TCP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
 message when it ends; `{state}` tells which one it is.

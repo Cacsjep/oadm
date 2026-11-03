@@ -19,7 +19,8 @@ in use, as in the table. The server runs as Local System / root because the NTP 
 
 The server reaches devices on TCP 443 and 80, and on TCP 554 for the live preview, Live View, Dashboards and the
 Metadata Monitor.
-For **Install now** the server reaches github.com on TCP 443; **Update client** the client does the same.
+For **Install now** and for [optional plugins](../plugins/#optional-plugins) the server reaches github.com on TCP 443;
+**Update client** the client does the same.
 
 ## Data folder
 

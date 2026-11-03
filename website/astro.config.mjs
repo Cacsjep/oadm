@@ -166,6 +166,7 @@ export default defineConfig({
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'Snapshot report', slug: 'tools/snapshot-report' },
 						{ label: 'System report', slug: 'tools/system-report' },
+						{ label: 'Text recognition', slug: 'tools/text-recognition' },
 						{ label: 'VAPIX Commander', slug: 'tools/vapix-commander' },
 						{ label: 'Web View', slug: 'tools/web-view' },
 					],

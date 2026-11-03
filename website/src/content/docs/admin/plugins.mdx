@@ -3,6 +3,7 @@ title: Plugins
 description: Turn plugins on or off.
 ---
 
+import { Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import plugins from '../../../assets/screens/client-plugins-page.png';
 import licenses from '../../../assets/screens/client-plugins-licenses.png';
@@ -20,6 +21,7 @@ clients see the change the next time they connect.
 |---|---|
 | VAPIX Commander, NTP server, DHCP server, Web View | On |
 | Action Rule Editor, Applications, Dashboards, Device triggers, Edge Recording Export, Edge storage, Hardening scan, Image Health Dashboard, Load test, I/O Monitor, Live View, Metadata Monitor, Snapshot report | Off |
+| Text recognition (an [optional plugin](#optional-plugins), installed first) | Off |
 
 Restart, Upgrade AXIS OS, Date and time, Device configuration, Applications (ACAP), Users, Network settings, PKI,
 System report, Outputs and Notifications are the everyday device work. They are always on and not listed. The
@@ -29,23 +31,78 @@ with **Turn on** on its tab of the PKI page; they need OADM PRO.
 ## Optional plugins
 
 Some plugins of OADM are not in its installers because they are large. The **Optional plugins** card below the list
-shows the ones of your OADM version.
+shows the ones of your OADM version with their state: **Not installed**, **Installing 42 %**, **Installed** or **Removed**.
 
-- **Install** downloads the plugin from the OADM release on GitHub, checks it and adds it without a restart. It starts
-  off: turn it on in the list above.
-- **Remove** turns it off at once. Its files go at the next restart of the server; its settings are kept for a new
-  install. Until then **Install** brings it back at once.
-- When you update OADM, the server downloads the optional plugins of the new version by itself. A plugin it cannot
-  download stays off and its row says so; click **Install** to try again, or **Remove**. Install again keeps your choice
-  of on or off.
-- The clients get the plugin from the server. Nothing is installed on their computers. A client that runs while the
-  server brings a new version uses it after its next start; the row says so.
-- The server needs to reach github.com. Without it, download the plugin's ZIP for your server's system
-  (`oadm-addon-<id>-<version>-<system>.zip`) from the release page and unpack it into the folder `addons/<id>` in the
-  server's data folder (`%ProgramData%\OADM`, `/var/lib/oadm` or `/Library/Application Support/OADM`), then restart the
-  server.
+| Optional plugin | What it does |
+|---|---|
+| [Text recognition](../../tools/text-recognition/) | Reads text in camera pictures for the event rules |
 
-Install and Remove are written to the audit log.
+### Install
+
+<Steps>
+
+1. Click **Install** in the plugin's row. The row shows **Download**, **Check** and **Install** with their progress.
+2. When the row says **Installed**, turn the plugin on in the list above. It starts off.
+
+</Steps>
+
+No restart is needed. The clients get the plugin from the server, also clients that are connected now. Nothing is
+installed on their computers and they need no rights for it. A client that runs while the server brings a new version
+of a plugin says **Restart the client to use the new version.**
+
+Only administrators install and remove optional plugins. Both are written to the audit log, for example
+`Installed optional plugin Text recognition V4.11.0`.
+
+### Remove
+
+**Remove** asks **Remove Text recognition? It turns off now. Its settings are kept.** The plugin turns off at once and
+the row says **Removed**: its files go at the next restart of the server. Its settings and readers stay. Until the
+restart, **Install** brings it back at once.
+
+### Updates and backups
+
+The server always installs the optional plugins of its own version. After you update OADM, the server downloads the new
+version of every installed optional plugin by itself. A plugin it cannot download stays off and its row says
+**Could not download Text recognition V4.11.0. Install it again.**: click **Install**. Your choice of on or off is kept.
+
+A backup holds the list of installed optional plugins, not their files. After a restore the server downloads them again.
+
+### Without internet
+
+The server downloads optional plugins from the OADM release on GitHub and checks each file before it installs it. It needs
+to reach github.com on TCP 443. Without it, the row says **The server cannot reach github.com.** and **Install** stays
+off. Then install the plugin by hand:
+
+<Steps>
+
+1. On a computer with internet, open the [OADM release](https://github.com/Cacsjep/oadm/releases) of your server's
+   version and download `oadm-addon-<id>-<version>-<system>.zip` for the server's system: `win-x64`, `linux-x64`,
+   `linux-arm64` or `osx-x64`. For Text recognition the id is `oadm.ocr`, for example
+   `oadm-addon-oadm.ocr-4.11.0-win-x64.zip`.
+2. Unpack it on the server into the folder `addons/<id>` of the data folder, so `plugin.json` sits directly in it:
+
+   | System | Folder |
+   |---|---|
+   | Windows | `%ProgramData%\OADM\addons\oadm.ocr` |
+   | Linux | `/var/lib/oadm/addons/oadm.ocr` |
+   | macOS | `/Library/Application Support/OADM/addons/oadm.ocr` |
+
+3. Restart the OADM server service. The row says **Installed**; turn the plugin on in the list.
+
+</Steps>
+
+Use the ZIP of exactly your server's version. After an OADM update, do this again with the new version.
+
+### Messages
+
+| Message | Do this |
+|---|---|
+| **This OADM version has no optional plugins to download.** | A test or pre-release version. Install a release of OADM, or put the plugin in by hand |
+| **Could not download the optional plugin. Check that the server can reach github.com.** | Check the server's internet access and proxy, or install by hand |
+| **The download is damaged. Try again.** | Click **Install** again |
+| **Not enough free disk space for the optional plugin.** | Free space on the drive of the data folder |
+| **The server is updating.** | Wait until the update is done |
+| **An optional plugin is being installed or removed. Try again when it is done.** | Wait, one install or remove runs at a time |
 
 ## OADM PRO plugins
 
