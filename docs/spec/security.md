@@ -314,7 +314,16 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   Unix: owner root, no group or world write (`find <dir> ! -type l ( ! -user 0 -o -perm -0020 -o -perm -0002 )`; fixed
   by `chown -R 0:0`, `chmod -R go-w`). An unfixable data folder stops the start, an unfixable plugin folder is skipped
   with a load error (`PluginLoader.FolderCheck`). The development plugin folder
-  (`artifacts/plugins`) is used only outside service mode.
+  (`artifacts/plugins`) is used only outside service mode. Optional plugins (`<datafolder>/addons/<id>/`,
+  `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load, and a folder put in by hand is not
+  taken up when the data folder had to be fixed at this start (until then others could write it).
+
+## Optional plugins: trust
+
+Deliberate decision (2026-11-03): optional plugins are not signed. The server trusts them through the OADM release on
+GitHub of its own version (HTTPS, the release hosts only) and the SHA-256 in that release's `SHA256SUMS.txt`; every
+client loads the client part its server hands it, checked against the SHA-256 the server sends. The user must trust their
+server and the release, as they do for the server's own installer and self update.
 
 ## Tests
 

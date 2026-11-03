@@ -474,8 +474,10 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   compliance types (`EnabledChanged`), and `PluginActivation.FollowAddedPackages` (the roles take its permissions with
   the defaults of a new permission, its license is checked, its core plugins start when it is on; its state is the stored
   choice, else its manifest default). `PluginActivation.AddedPackagesFollowed` completes once that is done; the add-on
-  installer waits for it before it reports Installed. A package is never unloaded while the server runs: Remove turns it
-  off and its folder goes at the next start. Tests: `tests/Oadm.Server.Tests/Plugins/RuntimePackageTests`.
+  installer waits for it before it reports Installed. The follow and the PRO sync end with a log line when the server
+  stops meanwhile (`AddedPackagesFollowed` never faults). A package is never unloaded while the server runs: Remove turns
+  it off and its folder goes at the next start; until then it cannot be turned on (`SetPackageEnabled` refuses it with
+  the Removed text). Tests: `tests/Oadm.Server.Tests/Plugins/RuntimePackageTests`.
 - gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
   `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off", target the plugin name);
   `PluginPackageInfo.always_on = 8`, `description = 9`, `group = 10` (`PluginPackageState.Group`: the rail group of the
