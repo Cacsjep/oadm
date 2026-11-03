@@ -24,8 +24,9 @@ public sealed partial class VapixFrameSource : IFrameSource
     /// <summary>The pause before the first reopen.</summary>
     public static readonly TimeSpan FirstReopenPause = TimeSpan.FromSeconds(1);
 
-    /// <summary>A stream that sends no picture for this long is dropped and opened again.</summary>
-    public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(30);
+    /// <summary>A stream that sent pictures and then sends none for this long is dropped and opened again (decision
+    /// 2026-11-03: 3 s, three missed pictures at the lowest rate of 1 per second).</summary>
+    public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(3);
 
     /// <summary>The camera must answer a request (a single picture, or the stream's headers) within this time.</summary>
     public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
@@ -183,7 +184,9 @@ public sealed partial class VapixFrameSource : IFrameSource
         using var message = new HttpRequestMessage(HttpMethod.Get, StreamUri(request, fps));
         message.Options.Set(VapixRequestOptions.Timeout, RequestTimeout);
         message.Options.Set(VapixRequestOptions.StreamResponse, true);
-        using var stall = new CancellationTokenSource(StallTimeout, _time);
+        // Opening (login, a site's relay, the camera starting the stream) may take up to RequestTimeout; once pictures
+        // flow, a gap longer than StallTimeout reopens the stream.
+        using var stall = new CancellationTokenSource(RequestTimeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, stall.Token);
         var delivered = false;
         try

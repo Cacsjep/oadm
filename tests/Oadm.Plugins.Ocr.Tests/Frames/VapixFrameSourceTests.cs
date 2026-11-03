@@ -230,6 +230,26 @@ public sealed class VapixFrameSourceTests
     }
 
     [Fact]
+    public async Task TheFirstPictureMayTakeLongerThanAGap()
+    {
+        var pipe = new Pipe();
+        _camera.Answer = (_, _) => Task.FromResult(Mjpeg(pipe.Reader.AsStream()));
+        using var stop = new CancellationTokenSource();
+        var watch = ConsumeAsync(_source.WatchAsync(Request, 1, stop.Token));
+        await Eventually.TrueAsync(() => _camera.Sent.Count == 1, "stream opened");
+
+        // Slower than a gap between pictures, faster than opening may take: still the same stream.
+        _time.Advance(VapixFrameSource.StallTimeout + TimeSpan.FromSeconds(1));
+        await pipe.Writer.WriteAsync(MjpegParserTests.Part(MjpegParserTests.Jpeg(100, 1)));
+        await Eventually.TrueAsync(() => Volatile.Read(ref _frames) == 1, "first picture");
+        Assert.Equal(0, Pauses);
+        Assert.Single(_camera.Sent);
+
+        await stop.CancelAsync();
+        await watch;
+    }
+
+    [Fact]
     public async Task AnAnswerThatIsNoStreamIsTriedAgain()
     {
         _camera.Answer = (_, _) => Task.FromResult(Mjpeg(new MemoryStream([1, 2, 3]), "text/html"));
