@@ -315,12 +315,18 @@ public sealed class RelayTests
         await using var link = await server.NextLinkAsync();
         using var relay = link.Client.Relay();
 
-        // The node refuses the call at once: the refusal can end the call before the open is written.
-        var error = await Assert.ThrowsAsync<RpcException>(async () =>
+        // The node refuses the call at once: the refusal can end the call before the open is written, and that write then
+        // fails with its own status. The refusal itself comes from the read.
+        try
         {
             await relay.RequestStream.WriteAsync(new RelayMessage { Open = new RelayOpen { Protocol = Protocol.Udp, Port = 123 } });
-            await relay.ResponseStream.MoveNext(CancellationToken.None);
-        });
+        }
+        catch (Exception ex) when (ex is RpcException or InvalidOperationException)
+        {
+            // The call has ended.
+        }
+
+        var error = await Assert.ThrowsAsync<RpcException>(() => relay.ResponseStream.MoveNext(CancellationToken.None));
         Assert.Equal(StatusCode.FailedPrecondition, error.StatusCode);
     }
 
