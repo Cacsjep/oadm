@@ -12,17 +12,9 @@ import paused from '../../../../assets/screens/text-recognition-paused.png';
 ## The last 20 reads
 
 The table below the video keeps the last 20 reads of the reader, newest on top. Drag the bar between video and table up for
-a longer table. The video keeps at least 30 % of the height.
+a longer table.
 
 <Image src={lastReads} alt="The page with the bar dragged up: a small video above a long table of reads with their cut-outs" class="screen" />
-
-| Column | Shows |
-|---|---|
-| **Time** | When the value was read, with seconds |
-| **Area** | The area's name |
-| **Text** | The cut-out and the value |
-| **Confidence** | How sure the read is |
-| **Matches format** | **Yes** with a format, **No format** with **Any text** |
 
 - A read is a new value in an area. The same text in every picture is one row, and an area without a value adds none.
 - A watching reader fills the table also while the page is closed.
@@ -31,8 +23,7 @@ a longer table. The video keeps at least 30 % of the height.
 
 ### Cut-outs
 
-Click a cut-out to see it larger, with sharp pixels, and judge how well the characters show. Text that lies slanted, sideways
-or upside down shows upright.
+Click a cut-out to see it larger and judge how well the characters show.
 
 <Image src={cutOut} alt="The Cut-out dialog with the text AT-4020-12 upright, its area and its time" class="screen fit" />
 
@@ -61,27 +52,22 @@ areas and boxes.
 **Use read text as format** and **Save** work while paused.
 
 <Aside>
-Pause is only for this page. Saved readers keep reading and rules keep firing. The picture stays in the server's memory
-until you press Resume or leave the page. Pause needs the **Live view** permission.
+Pause is only for this page. Saved readers keep reading and rules keep firing. Pause needs the **Live view** permission.
 </Aside>
 
 ### Notes above Save
 
-The chip above **Save** says what needs attention. On a live picture **More than 30 texts found** stays at least 5 seconds, so
-you can read it on a belt. **Text too small** shows when an area had no value for 10 seconds. While paused the chip shows that picture's alerts and each area's result, without a
-hold.
+The chip above **Save** says what needs attention. While paused it shows that picture's alerts and each area's result.
 
 ## Belts and passing vehicles
 
-Turn on **Moving objects** in the reader's settings. It shows only for **Watching** and is off by default. Without it a text on
-a belt can be gone before the pictures agree, and two labels can mix.
+Turn on **Moving objects** in the settings of a watching reader. Without it a text on a belt can be gone before the pictures
+agree, and two labels can mix.
 
 | | Off | **Moving objects** on |
 |---|---|---|
 | A value counts | When the last 5 pictures, compared, give the same value in 2 pictures in a row | When it was read the same in 2 pictures in a row |
 | Good for | A sign or a meter that stays | A belt or a vehicle that passes |
 | A misread in one picture | Changes nothing | Is ignored |
-| Row, event and cut-out | The picture the value was read in | The second of the 2 pictures |
 
-At 1 frame per second 2 pictures take 2 seconds, so a fast belt needs a higher rate. The live results of the page follow the
-setting too.
+At 1 frame per second 2 pictures take 2 seconds, so a fast belt needs a higher rate.

@@ -22,12 +22,12 @@ The top right of the page shows the status, **Load** and what reads the pictures
 
 | Status | Means |
 |---|---|
-| **All readers keep up** | Every watching reader reads at its frames per second and **Load** is under 75 % |
-| **Busy: 2 readers read slower than set** | Readers read under 90 % of their frames per second |
-| **Busy: recognition is at 82 %** | All readers keep up, **Load** is 75 % or more |
-| **Overloaded: lower the frames per second or the number of readers** | The server has no room left: **Load** stayed at 95 % or more for 30 seconds and a reader falls behind |
+| **All readers keep up** | Every watching reader reads at its frames per second |
+| **Busy: 2 readers read slower than set** | Those readers fall behind their frames per second |
+| **Busy: recognition is at 82 %** | All readers keep up, with little room left |
+| **Overloaded: lower the frames per second or the number of readers** | The server has no room left and a reader falls behind |
 
-**Load** is the share of the last 10 seconds the recognition was busy. A new reader counts after 10 seconds.
+**Load** covers the last 10 seconds, so a new reader counts after 10 seconds.
 
 A slow reader turns orange in the list, for example **Watching · 8 fps (reads 5.1)**. It skips pictures and reads the newest,
 so it never falls further behind.
@@ -45,7 +45,7 @@ On **Busy** or **Overloaded**:
 
 With a usable card the models run on the card and the CPU stays free. A model the card cannot run, or runs clearly slower
 than the CPU, stays on the CPU. When a card fails the CPU takes over, and the page shows what reads, for example
-`CPU 24 cores · RTX 5070 Ti` or `CPU 8 cores`. Hover over it for the full name.
+`CPU 24 cores · RTX 5070 Ti` or `CPU 8 cores`.
 
 | Server | Graphics card | What you need |
 |---|---|---|
@@ -53,14 +53,13 @@ than the CPU, stays on the CPU. When a card fails the CPU takes over, and the pa
 | Linux x64 | NVIDIA | The NVIDIA driver, CUDA 12 and cuDNN 9, installed by you |
 | Linux arm64, macOS x64 | None, the CPU reads | Nothing |
 
-On Windows Text recognition uses at most 80 % of the card's memory, or 4 GB when the card does not tell its size, and gives
-the memory back after 2 minutes without reading.
-
 After a start OADM tests the graphics card for a few seconds: readers show **Starting**, then read on the card. **Use GPU** is on by default and counts for the whole server. Turn it off to read on the CPU only. Turning it on needs no
 restart. Only users with all devices can change it.
 
 When the card cannot be used, the CPU reads and the server log says why, in one line starting with **Text recognition runs
 on the CPU**.
+
+On Windows Text recognition uses at most 80 % of the card's memory.
 
 <Aside>
 On Windows the graphics card is used through Microsoft DirectML, which comes under Microsoft's own license terms; they
@@ -89,18 +88,12 @@ include collecting data. Turn off **Use GPU** and restart the server to keep Dir
 | Areas per reader | 8 |
 | Texts read per picture | 30 |
 | Frames per second of a reader | 15 |
-| Last reads kept per reader | 20 |
 | Readers shown live on pages at once | 8 per server, 2 per user |
-
-| Server | 4 cores | 8 cores | 16 cores | 24 cores | 26 cores or more |
-|---|---|---|---|---|---|
-| Watching readers | 8 | 16 | 32 | 48 | 50 |
 
 - The graphics card does not change the limits: they follow the CPU.
 - A reader shown on a page counts as watching while the page shows it, unless it is a saved, unchanged watching reader. Saved
   readers come first.
 - A reader beyond a limit reads nothing and shows **Limit reached** in the list.
-- Cameras at sites work like any other. Their streams never hold up AXIS OS upgrades, application installs or exports there.
 
 ## Server size
 
@@ -122,8 +115,7 @@ These figures were measured on a test bench, with test pictures at 1920x1080 and
 - A scene that does not change, such as a meter between two reads or an empty gate, costs almost nothing.
 - **On action** readers cost only when a rule runs them.
 - Recognition uses at most half of the CPU cores, so the server stays responsive.
-- Many lines at high rates need a graphics card. The 25 reads per second were measured at a set rate of 25; the page offers
-  at most 15 frames per second.
+- Many lines at high rates need a graphics card.
 
 The status on the page shows the real load of your server: add readers until it turns orange, then stop or lower the frames
 per second.

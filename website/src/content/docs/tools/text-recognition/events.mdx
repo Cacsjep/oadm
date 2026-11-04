@@ -20,8 +20,7 @@ per area and read.
 | **Confidence** | 0 to 100, from the value's least sure character | `{confidence}` |
 | **Matches format** | Yes when the value matches the area's format. Always no for **Any text** | `{matchesFormat}` |
 
-`1234,5` gives the **Number** `1234.5` and `00815` gives `815`. Long counters keep every digit. Texts hold at most 500
-characters.
+`1234,5` gives the **Number** `1234.5` and `00815` gives `815`.
 
 The placeholders work in every text of an action, next to OADM's own such as `{time}` and `{device}`. See
 [Placeholders](../../event-rules/#placeholders).
@@ -70,8 +69,6 @@ Each rule starts with **New rule** in [Event rules](../../event-rules/). **When*
 | Order code on a counter | **Watching**, 1 frame per second, highest resolution, one large area, `##@#@` | **Matches format** is yes | **Send HTTP request** with `{text}`, or `{allMatches}` for several receipts |
 | A sign shows LOADING | **Watching**, 1 frame per second, **Any text** | **Text** contains `LOADING` | **Set output** to switch a lamp on, or **Send email** |
 
-A watching reader sends **Text read** only when the reading changes, so these rules run once per new value.
-
 ### Read a number when a truck stops at the scale
 
 <Steps>
@@ -92,7 +89,7 @@ A watching reader sends **Text read** only when the reading changes, so these ru
 
 1. In the dashboard's **Events**, click **Text read** under **Text recognition / reader name**. The widget uses the reader's
    camera.
-2. Choose the **Area**. With one area it is already chosen.
+2. Choose the **Area**.
 3. Choose the **Value**, such as **Text**, **Number** or **Confidence**.
 
 </Steps>

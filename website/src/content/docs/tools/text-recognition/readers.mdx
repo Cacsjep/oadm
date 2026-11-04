@@ -28,14 +28,14 @@ A reader is one camera, one video source and up to 8 areas around the texts you 
 
 The table follows your changes before you save. These live results never start a rule: only saved readers do.
 
-| Setting | What it does | New reader |
-|---|---|---|
-| **Name** | Shows in the event tree of the rules | `Reader 1`, `Reader 2` and so on |
-| **Mode** | **Watching** or **On action** | **Watching** |
-| **Video source** | The camera's view area | The camera's first |
-| **Resolution** | Small text needs pixels: go higher before you draw larger areas | 1920x1080 or the largest below it |
-| **Frames per second** | 1, 2, 4, 8, 12 or 15, only for **Watching** | 1 |
-| **Moving objects** | For [belts and passing vehicles](../tuning/#belts-and-passing-vehicles), only for **Watching** | Off |
+| Setting | What it does |
+|---|---|
+| **Name** | Shows in the event tree of the rules |
+| **Mode** | **Watching** or **On action** |
+| **Video source** | The camera's view area |
+| **Resolution** | Small text needs pixels: go higher before you draw larger areas |
+| **Frames per second** | 1, 2, 4, 8, 12 or 15, only for **Watching** |
+| **Moving objects** | For [belts and passing vehicles](../tuning/#belts-and-passing-vehicles), only for **Watching** |
 
 <Image src={stream} alt="The Stream settings dialog with Video source, Resolution and Frames per second" class="screen fit" />
 
@@ -49,26 +49,23 @@ The table follows your changes before you save. These live results never start a
 Start with 1 or 2 frames per second. A meter needs 1, a passing truck needs more. The top right of the page tells when the
 server [no longer keeps up](../speed/#does-the-server-keep-up).
 
-Renaming a reader or an area never stops the reading.
-
 ## Areas
 
-Text is read only inside areas. A reader without an area reads nothing: the video is dimmed with **Start by drawing an
-area**.
+Text is read only inside areas. A reader without an area reads nothing.
 
 <Image src={drawing} alt="Drawing an area on the live video: a rectangle being dragged, the hint Drag to draw an area" class="screen" />
 
 | To | Do this |
 |---|---|
 | Draw an area | **New** in the **Areas** header, then drag on the video. **Esc** stops |
-| Select an area | Click it on the video or click its row. Click beside the areas to clear the selection |
+| Select an area | Click it on the video or click its row |
 | Move an area | Drag inside it, or use the arrow keys (**Shift** moves further) |
 | Resize an area | Drag a handle. **Esc** cancels the drag |
 | Rename or delete | The ⋯ menu of the area |
 | Turn a read text into a format | **Use read text as format** in the ⋯ menu, see [Formats](../formats/#start-from-a-read-text) |
 
-New areas are named **Area 1**, **Area 2** and so on, with the lowest free number. Rules see this name, so rename an area
-to something like `Container number`. Areas stay in place when you change the resolution.
+Rules see the area's name, so rename an area to something like `Container number`. Areas stay in place when you change the
+resolution.
 
 ### Fixed place or Search
 
@@ -78,7 +75,7 @@ to something like `Container number`. Areas stay in place when you change the re
 | Search | Larger, up to the whole picture, with a format | A text that can be anywhere: an order number on a receipt, a label on a parcel |
 
 The pixels are those of the reader's resolution: at 1920x1080 a Search starts at half the picture's width. A large area
-with **Any text** reads everything in it, which rarely helps a rule.
+with **Any text** reads everything in it.
 
 ### Several lines
 

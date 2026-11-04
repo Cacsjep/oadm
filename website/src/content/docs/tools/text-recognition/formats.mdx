@@ -25,7 +25,7 @@ ignores the rest. An empty field reads any text.
 | `-` | A real dash in the text, with or without spaces around it |
 | Any other letter or character | Itself, upper or lower case do not matter, for example `U`, `.` or `/` |
 
-A format needs at least one `#`, `@` or `*` and has at most 64 characters. Hover over the format field for this help.
+A format needs at least one `#`, `@` or `*`.
 
 ## How a text matches
 
@@ -58,7 +58,6 @@ The value is always written the way the format is: with `@@@U ###### #` the text
 />
 
 A format that starts with `@@@U ###### #` turns on the check digit. A number whose check digit does not fit never matches.
-OADM never changes a character to make it fit.
 
 | Format | Check digit |
 |---|---|

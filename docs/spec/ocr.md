@@ -5,8 +5,8 @@ on the development cameras are open. Developer notes: `plugins/Oadm.Plugins.Ocr/
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-Reads text in the cameras' pictures (signs, container and wagon numbers, displays, meter readings, labels) and hands it
-to the event rules. The first vision plugin, an add-on (`docs/spec/add-ons.md`): not in the OADM installers, installed on
+Reads text in the cameras' pictures (signs, container and wagon numbers, displays, meter readings, labels). The first
+vision plugin, an add-on (`docs/spec/add-ons.md`): not in the OADM installers, installed on
 demand on the Plugins page.
 
 Core plugin `plugins/Oadm.Plugins.Ocr` (+ `.Client`), id `oadm.ocr`, rail page **Text recognition** (the new rail group **Vision**, after Monitoring, for every vision add-on; SDK 0.10.0),
