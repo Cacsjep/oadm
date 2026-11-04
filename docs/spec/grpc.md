@@ -196,16 +196,20 @@ used again.
     without an active license, or turning on an optional plugin that was removed and is still loaded ("Removed. The files
     go at the next restart of the server."); reply: the whole list), `SetPackageLicense(id, license)` and `RemovePackageLicense(id)`
     (Admin; reply: the whole list). See `docs/spec/plugins.md` "Plugins on and off" and "Plugin licenses".
-  - Add-ons (`docs/spec/add-ons.md`): `ListAddOns(ListAddOnsRequest {check_reach})` (any user; `AddOnList` of `AddOnInfo`
-    {id, display_name, description, state, percent, message, version, can_install, client_digest = 10; field 4 reserved},
-    every add-on of the server's version from `AddOnCatalog`; `check_reach` (the card) checks that the server reaches the
-    release, one check at a time, kept 5 minutes; without it (a client's sync) the last answer is used, never a wait on
-    GitHub; `client_digest` while installed), `InstallAddOn(id)` (Admin; stream of `AddOnProgress` {step Download, Check
-    or Install, percent, done, error}, the last message has done or error set; NOT_FOUND unknown add-on;
-    FAILED_PRECONDITION already installed, another install or remove running, a self update running, or a development
-    build or pre-release with nothing to download; audit "Installed optional plugin <name> V<version>" written before the
-    last message, also when the caller has gone (failed writes are dropped); a failed install is audited "Could not
-    install optional plugin" with the reason; done only after the server followed the package), `RemoveAddOn(id)`
+  - Add-ons (`docs/spec/add-ons.md`): `ListAddOns(ListAddOnsRequest)` (any user; field 1 reserved, `check_reach` before
+    4.10.0; `AddOnList` of `AddOnInfo` {id, display_name, description, state, percent, message, version, can_install,
+    client_digest = 10, download_url = 11; field 4 reserved}, every add-on of the server's version from `AddOnCatalog`;
+    `client_digest` while installed; `download_url` the ZIP of this version and system, empty in a build without the
+    hash), `UploadAddOn(stream AddOnUploadChunk)` (Admin; bidirectional; first message `AddOnUploadHeader` {id, file_name, size},
+    then data chunks of 256 KB; answers a stream of `AddOnProgress` {step Upload, Check or Install, percent, done, error},
+    the last message has done or error set, error also for a refused file; the server may answer before it has read
+    the whole file; INVALID_ARGUMENT no header or a second one; NOT_FOUND unknown add-on; FAILED_PRECONDITION already installed,
+    removed and still loaded, a build without the add-on's hash, another install or remove running, or a self update
+    running; audit "Installed optional plugin <name> V<version>" written before the last message, also when the caller
+    has gone after its upload (failed writes are dropped); a refused or failed install is audited "Could not install optional
+    plugin" with the reason; done only after the server followed the package), `InstallAddOn(id)` (Admin; takes back an
+    add-on that was removed and is still loaded, no file; the same stream; FAILED_PRECONDITION in any other state),
+    `RemoveAddOn(id)`
     (Admin; NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
     V<version>"; reply: the whole list), `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with
     path, data, sha256 lowercase hex, digest = 4}: plugin.json, the top-level `*.Client.dll`/`.pdb` and

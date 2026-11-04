@@ -290,11 +290,12 @@ app_version() {
   echo "${OPT_VERSION:-$DEFAULT_VERSION}"
 }
 
+# Optional third argument: one more MSBuild argument (the server's add-on hashes).
 publish_app() {
   rm -rf "$2"
   "$DOTNET" publish "$1" -c Release -r "$RID" --self-contained \
     -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-    -p:PublishReadyToRun=true -p:DebugType=embedded "-p:Version=$(app_version)" -o "$2" ${EXTRA[@]+"${EXTRA[@]}"}
+    -p:PublishReadyToRun=true -p:DebugType=embedded "-p:Version=$(app_version)" ${3:+"$3"} -o "$2" ${EXTRA[@]+"${EXTRA[@]}"}
   # Native symbol files of NuGet packages (SkiaSharp, HarfBuzzSharp); managed symbols are embedded.
   rm -f "$2"/*.pdb
 }
@@ -464,6 +465,28 @@ write_notices() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release --     --repo "$REPO_ROOT" --rid "$RID" --version "$(app_version)" --plugins "$PLUGIN_STAGE" "$@"
 }
 
+# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256>" per line (docs/spec/add-ons.md rule 2):
+# written by package addons, built into that server. Arguments: rid, version.
+addon_hash_file() {
+  echo "$REPO_ROOT/artifacts/publish/addons/$1/addon-hashes-$2.txt"
+}
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+# The MSBuild argument of the server's publish; empty without ZIPs of this version and platform (a warning: Install stays off).
+addon_hash_argument() {
+  local file
+  file="$(addon_hash_file "$RID" "$(app_version)")"
+  if [ -s "$file" ]; then
+    case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) file="$(cygpath -w "$file")" ;; esac
+    echo "-p:OadmAddOnHashFile=$file"
+  else
+    echo "warning: no add-on hashes for $RID $(app_version), this server cannot install optional plugins (manage package addons first)" >&2
+  fi
+}
+
 cmd_publish() {
   require_dotnet
   if [ -n "$OPT_RID" ]; then RID="$OPT_RID"; fi
@@ -471,7 +494,7 @@ cmd_publish() {
   publish_plugins
   if [ "$TARGET" = all ] || [ "$TARGET" = server ]; then
     out="$REPO_ROOT/artifacts/publish/server/$RID"
-    publish_app "$SERVER_PROJECT" "$out"
+    publish_app "$SERVER_PROJECT" "$out" "$(addon_hash_argument)"
     copy_plugins "$out"
     notices+=(--app "$(dirname "$SERVER_PROJECT")" --out "$out")
     echo "server published to $out"
@@ -604,9 +627,9 @@ with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
 # The add-on ZIPs (docs/spec/add-ons.md "Release files"): every add-on (server and client part together) published for
 # each platform (--rid one of them, default all four) with the native libraries of that platform only, into
 # artifacts/publish/addons/<rid>/<id>/ and as oadm-addon-<id>-<version>-<rid>.zip (AddOnCatalog.ReleaseFileName) into
-# artifacts/packages.
+# artifacts/packages, and the ZIPs' SHA-256 into addon_hash_file for the server's publish that follows.
 package_addons() {
-  local rids rid out ids id p stage zip has_client projects=()
+  local rids rid out ids id p stage zip has_client hashes projects=()
   if [ -n "$OPT_RID" ]; then
     case " $ADDON_RIDS " in *" $OPT_RID "*) ;; *) usage_error package "--rid for package addons is ${ADDON_RIDS// /, }" ;; esac
     rids="$OPT_RID"
@@ -620,6 +643,9 @@ package_addons() {
   ids="$(for p in "${projects[@]}"; do plugin_id "$p"; done | sort -u)"
   out="$(abs_dir "$REPO_ROOT/artifacts/packages")"
   for rid in $rids; do
+    hashes="$(addon_hash_file "$rid" "$(app_version)")"
+    mkdir -p "$(dirname "$hashes")"
+    : > "$hashes"
     for id in $ids; do
       stage="$REPO_ROOT/artifacts/publish/addons/$rid/$id"
       rm -rf "$stage"
@@ -631,6 +657,8 @@ package_addons() {
           "-p:Version=$(app_version)" -o "$stage" ${EXTRA[@]+"${EXTRA[@]}"} || exit 1
       done
       limit_runtime_folders "$stage" "$rid"
+      # Build leftovers of the native packages: never needed at run time.
+      find "$stage" -type f \( -name 'DirectML.Debug.dll' -o -name 'DirectML.Debug.pdb' -o -name 'DirectML.pdb' -o -name 'onnxruntime.lib' \) -delete
       # The release it belongs to: the server records a folder put in by hand with this version.
       printf '%s\n' "$(app_version)" > "$stage/oadm-version.txt"
       # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
@@ -649,6 +677,7 @@ package_addons() {
       zip="$out/oadm-addon-$id-$(app_version)-$rid.zip"
       zip_folder "$stage" "$zip"
       bash "$REPO_ROOT/packaging/addons/check-addon-zip.sh" "$zip" "$id" "$rid" || exit 1
+      printf '%s %s\n' "$id" "$(sha256_of "$zip")" >> "$hashes"
       echo "add-on $id $rid: $zip ($(du -k "$zip" | cut -f1) KB)"
     done
   done

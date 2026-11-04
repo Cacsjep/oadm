@@ -66,7 +66,7 @@ public sealed class AddOnsTests : IDisposable
 
     private static async Task InstallAsync(FakeOadmApi api)
     {
-        await foreach (AddOnProgress progress in api.InstallAddOnAsync(FakeOadmApi.TextRecognitionAddOnId, CancellationToken.None))
+        await foreach (AddOnProgress progress in api.UploadAddOnAsync(FakeOadmApi.TextRecognitionAddOnId, "ocr.zip", CancellationToken.None))
         {
             Assert.True(string.IsNullOrEmpty(progress.Error), progress.Error);
         }
@@ -246,7 +246,7 @@ public sealed class AddOnsTests : IDisposable
     {
         var api = Substitute.For<IOadmApi>();
         api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(new PluginPackageList());
-        api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "")));
+        api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "")));
         var loader = new RecordingLoader();
         using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync);
@@ -255,13 +255,12 @@ public sealed class AddOnsTests : IDisposable
 
         await store.LoadAsync(CancellationToken.None);
         await store.AddOnsSynced;
-        api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "down")));
+        api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "down")));
         await store.LoadAsync(CancellationToken.None);
         await store.AddOnsSynced;
 
         Assert.Equal(2, changed);
         Assert.Empty(loader.Loads);
-        await api.DidNotReceive().ListAddOnsAsync(Arg.Is(true), Arg.Any<CancellationToken>()); // the sync never waits for GitHub
     }
 
     [Fact]
@@ -288,7 +287,7 @@ public sealed class AddOnsTests : IDisposable
     public async Task While_the_server_installs_an_add_on_the_client_asks_again_and_loads_it_when_done()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);
-        api.TextRecognitionState = AddOnState.AddOnInstalling; // the server downloads it after its update
+        api.TextRecognitionState = AddOnState.AddOnInstalling; // another administrator installs it
         var loader = new RecordingLoader();
         var time = new FakeTimeProvider();
         using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
@@ -356,8 +355,17 @@ public sealed class AddOnsTests : IDisposable
         Assert.Equal(0, await loader.LoadAddOnAsync("oadm.sample-addon", folder)); // never twice
     }
 
+    /// <summary>The dialogs of a user who picks <paramref name="path"/> and confirms.</summary>
+    private static IDialogService Dialogs(string? path = "C:/Downloads/ocr.zip")
+    {
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.PickFilePathAsync(Arg.Any<string>(), Arg.Any<FileType>()).Returns(path);
+        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+        return dialogs;
+    }
+
     [Fact]
-    public async Task Install_shows_each_step_and_brings_the_package_into_the_plugin_list()
+    public async Task Install_asks_for_the_zip_shows_each_step_and_brings_the_package_into_the_plugin_list()
     {
         using var api = new FakeOadmApi(TimeSpan.Zero);
         var gate = new SemaphoreSlim(0);
@@ -371,26 +379,30 @@ public sealed class AddOnsTests : IDisposable
 
             await gate.WaitAsync();
         };
+        IDialogService dialogs = Dialogs();
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
-        var vm = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance);
+        var vm = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance, dialogs);
         await vm.LoadAsync(CancellationToken.None);
         AddOnRowViewModel row = Assert.Single(vm.AddOns);
         Assert.True(vm.HasAddOns);
         Assert.Equal(("Text recognition", "V0.0.0-fake", true, true), (row.Name, row.MetaText, row.ShowInstall, row.CanInstall));
         Assert.False(row.IsInstalled);
-        Assert.Equal(1, api.AddOnReachChecks); // the card asks whether the server reaches GitHub
 
         Task install = vm.InstallCommand.ExecuteAsync(row);
-        Assert.True(row.IsInstalling);
+        await Eventually.TrueAsync(() => row.IsInstalling, "the install started");
         Assert.False(row.ShowInstall);
-        gate.Release(); // Download 0 %
-        await Eventually.TrueAsync(() => row.ProgressText == "Download 0 %", "the first step shows");
-        gate.Release(); // Download 42 %
-        await Eventually.TrueAsync(() => row.ProgressText == "Download 42 %", "the download shows its percent");
+        Assert.False(row.ShowDownload);
+        Assert.True(row.CanCancel);
+        gate.Release(); // Upload 0 %
+        await Eventually.TrueAsync(() => row.ProgressText == "Upload 0 %", "the first step shows");
+        gate.Release(); // Upload 42 %
+        await Eventually.TrueAsync(() => row.ProgressText == "Upload 42 %", "the upload shows its percent");
         Assert.Equal(42, row.Percent);
-        gate.Release(3); // Download 100, Check, Install
+        gate.Release(3); // Upload 100, Check, Install
         await install;
 
+        await dialogs.Received(1).PickFilePathAsync("Choose the ZIP of Text recognition", AddOnsViewModel.ZipFile);
+        Assert.Equal("C:/Downloads/ocr.zip", api.LastAddOnUpload);
         Assert.True(row.IsInstalled);
         Assert.False(row.IsInstalling);
         Assert.Null(row.Error);
@@ -401,37 +413,93 @@ public sealed class AddOnsTests : IDisposable
     }
 
     [Fact]
-    public async Task A_failed_install_says_why_in_its_row_and_offers_install_again()
+    public async Task Closing_the_file_picker_changes_nothing()
     {
-        using var api = new FakeOadmApi(TimeSpan.Zero) { NextAddOnInstallError = "The download is damaged. Try again." };
-        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
-        var vm = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance);
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, Dialogs(path: null));
         await vm.LoadAsync(CancellationToken.None);
         AddOnRowViewModel row = Assert.Single(vm.AddOns);
 
         await vm.InstallCommand.ExecuteAsync(row);
 
-        Assert.Equal("The download is damaged. Try again.", row.Error);
+        Assert.Null(api.LastAddOnUpload);
         Assert.True(row.ShowInstall);
+        Assert.Null(row.Error);
+    }
+
+    [Fact]
+    public async Task A_refused_file_says_why_in_its_row_and_offers_install_again()
+    {
+        const string Refusal = "This file is not the ZIP of this OADM version and system. Download it again.";
+        using var api = new FakeOadmApi(TimeSpan.Zero) { NextAddOnInstallError = Refusal };
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
+        var vm = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance, Dialogs());
+        await vm.LoadAsync(CancellationToken.None);
+        AddOnRowViewModel row = Assert.Single(vm.AddOns);
+
+        await vm.InstallCommand.ExecuteAsync(row);
+
+        Assert.Equal(Refusal, row.Error);
+        Assert.True(row.ShowInstall);
+        Assert.True(row.ShowDownload);
         Assert.True(row.CanInstall);
         Assert.False(row.IsInstalling);
         await store.LoadAsync(CancellationToken.None);
         Assert.DoesNotContain(store.Packages, p => p.Id == FakeOadmApi.TextRecognitionAddOnId);
     }
 
-    [Fact]
-    public async Task An_add_on_not_loaded_after_an_update_offers_install_and_remove()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)] // seen on a real server: the list says Installing for a moment after the call ended
+    public async Task Cancel_stops_the_upload_and_the_row_goes_back(bool serverStillClearsUp)
     {
-        using var api = new FakeOadmApi(TimeSpan.Zero) { TextRecognitionState = AddOnState.AddOnFailed };
-        var dialogs = Substitute.For<IDialogService>();
-        dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
-        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, dialogs);
+        using var api = new FakeOadmApi(TimeSpan.Zero) { AddOnServerStillClearsUp = serverStillClearsUp };
+        var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        api.AddOnInstallGate = (_, _) => hold.Task;
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, Dialogs());
         await vm.LoadAsync(CancellationToken.None);
         AddOnRowViewModel row = Assert.Single(vm.AddOns);
 
-        // The server's sentence names Install; both buttons are there.
-        Assert.Equal("Could not download Text recognition V0.0.0-fake. Install it again.", row.Message);
-        Assert.Equal((true, true, true), (row.MessageIsError, row.ShowInstall, row.ShowRemove));
+        Task install = vm.InstallCommand.ExecuteAsync(row);
+        await Eventually.TrueAsync(() => api.TextRecognitionState == AddOnState.AddOnInstalling, "the upload runs");
+        vm.CancelUploadCommand.Execute(null);
+        await install;
+
+        Assert.Null(row.Error);
+        Assert.Equal((AddOnState.AddOnNotInstalled, false, true), (row.State, row.IsInstalling, row.ShowInstall));
+    }
+
+    [Fact]
+    public async Task The_link_opens_the_zip_of_this_version_and_only_oadms_own_release()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        var urls = Substitute.For<IUrlLauncher>();
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, urls: urls);
+        await vm.LoadAsync(CancellationToken.None);
+        AddOnRowViewModel row = Assert.Single(vm.AddOns);
+
+        await vm.DownloadCommand.ExecuteAsync(row);
+
+        Assert.True(row.ShowDownload);
+        Assert.Equal("oadm-addon-oadm.ocr-0.0.0-fake-win-x64.zip", row.DownloadTip);
+        await urls.Received(1).OpenAsync(new Uri(row.DownloadUrl));
+
+        api.AddOnDownloadUrl = "https://example.com/evil.zip";
+        await vm.LoadAsync(CancellationToken.None);
+        Assert.False(row.ShowDownload);
+    }
+
+    [Fact]
+    public async Task An_add_on_not_loaded_after_an_update_offers_install_the_link_and_remove()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero) { TextRecognitionState = AddOnState.AddOnFailed };
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, Dialogs());
+        await vm.LoadAsync(CancellationToken.None);
+        AddOnRowViewModel row = Assert.Single(vm.AddOns);
+
+        // The server's sentence names Install; the buttons and the link are there.
+        Assert.Equal("Not loaded. Install it again for this OADM version.", row.Message);
+        Assert.Equal((true, true, true, true), (row.MessageIsError, row.ShowInstall, row.ShowRemove, row.ShowDownload));
 
         await vm.RemoveCommand.ExecuteAsync(row);
 
@@ -440,16 +508,32 @@ public sealed class AddOnsTests : IDisposable
     }
 
     [Fact]
-    public async Task Without_github_install_stays_off_and_the_row_says_why()
+    public async Task A_refused_install_after_an_update_keeps_the_row_as_it_was()
     {
-        using var api = new FakeOadmApi(TimeSpan.Zero) { AddOnsUnreachable = true };
-        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance);
+        using var api = new FakeOadmApi(TimeSpan.Zero) { TextRecognitionState = AddOnState.AddOnFailed, NextAddOnInstallError = "refused" };
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, Dialogs());
         await vm.LoadAsync(CancellationToken.None);
         AddOnRowViewModel row = Assert.Single(vm.AddOns);
 
-        Assert.Equal(("The server cannot reach github.com.", true, false, false), (row.Message, row.ShowInstall, row.CanInstall, row.MessageIsError));
-        Assert.Equal("The server cannot reach github.com.", row.InstallTip);
         await vm.InstallCommand.ExecuteAsync(row);
+
+        Assert.Equal(("refused", AddOnState.AddOnFailed), (row.Error, row.State));
+        Assert.True(row.ShowDownload);
+    }
+
+    [Fact]
+    public async Task A_build_without_the_hash_keeps_install_off_and_says_why()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero) { AddOnsWithoutHash = true };
+        var vm = new AddOnsViewModel(api, new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance), NullLogger<AddOnsViewModel>.Instance, Dialogs());
+        await vm.LoadAsync(CancellationToken.None);
+        AddOnRowViewModel row = Assert.Single(vm.AddOns);
+
+        const string Text = "This OADM build cannot check optional plugins. Put the plugin into its folder by hand.";
+        Assert.Equal((Text, true, false, false, false), (row.Message, row.ShowInstall, row.CanInstall, row.MessageIsError, row.ShowDownload));
+        Assert.Equal(Text, row.InstallTip);
+        await vm.InstallCommand.ExecuteAsync(row);
+        Assert.Null(api.LastAddOnUpload);
         Assert.False(row.IsInstalled);
     }
 
@@ -476,10 +560,16 @@ public sealed class AddOnsTests : IDisposable
         await dialogs.Received().ConfirmAsync("Remove optional plugin", "Remove Text recognition? It turns off now. Its settings are kept.", "Remove");
         Assert.True(row.IsRemoved);
         Assert.False(row.ShowRemove);
-        Assert.True(row.ShowInstall); // the server keeps the loaded one, nothing is downloaded
+        Assert.True(row.ShowInstall);
+        Assert.False(row.ShowDownload); // the server keeps the loaded one, no file is asked for
         Assert.True(row.CanInstall);
         Assert.Equal("Removed. The files go at the next restart of the server.", row.Message);
         Assert.False(Assert.Single(store.Packages, p => p.Id == FakeOadmApi.TextRecognitionAddOnId).Enabled);
+
+        await vm.InstallCommand.ExecuteAsync(row);
+
+        await dialogs.DidNotReceive().PickFilePathAsync(Arg.Any<string>(), Arg.Any<FileType>());
+        Assert.True(row.IsInstalled);
     }
 
     [Fact]
@@ -493,10 +583,10 @@ public sealed class AddOnsTests : IDisposable
         AddOnRowViewModel row = Assert.Single(vm.AddOns);
 
         Assert.False(vm.IsAdmin);
-        Assert.Equal((false, true), (row.ShowInstall, row.ShowNotInstalled));
+        Assert.Equal((false, true, false), (row.ShowInstall, row.ShowNotInstalled, row.ShowDownload));
         await vm.InstallCommand.ExecuteAsync(row);
         Assert.False(row.IsInstalling);
-        Assert.Equal(AddOnState.AddOnNotInstalled, (await api.ListAddOnsAsync(checkReach: false, CancellationToken.None)).AddOns[0].State);
+        Assert.Equal(AddOnState.AddOnNotInstalled, (await api.ListAddOnsAsync(CancellationToken.None)).AddOns[0].State);
     }
 
     [Fact]
@@ -504,7 +594,7 @@ public sealed class AddOnsTests : IDisposable
     {
         var api = Substitute.For<IOadmApi>();
         api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(new PluginPackageList());
-        api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "")));
+        api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "")));
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
         var addOns = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance);
         var page = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance, addOns: addOns);
@@ -514,9 +604,9 @@ public sealed class AddOnsTests : IDisposable
         Assert.Same(addOns, page.AddOns);
         Assert.False(addOns.HasAddOns);
         Assert.False(addOns.HasError);
-        await api.Received(1).ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        await api.Received(1).ListAddOnsAsync(Arg.Any<CancellationToken>());
 
-        api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "The server is not reachable.")));
+        api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unavailable, "The server is not reachable.")));
         await addOns.LoadAsync(CancellationToken.None);
         Assert.Equal("The optional plugins could not be read: The server is not reachable.", addOns.ErrorText);
     }

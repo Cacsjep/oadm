@@ -320,10 +320,13 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 
 ## Optional plugins: trust
 
-Deliberate decision (2026-11-03): optional plugins are not signed. The server trusts them through the OADM release on
-GitHub of its own version (HTTPS, the release hosts only) and the SHA-256 in that release's `SHA256SUMS.txt`; every
-client loads the client part its server hands it, checked against the SHA-256 the server sends. The user must trust their
-server and the release, as they do for the server's own installer and self update.
+Deliberate decision (2026-11-04): an optional plugin runs inside the server, as SYSTEM or root, so an OADM login must not
+become code on the computer. The server installs only the exact ZIP whose SHA-256 is built into it, per version and system,
+checked before anything is unpacked (`docs/spec/add-ons.md` rule 2); that works offline and asks nothing of the user. The ZIPs
+are not signed: the user trusts the server's installer, and the hash comes with it. The remaining risk is the manual folder
+install, which has no hash: it needs write access to the server's disk, which already means control of the computer. Every
+client loads the client part its server hands it, checked against the SHA-256 the server sends; the user must trust their
+server.
 
 ## Tests
 

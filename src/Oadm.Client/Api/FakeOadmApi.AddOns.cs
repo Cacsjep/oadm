@@ -7,7 +7,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Add-ons of fake mode (docs/spec/add-ons.md): Text recognition, not installed. Install walks through Download, Check and
+/// Add-ons of fake mode (docs/spec/add-ons.md): Text recognition, not installed. Install walks through Upload, Check and
 /// Install and adds its package (off, group Vision) to the plugin list; Remove turns it off and marks it removed. The client
 /// part has no files (fake mode loads the plugins of the checkout).
 /// </summary>
@@ -17,9 +17,19 @@ public sealed partial class FakeOadmApi
     public const string TextRecognitionAddOnId = "oadm.ocr";
 
     private AddOnState _textRecognitionState = AddOnState.AddOnNotInstalled;
+    private AddOnState _previousState = AddOnState.AddOnNotInstalled;
 
-    /// <summary>Tests: the server cannot reach the release (Install stays off, the row says why).</summary>
-    public bool AddOnsUnreachable { get; set; }
+    /// <summary>Tests: a server build without the hash (Install stays off, the row says why, no link).</summary>
+    public bool AddOnsWithoutHash { get; set; }
+
+    /// <summary>Tests: the link the server gives (default: the release of the fake version).</summary>
+    public string? AddOnDownloadUrl { get; set; }
+
+    /// <summary>Tests: right after a Cancel the server still lists the add-on as Installing.</summary>
+    public bool AddOnServerStillClearsUp { get; set; }
+
+    /// <summary>Tests: the file the last install was given.</summary>
+    public string? LastAddOnUpload { get; private set; }
 
     /// <summary>Tests: the next install ends with this error instead of done.</summary>
     public string? NextAddOnInstallError { get; set; }
@@ -36,24 +46,16 @@ public sealed partial class FakeOadmApi
     /// <summary>Tests: how often the client part was asked for.</summary>
     public int AddOnClientPartCalls { get; private set; }
 
-    /// <summary>Tests: the list's ListAddOns calls with the reach check.</summary>
-    public int AddOnReachChecks { get; private set; }
-
-    public Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct)
+    public Task<AddOnList> ListAddOnsAsync(CancellationToken ct)
     {
         lock (_gate)
         {
             ThrowIfOffline();
-            if (checkReach)
-            {
-                AddOnReachChecks++;
-            }
-
             return Task.FromResult(FakeAddOnList());
         }
     }
 
-    /// <summary>Tests: the state of the add-on (an install another administrator or the server's update started).</summary>
+    /// <summary>Tests: the state of the add-on (an install another administrator started, after an update, ...).</summary>
     public AddOnState TextRecognitionState
     {
         get
@@ -79,11 +81,31 @@ public sealed partial class FakeOadmApi
         {
             ThrowIfOffline();
             CheckAddOn(id);
+            if (_textRecognitionState != AddOnState.AddOnRemoved)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, "Update this client to install optional plugins."));
+            }
+
+            _textRecognitionState = AddOnState.AddOnInstalled;
+        }
+
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield return new AddOnProgress { Step = AddOnStep.Install, Percent = 100, Done = true };
+    }
+
+    public async IAsyncEnumerable<AddOnProgress> UploadAddOnAsync(string id, string path, [EnumeratorCancellation] CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            CheckAddOn(id);
             if (_textRecognitionState is AddOnState.AddOnInstalled or AddOnState.AddOnInstalling)
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, "Text recognition is installed."));
             }
 
+            LastAddOnUpload = path;
+            _previousState = _textRecognitionState;
             _textRecognitionState = AddOnState.AddOnInstalling;
         }
 
@@ -91,12 +113,20 @@ public sealed partial class FakeOadmApi
         NextAddOnInstallError = null;
         foreach (var (step, percent) in new[]
                  {
-                     (AddOnStep.Download, 0), (AddOnStep.Download, 42), (AddOnStep.Download, 100), (AddOnStep.Check, 100), (AddOnStep.Install, 100),
+                     (AddOnStep.Upload, 0), (AddOnStep.Upload, 42), (AddOnStep.Upload, 100), (AddOnStep.Check, 100), (AddOnStep.Install, 100),
                  })
         {
             if (AddOnInstallGate is { } gate)
             {
-                await gate(step, percent).ConfigureAwait(false);
+                try
+                {
+                    await gate(step, percent).WaitAsync(ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    TextRecognitionState = AddOnServerStillClearsUp ? AddOnState.AddOnInstalling : _previousState; // stopped: the state as it was
+                    throw;
+                }
             }
             else if (_tick > TimeSpan.Zero)
             {
@@ -106,11 +136,7 @@ public sealed partial class FakeOadmApi
             yield return new AddOnProgress { Step = step, Percent = percent };
             if (error is not null && step == AddOnStep.Check)
             {
-                lock (_gate)
-                {
-                    _textRecognitionState = AddOnState.AddOnNotInstalled;
-                }
-
+                TextRecognitionState = _previousState; // refused: the state as it was
                 yield return new AddOnProgress { Step = step, Percent = percent, Error = error };
                 yield break;
             }
@@ -176,14 +202,17 @@ public sealed partial class FakeOadmApi
             Description = "Reads text in camera pictures for the event rules.",
             State = _textRecognitionState,
             Version = AddOnVersion,
-            CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsUnreachable && _textRecognitionState != AddOnState.AddOnInstalling),
+            CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsWithoutHash && _textRecognitionState != AddOnState.AddOnInstalling),
             Message = _textRecognitionState switch
             {
                 AddOnState.AddOnRemoved => "Removed. The files go at the next restart of the server.",
-                AddOnState.AddOnFailed => $"Could not download Text recognition V{FakeServerVersion}. Install it again.",
-                AddOnState.AddOnNotInstalled when AddOnsUnreachable => "The server cannot reach github.com.",
+                AddOnState.AddOnFailed => "Not loaded. Install it again for this OADM version.",
+                AddOnState.AddOnNotInstalled when AddOnsWithoutHash => "This OADM build cannot check optional plugins. Put the plugin into its folder by hand.",
                 _ => string.Empty,
             },
+            DownloadUrl = AddOnsWithoutHash
+                ? string.Empty
+                : AddOnDownloadUrl ?? $"{Oadm.Contracts.Updates.GitHubReleaseFeed.DownloadPrefix}v{AddOnVersion}/oadm-addon-{TextRecognitionAddOnId}-{AddOnVersion}-win-x64.zip",
             ClientDigest = _textRecognitionState == AddOnState.AddOnInstalled ? AddOnClientPart?.Digest ?? string.Empty : string.Empty,
         });
         return list;

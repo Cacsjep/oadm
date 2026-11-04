@@ -128,7 +128,14 @@ public static class ServiceRegistration
             sp.GetRequiredService<Plugins.AddOns.IAddOnPartLoader>(),
             sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientSync>>(),
             () => sp.GetRequiredService<IServerTrust>().PresentedFingerprint));
-        services.AddSingleton<Plugins.AddOns.AddOnsViewModel>();
+        services.AddSingleton(sp => new Plugins.AddOns.AddOnsViewModel(
+            sp.GetRequiredService<IOadmApi>(),
+            sp.GetRequiredService<Plugins.PluginPackageStore>(),
+            sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnsViewModel>>(),
+            sp.GetRequiredService<IDialogService>(),
+            sp.GetRequiredService<Shell.UserSession>(),
+            sp.GetRequiredService<Plugins.AddOns.AddOnClientSync>(),
+            sp.GetRequiredService<IUrlLauncher>()));
         services.AddSingleton<AvaloniaDialogService>();
         services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<AvaloniaDialogService>());
         services.AddSingleton<IUrlLauncher>(sp => sp.GetRequiredService<AvaloniaDialogService>());

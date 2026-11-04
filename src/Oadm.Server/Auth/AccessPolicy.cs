@@ -187,6 +187,7 @@ public static class AccessPolicy
         // are for every client (its pages need the client part).
         ["/oadm.v1.PluginService/ListAddOns"] = AccessRule.SignedIn,
         ["/oadm.v1.PluginService/InstallAddOn"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/UploadAddOn"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/RemoveAddOn"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/GetAddOnClientPart"] = AccessRule.SignedIn,
 

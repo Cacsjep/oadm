@@ -41,13 +41,13 @@ The file layout of every installer and the user-facing install notes are in `pac
   Windows). It builds on any system (cross-publish; bash needs `zip` or `python3`).
 - The ZIP holds the plugin folder's content at the top (no top folder), dot files included in both scripts: `plugin.json`,
   the server part, the client part, their `*.deps.json`, the native libraries and models of that platform, and
-  `oadm-version.txt` (the release version, one line, written by the scripts; the server records a folder put in by hand
-  with it). The server unpacks it into
+  `oadm-version.txt` (the version, one line, written by the scripts; the server loads a folder only with its own exact
+  version in it). The server unpacks it into
   `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
   the add-on has a client project), `THIRD-PARTY-NOTICES.txt`, `oadm-version.txt` and that no native library of another
   platform is in it (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux); after zipping they run
   `check-addon-zip.sh` on the ZIP (`manage.ps1` with Git Bash when it finds it, else `release.yml` does).
-- Limits of the server: the ZIP at most 400 MB (the download limit of `UpdateDownloader`); the client part the server
+- Limits of the server: the ZIP at most 1 GB (`AddOnFolders.MaxZipBytes`); the client part the server
   hands to clients is `plugin.json`, the top-level `*.Client.dll`, `*.Server.dll` (the client part references its server
   project) with their `.pdb`, and everything under `client/` (`AddOnFolders.ClientPartPatterns`), at most 24 MB unpacked
   (`AddOnFolders.MaxClientPartBytes`; a test keeps `check-addon-zip.sh` on both constants) and never a native library. Client-only dependencies of an add-on go under `client/`; dependencies of the server part
@@ -59,6 +59,12 @@ The file layout of every installer and the user-facing install notes are in `pac
   the build), then copied into the output's `Models/` and so into the add-on ZIP. A cached file is never downloaded again.
   `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
   the hash of `Models.targets`.
+- **The ZIPs come before the server** (`docs/spec/add-ons.md` rule 2): the server holds the SHA-256 of each ZIP of its
+  system. `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` (one "`<id> <sha256>`"
+  per line, after the ZIP's check); `manage publish` and `manage package <system>` pass the file of their version and platform
+  to the server only (`-p:OadmAddOnHashFile`, `Oadm.Server.csproj` makes assembly metadata of it), so it survives
+  `PublishSingleFile`. Without the file the server is published with a warning and cannot install optional plugins. A ZIP
+  is never rebuilt after its hash went into a server. `package addons` without `--rid` writes the file of each platform.
 - `packaging/addons/addon-ids.sh` prints the add-on plugin ids, `packaging/addons/check-addon-zip.sh <zip> <id> <rid>`
   checks one ZIP the same way plus the limits, `oadm-version.txt` equal to the version of the ZIP's name, no
   `notices-extra.json`, and in a `win-*` ZIP with `DirectML.dll` notices that hold its license ("MICROSOFT SOFTWARE
@@ -180,10 +186,12 @@ when the jobs it needs passed:
   artifact `portable-<version>-<rid>`). Takes the offline docs of the job `docs` into the client. Checks the license
   texts and the client's `docs/index.html` next to the published exes; installs, checks and removes the .deb packages as
   "Server and client", as "Client only" and the site node; checks the .pkg's choices and payload without installing.
-  Builds the add-on ZIPs of its platform (`manage package addons --rid <rid>`, their own artifact
-  `addons-<version>-<rid>`, left out of `oadm-<version>-<rid>` so `smoke-windows` does not download them), checks each
-  with `check-addon-zip.sh` and checks that no add-on folder is next to the published exes, in the portable ZIPs, the MSI
-  (Directory table), the .deb packages or the .pkg.
+  Builds the add-on ZIPs of its platform first (`manage package addons --rid <rid>`, before every package step, their own
+  artifact `addons-<version>-<rid>`, left out of `oadm-<version>-<rid>` so `smoke-windows` does not download them), so the
+  server built next holds their hashes; after the packages it checks each ZIP with `check-addon-zip.sh`, checks with
+  `check-server-hash.sh` that the published server holds the hash of every ZIP (missing or different fails the build; it reads
+  the exe without running it), and checks that no add-on folder is next to the published exes, in the portable ZIPs, the
+  MSI (Directory table), the .deb packages or the .pkg.
 - `docs` (15 min, next to the tests): `npm run build:offline` in `website/` once, uploaded as the artifact `docs-offline`.
 - `smoke-windows` (needs installers, 30 min): the MSI installed, checked and removed both ways by
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest
@@ -253,8 +261,8 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   color), each a plain list of its OADM files without a heading (Windows "Server and Client Installer", "Site Node
   Installer"; Linux: Server, Client, Site Node, Site Node App; the site node has no macOS build), below them in each
   system tab a group "Optional plugins" (the add-on ZIPs of that platform, `oadm-addon-<id>-<version>-<rid>.zip`, with
-  one line "Install them on the Plugins page of OADM. Download a ZIP only for a server without internet." and links to
-  each plugin's docs and the Plugins page's "Without internet"), and a tab Portable with
+  one line "Download the ZIP of your server's version and system, then install it on the Plugins page of OADM." and links to
+  each plugin's docs and the Plugins page's "Optional plugins"), and a tab Portable with
   the server and client ZIPs of every system under a heading per system; one row per file with its name, file name and
   size; a group or row whose file the release lacks is hidden. Below them How to install, Release notes (the changelog
   page), Checksums (`SHA256SUMS.txt`) and All files on GitHub.

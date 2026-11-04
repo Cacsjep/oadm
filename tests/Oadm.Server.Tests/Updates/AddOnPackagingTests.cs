@@ -64,7 +64,7 @@ public sealed partial class AddOnPackagingTests
             Assert.Contains($", rid: {rid},", release, StringComparison.Ordinal);
         }
 
-        // The file name the server downloads (A1) is the one the scripts write and the release checks.
+        // The file name the row links is the one the scripts write and the release checks.
         Assert.Contains($"\"{AddOnCatalog.ReleaseFileName("$id", "$version", "$rid")}\"", ps1, StringComparison.Ordinal);
         Assert.Contains($"\"$out/{AddOnCatalog.ReleaseFileName("$id", "$(app_version)", "$rid")}\"", sh, StringComparison.Ordinal);
         Assert.Contains($"artifacts/packages/{AddOnCatalog.ReleaseFileName("$id", "$version", "$rid")}", release, StringComparison.Ordinal);
@@ -111,8 +111,8 @@ public sealed partial class AddOnPackagingTests
         var limits = CheckLimits().Matches(Read("packaging", "addons", "check-addon-zip.sh"))
             .ToDictionary(m => m.Groups[1].Value, m => long.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture) * 1024 * 1024);
 
-        // The ZIP: the download limit of the server (GitHubAddOnFiles downloads through the self update's UpdateDownloader).
-        Assert.Equal(Oadm.Contracts.Updates.UpdateDownloader.MaxInstallerBytes, limits["zip"]);
+        // The ZIP: the most the server takes from a client.
+        Assert.Equal(AddOnFolders.MaxZipBytes, limits["zip"]);
         Assert.Equal(Oadm.Server.AddOns.AddOnFolders.MaxClientPartBytes, limits["client"]);
     }
 
@@ -162,6 +162,50 @@ public sealed partial class AddOnPackagingTests
         {
             Assert.Matches("^[^@]+@[0-9a-f]{40}$", use.Groups[1].Value);
         }
+    }
+
+    [Fact]
+    public void TheReleaseBuildsTheZipsBeforeTheServerSoTheHashGoesIntoIt()
+    {
+        var release = Read(".github", "workflows", "release.yml");
+
+        foreach (var (addOns, package) in new[]
+                 {
+                     ("./manage.ps1 package addons", "./manage.ps1 package windows"),
+                     ("./manage.sh package addons", "./manage.sh package ${{ matrix.target }}"),
+                 })
+        {
+            Assert.True(release.IndexOf(addOns, StringComparison.Ordinal) < release.IndexOf(package, StringComparison.Ordinal), addOns);
+        }
+
+        // The published server is checked against the ZIP after both exist; the archive check stays behind the publish too.
+        var server = release.IndexOf("./manage.sh package ${{ matrix.target }}", StringComparison.Ordinal);
+        Assert.True(release.IndexOf("packaging/addons/check-server-hash.sh", StringComparison.Ordinal) > server);
+        Assert.True(release.IndexOf("- name: Check add-on archives", StringComparison.Ordinal) > server);
+    }
+
+    [Fact]
+    public void BothScriptsWriteTheHashFileAndFeedItIntoTheServerOnly()
+    {
+        var ps1 = Read("manage.ps1");
+        var sh = Read("manage.sh");
+        var project = Read("src", "Oadm.Server", "Oadm.Server.csproj");
+
+        // One line "<id> <sha256>" per add-on in a file of that version and platform, written after the ZIP's own check.
+        Assert.Contains("artifacts/publish/addons/$Rid/addon-hashes-$Version.txt", ps1, StringComparison.Ordinal);
+        Assert.Contains("artifacts/publish/addons/$1/addon-hashes-$2.txt", sh, StringComparison.Ordinal);
+        Assert.True(Function(ps1, "function Invoke-PackageAddOns {").IndexOf("check-addon-zip.sh", StringComparison.Ordinal) < Function(ps1, "function Invoke-PackageAddOns {").IndexOf("Add-AddOnHash", StringComparison.Ordinal));
+        Assert.True(Function(sh, "package_addons() {").IndexOf("check-addon-zip.sh", StringComparison.Ordinal) < Function(sh, "package_addons() {").IndexOf("sha256_of", StringComparison.Ordinal));
+        Assert.Contains("-p:OadmAddOnHashFile=", ps1, StringComparison.Ordinal);
+        Assert.Contains("-p:OadmAddOnHashFile=", sh, StringComparison.Ordinal);
+        Assert.Contains("Publish-App $ServerProject $out (Get-AddOnHashArgument)", ps1, StringComparison.Ordinal);
+        Assert.Contains("publish_app \"$SERVER_PROJECT\" \"$out\" \"$(addon_hash_argument)\"", sh, StringComparison.Ordinal);
+        Assert.DoesNotContain("Publish-App $ClientProject $out (", ps1, StringComparison.Ordinal);
+
+        // The key the server reads and the check on the published exe looks for.
+        Assert.Contains(AssemblyAddOnHashes.MetadataPrefix, project, StringComparison.Ordinal);
+        Assert.Contains(AssemblyAddOnHashes.MetadataPrefix, Read("packaging", "addons", "check-server-hash.sh"), StringComparison.Ordinal);
+        Assert.Contains("<AssemblyMetadata Include=", project, StringComparison.Ordinal);
     }
 
     /// <summary>The body of the function that starts with <paramref name="start"/>, up to the next blank line.</summary>

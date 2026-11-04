@@ -83,6 +83,8 @@ public sealed partial class FakeOadmApi
                     return Task.FromResult<string?>(null);
                 case "press":
                     return Task.FromResult<string?>(new JsonObject { ["usedByRule"] = false }.ToJsonString()); // fake mode has no rule for a button
+                case "tables":
+                    return Task.FromResult<string?>(FakeTables(payloadJson).ToJsonString());
                 default:
                     throw new RpcException(new Status(StatusCode.InvalidArgument, $"Unknown method '{method}'."));
             }
@@ -112,6 +114,30 @@ public sealed partial class FakeOadmApi
         catch (OperationCanceledException)
         {
         }
+    }
+
+    /// <summary>The rows of table widgets: a plate each second, the last 20 at first.</summary>
+    private static JsonObject FakeTables(string? payloadJson)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var tables = new JsonArray();
+        foreach (var read in (JsonNode.Parse(payloadJson ?? "{}")?["tables"]?.AsArray() ?? []).OfType<JsonObject>())
+        {
+            var rows = new JsonArray();
+            for (var second = Math.Max((read["after"]?.GetValue<long>() ?? 0) + 1, now - 19); second <= now; second++)
+            {
+                rows.Add(new JsonObject
+                {
+                    ["seq"] = second,
+                    ["time"] = DateTimeOffset.FromUnixTimeSeconds(second).ToString("O", CultureInfo.InvariantCulture),
+                    ["text"] = FakePlates[second % FakePlates.Length],
+                });
+            }
+
+            tables.Add(new JsonObject { ["widgetId"] = read["widgetId"]?.DeepClone(), ["ring"] = "fake", ["rows"] = rows });
+        }
+
+        return new JsonObject { ["tables"] = tables };
     }
 
     /// <summary>The values now: a temperature that drifts, a gate that opens every few seconds, the last plate seen.</summary>

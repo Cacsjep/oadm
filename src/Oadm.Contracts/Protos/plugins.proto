@@ -25,13 +25,18 @@ service PluginService {
   // Admin: removes the license of a package (the plugin falls back to its trial or to no license). Reply: the whole list.
   rpc RemovePackageLicense (PackageIdRequest) returns (PluginPackageList);
   // Add-on plugins (docs/spec/add-ons.md): plugins of this OADM version that are not in its installers. Any logged-in user:
-  // the add-ons of this version (AddOnCatalog) with their state on this server. check_reach: whether the server reaches
-  // the release now (the Plugins page's card; one check at a time, kept for minutes); without it the last answer is used.
+  // the add-ons of this version (AddOnCatalog) with their state on this server.
   rpc ListAddOns (ListAddOnsRequest) returns (AddOnList);
-  // Admin: downloads the add-on of the server's version from OADM's release, checks it and loads it (off). Streams
-  // the progress; the last message has done or error set (a failure leaves nothing behind). NOT_FOUND unknown add-on,
-  // FAILED_PRECONDITION already installed, another install or remove running, or a self update running.
+  // Admin: takes back an add-on that was removed and is still loaded; nothing to send. The stream of AddOnProgress ends with
+  // done or error. A file is installed with UploadAddOn. NOT_FOUND unknown add-on, FAILED_PRECONDITION any other state,
+  // another install or remove running, or a self update running.
   rpc InstallAddOn (AddOnIdRequest) returns (stream AddOnProgress);
+  // Admin: installs an add-on from a ZIP the user chose. First message: header, then data chunks (256 KB). The server
+  // checks the file against the SHA-256 built into this server, unpacks it and loads it (off). Streams the progress; the
+  // last message has done or error set (a failure leaves the state as it was). INVALID_ARGUMENT no header, NOT_FOUND
+  // unknown add-on, FAILED_PRECONDITION already installed, removed and still loaded, a build without the add-on's hash,
+  // another install or remove running, or a self update running.
+  rpc UploadAddOn (stream AddOnUploadChunk) returns (stream AddOnProgress);
   // Admin: turns the add-on off at once; its folder goes at the next server start. NOT_FOUND unknown add-on,
   // FAILED_PRECONDITION not installed or a self update running. Reply: the whole list.
   rpc RemoveAddOn (AddOnIdRequest) returns (AddOnList);
@@ -105,19 +110,19 @@ message PluginPackageList { repeated PluginPackageInfo packages = 1; string serv
 message SetPackageLicenseRequest { string id = 1; string license = 2; }
 message PackageIdRequest { string id = 1; }
 message SetPackageEnabledRequest { string id = 1; bool enabled = 2; }
-message ListAddOnsRequest { bool check_reach = 1; }
+message ListAddOnsRequest { reserved 1; } // check_reach
 // The state of an add-on on this server (Oadm.Server.AddOns.AddOnState).
 enum AddOnState {
   ADD_ON_NOT_INSTALLED = 0;
   ADD_ON_INSTALLING = 1;
   ADD_ON_INSTALLED = 2;
   ADD_ON_REMOVED = 3;      // turned off, its files go at the next server start
-  ADD_ON_FAILED = 4;       // installed before, but the download after an update failed: not loaded (message says so)
+  ADD_ON_FAILED = 4;       // installed before, not loaded now: another version after an update, no files after a restore (message says so)
 }
 // One add-on of this OADM version: id = plugin.json id; description: one line what it adds; percent while installing;
-// message: why it is not loaded or cannot be installed ("The server cannot reach github.com."), empty otherwise;
-// can_install: whether Install works now; client_digest: the digest of its client part (AddOnClientPart.digest) while
-// installed, empty otherwise.
+// message: why it is not loaded or cannot be installed, empty otherwise; can_install: whether Install works now;
+// client_digest: the digest of its client part (AddOnClientPart.digest) while installed, empty otherwise; download_url:
+// the ZIP of this server's version and system on the OADM release, empty for a build that cannot install it.
 message AddOnInfo {
   reserved 4; // size_bytes
   string id = 1;
@@ -129,16 +134,25 @@ message AddOnInfo {
   string version = 8;
   bool can_install = 9;
   string client_digest = 10;
+  string download_url = 11;
 }
 message AddOnList { repeated AddOnInfo add_ons = 1; }
 message AddOnIdRequest { string id = 1; }
 enum AddOnStep {
-  ADD_ON_STEP_DOWNLOAD = 0;
+  ADD_ON_STEP_UPLOAD = 0;
   ADD_ON_STEP_CHECK = 1;
   ADD_ON_STEP_INSTALL = 2;
 }
-// Progress of InstallAddOn: the step and its percent (0 to 100); the last message has done (installed) or error (one
-// plain sentence, nothing installed) set.
+// file_name: the chosen file, name only; size: its exact size in bytes.
+message AddOnUploadHeader { string id = 1; string file_name = 2; int64 size = 3; }
+message AddOnUploadChunk {
+  oneof part {
+    AddOnUploadHeader header = 1;
+    bytes data = 2;
+  }
+}
+// Progress of InstallAddOn and UploadAddOn: the step and its percent (0 to 100); the last message has done (installed) or
+// error (one plain sentence, nothing installed) set.
 message AddOnProgress {
   AddOnStep step = 1;
   int32 percent = 2;

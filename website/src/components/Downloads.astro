@@ -32,10 +32,10 @@ const portable = (title: string, rid: string): Group => ({
 const optional = (rid: string): Group => ({
 	title: 'Optional plugins',
 	rows: [{ name: 'Text recognition', pattern: `^oadm-addon-oadm\\.ocr-.*-${rid}\\.zip$` }],
-	note: 'Install them on the Plugins page of OADM. Download a ZIP only for a server without internet.',
+	note: "Download the ZIP of your server's version and system, then install it on the Plugins page of OADM.",
 	links: [
 		{ label: 'Text recognition', href: `${base}tools/text-recognition/` },
-		{ label: 'Without internet', href: `${base}admin/plugins/#without-internet` },
+		{ label: 'Optional plugins', href: `${base}admin/plugins/#optional-plugins` },
 	],
 });
 const linux = (id: string, label: string, deb: string): Tab => ({

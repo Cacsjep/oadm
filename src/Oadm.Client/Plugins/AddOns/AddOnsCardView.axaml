@@ -33,11 +33,19 @@
               </StackPanel>
               <TextBlock Grid.Column="2" Classes="secondary small" Text="{Binding MetaText}" VerticalAlignment="Center" />
               <Panel Grid.Column="3" VerticalAlignment="Center">
-                <ui:ProgressRow Width="320" Value="{Binding Percent}" Text="{Binding ProgressText}" IsVisible="{Binding IsInstalling}" />
+                <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsInstalling}">
+                  <ui:ProgressRow Width="320" Value="{Binding Percent}" Text="{Binding ProgressText}" VerticalAlignment="Center" />
+                  <Button Classes="link" Content="{x:Static addons:OptionalPluginTexts.Cancel}" VerticalAlignment="Center" IsVisible="{Binding CanCancel}"
+                          Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).CancelUploadCommand}" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding !IsInstalling}">
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.Installed}" IsOk="True" VerticalAlignment="Center" IsVisible="{Binding IsInstalled}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.RemovedState}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding IsRemoved}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.NotInstalled}" VerticalAlignment="Center" IsVisible="{Binding ShowNotInstalled}" />
+                  <Button Classes="link" Content="{x:Static addons:OptionalPluginTexts.Download}" VerticalAlignment="Center" IsVisible="{Binding ShowDownload}"
+                          ToolTip.Tip="{Binding DownloadTip}"
+                          Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).DownloadCommand}"
+                          CommandParameter="{Binding}" />
                   <ui:ToolbarButton Text="{x:Static addons:OptionalPluginTexts.Install}" IconKey="download" IsVisible="{Binding ShowInstall}"
                                     IsEnabled="{Binding CanInstall}" ToolTip.Tip="{Binding InstallTip}" ToolTip.ShowOnDisabled="True"
                                     Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).InstallCommand}"
@@ -53,7 +61,7 @@
         </ItemsControl.ItemTemplate>
       </ItemsControl>
       <TextBlock Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
-      <tc:Callout Kind="Info" Text="{x:Static addons:OptionalPluginTexts.Source}" />
+      <tc:Callout Kind="Info" Text="{x:Static addons:OptionalPluginTexts.Source}" IsVisible="{Binding ShowSteps}" />
     </StackPanel>
   </Border>
 </UserControl>

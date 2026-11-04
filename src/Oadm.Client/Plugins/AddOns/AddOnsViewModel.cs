@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Client.Api;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Shell;
+using Oadm.Contracts.Updates;
 using Oadm.Contracts.V1;
 using Oadm.Sdk.Client.Collections;
 
@@ -40,7 +41,7 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsRemoved), nameof(IsNotInstalled), nameof(ShowInstall), nameof(ShowRemove),
-        nameof(ShowNotInstalled), nameof(IsInstalling), nameof(ProgressText), nameof(MessageIsError), nameof(IsFailed))]
+        nameof(ShowNotInstalled), nameof(IsInstalling), nameof(ProgressText), nameof(MessageIsError), nameof(IsFailed), nameof(ShowDownload))]
     public partial AddOnState State { get; private set; }
 
     /// <summary>The server's reason why it cannot be installed or is not loaded; empty otherwise.</summary>
@@ -48,14 +49,19 @@ public sealed partial class AddOnRowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasMessage), nameof(InstallTip))]
     public partial string Message { get; private set; } = string.Empty;
 
-    /// <summary>False while the server cannot reach the release.</summary>
+    /// <summary>False in a server build without the check of this plugin, or while the server updates.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall), nameof(InstallTip))]
     public partial bool ServerCanInstall { get; private set; } = true;
 
+    /// <summary>The ZIP of the server's version and system; empty when the server gives none or it is not OADM's own release.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowDownload), nameof(DownloadTip))]
+    public partial string DownloadUrl { get; private set; } = string.Empty;
+
     /// <summary>The step of a running install of this client; null otherwise.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsInstalling), nameof(ProgressText), nameof(CanInstall), nameof(ShowInstall))]
+    [NotifyPropertyChangedFor(nameof(IsInstalling), nameof(ProgressText), nameof(CanInstall), nameof(ShowInstall), nameof(ShowDownload), nameof(CanCancel))]
     public partial AddOnStep? Step { get; private set; }
 
     /// <summary>0 to 100 while installing.</summary>
@@ -76,10 +82,10 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     public bool HasMessage => Message.Length > 0;
 
-    /// <summary>The add-on could not be loaded after an update: the message is a problem, not a note.</summary>
+    /// <summary>The add-on is not loaded (after an update or a restore): the message is a problem, not a note.</summary>
     public bool MessageIsError => IsFailed;
 
-    /// <summary>Installed before, not loaded now (a failed download after an update): Install tries again, Remove drops it.</summary>
+    /// <summary>Installed before, not loaded now (after an update or a restore): Install takes the ZIP, Remove drops it.</summary>
     public bool IsFailed => State == AddOnState.AddOnFailed;
 
     /// <summary>A newer version came from the server while this client runs the older one (below the description).</summary>
@@ -94,14 +100,23 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     public bool IsInstalling => Step is not null || State == AddOnState.AddOnInstalling;
 
-    /// <summary>"Download 42 %" while this client installs, "Installing 42 %" for an install of another administrator.</summary>
+    /// <summary>"Upload 42 %" while this client installs, "Installing 42 %" for an install of another administrator.</summary>
     public string ProgressText => Step is { } step ? OptionalPluginTexts.Progress(step, Percent) : OptionalPluginTexts.Installing(Percent);
 
     /// <summary>
     /// Administrators: Install for an add-on that is not installed, not loaded after an update, or removed (the server keeps
-    /// the loaded one, nothing is downloaded).
+    /// the loaded one, no file is asked for).
     /// </summary>
     public bool ShowInstall => _owner.IsAdmin && (IsNotInstalled || IsRemoved) && !IsInstalling;
+
+    /// <summary>Administrators: the link beside Install, whenever Install asks for a file.</summary>
+    public bool ShowDownload => _owner.IsAdmin && IsNotInstalled && !IsInstalling && DownloadUrl.Length > 0;
+
+    /// <summary>The file name, for a server without internet: the link's tooltip.</summary>
+    public string DownloadTip => DownloadUrl[(DownloadUrl.LastIndexOf('/') + 1)..];
+
+    /// <summary>The upload of this client stops on Cancel; the steps after it are short.</summary>
+    public bool CanCancel => Step == AddOnStep.Upload;
 
     public bool CanInstall => ServerCanInstall && !IsBusy && Step is null;
 
@@ -124,6 +139,9 @@ public sealed partial class AddOnRowViewModel : ObservableObject
         State = info.State;
         Message = info.Message;
         ServerCanInstall = info.CanInstall;
+
+        // A server opens only OADM's own release (the client trusts no other link it is handed).
+        DownloadUrl = info.DownloadUrl.StartsWith(GitHubReleaseFeed.DownloadPrefix, StringComparison.Ordinal) ? info.DownloadUrl : string.Empty;
         if (Step is null)
         {
             Percent = info.Percent;
@@ -145,6 +163,7 @@ public sealed partial class AddOnRowViewModel : ObservableObject
     internal void NotifyRole()
     {
         OnPropertyChanged(nameof(ShowInstall));
+        OnPropertyChanged(nameof(ShowDownload));
         OnPropertyChanged(nameof(ShowRemove));
         OnPropertyChanged(nameof(ShowNotInstalled));
     }
@@ -152,8 +171,9 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
 /// <summary>
 /// The Optional plugins card of the Plugins page (docs/spec/add-ons.md "Plugins page"): the add-ons of the server's version
-/// with their state. Administrators install (the progress of Download, Check, Install in the row) and remove them (with a
-/// confirmation; the files go at the next server start). After either, the plugin list is read again: the add-on's package
+/// with their state. Administrators download the ZIP with the row's link, Install asks for the file and sends it (the
+/// progress of Upload, Check, Install in the row), Remove takes it away (with a confirmation; the files go at the next server
+/// start). After either, the plugin list is read again: the add-on's package
 /// and its client part follow (<see cref="PluginPackageStore"/>); while the client parts come the card shows a progress row.
 /// A server without add-ons hides the card.
 /// </summary>
@@ -165,10 +185,13 @@ public sealed partial class AddOnsViewModel : ObservableObject
     private readonly UserSession? _session;
     private readonly AddOnClientSync? _sync;
     private readonly ILogger<AddOnsViewModel> _logger;
+    private readonly IUrlLauncher? _urls;
+    private CancellationTokenSource? _upload;
 
     public AddOnsViewModel(IOadmApi api, PluginPackageStore store, ILogger<AddOnsViewModel> logger, IDialogService? dialogs = null, UserSession? session = null,
-        AddOnClientSync? sync = null)
+        AddOnClientSync? sync = null, IUrlLauncher? urls = null)
     {
+        _urls = urls;
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger;
@@ -188,6 +211,7 @@ public sealed partial class AddOnsViewModel : ObservableObject
                 if (e.PropertyName == nameof(UserSession.IsAdmin))
                 {
                     OnPropertyChanged(nameof(IsAdmin));
+                    OnPropertyChanged(nameof(ShowSteps));
                     foreach (AddOnRowViewModel row in AddOns)
                     {
                         row.NotifyRole();
@@ -196,6 +220,9 @@ public sealed partial class AddOnsViewModel : ObservableObject
             };
         }
     }
+
+    /// <summary>The file type of Install's picker.</summary>
+    public static readonly FileType ZipFile = new(OptionalPluginTexts.ZipFileType, "zip", "application/zip");
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
@@ -215,6 +242,9 @@ public sealed partial class AddOnsViewModel : ObservableObject
     public partial string? ErrorText { get; private set; }
 
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
+
+    /// <summary>The line below the rows: only while a row has the link it names.</summary>
+    public bool ShowSteps => IsAdmin && AddOns.Any(r => r.IsNotInstalled && r.DownloadUrl.Length > 0);
 
     /// <summary>The client parts are coming from the server: the card shows a progress row.</summary>
     [ObservableProperty]
@@ -240,7 +270,7 @@ public sealed partial class AddOnsViewModel : ObservableObject
         IsLoading = AddOns.Count == 0;
         try
         {
-            Apply(await _api.ListAddOnsAsync(checkReach: true, ct).ConfigureAwait(true));
+            Apply(await _api.ListAddOnsAsync(ct).ConfigureAwait(true));
             ErrorText = null;
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
@@ -260,7 +290,24 @@ public sealed partial class AddOnsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Downloads, checks and installs an add-on on the server; the row shows each step.</summary>
+    /// <summary>The row's link: the ZIP of the server's version and system, in the browser.</summary>
+    [RelayCommand]
+    private async Task DownloadAsync(AddOnRowViewModel? row)
+    {
+        if (row is { DownloadUrl.Length: > 0 } && _urls is not null)
+        {
+            await _urls.OpenAsync(new Uri(row.DownloadUrl)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Stops the running upload; the row goes back to what it was.</summary>
+    [RelayCommand]
+    private void CancelUpload() => _upload?.Cancel();
+
+    /// <summary>
+    /// Asks for the ZIP and sends it to the server, which checks and installs it; the row shows each step. A removed add-on
+    /// that is still loaded comes back without a file.
+    /// </summary>
     [RelayCommand]
     private async Task InstallAsync(AddOnRowViewModel? row)
     {
@@ -269,13 +316,30 @@ public sealed partial class AddOnsViewModel : ObservableObject
             return;
         }
 
+        string? path = null;
+        if (!row.IsRemoved)
+        {
+            path = _dialogs is null
+                ? null
+                : await _dialogs.PickFilePathAsync(OptionalPluginTexts.ChooseZip(row.Name), ZipFile).ConfigureAwait(true);
+            if (path is null)
+            {
+                return;
+            }
+        }
+
         row.Error = null;
         row.IsBusy = true;
-        row.Report(AddOnStep.Download, 0);
+        row.Report(path is null ? AddOnStep.Install : AddOnStep.Upload, 0);
         string? error = OptionalPluginTexts.InstallInterrupted;
+        using var upload = new CancellationTokenSource();
+        _upload = upload;
         try
         {
-            await foreach (AddOnProgress progress in _api.InstallAddOnAsync(row.Id, CancellationToken.None).ConfigureAwait(true))
+            IAsyncEnumerable<AddOnProgress> steps = path is null
+                ? _api.InstallAddOnAsync(row.Id, CancellationToken.None)
+                : _api.UploadAddOnAsync(row.Id, path, upload.Token);
+            await foreach (AddOnProgress progress in steps.ConfigureAwait(true))
             {
                 if (!string.IsNullOrEmpty(progress.Error))
                 {
@@ -292,16 +356,29 @@ public sealed partial class AddOnsViewModel : ObservableObject
                 row.Report(progress.Step, progress.Percent);
             }
         }
+        catch (Exception ex) when (upload.IsCancellationRequested && ex is OperationCanceledException or RpcException { StatusCode: StatusCode.Cancelled })
+        {
+            error = null; // the user stopped it: nothing happened
+        }
         catch (Exception ex)
         {
             error = Message(ex);
         }
 
+        _upload = null;
+        bool cancelled = upload.IsCancellationRequested;
         row.EndInstall();
         row.Error = error;
-        if (error is null)
+        if (error is null && !cancelled)
         {
             LogInstalled(_logger, row.Id);
+        }
+
+        // Stopped: nothing changed. The server may still say Installing while it clears up, the row stays as it was.
+        if (cancelled)
+        {
+            row.IsBusy = false;
+            return;
         }
 
         // The list and the plugin list again: the package (off) and its client part come with them.
@@ -370,6 +447,7 @@ public sealed partial class AddOnsViewModel : ObservableObject
         }
 
         HasAddOns = rows.Count > 0;
+        OnPropertyChanged(nameof(ShowSteps));
         FollowSync();
     }
 

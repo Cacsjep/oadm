@@ -4,13 +4,13 @@
 #     add-on has a client project, the client part (*.Client.dll);
 #   - native libraries of <rid>'s platform only: no runtimes/ folder of another platform, no .so on Windows and macOS,
 #     no .dylib on Windows and Linux;
-#   - the limits of the server: the ZIP at most 400 MB (its download limit), the client part it hands to clients
+#   - the limits of the server: the ZIP at most 1024 MB (the most it takes from a client), the client part it hands to clients
 #     (plugin.json, the top-level *.Client.dll/.pdb and *.Server.dll/.pdb, everything under client/) at most 24 MB
 #     unpacked and without native libraries;
 #   - THIRD-PARTY-NOTICES.txt at the top (tools/Oadm.Notices --addon); a win-* ZIP with DirectML.dll only when the notices
 #     hold its license (MICROSOFT SOFTWARE LICENSE TERMS ... DIRECTML, from the add-on's OadmNoticePackage items);
 #   - oadm-version.txt at the top with the version of the ZIP's name (the server records the add-on with it).
-# The limits are kept equal to the server's constants by a test (AddOnPackagingTests): UpdateDownloader.MaxInstallerBytes
+# The limits are kept equal to the server's constants by a test (AddOnPackagingTests): AddOnFolders.MaxZipBytes
 # and AddOnFolders.MaxClientPartBytes.
 # Needs unzip (Linux, macOS, Git Bash on Windows).
 set -euo pipefail
@@ -19,7 +19,7 @@ zip="$1"
 id="$2"
 rid="$3"
 fail() { echo "error: $(basename "$zip"): $1" >&2; exit 1; }
-max_zip_mb=400
+max_zip_mb=1024
 max_client_mb=24
 
 [ -f "$zip" ] || fail "missing"
@@ -31,7 +31,7 @@ client=$(unzip -l "$zip" | awk 'NF >= 4 && $1 ~ /^[0-9]+$/ {
   if (name == "plugin.json" || name ~ /^[^\/]+\.(Client|Server)\.(dll|pdb)$/ || name ~ /^client\//) sum += $1
 } END { print sum + 0 }')
 echo "$(basename "$zip"): $(printf '%s\n' "$names" | grep -c .) files, $((size / 1024)) KB, client part $((client / 1024)) KB unpacked"
-[ "$size" -le $((max_zip_mb * 1024 * 1024)) ] || fail "larger than $max_zip_mb MB, the server's download limit"
+[ "$size" -le $((max_zip_mb * 1024 * 1024)) ] || fail "larger than $max_zip_mb MB, the most the server takes"
 [ "$client" -le $((max_client_mb * 1024 * 1024)) ] || fail "client part larger than $max_client_mb MB"
 bad_client="$(printf '%s\n' "$names" | grep -E '^client/.*(\.so$|\.so\.|\.dylib$)' || true)"
 [ -z "$bad_client" ] || fail "native libraries in client/: $(echo $bad_client)"
@@ -59,9 +59,12 @@ done
 os="${rid%%-*}"
 if [ "$os" = win ] && printf '%s\n' "$names" | grep -Eqi '(^|/)DirectML\.dll$'; then
   notices="$(unzip -p "$zip" THIRD-PARTY-NOTICES.txt)"
-  printf '%s' "$notices" | grep -q 'MICROSOFT SOFTWARE LICENSE TERMS' && printf '%s' "$notices" | grep -q 'DIRECTML' \
+  # Here-strings: with pipefail "printf | grep -q" fails by chance on a text this long (grep stops reading, printf gets SIGPIPE).
+  grep -q 'MICROSOFT SOFTWARE LICENSE TERMS' <<< "$notices" && grep -q 'DIRECTML' <<< "$notices" \
     || fail "DirectML.dll without its license in THIRD-PARTY-NOTICES.txt (OadmNoticePackage Microsoft.AI.DirectML)"
 fi
+leftover="$(printf '%s\n' "$names" | grep -Ei '(^|/)(DirectML\.Debug\.dll|DirectML\.Debug\.pdb|DirectML\.pdb|onnxruntime\.lib)$' || true)"
+[ -z "$leftover" ] || fail "build leftovers: $(echo $leftover)"
 keep=(-e "$rid" -e "$os")
 if [ "$os" != win ]; then keep+=(-e unix); fi
 other="$(printf '%s\n' "$names" | grep -E '^runtimes/[^/]+/' | cut -d/ -f2 | sort -u | grep -vx "${keep[@]}" || true)"

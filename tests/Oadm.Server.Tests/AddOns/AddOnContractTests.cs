@@ -1,3 +1,5 @@
+using Google.Protobuf;
+
 using Grpc.Core;
 
 using Microsoft.Extensions.DependencyInjection;
@@ -16,12 +18,14 @@ namespace Oadm.Server.Tests.AddOns;
 
 /// <summary>
 /// The add-on methods of PluginService on the wired server (docs/spec/add-ons.md): the list for every user, Install and
-/// Remove for administrators, the client part for every signed-in user. A development build downloads nothing; a server
-/// of a release (its options and release files faked, never a real download) installs, follows and removes an add-on.
+/// Remove for administrators, the client part for every signed-in user. A development build has no hash and refuses; a server
+/// with the hash injected (no real release) takes the ZIP over the stream, installs, follows and removes an add-on.
 /// </summary>
 public sealed class AddOnContractTests
 {
     private const string Id = AddOnCatalog.TextRecognitionId;
+
+    private static readonly string FileName = AddOnCatalog.ReleaseFileName(Id, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId());
 
     [Fact]
     public async Task EverySignedInUserSeesTheAddOnsOfThisVersion()
@@ -29,17 +33,18 @@ public sealed class AddOnContractTests
         await using var host = await TestServerHost.StartAsync();
         var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync("operator1", UserRole.Operator));
 
-        var list = await op.ListAddOnsAsync(new Proto.ListAddOnsRequest { CheckReach = true });
+        var list = await op.ListAddOnsAsync(new Proto.ListAddOnsRequest());
 
         var ocr = Assert.Single(list.AddOns);
         Assert.Equal((Id, "Text recognition", "Reads text in camera pictures for the event rules."), (ocr.Id, ocr.DisplayName, ocr.Description));
         Assert.Equal(Proto.AddOnState.AddOnNotInstalled, ocr.State);
-        Assert.False(ocr.CanInstall); // a development build: no release to download from
-        Assert.Equal(AddOnTexts.NoRelease, ocr.Message);
+        Assert.False(ocr.CanInstall); // a development build: no hash built in
+        Assert.Equal(AddOnTexts.NoHash, ocr.Message);
+        Assert.Empty(ocr.DownloadUrl);
     }
 
     [Fact]
-    public async Task InstallAndRemoveAreForAdministratorsAndADevelopmentBuildDownloadsNothing()
+    public async Task InstallAndRemoveAreForAdministratorsAndABuildWithoutTheHashRefuses()
     {
         await using var host = await TestServerHost.StartAsync();
         var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync("operator1", UserRole.Operator));
@@ -53,53 +58,52 @@ public sealed class AddOnContractTests
             Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);
         }
 
+        var uploadDenied = await Assert.ThrowsAsync<RpcException>(() => UploadAsync(op, Id, FileName, [1, 2, 3]));
+        Assert.Equal(StatusCode.PermissionDenied, uploadDenied.StatusCode);
+
         var remove = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.RemoveAddOnAsync(request));
         Assert.Equal(StatusCode.FailedPrecondition, remove.StatusCode);
-        using (var install = host.Plugins.InstallAddOn(request))
-        {
-            var noRelease = await Assert.ThrowsAsync<RpcException>(async () => await install.ResponseStream.MoveNext(CancellationToken.None));
-            Assert.Equal((StatusCode.FailedPrecondition, AddOnTexts.NoRelease), (noRelease.StatusCode, noRelease.Status.Detail));
-        }
+        var noHash = await Assert.ThrowsAsync<RpcException>(() => UploadAsync(host.Plugins, Id, FileName, [1, 2, 3]));
+        Assert.Equal((StatusCode.FailedPrecondition, AddOnTexts.NoHash), (noHash.StatusCode, noHash.Status.Detail));
 
         var unknown = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.GetAddOnClientPartAsync(new Proto.AddOnIdRequest { Id = "nope" }));
         Assert.Equal((StatusCode.NotFound, AddOnTexts.Unknown("nope")), (unknown.StatusCode, unknown.Status.Detail));
+        var unknownUpload = await Assert.ThrowsAsync<RpcException>(() => UploadAsync(host.Plugins, "nope", FileName, [1, 2, 3]));
+        Assert.Equal(StatusCode.NotFound, unknownUpload.StatusCode);
         var part = await Assert.ThrowsAsync<RpcException>(async () => await op.GetAddOnClientPartAsync(request));
         Assert.Equal(StatusCode.NotFound, part.StatusCode); // signed in is enough; it is not installed
     }
 
     [Fact]
-    public async Task AReleaseServerInstallsAnAddOnOffFollowsItAndRemovesIt()
+    public async Task AnUploadStartsWithAHeader()
     {
-        var files = new FakeAddOnFiles();
-        files.Publish(AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId(), AddOnRig.Zip());
-        var dataDirectory = TestServerHost.NewDataDirectory();
-        await using var host = await TestServerHost.StartAsync(
-            dataDirectory: dataDirectory,
-            configureServices: services =>
-            {
-                services.RemoveAll<AddOnInstallerOptions>();
-                services.AddSingleton(new AddOnInstallerOptions(dataDirectory, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId()));
-                services.RemoveAll<IAddOnFiles>();
-                services.AddSingleton<IAddOnFiles>(files);
-            });
+        await using var host = await TestServerHost.StartAsync();
+
+        using var call = host.Plugins.UploadAddOn();
+        await call.RequestStream.WriteAsync(new Proto.AddOnUploadChunk { Data = ByteString.CopyFrom(1, 2, 3) });
+        await call.RequestStream.CompleteAsync();
+        var refused = await Assert.ThrowsAsync<RpcException>(async () => await call.ResponseStream.MoveNext(CancellationToken.None));
+
+        Assert.Equal(StatusCode.InvalidArgument, refused.StatusCode);
+    }
+
+    [Fact]
+    public async Task AServerWithTheHashTakesTheZipInstallsItOffFollowsItAndRemovesIt()
+    {
+        var zip = AddOnRig.Zip();
+        await using var host = await StartReleaseAsync(zip);
         var registry = host.Get<PluginRegistry>();
         Assert.True(host.Get<IAddOnInstaller>() is AddOnInstaller);
 
-        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest { CheckReach = true })).AddOns);
+        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns);
         Assert.True(listed.CanInstall);
+        Assert.Equal(AddOnCatalog.DownloadUrl(Id, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId()), listed.DownloadUrl);
 
-        var steps = new List<Proto.AddOnProgress>();
-        using (var install = host.Plugins.InstallAddOn(new Proto.AddOnIdRequest { Id = Id }))
-        {
-            while (await install.ResponseStream.MoveNext(CancellationToken.None))
-            {
-                steps.Add(install.ResponseStream.Current);
-            }
-        }
+        var steps = await UploadAsync(host.Plugins, Id, FileName, zip);
 
         Assert.True(steps[^1].Done, string.Join(", ", steps.Select(s => s.Error)));
         Assert.Equal(
-            [Proto.AddOnStep.Download, Proto.AddOnStep.Check, Proto.AddOnStep.Install],
+            [Proto.AddOnStep.Upload, Proto.AddOnStep.Check, Proto.AddOnStep.Install],
             steps.Select(s => s.Step).Distinct());
 
         // Loaded and off; Done came after the server followed the package (the roles know its permissions).
@@ -129,11 +133,22 @@ public sealed class AddOnContractTests
         Assert.True(registry.HasPackage(Id));
         Assert.False(registry.IsEnabled(Id));
 
-        // A removed optional plugin cannot be turned on in the plugin list; Install on its card keeps it.
+        // A removed optional plugin cannot be turned on in the plugin list; Install on its card keeps it, without a file.
         var turnOn = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = Id, Enabled = true }));
         Assert.Equal((StatusCode.FailedPrecondition, AddOnTexts.Removed), (turnOn.StatusCode, turnOn.Status.Detail));
         Assert.False(registry.IsEnabled(Id));
         Assert.True(afterRemove.CanInstall);
+        var kept = new List<Proto.AddOnProgress>();
+        using (var install = host.Plugins.InstallAddOn(new Proto.AddOnIdRequest { Id = Id }))
+        {
+            while (await install.ResponseStream.MoveNext(CancellationToken.None))
+            {
+                kept.Add(install.ResponseStream.Current);
+            }
+        }
+
+        Assert.True(kept[^1].Done);
+        Assert.Equal(Proto.AddOnState.AddOnInstalled, Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns).State);
 
         // Audited as users name it: "optional plugin", never "add-on".
         var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
@@ -142,16 +157,41 @@ public sealed class AddOnContractTests
     }
 
     [Fact]
+    public async Task ATamperedZipIsRefusedInTheStreamAndAudited()
+    {
+        var zip = AddOnRig.Zip();
+        await using var host = await StartReleaseAsync(zip);
+        var tampered = AddOnRig.Zip(extraBytes: 10);
+
+        var steps = await UploadAsync(host.Plugins, Id, FileName, tampered);
+
+        Assert.Equal(AddOnTexts.WrongFile, steps[^1].Error);
+        Assert.False(host.Get<PluginRegistry>().HasPackage(Id));
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.AddOnInstallFailed && e.Target == "Text recognition" && e.Detail == AddOnTexts.WrongFile);
+    }
+
+    [Fact]
+    public async Task AFileOfAnotherVersionIsRefusedBeforeTheClientSendsAll()
+    {
+        var zip = AddOnRig.Zip();
+        await using var host = await StartReleaseAsync(zip);
+
+        var steps = await UploadAsync(host.Plugins, Id, AddOnCatalog.ReleaseFileName(Id, "4.10.0", AddOnInstallerOptions.CurrentRuntimeId()), zip);
+
+        Assert.Equal(AddOnTexts.WrongVersion(AddOnRig.Version), Assert.Single(steps).Error);
+    }
+
+    [Fact]
     public async Task AnInstallIsAuditedWhenTheCallerHasGone()
     {
-        var files = new FakeAddOnFiles();
-        files.Publish(AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId(), AddOnRig.Zip());
-        await using var host = await StartReleaseAsync(files);
+        var zip = AddOnRig.Zip();
+        await using var host = await StartReleaseAsync(zip);
         var service = ActivatorUtilities.CreateInstance<PluginGrpcService>(host.Services);
 
-        // Every write fails: the caller has gone. The install runs to its end and is audited.
+        // Every write fails: the caller has gone after its upload. The install runs to its end and is audited.
         var gone = new ThrowingStream();
-        await service.InstallAddOn(new Proto.AddOnIdRequest { Id = Id }, gone, new BareCallContext());
+        await service.UploadAddOn(new ChunkReader(FileName, zip), gone, new BareCallContext());
 
         Assert.True(gone.Attempts > 0);
         Assert.True(host.Get<PluginRegistry>().HasPackage(Id));
@@ -162,23 +202,72 @@ public sealed class AddOnContractTests
     [Fact]
     public async Task AFailedInstallIsAuditedWithItsReason()
     {
-        var files = new FakeAddOnFiles { WrongHash = true };
-        files.Publish(AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId(), AddOnRig.Zip());
-        await using var host = await StartReleaseAsync(files);
+        await using var host = await StartReleaseAsync(AddOnRig.Zip());
         var recorded = new RecordingStream();
 
         await ActivatorUtilities.CreateInstance<PluginGrpcService>(host.Services)
-            .InstallAddOn(new Proto.AddOnIdRequest { Id = Id }, recorded, new BareCallContext());
+            .UploadAddOn(new ChunkReader(FileName, AddOnRig.Zip(extraBytes: 10)), recorded, new BareCallContext());
 
-        Assert.Equal(AddOnTexts.Damaged, recorded.Messages[^1].Error);
+        Assert.Equal(AddOnTexts.WrongFile, recorded.Messages[^1].Error);
         Assert.False(host.Get<PluginRegistry>().HasPackage(Id));
         var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
-        Assert.Contains(audit, e => e.Action == AuditActions.AddOnInstallFailed && e.Target == "Text recognition" && e.Detail == AddOnTexts.Damaged);
+        Assert.Contains(audit, e => e.Action == AuditActions.AddOnInstallFailed && e.Target == "Text recognition" && e.Detail == AddOnTexts.WrongFile);
     }
 
-    /// <summary>A server of a release whose release files are <paramref name="files"/> (never a real download).</summary>
-    private static async Task<TestServerHost> StartReleaseAsync(FakeAddOnFiles files)
+    [Fact]
+    public async Task AConnectionThatBreaksIsAnUploadThatStopped()
     {
+        await using var host = await StartReleaseAsync(AddOnRig.Zip());
+        var recorded = new RecordingStream();
+
+        await ActivatorUtilities.CreateInstance<PluginGrpcService>(host.Services)
+            .UploadAddOn(new BrokenReader(FileName), recorded, new BareCallContext());
+
+        Assert.Equal(AddOnTexts.UploadStopped, recorded.Messages[^1].Error);
+        Assert.False(host.Get<PluginRegistry>().HasPackage(Id));
+    }
+
+    /// <summary>Header, chunks, then every answer; a server that ended the call early is no failure of the sender.</summary>
+    private static async Task<List<Proto.AddOnProgress>> UploadAsync(Proto.PluginService.PluginServiceClient client, string id, string fileName, byte[] zip)
+    {
+        using var call = client.UploadAddOn();
+        try
+        {
+            await foreach (var chunk in ChunksOf(id, fileName, zip))
+            {
+                await call.RequestStream.WriteAsync(chunk);
+            }
+
+            await call.RequestStream.CompleteAsync();
+        }
+        catch (Exception ex) when (ex is RpcException or InvalidOperationException)
+        {
+            // The answers below say why.
+        }
+
+        var steps = new List<Proto.AddOnProgress>();
+        while (await call.ResponseStream.MoveNext(CancellationToken.None))
+        {
+            steps.Add(call.ResponseStream.Current);
+        }
+
+        return steps;
+    }
+
+    private static async IAsyncEnumerable<Proto.AddOnUploadChunk> ChunksOf(string id, string fileName, byte[] zip)
+    {
+        yield return new Proto.AddOnUploadChunk { Header = new Proto.AddOnUploadHeader { Id = id, FileName = fileName, Size = zip.Length } };
+        await foreach (var data in AddOnRig.ChunksOf(zip))
+        {
+            yield return new Proto.AddOnUploadChunk { Data = ByteString.CopyFrom(data.Span) };
+        }
+    }
+
+    /// <summary>A server of version <see cref="AddOnRig.Version"/> with the hash of <paramref name="zip"/> (no real release).</summary>
+    private static async Task<TestServerHost> StartReleaseAsync(byte[] zip)
+    {
+        var hashes = new FakeAddOnHashes();
+        hashes.Allow(zip);
         var dataDirectory = TestServerHost.NewDataDirectory();
         return await TestServerHost.StartAsync(
             dataDirectory: dataDirectory,
@@ -186,9 +275,38 @@ public sealed class AddOnContractTests
             {
                 services.RemoveAll<AddOnInstallerOptions>();
                 services.AddSingleton(new AddOnInstallerOptions(dataDirectory, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId()));
-                services.RemoveAll<IAddOnFiles>();
-                services.AddSingleton<IAddOnFiles>(files);
+                services.RemoveAll<IAddOnHashes>();
+                services.AddSingleton<IAddOnHashes>(hashes);
             });
+    }
+
+    /// <summary>The request stream of a client that sends a whole ZIP.</summary>
+    private sealed class ChunkReader(string fileName, byte[] zip) : IAsyncStreamReader<Proto.AddOnUploadChunk>
+    {
+        private readonly IAsyncEnumerator<Proto.AddOnUploadChunk> _chunks = ChunksOf(Id, fileName, zip).GetAsyncEnumerator();
+
+        public Proto.AddOnUploadChunk Current => _chunks.Current;
+
+        public async Task<bool> MoveNext(CancellationToken cancellationToken) => await _chunks.MoveNextAsync();
+    }
+
+    /// <summary>The request stream of a client whose connection breaks after the header.</summary>
+    private sealed class BrokenReader(string fileName) : IAsyncStreamReader<Proto.AddOnUploadChunk>
+    {
+        private bool _headerRead;
+
+        public Proto.AddOnUploadChunk Current { get; } = new() { Header = new Proto.AddOnUploadHeader { Id = Id, FileName = fileName, Size = 1000 } };
+
+        public Task<bool> MoveNext(CancellationToken cancellationToken)
+        {
+            if (_headerRead)
+            {
+                return Task.FromException<bool>(new IOException("The client reset the request stream."));
+            }
+
+            _headerRead = true;
+            return Task.FromResult(true);
+        }
     }
 
     /// <summary>A response stream whose caller has gone: every write fails.</summary>
@@ -221,7 +339,7 @@ public sealed class AddOnContractTests
     /// <summary>A call context without a caller, deadline or cancellation (the service called directly).</summary>
     private sealed class BareCallContext : ServerCallContext
     {
-        protected override string MethodCore => "/oadm.v1.PluginService/InstallAddOn";
+        protected override string MethodCore => "/oadm.v1.PluginService/UploadAddOn";
 
         protected override string HostCore => "localhost";
 

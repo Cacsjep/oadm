@@ -8,11 +8,14 @@ namespace Oadm.Server.AddOns;
 
 /// <summary>
 /// The add-on folders under <c>&lt;datafolder&gt;/addons/</c> (docs/spec/add-ons.md "Server"): <c>&lt;id&gt;/</c> per
-/// add-on, <c>.download/</c> for the release files, <c>.new-*</c> and <c>.old-*</c> while one is swapped. Folders starting
+/// add-on, <c>.upload/</c> for the files clients send, <c>.new-*</c> and <c>.old-*</c> while one is swapped. Folders starting
 /// with a dot are never add-ons and are emptied at every start.
 /// </summary>
 public static class AddOnFolders
 {
+    /// <summary>The largest add-on ZIP (<c>packaging/addons/check-addon-zip.sh</c> keeps the release below it).</summary>
+    public const long MaxZipBytes = 1024L * 1024 * 1024;
+
     /// <summary>The largest add-on unpacked (models and native libraries of one platform).</summary>
     public const long MaxUnpackedBytes = 4L * 1024 * 1024 * 1024;
 
@@ -25,15 +28,15 @@ public static class AddOnFolders
     /// <summary>A client part's own folder in the add-on folder: everything below it goes to the clients.</summary>
     public const string ClientFolder = Contracts.AddOnLayout.ClientFolder;
 
-    public const string DownloadFolderName = ".download";
+    public const string UploadFolderName = ".upload";
 
     /// <summary>
-    /// The file "manage package addons" writes at the top of every add-on folder: the OADM release it belongs to ("4.11.0",
-    /// one line). A folder put in by hand is recorded with it.
+    /// The file "manage package addons" writes at the top of every add-on folder: the OADM version it belongs to ("4.11.0",
+    /// one line). An add-on loads only when it names the server's exact version.
     /// </summary>
     public const string VersionFileName = "oadm-version.txt";
 
-    /// <summary>The release in <see cref="VersionFileName"/> of an add-on folder; null when the file is missing or empty.</summary>
+    /// <summary>The version in <see cref="VersionFileName"/> of an add-on folder; null when the file is missing or empty.</summary>
     public static string? ReadVersion(string folder)
     {
         try
@@ -54,14 +57,14 @@ public static class AddOnFolders
     }
 
     /// <summary>
-    /// A downloaded add-on whose <see cref="VersionFileName"/> names another release than <paramref name="release"/>:
-    /// <see cref="AddOnException"/> with <see cref="AddOnTexts.WrongPackage"/>. A folder without the file passes.
+    /// An unpacked add-on must name exactly <paramref name="version"/> in <see cref="VersionFileName"/>; otherwise
+    /// <see cref="AddOnException"/> with <see cref="AddOnTexts.WrongVersion"/>.
     /// </summary>
-    public static void CheckVersion(string folder, string release)
+    public static void CheckVersion(string folder, string version)
     {
-        if (ReadVersion(folder) is { } version && !string.Equals(version, release, StringComparison.Ordinal))
+        if (!string.Equals(ReadVersion(folder), version, StringComparison.Ordinal))
         {
-            throw new AddOnException(AddOnTexts.WrongPackage);
+            throw new AddOnException(AddOnTexts.WrongVersion(version));
         }
     }
 
@@ -78,7 +81,14 @@ public static class AddOnFolders
     /// a path outside the folder or more than the limits: <see cref="AddOnException"/> with <see cref="AddOnTexts.Damaged"/>,
     /// the folder deleted.
     /// </summary>
-    public static async Task UnpackAsync(string zipPath, string target, CancellationToken ct)
+    public static Task UnpackAsync(string zipPath, string target, CancellationToken ct) =>
+        UnpackAsync(zipPath, target, MaxUnpackedBytes, MaxEntries, ct);
+
+    /// <summary>
+    /// <see cref="UnpackAsync(string, string, CancellationToken)"/> with its limits: at most <paramref name="maxBytes"/> bytes in
+    /// at most <paramref name="maxEntries"/> files, counted while reading (a ZIP's own sizes are not trusted).
+    /// </summary>
+    public static async Task UnpackAsync(string zipPath, string target, long maxBytes, int maxEntries, CancellationToken ct)
     {
         var full = Path.GetFullPath(target);
         var prefix = full.EndsWith(Path.DirectorySeparatorChar) ? full : full + Path.DirectorySeparatorChar;
@@ -88,7 +98,7 @@ public static class AddOnFolders
             var zip = await ZipFile.OpenReadAsync(zipPath, ct).ConfigureAwait(false);
             await using (zip.ConfigureAwait(false))
             {
-                if (zip.Entries.Count > MaxEntries)
+                if (zip.Entries.Count > maxEntries)
                 {
                     throw new AddOnException(AddOnTexts.Damaged);
                 }
@@ -117,7 +127,7 @@ public static class AddOnFolders
                     }
 
                     var path = Path.GetFullPath(Path.Combine(full, name));
-                    if (!path.StartsWith(prefix, StringComparison.Ordinal) && path != full)
+                    if (!path.StartsWith(prefix, StringComparison.Ordinal))
                     {
                         throw new AddOnException(AddOnTexts.Damaged);
                     }
@@ -139,7 +149,7 @@ public static class AddOnFolders
                             while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
                             {
                                 total += read;
-                                if (total > MaxUnpackedBytes)
+                                if (total > maxBytes)
                                 {
                                     throw new AddOnException(AddOnTexts.Damaged);
                                 }
@@ -199,10 +209,12 @@ public static class AddOnFolders
 
     /// <summary>
     /// Checks the unpacked add-on's plugin.json: the expected id and a <c>minSdkVersion</c> this server meets. Otherwise
-    /// <see cref="AddOnException"/> (<see cref="AddOnTexts.WrongPackage"/>, <see cref="AddOnTexts.NeedsNewerServer"/>).
+    /// <see cref="AddOnException"/> (<see cref="AddOnTexts.WrongFile"/> without a readable file,
+    /// <see cref="AddOnTexts.WrongPlugin"/>, <see cref="AddOnTexts.NeedsNewerServer"/>).
     /// </summary>
-    public static PluginManifest CheckManifest(string folder, string expectedId)
+    public static PluginManifest CheckManifest(string folder, AddOnEntry expected)
     {
+        ArgumentNullException.ThrowIfNull(expected);
         PluginManifest manifest;
         try
         {
@@ -210,12 +222,12 @@ public static class AddOnFolders
         }
         catch (PluginLoadException ex)
         {
-            throw new AddOnException(AddOnTexts.WrongPackage, ex);
+            throw new AddOnException(AddOnTexts.WrongFile, ex);
         }
 
-        if (!string.Equals(manifest.Id, expectedId, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(manifest.Id, expected.Id, StringComparison.OrdinalIgnoreCase))
         {
-            throw new AddOnException(AddOnTexts.WrongPackage);
+            throw new AddOnException(AddOnTexts.WrongPlugin(expected.DisplayName));
         }
 
         if (!PluginLoader.IsSdkCompatible(manifest.MinSdkVersion))
@@ -228,9 +240,10 @@ public static class AddOnFolders
 
     /// <summary>
     /// Puts <paramref name="staged"/> in place of <paramref name="target"/> (a folder that is not loaded): the old one moves
-    /// aside first and comes back when the move fails, then goes.
+    /// aside first and comes back when the move fails.
     /// </summary>
-    public static void SwapIn(string staged, string target, string root)
+    /// <returns>Where the old folder waits (<see cref="DropOld"/> or <see cref="Restore"/> next); null without one.</returns>
+    public static string? SwapIn(string staged, string target, string root)
     {
         string? old = null;
         if (Directory.Exists(target))
@@ -253,9 +266,25 @@ public static class AddOnFolders
             throw;
         }
 
+        return old;
+    }
+
+    /// <summary>The new folder holds: the old one goes.</summary>
+    public static void DropOld(string? old)
+    {
         if (old is not null)
         {
             TryDelete(old);
+        }
+    }
+
+    /// <summary>The new folder was refused: it goes and the old one (when there was one) comes back.</summary>
+    public static void Restore(string? old, string target)
+    {
+        TryDelete(target);
+        if (old is not null)
+        {
+            Directory.Move(old, target);
         }
     }
 
@@ -319,7 +348,7 @@ public static class AddOnFolders
         }
     }
 
-    /// <summary>Removes the leftovers of an install that stopped (<c>.download</c>, <c>.new-*</c>, <c>.old-*</c>).</summary>
+    /// <summary>Removes the leftovers of an install that stopped (<c>.upload</c>, <c>.new-*</c>, <c>.old-*</c>).</summary>
     public static void CleanTemporary(string root)
     {
         if (!Directory.Exists(root))

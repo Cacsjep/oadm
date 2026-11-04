@@ -19,8 +19,8 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// The Optional plugins card on the Plugins page, rendered headless through its states: not installed, installing, installed and
-/// removed (screenshots with OADM_SCREENSHOT_DIR; OADM_TEST_APPEARANCE=Light for the light ones).
+/// The Optional plugins card on the Plugins page, rendered headless through its states: not installed, refused, uploading, installed,
+/// removed and after an update (screenshots with OADM_SCREENSHOT_DIR; OADM_TEST_APPEARANCE=Light for the light ones).
 /// </summary>
 public sealed class AddOnsCardTests
 {
@@ -36,6 +36,7 @@ public sealed class AddOnsCardTests
             api.AddOnInstallGate = (_, _) => gate.WaitAsync();
             var dialogs = Substitute.For<IDialogService>();
             dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+            dialogs.PickFilePathAsync(Arg.Any<string>(), Arg.Any<FileType>()).Returns("ocr.zip");
             var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
             var addOns = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance, dialogs);
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance, dialogs: dialogs, addOns: addOns);
@@ -46,24 +47,38 @@ public sealed class AddOnsCardTests
             window.Show();
             Pump();
 
-            // Not installed: Install, the version and the line where optional plugins come from.
+            // Not installed: Install, the link to the ZIP and how the two work together.
             Assert.Contains("Optional plugins", Visible(window));
             NeverSaysAddOn(window);
             Assert.Contains("Text recognition", Visible(window));
             Assert.Contains("V0.0.0-fake", Visible(window));
             Assert.Contains(OptionalPluginTexts.Source, Visible(window));
             Assert.Contains("Install", Visible(window));
+            Assert.Contains(OptionalPluginTexts.Download, Visible(window));
             Save(window, outDir, $"addons-not-installed-{appearance}.png");
 
-            // Installing: the step and its percent.
+            // Refused: the reason in the row; Install and the link stay.
             AddOnRowViewModel row = Assert.Single(addOns.AddOns);
+            const string Refusal = "This file is not the ZIP of this OADM version and system. Download it again.";
+            api.NextAddOnInstallError = Refusal;
+            gate.Release(4);
+            await addOns.InstallCommand.ExecuteAsync(row);
+            Pump();
+            Assert.Contains(Refusal, Visible(window));
+            Assert.Contains("Install", Visible(window));
+            Assert.Contains(OptionalPluginTexts.Download, Visible(window));
+            NeverSaysAddOn(window);
+            Save(window, outDir, $"addons-refused-{appearance}.png");
+
+            // Uploading: the step, its percent and Cancel.
             Task install = addOns.InstallCommand.ExecuteAsync(row);
             gate.Release(2);
-            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.ProgressText == "Download 42 %", "the download shows its percent");
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => row.ProgressText == "Upload 42 %", "the upload shows its percent");
             Pump();
-            Assert.Contains("Download 42 %", Visible(window));
+            Assert.Contains("Upload 42 %", Visible(window));
+            Assert.Contains(OptionalPluginTexts.Cancel, Visible(window));
             Assert.DoesNotContain("Install", Visible(window));
-            Save(window, outDir, $"addons-installing-{appearance}.png");
+            Save(window, outDir, $"addons-uploading-{appearance}.png");
 
             // Installed: the chip and Remove; the package is in the plugin list (Vision, off).
             gate.Release(3);
@@ -71,20 +86,34 @@ public sealed class AddOnsCardTests
             Pump();
             Assert.Contains(OptionalPluginTexts.Installed, Visible(window));
             Assert.Contains("Remove", Visible(window));
+            Assert.DoesNotContain(OptionalPluginTexts.Download, Visible(window));
+            Assert.DoesNotContain(OptionalPluginTexts.Source, Visible(window)); // it names the link
             Assert.Contains(plugins.Plugins, p => p.Id == FakeOadmApi.TextRecognitionAddOnId && !p.IsEnabled);
             Assert.Contains("Vision", Visible(window));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-installed-{appearance}.png");
 
-            // Removed: the chip, the server's sentence once, and Install (it keeps the loaded one).
+            // Removed: the chip, the server's sentence once, and Install (it keeps the loaded one, so no link).
             await addOns.RemoveCommand.ExecuteAsync(row);
             Pump();
             Assert.Contains(OptionalPluginTexts.RemovedState, Visible(window));
             Assert.Single(Visible(window), t => t == "Removed. The files go at the next restart of the server.");
             Assert.DoesNotContain("Remove", Visible(window));
             Assert.Contains("Install", Visible(window));
+            Assert.DoesNotContain(OptionalPluginTexts.Download, Visible(window));
             NeverSaysAddOn(window);
             Save(window, outDir, $"addons-removed-{appearance}.png");
+
+            // After an update (or a restore): the server's sentence, Install, the link and Remove.
+            api.TextRecognitionState = AddOnState.AddOnFailed;
+            await addOns.LoadAsync(CancellationToken.None);
+            Pump();
+            Assert.Contains("Not loaded. Install it again for this OADM version.", Visible(window));
+            Assert.Contains("Install", Visible(window));
+            Assert.Contains(OptionalPluginTexts.Download, Visible(window));
+            Assert.Contains("Remove", Visible(window));
+            NeverSaysAddOn(window);
+            Save(window, outDir, $"addons-after-update-{appearance}.png");
 
             window.Close();
             return true;
@@ -150,7 +179,7 @@ public sealed class AddOnsCardTests
         {
             var api = Substitute.For<IOadmApi>();
             api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(new PluginPackageList());
-            api.ListAddOnsAsync(Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ =>
+            api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ =>
                 throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "")));
             var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance);
             var plugins = new PluginsViewModel(store, NullLogger<PluginsViewModel>.Instance,

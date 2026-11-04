@@ -113,8 +113,8 @@ administrator unpacks it into a folder `<plugin id>` in the server's plugin fold
 client, then restarts both (`dotnet oadm folders` names the folders). Tell your users that plugins run with the server's
 rights: they install only plugins they trust.
 
-The **Optional plugins** card of the Plugins page installs only OADM's own optional plugins from the OADM release; it
-does not take plugins of others.
+The **Optional plugins** card of the Plugins page installs only the ZIPs of OADM's own optional plugins; it does not take
+plugins of others.
 
 ## Tests
 

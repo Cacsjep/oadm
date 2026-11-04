@@ -8,7 +8,7 @@ namespace Oadm.Server.AddOns;
 
 /// <summary>An add-on in the server's list of installed add-ons.</summary>
 /// <param name="Id">The add-on's id (its folder under <c>addons/</c>).</param>
-/// <param name="Version">The OADM release it was downloaded from ("4.11.0").</param>
+/// <param name="Version">The OADM version it belongs to ("4.11.0").</param>
 /// <param name="Removed">Removed: its folder goes at the next server start.</param>
 public sealed record InstalledAddOn(
     [property: JsonPropertyName("id")] string Id,
@@ -16,8 +16,8 @@ public sealed record InstalledAddOn(
     [property: JsonPropertyName("removed")] bool Removed = false);
 
 /// <summary>
-/// The list of installed add-ons (docs/spec/add-ons.md "Server": a server setting, so a backup holds the list and a restore
-/// downloads the files again).
+/// The list of installed add-ons (docs/spec/add-ons.md "Server": a server setting, so a backup holds the list; after a restore
+/// the rows ask to install the files again).
 /// </summary>
 public interface IAddOnListStore
 {
@@ -73,7 +73,7 @@ public interface IAddOnActivation
 
     /// <summary>
     /// Waits until the roles, the license and the core plugins follow the package just loaded (its stored choice: a package
-    /// fetched after an update starts its core plugins when it is on). Never faults.
+    /// installed again starts its core plugins when it is on). Never faults.
     /// </summary>
     Task PackageFollowedAsync(string packageId, CancellationToken ct);
 }

@@ -1,84 +1,35 @@
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
+using Oadm.Contracts.Updates;
 using Oadm.Core.Plugins;
 using Oadm.Server.AddOns;
 using Oadm.Server.Updates;
 
 namespace Oadm.Server.Tests.AddOns;
 
-/// <summary>The release files of the tests: never a real download.</summary>
-internal sealed class FakeAddOnFiles : IAddOnFiles
+/// <summary>The hashes of the tests: what a release build has built in (no real release needed).</summary>
+internal sealed class FakeAddOnHashes : IAddOnHashes
 {
-    private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
-    private readonly Lock _sync = new();
+    private readonly Dictionary<string, string> _hashes = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool Reachable { get; set; } = true;
+    public string? Find(string id) => _hashes.GetValueOrDefault(id);
 
-    /// <summary>The download's SHA-256 does not match the release's list.</summary>
-    public bool WrongHash { get; set; }
+    public void Allow(byte[] zip, string id = AddOnCatalog.TextRecognitionId) => _hashes[id] = Convert.ToHexStringLower(SHA256.HashData(zip));
 
-    /// <summary>Holds every download until it completes (concurrency tests).</summary>
-    public TaskCompletionSource? Hold { get; set; }
+    public void Clear() => _hashes.Clear();
+}
 
-    /// <summary>Set once a held download has started.</summary>
-    public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+internal sealed class FakeDiskSpace : IDiskSpace
+{
+    public long? Free { get; set; }
 
-    public List<string> Downloads { get; } = [];
-
-    public int ReachCalls { get; private set; }
-
-    /// <summary>Holds every reach check until it completes (one check at a time).</summary>
-    public TaskCompletionSource? ReachHold { get; set; }
-
-    public void Publish(string version, string runtime, byte[] zip, string id = AddOnCatalog.TextRecognitionId) =>
-        _files[AddOnCatalog.ReleaseFileName(id, version, runtime)] = zip;
-
-    public async Task<bool> CanReachAsync(string version, CancellationToken ct)
-    {
-        lock (_sync)
-        {
-            ReachCalls++;
-        }
-
-        if (ReachHold is { } hold)
-        {
-            await hold.Task.WaitAsync(ct);
-        }
-
-        return Reachable;
-    }
-
-    public async Task DownloadAsync(string version, string fileName, string targetPath, IProgress<int>? progress, CancellationToken ct)
-    {
-        lock (_sync)
-        {
-            Downloads.Add(fileName);
-        }
-
-        Started.TrySetResult();
-        if (Hold is { } hold)
-        {
-            await hold.Task.WaitAsync(ct);
-        }
-
-        if (!Reachable || !_files.TryGetValue(fileName, out var bytes))
-        {
-            throw new AddOnException(AddOnTexts.DownloadFailed);
-        }
-
-        if (WrongHash)
-        {
-            throw new AddOnException(AddOnTexts.Damaged);
-        }
-
-        progress?.Report(50);
-        await File.WriteAllBytesAsync(targetPath, bytes, ct);
-        progress?.Report(100);
-    }
+    public long? AvailableBytes(string folder) => Free;
 }
 
 internal sealed class MemoryAddOnList : IAddOnListStore
@@ -141,8 +92,13 @@ internal sealed class AddOnRig : IDisposable
         _version = version;
         DataDirectory = Path.Combine(Path.GetTempPath(), "oadm-addons-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(DataDirectory);
+        GenuineZip = Zip(version: version);
+        Hashes.Allow(GenuineZip);
         Restart();
     }
+
+    /// <summary>The ZIP whose hash this server has built in.</summary>
+    public byte[] GenuineZip { get; }
 
     public string DataDirectory { get; }
 
@@ -150,7 +106,12 @@ internal sealed class AddOnRig : IDisposable
 
     public string Folder => Path.Combine(Root, AddOnCatalog.TextRecognitionId);
 
-    public FakeAddOnFiles Files { get; } = new();
+    public FakeAddOnHashes Hashes { get; } = new();
+
+    public FakeDiskSpace Disk { get; } = new();
+
+    /// <summary>The server's limits (tests lower them).</summary>
+    public Func<AddOnInstallerOptions, AddOnInstallerOptions> Limits { get; set; } = o => o;
 
     public MemoryAddOnList List { get; } = new();
 
@@ -178,21 +139,41 @@ internal sealed class AddOnRig : IDisposable
         bundled?.Invoke(Loader);
         Activation = new RecordingActivation();
         Installer = new AddOnInstaller(
-            new AddOnInstallerOptions(DataDirectory, _version, Runtime),
-            Files,
+            Limits(new AddOnInstallerOptions(DataDirectory, _version, Runtime)),
+            Hashes,
             List,
             Activation,
             Loader,
             Gate,
             NullLogger<AddOnInstaller>.Instance,
-            Time);
+            Time,
+            Disk);
+    }
+
+    /// <summary>Installs <paramref name="zip"/> (default the genuine one) under the release file's name, as a client sends it.</summary>
+    public Task<AddOnStatus> InstallAsync(byte[]? zip = null, ProgressLog? progress = null, string? fileName = null) =>
+        Installer.InstallFileAsync(UploadOf(zip ?? GenuineZip, fileName), progress ?? new ProgressLog(), CancellationToken.None);
+
+    /// <summary>The upload of <paramref name="zip"/> in chunks.</summary>
+    public AddOnUpload UploadOf(byte[] zip, string? fileName = null, long? size = null) =>
+        new(AddOnCatalog.TextRecognitionId, fileName ?? AddOnCatalog.ReleaseFileName(AddOnCatalog.TextRecognitionId, _version, Runtime), size ?? zip.Length, ChunksOf(zip));
+
+    /// <summary>The bytes in 64 KB chunks.</summary>
+    public static async IAsyncEnumerable<ReadOnlyMemory<byte>> ChunksOf(byte[] data, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        for (var at = 0; at < data.Length; at += 64 * 1024)
+        {
+            ct.ThrowIfCancellationRequested();
+            await Task.Yield();
+            yield return data.AsMemory(at, Math.Min(64 * 1024, data.Length - at));
+        }
     }
 
     /// <summary>
     /// The release ZIP of an add-on: plugin.json, a server part that loads, its dependency, a client part, a native library and
     /// the version file of <paramref name="version"/> (none when null).
     /// </summary>
-    public static byte[] Zip(string id = AddOnCatalog.TextRecognitionId, string minSdk = "0.10.0", string? topFolder = null, string? extraEntry = null, string? version = Version)
+    public static byte[] Zip(string id = AddOnCatalog.TextRecognitionId, string minSdk = "0.10.0", string? topFolder = null, string? extraEntry = null, string? version = Version, bool brokenServerPart = false, int extraBytes = 0)
     {
         var prefix = topFolder is null ? string.Empty : topFolder + "/";
         using var buffer = new MemoryStream();
@@ -201,7 +182,7 @@ internal sealed class AddOnRig : IDisposable
             Add(zip, prefix + "plugin.json", Encoding.UTF8.GetBytes(
                 $$"""{ "id": "{{id}}", "version": "0.1.0", "minSdkVersion": "{{minSdk}}", "displayName": "Text recognition", "enabledByDefault": false }"""));
             // A real server part: the Restart plugin's assembly under the add-on's name.
-            Add(zip, prefix + "Oadm.Plugins.Ocr.Server.dll", File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Oadm.Plugins.Restart.Server.dll")));
+            Add(zip, prefix + "Oadm.Plugins.Ocr.Server.dll", brokenServerPart ? [0, 1, 2] : File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Oadm.Plugins.Restart.Server.dll")));
             Add(zip, prefix + "Oadm.Plugins.Ocr.Server.pdb", [8]);
             Add(zip, prefix + "Microsoft.ML.OnnxRuntime.dll", [6, 6]); // a dependency of the server part only
             Add(zip, prefix + "Oadm.Plugins.Ocr.Client.dll", [1, 2, 3]);
@@ -215,6 +196,11 @@ internal sealed class AddOnRig : IDisposable
             if (extraEntry is not null)
             {
                 Add(zip, extraEntry, [0]);
+            }
+
+            if (extraBytes > 0)
+            {
+                Add(zip, prefix + "models/big.bin", new byte[extraBytes]);
             }
         }
 

@@ -6,7 +6,7 @@ public enum AddOnState
     /// <summary>Not on this server; Install offers it.</summary>
     NotInstalled = 0,
 
-    /// <summary>Being downloaded, checked or installed (<see cref="AddOnStatus.Percent"/>).</summary>
+    /// <summary>Being uploaded, checked or installed (<see cref="AddOnStatus.Percent"/>).</summary>
     Installing = 1,
 
     /// <summary>Installed and loaded; turned on and off like any plugin.</summary>
@@ -15,7 +15,7 @@ public enum AddOnState
     /// <summary>Removed: turned off, still loaded; its folder goes at the next server start.</summary>
     Removed = 3,
 
-    /// <summary>Installed before, but the add-on of this version could not be downloaded after an update: not loaded.</summary>
+    /// <summary>Installed before, not loaded now: another version after an update, no files after a restore, or refused by the loader.</summary>
     Failed = 4,
 }
 
@@ -32,20 +32,22 @@ public sealed record AddOnStatus(AddOnEntry Entry, AddOnState State, string Vers
     public string? Message { get; init; }
 
     /// <summary>
-    /// Whether Install works now: false while the server cannot reach the release (<see cref="AddOnTexts.CannotReach"/>), in a
-    /// development build, during a self update or while installing. A removed add-on that is still loaded can be installed
-    /// again without a download.
+    /// Whether Install works now: false in a build without the add-on's hash (<see cref="AddOnTexts.NoHash"/>), during a self
+    /// update or while installing. A removed add-on that is still loaded can be installed again without a file.
     /// </summary>
     public bool CanInstall { get; init; } = true;
+
+    /// <summary>Where the ZIP of this server's version and system can be downloaded; null in a build that cannot install it.</summary>
+    public string? DownloadUrl { get; init; }
 }
 
 /// <summary>The steps of an install, in this order.</summary>
 public enum AddOnStep
 {
-    /// <summary>Downloading the release file.</summary>
-    Download = 0,
+    /// <summary>Receiving the file from the client.</summary>
+    Upload = 0,
 
-    /// <summary>Checking its SHA-256 and its plugin.json.</summary>
+    /// <summary>Checking its SHA-256, plugin.json and version.</summary>
     Check = 1,
 
     /// <summary>Unpacking, swapping in and loading.</summary>
@@ -56,6 +58,13 @@ public enum AddOnStep
 /// <param name="Step">The step that runs.</param>
 /// <param name="Percent">Its progress, 0 to 100.</param>
 public readonly record struct AddOnProgress(AddOnStep Step, int Percent);
+
+/// <summary>A ZIP a client sends to install an add-on.</summary>
+/// <param name="Id">The add-on the row stands for.</param>
+/// <param name="FileName">The chosen file's name.</param>
+/// <param name="Size">Its exact size in bytes.</param>
+/// <param name="Data">Its bytes, in chunks; never held in memory as a whole.</param>
+public sealed record AddOnUpload(string Id, string FileName, long Size, IAsyncEnumerable<ReadOnlyMemory<byte>> Data);
 
 /// <summary>A file of an add-on's client part.</summary>
 /// <param name="RelativePath">Path relative to the add-on folder, "/" separated.</param>
@@ -75,14 +84,20 @@ public sealed record AddOnClientPart(string Id, string Version, IReadOnlyList<Ad
 /// </summary>
 public static class AddOnTexts
 {
-    /// <summary>The row's text while the server cannot reach the release.</summary>
-    public const string CannotReach = "The server cannot reach github.com.";
+    /// <summary>A file that is not the genuine ZIP of this version and system (its SHA-256 differs, or it is no ZIP).</summary>
+    public const string WrongFile = "This file is not the ZIP of this OADM version and system. Download it again.";
 
-    /// <summary>A download that failed.</summary>
-    public const string DownloadFailed = "Could not download the optional plugin. Check that the server can reach github.com.";
+    /// <summary>A ZIP with the right hash that cannot be unpacked (a build error; never a file from the release).</summary>
+    public const string Damaged = "The file is damaged. Download it again.";
 
-    /// <summary>A download whose SHA-256 does not match the release's list.</summary>
-    public const string Damaged = "The download is damaged. Try again.";
+    /// <summary>The upload ended early or stood still.</summary>
+    public const string UploadStopped = "The upload stopped. Try again.";
+
+    /// <summary>A build without the hash of this add-on (development): Install stays off.</summary>
+    public const string NoHash = "This OADM build cannot check optional plugins. Put the plugin into its folder by hand.";
+
+    /// <summary>Installed before, not loaded now: after an update, after a restore or a folder of another version.</summary>
+    public const string InstallAgain = "Not loaded. Install it again for this OADM version.";
 
     /// <summary>Install or remove while a self update runs.</summary>
     public const string Updating = "The server is updating.";
@@ -90,24 +105,17 @@ public static class AddOnTexts
     /// <summary>The row after Remove.</summary>
     public const string Removed = "Removed. The files go at the next restart of the server.";
 
-    /// <summary>An installed add-on whose new version could not be downloaded after an update.</summary>
-    public static string NotLoadedAfterUpdate(string name, string version) =>
-        $"Could not download {name} V{version}. Install it again.";
-
     /// <summary>A second install or remove while one runs.</summary>
     public const string Busy = "An optional plugin is being installed or removed. Try again when it is done.";
 
-    /// <summary>A development build or a pre-release: there is no release of this version with add-ons.</summary>
-    public const string NoRelease = "This OADM version has no optional plugins to download.";
+    /// <summary>A client that still asks the server to fetch the add-on (InstallAddOn without a file).</summary>
+    public const string OlderClient = "Update this client to install optional plugins.";
 
-    /// <summary>The data folder has too little room for the download.</summary>
+    /// <summary>The data folder has too little room for the file.</summary>
     public const string NotEnoughSpace = "Not enough free disk space for the optional plugin.";
 
-    /// <summary>The download holds another plugin or no readable plugin.json.</summary>
-    public const string WrongPackage = "The download is not the optional plugin of this server. It was deleted.";
-
     /// <summary>The add-on's minSdkVersion is newer than the server's SDK.</summary>
-    public const string NeedsNewerServer = "The optional plugin needs a newer OADM server. It was deleted.";
+    public const string NeedsNewerServer = "The optional plugin needs a newer OADM server.";
 
     /// <summary>Unpacking or swapping in failed on the server's disk.</summary>
     public const string CouldNotInstall = "Could not install the optional plugin. The server log has the details.";
@@ -117,6 +125,15 @@ public static class AddOnTexts
 
     /// <summary>The client part is larger than a client takes in one answer.</summary>
     public const string ClientPartTooBig = "The optional plugin is too large to send to the clients.";
+
+    /// <summary>The file holds another plugin.</summary>
+    public static string WrongPlugin(string name) => $"This ZIP holds another plugin. Choose the ZIP of {name}.";
+
+    /// <summary>The file is of another OADM version.</summary>
+    public static string WrongVersion(string version) => $"This ZIP is for another OADM version. This server needs V{version}.";
+
+    /// <summary>The file is for another server platform.</summary>
+    public static string WrongSystem(string runtimeId) => $"This ZIP is for another system. This server needs {runtimeId}.";
 
     /// <summary>The add-on's folder is there but the loader refused it.</summary>
     public static string CouldNotLoad(string name) => $"{name} could not be loaded. Remove it and install it again.";
@@ -134,7 +151,7 @@ public static class AddOnTexts
     public static string Unknown(string id) => $"Unknown optional plugin '{id}'.";
 }
 
-/// <summary>A failure of an install or a download with a message for the user (<see cref="AddOnTexts"/>).</summary>
+/// <summary>A failure of an install with a message for the user (<see cref="AddOnTexts"/>).</summary>
 public sealed class AddOnException : Exception
 {
     public AddOnException()

@@ -277,14 +277,14 @@ public interface IOadmApi
 
     // Add-on plugins (docs/spec/add-ons.md). Default: a server without add-ons (UNIMPLEMENTED; the Plugins page hides the card).
 
-    /// <summary>
-    /// The add-ons of the server's version with their state (any logged-in user). <paramref name="checkReach"/>: the server
-    /// checks that it reaches the release (the Plugins page's card); without it the last answer is used.
-    /// </summary>
-    Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct) => throw NoAddOns();
+    /// <summary>The add-ons of the server's version with their state (any logged-in user).</summary>
+    Task<AddOnList> ListAddOnsAsync(CancellationToken ct) => throw NoAddOns();
 
-    /// <summary>Admin: installs an add-on; the progress until the last message (done or error).</summary>
+    /// <summary>Admin: takes back an add-on that was removed and is still loaded; the progress until the last message (done or error).</summary>
     IAsyncEnumerable<AddOnProgress> InstallAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();
+
+    /// <summary>Admin: sends the ZIP at <paramref name="path"/> to install an add-on; the progress until the last message (done or error).</summary>
+    IAsyncEnumerable<AddOnProgress> UploadAddOnAsync(string id, string path, CancellationToken ct) => throw NoAddOns();
 
     /// <summary>Admin: removes an add-on (off now, its files go at the next server start). Returns the whole list.</summary>
     Task<AddOnList> RemoveAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();

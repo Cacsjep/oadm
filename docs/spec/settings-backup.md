@@ -87,8 +87,8 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
   on another computer and every stored password and plugin secret stays readable), `plugin-data/**` (files in use skipped).
   Not in it: the server's TLS certificate (the target keeps its own), `install.json` (this installation's ID and the OADM
   PRO trials started here, so a running trial never moves to another computer, `docs/spec/licensing.md` "Trial"), uploads,
-  logs, the optional plugins' files (`addons/`: the database holds their list, setting `AddOns.Installed`, and the server
-  downloads them again after the restore, `docs/spec/add-ons.md` "Server").
+  logs, the optional plugins' files (`addons/`: the database holds their list, setting `AddOns.Installed`; after the restore
+  their rows offer Install again, `docs/spec/add-ons.md` "Server").
 - **Versions**: a backup's last migration must be one of this build's: an older one is upgraded by the normal migrations
   at the next start (**migrations are never deleted**), a newer one is refused before the password ("This backup is from
   OADM x, newer than this server (y). Update OADM to x or later first."). Before every migration of an existing database the

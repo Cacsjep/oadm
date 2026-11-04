@@ -34,4 +34,21 @@
     <InternalsVisibleTo Include="Oadm.Server.Tests" />
   </ItemGroup>
 
+  <!-- The SHA-256 of the add-on ZIPs of this version and system (docs/spec/add-ons.md rule 2): the file "manage package addons"
+       writes, one "<plugin id> <sha256>" per line, becomes one assembly metadata per add-on (read by AssemblyAddOnHashes).
+       In the assembly itself, so it survives PublishSingleFile. Without the property the build has no hashes. -->
+  <Target Name="OadmAddOnHashMetadata" BeforeTargets="GetAssemblyAttributes" Condition="'$(OadmAddOnHashFile)' != ''">
+    <Error Condition="!Exists('$(OadmAddOnHashFile)')" Text="OadmAddOnHashFile: $(OadmAddOnHashFile) does not exist." />
+    <ReadLinesFromFile File="$(OadmAddOnHashFile)">
+      <Output TaskParameter="Lines" ItemName="_OadmAddOnHashLine" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_OadmAddOnHash Include="@(_OadmAddOnHashLine)">
+        <PluginId>$([System.String]::Copy('%(Identity)').Split(' ')[0])</PluginId>
+        <Sha256>$([System.String]::Copy('%(Identity)').Split(' ')[1])</Sha256>
+      </_OadmAddOnHash>
+      <AssemblyMetadata Include="@(_OadmAddOnHash->'OadmAddOnSha256:%(PluginId)')" Value="%(_OadmAddOnHash.Sha256)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

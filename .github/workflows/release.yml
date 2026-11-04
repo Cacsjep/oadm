@@ -140,6 +140,19 @@ jobs:
           name: docs-offline
           path: artifacts/docs-offline
 
+      # The add-on ZIPs of this platform (docs/spec/add-ons.md "Release files"): each add-on with server and client part
+      # and the native libraries of this platform only. Before the packages: their SHA-256 goes into this platform's
+      # server (rule 2), so a ZIP is never rebuilt after this step.
+      - name: Build add-on archives (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: ./manage.ps1 package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
+      - name: Build add-on archives (Linux, macOS)
+        if: matrix.target != 'windows'
+        shell: bash
+        run: ./manage.sh package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
+
       - name: Build package (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -161,18 +174,6 @@ jobs:
         shell: bash
         run: ./manage.sh package site-node --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
-      # The add-on ZIPs of this platform (docs/spec/add-ons.md "Release files"): each add-on with server and client part
-      # and the native libraries of this platform only; the server downloads them from this release.
-      - name: Build add-on archives (Windows)
-        if: matrix.target == 'windows'
-        shell: pwsh
-        run: ./manage.ps1 package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
-
-      - name: Build add-on archives (Linux, macOS)
-        if: matrix.target != 'windows'
-        shell: bash
-        run: ./manage.sh package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
-
       # Every add-on has its ZIP for this platform with plugin.json, server and client part and only this platform's
       # native libraries; no add-on folder next to the published exes (the installers and portable ZIPs come from them).
       - name: Check add-on archives
@@ -190,6 +191,16 @@ jobs:
           done
           extra="$(ls artifacts/packages | grep '^oadm-addon-' | grep -v -- "-$version-$rid\.zip$" || true)"
           test -z "$extra" || { echo "add-on ZIPs of another version or platform: $extra"; exit 1; }
+
+      # The published server holds the SHA-256 of each add-on ZIP of this platform, else it would refuse the genuine file.
+      - name: Check the add-on hashes in the server
+        shell: bash
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          rid="${{ matrix.rid }}"
+          for id in $(bash packaging/addons/addon-ids.sh); do
+            bash packaging/addons/check-server-hash.sh "artifacts/publish/server/$rid" "artifacts/packages/oadm-addon-$id-$version-$rid.zip" "$id"
+          done
 
       - name: License texts next to the published exes
         shell: bash
@@ -642,7 +653,7 @@ jobs:
           sha256sum -- * > ../SHA256SUMS.txt
           mv ../SHA256SUMS.txt .
           cat SHA256SUMS.txt
-          # Every add-on for every server platform (AddOnCatalog.RuntimeIds): the server installs one only by this list.
+          # Every add-on for every server platform (AddOnCatalog.RuntimeIds): the row of every server links its ZIP.
           version="${GITHUB_REF_NAME#v}"
           for id in $(bash ../packaging/addons/addon-ids.sh); do
             for rid in $(tr -d '\r' < ../packaging/addons/addon-rids.txt); do

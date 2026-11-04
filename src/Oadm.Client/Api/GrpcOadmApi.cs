@@ -578,11 +578,81 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<PluginPackageList> RemovePluginLicenseAsync(string packageId, CancellationToken ct) =>
         await C.Plugins.RemovePackageLicenseAsync(new PackageIdRequest { Id = packageId }, cancellationToken: ct);
 
-    public async Task<AddOnList> ListAddOnsAsync(bool checkReach, CancellationToken ct) =>
-        await C.Plugins.ListAddOnsAsync(new ListAddOnsRequest { CheckReach = checkReach }, cancellationToken: ct);
+    public async Task<AddOnList> ListAddOnsAsync(CancellationToken ct) =>
+        await C.Plugins.ListAddOnsAsync(new ListAddOnsRequest(), cancellationToken: ct);
 
     public IAsyncEnumerable<AddOnProgress> InstallAddOnAsync(string id, CancellationToken ct) =>
         ReadAll(C.Plugins.InstallAddOn(new AddOnIdRequest { Id = id }, cancellationToken: ct), ct);
+
+    public async IAsyncEnumerable<AddOnProgress> UploadAddOnAsync(string id, string path, [EnumeratorCancellation] CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, UploadChunkSize, useAsync: true);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using AsyncDuplexStreamingCall<AddOnUploadChunk, AddOnProgress> call = C.Plugins.UploadAddOn(cancellationToken: stop.Token);
+
+        // The file goes out while the answers come in: the server may refuse it before it has all of it.
+        Exception? readFailed = null;
+        Task sending = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await SendAddOnAsync(call.RequestStream, id, Path.GetFileName(path), file, stop.Token).ConfigureAwait(false);
+                }
+                catch (IOException ex)
+                {
+                    readFailed = ex; // the file on this computer: the call ends, the reason below
+                    await stop.CancelAsync().ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // The server ended the call: its answers say why.
+                catch (Exception)
+#pragma warning restore CA1031
+                {
+                }
+            },
+            CancellationToken.None);
+        try
+        {
+            while (true)
+            {
+                bool more;
+                try
+                {
+                    more = await call.ResponseStream.MoveNext(ct);
+                }
+                catch (RpcException) when (readFailed is not null)
+                {
+                    throw readFailed;
+                }
+
+                if (!more)
+                {
+                    break;
+                }
+
+                yield return call.ResponseStream.Current;
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await sending;
+        }
+    }
+
+    private static async Task SendAddOnAsync(IClientStreamWriter<AddOnUploadChunk> stream, string id, string name, FileStream file, CancellationToken ct)
+    {
+        await stream.WriteAsync(new AddOnUploadChunk { Header = new AddOnUploadHeader { Id = id, FileName = name, Size = file.Length } }, ct).ConfigureAwait(false);
+        byte[] buffer = new byte[UploadChunkSize];
+        int read;
+        while ((read = await file.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        {
+            await stream.WriteAsync(new AddOnUploadChunk { Data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, read) }, ct).ConfigureAwait(false);
+        }
+
+        await stream.CompleteAsync().ConfigureAwait(false);
+    }
 
     public async Task<AddOnList> RemoveAddOnAsync(string id, CancellationToken ct) =>
         await C.Plugins.RemoveAddOnAsync(new AddOnIdRequest { Id = id }, cancellationToken: ct);

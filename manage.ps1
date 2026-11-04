@@ -307,11 +307,12 @@ function ConvertTo-ArgumentString([string[]]$Arguments) {
 $DefaultVersion = '0.1.0-dev'
 function Get-Version { if ($script:OptVersion) { return $script:OptVersion } return $DefaultVersion }
 
-function Publish-App([string]$Project, [string]$Out) {
+# $Arguments: more MSBuild arguments (the server's add-on hashes).
+function Publish-App([string]$Project, [string]$Out, [string[]]$Arguments = @()) {
     if (Test-Path -LiteralPath $Out) { Remove-Item -LiteralPath $Out -Recurse -Force }
     Invoke-Dotnet (@('publish', $Project, '-c', 'Release', '-r', $script:Rid, '--self-contained',
             '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
-            '-p:PublishReadyToRun=true', '-p:DebugType=embedded', "-p:Version=$(Get-Version)", '-o', $Out) + $script:Extra)
+            '-p:PublishReadyToRun=true', '-p:DebugType=embedded', "-p:Version=$(Get-Version)", '-o', $Out) + $Arguments + $script:Extra)
     # Native symbol files of NuGet packages (SkiaSharp, HarfBuzzSharp); managed symbols are embedded.
     Get-ChildItem -LiteralPath $Out -Filter *.pdb -File | Remove-Item -Force
 }
@@ -501,6 +502,24 @@ function Write-Notices([string[]]$Apps, [string[]]$Outs) {
     Invoke-Dotnet $a
 }
 
+# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256>" per line (docs/spec/add-ons.md rule 2):
+# written by package addons, built into that server.
+function Get-AddOnHashFile([string]$Rid, [string]$Version) {
+    return Join-Path $RepoRoot "artifacts/publish/addons/$Rid/addon-hashes-$Version.txt"
+}
+
+function Add-AddOnHash([string]$File, [string]$Id, [string]$Zip) {
+    [IO.File]::AppendAllText($File, "$Id $((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant())`n")
+}
+
+# The MSBuild argument of the server's publish; none without ZIPs of this version and platform (a warning: Install stays off).
+function Get-AddOnHashArgument {
+    $file = Get-AddOnHashFile $script:Rid (Get-Version)
+    if ((Test-Path -LiteralPath $file) -and (Get-Item -LiteralPath $file).Length -gt 0) { return @("-p:OadmAddOnHashFile=$file") }
+    Write-Warning "no add-on hashes for $($script:Rid) $(Get-Version), this server cannot install optional plugins (manage package addons first)"
+    return @()
+}
+
 function Invoke-Publish {
     Initialize-Dotnet
     if ($script:OptRid) { $script:Rid = $script:OptRid }
@@ -508,7 +527,7 @@ function Invoke-Publish {
     $apps = @(); $outs = @()
     if ($script:Target -in 'all', 'server') {
         $out = Join-Path $RepoRoot "artifacts/publish/server/$($script:Rid)"
-        Publish-App $ServerProject $out
+        Publish-App $ServerProject $out (Get-AddOnHashArgument)
         Copy-Plugins $out
         $apps += Split-Path -Parent $ServerProject; $outs += $out
         Write-Host "server published to $out"
@@ -640,7 +659,7 @@ function New-ZipFromFolder([string]$Folder, [string]$Zip) {
 # The add-on ZIPs (docs/spec/add-ons.md "Release files"): every add-on (server and client part together) published for
 # each platform (--rid one of them, default all four) with the native libraries of that platform only, into
 # artifacts/publish/addons/<rid>/<id>/ and as oadm-addon-<id>-<version>-<rid>.zip (AddOnCatalog.ReleaseFileName) into
-# artifacts/packages.
+# artifacts/packages, and the ZIPs' SHA-256 into Get-AddOnHashFile for the server's publish that follows.
 function Invoke-PackageAddOns {
     Initialize-Dotnet
     if ($script:OptRid -and $AddOnRids -cnotcontains $script:OptRid) { Exit-Usage package "--rid for package addons is $($AddOnRids -join ', ')" }
@@ -651,6 +670,9 @@ function Invoke-PackageAddOns {
     $ids = @($projects | ForEach-Object { Get-PluginId $_ } | Sort-Object -Unique)
     $out = Get-AbsoluteDir (Join-Path $RepoRoot 'artifacts/packages')
     foreach ($rid in $rids) {
+        $hashes = Get-AddOnHashFile $rid $version
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $hashes) | Out-Null
+        [IO.File]::WriteAllText($hashes, '')
         foreach ($id in $ids) {
             $parts = @($projects | Where-Object { (Get-PluginId $_) -ceq $id })
             $stage = Join-Path $RepoRoot "artifacts/publish/addons/$rid/$id"
@@ -660,6 +682,8 @@ function Invoke-PackageAddOns {
                         '-p:OadmSkipPluginDeploy=true', "-p:Version=$version", '-o', $stage) + $script:Extra)
             }
             Limit-RuntimeFolders $stage $rid
+            # Build leftovers of the native packages: never needed at run time.
+            Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -in 'DirectML.Debug.dll', 'DirectML.Debug.pdb', 'DirectML.pdb', 'onnxruntime.lib' } | Remove-Item -Force
             # The release it belongs to: the server records a folder put in by hand with this version.
             [IO.File]::WriteAllText((Join-Path $stage 'oadm-version.txt'), "$version`n")
             # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
@@ -684,6 +708,7 @@ function Invoke-PackageAddOns {
             } else {
                 Write-Warning 'bash not found: the ZIP check of packaging/addons/check-addon-zip.sh is left to release.yml'
             }
+            Add-AddOnHash $hashes $id $zip
             Write-Host ('add-on {0} {1}: {2} ({3:N0} KB)' -f $id, $rid, $zip, ((Get-Item -LiteralPath $zip).Length / 1KB))
         }
     }

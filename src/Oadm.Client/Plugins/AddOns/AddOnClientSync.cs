@@ -79,7 +79,7 @@ public sealed partial class AddOnClientSync(
             AddOnList list;
             try
             {
-                list = await api.ListAddOnsAsync(checkReach: false, timeout.Token).ConfigureAwait(true);
+                list = await api.ListAddOnsAsync(timeout.Token).ConfigureAwait(true);
             }
             catch (RpcException ex) when (ex.StatusCode == StatusCode.Unimplemented)
             {

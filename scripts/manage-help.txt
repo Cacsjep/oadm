@@ -192,7 +192,9 @@ Targets:
             into artifacts/publish/addons/<rid>/<plugin id>/ with the native libraries of
             that platform only, then oadm-addon-<plugin id>-<version>-<rid>.zip (the folder's
             content, plugin.json at the top). --rid win-x64, linux-x64, linux-arm64 or osx-x64;
-            without --rid all four. Builds on any system (needs zip or python3 in bash)
+            without --rid all four. Builds on any system (needs zip or python3 in bash).
+            Run it before the server's publish: the ZIPs' hashes go into the server of that
+            version and platform, a server without them cannot install optional plugins
   nuget     The plugin SDK in artifacts/nuget, all with the same version: Oadm.Sdk,
             Oadm.Sdk.Client, Oadm.Sdk.Testing, Oadm.Plugin.Sdk (project SDK), Oadm.Plugin.Templates
             (dotnet new oadm-task|page|action, generated from samples/ into artifacts/templates)

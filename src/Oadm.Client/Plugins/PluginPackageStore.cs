@@ -11,7 +11,7 @@ namespace Oadm.Client.Plugins;
 /// toolbar entries of packages that are off. A package the server does not list counts as on (older server). With an
 /// <see cref="AddOns.AddOnClientSync"/>, every load then brings the client parts of the server's add-ons in the background
 /// and announces the list again once parts came, so the pages of an add-on follow like those of any plugin; while the server
-/// installs an add-on (after its update) the list is read again every <see cref="AddOnPollInterval"/>
+/// installs an add-on (another administrator) the list is read again every <see cref="AddOnPollInterval"/>
 /// (docs/spec/add-ons.md rule 6).
 /// </summary>
 public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPackageStore> logger, AddOns.AddOnClientSync? addOns = null, TimeProvider? time = null)

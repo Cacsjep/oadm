@@ -467,7 +467,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   core plugins of a package turned off are stopped (trust anchors removed), turned on are started. Invoking a core plugin
   that is off: FAILED_PRECONDITION "The <name> plugin is turned off.". Tasks of the package already queued or running
   finish.
-- **Packages loaded at run time** (an optional plugin installed or fetched after an update, `docs/spec/add-ons.md`):
+- **Packages loaded at run time** (an optional plugin installed, `docs/spec/add-ons.md`):
   `PluginLoader.LoadPackage` registers the package and, after `PluginRegistry.MarkStarted` (server start, after the core
   plugins started), `PluginRegistry.PackageRegistered` raises `EnabledChanged` and then `PackageAdded` once per package
   (the loader is the only one that raises it). Everything follows it like Turn on: the catalogues of events, actions and

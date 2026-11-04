@@ -22,7 +22,7 @@ public sealed class PageTitleBar : Grid
 
     private readonly TextBlock _title = new() { VerticalAlignment = VerticalAlignment.Bottom };
     private readonly TextBlock _subtitle = new() { VerticalAlignment = VerticalAlignment.Bottom };
-    private readonly ContentControl _trailing = new() { VerticalAlignment = VerticalAlignment.Center };
+    private readonly ContentControl _trailing = new() { VerticalAlignment = VerticalAlignment.Center, ClipToBounds = false };
 
     public PageTitleBar()
     {
