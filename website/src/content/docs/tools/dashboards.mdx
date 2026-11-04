@@ -34,7 +34,9 @@ see when it arrived.
 
 1. Click the + next to **Dashboards**, or the pen next to a dashboard. The bin next to it deletes the dashboard.
 2. Drag an event from **Events** onto the grid, or click it. **Events** lists each event with its values and their type.
-3. On the right, choose the **Device** (only the devices of the trigger are offered), the **Value** and the **Widget**:
+3. On the right, choose the **Device** (only the devices of the trigger are offered), the **Value** and the **Widget**.
+   An event of a [Text recognition](../text-recognition/) reader has no **Device**: it uses the reader's camera. Choose its
+   **Area** instead.
    - **On / Off**: an icon, a color and an optional text for each state.
    - **Text**: the value as the device sends it.
    - **Number**: decimal places, a unit, and thresholds that color the number from a value on (for example 25 orange,
@@ -45,6 +47,9 @@ see when it arrived.
      Gauge keeps the settings.
 
      <Image src={gauge} alt="Gauges: a grade from 0 to 100 in four colors, a power reading, a value above Max, a cold room without a value yet" class="screen" />
+
+   - **Table**: a row with the time and the text for every event of the value, newest first. Type in **Search** to
+     filter the rows. It keeps the last 1,000 rows and the first 100 characters of each text.
 
    A new threshold takes a color no other threshold of the widget uses yet.
    **Type** reads a value as a number, as yes / no or as text when the automatic choice does not fit. Set **Show name** to
@@ -65,7 +70,7 @@ see when it arrived.
    shows **Mixed** until you change it. The icons at the top copy or remove them all.
 7. Enter a name and click **Save**. **Cancel** throws your changes away.
 
-A dashboard holds up to 50 widgets, of them up to 16 live videos and 20 buttons.
+A dashboard holds up to 50 widgets, of them up to 16 live videos, 20 buttons and 10 tables.
 
 ## Buttons
 
@@ -99,4 +104,6 @@ anything needs attention, a Number widget how many devices. Event rules can use 
   Pressing buttons needs **Press dashboard buttons** (Operators have it, Viewers do not).
 - OADM keeps the values in memory only. After a server restart, on / off values come back at once; other values show
   **No value yet** until the device sends the event again.
+- A table starts empty when you save it and collects rows from then on, also while nobody has it open. After a server
+  restart its rows are gone.
 - A device that was removed from OADM keeps its widget and says so.

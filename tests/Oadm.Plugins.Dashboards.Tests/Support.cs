@@ -179,6 +179,25 @@ internal static class Types
     public const string Plate = "oadm.device-triggers.plate";
     public const string Unreachable = "oadm.device.unreachable";
     public const string ServerFlag = "acme.flag";
+    public const string TextRead = "acme.vision.text-read.gate";
+
+    /// <summary>A reader of a vision plugin: one fixed camera, one event per area.</summary>
+    public static SubscribedEventType Reader(Guid camera, params string[] areas) => Reader(TextRead, "Gate reader", camera, areas);
+
+    public static SubscribedEventType Reader(string id, string name, Guid camera, params string[] areas) =>
+        new(new EventTypeInfo(id, "Text read", "Text recognition", EventKind.Stateless, EventScope.Device,
+        [
+            new EventField("area", "Area", EventFieldType.Choice, areas),
+            new EventField("text", "Text"),
+            new EventField("number", "Number", EventFieldType.Number),
+            new EventField("confidence", "Confidence", EventFieldType.Number),
+        ])
+        {
+            DeviceIds = [camera],
+            FixedDeviceId = camera,
+            SplitField = "area",
+            Path = ["Text recognition", name],
+        }, "acme.vision", "Text recognition", true);
 
     public static List<SubscribedEventType> All() =>
     [

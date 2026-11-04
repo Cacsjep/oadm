@@ -806,6 +806,12 @@ filter on.
   path and a group the folder is "Other".
 - **Devices** (`EventTypeInfo.DeviceIds`): the devices that can send the event now (null = any device); raise
   `EventTypesChanged` when they change. Dashboards offers only these devices for a widget.
+- **One device** (`EventTypeInfo.FixedDeviceId`, SDK 0.10.0): the device an event belongs to, for an object that sits on one
+  device (a reader on its camera). Dashboards then has no device choice and follows the device; raise `EventTypesChanged`
+  when it changes. Set `DeviceIds` to the same device.
+- **Separate values** (`EventTypeInfo.SplitField`, SDK 0.10.0): the name of a Choice field, for an event sent once per part
+  (per area). Dashboards keeps the latest value per choice and has a select for it. Every event of the type carries the
+  field, also the off of an on and off event; raise `EventTypesChanged` when its `Values` change.
 - **Data fields** (`EventField`): name, label, `Kind` (`EventValueKind` Text, Number, YesNo: what the value holds, so a
   dashboard picks the right widget; default Text) and `Filter` (default true; false = a value only, listed as a
   placeholder but without a filter box in the rule dialog).

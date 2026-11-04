@@ -213,7 +213,7 @@ public sealed partial class DashboardsPageTests
             var editor = tab.Editor!;
             Assert.Same(widget, editor.Target);
             Assert.Equal(("temperature", WidgetKind.Number), (widget.Widget.Field, widget.Widget.Kind)); // the number widget for a number
-            Assert.Equal(["Number", "Gauge", "Text"], editor.Kinds.Select(k => k.Label));
+            Assert.Equal(["Number", "Gauge", "Text", "Table"], editor.Kinds.Select(k => k.Label));
             Assert.Equal("Automatic (Number)", editor.SelectedType!.Label);
             Assert.True(editor.NeedsDevice);
             Assert.False(vm.SaveDashboardCommand.CanExecute(null) && tab.WidgetList().All(w => w.DeviceId is not null));

@@ -69,7 +69,7 @@ public sealed class EventListItem
 
 /// <summary>
 /// One widget of an open dashboard: its place in the grid, its settings and what it shows now. A value widget draws a
-/// <see cref="WidgetView"/>; a video widget is the host's live video component (none without it or the "Live view"
+/// <see cref="WidgetView"/> (a table widget with its rows, <see cref="Table"/>); a video widget is the host's live video component (none without it or the "Live view"
 /// right); a button a <see cref="ButtonWidgetView"/>. A removed device keeps its place and says so.
 /// </summary>
 public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, IDisposable
@@ -78,15 +78,18 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
     private readonly WidgetView? _view;
     private readonly ButtonWidgetView? _button;
     private int _pressCount;
+    private ValueKey? _key;
 
     internal WidgetViewModel(DashboardTab owner, Widget widget, IDeviceInfo? device)
     {
         _owner = owner;
         Widget = widget;
         Device = device;
+        _key = Key;
         if (widget.IsValue)
         {
             _view = new WidgetView();
+            ShowTable(widget);
             _view.Show(widget, Display);
         }
         else if (widget.IsButton)
@@ -135,6 +138,20 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
         }
     }
 
+    /// <summary>The rows of a table widget; null for any other widget.</summary>
+    public TableWidgetViewModel? Table { get; private set; }
+
+    /// <summary>A table widget gets its rows anew when what it records changes; the rows stay through any other change.</summary>
+    private void ShowTable(Widget widget)
+    {
+        var key = Shape.TableKeyOf(widget);
+        if (key != Table?.Key)
+        {
+            Table = key is null ? null : new TableWidgetViewModel(key);
+            _view?.ShowTable(Table);
+        }
+    }
+
     /// <summary>The button view (tests).</summary>
     internal ButtonWidgetView? ButtonView => _button;
 
@@ -165,13 +182,19 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
     public partial ValueSnapshot? Value { get; private set; }
 
     /// <summary>What the widget shows now.</summary>
-    public WidgetDisplay Display => WidgetDisplay.Of(Widget, Value);
+    public WidgetDisplay Display => WidgetDisplay.Of(Widget, Value, Widget.IsValue ? Shape.SplitProblem(Widget) : null);
+
+    /// <summary>What the event type says about the widget: a fixed device, a split field.</summary>
+    private EventShape Shape => _owner.ShapeOf(Widget.TypeId);
+
+    /// <summary>The device the widget shows: the widget's own, or the event's fixed device (read from the event type).</summary>
+    public Guid? DeviceId => Widget.IsValue ? Shape.DeviceOf(Widget) : Widget.DeviceId;
 
     /// <summary>OADM no longer manages the widget's device.</summary>
-    public bool IsMissing => Widget.DeviceId is { } id && id != Guid.Empty && Device is null;
+    public bool IsMissing => DeviceId is { } id && id != Guid.Empty && Device is null;
 
-    /// <summary>The value the widget watches; null for a video widget or one without an event yet.</summary>
-    public ValueKey? Key => Widget.IsValue && !string.IsNullOrEmpty(Widget.TypeId) ? new ValueKey(Widget.TypeId, Widget.DeviceId) : null;
+    /// <summary>The value the widget watches; null for a video widget or one without an event or a valid split value.</summary>
+    public ValueKey? Key => Shape.KeyOf(Widget);
 
     /// <summary>The name in the edit frame: the widget's name, else the device's address or the kind.</summary>
     public string? Title => !string.IsNullOrWhiteSpace(Widget.Name) ? Widget.Name
@@ -184,7 +207,7 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
         : _view;
 
     /// <summary>A removed device, or the reason a video widget shows no picture.</summary>
-    public string? Message => IsMissing ? DeviceTexts.Removed((Widget.DeviceId ?? Guid.Empty).ToString("N"))
+    public string? Message => IsMissing ? DeviceTexts.Removed((DeviceId ?? Guid.Empty).ToString("N"))
         : Widget.Kind == WidgetKind.Video && Video is null ? (_owner.PictureProblem ?? Device?.Address)
         : null;
 
@@ -194,8 +217,8 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
 
     ICommand? ITileGridItem.CopyCommand => CopyForDevicesCommand;
 
-    /// <summary>A widget with a device can be copied for other devices (the copy icon of its frame, and the panel).</summary>
-    public bool CanCopy => Widget.DeviceId is { } id && id != Guid.Empty;
+    /// <summary>A widget with a device it chose can be copied for other devices (the copy icon of its frame, and the panel); the event of a fixed device has no others.</summary>
+    public bool CanCopy => !Widget.FixedDevice && !Shape.IsFixed && Widget.DeviceId is { } id && id != Guid.Empty;
 
     /// <summary>The copy icon: the device picker, then one copy per chosen device.</summary>
     [RelayCommand(CanExecute = nameof(CanCopy))]
@@ -214,18 +237,44 @@ public sealed partial class WidgetViewModel : ObservableObject, ITileGridItem, I
     /// <summary>New settings (the panel, a move): the grid and the widget redraw.</summary>
     internal void Update(Widget widget)
     {
-        var keyChanged = widget.TypeId != Widget.TypeId || widget.DeviceId != Widget.DeviceId;
+        var table = Table;
         Widget = widget;
+        ShowTable(widget);
         OnPropertyChanged(nameof(Widget));
         OnPropertyChanged(nameof(Rect));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Key));
         OnPropertyChanged(nameof(CanCopy));
         CopyForDevicesCommand.NotifyCanExecuteChanged();
-        if (keyChanged)
+        Follow(table);
+    }
+
+    /// <summary>The catalog changed: the event's fixed device or split values may have moved, and the widget with them.</summary>
+    internal void EventChanged(IReadOnlyDictionary<Guid, IDeviceInfo> devices)
+    {
+        var table = Table;
+        Device = DeviceId is { } id ? devices.GetValueOrDefault(id) : null;
+        ShowTable(Widget);
+        OnPropertyChanged(nameof(Key));
+        OnPropertyChanged(nameof(CanCopy));
+        CopyForDevicesCommand.NotifyCanExecuteChanged();
+        Follow(table);
+    }
+
+    /// <summary>What the widget reads may have changed: another value starts from what the page has, a new table reads its rows.</summary>
+    private void Follow(TableWidgetViewModel? table)
+    {
+        var key = Key;
+        if (key != _key)
         {
-            Value = null;
+            _key = key;
+            Value = key is null ? null : _owner.LastValue(key);
             _owner.KeysChanged();
+        }
+
+        if (Table is not null && Table != table)
+        {
+            _owner.ReadTable(this);
         }
 
         Redraw();
@@ -411,6 +460,15 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
 
     /// <summary>How long the answer of a press stays below the button.</summary>
     internal Task WaitNoteAsync() => _owner.WaitNoteAsync();
+
+    /// <summary>A table widget needs its rows.</summary>
+    internal void ReadTable(WidgetViewModel widget) => _owner.ReadTable(widget);
+
+    /// <summary>What the event type says about the widgets on it.</summary>
+    internal EventShape ShapeOf(string? typeId) => _owner.ShapeOf(typeId);
+
+    /// <summary>The value the page has for a key; null when it has none.</summary>
+    internal ValueSnapshot? LastValue(ValueKey key) => _owner.LastValue(key);
 
     /// <summary>The grid moved, added or removed a widget: the view redraws.</summary>
     public event EventHandler? LayoutChanged;
@@ -831,9 +889,12 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             return false;
         }
 
-        // The first field and the widget that fits it; the panel chooses the device and the rest.
+        // The first field and the widget that fits it; the panel chooses the device and the rest. A fixed device needs no
+        // choice, and a single area is taken.
         var field = catalogEvent.Fields.Count > 0 ? catalogEvent.Fields[0] : null;
         var kind = field is null ? WidgetKind.Text : FieldValues.WidgetsFor(field.Kind)[0];
+        var shape = catalogEvent.Shape;
+        var split = shape.Split is { Values.Count: 1 } only ? only.Values[0] : null;
         var widget = new Widget
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -844,7 +905,9 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             Height = place.Height,
             TypeId = catalogEvent.TypeId,
             Field = field?.Name,
-            Name = field is null ? catalogEvent.Name : field.Label,
+            Split = split,
+            FixedDevice = shape.IsFixed,
+            Name = WidgetEditorViewModel.DefaultNameOf(field?.Label ?? catalogEvent.Name, shape.FixedDeviceId is { } fixedId ? _owner.DeviceOf(fixedId)?.Address : null, split, shape.IsFixed),
         };
         Error = null;
         var model = _owner.CreateWidget(this, widget);
@@ -876,6 +939,12 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             if (source.Widget.Kind == WidgetKind.Video && Widgets.Count(w => w.Widget.Kind == WidgetKind.Video) >= DashboardsPluginInfo.MaxVideos)
             {
                 reason = DashboardRules.TooManyVideos;
+                break;
+            }
+
+            if (source.Widget.Kind == WidgetKind.Table && Widgets.Count(w => w.Widget.Kind == WidgetKind.Table) >= DashboardsPluginInfo.MaxTables)
+            {
+                reason = DashboardRules.TooManyTables;
                 break;
             }
 
@@ -947,7 +1016,7 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
     {
         foreach (var widget in Widgets)
         {
-            var device = widget.Widget.DeviceId is { } id ? devices.GetValueOrDefault(id) : null;
+            var device = widget.DeviceId is { } id ? devices.GetValueOrDefault(id) : null;
             var wasMissing = widget.IsMissing;
             widget.Device = device;
             if (widget.Widget.Kind != WidgetKind.Video)
@@ -963,6 +1032,15 @@ public sealed partial class DashboardTab : ValidatingViewModel, ITileGridSource,
             {
                 widget.Video?.Start(device.Id, widget.Widget.Camera);
             }
+        }
+    }
+
+    /// <summary>The catalog changed: every widget follows its event.</summary>
+    internal void RefreshEvents(IReadOnlyDictionary<Guid, IDeviceInfo> devices)
+    {
+        foreach (var widget in Widgets.Where(w => w.Widget.IsValue))
+        {
+            widget.EventChanged(devices);
         }
     }
 

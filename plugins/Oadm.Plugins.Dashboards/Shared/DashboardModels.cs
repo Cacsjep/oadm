@@ -39,6 +39,15 @@ public static class DashboardsPluginInfo
 
     public const int ButtonHeight = 2;
 
+    /// <summary>Rows of a table widget, in server memory only (about 300 KB at <see cref="MaxTableText"/>); the oldest goes first.</summary>
+    public const int MaxTableRows = 1_000;
+
+    /// <summary>Characters of a row's text; a longer text is cut.</summary>
+    public const int MaxTableText = 100;
+
+    /// <summary>Table widgets in one dashboard: this bounds the rows in memory (200 dashboards: 600 MB at the very most).</summary>
+    public const int MaxTables = 10;
+
     public const int MaxDashboards = 200;
     public const int MaxNameLength = 64;
     public const int MaxUnitLength = 10;
@@ -59,7 +68,7 @@ public static class DashboardsPluginInfo
     /// <summary>The same grid for a dropped camera: up to 8 x 8.</summary>
     public static readonly TileLayout VideoLayout = new(20, 2, 8, MaxWidgets);
 
-    /// <summary>Latest values kept in memory (event type and device); the least recently updated go first.</summary>
+    /// <summary>Latest values kept in memory (event type, device and split value); the least recently updated go first.</summary>
     public const int MaxKeys = 100_000;
 
     /// <summary>Values one page may watch: the widgets of 100 open dashboards of 50.</summary>
@@ -146,6 +155,9 @@ public static class DashboardsMethods
     /// <summary><see cref="PressRequest"/> -> <see cref="PressReply"/>: a button was pressed ("Press dashboard buttons").</summary>
     public const string Press = "press";
 
+    /// <summary><see cref="TablesRequest"/> -> <see cref="TablesReply"/>: the new rows of table widgets (at most <see cref="DashboardsPluginInfo.MaxTables"/> a call).</summary>
+    public const string Tables = "tables";
+
     /// <summary>Event: the whole <see cref="DashboardList"/> after every change.</summary>
     public const string DashboardsTopic = "dashboards";
 
@@ -184,6 +196,9 @@ public enum WidgetKind
     /// <see cref="Widget.Icon"/> and <see cref="Widget.Color"/>.
     /// </summary>
     Button = 5,
+
+    /// <summary>One row per event of its value: the time and the text, newest first, with a search.</summary>
+    Table = 6,
 }
 
 /// <summary>How large a button is drawn inside its tile (the tile keeps its cells).</summary>
@@ -236,6 +251,8 @@ public sealed record Threshold(double Value, string Color);
 /// <summary>
 /// One widget of a dashboard: a rectangle of grid cells and what it shows. Value widgets name an event type, a device (none
 /// for a server event) and a field; video widgets a camera and channel. Settings of the other kinds are kept but unused.
+/// The event can narrow that (<see cref="EventShape"/>): a fixed device takes the place of <see cref="DeviceId"/>, and an
+/// event split by a choice field needs <see cref="Split"/>.
 /// </summary>
 public sealed record Widget
 {
@@ -263,6 +280,19 @@ public sealed record Widget
     public Guid? DeviceId { get; init; }
 
     public string? Field { get; init; }
+
+    /// <summary>
+    /// The chosen value of the event's split field (an area, by name); null for an event without one, or none chosen yet.
+    /// </summary>
+    public string? Split { get; init; }
+
+    /// <summary>
+    /// The widget's event belongs to one device (<see cref="EventTypeInfo.FixedDeviceId"/>), which is never stored here: it
+    /// is read from the event type. Set by the server; while the event type is unknown such a widget counts as a device
+    /// outside every device group.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool FixedDevice { get; init; }
 
     public FieldType Type { get; init; }
 
@@ -350,6 +380,85 @@ public sealed record DeleteDashboardRequest(string Id);
 /// <summary>A value of an event: its kind is the declared one, or for text the one the received values suggest.</summary>
 public sealed record CatalogField(string Name, string Label, EventValueKind Kind);
 
+/// <summary>The choice field that splits an event into separate values: its name, its label and the choices there are now.</summary>
+public sealed record EventSplit(string Field, string Label, IReadOnlyList<string> Values);
+
+/// <summary>
+/// What an event type says about the widgets on it: the one device it belongs to, and the choice field that splits it into
+/// separate values. The one place that turns a widget into what it reads, for the server and the page.
+/// </summary>
+public sealed record EventShape(Guid? FixedDeviceId = null, EventSplit? Split = null)
+{
+    /// <summary>An event that declares neither (or one the reader does not know): the widget's own device, one value.</summary>
+    public static readonly EventShape None = new();
+
+    [JsonIgnore]
+    public bool IsFixed => FixedDeviceId is not null;
+
+    public static EventShape Of(EventTypeInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        var field = SplitFieldOf(info);
+        return new EventShape(
+            info.Scope == EventScope.Device ? info.FixedDeviceId : null,
+            field is null ? null : new EventSplit(field.Name, string.IsNullOrWhiteSpace(field.DisplayName) ? field.Name : field.DisplayName, field.Values ?? []));
+    }
+
+    /// <summary>The field that splits the type; null without one, or when <see cref="EventTypeInfo.SplitField"/> names no choice field.</summary>
+    public static EventField? SplitFieldOf(EventTypeInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return info.SplitField is { Length: > 0 } name
+            ? info.DataFields.FirstOrDefault(f => f.Name == name && f.Type == EventFieldType.Choice)
+            : null;
+    }
+
+    /// <summary>The device a widget shows: the event's own, else the widget's.</summary>
+    public Guid? DeviceOf(Widget widget)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return FixedDeviceId ?? widget.DeviceId;
+    }
+
+    /// <summary>The split value a widget shows: its choice, else the only one there is; null for an event without a split.</summary>
+    public string? SplitOf(Widget widget)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return Split is not { } split ? null : widget.Split ?? (split.Values.Count == 1 ? split.Values[0] : null);
+    }
+
+    /// <summary>The event is split and the widget has no choice yet.</summary>
+    public bool NeedsSplit(Widget widget) => Split is not null && SplitOf(widget) is null;
+
+    /// <summary>The widget's choice is no longer one of the event's (renamed, deleted).</summary>
+    public bool SplitGone(Widget widget) => Split is { } split && SplitOf(widget) is { } value && !split.Values.Contains(value, StringComparer.Ordinal);
+
+    /// <summary>The line a widget shows instead of a value while its split value is missing or gone; null when it is fine.</summary>
+    public string? SplitProblem(Widget widget) =>
+        Split is not { } split ? null
+        : NeedsSplit(widget) ? DashboardRules.ChooseSplit(split.Label)
+        : SplitGone(widget) ? DashboardRules.SplitGone(split.Label)
+        : null;
+
+    /// <summary>The value a widget watches; null for a video, a button, or a widget without an event or a valid split value.</summary>
+    public ValueKey? KeyOf(Widget widget)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return widget.IsValue && !string.IsNullOrEmpty(widget.TypeId) && SplitProblem(widget) is null
+            ? new ValueKey(widget.TypeId, DeviceOf(widget), SplitOf(widget))
+            : null;
+    }
+
+    /// <summary>What a table widget records; null for any other widget, or one without an event, a value or a valid split value.</summary>
+    public TableKey? TableKeyOf(Widget widget)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return widget is { Kind: WidgetKind.Table, TypeId: { Length: > 0 } typeId, Field: { Length: > 0 } field } && SplitProblem(widget) is null
+            ? new TableKey(typeId, DeviceOf(widget), field, SplitOf(widget))
+            : null;
+    }
+}
+
 /// <summary>An event type with its values: Active for an on / off event, the declared ones, then any others received.</summary>
 public sealed record CatalogEvent(
     string TypeId,
@@ -367,6 +476,19 @@ public sealed record CatalogEvent(
     /// so the catalog stays small also for a trigger on 10,000 devices. False: any device.
     /// </summary>
     public bool HasDeviceList { get; init; }
+
+    /// <summary>The event's fixed device and split field, if it declares them.</summary>
+    public EventShape Shape { get; init; } = EventShape.None;
+
+    /// <summary>The folders of the event (<see cref="EventTypeInfo.Path"/>); null without any.</summary>
+    public IReadOnlyList<string>? Path { get; init; }
+
+    /// <summary>
+    /// The heading of the event in the Events list: its group; an event of a fixed device its folders, because its name alone
+    /// does not tell it from those of its neighbours ("Text recognition / Gate" for each reader's "Text read").
+    /// </summary>
+    [JsonIgnore]
+    public string Folder => Shape.IsFixed && Path is { Count: > 0 } path ? string.Join(" / ", path) : Group;
 }
 
 /// <summary>Method "devices": the devices of an event type.</summary>
@@ -377,8 +499,8 @@ public sealed record DevicesReply(IReadOnlyList<Guid>? DeviceIds);
 
 public sealed record CatalogReply(IReadOnlyList<CatalogEvent> Events);
 
-/// <summary>A value of a widget: an event type on a device (none for a server event).</summary>
-public sealed record ValueKey(string TypeId, Guid? DeviceId);
+/// <summary>A value of a widget: an event type on a device (none for a server event) and split value (none for an event without one).</summary>
+public sealed record ValueKey(string TypeId, Guid? DeviceId, string? Split = null);
 
 /// <summary>The keys of every widget in the open tabs of one page; renewed every 10 s.</summary>
 public sealed record WatchRequest(string WatchId, IReadOnlyList<ValueKey> Keys);
@@ -392,13 +514,42 @@ public sealed record PressRequest(string DashboardId, string WidgetId);
 public sealed record PressReply(bool UsedByRule);
 
 /// <summary>
-/// The latest of an event on a device: <see cref="On"/> for an on / off event (off when no event came: the server knows
+/// The latest of an event on a device (per <see cref="Split"/> value): <see cref="On"/> for an on / off event (off when no event came: the server knows
 /// every event that is on), the fields of the events received (each field its last value), when the last one came, and
 /// why the value may be old (<see cref="Stale"/>: "Connection lost", "Unreachable", ...).
 /// </summary>
-public sealed record ValueSnapshot(string TypeId, Guid? DeviceId, bool On, IReadOnlyDictionary<string, string> Data, DateTimeOffset? Time, string? Stale);
+public sealed record ValueSnapshot(string TypeId, Guid? DeviceId, bool On, IReadOnlyDictionary<string, string> Data, DateTimeOffset? Time, string? Stale, string? Split = null);
 
 public sealed record ValuesReply(IReadOnlyList<ValueSnapshot> Values);
+
+/// <summary>What a table widget records: one value of an event on a device (none for a server event) and split value (none without one).</summary>
+public sealed record TableKey(string TypeId, Guid? DeviceId, string Field, string? Split = null)
+{
+    /// <summary>The key of a table widget; null for any other widget or one without an event and a value yet.</summary>
+    public static TableKey? Of(Widget widget)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return widget is { Kind: WidgetKind.Table, TypeId: { Length: > 0 } typeId, Field: { Length: > 0 } field } ? new TableKey(typeId, widget.DeviceId, field, widget.Split) : null;
+    }
+}
+
+/// <summary>A row of a table widget. <see cref="Seq"/> grows with every row of its table.</summary>
+public sealed record TableRow(long Seq, DateTimeOffset Time, string Text);
+
+/// <summary>
+/// Reading a table: the rows after <see cref="After"/> of the table run <see cref="Ring"/>. A table started anew (a server
+/// restart, the plugin turned off and on, the widget saved again after it was gone) has another run: all its rows come.
+/// </summary>
+public sealed record TableRead(string WidgetId, TableKey Key, string? Ring, long After);
+
+/// <summary>Method "tables".</summary>
+public sealed record TablesRequest(IReadOnlyList<TableRead> Tables);
+
+/// <summary>The rows of one table, oldest first; a different <see cref="Ring"/> replaces what the page has.</summary>
+public sealed record TableRows(string WidgetId, string Ring, IReadOnlyList<TableRow> Rows);
+
+/// <summary>The tables that exist and that the caller sees; the others are left out.</summary>
+public sealed record TablesReply(IReadOnlyList<TableRows> Tables);
 
 /// <summary>Reading received values: numbers in invariant culture, yes / no words, the type suggestion.</summary>
 public static class FieldValues
@@ -408,6 +559,20 @@ public static class FieldValues
 
     /// <summary>On for "true", "1", "yes", "on" (any case).</summary>
     public static bool IsOn(string? value) => value is not null && YesWords.Contains(value.Trim());
+
+    /// <summary>The text of a table row: one line of at most <see cref="DashboardsPluginInfo.MaxTableText"/> characters, a longer text cut.</summary>
+    public static string TableText(string? value)
+    {
+        var text = value ?? string.Empty;
+        var length = Math.Min(text.Length, DashboardsPluginInfo.MaxTableText);
+        if (length < text.Length && char.IsHighSurrogate(text[length - 1]))
+        {
+            length--; // never half a character
+        }
+
+        var line = text[..length];
+        return line.Any(char.IsControl) ? string.Concat(line.Select(c => char.IsControl(c) ? ' ' : c)) : line;
+    }
 
     public static bool TryNumber(string? value, out double number) =>
         double.TryParse(value?.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out number) && double.IsFinite(number);
@@ -450,9 +615,9 @@ public static class FieldValues
     /// <summary>The widgets that can show a value of <paramref name="kind"/>, the best first.</summary>
     public static IReadOnlyList<WidgetKind> WidgetsFor(EventValueKind kind) => kind switch
     {
-        EventValueKind.YesNo => [WidgetKind.OnOff, WidgetKind.Text],
-        EventValueKind.Number => [WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text],
-        _ => [WidgetKind.Text],
+        EventValueKind.YesNo => [WidgetKind.OnOff, WidgetKind.Text, WidgetKind.Table],
+        EventValueKind.Number => [WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text, WidgetKind.Table],
+        _ => [WidgetKind.Text, WidgetKind.Table],
     };
 
     /// <summary>A number with <paramref name="decimals"/> places (null: as received), in the current culture.</summary>
@@ -705,6 +870,8 @@ public static class DashboardRules
 
     public static readonly string TooManyButtons = $"A dashboard holds at most {DashboardsPluginInfo.MaxButtons} buttons.";
 
+    public static readonly string TooManyTables = $"A dashboard holds at most {DashboardsPluginInfo.MaxTables} tables.";
+
     public const string LabelMissing = "Enter a label.";
 
     public static readonly string LabelTooLong = $"Use at most {DashboardsPluginInfo.MaxLabelLength} characters on one line.";
@@ -782,6 +949,21 @@ public static class DashboardRules
     public static readonly string TooManyDashboards = $"OADM keeps at most {DashboardsPluginInfo.MaxDashboards} dashboards. Delete one first.";
 
     public const string NoField = "Choose a value.";
+
+    /// <summary>"Choose an area.": a widget of a split event before its value is chosen.</summary>
+    public static string ChooseSplit(string label) => "Choose " + WithArticle(label) + ".";
+
+    /// <summary>"Choose an area for every widget.": a save with a widget of a split event without a choice.</summary>
+    public static string ChooseSplitForEvery(string label) => "Choose " + WithArticle(label) + " for every widget.";
+
+    /// <summary>"Area no longer exists": the widget's choice was renamed or deleted.</summary>
+    public static string SplitGone(string label) => label + " no longer exists";
+
+    private static string WithArticle(string label)
+    {
+        var word = label.ToLowerInvariant();
+        return (word.Length > 0 && "aeiou".Contains(word[0], StringComparison.Ordinal) ? "an " : "a ") + word;
+    }
 
     public const string NoCamera = "Choose a camera.";
 
@@ -870,6 +1052,11 @@ public static class DashboardRules
             return TooManyButtons;
         }
 
+        if (widgets.Count(w => w.Kind == WidgetKind.Table) > DashboardsPluginInfo.MaxTables)
+        {
+            return TooManyTables;
+        }
+
         var buttons = widgets.Where(w => w.Kind == WidgetKind.Button).Select(w => w.Name?.Trim() ?? string.Empty).Where(n => n.Length > 0).ToList();
         if (buttons.Distinct(StringComparer.OrdinalIgnoreCase).Count() != buttons.Count)
         {
@@ -919,7 +1106,7 @@ public static class DashboardRules
         // Settings a request leaves out (null) or makes too long are refused for every kind, also those it does not use.
         if (widget.Unit is null || widget.OnText is null || widget.OffText is null || widget.Thresholds is null
             || widget.Color is null || widget.OnColor is null || widget.OffColor is null || widget.OnIcon is null || widget.OffIcon is null
-            || widget.Icon is null || Bad(widget.Id) || Bad(widget.TypeId) || Bad(widget.Field) || Bad(widget.OnText) || Bad(widget.OffText))
+            || widget.Icon is null || Bad(widget.Id) || Bad(widget.TypeId) || Bad(widget.Field) || Bad(widget.Split) || Bad(widget.OnText) || Bad(widget.OffText))
         {
             return BadSetting;
         }
@@ -944,7 +1131,7 @@ public static class DashboardRules
                 return label;
             }
 
-            if (widget.DeviceId is not null || widget.TypeId is not null || widget.Field is not null
+            if (widget.DeviceId is not null || widget.TypeId is not null || widget.Field is not null || widget.Split is not null || widget.FixedDevice
                 || (widget.Icon.Length > 0 && !WidgetIcons.IsKnown(widget.Icon)))
             {
                 return BadSetting;

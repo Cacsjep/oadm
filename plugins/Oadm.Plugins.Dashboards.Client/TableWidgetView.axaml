@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Dashboards.Client"
+             x:Class="Oadm.Plugins.Dashboards.Client.TableWidgetView"
+             x:DataType="vm:TableWidgetViewModel">
+  <!-- A table widget: the search, then time and text per row (virtualized), newest first; no header, no sorting -->
+  <Grid RowDefinitions="Auto,*" RowSpacing="6">
+    <ui:SearchBox Classes="stretch" Text="{Binding Search}" />
+    <Panel Grid.Row="1">
+      <TextBlock Classes="secondary small" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <ListBox Classes="deviceTree" ItemsSource="{Binding Rows}" SelectionMode="Single" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:TableEntry">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+              <TextBlock Classes="secondary small" Text="{Binding TimeText}" VerticalAlignment="Top" Margin="0,2,0,0" />
+              <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Top" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Panel>
+  </Grid>
+</UserControl>

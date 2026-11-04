@@ -266,8 +266,8 @@ public sealed class DashboardsServerTests(ITestOutputHelper output)
         Assert.Equal("Red", FieldValues.ColorOf(120, [new(50, "Orange"), new(20, "Green"), new(100, "Red")], "Text"));
         Assert.Equal("Orange", FieldValues.ColorOf(50, [new(50, "Orange"), new(20, "Green"), new(100, "Red")], "Text"));
         Assert.Equal("Text", FieldValues.ColorOf(10, [new(50, "Orange"), new(20, "Green")], "Text"));
-        Assert.Equal([WidgetKind.OnOff, WidgetKind.Text], FieldValues.WidgetsFor(EventValueKind.YesNo));
-        Assert.Equal([WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text], FieldValues.WidgetsFor(EventValueKind.Number));
+        Assert.Equal([WidgetKind.OnOff, WidgetKind.Text, WidgetKind.Table], FieldValues.WidgetsFor(EventValueKind.YesNo));
+        Assert.Equal([WidgetKind.Number, WidgetKind.Gauge, WidgetKind.Text, WidgetKind.Table], FieldValues.WidgetsFor(EventValueKind.Number));
         Assert.Equal(EventValueKind.Number, FieldValues.Effective(FieldType.Number, EventValueKind.Text));
         Assert.Equal(EventValueKind.YesNo, FieldValues.Effective(FieldType.Automatic, EventValueKind.YesNo));
     }

@@ -5,7 +5,7 @@
              xmlns:m="using:Oadm.Plugins.Dashboards"
              x:Class="Oadm.Plugins.Dashboards.Client.WidgetEditorView"
              x:DataType="vm:WidgetEditorViewModel">
-  <!-- The panel of the selected widget: event, device, value, type, widget, name, then the widget's own settings -->
+  <!-- The panel of the selected widget: event, device or area, value, type, widget, name, then the widget's own settings -->
   <UserControl.Resources>
     <!-- A color of the color select: a swatch and its name -->
     <DataTemplate x:Key="DashboardColorTemplate" x:DataType="vm:ColorOption">
@@ -19,7 +19,7 @@
   <StackPanel Classes="compactForm" Spacing="10" Margin="0,0,12,0">
     <ui:CardHeader Title="Widget" />
 
-    <!-- A value: event, device, value, type, widget -->
+    <!-- A value: event, device, the event's split choice, value, type, widget -->
     <StackPanel Spacing="10" IsVisible="{Binding IsValue}">
       <ui:FormField Classes="wide" Label="Event">
         <TextBlock Text="{Binding EventName}" TextWrapping="Wrap" />
@@ -28,6 +28,9 @@
         <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ChooseDeviceCommand}">
           <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DeviceText}" />
         </Button>
+      </ui:FormField>
+      <ui:FormField Classes="wide" Label="{Binding SplitLabel}" Hint="{Binding SplitHint}" IsVisible="{Binding ShowSplit}">
+        <ComboBox ItemsSource="{Binding Splits}" SelectedItem="{Binding SelectedSplit}" />
       </ui:FormField>
       <ui:FormField Classes="wide" Label="Value">
         <ComboBox ItemsSource="{Binding Fields}" SelectedItem="{Binding SelectedField}" />

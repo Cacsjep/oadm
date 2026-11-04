@@ -31,12 +31,14 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     private readonly CancellationTokenSource _life = new();
     private readonly SemaphoreSlim _watchGate = new(1, 1);
     private readonly string _watchId = Guid.NewGuid().ToString("N");
+    private readonly HashSet<WidgetViewModel> _tablesToRead = [];
     private Dictionary<Guid, IDeviceInfo> _devices = [];
     private Dictionary<string, CatalogEvent> _catalog = new(StringComparer.Ordinal);
     private Dictionary<ValueKey, ValueSnapshot> _values = [];
     private HashSet<ValueKey> _sentKeys = [];
     private bool _mayWatch;
     private bool _watchPending;
+    private bool _readingTables;
     private bool _disposed;
 
     public DashboardsPageViewModel(ICorePluginClientContext ctx)
@@ -360,10 +362,15 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         }
     }
 
-    /// <summary>The page's own checks before a save: the rules, and a device for every widget of a device event.</summary>
+    /// <summary>
+    /// The page's own checks before a save: the rules, a device for every widget of a device event, and a choice for every
+    /// widget of a split event (a choice that no longer exists stays, like a removed device).
+    /// </summary>
     private string? Problem(DashboardTab tab) =>
         DashboardRules.WidgetsProblem(tab.WidgetList())
-        ?? (tab.Widgets.Any(w => w.Widget.IsValue && w.Widget.DeviceId is null && FindEvent(w.Widget.TypeId)?.DeviceScope == true) ? DashboardRules.NoDevice : null);
+        ?? (tab.Widgets.Any(w => w.Widget.IsValue && w.DeviceId is null && FindEvent(w.Widget.TypeId)?.DeviceScope == true) ? DashboardRules.NoDevice : null)
+        ?? tab.Widgets.Where(w => w.Widget.IsValue && ShapeOf(w.Widget.TypeId).NeedsSplit(w.Widget))
+            .Select(w => DashboardRules.ChooseSplitForEvery(ShapeOf(w.Widget.TypeId).Split!.Label)).FirstOrDefault();
 
     private static bool SetError(DashboardTab tab, string problem)
     {
@@ -482,7 +489,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     /// <summary>A widget of a tab: a value widget with its last known value, a video widget with its picture.</summary>
     internal WidgetViewModel CreateWidget(DashboardTab tab, Widget widget, IDeviceInfo? device = null)
     {
-        device ??= widget.DeviceId is { } id ? _devices.GetValueOrDefault(id) : null;
+        device ??= (widget.IsValue ? ShapeOf(widget.TypeId).DeviceOf(widget) : widget.DeviceId) is { } id ? _devices.GetValueOrDefault(id) : null;
         var model = new WidgetViewModel(tab, widget, device);
         if (widget.Kind == WidgetKind.Video)
         {
@@ -491,6 +498,11 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         else if (model.Key is { } key && _values.TryGetValue(key, out var value))
         {
             model.SetValue(value);
+        }
+
+        if (model.Table is not null)
+        {
+            ReadTable(model);
         }
 
         return model;
@@ -515,6 +527,12 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
     internal void EditorChanged() => SaveDashboardCommand.NotifyCanExecuteChanged();
 
     internal CatalogEvent? FindEvent(string? typeId) => typeId is not null ? _catalog.GetValueOrDefault(typeId) : null;
+
+    /// <summary>What the event type says about the widgets on it; <see cref="EventShape.None"/> for an event the page does not know.</summary>
+    internal EventShape ShapeOf(string? typeId) => FindEvent(typeId)?.Shape ?? EventShape.None;
+
+    /// <summary>The value the page has for a key; null when it has none.</summary>
+    internal ValueSnapshot? LastValue(ValueKey key) => _values.GetValueOrDefault(key);
 
     internal IDeviceInfo? DeviceOf(Guid id) => _devices.GetValueOrDefault(id);
 
@@ -741,7 +759,7 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         var changed = new Dictionary<ValueKey, ValueSnapshot>();
         foreach (var value in reply.Values)
         {
-            var key = new ValueKey(value.TypeId, value.DeviceId);
+            var key = new ValueKey(value.TypeId, value.DeviceId, value.Split);
             _values[key] = value;
             changed[key] = value;
         }
@@ -751,6 +769,10 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
             if (widget.Key is { } key && changed.TryGetValue(key, out var value))
             {
                 widget.SetValue(value);
+                if (widget.Table is not null)
+                {
+                    ReadTable(widget); // the server pushes at most every 250 ms: a burst of events is one read
+                }
             }
         }
 
@@ -759,6 +781,57 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         {
             var open = Tabs.SelectMany(t => t.Widgets).Select(w => w.Key).OfType<ValueKey>().ToHashSet();
             _values = _values.Where(v => open.Contains(v.Key)).ToDictionary();
+        }
+    }
+
+    /// <summary>
+    /// Reads the new rows of a table widget: one read at a time, and what asks meanwhile is read next, so a burst of events
+    /// changes each table once. The values only say that something came; the rows are never lost between two pushes.
+    /// </summary>
+    internal void ReadTable(WidgetViewModel widget)
+    {
+        _tablesToRead.Add(widget);
+        if (!_readingTables && !_life.IsCancellationRequested)
+        {
+            _readingTables = true;
+            _ = ReadTablesAsync();
+        }
+    }
+
+    private async Task ReadTablesAsync()
+    {
+        try
+        {
+            while (_tablesToRead.Count > 0)
+            {
+                var widgets = _tablesToRead.Where(w => w.Table is not null).Take(DashboardsPluginInfo.MaxTables).ToList();
+                _tablesToRead.RemoveWhere(w => w.Table is null || widgets.Contains(w));
+                if (widgets.Count == 0)
+                {
+                    continue;
+                }
+
+                var tables = widgets.ToDictionary(w => w.Id, w => w.Table!); // a widget that changes meanwhile has a new table
+                var request = new TablesRequest([.. tables.Select(t => t.Value.ReadOf(t.Key))]);
+                var json = await _ctx.InvokeAsync(DashboardsMethods.Tables, JsonSerializer.Serialize(request, DashboardsPluginInfo.Json), _life.Token).ConfigureAwait(true);
+                foreach (var rows in JsonSerializer.Deserialize<TablesReply>(json ?? "null", DashboardsPluginInfo.Json)?.Tables ?? [])
+                {
+                    tables.GetValueOrDefault(rows.WidgetId)?.Apply(rows);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (_life.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // The next push or renewal reads again; the tables keep their rows meanwhile.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            _tablesToRead.Clear();
+        }
+        finally
+        {
+            _readingTables = false;
         }
     }
 
@@ -812,6 +885,11 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
         _catalog = reply.Events.ToDictionary(e => e.TypeId, StringComparer.Ordinal);
         RebuildEvents();
+        foreach (var tab in Tabs)
+        {
+            tab.RefreshEvents(_devices);
+        }
+
         ActiveTab?.Editor?.RefreshCatalog();
         OnPropertyChanged(nameof(TriggersOff));
         OnPropertyChanged(nameof(NoTriggers));
@@ -826,18 +904,19 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
         string? group = null;
         foreach (var catalogEvent in _catalog.Values.Where(e => e.Available)
             .OrderBy(e => e.SourceId == DashboardsPluginInfo.DeviceTriggersId ? 0 : 1)
-            .ThenBy(e => e.Group, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(e => e.Folder, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(e => e.Name, StringComparer.CurrentCultureIgnoreCase))
         {
             if (search.Length > 0 && !catalogEvent.Name.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+                && !catalogEvent.Folder.Contains(search, StringComparison.CurrentCultureIgnoreCase)
                 && !catalogEvent.Fields.Any(f => f.Label.Contains(search, StringComparison.CurrentCultureIgnoreCase)))
             {
                 continue;
             }
 
-            if (catalogEvent.Group != group)
+            if (catalogEvent.Folder != group)
             {
-                group = catalogEvent.Group;
+                group = catalogEvent.Folder;
                 items.Add(EventListItem.Group(group));
             }
 

@@ -102,6 +102,24 @@ public sealed record EventTypeInfo(
     /// </summary>
     public string? OwnerScopeKey { get; init; }
 
+    /// <summary>
+    /// Optional (SDK 0.10.0): the one device this event belongs to, for an event of an object that sits on one device (a
+    /// reader on its camera). Null: the user chooses the device. Dashboards then asks for no device, takes this one for its
+    /// value and follows it when it changes: raise <c>IDynamicEventSource.EventTypesChanged</c> then. Group checks treat it
+    /// like a chosen device. Only for <see cref="EventScope.Device"/>; set <see cref="DeviceIds"/> to the same device for
+    /// other readers of the type.
+    /// </summary>
+    public Guid? FixedDeviceId { get; init; }
+
+    /// <summary>
+    /// Optional (SDK 0.10.0): the name of the <see cref="EventFieldType.Choice"/> field whose value makes separate values of
+    /// one event, for an event sent once per part (per area of a reader). Dashboards then keeps the latest value per choice
+    /// and asks for one, by its text; the field itself is no value to show. A rule keeps checking it as any field. Every
+    /// event of the type carries this field, also the "off" of an on and off event. Null, or no such Choice field: one value.
+    /// Raise <c>IDynamicEventSource.EventTypesChanged</c> when <see cref="EventField.Values"/> change.
+    /// </summary>
+    public string? SplitField { get; init; }
+
     /// <summary><see cref="Fields"/>, never null.</summary>
     public IReadOnlyList<EventField> DataFields => Fields ?? [];
 

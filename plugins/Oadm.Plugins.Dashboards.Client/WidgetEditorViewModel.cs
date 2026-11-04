@@ -81,8 +81,9 @@ public sealed partial class ThresholdRow : ValidatingViewModel
 }
 
 /// <summary>
-/// The panel of the selected widget while a dashboard is edited: the device (the shared device picker for one device),
-/// the value (the event's fields seen so far; Active for an on / off event), the type, the widget and its settings.
+/// The panel of the selected widget while a dashboard is edited: the device (the shared device picker for one device; none
+/// for an event of a fixed device), the event's split choice (an area), the value (the event's fields seen so far; Active
+/// for an on / off event), the type, the widget and its settings.
 /// Every change goes to the widget at once, so the grid shows it.
 /// </summary>
 public sealed partial class WidgetEditorViewModel : ValidatingViewModel
@@ -138,6 +139,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         }
 
         Validation.Rule(nameof(Name), () => IsButton ? LabelProblem(Name) : DashboardRules.WidgetNameProblem(Name));
+        Validation.Rule(nameof(SelectedSplit), () => ShowSplit && Shape is { Split: { } split } shape && shape.NeedsSplit(Target.Widget) ? DashboardRules.ChooseSplit(split.Label) : null);
         Validation.Rule(nameof(Unit), () => Unit.Length > DashboardsPluginInfo.MaxUnitLength ? DashboardRules.UnitTooLong : null);
         Validation.Rule(nameof(MinText), () => ParseNumber(MinText) is { } min && Math.Abs(min) <= DashboardRules.MaxRange ? null : DashboardRules.NotANumber);
         Validation.Rule(nameof(MaxText), () => ParseNumber(MaxText) is not { } max || Math.Abs(max) > DashboardRules.MaxRange ? DashboardRules.NotANumber
@@ -166,17 +168,38 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
 
     public bool IsValue => Target.Widget.IsValue;
 
-    /// <summary>The event of the widget, as the Events list names it.</summary>
-    public string EventName => _page.FindEvent(Target.Widget.TypeId)?.Name ?? DashboardTexts.EventGone;
+    /// <summary>The event of the widget, as the Events list names it; an event of a fixed device with its folders.</summary>
+    public string EventName => _page.FindEvent(Target.Widget.TypeId) is not { } catalogEvent ? DashboardTexts.EventGone
+        : catalogEvent.Shape.IsFixed ? catalogEvent.Folder + " / " + catalogEvent.Name
+        : catalogEvent.Name;
 
-    /// <summary>The event comes from devices: the Device row shows.</summary>
-    public bool ShowDevice => IsValue && (_page.FindEvent(Target.Widget.TypeId)?.DeviceScope ?? Target.Widget.DeviceId is not null);
+    /// <summary>What the event type says about the widget: a fixed device, a split field.</summary>
+    private EventShape Shape => _page.ShapeOf(Target.Widget.TypeId);
+
+    /// <summary>The event comes from devices and does not name its own: the Device row shows.</summary>
+    public bool ShowDevice => IsValue && !Shape.IsFixed && !Target.Widget.FixedDevice
+        && (_page.FindEvent(Target.Widget.TypeId)?.DeviceScope ?? Target.Widget.DeviceId is not null);
 
     /// <summary>"10.0.0.48", "Choose a device", or the removed device.</summary>
     public string DeviceText => Target.Widget.DeviceId is null ? "Choose a device"
         : Target.Device?.Address ?? Target.Message ?? "Choose a device";
 
     public bool NeedsDevice => ShowDevice && Target.Widget.DeviceId is null;
+
+    /// <summary>The event is split by a choice field: its select shows above Value.</summary>
+    public bool ShowSplit => IsValue && Shape.Split is not null;
+
+    /// <summary>The label of the split select ("Area"): the field's own.</summary>
+    public string SplitLabel => Shape.Split?.Label ?? string.Empty;
+
+    /// <summary>Below the split select when the widget's choice no longer exists; the widget says the same.</summary>
+    public string? SplitHint => Shape is { Split: { } split } shape && shape.SplitGone(Target.Widget) ? DashboardRules.SplitGone(split.Label) : null;
+
+    /// <summary>The choices of the split field now.</summary>
+    public ObservableCollection<Choice<string>> Splits { get; } = [];
+
+    [ObservableProperty]
+    public partial Choice<string>? SelectedSplit { get; set; }
 
     public ObservableCollection<Choice<CatalogField>> Fields { get; } = [];
 
@@ -417,11 +440,51 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         }
 
         SelectedField = Fields.FirstOrDefault(f => f.Value.Name == current) ?? Fields.FirstOrDefault();
+        RefreshSplits();
         RefreshTypes();
         OnPropertyChanged(nameof(EventName));
         OnPropertyChanged(nameof(ShowDevice));
         OnPropertyChanged(nameof(NeedsDevice));
+        OnPropertyChanged(nameof(ShowSplit));
+        OnPropertyChanged(nameof(SplitLabel));
+        OnPropertyChanged(nameof(SplitHint));
         _loading = wasLoading;
+        if (SelectedSplit is { } selected && selected.Value != Target.Widget.Split)
+        {
+            Apply(); // a single area is taken
+        }
+    }
+
+    /// <summary>The choices of the split field; a choice that no longer exists shows as none, and the widget keeps it until the user chooses.</summary>
+    private void RefreshSplits()
+    {
+        var chosen = Shape.SplitOf(Target.Widget);
+        Splits.Clear();
+        foreach (var value in Shape.Split?.Values ?? [])
+        {
+            Splits.Add(new Choice<string>(value, value));
+        }
+
+        SelectedSplit = Splits.FirstOrDefault(s => s.Value == chosen);
+    }
+
+    partial void OnSelectedSplitChanged(Choice<string>? oldValue, Choice<string>? newValue)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        if (newValue is null && oldValue is not null)
+        {
+            SelectedSplit = oldValue; // a select that lost its list never empties the choice
+            return;
+        }
+
+        var before = _defaultName;
+        Apply();
+        OnPropertyChanged(nameof(SplitHint));
+        FollowDefaultName(before);
     }
 
     partial void OnSelectedFieldChanged(Choice<CatalogField>? oldValue, Choice<CatalogField>? newValue)
@@ -584,6 +647,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
             Name = Name.Trim(),
             ShowName = ShowName,
             Field = IsValue ? SelectedField?.Value.Name ?? Target.Widget.Field : null,
+            Split = ShowSplit ? SelectedSplit?.Value ?? Target.Widget.Split : Target.Widget.Split,
             Type = IsValue ? SelectedType?.Value ?? FieldType.Automatic : FieldType.Automatic,
             Kind = IsValue ? SelectedKind?.Value ?? Target.Widget.Kind : Target.Widget.Kind,
             IconSize = Math.Clamp(IconSize, DashboardsPluginInfo.MinShare, DashboardsPluginInfo.MaxShare),
@@ -636,7 +700,14 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
     /// <summary>The panel closes: nothing more is written.</summary>
     internal void Detach() => _loading = true;
 
-    /// <summary>"Temperature · 10.0.0.48"; a server event just the field.</summary>
+    /// <summary>
+    /// The name of a new widget: "Temperature · 10.0.0.48", a server event just the field; the split value after them
+    /// ("Text · Gate"), instead of the address on a fixed device, whose split value tells it from its neighbours.
+    /// </summary>
+    internal static string DefaultNameOf(string field, string? address, string? split, bool fixedDevice) =>
+        string.Join(" · ", new[] { field, fixedDevice && split is not null ? null : address, split }.Where(p => p is not null));
+
+    /// <summary>The name that follows the field, the device and the split value.</summary>
     private string DefaultName()
     {
         if (IsButton)
@@ -650,7 +721,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         }
 
         var field = SelectedField?.Value.Label ?? _page.FindEvent(Target.Widget.TypeId)?.Name ?? string.Empty;
-        return Target.Device?.Address is { } address ? field + " · " + address : field;
+        return DefaultNameOf(field, Target.Device?.Address, ShowSplit ? SelectedSplit?.Value : null, Shape.IsFixed);
     }
 
     /// <summary>A name the user did not change follows the field and the device.</summary>
@@ -683,6 +754,7 @@ public sealed partial class WidgetEditorViewModel : ValidatingViewModel
         WidgetKind.Gauge => "Gauge",
         WidgetKind.Video => "Live video",
         WidgetKind.Button => "Button",
+        WidgetKind.Table => "Table",
         _ => "Text",
     };
 }

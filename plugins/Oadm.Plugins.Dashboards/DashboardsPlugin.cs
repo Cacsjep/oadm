@@ -12,7 +12,7 @@ namespace Oadm.Plugins.Dashboards;
 /// <summary>
 /// Core plugin "Dashboards": grids of widgets that show live values of OADM's events (mostly device triggers) and live
 /// video. The server part keeps the dashboards in the plugin settings (shared by every user, like Live View's views),
-/// subscribes to every event the server handles and keeps the latest value per event and device in memory
+/// subscribes to every event the server handles and keeps the latest value per event, device and split value in memory
 /// (<see cref="ValueStore"/>), and pushes the values of the widgets of the open tabs to the pages, at most 4 times a
 /// second each. It never talks to a device. Device groups (docs/spec/device-scope.md, Shared objects): every dashboard
 /// belongs to the device scope of the user who made it (<see cref="Dashboard.Owner"/>); users of a group see and change only
@@ -42,6 +42,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     private readonly Lock _gate = new();
     private readonly TimeProvider _time;
     private readonly ValueStore _values;
+    private readonly TableStore _tables = new();
     private readonly Dictionary<(string Session, string Watch), Watcher> _watchers = [];
     private readonly Dictionary<string, IPluginJob> _sessionJobs = new(StringComparer.Ordinal);
 
@@ -106,7 +107,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
 
     public string? RequiredPermission(string method) => method switch
     {
-        DashboardsMethods.List or DashboardsMethods.Catalog or DashboardsMethods.Devices or DashboardsMethods.Watch or DashboardsMethods.Unwatch => PermissionKeys.Show,
+        DashboardsMethods.List or DashboardsMethods.Catalog or DashboardsMethods.Devices or DashboardsMethods.Watch or DashboardsMethods.Unwatch or DashboardsMethods.Tables => PermissionKeys.Show,
         DashboardsMethods.Save or DashboardsMethods.Delete => DashboardsPluginInfo.ManageKey,
         DashboardsMethods.Press => DashboardsPluginInfo.PressKey,
         _ => null,
@@ -151,15 +152,21 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     /// <summary>The values in memory (tests).</summary>
     internal ValueStore Values => _values;
 
+    /// <summary>The rows of the table widgets in memory (tests).</summary>
+    internal TableStore Tables => _tables;
+
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         _ctx = ctx;
         _dashboards = null;
+        _subscriptions = ctx.EventSubscriptions; // the tables below ask for their events' types
         await _storeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            SetButtonTypes(await LoadAsync(ct).ConfigureAwait(false), always: true); // the types are read before the start: the buttons follow now
+            var stored = await LoadAsync(ct).ConfigureAwait(false);
+            SetButtonTypes(stored, always: true); // the types are read before the start: the buttons follow now
+            KeepTables(stored); // before the subscription: its first events count
             _dashboards = null; // read again on first use, like before the buttons
         }
         finally
@@ -174,7 +181,6 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             _scopes.Changed += OnScopeChanged;
         }
 
-        _subscriptions = ctx.EventSubscriptions;
         if (_subscriptions is not null)
         {
             _subscriptions.TypesChanged += OnTypesChanged;
@@ -217,6 +223,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         }
 
         _values.Clear(); // memory only: a plugin that is off keeps nothing
+        _tables.Clear();
         List<IPluginJob> jobs;
         lock (_gate)
         {
@@ -262,6 +269,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
                 return null;
             case DashboardsMethods.Press:
                 return Serialize(await PressAsync(caller, Read<PressRequest>(payloadJson), ct).ConfigureAwait(false));
+            case DashboardsMethods.Tables:
+                return Serialize(await TablesAsync(caller, Read<TablesRequest>(payloadJson), ct).ConfigureAwait(false));
             default:
                 throw new ArgumentException($"Unknown method '{method}'.", nameof(method));
         }
@@ -328,6 +337,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             throw new ArgumentException(widgetProblem);
         }
 
+        widgets = [.. widgets.Select(FollowingEvent)];
+
         await _storeGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -342,15 +353,15 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             var owner = OwnerScope.ForSave(Context, caller, index >= 0 ? dashboards[index].Owner : null, isNew);
 
             // A user with all devices editing a group's dashboard: its widgets of devices that left the group are dropped (counted).
-            var left = await OwnerScope.LeftOwnerAsync(Context, caller, owner, widgets.Select(w => w.DeviceId).OfType<Guid>(),
-                index >= 0 ? dashboards[index].Widgets.Select(w => w.DeviceId).OfType<Guid>() : [], ct).ConfigureAwait(false);
-            var dropped = left.Count == 0 ? 0 : widgets.Count(w => w.DeviceId is { } id && left.Contains(id));
+            var left = await OwnerScope.LeftOwnerAsync(Context, caller, owner, widgets.Select(DeviceOf).OfType<Guid>(),
+                index >= 0 ? dashboards[index].Widgets.Select(DeviceOf).OfType<Guid>() : [], ct).ConfigureAwait(false);
+            var dropped = left.Count == 0 ? 0 : widgets.Count(w => DeviceOf(w) is { } id && left.Contains(id));
             if (dropped > 0)
             {
-                widgets = [.. widgets.Where(w => w.DeviceId is not { } id || !left.Contains(id))];
+                widgets = [.. widgets.Where(w => DeviceOf(w) is not { } id || !left.Contains(id))];
             }
 
-            await OwnerScope.RequireDevicesAsync(Context, caller, owner, widgets.Select(w => w.DeviceId).OfType<Guid>(), ct).ConfigureAwait(false);
+            await OwnerScope.RequireDevicesAsync(Context, caller, owner, widgets.Select(DeviceOf).OfType<Guid>(), ct).ConfigureAwait(false);
 
             if (index >= 0 && request.Version != 0 && request.Version != dashboards[index].Version)
             {
@@ -450,6 +461,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         await ctx.Settings.SetAsync(DashboardsKey, JsonSerializer.Serialize(dashboards, DashboardsPluginInfo.Json), CancellationToken.None).ConfigureAwait(false);
         _dashboards = dashboards;
         SetButtonTypes(dashboards, always: false);
+        KeepTables(dashboards);
         if (ctx.Events is not { } events)
         {
             return;
@@ -465,10 +477,29 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     }
 
     /// <summary>A dashboard with only the widgets of server events and of <paramref name="devices"/>.</summary>
-    private static Dashboard Within(Dashboard dashboard, HashSet<Guid> devices) =>
-        dashboard.Widgets.All(w => w.DeviceId is not { } id || devices.Contains(id))
-            ? dashboard
-            : dashboard with { Widgets = [.. dashboard.Widgets.Where(w => w.DeviceId is not { } id || devices.Contains(id))] };
+    private Dashboard Within(Dashboard dashboard, HashSet<Guid> devices)
+    {
+        bool Shown(Widget w) => DeviceOf(w) is { } id ? devices.Contains(id) : !w.FixedDevice; // a fixed device nobody can name now: fail closed
+        return dashboard.Widgets.All(Shown) ? dashboard : dashboard with { Widgets = [.. dashboard.Widgets.Where(Shown)] };
+    }
+
+    /// <summary>What the event type says about a widget's event; <see cref="EventShape.None"/> for no event or an unknown one.</summary>
+    private EventShape ShapeOf(string? typeId) =>
+        typeId is not null && Types().TryGetValue(typeId, out var type) ? EventShape.Of(type.Info) : EventShape.None;
+
+    /// <summary>The device a widget shows: for an event of a fixed device that device, read from the event type now.</summary>
+    private Guid? DeviceOf(Widget widget) => widget.IsValue ? ShapeOf(widget.TypeId).DeviceOf(widget) : widget.DeviceId;
+
+    /// <summary>A saved value widget: on an event of a fixed device it keeps no device of its own, whatever the request says.</summary>
+    private Widget FollowingEvent(Widget widget)
+    {
+        if (!widget.IsValue || widget.TypeId is null || !Types().TryGetValue(widget.TypeId, out var type))
+        {
+            return widget;
+        }
+
+        return EventShape.Of(type.Info).IsFixed ? widget with { DeviceId = null, FixedDevice = true } : widget with { FixedDevice = false };
+    }
 
     private static IEnumerable<Dashboard> Sorted(IEnumerable<Dashboard> dashboards) =>
         dashboards.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase);
@@ -590,9 +621,10 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     private string? GroupName(string scopeKey) => _ctx?.DeviceScopes?.NameOf(scopeKey);
 
     /// <summary>A group changed (renamed, deleted): its buttons' folders follow.</summary>
-    private void OnScopeChanged(object? sender, string scopeKey) => _ = RefreshButtonTypesAsync();
+    private void OnScopeChanged(object? sender, string scopeKey) => _ = WithDashboardsAsync(dashboards => SetButtonTypes(dashboards, always: false));
 
-    private async Task RefreshButtonTypesAsync()
+    /// <summary>Runs <paramref name="use"/> on the stored dashboards, outside the call that asked for it.</summary>
+    private async Task WithDashboardsAsync(Action<List<Dashboard>> use)
     {
         try
         {
@@ -601,7 +633,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             {
                 if (_ctx is not null)
                 {
-                    SetButtonTypes(await LoadAsync(CancellationToken.None).ConfigureAwait(false), always: false);
+                    use(await LoadAsync(CancellationToken.None).ConfigureAwait(false));
                 }
             }
             finally
@@ -609,7 +641,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
                 _storeGate.Release();
             }
         }
-#pragma warning disable CA1031 // A refresh that fails leaves the folders as they were; the next save sets them.
+#pragma warning disable CA1031 // A refresh that fails leaves things as they were; the next save sets them.
         catch (Exception)
 #pragma warning restore CA1031
         {
@@ -644,7 +676,11 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         }
 
         var newField = published.Data.Keys.Any(k => !_values.HasField(published.TypeId, k));
-        var key = _values.Apply(published);
+        var split = Types().GetValueOrDefault(published.TypeId) is { } type && EventShape.SplitFieldOf(type.Info) is { } field
+            ? published.Data.GetValueOrDefault(field.Name)
+            : null;
+        var key = _values.Apply(published, split);
+        _tables.Apply(published, key);
         if (published.DeviceId is null && SiteOf(published.TypeId) is { } site)
         {
             OnSiteEvent(site, published);
@@ -686,6 +722,15 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             _catalogDirty = true;
             _dirty.UnionWith(_watched); // a source turned on or off, an event gone: every watched value says so
         }
+
+        // A table follows its event's fixed device and split values.
+        _ = WithDashboardsAsync(dashboards =>
+        {
+            if (_subscriptions is not null)
+            {
+                KeepTables(dashboards);
+            }
+        });
     }
 
     private static string? ProblemText(string typeId) => typeId switch
@@ -826,8 +871,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         }
 
         return value is { } v
-            ? new ValueSnapshot(key.TypeId, key.DeviceId, v.On, v.Data, v.Time, stale)
-            : new ValueSnapshot(key.TypeId, key.DeviceId, false, new Dictionary<string, string>(), null, stale);
+            ? new ValueSnapshot(key.TypeId, key.DeviceId, v.On, v.Data, v.Time, stale, key.Split)
+            : new ValueSnapshot(key.TypeId, key.DeviceId, false, new Dictionary<string, string>(), null, stale, key.Split);
     }
 
     private string? StaleReason(ValueKey key, Dictionary<string, SubscribedEventType> types)
@@ -881,6 +926,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
                 continue; // the buttons' own events are no values; a group user sees only the group's events
             }
 
+            var shape = EventShape.Of(info);
             var declared = info.DataFields.ToDictionary(f => f.Name, StringComparer.Ordinal);
             var fields = new List<CatalogField>();
             if (info.Kind == EventKind.Stateful)
@@ -891,7 +937,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             // The declared values at once, typed by the declaration; values received refine the type of a text value. Values
             // an event sends that it does not declare follow once seen.
             var seen = _values.FieldsOf(info.Id).ToDictionary(f => f.Name, f => f.Recent, StringComparer.Ordinal);
-            foreach (var field in info.DataFields)
+            foreach (var field in info.DataFields.Where(f => f.Name != shape.Split?.Field)) // the split field is chosen once, no value to show
             {
                 var label = string.IsNullOrWhiteSpace(field.DisplayName) ? field.Name : field.DisplayName;
                 fields.Add(new CatalogField(field.Name, label, FieldValues.Suggest(field.Kind, seen.GetValueOrDefault(field.Name) ?? [])));
@@ -903,7 +949,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             }
 
             events.Add(new CatalogEvent(info.Id, info.DisplayName, info.Group, type.SourceId, type.SourceName, info.Kind == EventKind.Stateful,
-                info.Scope == EventScope.Device, type.Available, fields) { HasDeviceList = info.DeviceIds is not null });
+                info.Scope == EventScope.Device, type.Available, fields) { HasDeviceList = info.DeviceIds is not null, Shape = shape, Path = info.Path });
         }
 
         return new CatalogReply([.. events
@@ -918,7 +964,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         var type = Types().GetValueOrDefault(typeId);
         if (caller.HasAllDevices || type is null)
         {
-            return new DevicesReply(type?.Info.DeviceIds);
+            return new DevicesReply(type is null ? null : DevicesOf(type.Info));
         }
 
         var reach = await ReachOfAsync(caller, ct).ConfigureAwait(false);
@@ -927,8 +973,12 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             return new DevicesReply([]);
         }
 
-        return new DevicesReply(type.Info.DeviceIds is { } ids ? [.. ids.Where(reach.Devices.Contains)] : null);
+        return new DevicesReply(DevicesOf(type.Info) is { } ids ? [.. ids.Where(reach.Devices.Contains)] : null);
     }
+
+    /// <summary>The devices that can send an event: its fixed device, else its list; null = any device.</summary>
+    private static IReadOnlyList<Guid>? DevicesOf(EventTypeInfo info) =>
+        EventShape.Of(info).FixedDeviceId is { } device ? [device] : info.DeviceIds;
 
     /// <summary>
     /// What a group user may see (null: every device, every event): the group's <see cref="Reach"/> kept since its devices
@@ -973,6 +1023,48 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         }
 
         return reach.Devices.Contains;
+    }
+
+    // ------------------------------------------------------------------ tables
+
+    /// <summary>Only the table widgets of the stored dashboards record rows; a widget that is gone takes its rows along.</summary>
+    private void KeepTables(IEnumerable<Dashboard> dashboards) =>
+        _tables.Keep(dashboards.SelectMany(d => d.Widgets).Where(w => w.Kind == WidgetKind.Table)
+            .Select(w => ShapeOf(w.TypeId).TableKeyOf(w)).OfType<TableKey>());
+
+    /// <summary>The new rows of table widgets (tests: a user with all devices).</summary>
+    internal Task<TablesReply> TablesAsync(TablesRequest request, CancellationToken ct) => TablesAsync(System, request, ct);
+
+    /// <summary>
+    /// The new rows of table widgets; the page asks after a value of the table changed. A group user reads what the group may
+    /// watch (<see cref="WatchAsync"/>): another device is NOT_FOUND, like an unknown one, and server events the user does not
+    /// see are left out. Every read checks that again, so rows stop at once when a device leaves the group.
+    /// </summary>
+    internal async Task<TablesReply> TablesAsync(ICallContext caller, TablesRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        ArgumentNullException.ThrowIfNull(request);
+        var reads = (request.Tables ?? []).Where(t => t is { WidgetId: not null, Key.TypeId.Length: > 0, Key.Field.Length: > 0 }).ToList();
+        if (reads.Count > DashboardsPluginInfo.MaxTables)
+        {
+            throw new ArgumentException(DashboardTexts.TooManyOpen);
+        }
+
+        if (!caller.HasAllDevices && reads.Count > 0)
+        {
+            var reach = (await ReachOfAsync(caller, ct).ConfigureAwait(false))!;
+            var member = Membership(caller.DeviceScopeKey, reach);
+            var types = Types();
+            var missing = reads.Where(r => r.Key.DeviceId is { } id && !member(id)).Select(r => r.Key.DeviceId).Distinct().Count();
+            if (missing > 0)
+            {
+                throw new DevicesNotAvailableException(missing);
+            }
+
+            reads.RemoveAll(r => types.TryGetValue(r.Key.TypeId, out var type) ? !reach.Sees(type) : r.Key.DeviceId is null);
+        }
+
+        return new TablesReply([.. reads.Select(_tables.Read).OfType<TableRows>()]);
     }
 
     // ------------------------------------------------------------------ watching
@@ -1439,7 +1531,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
 
             if (info.Scope == EventScope.Device)
             {
-                return info.DeviceIds is { } ids ? ids.Any(Devices.Contains) : type.SourceId == BuiltInSource;
+                return DevicesOf(info) is { } ids ? ids.Any(Devices.Contains) : type.SourceId == BuiltInSource;
             }
 
             return SiteOf(info.Id) is { } site && Sites.Contains(site);
@@ -1455,6 +1547,14 @@ public static class DashboardTexts
     public const string EventGone = "Event no longer exists";
 
     public const string NoValue = "No value yet";
+
+    /// <summary>The search of a table widget found no row.</summary>
+    public const string NoMatchingRows = "No matching rows";
+
+    /// <summary>The text of an on / off event's state.</summary>
+    public const string On = "On";
+
+    public const string Off = "Off";
 
     /// <summary>A page with more widgets in its open tabs than the server follows.</summary>
     public const string TooManyOpen = "Too many dashboards are open. Close some tabs.";

@@ -40,7 +40,10 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   and `TypesChanged` (a source changed its types, a plugin turned on or off; unhooked when the plugin stops). Tests
   `EventSubscriptionTests`. First user: Dashboards ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
   `EventTypeInfo.DeviceIds`: the devices that can send the event (Device triggers: each trigger's devices now, types changed
-  again when they change), null = any device. `EventField.Kind` (`EventValueKind` Text, Number, YesNo; proto `EventFieldInfo.kind = 5`) says what a
+  again when they change), null = any device. `EventTypeInfo.FixedDeviceId` (SDK 0.10.0): the one device an event belongs to
+  (Text read: the reader's camera), null = the user chooses; `EventTypeInfo.SplitField`: the Choice field that makes separate
+  values of one event (Text read: Area), named on every event of the type. Both matter to Dashboards only
+  ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)); a rule checks the field like any other. `EventField.Kind` (`EventValueKind` Text, Number, YesNo; proto `EventFieldInfo.kind = 5`) says what a
   value holds and which operators its checks offer; a field that declares no kind gets it from `EventField.Type` (Number =
   number, Text and Choice = text). `EventField.Filter` false = a value only (placeholder, no check in the
   rule dialog; proto `EventFieldInfo.no_filter = 4`). Device triggers declare their data items checkable, the kind from the

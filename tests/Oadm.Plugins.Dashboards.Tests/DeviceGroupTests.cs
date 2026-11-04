@@ -36,7 +36,8 @@ public sealed class DeviceGroupTests
 
         await new PluginCanary(ctx, plugin, inside, outside)
             .Method(DashboardsMethods.Save, """{"name":"Doors","version":0,"widgets":[{"id":"1","kind":"number","x":0,"y":0,"width":4,"height":4,"typeId":"t","field":"f","deviceId":"{inside}"},{"id":"2","kind":"video","x":4,"y":0,"width":4,"height":4,"deviceId":"{device}"}]}""")
-            .Method(DashboardsMethods.Watch, """{"watchId":"page","keys":[{"typeId":"t","deviceId":"{inside}"},{"typeId":"t","deviceId":"{device}"}]}""")
+            .Method(DashboardsMethods.Watch, """{"watchId":"page","keys":[{"typeId":"t","deviceId":"{inside}"},{"typeId":"t","deviceId":"{device}","split":"a"}]}""")
+            .Method(DashboardsMethods.Tables, """{"tables":[{"widgetId":"1","key":{"typeId":"t","deviceId":"{device}","field":"f","split":"a"},"after":0}]}""")
             .WithoutDevices(DashboardsMethods.List, "the dashboards of the caller's own group, widgets filtered to the group")
             .WithoutDevices(DashboardsMethods.Delete, "only a dashboard of the caller's own group", """{"id":"none"}""")
             .WithoutDevices(DashboardsMethods.Catalog, "the events of the caller's devices and sites")
@@ -328,6 +329,83 @@ public sealed class DeviceGroupTests
         await Testing.Eventually.TrueAsync(() => fake.EventsSeenBy(admin).Any(e => e.Topic == DashboardsMethods.ValuesTopic), "the push went out");
         Assert.DoesNotContain(fake.EventsSeenBy(anna), e => e.Topic == DashboardsMethods.ValuesTopic);
     }
+
+    [Fact]
+    public async Task The_fixed_device_of_an_event_goes_through_the_same_checks_as_a_chosen_device()
+    {
+        var (fake, feed, plugin, a, b, keyA, time) = await StartAsync();
+        using var _ = plugin;
+        const string Mine = "acme.vision.text-read.mine";
+        const string Theirs = "acme.vision.text-read.theirs";
+        feed.ChangeTypes(types =>
+        {
+            types.Add(Types.Reader(Mine, "Mine", a.Id, "Gate", "Yard"));
+            types.Add(Types.Reader(Theirs, "Theirs", b.Id, "Gate", "Yard"));
+        });
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        var admin = fake.CallAsAllDevices();
+
+        // The catalog and the devices: only the reader on the group's camera.
+        var catalog = Read<CatalogReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Catalog, null, CancellationToken.None));
+        Assert.Equal(a.Id, Assert.Single(catalog.Events, e => e.TypeId == Mine).Shape.FixedDeviceId);
+        Assert.DoesNotContain(catalog.Events, e => e.TypeId == Theirs);
+        Assert.Equal([], Read<DevicesReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Devices, Json(new DevicesRequest(Theirs)), CancellationToken.None)).DeviceIds!);
+
+        // A save names no device, or the group's own: the event's device counts, and it is outside.
+        foreach (var widget in new[] { Reading(Theirs, "Gate"), Reading(Theirs, "Gate") with { DeviceId = a.Id }, Reading(Theirs, "Gate") with { FixedDevice = true } })
+        {
+            await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(anna, DashboardsMethods.Save, Json(new SaveDashboardRequest(null, "Refused", 0, [widget])), CancellationToken.None));
+        }
+
+        // Keys of the other reader are refused or left out, whichever device they name; the own one is watched.
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Theirs, b.Id, "Gate")])), CancellationToken.None));
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Mine, a.Id, "Gate"), new ValueKey(Theirs, a.Id, "Gate"), new ValueKey(Theirs, null, "Gate")])), CancellationToken.None);
+        Assert.Equal(1, plugin.WatchedCount);
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => plugin.InvokeAsync(anna, DashboardsMethods.Tables, Json(new TablesRequest([new TableRead("t", new TableKey(Theirs, b.Id, "text", "Gate"), null, 0)])), CancellationToken.None));
+
+        // The group's dashboard shows the widget while the reader's camera is in the group.
+        var saved = Read<Dashboard>(await plugin.InvokeAsync(anna, DashboardsMethods.Save, Json(new SaveDashboardRequest(null, "Gate", 0, [Reading(Mine, "Gate")])), CancellationToken.None));
+        Assert.Equal(((Guid?)null, true), (saved.Widgets[0].DeviceId, saved.Widgets[0].FixedDevice));
+        Assert.Single(Read<DashboardList>(await plugin.InvokeAsync(anna, DashboardsMethods.List, null, CancellationToken.None)).Dashboards[0].Widgets);
+
+        // The reader moves to a camera outside the group: the widget is gone for the group, the value no longer reaches it.
+        feed.ChangeTypes(types =>
+        {
+            types.RemoveAll(t => t.Info.Id == Mine);
+            types.Add(Types.Reader(Mine, "Mine", b.Id, "Gate", "Yard"));
+        });
+        Assert.Empty(Read<DashboardList>(await plugin.InvokeAsync(anna, DashboardsMethods.List, null, CancellationToken.None)).Dashboards[0].Widgets);
+        Assert.DoesNotContain(Read<CatalogReply>(await plugin.InvokeAsync(anna, DashboardsMethods.Catalog, null, CancellationToken.None)).Events, e => e.TypeId == Mine);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Mine, a.Id, "Gate"), new ValueKey(Mine, null, "Gate")])), CancellationToken.None);
+        await plugin.InvokeAsync(admin, DashboardsMethods.Watch, Json(new WatchRequest("page", [new ValueKey(Mine, b.Id, "Gate")])), CancellationToken.None);
+        Assert.Equal(1, plugin.WatchedCount);
+        feed.Publish(Mine, b.Id, PublishedEventKind.Fired, ("area", "Gate"), ("text", "secret"));
+        time.Advance(DashboardsPluginInfo.PushInterval);
+        await Testing.Eventually.TrueAsync(() => fake.EventsSeenBy(admin).Any(e => e.Topic == DashboardsMethods.ValuesTopic), "the push went out");
+        Assert.DoesNotContain(fake.EventsSeenBy(anna), e => e.PayloadJson?.Contains("secret", StringComparison.Ordinal) == true);
+
+        // An administrator's save of the group's dashboard drops the widget and says so.
+        var dropped = Read<Dashboard>(await plugin.InvokeAsync(admin, DashboardsMethods.Save, Json(new SaveDashboardRequest(saved.Id, "Gate", saved.Version, saved.Widgets)), CancellationToken.None));
+        Assert.Equal((1, 0), (dropped.Dropped, dropped.Widgets.Count));
+    }
+
+    [Fact]
+    public async Task A_widget_of_a_fixed_device_nobody_can_name_stays_hidden_from_a_group()
+    {
+        var (fake, feed, plugin, a, _, keyA, _) = await StartAsync();
+        using var _ = plugin;
+        const string Reader = "acme.vision.text-read.gone";
+        feed.ChangeTypes(types => types.Add(Types.Reader(Reader, "Gone", a.Id, "Gate")));
+        var anna = Testing.FakeCallContext.WithGroup(fake, [a.Id], "anna", keyA);
+        await plugin.InvokeAsync(anna, DashboardsMethods.Save, Json(new SaveDashboardRequest(null, "Gate", 0, [Reading(Reader, "Gate")])), CancellationToken.None);
+
+        feed.ChangeTypes(types => types.RemoveAll(t => t.Info.Id == Reader)); // the plugin is gone, or the reader deleted
+
+        Assert.Empty(Read<DashboardList>(await plugin.InvokeAsync(anna, DashboardsMethods.List, null, CancellationToken.None)).Dashboards[0].Widgets);
+        Assert.Single(Read<DashboardList>(await plugin.InvokeAsync(fake.CallAsAllDevices(), DashboardsMethods.List, null, CancellationToken.None)).Dashboards[0].Widgets);
+    }
+
+    private static Widget Reading(string typeId, string area) => new() { Id = "1", Kind = WidgetKind.Text, TypeId = typeId, Field = "text", Split = area };
 
     /// <summary>The plugin over a fake host with two devices (a in Building A at a site, b outside) and their triggers.</summary>
     private static async Task<(Testing.FakeCoreContext Fake, FakeEventSubscriptions Feed, DashboardsPlugin Plugin, Testing.FakeDevice A, Testing.FakeDevice B, string KeyA, FakeTimeProvider Time)> StartAsync()

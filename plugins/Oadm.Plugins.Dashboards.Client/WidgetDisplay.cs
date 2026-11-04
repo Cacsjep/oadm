@@ -23,10 +23,21 @@ public sealed record WidgetDisplay(bool HasValue, string? Text, string? Unit, st
     /// <summary>Nothing to show yet (before the first values arrived).</summary>
     public static readonly WidgetDisplay Empty = new(false, null, null, "Secondary", null, null, false, DashboardTexts.NoValue, null);
 
-    /// <summary>What <paramref name="widget"/> shows for <paramref name="value"/> (null: the server sent none yet).</summary>
-    public static WidgetDisplay Of(Widget widget, ValueSnapshot? value)
+    /// <summary>The note asks the user for something (a table shows it too).</summary>
+    public bool Asks { get; init; }
+
+    /// <summary>
+    /// What <paramref name="widget"/> shows for <paramref name="value"/> (null: the server sent none yet);
+    /// <paramref name="problem"/> is the line it shows instead while its split value is missing or gone.
+    /// </summary>
+    public static WidgetDisplay Of(Widget widget, ValueSnapshot? value, string? problem = null)
     {
         ArgumentNullException.ThrowIfNull(widget);
+        if (problem is not null)
+        {
+            return Empty with { Note = problem, Asks = true };
+        }
+
         if (!widget.IsValue || value is null || widget.Field is not { } field)
         {
             return Empty;
@@ -37,7 +48,7 @@ public sealed record WidgetDisplay(bool HasValue, string? Text, string? Unit, st
         if (field == DashboardsPluginInfo.ActiveField)
         {
             on = value.On; // the server knows every event that is on: none = off
-            raw = value.On ? "On" : "Off";
+            raw = value.On ? DashboardTexts.On : DashboardTexts.Off;
         }
         else
         {

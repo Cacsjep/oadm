@@ -115,6 +115,10 @@ public sealed class OldFirmwareEvents : IEventSource
   `SetState` when actions need values. Actions use them as placeholders (`{version}`), conditions can
   check the declared `EventField`s ("Temperature > 40", SDK 0.9.0: `RuleCondition.Checks`); a check on a value the
   event did not send fails, so a state set by `ReplaceStates` alone never passes one.
+- **One device.** `FixedDeviceId` on the type names the device an event belongs to, for an object that sits on one device (a
+  reader on its camera). Dashboards then asks for no device and follows it; raise `EventTypesChanged` when it changes.
+- **Separate values.** `SplitField` on the type names a Choice field, for an event sent once per part (per area). Dashboards
+  keeps the latest value per choice and asks for one. Every event of the type carries the field.
 - **Devices.** `DeviceIds` on the type lists the devices that can send it now (null: any device); raise `EventTypesChanged`
   when they change. Dashboards offers only these devices for a widget.
 - **Folders.** `Path` (SDK 0.10.0) puts the event in the rule dialog's tree, top first: `["Certificates", "EST server"]`.

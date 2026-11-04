@@ -3,8 +3,8 @@ using Oadm.Sdk.Events;
 namespace Oadm.Plugins.Dashboards;
 
 /// <summary>
-/// The latest value of every event per device, in memory: on / off for an on / off event and the last value of each
-/// field, with the time. At most <see cref="DashboardsPluginInfo.MaxKeys"/> keys; the least recently updated is dropped
+/// The latest value of every event per device and split value, in memory: on / off for an on / off event and the last value
+/// of each field, with the time. At most <see cref="DashboardsPluginInfo.MaxKeys"/> keys; the least recently updated is dropped
 /// first. Per event type it also remembers which fields were seen and their last 20 values (the type suggestion). O(1)
 /// per event; thread-safe (events arrive on the subscription's loop, reads come from page calls).
 /// </summary>
@@ -26,11 +26,11 @@ internal sealed class ValueStore(int maxKeys = DashboardsPluginInfo.MaxKeys)
         }
     }
 
-    /// <summary>Takes an event; returns its key.</summary>
-    public ValueKey Apply(PublishedEvent published)
+    /// <summary>Takes an event, under <paramref name="split"/> for an event split by a field; returns its key.</summary>
+    public ValueKey Apply(PublishedEvent published, string? split = null)
     {
         ArgumentNullException.ThrowIfNull(published);
-        var key = new ValueKey(published.TypeId, published.DeviceId);
+        var key = new ValueKey(published.TypeId, published.DeviceId, split);
         lock (_gate)
         {
             if (_entries.TryGetValue(key, out var node))

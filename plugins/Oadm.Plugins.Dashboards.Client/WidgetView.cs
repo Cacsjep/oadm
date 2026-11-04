@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Dashboards.Client;
 
 /// <summary>
 /// One value widget: its name at the top (small, grey, one line), the value in the middle sized as a share of the widget
-/// (<see cref="FitText"/>, the icon and caption of an On / Off widget, or the <see cref="GaugeView"/>), the note below it ("Connection lost", "No value
+/// (<see cref="FitText"/>, the icon and caption of an On / Off widget, the <see cref="GaugeView"/> or the <see cref="TableWidgetView"/>), the note below it ("Connection lost", "No value
 /// yet"). A dimmed value is drawn at 45 %. Colors are theme brushes, so dark and light both work. Theme class
 /// <c>Border.dashboardWidget</c>.
 /// </summary>
@@ -25,6 +25,7 @@ public sealed class WidgetView : Border
     private readonly Grid _onOff = new() { RowDefinitions = new RowDefinitions("*,Auto") };
     private readonly GaugeView _gauge = new();
     private readonly Panel _body = new();
+    private TableWidgetView? _table;
     private readonly TextBlock _note = new() { TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Center };
     private IDisposable? _valueBrush;
     private IDisposable? _iconBrush;
@@ -54,6 +55,22 @@ public sealed class WidgetView : Border
         Child = grid;
     }
 
+    /// <summary>The rows of a table widget; null for any other widget (the kind can change while editing).</summary>
+    public void ShowTable(TableWidgetViewModel? table)
+    {
+        if (table is not null && _table is null)
+        {
+            _table = new TableWidgetView(); // only table widgets pay for the list
+            _body.Children.Add(_table);
+        }
+
+        if (_table is not null)
+        {
+            _table.DataContext = table;
+            _table.IsVisible = table is not null;
+        }
+    }
+
     /// <summary>Shows <paramref name="widget"/> with <paramref name="display"/>.</summary>
     public void Show(Widget widget, WidgetDisplay display, bool showName = true)
     {
@@ -67,20 +84,22 @@ public sealed class WidgetView : Border
         _name.Opacity = showName ? 1 : 0; // while editing the frame names the widget; the row stays, so nothing moves
         var isOnOff = widget.Kind == WidgetKind.OnOff && display.HasValue && display.Icon is not null;
         var isGauge = widget.Kind == WidgetKind.Gauge; // the scale shows also before the first value
+        var isTable = widget.Kind == WidgetKind.Table; // says itself that it has no rows; below it only why rows may be missing
         _onOff.IsVisible = isOnOff;
         _gauge.IsVisible = isGauge;
         _gauge.Show(widget, display);
-        _value.IsVisible = !isOnOff && !isGauge && display.Text is not null;
+        _value.IsVisible = !isOnOff && !isGauge && !isTable && display.Text is not null;
         _value.Text = display.Text;
         _value.Unit = display.Unit;
         _value.Share = widget.FontSize / 100.0;
         _iconBox.Share = widget.IconSize / 100.0;
         _caption.Text = display.Caption;
         _caption.IsVisible = display.Caption is not null;
-        _note.Text = display.Note;
-        _note.IsVisible = display.Note is not null;
+        var note = isTable && !display.Dimmed && !display.Asks ? null : display.Note;
+        _note.Text = note;
+        _note.IsVisible = note is not null;
         _body.Opacity = display.Dimmed ? 0.45 : 1;
-        ToolTip.SetTip(this, display.ToolTip);
+        ToolTip.SetTip(this, isTable ? null : display.ToolTip);
         if (isOnOff && this.TryFindResource("Icon." + display.Icon, ActualThemeVariant, out var geometry) && geometry is Geometry g)
         {
             _icon.Data = g;
