@@ -247,8 +247,9 @@ public sealed class ServerUpdateHelperTests
         using var setup = new Setup(UpdateOs.Linux, 0, answers: null);
         var started = setup.Time.GetUtcNow();
 
+        // Whole waits, not polls: 100 steps of 3 s depend on how fast a busy test machine runs the pump.
         var run = setup.RunAsync();
-        await PumpAsync(run, setup.Time, ServerUpdateHelper.Poll);
+        await PumpAsync(run, setup.Time, ServerUpdateHelper.NewVersionWait);
         await run;
 
         var record = setup.Records.Read()!;
