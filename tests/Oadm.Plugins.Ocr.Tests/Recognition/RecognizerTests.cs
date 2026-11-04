@@ -6,7 +6,7 @@ using SkiaSharp;
 namespace Oadm.Plugins.Ocr.Tests.Recognition;
 
 /// <summary>One CPU recognizer with the real models for every test of the collection (loading the models takes a moment).</summary>
-public sealed class RecognizerFixture : IDisposable
+public sealed class RecognizerFixture : IAsyncLifetime
 {
     public RecognizerFixture()
     {
@@ -18,7 +18,9 @@ public sealed class RecognizerFixture : IDisposable
 
     internal OnnxTextRecognizer Recognizer { get; }
 
-    public void Dispose() => Recognizer.Dispose();
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public Task DisposeAsync() => Recognizer.DisposeAsync().AsTask();
 }
 
 [CollectionDefinition(Name)]
@@ -223,7 +225,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     public async Task With_the_setting_off_the_graphics_card_is_tried_only_when_it_is_turned_on()
     {
         var tries = 0;
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
         {
             ModelDirectory = RecognizerFixture.ModelFolder,
             UseGraphicsCard = false,
@@ -247,9 +249,9 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     }
 
     [Fact]
-    public void Without_the_graphics_card_the_cpu_runs_with_half_the_cores()
+    public async Task Without_the_graphics_card_the_cpu_runs_with_half_the_cores()
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = false, ProcessorCount = 8 });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = false, ProcessorCount = 8 });
 
         Assert.False(recognizer.RunsOn.IsGraphicsCard);
         Assert.Equal("CPU (8 cores)", recognizer.RunsOn.Name);
@@ -266,7 +268,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
         await File.WriteAllTextAsync(broken, "not a model");
         try
         {
-            using var recognizer = new OnnxTextRecognizer(
+            await using var recognizer = new OnnxTextRecognizer(
                 new OcrEngineOptions
                 {
                     ModelDirectory = RecognizerFixture.ModelFolder,

@@ -47,7 +47,7 @@ public sealed record OcrEngineOptions
 /// <see cref="CardRoute"/>), the CPU decodes, cuts and decodes the text; a card that fails sends the readings back to the CPU.
 /// At most <see cref="OcrLimits.Workers"/> pictures are in work at once.
 /// </summary>
-public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IRecognizerLoad, IDisposable
+public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IRecognizerLoad, IAsyncDisposable
 {
 
     /// <summary>The tile size for large areas.</summary>
@@ -61,9 +61,6 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     /// <summary>Text lower than this (pixels in the picture) is left out.</summary>
     public const float MinTextHeight = 10;
-
-    /// <summary>The page's text when lines were left out for their size.</summary>
-    public const string TextTooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
 
     /// <summary>Lines whose mean character probability is below this (0 to 1) are dropped.</summary>
     private const float MinMeanProbability = (float)(OcrLimits.MinConfidence / 100);
@@ -889,7 +886,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// with <see cref="ObjectDisposedException"/>. The graphics card's models still in use after the wait are left to the process
     /// rather than freed under a running call. A card still in its test is not waited for: it frees itself when the test ends.
     /// </summary>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (_disposed)
         {
@@ -901,11 +898,20 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             _disposed = true; // a card still in its test is freed when the test ends
         }
 
-        _cardStop.Cancel();
+        await _cardStop.CancelAsync().ConfigureAwait(false);
         var taken = 0;
-        while (taken < Workers && _pictures.Wait(DisposeWait))
+        using var wait = new CancellationTokenSource(DisposeWait);
+        try
         {
-            taken++;
+            while (taken < Workers)
+            {
+                await _pictures.WaitAsync(wait.Token).ConfigureAwait(false);
+                taken++;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Readings still in work after the wait: told below.
         }
 
         // The card's calls run inside the readings: once all readings are out, none runs.
@@ -936,7 +942,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
     }
 
-    /// <summary>How long <see cref="Dispose"/> waits for the readings in work.</summary>
+    /// <summary>How long <see cref="DisposeAsync"/> waits for the readings in work.</summary>
     internal static readonly TimeSpan DisposeWait = TimeSpan.FromSeconds(30);
 
     /// <summary>Lines whose mean probability is below the spec's 50 % are dropped (used by <see cref="LineReader"/>).</summary>

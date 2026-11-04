@@ -1,3 +1,5 @@
+using System.Buffers;
+
 using Oadm.Plugins.Ocr.Matching;
 
 namespace Oadm.Plugins.Ocr.Recognition;
@@ -144,6 +146,36 @@ internal static class FormatGuidedDecoder
     /// </summary>
     private const double DirectStep = 1.5;
 
+    /// <summary>
+    /// The search's tables of one line, from the pool: a long format over a long line needs megabytes, for every line of every
+    /// picture. Rented arrays are longer than asked and hold old values, so the part in use starts cleared.
+    /// </summary>
+    private readonly struct SearchTables : IDisposable
+    {
+        public SearchTables(int states, int backLength)
+        {
+            Previous = ArrayPool<double>.Shared.Rent(states);
+            Current = ArrayPool<double>.Shared.Rent(states);
+            Back = ArrayPool<int>.Shared.Rent(backLength);
+            Array.Clear(Previous, 0, states);
+            Array.Clear(Current, 0, states);
+            Array.Clear(Back, 0, backLength);
+        }
+
+        public double[] Previous { get; }
+
+        public double[] Current { get; }
+
+        public int[] Back { get; }
+
+        public void Dispose()
+        {
+            ArrayPool<double>.Shared.Return(Previous);
+            ArrayPool<double>.Shared.Return(Current);
+            ArrayPool<int>.Shared.Return(Back);
+        }
+    }
+
     /// <summary>The best match of <paramref name="pattern"/> in <paramref name="scores"/>, or null when the line is too short.</summary>
     public static GuidedMatch? Decode(LineScores scores, CharacterList characters, FormatPattern pattern)
     {
@@ -228,9 +260,10 @@ internal static class FormatGuidedDecoder
             canEnd[j] = AllOptionalAfter(tokens, j);
         }
 
-        var prev = new double[stateCount];
-        var cur = new double[stateCount];
-        var back = new int[frames * stateCount];
+        using var tables = new SearchTables(stateCount, frames * stateCount);
+        var prev = tables.Previous;
+        var cur = tables.Current;
+        var back = tables.Back;
         var free = new double[frames];
         for (var t = 0; t < frames; t++)
         {

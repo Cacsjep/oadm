@@ -51,7 +51,7 @@ public sealed record RecognizedLine(TextLine Line, IReadOnlyList<CharProbability
 public sealed record AreaRecognition(IReadOnlyList<RecognizedLine> Lines, int TooSmall)
 {
     /// <summary>The page's hint while lines were too small (docs/spec/ocr.md "Accuracy").</summary>
-    public string? Hint => TooSmall > 0 && Lines.Count == 0 ? OnnxTextRecognizer.TextTooSmall : null;
+    public string? Hint => TooSmall > 0 && Lines.Count == 0 ? Readers.ReaderRules.TooSmall : null;
 }
 
 /// <summary>Everything one picture gave: its size and each area's lines.</summary>

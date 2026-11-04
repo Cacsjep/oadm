@@ -145,9 +145,6 @@ public static class ReaderRules
         return string.Create(CultureInfo.InvariantCulture, $"Choose {list} or {choices[^1]} frames per second.");
     }
 
-    /// <summary>Watching readers at most on a server with <paramref name="processorCount"/> cores (<see cref="OcrLimits.MaxWatching"/>).</summary>
-    public static int MaxWatching(int processorCount) => OcrLimits.MaxWatching(processorCount);
-
     /// <summary>"At most 8 readers can be shown live at once. Try again when another page closes."</summary>
     public static readonly string TooManyPreviews = string.Create(
         CultureInfo.InvariantCulture,
@@ -259,9 +256,6 @@ public static class ReaderRules
         ArgumentNullException.ThrowIfNull(reader);
         return reader.Mode == ReaderMode.Watching && reader.MovingObjects;
     }
-
-    /// <summary>The first problem of a normalized reader (<see cref="Normalize"/>), or null.</summary>
-    public static FieldError? Problem(Reader reader) => Problems(reader) is { Count: > 0 } problems ? problems[0] : null;
 
     /// <summary>Every problem of a normalized reader (<see cref="Normalize"/>), at most one per field; empty when it can be saved.</summary>
     public static IReadOnlyList<FieldError> Problems(Reader reader)

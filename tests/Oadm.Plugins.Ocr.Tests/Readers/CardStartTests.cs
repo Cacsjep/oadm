@@ -114,7 +114,7 @@ public sealed class CardStartTests(ITestOutputHelper output)
     public async Task With_Use_GPU_off_nothing_waits_and_the_card_is_never_tried()
     {
         var tries = 0;
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
         {
             ModelDirectory = RecognizerFixture.ModelFolder,
             UseGraphicsCard = false,
@@ -159,7 +159,7 @@ public sealed class CardStartTests(ITestOutputHelper output)
         using var hold = new SemaphoreSlim(0);
         using var entered = new SemaphoreSlim(0);
         var logger = new RecognizerTests.ListLogger();
-        using var recognizer = new OnnxTextRecognizer(
+        await using var recognizer = new OnnxTextRecognizer(
             new OcrEngineOptions
             {
                 ModelDirectory = RecognizerFixture.ModelFolder,
@@ -208,7 +208,7 @@ public sealed class CardStartTests(ITestOutputHelper output)
         var start = recognizer.SetUseGpu(true);
         await entered.WaitAsync(TimeSpan.FromSeconds(30));
 
-        recognizer.Dispose();
+        await recognizer.DisposeAsync();
         hold.Release();
 
         await start.WaitAsync(TimeSpan.FromMinutes(1), TimeProvider.System);
@@ -221,7 +221,7 @@ public sealed class CardStartTests(ITestOutputHelper output)
     {
         var logger = new RecognizerTests.ListLogger();
         var watch = Stopwatch.StartNew();
-        using var recognizer = new OnnxTextRecognizer(
+        await using var recognizer = new OnnxTextRecognizer(
             new OcrEngineOptions
             {
                 ModelDirectory = RecognizerFixture.ModelFolder,

@@ -30,6 +30,9 @@ public sealed class TableServerTests
         Name = "Plates",
     };
 
+    /// <summary>The key of a table without a fixed device or a split, as the server and the page make it.</summary>
+    private static TableKey KeyOf(Widget widget) => EventShape.None.TableKeyOf(widget)!;
+
     private static Task<Dashboard> SaveAsync(PluginHost host, params Widget[] widgets) =>
         host.Plugin.SaveAsync(new SaveDashboardRequest(null, "Gate", 0, widgets), CancellationToken.None);
 
@@ -38,7 +41,7 @@ public sealed class TableServerTests
 
     private static async Task<TableRows> ReadAsync(PluginHost host, Widget widget, string? ring = null, long after = 0)
     {
-        var reply = await host.Plugin.TablesAsync(new TablesRequest([new TableRead(widget.Id, TableKey.Of(widget)!, ring, after)]), CancellationToken.None);
+        var reply = await host.Plugin.TablesAsync(new TablesRequest([new TableRead(widget.Id, KeyOf(widget), ring, after)]), CancellationToken.None);
         return Assert.Single(reply.Tables);
     }
 
@@ -143,7 +146,7 @@ public sealed class TableServerTests
         await host.Plugin.SaveAsync(new SaveDashboardRequest(saved.Id, "Gate 2", saved.Version, []), CancellationToken.None);
         Plate(host, "W-456");
         Assert.Equal(0, host.Plugin.Tables.Count);
-        var reply = await host.Plugin.TablesAsync(new TablesRequest([new TableRead("t", TableKey.Of(table)!, null, 0)]), CancellationToken.None);
+        var reply = await host.Plugin.TablesAsync(new TablesRequest([new TableRead("t", KeyOf(table), null, 0)]), CancellationToken.None);
         Assert.Empty(reply.Tables);
     }
 
@@ -156,7 +159,7 @@ public sealed class TableServerTests
         Assert.Equal(DashboardRules.TooManyTables, refused.Message);
         await SaveAsync(host, tables[..DashboardsPluginInfo.MaxTables]);
 
-        var reads = tables.Select(t => new TableRead(t.Id, TableKey.Of(t)!, null, 0)).ToList();
+        var reads = tables.Select(t => new TableRead(t.Id, KeyOf(t), null, 0)).ToList();
         await Assert.ThrowsAsync<ArgumentException>(() => host.Plugin.TablesAsync(new TablesRequest(reads), CancellationToken.None));
     }
 

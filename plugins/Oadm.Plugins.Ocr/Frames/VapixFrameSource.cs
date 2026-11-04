@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 using Microsoft.Extensions.Logging;
@@ -154,10 +155,11 @@ public sealed partial class VapixFrameSource : IFrameSource
         {
             while (!ct.IsCancellationRequested)
             {
-                var delivered = false;
+                // Outside the stream's call: a stream that delivered and then failed counts as delivered too.
+                var delivered = new StrongBox<bool>();
                 try
                 {
-                    delivered = await StreamOnceAsync(request, fps, newest, problem, ct).ConfigureAwait(false);
+                    await StreamOnceAsync(request, fps, newest, problem, delivered, ct).ConfigureAwait(false);
                     LogStreamEnded(_logger, request.DeviceId);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -172,7 +174,7 @@ public sealed partial class VapixFrameSource : IFrameSource
                     problem.Set(FrameTexts.ProblemOf(ex));
                 }
 
-                failures = delivered ? 1 : failures + 1;
+                failures = delivered.Value ? 1 : failures + 1;
                 var pause = ReopenPause(failures);
                 var wait = Task.Delay(pause, _time, ct);
                 PauseStarted?.Invoke(pause);
@@ -189,8 +191,8 @@ public sealed partial class VapixFrameSource : IFrameSource
         }
     }
 
-    /// <summary>One stream until it ends, stalls or fails; true when it delivered at least one picture.</summary>
-    private async Task<bool> StreamOnceAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, ProblemReport problem, CancellationToken ct)
+    /// <summary>One stream until it ends, stalls or fails; <paramref name="delivered"/> holds once it delivered a picture.</summary>
+    private async Task StreamOnceAsync(FrameRequest request, int fps, ChannelWriter<ReadOnlyMemory<byte>> newest, ProblemReport problem, StrongBox<bool> delivered, CancellationToken ct)
     {
         var client = await _vapix.CreateAsync(request.DeviceId, ct).ConfigureAwait(false);
         using var message = new HttpRequestMessage(HttpMethod.Get, StreamUri(request, fps));
@@ -205,7 +207,6 @@ public sealed partial class VapixFrameSource : IFrameSource
         // flow, a gap longer than StallTimeout reopens the stream.
         using var stall = new CancellationTokenSource(RequestTimeout, _time);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, stall.Token);
-        var delivered = false;
         try
         {
             using var response = await client.SendAsync(message, linked.Token).ConfigureAwait(false);
@@ -219,7 +220,7 @@ public sealed partial class VapixFrameSource : IFrameSource
             await foreach (var frame in MjpegParser.ReadFramesAsync(body, boundary, MjpegParser.MaxFrameBytes, linked.Token).ConfigureAwait(false))
             {
                 stall.CancelAfter(StallTimeout);
-                delivered = true;
+                delivered.Value = true;
                 problem.Set(null);
                 newest.TryWrite(frame);
                 FrameReceived?.Invoke();
@@ -227,7 +228,7 @@ public sealed partial class VapixFrameSource : IFrameSource
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested && stall.IsCancellationRequested)
         {
-            if (delivered)
+            if (delivered.Value)
             {
                 LogStreamStalled(_logger, request.DeviceId, (int)StallTimeout.TotalSeconds);
             }
@@ -238,8 +239,6 @@ public sealed partial class VapixFrameSource : IFrameSource
                 problem.Set(FrameTexts.NoPictures);
             }
         }
-
-        return delivered;
     }
 
     /// <summary>Bytes of a camera's error answer read at most (its text names what it refused).</summary>
@@ -309,7 +308,7 @@ public sealed partial class VapixFrameSource : IFrameSource
 }
 
 /// <summary>The texts of the picture source.</summary>
-public static class FrameTexts
+public static partial class FrameTexts
 {
     /// <summary>The camera answered without a picture.</summary>
     public const string NoPicture = "The camera sent no picture.";
@@ -325,7 +324,7 @@ public static class FrameTexts
 
     /// <summary>
     /// What a camera's error text (an Axis CGI answers "Error: ..." in plain text) refused: the resolution or the video source;
-    /// null for any other text.
+    /// null for any other text, such as the web server's own page of a 403 or a 404, whatever words it holds.
     /// </summary>
     public static string? RefusalOf(ReadOnlySpan<byte> answer)
     {
@@ -334,16 +333,23 @@ public static class FrameTexts
             return null;
         }
 
-        var text = System.Text.Encoding.ASCII.GetString(answer);
+        var text = System.Text.Encoding.ASCII.GetString(answer).TrimStart();
+        if (!text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
         if (text.Contains("resolution", StringComparison.OrdinalIgnoreCase))
         {
             return ResolutionNotOffered;
         }
 
-        return text.Contains("camera", StringComparison.OrdinalIgnoreCase) || text.Contains("source", StringComparison.OrdinalIgnoreCase)
-            ? SourceNotOffered
-            : null;
+        return SourceWord().IsMatch(text) ? SourceNotOffered : null;
     }
+
+    /// <summary>The whole word: "resource" is no source.</summary>
+    [GeneratedRegex(@"\b(camera|source)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SourceWord();
 
     /// <summary>The problem a failed stream shows on the page: the camera's refusal in plain words.</summary>
     public static string ProblemOf(Exception error)

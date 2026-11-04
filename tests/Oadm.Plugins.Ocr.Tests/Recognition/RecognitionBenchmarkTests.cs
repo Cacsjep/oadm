@@ -38,7 +38,7 @@ public sealed class RecognitionBenchmarkTests(ITestOutputHelper output)
 
     private async Task RunAsync(bool useGraphicsCard)
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = useGraphicsCard });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = useGraphicsCard });
         await recognizer.CardTry;
         if (useGraphicsCard && !recognizer.RunsOn.IsGraphicsCard)
         {
@@ -153,7 +153,7 @@ public sealed class RecognitionBenchmarkTests(ITestOutputHelper output)
     [Fact]
     public async Task Accuracy_set_with_the_graphics_card()
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
         await recognizer.CardTry;
         if (!recognizer.RunsOn.IsGraphicsCard)
         {

@@ -205,6 +205,55 @@ public sealed class VapixFrameSourceTests
     }
 
     [Fact]
+    public async Task AStreamThatDeliveredAndThenFailedStartsThePausesAnew()
+    {
+        var attempt = 0;
+        var good = MjpegParserTests.Part(MjpegParserTests.Jpeg(100, 1));
+        _camera.Answer = (_, _) => Interlocked.Increment(ref attempt) switch
+        {
+            1 or 2 => throw new HttpRequestException("No route to host"),
+            _ => Task.FromResult(Mjpeg(new FailsAtTheEnd(good))),
+        };
+        using var stop = new CancellationTokenSource();
+        var watch = ConsumeAsync(_source.WatchAsync(Request, 1, stop.Token));
+
+        double[] expected = [1, 2, 1, 1];
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var n = i + 1;
+            await Eventually.TrueAsync(() => Pauses == n, $"pause {n}");
+            Assert.Equal(TimeSpan.FromSeconds(expected[i]), LastPause);
+            _time.Advance(LastPause);
+        }
+
+        await stop.CancelAsync();
+        await watch;
+    }
+
+    [Theory]
+    [InlineData("<html><body>You don't have permission to access this resource.</body></html>", null)]
+    [InlineData("The requested resource was not found.", null)]
+    [InlineData("Error: the resource is busy", null)]
+    [InlineData("\r\nError: Invalid resolution 4000x3000", FrameTexts.ResolutionNotOffered)]
+    [InlineData("Error: video source 3 does not exist", FrameTexts.SourceNotOffered)]
+    [InlineData("Error: camera 5 does not exist", FrameTexts.SourceNotOffered)]
+    public void AnErrorTextIsARefusalOnlyWhenTheCameraSaysSo(string text, string? refusal) =>
+        Assert.Equal(refusal, FrameTexts.RefusalOf(System.Text.Encoding.ASCII.GetBytes(text)));
+
+    [Fact]
+    public async Task AWebServersForbiddenPageKeepsTheForbiddenText()
+    {
+        _camera.Answer = (_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("<html>You don't have permission to access this resource.</html>"),
+        });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => _source.SingleAsync(Request, CancellationToken.None));
+
+        Assert.Equal(DeviceMessages.ForHttpStatus(403), error.Message);
+    }
+
+    [Fact]
     public async Task AStalledStreamIsOpenedAgain()
     {
         var pipe = new Pipe();
@@ -343,6 +392,19 @@ public sealed class VapixFrameSourceTests
     private sealed record SentRequest(string Line, bool Streamed, bool Live = false);
 
     /// <summary>A camera whose answers the test gives; records each request and whether it asked for a streamed answer.</summary>
+    /// <summary>A stream that gives its bytes and then fails, as a camera that reboots does.</summary>
+    private sealed class FailsAtTheEnd(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var read = await base.ReadAsync(buffer, cancellationToken);
+            return read > 0 ? read : throw new IOException("Connection reset by peer");
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+    }
+
     private sealed class StreamCamera : IVapixClient
     {
         private readonly List<SentRequest> _sent = [];

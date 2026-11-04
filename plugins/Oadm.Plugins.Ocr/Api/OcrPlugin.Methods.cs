@@ -19,9 +19,9 @@ public sealed partial class OcrPlugin
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        var ctx = _ctx ?? throw new InvalidOperationException(NotRunning);
-        var store = _store ?? throw new InvalidOperationException(NotRunning);
-        var runtime = _runtime ?? throw new InvalidOperationException(NotRunning);
+        var ctx = _ctx ?? throw new InvalidOperationException(ReaderRules.NotRunning);
+        var store = _store ?? throw new InvalidOperationException(ReaderRules.NotRunning);
+        var runtime = _runtime ?? throw new InvalidOperationException(ReaderRules.NotRunning);
         switch (method)
         {
             case OcrMethods.ListReaders:

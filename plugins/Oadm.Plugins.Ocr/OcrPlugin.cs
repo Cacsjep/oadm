@@ -21,7 +21,6 @@ namespace Oadm.Plugins.Ocr;
 /// </summary>
 public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActionSource, IAsyncDisposable
 {
-    private const string NotRunning = "The Text recognition plugin is not running.";
     private readonly ReaderParts _parts;
     private ICorePluginContext? _ctx;
     private ReaderStore? _store;
@@ -71,7 +70,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
 
     /// <summary>Reads one picture of <paramref name="reader"/> now and publishes every area's event (<see cref="ReaderRuntime.ReadOnceAsync"/>).</summary>
     internal Task<ReaderReading> ReadOnceAsync(Reader reader, CancellationToken ct) =>
-        (_runtime ?? throw new InvalidOperationException(NotRunning)).ReadOnceAsync(reader, ct);
+        (_runtime ?? throw new InvalidOperationException(ReaderRules.NotRunning)).ReadOnceAsync(reader, ct);
 
     public async Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     {
@@ -153,7 +152,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
 
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
-        InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(NotRunning)), method, payloadJson, ct);
+        InvokeAsync(new ContextCall(_ctx ?? throw new InvalidOperationException(ReaderRules.NotRunning)), method, payloadJson, ct);
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 

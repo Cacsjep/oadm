@@ -19,7 +19,7 @@ public sealed class RecognitionSpeedTests(ITestOutputHelper output)
     [Fact]
     public async Task Search_and_fixed_place_on_the_cpu()
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = false });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = false });
         var (search, fixedPlace) = await MeasureAsync(recognizer, RecognitionOptions.Default);
         var (accurate, _) = await MeasureAsync(recognizer, new RecognitionOptions { Accurate = true });
         output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Accurate on the CPU: Search {accurate:0} ms"));
@@ -31,7 +31,7 @@ public sealed class RecognitionSpeedTests(ITestOutputHelper output)
     [Fact]
     public async Task Search_and_fixed_place_on_the_graphics_card()
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
         await recognizer.CardTry;
         if (!recognizer.RunsOn.IsGraphicsCard)
         {
@@ -48,7 +48,7 @@ public sealed class RecognitionSpeedTests(ITestOutputHelper output)
     [Fact]
     public async Task Twenty_fixed_place_readers_at_once()
     {
-        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
+        await using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
         await recognizer.CardTry;
         var jpeg = await File.ReadAllBytesAsync(Path.Combine(AccuracySet.Folder, "box-1920x1080.jpg"));
         Area[] area = [new() { Name = "Brand", Box = new RelativeBox(0.28, 0.54, 0.16, 0.10) }];

@@ -523,15 +523,7 @@ public sealed record ValueSnapshot(string TypeId, Guid? DeviceId, bool On, IRead
 public sealed record ValuesReply(IReadOnlyList<ValueSnapshot> Values);
 
 /// <summary>What a table widget records: one value of an event on a device (none for a server event) and split value (none without one).</summary>
-public sealed record TableKey(string TypeId, Guid? DeviceId, string Field, string? Split = null)
-{
-    /// <summary>The key of a table widget; null for any other widget or one without an event and a value yet.</summary>
-    public static TableKey? Of(Widget widget)
-    {
-        ArgumentNullException.ThrowIfNull(widget);
-        return widget is { Kind: WidgetKind.Table, TypeId: { Length: > 0 } typeId, Field: { Length: > 0 } field } ? new TableKey(typeId, widget.DeviceId, field, widget.Split) : null;
-    }
-}
+public sealed record TableKey(string TypeId, Guid? DeviceId, string Field, string? Split = null);
 
 /// <summary>A row of a table widget. <see cref="Seq"/> grows with every row of its table.</summary>
 public sealed record TableRow(long Seq, DateTimeOffset Time, string Text);

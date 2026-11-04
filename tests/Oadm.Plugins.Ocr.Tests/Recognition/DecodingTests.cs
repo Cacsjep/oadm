@@ -68,6 +68,23 @@ public sealed class DecodingTests
     }
 
     [Fact]
+    public void The_pooled_tables_of_the_format_search_leave_no_trace_of_an_earlier_line()
+    {
+        var pattern = FormatPattern.Parse("##-###")!;
+        var fresh = FormatGuidedDecoder.Decode(Scores(Frames("12-345")), Chars, pattern)!;
+
+        // What another line leaves in the shared pool.
+        var doubles = System.Buffers.ArrayPool<double>.Shared.Rent(64);
+        var ints = System.Buffers.ArrayPool<int>.Shared.Rent(1024);
+        Array.Fill(doubles, 1e9);
+        Array.Fill(ints, 3);
+        System.Buffers.ArrayPool<double>.Shared.Return(doubles);
+        System.Buffers.ArrayPool<int>.Shared.Return(ints);
+
+        Assert.Equal(fresh.Text, FormatGuidedDecoder.Decode(Scores(Frames("12-345")), Chars, pattern)!.Text);
+    }
+
+    [Fact]
     public void An_unsure_character_asks_the_angle_model()
     {
         Assert.False(OnnxTextRecognizer.SurelyUpright(Scores("O", "_", "R", "_", "D:0.6", "_", "E", "_", "R"), Chars));

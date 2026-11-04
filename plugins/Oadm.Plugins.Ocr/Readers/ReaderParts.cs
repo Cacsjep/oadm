@@ -22,7 +22,7 @@ public sealed class ReaderParts
     /// <summary>The recognition (disposed on stop when it is disposable); null from the factory: not installed.</summary>
     public Func<ICorePluginContext, ITextRecognizer?>? Recognizer { get; init; }
 
-    /// <summary>The matcher of the expected texts (also <see cref="IAreaValueMatcher"/> when it can).</summary>
+    /// <summary>The matcher of the expected texts.</summary>
     public ITextMatcher? Matcher { get; init; }
 
     /// <summary>Cuts the found values out of the frames for the page; null: the page cuts by <c>MatchBox</c>.</summary>
