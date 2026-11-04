@@ -1,12 +1,16 @@
 namespace Oadm.Plugins.Ocr.Recognition;
 
+/// <summary>A call needs a session larger than the card's cap: that call reads on the CPU, the card stays in use.</summary>
+internal sealed class SessionTooLargeException(long bytes, long max)
+    : Exception($"A session of {bytes / (1024 * 1024)} MB does not fit the {max / (1024 * 1024)} MB of the graphics card");
+
 /// <summary>
 /// The graphics card's memory for the models (docs/spec/ocr.md "GPU", graphics card memory). On DirectML each
 /// input size is a session of its own, and each session keeps its own copy of the model and its own buffers for that size on
 /// the card until it is disposed. The budget counts each session by its input pixels (<see cref="Estimate"/>: measured
 /// <see cref="BytesPerPixel"/> per pixel of a call plus <see cref="SessionBytes"/>) and keeps the sum at or below
 /// the cap (<see cref="CapFor"/>): before a new session the least recently used ones go (one log line the first time). A session larger
-/// than the cap is never made (the callers split a Search into calls of at most <see cref="MaxCallBytes"/>). Every session
+/// than the cap is never made (<see cref="SessionTooLargeException"/>; the callers split a Search into calls of at most <see cref="MaxCallBytes"/>). Every session
 /// unused for <see cref="IdleTimeout"/> is freed. A model call holds its session (<see cref="Hold"/>), so a session is never
 /// disposed while it runs.
 /// </summary>
@@ -123,7 +127,7 @@ internal sealed class GpuSessionBudget : IDisposable
     /// <paramref name="create"/> when there is none, after the least recently used sessions went until its
     /// <paramref name="bytes"/> fit under the cap.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="bytes"/> exceed the cap on their own (never made).</exception>
+    /// <exception cref="SessionTooLargeException"><paramref name="bytes"/> exceed the cap on their own (never made).</exception>
     /// <exception cref="ObjectDisposedException">The budget was disposed.</exception>
     public T Get<T>(object owner, string key, long bytes, Func<T> create)
         where T : class, IDisposable
@@ -139,7 +143,11 @@ internal sealed class GpuSessionBudget : IDisposable
                 return (T)found.Session;
             }
 
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(bytes, _max);
+            if (bytes > _max)
+            {
+                throw new SessionTooLargeException(bytes, _max);
+            }
+
             while (_bytes + bytes > _max && _entries.Values.Any(e => e.Held == 0))
             {
                 Evict(_entries.Where(e => e.Value.Held == 0).MinBy(e => e.Value.Order).Key);
@@ -161,7 +169,8 @@ internal sealed class GpuSessionBudget : IDisposable
     {
         lock (Gate)
         {
-            while (!_entries.ContainsKey((owner, key)) && _entries.Values.Where(e => e.Held > 0).Sum(e => e.Bytes) + bytes > _max && _entries.Values.Any(e => e.Held > 0))
+            // Over the cap on its own it never fits, whatever ends: Get says so at once.
+            while (!_disposed && bytes <= _max && !_entries.ContainsKey((owner, key)) && _entries.Values.Where(e => e.Held > 0).Sum(e => e.Bytes) + bytes > _max && _entries.Values.Any(e => e.Held > 0))
             {
                 Monitor.Wait(Gate);
             }
@@ -232,19 +241,22 @@ internal sealed class GpuSessionBudget : IDisposable
         }
     }
 
-    /// <summary>Frees every session of <paramref name="owner"/> (a model's sessions are disposed).</summary>
+    /// <summary>Frees every session of <paramref name="owner"/> (a model's sessions are disposed); one a hung call holds is left to the process.</summary>
     public void Release(object owner)
     {
         lock (Gate)
         {
-            foreach (var key in _entries.Keys.Where(k => ReferenceEquals(k.Owner, owner)).ToList())
+            foreach (var key in _entries.Where(e => ReferenceEquals(e.Key.Owner, owner) && e.Value.Held == 0).Select(e => e.Key).ToList())
             {
                 Remove(key);
             }
         }
     }
 
-    /// <summary>Frees every session; later <see cref="Get"/> calls end with <see cref="ObjectDisposedException"/>.</summary>
+    /// <summary>
+    /// Frees every session but one a hung call still holds (left to the process: never freed under a call); later
+    /// <see cref="Get"/> calls end with <see cref="ObjectDisposedException"/>.
+    /// </summary>
     public void Dispose()
     {
         _trim.Dispose();
@@ -256,13 +268,14 @@ internal sealed class GpuSessionBudget : IDisposable
             }
 
             _disposed = true;
-            foreach (var entry in _entries.Values)
+            foreach (var entry in _entries.Values.Where(e => e.Held == 0))
             {
                 entry.Session.Dispose();
             }
 
             _entries.Clear();
             _bytes = 0;
+            Monitor.PulseAll(Gate);
         }
     }
 

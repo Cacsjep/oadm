@@ -40,7 +40,7 @@ public sealed partial class ReaderRow : ObservableObject
 
     /// <summary>The full text of what keeps the reader from reading (the header's chip); null while it reads.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem), nameof(IsKeepingUp), nameof(IsSlowWatching))]
+    [NotifyPropertyChangedFor(nameof(ModeText), nameof(IsWatching), nameof(IsProblem), nameof(IsFailing), nameof(IsKeepingUp), nameof(IsSlowWatching))]
     public partial string? Problem { get; private set; }
 
     /// <summary>The value of the first area of the last reading, or "No reading yet".</summary>
@@ -82,6 +82,9 @@ public sealed partial class ReaderRow : ObservableObject
 
     /// <summary>The server reports a problem (the camera refuses connections), in either mode.</summary>
     public bool IsProblem => !string.IsNullOrEmpty(Problem);
+
+    /// <summary>The red chip: a problem, not the wait for the graphics card's test.</summary>
+    public bool IsFailing => IsProblem && Problem != Readers.ReaderRules.Starting;
 
     /// <summary>Name and camera in lower case, for the search.</summary>
     public string SearchText { get; private set; } = string.Empty;

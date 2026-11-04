@@ -40,6 +40,33 @@ public sealed class PauseTests
         reader with { Areas = [.. reader.Areas.Select(a => a with { Expected = ExpectedText.WithFormat(format) })] };
 
     [Fact]
+    public async Task PauseSaysWhenTheHeldFrameIsReadAgainAndEachReadingCarriesItsNumber()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var draft = ocr.NewReader("Belt", ReaderMode.Watching) with { MovingObjects = true };
+        var id = await PreviewOnAsync(ocr, draft, "MSKU");
+
+        // With Moving objects the frame's reading is the 2 frames rule's: the draft reads it once more. The reading is held.
+        using var gate = new SemaphoreSlim(0);
+        ocr.Recognizer.Gate = gate;
+        var paused = await PauseAsync(ocr, id);
+
+        Assert.True(paused.Paused);
+        Assert.True(paused.Rereading);
+        Assert.Equal(0, paused.HeldRead);
+
+        var kept = ocr.PreviewReadings;
+        ocr.Recognizer.Gate = null;
+        gate.Release();
+        await Eventually.TrueAsync(() => ocr.PreviewReadings > kept, "the frame was read");
+        var told = OcrJson.Deserialize<PreviewEvent>(ocr.Context.PublishedEvents.Last(e => e.Topic == OcrMethods.PreviewTopic).PayloadJson);
+        Assert.Equal(1, told.HeldRead);
+        var after = await ocr.PreviewAsync(draft, id);
+        Assert.False(after.Rereading);
+        Assert.Equal(1, after.HeldRead);
+    }
+
+    [Fact]
     public async Task PauseAnswersTheFrameThatWasReadAndAnEditReadsThatSameFrame()
     {
         await using var ocr = await OcrHarness.StartAsync();

@@ -220,7 +220,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     }
 
     [Fact]
-    public void With_the_setting_off_the_graphics_card_is_tried_only_when_it_is_turned_on()
+    public async Task With_the_setting_off_the_graphics_card_is_tried_only_when_it_is_turned_on()
     {
         var tries = 0;
         using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
@@ -236,10 +236,11 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
         });
 
         Assert.Equal(0, tries);
-        recognizer.SetUseGpu(false);
+        await recognizer.SetUseGpu(false);
+        await recognizer.CardTry;
         Assert.Equal(0, tries);
 
-        recognizer.SetUseGpu(true);
+        await recognizer.SetUseGpu(true);
         Assert.Equal(1, tries);
         Assert.False(recognizer.GpuAvailable);
         Assert.False(recognizer.OnGpu);
@@ -258,22 +259,35 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     }
 
     [Fact]
-    public void A_graphics_card_that_fails_falls_back_to_the_cpu_with_one_log_line()
+    public async Task A_graphics_card_that_fails_falls_back_to_the_cpu_with_one_log_line()
     {
         var logger = new ListLogger();
         var broken = Path.Combine(Path.GetTempPath(), $"oadm-ocr-{Guid.NewGuid():N}.onnx");
-        File.WriteAllText(broken, "not a model");
+        await File.WriteAllTextAsync(broken, "not a model");
         try
         {
-            Assert.Null(SessionFactory.TryGraphicsCard(broken, logger));
+            using var recognizer = new OnnxTextRecognizer(
+                new OcrEngineOptions
+                {
+                    ModelDirectory = RecognizerFixture.ModelFolder,
+                    UseGraphicsCard = false,
+                    ProcessorCount = 2,
+                    CpuModels = ModelChoice.Mobile with { Detection = broken },
+                    FindGraphicsCard = (_, _) => ExecutionTarget.Cpu, // no real card in a test: the same path with a model that does not load
+                },
+                logger);
+            var before = logger.Lines.Count;
+
+            await recognizer.SetUseGpu(true);
+
+            Assert.False(recognizer.GpuAvailable);
+            var line = Assert.Single(logger.Lines.Skip(before));
+            Assert.StartsWith("Text recognition runs on the CPU", line, StringComparison.Ordinal);
         }
         finally
         {
             File.Delete(broken);
         }
-
-        var line = Assert.Single(logger.Lines);
-        Assert.StartsWith("Text recognition runs on the CPU", line, StringComparison.Ordinal);
     }
 
     /// <summary>The "LOADING DOCK 3" sign of the accuracy set, cut out, scaled and turned onto a grey 1280 x 720 picture.</summary>
@@ -298,7 +312,7 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
         return data.ToArray();
     }
 
-    private sealed class ListLogger : ILogger
+    internal sealed class ListLogger : ILogger
     {
         public List<string> Lines { get; } = [];
 

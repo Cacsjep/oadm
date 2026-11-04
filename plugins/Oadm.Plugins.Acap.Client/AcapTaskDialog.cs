@@ -8,6 +8,9 @@ namespace Oadm.Plugins.Acap.Client;
 /// <summary>Client part of the "Applications (ACAP)..." task: opens <see cref="AcapWindow"/> and returns its payload.</summary>
 public sealed class AcapTaskDialog : ITaskPluginDialog
 {
+    /// <summary>The client loads the dialog at its start: the temp folders a client that ended hard left behind go then.</summary>
+    public AcapTaskDialog() => _ = EapPackageFiles.SweepOnce();
+
     public string PluginId => AcapPlugin.Id;
 
     public async Task<string?> ShowAsync(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, Window owner)

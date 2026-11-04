@@ -64,6 +64,9 @@ public static class ReaderRules
 
     public const string FormatInvalid = "Use letters, digits and signs only.";
 
+    /// <summary>Why a reader does not read yet: the graphics card's test runs, then it starts on the card or the CPU.</summary>
+    public const string Starting = "Starting: testing the graphics card.";
+
     /// <summary>Lines lower than 10 px were left out of an area (<see cref="AreaDetails.TooSmall"/>).</summary>
     public const string TooSmall = "Text too small. Draw a smaller area or choose a higher resolution.";
 

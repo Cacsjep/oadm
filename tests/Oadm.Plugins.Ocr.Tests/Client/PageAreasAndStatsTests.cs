@@ -199,7 +199,7 @@ public sealed class PageAreasAndStatsTests
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
-        Assert.True(editor.HasReadingNote); // the lane's text is too small
+        Assert.False(editor.HasReadingNote); // a first reading: no alert yet
 
         // A held frame: its note first, then a line per area with a format.
         IReadOnlyList<AreaDetails> fine = [new AreaDetails { Area = "Container number" }];

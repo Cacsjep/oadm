@@ -32,6 +32,7 @@ public sealed class RecognitionSpeedTests(ITestOutputHelper output)
     public async Task Search_and_fixed_place_on_the_graphics_card()
     {
         using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
+        await recognizer.CardTry;
         if (!recognizer.RunsOn.IsGraphicsCard)
         {
             output.WriteLine("No graphics card: " + recognizer.RunsOn.Text);
@@ -48,6 +49,7 @@ public sealed class RecognitionSpeedTests(ITestOutputHelper output)
     public async Task Twenty_fixed_place_readers_at_once()
     {
         using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = true });
+        await recognizer.CardTry;
         var jpeg = await File.ReadAllBytesAsync(Path.Combine(AccuracySet.Folder, "box-1920x1080.jpg"));
         Area[] area = [new() { Name = "Brand", Box = new RelativeBox(0.28, 0.54, 0.16, 0.10) }];
         await recognizer.ReadAsync(jpeg, area, CancellationToken.None);

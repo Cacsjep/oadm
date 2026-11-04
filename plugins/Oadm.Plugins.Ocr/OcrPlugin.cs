@@ -85,16 +85,25 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         _useGpu = await ctx.Settings.GetAsync(UseGpuSetting, ct).ConfigureAwait(false) is not { } stored
             || !bool.TryParse(stored.Trim(), out var useGpu) || useGpu;
         _cameraOptions.Clear();
-        _runtime = new ReaderRuntime(ctx, _parts, ctx.Logger, () => store.All);
-        _runtime.Engine?.SetUseGpu(_useGpu);
-        _runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+        var runtime = new ReaderRuntime(ctx, _parts, ctx.Logger, () => store.All);
+        _runtime = runtime;
+        runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
         if (ctx.DeviceScopes is { } scopes)
         {
             scopes.Changed += OnScopeChanged;
         }
 
         EventTypesChanged?.Invoke(this, EventArgs.Empty);
-        await _runtime.SyncAsync().ConfigureAwait(false);
+
+        // The graphics card's test never holds up the start: the readers wait for it, the page says Starting.
+        runtime.StartEngine(_useGpu, () =>
+        {
+            if (ReferenceEquals(_runtime, runtime))
+            {
+                PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+            }
+        });
+        await runtime.SyncAsync().ConfigureAwait(false);
     }
 
     /// <summary>Stops every reader's loop (also when the plugin is turned off); the readers stay stored.</summary>

@@ -380,6 +380,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             HeldPicture = picture;
             IsPaused = true;
             await ApplyReplyJsonAsync(json, ++_readSeq).ConfigureAwait(true); // newer than any fetch still on its way
+            IsRereading = reply.Rereading && reply.HeldRead >= _heldRead;
         }
 #pragma warning disable CA1031 // The server's reason in the host's message: the page stays live.
         catch (Exception ex)
@@ -443,6 +444,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         _tableFrozen = false;
         _pauseVersion++;
+        _heldRead = 0;
         var held = HeldPicture;
         HasPreviewReading = false;
         IsRereading = false;
@@ -474,7 +476,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     /// <summary>
     /// The note above Save ("More than 30 texts found. ...", "Lane: Text too small. ..."): live each alert stays
-    /// <see cref="OcrLimits.NoteHold"/> after the last reading that had it, so it can be read on a belt; while paused the held
+    /// <see cref="OcrLimits.NoteHold"/> after the last reading that had it, so it can be read on a belt ("Text too small" by
+    /// <see cref="OcrLimits.SmallTextWait"/>, see <see cref="HoldNote"/>); while paused the held
     /// frame's own note with a line per area with a format ("Lane: no match"), at once. Null without one.
     /// </summary>
     [ObservableProperty]
@@ -983,6 +986,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
 
         _preview = new CancellationTokenSource();
+        _smallWatch.Clear(); // the waits of "Text too small" count from the live readings
         _ = KeepPreviewAsync(_preview.Token);
     }
 
@@ -1080,7 +1084,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
                 {
                     if (reply.Paused)
                     {
-                        IsRereading = reply.Rereading;
+                        // A reading whose event overtook this answer already ended what the answer announces.
+                        IsRereading = reply.Rereading && reply.HeldRead >= _heldRead;
                     }
                     else
                     {
@@ -1100,6 +1105,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             if (!_disposed)
             {
                 PreviewProblem = ServerErrors.Message(ex);
+                IsRereading = false; // the server did not take the draft: no reading follows
             }
         }
         finally
@@ -1110,6 +1116,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             }
         }
     }
+
+    /// <summary>A reading of the held frame was announced (its live event, 0 for a live reading): an answer on its way may be older.</summary>
+    public void HeardHeldRead(int number) => _heldRead = Math.Max(_heldRead, number);
 
     /// <summary>The draft changed: the preview takes it now (while it runs).</summary>
     private void SendDraft()
@@ -1358,39 +1367,52 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         small.Count == 0 ? note : string.Join(' ', new[] { note, OcrTexts.TooSmallIn(small) }.OfType<string>());
 
     /// <summary>
-    /// A live reading's alerts: each stays <see cref="OcrLimits.NoteHold"/> after this reading, a new one joins them, so the
-    /// text changes only when an alert comes or goes and never flickers between two readings.
+    /// A live reading's alerts. The reading's own note stays <see cref="OcrLimits.NoteHold"/> after this reading. "Text too small"
+    /// shows for an area without a value for <see cref="OcrLimits.SmallTextWait"/> that saw small text within that time (a text
+    /// beside the value, such as a sender address on a label, says nothing). The text changes only when an alert comes or goes.
     /// </summary>
     private void HoldNote(Reading reading, IReadOnlyList<AreaDetails>? details)
     {
-        var until = PreviewTime.GetUtcNow() + OcrLimits.NoteHold;
+        var now = PreviewTime.GetUtcNow();
         if (reading.Note is { } note)
         {
-            _heldNote = (note, until);
+            _heldNote = (note, now + OcrLimits.NoteHold);
         }
 
-        foreach (var area in SmallAreas(reading, details))
+        _smallWatch.RemoveAll(w => reading.Areas.All(a => a.Area != w.Area));
+        for (var i = 0; i < reading.Areas.Count; i++)
         {
-            var at = _heldSmall.FindIndex(s => s.Area == area);
-            if (at >= 0)
+            var area = reading.Areas[i];
+            var watch = _smallWatch.Find(w => w.Area == area.Area);
+            if (watch is null)
             {
-                _heldSmall[at] = (area, until);
+                watch = new SmallWatch(area.Area, now); // an area seen for the first time waits its full time
+                _smallWatch.Add(watch);
             }
-            else
+
+            var format = i < Areas.Count && Areas[i].IsFormat;
+            if (format ? area.MatchesFormat && area.Text.Length > 0 : area.Text.Length > 0 || area.TextRead.Length > 0)
             {
-                _heldSmall.Add((area, until));
+                watch.LastValue = now;
+            }
+
+            if (details is not null && i < details.Count && details[i].SmallText)
+            {
+                watch.LastSmall = now;
             }
         }
 
         ShowHeldNote();
-        if (!_noteClock && (_heldNote is not null || _heldSmall.Count > 0))
+        if (NextNoteChange(now) is { } next && (!_noteClock || next < _noteWake))
         {
+            _noteVersion++;
             _noteClock = true;
+            _noteWake = next;
             _ = ExpireNoteAsync(_noteVersion);
         }
     }
 
-    /// <summary>Takes the alerts whose time ended away; the rest stay as they are.</summary>
+    /// <summary>Shows the alerts that hold now; the rest stay away.</summary>
     private void ShowHeldNote()
     {
         var now = PreviewTime.GetUtcNow();
@@ -1399,17 +1421,23 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             _heldNote = null;
         }
 
-        _heldSmall.RemoveAll(s => s.Until <= now);
-        ReadingNote = JoinNote(_heldNote?.Text, [.. _heldSmall.Select(s => s.Area)]);
+        ReadingNote = JoinNote(_heldNote?.Text, [.. _smallWatch.Where(w => w.Shows(now)).Select(w => w.Area)]);
     }
 
-    /// <summary>The note also ends when no reading comes any more.</summary>
+    /// <summary>The next moment an alert can come or go by the clock alone; null: none.</summary>
+    private DateTimeOffset? NextNoteChange(DateTimeOffset now)
+    {
+        var moments = _smallWatch.SelectMany(w => w.Moments).Concat(_heldNote is { } held ? [held.Until] : []).Where(m => m > now).ToList();
+        return moments.Count == 0 ? null : moments.Min();
+    }
+
+    /// <summary>The note also changes when no reading comes any more.</summary>
     private async Task ExpireNoteAsync(int version)
     {
-        while (!_disposed && version == _noteVersion && (_heldNote is not null || _heldSmall.Count > 0))
+        while (!_disposed && version == _noteVersion && NextNoteChange(PreviewTime.GetUtcNow()) is { } next)
         {
-            var next = _heldSmall.Select(s => s.Until).Concat(_heldNote is { } held ? [held.Until] : []).Min();
-            await Task.Delay(next > PreviewTime.GetUtcNow() ? next - PreviewTime.GetUtcNow() : TimeSpan.Zero, PreviewTime).ConfigureAwait(true);
+            _noteWake = next;
+            await Task.Delay(next - PreviewTime.GetUtcNow(), PreviewTime).ConfigureAwait(true);
             if (!_disposed && version == _noteVersion)
             {
                 ShowHeldNote();
@@ -1428,7 +1456,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         _noteVersion++;
         _noteClock = false;
         _heldNote = null;
-        _heldSmall.Clear();
+        _smallWatch.Clear();
         ReadingNote = null;
     }
 
@@ -1474,7 +1502,9 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     private IReadOnlyList<string> _areaTexts = [];
 
     private (string Text, DateTimeOffset Until)? _heldNote;
-    private readonly List<(string Area, DateTimeOffset Until)> _heldSmall = [];
+    private readonly List<SmallWatch> _smallWatch = [];
+    private DateTimeOffset _noteWake;
+    private int _heldRead;
     private bool _noteClock;
     private int _noteVersion;
 
@@ -1669,4 +1699,24 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         ReaderRules.NameProblem(Name) ?? (_readerNameTaken(Id, Name.Trim()) ? ReaderRules.NameTaken(Name.Trim()) : null);
 
     private static string SourceName(int number) => $"View area {number}";
+
+    /// <summary>What a live page knows of one area for "Text too small": the alert's two clocks.</summary>
+    private sealed class SmallWatch(string area, DateTimeOffset seen)
+    {
+        public string Area { get; } = area;
+
+        /// <summary>The last reading with a value; the first reading of the area until then.</summary>
+        public DateTimeOffset LastValue { get; set; } = seen;
+
+        /// <summary>The last reading with small text; null: none yet.</summary>
+        public DateTimeOffset? LastSmall { get; set; }
+
+        /// <summary>No value for the whole time, small text within it.</summary>
+        public bool Shows(DateTimeOffset now) =>
+            now - LastValue >= OcrLimits.SmallTextWait && LastSmall is { } small && now - small < OcrLimits.SmallTextWait;
+
+        /// <summary>When <see cref="Shows"/> can change by the clock alone.</summary>
+        public IEnumerable<DateTimeOffset> Moments =>
+            LastSmall is { } small ? [LastValue + OcrLimits.SmallTextWait, small + OcrLimits.SmallTextWait] : [];
+    }
 }

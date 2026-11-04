@@ -104,8 +104,11 @@ public interface IEngineInfo
     /// <summary>A graphics card was found and passed the test reading.</summary>
     bool GpuAvailable { get; }
 
-    /// <summary>Applies the setting "Use GPU" (on by default).</summary>
-    void SetUseGpu(bool useGpu);
+    /// <summary>
+    /// Applies the setting "Use GPU" (on by default) and returns at once; the task ends when a try of the graphics card that
+    /// this needs ended, passed or not (the readers of a plugin's start wait for it).
+    /// </summary>
+    Task SetUseGpu(bool useGpu);
 }
 
 /// <summary>

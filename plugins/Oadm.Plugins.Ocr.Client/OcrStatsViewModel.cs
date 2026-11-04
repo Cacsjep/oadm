@@ -19,7 +19,7 @@ public sealed partial class OcrStatsViewModel : ObservableObject
     public partial string StateText { get; private set; } = string.Empty;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsOk), nameof(IsBusy), nameof(IsOverloaded))]
+    [NotifyPropertyChangedFor(nameof(IsOk), nameof(IsBusy), nameof(IsOverloaded), nameof(IsStarting))]
     public partial LoadState State { get; private set; }
 
     public bool IsOk => State == LoadState.Ok;
@@ -27,6 +27,9 @@ public sealed partial class OcrStatsViewModel : ObservableObject
     public bool IsBusy => State == LoadState.Busy;
 
     public bool IsOverloaded => State == LoadState.Overloaded;
+
+    /// <summary>The readers wait for the graphics card's test: no load to show yet.</summary>
+    public bool IsStarting => State == LoadState.Starting;
 
     /// <summary>0 to 100: the bar.</summary>
     [ObservableProperty]
@@ -42,7 +45,7 @@ public sealed partial class OcrStatsViewModel : ObservableObject
         State = stats.State;
         StateText = stats.StateText;
         Load = Math.Clamp(stats.Load, 0, 100);
-        LoadText = OcrTexts.Percent(stats.Load);
+        LoadText = IsStarting ? string.Empty : OcrTexts.Percent(stats.Load);
         HasStats = true;
     }
 }

@@ -40,6 +40,12 @@ public static class OcrTexts
     /// <summary>The chip of a reader whose camera is no longer in its device group.</summary>
     public const string NotInDeviceGroup = "Not in device group";
 
+    /// <summary>The chip of a reader that waits for the graphics card's test.</summary>
+    public const string Starting = "Starting";
+
+    /// <summary>The tooltip of Use GPU during that test.</summary>
+    public const string TestingGpu = "Testing the graphics card";
+
     /// <summary>The chip of a reader that cannot read because the plugin is not installed completely.</summary>
     public const string NotInstalled = "Not installed";
 
@@ -147,7 +153,6 @@ public static class OcrTexts
     public static string RunsOnShort(string what) => (what ?? string.Empty)
         .Replace("CPU (", "CPU ", StringComparison.Ordinal)
         .Replace(" cores)", " cores", StringComparison.Ordinal)
-        .Replace("search on ", string.Empty, StringComparison.Ordinal)
         .Replace("NVIDIA ", string.Empty, StringComparison.Ordinal)
         .Replace("GeForce ", string.Empty, StringComparison.Ordinal)
         .Replace("AMD ", string.Empty, StringComparison.Ordinal);
@@ -178,6 +183,7 @@ public static class OcrTexts
             DeviceMessages.TimedOut or DeviceMessages.NotAnswering or DeviceMessages.HostUnreachable => NotReachable,
             FrameTexts.NoPicture or FrameTexts.NoPictures or FrameTexts.ResolutionNotOffered or FrameTexts.SourceNotOffered
                 or DeviceMessages.NotFound or DeviceMessages.BadRequest => StreamError,
+            ReaderRules.Starting => Starting,
             ReaderRules.Off => NotInDeviceGroup,
             ReaderRules.NotInstalled => NotInstalled,
             _ when problem.StartsWith(DeviceMessages.Unreachable(string.Empty), StringComparison.Ordinal)

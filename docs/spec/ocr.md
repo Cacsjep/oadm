@@ -317,9 +317,13 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
     reading's note and below it the save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
   - **The note** (decision 2026-11-04: below the video it moved the picture and on a belt it flickered too fast to read): a warning
     chip directly above the Save row, its lines as needed, the area rows give it their height. A live alert ("More than 30 texts
-    found. ...", "Lane: Text too small. ...") stays `OcrLimits.NoteHold` (5 s) after the last reading that had it (`PreviewTime`, the
-    page's `TimeProvider`); a new alert joins the others, each ends by its own time, so the text changes only when an alert comes
-    or goes. While paused it holds the frame's own lines at once, without a hold. It goes with the reader and the frame.
+    found. ...") stays `OcrLimits.NoteHold` (5 s) after the last reading that had it (`PreviewTime`, the page's `TimeProvider`).
+    "Lane: Text too small. ..." shows live only when that area had no value for `OcrLimits.SmallTextWait` (10 s, counted from
+    the preview's first reading of the area) and small text was seen within that time (`AreaDetails.SmallText`; decision
+    2026-11-04: small sender addresses beside a value that reads say nothing), and goes with the next value. With a format a
+    value is a match; with Any text anything readable counts. A new alert joins the others, each ends by its own time, so the
+    text changes only when an alert comes or goes. While paused it holds the frame's own lines at once, without a hold ("Text
+    too small": `AreaDetails.TooSmall`, small text and nothing else read in that frame). It goes with the reader and the frame.
   - **Stream**: a secondary button (video icon) that opens a small dialog **Stream settings** (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
     as a select of the server's choices (1, 2, 4, 8, 12, 15; the select follows the choices of each reader list and of
@@ -460,7 +464,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   - **Open a cut-out**: a click on a thumbnail opens a dialog (no card, `CutOutWindow`, Close): the picture at its real pixels, a
     small one enlarged by a whole number (at most 8 times, up to 640 x 360 px), without smoothing so characters can be judged,
     with the text, the area and the time. It decodes its own copy: the row may leave while it is open.
-  - **Text too small** has no row of its own: the areas it applies to show in the reading's note, live and paused, only while it applies.
+  - **Text too small** has no row of its own: the areas it applies to show in the reading's note, by the rule of the note above.
 - One contract: the page uses the server part's payloads (`Api/`) and the texts of `ReaderRules`, never copies. The
   camera's video sources and sizes (largest first) come from `getCameraOptions` (read only, the caller's devices, kept
   10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
@@ -479,8 +483,11 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
     with the cut-outs; `{"problem":"No picture to pause yet."}` without a reading, `{}` for an ended preview or another
     user's. Also needs the host's Live view (refused otherwise, fail closed) and the camera in the caller's devices.
   - `resumePreview` `{"previewId":"9f3c..."}` → as `startPreview`: drops the frame and reads live again.
-  - `startPreview` also answers `paused` and, while paused, `rereading` (a reading of the held frame follows as the event).
-  - Event `preview` `{"previewId":"9f3c...","reading":{...},"details":[...]}` after each reading of a preview (without
+  - `startPreview` and `pausePreview` also answer `rereading` (a reading of the held frame follows as the event) and
+    `heldRead`, `startPreview` also `paused`. The ring shows from `rereading` until that reading's event. Each reading of a
+    held frame has its number in the event (`heldRead`); an answer whose number is lower than an event's was overtaken and
+    turns no ring on. A draft the server did not take turns it off.
+  - Event `preview` `{"previewId":"9f3c...","heldRead":0,"reading":{...},"details":[...]}` after each reading of a preview (without
     the cut-outs), only to the user who started it (`PluginEventAudience.User`); the page fetches with `getPreview` only
     its own, one call at a time (newest wins).
   - `getReading` `{"readerId":"...","knownCutouts":[17]}` → `{"reading":{...},"details":[...],"recent":[...]}`: the reader's
@@ -500,6 +507,8 @@ after the start). All time through the plugin's `TimeProvider`.
   - red "Overloaded: lower the frames per second or the number of readers" only when the machine has no room left: the load
     stayed at 95 % or more for 30 s (every sample from the first at 95 % on) and a reader reads slower than set, or no reader is judged. A reader far below its rate with room left is orange (decision 2026-11-04: "Overloaded" at 16 % load was wrong); a reader that keeps up at that load uses the room it found: orange.
   - A reader is judged only once it watched for the whole 10 s (a reader that just started is never orange).
+- While the graphics card's test of a start runs the traffic light says "Starting: testing the graphics card." (`LoadState.Starting`,
+  no colour) and the bar moves without a number.
 - **Recognition load** (bar with %): the share of the last 10 s the recognition was busy: the sum of the time every model
   call held its worker (`IRecognizerLoad.BusyTime`, `Recognition/BusyMeter`) divided by the window times the capacity
   (`IRecognizerLoad.Capacity`, the CPU workers `max(1, cores / 2)`), each CPU call counted while it holds its slot. With a
@@ -600,23 +609,41 @@ often, from worse pictures, and never a wrong value reported as sure.
 | Linux x64 with NVIDIA | CUDA | the NVIDIA driver and the CUDA 12 and cuDNN 9 runtime on the server (the docs say how); without them the CPU |
 | Linux arm64, macOS x64 | CPU | nothing |
 
-- The plugin picks at start: with **Use GPU** on, the graphics card when the provider loads and a test
-  reading succeeds, else the CPU only. With it off the provider is never loaded at start (no DirectML in the process);
-  turning it on tries the card then, without a restart (seconds, the box is off with a ring beside it meanwhile), and `gpuAvailable` stays true
-  while the setting is off so the box can be used. Off during a run moves the readings to the CPU; DirectML, once loaded,
-  leaves with the next start.
+- **The start** (decision 2026-11-04): the plugin's start never waits for the card. With **Use GPU** on the card's test runs in the
+  background (`IEngineInfo.SetUseGpu` returns at once, its task ends with the test) and **the readers wait for it**, then start
+  where they stay: no phase on the CPU, no move in a running reader. Watching readers and previews open no stream meanwhile
+  (`ReaderRuntime.StartEngine`, `Starting`: the problem `ReaderRules.Starting`, the list's chip **Starting**, no red), the action
+  Read text waits, the load shows it, Use GPU is off with its ring and the tooltip "Testing the graphics card" (`getEngine`:
+  `gpuStarting`; the page reads the engine again when the stats leave `Starting`). A card that fails, or a test past
+  `OnnxTextRecognizer.CardStartLimit` (1 minute, one log line, no second try until the next start), leaves the CPU at once. A
+  plugin that stops during the test does not wait for it: what the test still makes is freed when it ends. With Use GPU off the provider
+  is never loaded at start (no DirectML in the process) and nothing waits; turning it on tries the card then, without a restart (the box is
+  off with a ring beside it meanwhile, `setUseGpu` answers after the try, running readers go on), and `gpuAvailable` stays true while the setting is off so the box can be used.
+  Off during a run moves the readings to the CPU; DirectML, once loaded, leaves with the next start.
+- **What the test costs** (`CardModels.ProbeAsync`; log line "the graphics card's test took ..."): no session for a name or a provider
+  check (a model's own test says whether it runs), the server text finder is built at the first Search and takes no
+  card memory before that. First all sessions of the test side by side (3 on the card outside the budget's lock, 3 on the CPU), then
+  the calls one at a time so no time holds another's: each model twice on the card (the first warms it, the second counts)
+  and once warmed on the CPU. The calls have sizes readings use (reader 4 lines of 320, angle model 16 lines), so their
+  sessions stay; the text finder's 512 x 512 usually does not, an area's size builds on its first picture.
+  Measured 2026-11-04, RTX 5070 Ti, DirectML, 24 cores: 2.1 s (sessions 0.5 s, calls 1.5 s), all three models on the card. The
+  same way with the models on the CPU: 2.0 s (sessions 0.14 s, calls 1.2 s).
   Page header, short ("CPU 24 cores · RTX 5070 Ti", the full text as tooltip): "Runs on: CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8
   cores)", and **Use GPU** (on by default) to force the CPU. `getEngine` / `setUseGpu` answer
-  `{runsOn, gpuAvailable, useGpu, fpsChoices}`; `setUseGpu` is server-wide: the change right and all devices
+  `{runsOn, gpuAvailable, useGpu, gpuStarting, fpsChoices}`; `setUseGpu` is server-wide: the change right and all devices
   (`RequiresAllDevices`; the page disables the box for a user with a device group), audited. The setting is a plugin
   setting handed to the recognizer (`IEngineInfo`) at start, before any card is tried, and on change; the next readings run where it says, the
   graphics card keeps its sessions until they idle or the plugin stops. Without a recognizer: the CPU, no graphics card.
 - **With a usable card the models run there** (decision 2026-11-04, replaces "the graphics card reads Search only" of
   2026-11-03 by the measurements in "Measured: one reader"): text finder, reader and angle model on the card, Search with
   the server text finder, fixed-place areas with the mobile one; the CPU decodes, cuts and decodes the text. Each model is
-  tried at the start of the card (`CardModels.Probe`): a model whose test call fails or takes more than 1.5 times the CPU's
+  tried at the start of the card (`CardModels.ProbeAsync`): a model whose test call fails or takes more than 1.5 times the CPU's
   time (`CardRoute`) stays on the CPU, one log line. A card call that fails during a run (a driver reset) ends the card's use:
-  that call and all later ones run on the CPU, one log line, `OnGpu` false. Accurate stays on the CPU. Fixed areas were as
+  that call and all later ones run on the CPU, one log line, `OnGpu` false. So does a call that hangs: a reading waits at most
+  `CardModels.CallLimit` (2 minutes, `TimeProvider`) and for its token, then its queued jobs leave and what waits goes to the CPU at
+  once. A lane never touches a job its reading left: each copy into a model input runs under the job's lock, Search runs on a
+  copy of its own and the output reader takes the line's width from the job. A card disposed with a lane still in a call waits
+  5 s per lane and leaves that lane's sessions to the process, never freed under a call. Accurate stays on the CPU. Fixed areas were as
   fast on the card as on the CPU only for small areas; the old rule also held all the lines on the CPU, by far the largest
   stage on a label (525 of 670 core-ms).
 - **Two lanes, shared calls** (`Recognition/CardModels`): the text finder and angle model run one call at a time on one lane,
@@ -634,6 +661,8 @@ often, from worse pictures, and never a wrong value reported as sure.
     last column read far worse (1 of 25).
   - A text finder size whose session does not fit beside the others reads on the CPU (`CardModels.FinderFits`), so many area
     sizes never make the card build sessions at every picture.
+  - A call whose session is over the cap on its own (a small card: a Search tile, 4 pictures) reads on the CPU for that call
+    only (`SessionTooLargeException`, one log line): no card failure, the card stays in use.
 - **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): on DirectML every input size is a session of its own
   that keeps its own copy of the model and its buffers on the card until it is disposed (the provider frees nothing while a
   session lives). The budget counts each session by the pixels of its calls: server text finder `512 MB + 1,500 bytes x
@@ -649,6 +678,8 @@ often, from worse pictures, and never a wrong value reported as sure.
   - before a new session the least recently used ones go until it fits (made again when needed, 0.5 to 1 s) and the
     first time the server logs "Text recognition keeps at most <cap> MB of model sessions on the graphics card"; a session
     larger than the cap is never made;
+  - no session exists outside the budget: a session is made for a size that runs (`ShapeSessions.Prepare` only inside the
+    card's test, taken by its first call);
   - a session unused for 2 minutes is freed (like the CPU workers' sets), so an idle server gives the card back;
   - every call holds its session (`Hold`, `Free`), so a session is never freed while it runs, a new one that does not fit waits; memory pattern off and
     sequential execution as the DirectML provider asks;
@@ -927,7 +958,10 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - Watching readers and previews reuse under their own source, the action never, unchanged pictures counted apart
   (`UnchangedReuseTests`); the graphics card's memory: sessions counted by pixels and never above the cap, least
   recently used out, a session over the cap never made, Search split into calls of half the cap, idle sessions freed
-  (`GpuSessionBudgetTests`, fake sessions); fixed-place areas on the CPU and Search on the card, full HD, QHD and 4K
+  (`GpuSessionBudgetTests`, fake sessions); a hung call ended at the limit on a fake clock, a cancelled reading, queued jobs
+  out, nothing touched after a reading left, a call over the cap, Dispose with a hung call (`CardHangTests`, fake sessions at a
+  gate); the start: readers, previews and the action wait, the page's state, a failed test, a stop during the test, the limit, off
+  never tries the card (`Readers/CardStartTests`); fixed-place areas on the CPU and Search on the card, full HD, QHD and 4K
   Search within the cap, the runs-on text (`SearchRoutingTests`, fake runners, no graphics card).
 - The last 20 reads (`Readers/RecentReadsTests`, `Client/PageRecentReadsTests`): the 20 and the oldest dropped with its cut-out,
   newest first, a value twice one row, A, B, A three, no row for an empty value or a non-match, a row with each event of a

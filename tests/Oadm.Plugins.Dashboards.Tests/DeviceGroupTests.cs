@@ -48,6 +48,66 @@ public sealed class DeviceGroupTests
     }
 
     [Fact]
+    public async Task ASaveKeepsTheWidgetOfAnEventWhosePluginIsNotLoaded()
+    {
+        var (fake, feed, plugin, camera, _, keyA, _) = await StartAsync();
+        using var stopped = plugin;
+        var group = Testing.FakeCallContext.WithGroup(fake, [camera.Id], "operator", keyA);
+        feed.ChangeTypes(types => types.Add(Types.Reader(camera.Id, "Plate")));
+        var created = await plugin.SaveAsync(group, new SaveDashboardRequest(null, "Gate", 0,
+        [
+            new Widget { Id = "video", Kind = WidgetKind.Video, X = 0, Y = 0, Width = 4, Height = 4, DeviceId = camera.Id },
+            new Widget { Id = "plate", Kind = WidgetKind.Text, X = 4, Y = 0, Width = 4, Height = 4, TypeId = Types.TextRead, Field = "text", Split = "Plate" },
+        ]), CancellationToken.None);
+        Assert.Contains(created.Widgets, w => w is { Id: "plate", FixedDevice: true });
+
+        // After an update the reader's plugin is gone until its ZIP is installed again: fail closed, the user sees less.
+        feed.ChangeTypes(types => types.RemoveAll(t => t.Info.Id == Types.TextRead));
+        var seen = Assert.Single((await plugin.ListAsync(group, CancellationToken.None)).Dashboards);
+        Assert.Equal("video", Assert.Single(seen.Widgets).Id);
+
+        var saved = await plugin.SaveAsync(group, new SaveDashboardRequest(seen.Id, seen.Name, seen.Version, [seen.Widgets[0] with { X = 12 }]), CancellationToken.None);
+
+        Assert.Equal("video", Assert.Single(saved.Widgets).Id); // the answer shows nothing more
+        feed.ChangeTypes(types => types.Add(Types.Reader(camera.Id, "Plate")));
+        var back = Assert.Single((await plugin.ListAsync(group, CancellationToken.None)).Dashboards);
+        Assert.Equal(["video", "plate"], back.Widgets.Select(w => w.Id));
+        Assert.Equal(12, back.Widgets[0].X);
+        Assert.Equal(created.Widgets[1], back.Widgets[1]); // unchanged, in its place
+    }
+
+    [Fact]
+    public async Task ASaveKeepsTheWidgetOfADeviceOutsideTheGroupAndAnIdNeverReplacesIt()
+    {
+        var ctx = new Testing.FakeCoreContext();
+        var inside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.1" });
+        var outside = ctx.Add(new Testing.FakeDevice { Address = "10.0.0.2" });
+        var key = ctx.FakeScopes.Add("Building A", [inside.Id, outside.Id]);
+        var wide = Testing.FakeCallContext.WithGroup(ctx, [inside.Id, outside.Id], "operator", key);
+        using var plugin = new DashboardsPlugin(new FakeTimeProvider());
+        await plugin.StartAsync(ctx, CancellationToken.None);
+        var stored = await plugin.SaveAsync(wide, new SaveDashboardRequest(null, "Doors", 0,
+        [
+            new Widget { Id = "in", Kind = WidgetKind.Video, X = 0, Y = 0, Width = 4, Height = 4, DeviceId = inside.Id },
+            new Widget { Id = "out", Kind = WidgetKind.Video, X = 4, Y = 0, Width = 4, Height = 4, DeviceId = outside.Id },
+        ]), CancellationToken.None);
+
+        // The camera left the group.
+        var narrow = Testing.FakeCallContext.WithGroup(ctx, [inside.Id], "operator", key);
+        var seen = Assert.Single((await plugin.ListAsync(narrow, CancellationToken.None)).Dashboards);
+        Assert.Equal("in", Assert.Single(seen.Widgets).Id);
+
+        // Even a request that names the hidden widget changes nothing of it.
+        var forged = new Widget { Id = "out", Kind = WidgetKind.Video, X = 8, Y = 8, Width = 4, Height = 4, DeviceId = inside.Id };
+        var saved = await plugin.SaveAsync(narrow, new SaveDashboardRequest(seen.Id, seen.Name, seen.Version, [.. seen.Widgets, forged]), CancellationToken.None);
+
+        Assert.Equal("in", Assert.Single(saved.Widgets).Id);
+        var all = Assert.Single((await plugin.ListAsync(ctx.CallAsAllDevices(), CancellationToken.None)).Dashboards);
+        Assert.Equal(stored.Widgets[1], all.Widgets.Single(w => w.Id == "out"));
+        Assert.Equal(2, all.Widgets.Count);
+    }
+
+    [Fact]
     public async Task GroupsSeeOnlyTheirDashboardsEventsAndValues()
     {
         var fake = new Testing.FakeCoreContext();

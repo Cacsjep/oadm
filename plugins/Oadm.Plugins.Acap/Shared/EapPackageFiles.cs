@@ -28,6 +28,9 @@ public sealed class EapPackageFiles : IDisposable
     /// <summary>The name of a temp folder starts with this.</summary>
     public const string FolderPrefix = "oadm-eap-";
 
+    /// <summary>A temp folder older than this is a leftover (a client that ended hard): <see cref="SweepOnce"/> takes it.</summary>
+    public static readonly TimeSpan LeftoverAge = TimeSpan.FromDays(1);
+
     public const string PickerTitle = "Select ACAP packages or a ZIP file";
 
     public const string PickerFilter = "ACAP packages (*.eap, *.zip)";
@@ -49,6 +52,8 @@ public sealed class EapPackageFiles : IDisposable
         "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
         "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     };
+
+    private static int _swept;
 
     private readonly Lock _gate = new();
     private readonly CancellationTokenSource _stop = new();
@@ -83,6 +88,34 @@ public sealed class EapPackageFiles : IDisposable
             {
                 return _folder;
             }
+        }
+    }
+
+    /// <summary>
+    /// At the client's start: <see cref="SweepLeftovers"/> of the temp folder once per process, off the calling thread. The later
+    /// calls do nothing.
+    /// </summary>
+    public static Task SweepOnce() =>
+        Interlocked.Exchange(ref _swept, 1) == 0
+            ? Task.Run(() => SweepLeftovers(Path.GetTempPath(), TimeProvider.System.GetUtcNow()))
+            : Task.CompletedTask;
+
+    /// <summary>Deletes the folders of <see cref="FolderPrefix"/> in <paramref name="root"/> older than <see cref="LeftoverAge"/>, as far as they can go; never throws.</summary>
+    public static void SweepLeftovers(string root, DateTimeOffset now)
+    {
+        try
+        {
+            foreach (var folder in Directory.EnumerateDirectories(root, FolderPrefix + "*"))
+            {
+                if (now - Directory.GetLastWriteTimeUtc(folder) > LeftoverAge)
+                {
+                    Delete(folder);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best effort: the next start tries again.
         }
     }
 

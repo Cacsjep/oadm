@@ -31,7 +31,15 @@ internal interface ICardFailure
 
     /// <summary>The first failure ends the card's use; true for the caller that tells the log.</summary>
     bool MarkFailed();
+
+    /// <summary>A call did not fit the card's memory: it reads on the CPU, the card stays in use. One log line.</summary>
+    void CallTooLarge();
 }
+
+/// <summary>Where a card's start spent its time (the log line, the measurements).</summary>
+/// <param name="Build">The sessions of the test calls, built side by side.</param>
+/// <param name="Calls">The test calls, one at a time.</param>
+internal readonly record struct CardStartTimes(TimeSpan Build, TimeSpan Calls);
 
 /// <summary>
 /// The models on the graphics card (docs/spec/ocr.md "GPU"). Two lanes run one call at a time each, the text finder and angle
@@ -39,7 +47,10 @@ internal interface ICardFailure
 /// meanwhile goes into the next call, so the lines and pictures of several readers share calls and the card's time. On DirectML
 /// each input size is a session of its own (<see cref="GpuSessionBudget"/>), so calls come in few sizes: lines padded to
 /// <see cref="LineWidths"/> in calls of <see cref="LineBatches"/> lines, the text finder at each area's size, 1 or
-/// <see cref="FinderBatch"/> pictures. CUDA takes the same calls in one session.
+/// <see cref="FinderBatch"/> pictures. CUDA takes the same calls in one session. A reading waits at most <see cref="CallLimit"/>
+/// and for its token: then its queued jobs leave and a job it left is never touched again, whatever the lane does (each job's
+/// copy into a model input runs under the job's own lock, nothing else reads the reading's bitmaps or buffers). A lane that
+/// hangs in a model call holds only its own input.
 /// </summary>
 internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
 {
@@ -58,20 +69,28 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     /// <summary>Pictures per text finder call when more than one waits: 4 take twice the time of 1 (measured).</summary>
     internal const int FinderBatch = 4;
 
+    /// <summary>A reading waits this long for the card; then the card counts as failed and the reading goes to the CPU.</summary>
+    internal static readonly TimeSpan CallLimit = TimeSpan.FromMinutes(2);
+
+    /// <summary>The text of a reading that waited <see cref="CallLimit"/>.</summary>
+    internal const string TimedOut = "a call did not end within 2 minutes";
+
     /// <summary>Lines waiting at most for <see cref="HasRoom"/>: more than one full call.</summary>
     private const int RoomLines = 32;
 
     private static readonly int[] Steps = [256, 512, 768, 1024];
 
-    private readonly ShapeSessions _finder;
-    private readonly ShapeSessions _serverFinder;
-    private readonly ShapeSessions _reader;
-    private readonly ShapeSessions _angle;
+    private readonly ICardSessions _finder;
+    private readonly ICardSessions _serverFinder;
+    private readonly ICardSessions _reader;
+    private readonly ICardSessions _angle;
     private readonly BusyMeter _finderBusy;
     private readonly BusyMeter _readerBusy;
     private readonly ExecutionTarget _target;
     private readonly long _maxCallBytes;
     private readonly GpuSessionBudget? _budget;
+    private readonly TimeProvider _time;
+    private readonly Action? _tooLarge;
     private readonly object _lock = new();
     private readonly List<LineJob> _lines = [];
     private readonly List<AngleJob> _angles = [];
@@ -83,6 +102,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     private readonly Thread _readerThread;
     private long _order;
     private int _failed;
+    private int _tooLargeTold;
 
     /// <param name="finder">The text finder of fixed-place areas (mobile).</param>
     /// <param name="serverFinder">The text finder of Search (server).</param>
@@ -92,17 +112,37 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     /// <param name="finderBusy">Counts the time of the text finder and angle lane.</param>
     /// <param name="readerBusy">Counts the time of the reader lane.</param>
     /// <param name="budget">DirectML: the card's sessions (required there); CUDA: unused.</param>
-    public CardModels(string finder, string serverFinder, string reader, string angle, ExecutionTarget target, BusyMeter finderBusy, BusyMeter readerBusy, GpuSessionBudget? budget)
+    /// <param name="time">The clock of <see cref="CallLimit"/>.</param>
+    /// <param name="tooLarge">Told once: a call did not fit the card's memory.</param>
+    public CardModels(string finder, string serverFinder, string reader, string angle, ExecutionTarget target, BusyMeter finderBusy, BusyMeter readerBusy, GpuSessionBudget? budget, TimeProvider? time = null, Action? tooLarge = null)
+        : this(
+            new ShapeSessions(finder, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateFinder),
+            new ShapeSessions(serverFinder, target, OcrLimits.ThreadsPerWorker, budget),
+            new ShapeSessions(reader, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateReader),
+            new ShapeSessions(angle, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateReader),
+            target,
+            finderBusy,
+            readerBusy,
+            budget,
+            time,
+            tooLarge)
+    {
+    }
+
+    /// <summary>The card with its models given (tests: fakes a gate holds).</summary>
+    internal CardModels(ICardSessions finder, ICardSessions serverFinder, ICardSessions reader, ICardSessions angle, ExecutionTarget target, BusyMeter finderBusy, BusyMeter readerBusy, GpuSessionBudget? budget, TimeProvider? time, Action? tooLarge)
     {
         _target = target;
         _finderBusy = finderBusy;
         _readerBusy = readerBusy;
         _maxCallBytes = (budget?.Max ?? GpuSessionBudget.MaxBytes) / 2;
-        _finder = new ShapeSessions(finder, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateFinder);
-        _serverFinder = new ShapeSessions(serverFinder, target, OcrLimits.ThreadsPerWorker, budget);
-        _reader = new ShapeSessions(reader, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateReader);
-        _angle = new ShapeSessions(angle, target, OcrLimits.ThreadsPerWorker, budget, GpuSessionBudget.EstimateReader);
+        _finder = finder;
+        _serverFinder = serverFinder;
+        _reader = reader;
+        _angle = angle;
         _budget = budget;
+        _time = time ?? TimeProvider.System;
+        _tooLarge = tooLarge;
         _finderThread = new Thread(() => Run(_wakeFinder, NextFinder)) { IsBackground = true, Name = "Text recognition card: text finder" };
         _readerThread = new Thread(() => Run(_wakeReader, NextLines)) { IsBackground = true, Name = "Text recognition card: reader" };
         _finderThread.Start();
@@ -112,8 +152,44 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     /// <summary>A call failed during a run (a driver reset): the readings go back to the CPU.</summary>
     public bool Failed => Volatile.Read(ref _failed) != 0;
 
-    /// <summary>The first failure ends the card's use; true for the one caller that tells the log.</summary>
-    public bool MarkFailed() => Interlocked.Exchange(ref _failed, 1) == 0;
+    /// <summary>The first failure ends the card's use and sends what still waits to the CPU; true for the one caller that tells the log.</summary>
+    public bool MarkFailed()
+    {
+        if (Interlocked.Exchange(ref _failed, 1) != 0)
+        {
+            return false;
+        }
+
+        EndQueued(new InvalidOperationException("The graphics card failed."));
+        return true;
+    }
+
+    /// <summary>One log line, however many calls do not fit.</summary>
+    public void CallTooLarge()
+    {
+        if (Interlocked.Exchange(ref _tooLargeTold, 1) == 0)
+        {
+            _tooLarge?.Invoke();
+        }
+    }
+
+    /// <summary>How long <see cref="Dispose"/> waits for a lane; a lane still in a model call then is left to the process.</summary>
+    internal TimeSpan JoinLimit { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>A lane was still in a model call when the card was disposed: its sessions are left to the process.</summary>
+    public bool LeftHanging { get; private set; }
+
+    /// <summary>The jobs in the queues (tests).</summary>
+    internal int Queued
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _finders.Count + _lines.Count + _angles.Count;
+            }
+        }
+    }
 
     /// <summary>The card can take another picture now: at most one text finder call and one full call of lines wait.</summary>
     public bool HasRoom
@@ -146,13 +222,13 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
 
     /// <summary>The server text finder (Search), one call as given.</summary>
     public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
-        Enqueue(new FinderJob(input, count, height, width, Server: true, ct));
+        FindOnLaneAsync(new FinderJob(input, count, height, width, Server: true), ct);
 
     /// <summary>The mobile text finder of a fixed-place area; pictures of one size that wait share a call.</summary>
     public Task<PooledFloats> FindAsync(PooledFloats input, int height, int width, CancellationToken ct) =>
-        Enqueue(new FinderJob(input, 1, height, width, Server: false, ct));
+        FindOnLaneAsync(new FinderJob(input, 1, height, width, Server: false), ct);
 
-    private Task<PooledFloats> Enqueue(FinderJob job)
+    private async Task<PooledFloats> FindOnLaneAsync(FinderJob job, CancellationToken ct)
     {
         lock (_lock)
         {
@@ -162,7 +238,39 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
         }
 
         _wakeFinder.Release();
-        return job.Done.Task;
+        return (await WaitForAsync<PooledFloats, FinderJob>([job], _finders, ct).ConfigureAwait(false))[0];
+    }
+
+    /// <summary>
+    /// The results of a reading's jobs, in their order, within <see cref="CallLimit"/>. Whatever ends the wait first, the jobs
+    /// leave their queue and the lanes never touch them again before this returns.
+    /// </summary>
+    private async Task<T[]> WaitForAsync<T, TJob>(TJob[] jobs, List<TJob> queue, CancellationToken ct)
+        where TJob : CardJob<T>
+    {
+        try
+        {
+            return await Task.WhenAll(jobs.Select(j => j.Done.Task)).WaitAsync(CallLimit, _time, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            lock (_lock)
+            {
+                queue.RemoveAll(j => jobs.Contains(j));
+            }
+
+            foreach (var job in jobs)
+            {
+                job.Abandon();
+            }
+
+            if (ex is TimeoutException)
+            {
+                throw new TimeoutException(TimedOut, ex);
+            }
+
+            throw;
+        }
     }
 
     /// <summary>The reader's output of each line, in the order given; the lines stay valid until the task ends.</summary>
@@ -174,13 +282,13 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             ObjectDisposedException.ThrowIf(_stop.IsCancellationRequested, this);
             for (var i = 0; i < jobs.Length; i++)
             {
-                jobs[i] = new LineJob(lines[i], LineWidth(lines[i].Width), ct) { Order = ++_order };
+                jobs[i] = new LineJob(lines[i], LineWidth(lines[i].Width), lines[i].Width) { Order = ++_order };
                 _lines.Add(jobs[i]);
             }
         }
 
         _wakeReader.Release();
-        return await Task.WhenAll(jobs.Select(j => j.Done.Task)).ConfigureAwait(false);
+        return await WaitForAsync<LineScores, LineJob>(jobs, _lines, ct).ConfigureAwait(false);
     }
 
     /// <summary>The probability that each line is upside down (0 to 1).</summary>
@@ -192,13 +300,13 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             ObjectDisposedException.ThrowIf(_stop.IsCancellationRequested, this);
             for (var i = 0; i < jobs.Length; i++)
             {
-                jobs[i] = new AngleJob(lines[i], ct) { Order = ++_order };
+                jobs[i] = new AngleJob(lines[i]) { Order = ++_order };
                 _angles.Add(jobs[i]);
             }
         }
 
         _wakeFinder.Release();
-        return await Task.WhenAll(jobs.Select(j => j.Done.Task)).ConfigureAwait(false);
+        return await WaitForAsync<float, AngleJob>(jobs, _angles, ct).ConfigureAwait(false);
     }
 
     /// <summary>The call's width for a line of <paramref name="width"/> pixels.</summary>
@@ -231,12 +339,16 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
 
     /// <summary>
     /// What the test call of each model says (docs/spec/ocr.md "GPU"): a model runs on the card when the call passes and is not
-    /// clearly slower than the same work on the CPU. Real sessions: only at the card's start, never in a unit test.
+    /// clearly slower than the same work on the CPU. Every session of the test, on the card and on the CPU, is built side by
+    /// side first; then the calls run one at a time, so no call's time holds another's. The calls have sizes real readings use
+    /// (a reader call of 4 lines at 320 wide, an angle call of 16 lines), so those sessions stay for the first readings; the
+    /// text finder's real sizes come from the areas. Real sessions: only at the card's start, never in a unit test.
     /// </summary>
-    public CardRoute Probe(string finderPath, string readerPath, string anglePath, Action<string, string> failed)
+    public async Task<CardRoute> ProbeAsync(string finderPath, string readerPath, string anglePath, Action<string, string> failed, Action<CardStartTimes>? times, CancellationToken ct)
     {
         double? Card(string model, Action call)
         {
+            ct.ThrowIfCancellationRequested();
             try
             {
                 call();
@@ -253,9 +365,8 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             }
         }
 
-        static double Cpu(string path, float[] input, long[] shape, int times)
+        static double Cpu(ShapeSessions sessions, float[] input, long[] shape, int times)
         {
-            using var sessions = new ShapeSessions(path, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker);
             sessions.Run(input, shape, static (_, _) => true);
             var watch = Stopwatch.StartNew();
             for (var i = 0; i < times; i++)
@@ -266,14 +377,43 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             return watch.Elapsed.TotalMilliseconds;
         }
 
+        static void Quietly(ICardSessions sessions)
+        {
+            try
+            {
+                sessions.Prepare();
+            }
+#pragma warning disable CA1031 // The test call builds it again and tells why it failed.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+
+        var watch = Stopwatch.StartNew();
+        var cpuFinder = Task.Run(() => new ShapeSessions(finderPath, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker), ct);
+        var cpuReader = Task.Run(() => new ShapeSessions(readerPath, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker), ct);
+        var cpuAngle = Task.Run(() => new ShapeSessions(anglePath, ExecutionTarget.Cpu, OcrLimits.ThreadsPerWorker), ct);
+        await Task.WhenAll(cpuFinder, cpuReader, cpuAngle, Task.Run(() => Quietly(_finder), ct), Task.Run(() => Quietly(_reader), ct), Task.Run(() => Quietly(_angle), ct)).ConfigureAwait(false);
+        var built = watch.Elapsed;
+        watch.Restart();
+        using var finderOnCpu = await cpuFinder.ConfigureAwait(false);
+        using var readerOnCpu = await cpuReader.ConfigureAwait(false);
+        using var angleOnCpu = await cpuAngle.ConfigureAwait(false);
         var picture = new float[3 * 512 * 512];
-        var lines = new float[8 * 3 * ModelSet.LineHeight * 320];
+        var lines = new float[LineBatches[0] * 3 * ModelSet.LineHeight * 320];
         var line = new float[3 * ModelSet.LineHeight * 320];
-        var angles = new float[8 * 3 * ModelSet.OrientationHeight * ModelSet.OrientationWidth];
-        return new CardRoute(
-            CardRoute.Worth(Card("the text finder", () => _finder.Run(picture, [1, 3, 512, 512], static (_, _) => true)), Cpu(finderPath, picture, [1, 3, 512, 512], 1)),
-            CardRoute.Worth(Card("the reader", () => _reader.Run(lines, [8, 3, ModelSet.LineHeight, 320], static (_, _) => true)), Cpu(readerPath, line, [1, 3, ModelSet.LineHeight, 320], 8)),
-            CardRoute.Worth(Card("the angle model", () => _angle.Run(angles, [8, 3, ModelSet.OrientationHeight, ModelSet.OrientationWidth], static (_, _) => true)), Cpu(anglePath, angles, [8, 3, ModelSet.OrientationHeight, ModelSet.OrientationWidth], 1)));
+        var angles = new float[AngleBatches[^1] * 3 * ModelSet.OrientationHeight * ModelSet.OrientationWidth];
+        long[] picture1 = [1, 3, 512, 512];
+        long[] reader4 = [LineBatches[0], 3, ModelSet.LineHeight, 320];
+        long[] reader1 = [1, 3, ModelSet.LineHeight, 320];
+        long[] angle16 = [AngleBatches[^1], 3, ModelSet.OrientationHeight, ModelSet.OrientationWidth];
+        var route = new CardRoute(
+            CardRoute.Worth(Card("the text finder", () => _finder.Run(picture, picture1, static (_, _) => true)), Cpu(finderOnCpu, picture, picture1, 1)),
+            CardRoute.Worth(Card("the reader", () => _reader.Run(lines, reader4, static (_, _) => true)), Cpu(readerOnCpu, line, reader1, LineBatches[0])),
+            CardRoute.Worth(Card("the angle model", () => _angle.Run(angles, angle16, static (_, _) => true)), Cpu(angleOnCpu, angles, angle16, 1)));
+        times?.Invoke(new CardStartTimes(built, watch.Elapsed));
+        return route;
     }
 
     private void Run(SemaphoreSlim wake, Func<Action?> next)
@@ -357,9 +497,22 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
         {
             if (jobs is [{ Server: true } search])
             {
-                search.Done.TrySetResult(Timed(
+                // The lane's own copy: a reading that leaves takes its buffer back while a hung call would still read it.
+                var size = search.Count * 3 * search.Height * search.Width;
+                using var own = PooledFloats.Rent(size, clear: false);
+                lock (search.Gate)
+                {
+                    if (search.Abandoned)
+                    {
+                        return;
+                    }
+
+                    search.Input.Span[..size].CopyTo(own.Span);
+                }
+
+                search.Finish(Timed(
                     _finderBusy,
-                    () => _serverFinder.Run(search.Input.Array, [search.Count, 3, search.Height, search.Width], static (output, _) =>
+                    () => _serverFinder.Run(own.Array, [search.Count, 3, search.Height, search.Width], static (output, _) =>
                     {
                         var map = PooledFloats.Rent(output.Length, clear: false);
                         output.CopyTo(map.Span);
@@ -375,7 +528,13 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             using var together = PooledFloats.Rent(count * plane, clear: count > jobs.Count);
             for (var i = 0; i < jobs.Count; i++)
             {
-                jobs[i].Input.Span[..plane].CopyTo(together.Span[(i * plane)..]);
+                lock (jobs[i].Gate)
+                {
+                    if (!jobs[i].Abandoned)
+                    {
+                        jobs[i].Input.Span[..plane].CopyTo(together.Span[(i * plane)..]);
+                    }
+                }
             }
 
             var maps = Timed(
@@ -395,10 +554,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
                 Stage.DetectModel);
             for (var i = 0; i < jobs.Count; i++)
             {
-                if (!jobs[i].Done.TrySetResult(maps[i]))
-                {
-                    maps[i].Dispose();
-                }
+                jobs[i].Finish(maps[i]);
             }
         }
 #pragma warning disable CA1031 // The readings hear of it; their runner goes to the CPU.
@@ -421,9 +577,12 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             using var input = PooledFloats.Rent(count * 3 * ModelSet.LineHeight * width, clear: true);
             for (var i = 0; i < jobs.Count; i++)
             {
-                if (!jobs[i].Token.IsCancellationRequested)
+                lock (jobs[i].Gate)
                 {
-                    Tensors.Write(jobs[i].Line, input.Array, i, ModelSet.LineHeight, width, Tensors.Symmetric);
+                    if (!jobs[i].Abandoned)
+                    {
+                        Tensors.Write(jobs[i].Line, input.Array, i, ModelSet.LineHeight, width, Tensors.Symmetric);
+                    }
                 }
             }
 
@@ -437,7 +596,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
                     var result = new LineScores[jobs.Count];
                     for (var i = 0; i < result.Length; i++)
                     {
-                        var own = Math.Min(frames, ((jobs[i].Line.Width + 7) / 8) + 2);
+                        var own = Math.Min(frames, ((jobs[i].LineWidth + 7) / 8) + 2);
                         var kept = System.Buffers.ArrayPool<float>.Shared.Rent(own * classes);
                         output.Slice(i * frames * classes, own * classes).CopyTo(kept);
                         result[i] = new LineScores(kept, own, classes) { Rented = true };
@@ -449,7 +608,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
                 jobs.Count / (double)count);
             for (var i = 0; i < jobs.Count; i++)
             {
-                jobs[i].Done.TrySetResult(scores[i]);
+                jobs[i].Finish(scores[i]);
             }
         }
 #pragma warning disable CA1031 // The readings hear of it; their runner goes to the CPU.
@@ -472,8 +631,16 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             using var input = PooledFloats.Rent(count * 3 * ModelSet.OrientationHeight * ModelSet.OrientationWidth, clear: true);
             for (var i = 0; i < jobs.Count; i++)
             {
-                using var small = jobs[i].Line.Resize(new SKImageInfo(ModelSet.OrientationWidth, ModelSet.OrientationHeight, SKColorType.Rgba8888, SKAlphaType.Premul), new SKSamplingOptions(SKFilterMode.Linear));
-                Tensors.Write(small, input.Array, i, ModelSet.OrientationHeight, ModelSet.OrientationWidth, Tensors.ImageNet);
+                lock (jobs[i].Gate)
+                {
+                    if (jobs[i].Abandoned)
+                    {
+                        continue;
+                    }
+
+                    using var small = jobs[i].Line.Resize(new SKImageInfo(ModelSet.OrientationWidth, ModelSet.OrientationHeight, SKColorType.Rgba8888, SKAlphaType.Premul), new SKSamplingOptions(SKFilterMode.Linear));
+                    Tensors.Write(small, input.Array, i, ModelSet.OrientationHeight, ModelSet.OrientationWidth, Tensors.ImageNet);
+                }
             }
 
             var results = Timed(
@@ -492,7 +659,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             StageClock.Add(Stage.Angle, start);
             for (var i = 0; i < jobs.Count; i++)
             {
-                jobs[i].Done.TrySetResult(results[i]);
+                jobs[i].Finish(results[i]);
             }
         }
 #pragma warning disable CA1031 // The readings hear of it; their runner goes to the CPU.
@@ -506,7 +673,36 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
         }
     }
 
-    /// <summary>Stops the card's thread after the call in work; what still waits ends disposed. Every reading is out by then.</summary>
+    /// <summary>What waits in the queues ends with <paramref name="reason"/>.</summary>
+    private void EndQueued(Exception reason)
+    {
+        lock (_lock)
+        {
+            foreach (var job in _finders)
+            {
+                job.Done.TrySetException(reason);
+            }
+
+            foreach (var job in _lines)
+            {
+                job.Done.TrySetException(reason);
+            }
+
+            foreach (var job in _angles)
+            {
+                job.Done.TrySetException(reason);
+            }
+
+            _finders.Clear();
+            _lines.Clear();
+            _angles.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Stops the card's threads after the call in work, at most <see cref="JoinLimit"/> each; what still waits ends disposed.
+    /// Every reading is out by then. A lane still in a model call keeps its sessions: they are never freed under a call.
+    /// </summary>
     public void Dispose()
     {
         lock (_lock)
@@ -519,25 +715,13 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
             _stop.Cancel();
         }
 
-        _finderThread.Join();
-        _readerThread.Join();
-        var gone = new ObjectDisposedException(nameof(CardModels));
-        lock (_lock)
+        var ended = _finderThread.Join(JoinLimit);
+        ended &= _readerThread.Join(JoinLimit);
+        EndQueued(new ObjectDisposedException(nameof(CardModels)));
+        if (!ended)
         {
-            foreach (var job in _finders)
-            {
-                job.Done.TrySetException(gone);
-            }
-
-            foreach (var job in _lines)
-            {
-                job.Done.TrySetException(gone);
-            }
-
-            foreach (var job in _angles)
-            {
-                job.Done.TrySetException(gone);
-            }
+            LeftHanging = true;
+            return;
         }
 
         _finder.Dispose();
@@ -549,31 +733,78 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
         _stop.Dispose();
     }
 
-    private sealed record FinderJob(PooledFloats Input, int Count, int Height, int Width, bool Server, CancellationToken Token)
+    /// <summary>
+    /// A piece of a reading on a lane. <see cref="Gate"/> holds while the lane copies from the reading's bitmap or buffer: once
+    /// <see cref="Abandon"/> returned the lane never touches them again, and a result that comes late goes back.
+    /// </summary>
+    private abstract class CardJob<T>(Action<T> release)
     {
         public long Order { get; set; }
 
-        public TaskCompletionSource<PooledFloats> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public object Gate { get; } = new();
+
+        /// <summary>The reading left: read under <see cref="Gate"/>.</summary>
+        public bool Abandoned { get; private set; }
+
+        public TaskCompletionSource<T> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void Finish(T result)
+        {
+            if (!Done.TrySetResult(result))
+            {
+                release(result);
+            }
+        }
+
+        public void Abandon()
+        {
+            lock (Gate)
+            {
+                Abandoned = true;
+            }
+
+            if (!Done.TrySetCanceled() && Done.Task.IsCompletedSuccessfully)
+            {
+                release(Done.Task.Result); // finished before the reading left: nobody takes it now
+            }
+        }
     }
 
-    private sealed record LineJob(SKBitmap Line, int Width, CancellationToken Token)
+    private sealed class FinderJob(PooledFloats input, int count, int height, int width, bool Server) : CardJob<PooledFloats>(static map => map.Dispose())
     {
-        public long Order { get; set; }
+        public PooledFloats Input { get; } = input;
 
-        public TaskCompletionSource<LineScores> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Count { get; } = count;
+
+        public int Height { get; } = height;
+
+        public int Width { get; } = width;
+
+        public bool Server { get; } = Server;
     }
 
-    private sealed record AngleJob(SKBitmap Line, CancellationToken Token)
+    /// <param name="line">The line; read only under the job's lock.</param>
+    /// <param name="width">The call's width.</param>
+    /// <param name="lineWidth">The line's own width: the output is read after the reading may have left.</param>
+    private sealed class LineJob(SKBitmap line, int width, int lineWidth) : CardJob<LineScores>(static scores => scores.Release())
     {
-        public long Order { get; set; }
+        public SKBitmap Line { get; } = line;
 
-        public TaskCompletionSource<float> Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Width { get; } = width;
+
+        public int LineWidth { get; } = lineWidth;
+    }
+
+    private sealed class AngleJob(SKBitmap line) : CardJob<float>(static _ => { })
+    {
+        public SKBitmap Line { get; } = line;
     }
 }
 
 /// <summary>
 /// The runner of a reading with a graphics card: each model on the card by its <see cref="CardRoute"/>, else on the CPU workers.
-/// A card call that fails (a driver reset) ends the card's use for every reading: this call and the next run on the CPU.
+/// A card call that fails or hangs (a driver reset) ends the card's use for every reading: this call and the next run on the
+/// CPU. A call too large for the card's memory runs on the CPU alone, the card stays in use.
 /// </summary>
 internal sealed class CardRunner(CpuRunner cpu, CardModels card, CardRoute route, Action<string> failed) : IModelRunner
 {
@@ -612,6 +843,10 @@ internal sealed class CardRunner(CpuRunner cpu, CardModels card, CardRoute route
             try
             {
                 return await onCard().ConfigureAwait(false);
+            }
+            catch (SessionTooLargeException) when (!ct.IsCancellationRequested)
+            {
+                card.CallTooLarge();
             }
             catch (Exception ex) when (ex is not OperationCanceledException && !ct.IsCancellationRequested)
             {

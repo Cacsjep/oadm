@@ -98,7 +98,9 @@ internal sealed partial class ReaderRuntime
             }, reads, judged));
         }
 
-        var (state, text) = ReaderStats.Light(figures.Load, figures.Overloaded, readers.Select(r => (r.Rate.Fps, r.Reads, r.Judged)));
+        var (state, text) = Starting
+            ? (LoadState.Starting, ReaderRules.Starting)
+            : ReaderStats.Light(figures.Load, figures.Overloaded, readers.Select(r => (r.Rate.Fps, r.Reads, r.Judged)));
         var sites = loops.Select(l => (l.Site, l.SiteName)).Concat(previewStreams)
             .Where(s => s.Site is not null)
             .GroupBy(s => s.Site!.Value)

@@ -490,7 +490,7 @@ triggers**) and no dashboard.
 - Fixed device and split (`EventTypeInfo.FixedDeviceId`, `SplitField`, no special case for any plugin): an event of a fixed
   device has no Device row and no Copy for other devices; the widget stores no device (`Widget.FixedDevice`), the device is
   read from the event type and followed when it changes, and goes through the same device group checks as a chosen one, fail
-  closed (a widget whose event type is unknown is hidden from a group). An event split by a choice field has a select with
+  closed (a widget whose event type is unknown is hidden from a group; its plugin may only be gone until its ZIP is installed again). An event split by a choice field has a select with
   that field's label (Area), the choice by its text (`Widget.Split`), preselected when there is one, and the field is no
   Value. A widget without a choice says "Choose an area." and is not saved; one whose choice is gone says "Area no longer
   exists", is saved and offers the choices again. Stored dashboards read as before; an event without either behaves as
@@ -514,7 +514,9 @@ triggers**) and no dashboard.
   events are never dashboard values.
 - Device groups: each dashboard belongs to the group of the user who made it (none = all devices); group users see and
   change only their group's dashboards with the group's devices, get only the events of their devices and sites and only
-  the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps the owner. Pushes
+  the values their own pages watch; saving refuses devices outside the owner's devices; an edit keeps the owner. A group
+  user's save keeps every stored widget that user could not see, unchanged and in its place (never replaced by id, never in
+  the answer); a widget moved onto a hidden one is refused as an overlap. Pushes
   never read the device table: each group's devices are read once and again only when the group's devices change (or
   after 5 minutes), a device's membership is the host's check per device. At most 1,000 watches, 8 per login session (a
   new one replaces the session's oldest).

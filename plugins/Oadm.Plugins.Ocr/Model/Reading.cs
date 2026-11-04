@@ -90,6 +90,9 @@ public sealed record RecognizedPicture(Resolution Resolution, IReadOnlyList<IRea
     /// </summary>
     public IReadOnlyList<bool> TooSmallPerArea { get; init; } = [];
 
+    /// <summary>Per area: some text was too small, whatever else was read (the page's alert on a live picture).</summary>
+    public IReadOnlyList<bool> SmallTextPerArea { get; init; } = [];
+
     /// <summary>More than <see cref="OcrLimits.MaxTextBoxes"/> texts were found over all areas; only that many were read.</summary>
     public bool TooManyTexts { get; init; }
 

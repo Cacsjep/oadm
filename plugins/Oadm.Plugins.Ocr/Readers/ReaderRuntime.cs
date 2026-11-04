@@ -53,6 +53,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<Task, byte> _singles = new();
     private volatile Dictionary<string, string> _problems = [];
     private volatile bool _stopped;
+    private volatile Task _engineStart = Task.CompletedTask;
     private int _dropped;
 
     /// <summary>Frames of watching readers dropped because a single reading of the same reader ran (tests).</summary>
@@ -103,6 +104,33 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
     /// <summary>What the recognition runs on and "Use GPU"; null while the recognizer does not tell.</summary>
     public IEngineInfo? Engine => _recognizer as IEngineInfo;
+
+    /// <summary>The graphics card's test of the plugin's start runs: no reader reads yet (docs/spec/ocr.md "GPU").</summary>
+    public bool Starting => !_engineStart.IsCompleted;
+
+    /// <summary>
+    /// The plugin's start: hands "Use GPU" over without waiting. While a graphics card's test runs no reader starts and the action
+    /// waits, so every reader starts where it stays: on the card, or on the CPU at once when the card fails or the test passes
+    /// its limit. <paramref name="started"/> runs after the readers started.
+    /// </summary>
+    public void StartEngine(bool useGpu, Action started)
+    {
+        if (Engine?.SetUseGpu(useGpu) is not { IsCompletedSuccessfully: false } start)
+        {
+            return;
+        }
+
+        var ended = QuietlyAsync(() => start, "the test of the graphics card");
+        _engineStart = ended;
+        _ = QuietlyAsync(
+            async () =>
+            {
+                await ended.ConfigureAwait(false);
+                await SyncAsync().ConfigureAwait(false);
+                started();
+            },
+            "starting the readers");
+    }
 
     /// <summary>The ids of the readers with a loop now (tests).</summary>
     public IReadOnlyList<string> Watching
@@ -228,6 +256,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             throw new InvalidOperationException(problem);
         }
 
+        await _engineStart.WaitAsync(ct).ConfigureAwait(false);
         var asked = _time.GetUtcNow();
         var slot = SlotOf(reader.Id);
         while (true)
@@ -407,6 +436,17 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
                 // A frame rate no choice (a record of an older version) reads at the highest one below it.
                 wanted[stored.Id] = (ReaderRules.WithOfferedFps(stored), camera);
+            }
+
+            // Nothing starts before the graphics card's test ended: a reader starts where it stays.
+            if (Starting)
+            {
+                foreach (var waiting in wanted.Keys)
+                {
+                    problems[waiting] = ReaderRules.Starting;
+                }
+
+                wanted.Clear();
             }
 
             var before = _problems;
@@ -749,7 +789,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             else
             {
                 // A value this frame does not hold has no place in it: no box, its picture comes from its own frame.
-                details[i] = ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null) with { TooSmall = frameDetails.TooSmall };
+                details[i] = ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null) with { TooSmall = frameDetails.TooSmall, SmallText = frameDetails.SmallText };
                 sources[i] = decisions[i].Seen;
                 elsewhere = true;
             }

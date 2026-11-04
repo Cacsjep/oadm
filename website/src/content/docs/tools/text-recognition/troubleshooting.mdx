@@ -19,7 +19,7 @@ and event rules are for users with all devices.
 | You see | Do this |
 |---|---|
 | No text found | Draw the area tighter, with a little margin. Check focus and light in the camera's live view. Choose a higher resolution |
-| **Text too small. Draw a smaller area or choose a higher resolution.** | The letters are under about 10 pixels high: choose a higher resolution or zoom the camera |
+| **Text too small. Draw a smaller area or choose a higher resolution.** | The area had no value for 10 seconds and holds letters under about 10 pixels high: choose a higher resolution or zoom the camera. Small text next to a value that reads gives no message |
 | Wrong characters, O for 0 or S for 5 | Set a [format](../formats/): it fixes look-alikes and finds only the shape you want |
 | A value split or missing on a busy picture | Draw smaller areas. With a large area use a format |
 | **More than 30 texts found. Only the first 30 are read. Draw smaller areas.** | Draw smaller areas around the texts you need |
@@ -35,6 +35,7 @@ Hover over a red chip for the full reason.
 | **Unreachable**, **Certificate changed**, **Site offline** | The camera cannot be reached | Check it on the Devices page |
 | **Credentials required** | The camera refuses the login, for example **Unauthorized - HTTP 401 (check the credentials)** | Check OADM's account on the camera on the Devices page. It must be allowed to see video |
 | **Stream error** | The camera gives no pictures | See the messages below |
+| **Starting** | OADM tests the graphics card after a start, usually a few seconds | Wait: the reader starts by itself |
 | **Limit reached**, for example **At most 16 readers can watch at once. Set another reader to On action first.** | Too many watching readers | Set another reader to **On action**, or use a server with more cores. [Limits](../speed/#limits) |
 | **Not in device group** | The camera left the reader's device group | Put the camera back in the device group, or delete the reader |
 | **Not installed** | **Text recognition is not installed completely. Install it again on the Plugins page.** | **Remove** it on the Plugins page, restart the server and **Install** it again |

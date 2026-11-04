@@ -31,6 +31,42 @@ public sealed class EapPackageFilesTests : IDisposable
         }
     }
 
+    [Fact]
+    public void The_sweep_takes_only_old_folders_of_the_dialog()
+    {
+        var now = DateTimeOffset.UtcNow;
+        string Folder(string name, TimeSpan age)
+        {
+            var folder = Path.Combine(_temp, name);
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "a.eap"), "x");
+            Directory.SetLastWriteTimeUtc(folder, (now - age).UtcDateTime);
+            return folder;
+        }
+
+        var old = Folder(EapPackageFiles.FolderPrefix + "old", EapPackageFiles.LeftoverAge + TimeSpan.FromMinutes(1));
+        var recent = Folder(EapPackageFiles.FolderPrefix + "recent", EapPackageFiles.LeftoverAge - TimeSpan.FromMinutes(1));
+        var other = Folder("other-old", EapPackageFiles.LeftoverAge * 2);
+
+        EapPackageFiles.SweepLeftovers(_temp, now);
+
+        Assert.False(Directory.Exists(old));
+        Assert.True(Directory.Exists(recent));
+        Assert.True(Directory.Exists(other));
+    }
+
+    [Fact]
+    public void The_sweep_of_a_folder_that_is_not_there_says_nothing() =>
+        EapPackageFiles.SweepLeftovers(Path.Combine(_dir, "none"), DateTimeOffset.UtcNow);
+
+    [Fact]
+    public async Task The_sweep_runs_once_per_process()
+    {
+        await EapPackageFiles.SweepOnce();
+        Assert.True(EapPackageFiles.SweepOnce().IsCompletedSuccessfully);
+        _ = new AcapTaskDialog(); // the client's start asks for it: nothing more happens
+    }
+
     private static byte[] Package(string architecture = "aarch64", string app = "hello", string version = "1.2.0") =>
         EapBuilder.FromManifest(EapBuilder.Manifest(appName: app, friendlyName: app, version: version, architecture: architecture));
 

@@ -139,7 +139,10 @@ computer. A client loads the client part its server hands it: the user must trus
 - One install or remove at a time; while a self update runs both are refused ("The server is updating.").
 - The client part is read and hashed once per version and kept in memory; one call at a time per session.
 - Remove keeps the add-on's settings, records and `plugin-data/<id>` (as when a plugin is turned off); installing it
-  again picks them up. An add-on that is not loaded (state Failed) is removed at once, its folder deleted.
+  again picks them up. An add-on that is not loaded (state Failed) is removed at once, its folder deleted; a folder that cannot
+  go is stored as Removed, so no start takes it up again and the next start deletes it.
+- An install past its upload runs to its end: once the hash holds, a caller that goes changes nothing, the install finishes and
+  is audited as installed.
 - gRPC: `PluginService.ListAddOns`, `UploadAddOn` (bidirectional: the file in, progress out: Upload, Check, Install),
   `InstallAddOn` (takes back a removed add-on that is still loaded, no file; a client that still calls it to install gets
   "Update this client to install optional plugins."), `RemoveAddOn`, `GetAddOnClientPart` (the client part's files with
@@ -182,7 +185,7 @@ computer. A client loads the client part its server hands it: the user must trus
   bytes than announced, no space, a client that stands still, an update running); a failed install leaves the previous state; the
   loader's refusal brings the old folder back; the state after an update and a restore; the version rule for folders put in by
   hand; the stored choice survives Install again; the hash read back from assembly metadata; the audit with a caller that has
-  gone. Hashes are injected (`IAddOnHashes`).
+  gone; a caller that goes right after the upload; a Failed add-on whose folder stays. Hashes are injected (`IAddOnHashes`).
 - Client: the file picker, the steps, Cancel, a refusal, the link (only OADM's own release), the row after an update; the
   client part is checked against the server's SHA-256 and digest, cached per server and version and loaded
   after the plugin list; a wrong hash is refused; a changed cache is fetched again; the client asks again while the

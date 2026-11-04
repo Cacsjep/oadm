@@ -23,10 +23,10 @@ public sealed class PageViewModelTests
     }
 
     [Theory]
-    [InlineData("CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti", "CPU 24 cores · RTX 5070 Ti")]
+    [InlineData("CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", "CPU 24 cores · RTX 5070 Ti")]
     [InlineData("CPU (8 cores)", "CPU 8 cores")]
-    [InlineData("CPU (16 cores) · search on AMD Radeon RX 7900", "CPU 16 cores · Radeon RX 7900")]
-    [InlineData("CPU (8 cores) · search on Intel Arc A770", "CPU 8 cores · Intel Arc A770")]
+    [InlineData("CPU (16 cores) · AMD Radeon RX 7900", "CPU 16 cores · Radeon RX 7900")]
+    [InlineData("CPU (8 cores) · Intel Arc A770", "CPU 8 cores · Intel Arc A770")]
     public void The_header_shows_the_short_form_of_what_reads(string name, string shortText) =>
         Assert.Equal(shortText, OcrTexts.RunsOnShort(name));
 
@@ -63,7 +63,7 @@ public sealed class PageViewModelTests
         Assert.True(editor.Results[1].IsMatch);
         Assert.Equal("96 %", editor.Results[1].ConfidenceText);
         Assert.All(editor.Results, r => Assert.False(r.TooSmall));
-        Assert.Equal("Lane: " + ReaderRules.TooSmall, editor.ReadingNote);
+        Assert.Null(editor.ReadingNote); // the first reading of an area: no alert yet
         Assert.Equal(2, editor.Lines.Count);
         Assert.Equal("{\"readerId\":\"r1\"}", ctx.LastPayloadOf(OcrMethods.GetReading));
     }
@@ -961,6 +961,34 @@ public sealed class PageViewModelTests
         Assert.False(vm.UseGpu);
         Assert.True(ringWhileAsked && boxOffWhileAsked); // the server may try the graphics card for seconds
         Assert.True(vm.CanSetGpu);
+    }
+
+    [Fact]
+    public async Task During_the_graphics_cards_test_the_page_says_Starting_and_follows_the_end()
+    {
+        var ctx = Samples.Context();
+        ctx.Answers[OcrMethods.GetEngine] = _ => OcrJson.Serialize(Samples.Engine with { GpuAvailable = false, GpuStarting = true, RunsOn = "CPU (8 cores)" });
+        ctx.Answers[OcrMethods.ListReaders] = _ => OcrJson.Serialize(new ReaderList { Readers = [new ReaderSummary { Id = "r1", Name = "Gate", Mode = ReaderMode.Watching, Fps = 4, Problem = ReaderRules.Starting }] });
+        using var vm = await LoadedAsync(ctx);
+
+        var row = Assert.Single(vm.Readers);
+        Assert.Equal(OcrTexts.Starting, row.ModeText);
+        Assert.False(row.IsFailing); // no red: nothing is wrong
+        Assert.True(vm.ShowGpuRing);
+        Assert.False(vm.CanSetGpu);
+        Assert.Equal(OcrTexts.TestingGpu, vm.GpuBlockedReason);
+
+        vm.ApplyStats(new OcrStats { State = LoadState.Starting, StateText = ReaderRules.Starting });
+        Assert.True(vm.Stats.IsStarting);
+        Assert.Empty(vm.Stats.LoadText);
+
+        ctx.Answers[OcrMethods.GetEngine] = _ => OcrJson.Serialize(Samples.Engine);
+        vm.ApplyStats(new OcrStats { State = LoadState.Ok, StateText = ReaderRules.KeepUp });
+
+        await Eventually.TrueAsync(() => vm.GpuAvailable, "the engine read again");
+        Assert.False(vm.ShowGpuRing);
+        Assert.True(vm.CanSetGpu);
+        Assert.False(vm.Stats.IsStarting);
     }
 
     [Fact]

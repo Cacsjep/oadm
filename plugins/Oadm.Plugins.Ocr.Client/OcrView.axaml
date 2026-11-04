@@ -16,7 +16,7 @@
                        IsWarning="{Binding IsBusy}" IsError="{Binding IsOverloaded}" />
         <StackPanel Orientation="Horizontal" Spacing="8">
           <TextBlock Classes="secondary" Text="Load" VerticalAlignment="Center" />
-          <ProgressBar Width="120" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Load}" VerticalAlignment="Center" />
+          <ProgressBar Width="120" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Load}" IsIndeterminate="{Binding IsStarting}" VerticalAlignment="Center" />
           <TextBlock Text="{Binding LoadText}" VerticalAlignment="Center" />
         </StackPanel>
       </StackPanel>
@@ -27,7 +27,7 @@
                    VerticalAlignment="Center" />
         <CheckBox Content="Use GPU" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}" VerticalAlignment="Center"
                   ToolTip.Tip="{Binding GpuBlockedReason}" ToolTip.ShowOnDisabled="True" />
-        <ui:ProgressRing x:Name="GpuRing" Width="16" Height="16" IsVisible="{Binding IsSettingGpu}" VerticalAlignment="Center" />
+        <ui:ProgressRing x:Name="GpuRing" Width="16" Height="16" IsVisible="{Binding ShowGpuRing}" VerticalAlignment="Center" />
       </StackPanel>
     </StackPanel>
   </ui:PageHeader.Trailing>
@@ -59,7 +59,7 @@
               <DataTemplate x:DataType="vm:ReaderRow">
                 <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
                   <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                  <ui:StatusChip Grid.Column="1" Text="{Binding ModeText}" IsOk="{Binding IsKeepingUp}" IsWarning="{Binding IsSlowWatching}" IsError="{Binding IsProblem}" ToolTip.Tip="{Binding Problem}" />
+                  <ui:StatusChip Grid.Column="1" Text="{Binding ModeText}" IsOk="{Binding IsKeepingUp}" IsWarning="{Binding IsSlowWatching}" IsError="{Binding IsFailing}" ToolTip.Tip="{Binding Problem}" />
                   <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="secondary" Text="{Binding Camera}" TextTrimming="CharacterEllipsis" />
                   <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="mono" Text="{Binding LastText}" TextTrimming="CharacterEllipsis" />
                 </Grid>

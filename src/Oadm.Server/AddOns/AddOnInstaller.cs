@@ -28,6 +28,9 @@ public sealed record AddOnInstallerOptions(string DataDirectory, string ServerVe
     /// <summary>An upload that sends nothing for this long ends, so a client that stands still never holds up the others.</summary>
     public TimeSpan UploadIdleTimeout { get; init; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>Deletes a folder; false when it cannot go now (tests: a folder that stays on every system).</summary>
+    public Func<string, bool> DeleteFolder { get; init; } = AddOnFolders.TryDelete;
+
     /// <summary>The runtime id of the add-on ZIPs for this process: win, linux or osx with x64 or arm64.</summary>
     public static string CurrentRuntimeId()
     {
@@ -401,16 +404,24 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
             if (!loaded)
             {
-                // Failed and never loaded: nothing holds the folder, it goes now.
-                AddOnFolders.TryDelete(FolderOf(entry));
-                await SaveAsync(entry.Id, null, CancellationToken.None).ConfigureAwait(false);
+                // Failed and never loaded: nothing holds the folder, it goes now. One that stays is marked, so no start takes it up again.
+                var deleted = _options.DeleteFolder(FolderOf(entry));
+                await SaveAsync(entry.Id, deleted ? null : new InstalledAddOn(entry.Id, version, Removed: true), CancellationToken.None).ConfigureAwait(false);
                 lock (_sync)
                 {
                     slot.Failed = null;
                     slot.Version = string.Empty;
                 }
 
-                LogRemovedDeleted(_logger, entry.Id);
+                if (deleted)
+                {
+                    LogRemovedDeleted(_logger, entry.Id);
+                }
+                else
+                {
+                    LogRemovedKept(_logger, entry.Id);
+                }
+
                 return new AddOnStatus(entry, AddOnState.NotInstalled, version);
             }
 
@@ -533,7 +544,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             await ReceiveAsync(upload, zip, expected, percent => Report(AddOnStep.Upload, percent, percent * 90 / 100), ct).ConfigureAwait(false);
 
             Report(AddOnStep.Check, 0, 90);
-            await AddOnFolders.UnpackAsync(zip, staged, _options.MaxUnpackedBytes, _options.MaxEntries, ct).ConfigureAwait(false);
+            // The upload is in and its hash holds: from here the install runs to its end, whoever has gone, and is audited.
+            await AddOnFolders.UnpackAsync(zip, staged, _options.MaxUnpackedBytes, _options.MaxEntries, CancellationToken.None).ConfigureAwait(false);
             AddOnFolders.CheckManifest(staged, entry);
             AddOnFolders.CheckVersion(staged, _options.ServerVersion);
             Report(AddOnStep.Check, 100, 95);

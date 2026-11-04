@@ -2,21 +2,37 @@ using Microsoft.ML.OnnxRuntime;
 
 namespace Oadm.Plugins.Ocr.Recognition;
 
+/// <summary>Reads a model's first output in place (valid only during the call).</summary>
+internal delegate T OutputReader<out T>(ReadOnlySpan<float> output, ReadOnlySpan<long> shape);
+
+/// <summary>Runs one model of the graphics card (<see cref="ShapeSessions"/>; tests: a fake that a gate holds).</summary>
+internal interface ICardSessions : IDisposable
+{
+    /// <summary>Runs the model on the first values of <paramref name="input"/> and hands its first output to <paramref name="read"/>.</summary>
+    T Run<T>(float[] input, long[] shape, OutputReader<T> read);
+
+    /// <summary>Builds the session the first new input size will take (a card's start builds its models at once).</summary>
+    void Prepare()
+    {
+    }
+}
+
 /// <summary>
 /// The sessions of one model. On the CPU and with CUDA one session takes every input size. DirectML runs a session fast only
 /// for the input size it saw first (measured: a small area read after a full HD search took 160 instead of 38 ms), so there
 /// each input size gets a session of its own, kept in the card's <see cref="GpuSessionBudget"/> (counted by its input pixels,
 /// at most the budget's cap together, freed after 2 idle minutes). The callers keep the sizes few
-/// (sides in steps, the tiles of an area in calls of one size).
+/// (sides in steps, the tiles of an area in calls of one size). A session on a card exists only once it is needed, so a model
+/// that never runs (the server text finder without a Search) takes nothing of the card.
 /// </summary>
-internal sealed class ShapeSessions : IDisposable
+internal sealed class ShapeSessions : ICardSessions
 {
     private readonly string _path;
     private readonly ExecutionTarget _target;
     private readonly int _threads;
     private readonly GpuSessionBudget? _budget;
     private readonly Func<long, long> _estimate;
-    private readonly InferenceSession? _single;
+    private readonly Lazy<InferenceSession>? _single;
     private InferenceSession? _fresh;
 
     /// <param name="budget">DirectML: the sessions on the card (required there); else unused.</param>
@@ -29,24 +45,31 @@ internal sealed class ShapeSessions : IDisposable
         _estimate = estimate ?? GpuSessionBudget.Estimate;
         if (target != ExecutionTarget.DirectMl)
         {
-            _single = SessionFactory.Create(path, target, threads);
-            InputName = _single.InputNames[0];
+            // CUDA builds on first use too; the CPU's sets are built to be used at once.
+            _single = new Lazy<InferenceSession>(() => SessionFactory.Create(path, target, threads));
+            if (target == ExecutionTarget.Cpu)
+            {
+                _ = _single.Value;
+            }
         }
         else
         {
             _budget = budget ?? throw new ArgumentNullException(nameof(budget));
-
-            // One session for the name, kept for the first size (it has not seen one yet).
-            _fresh = SessionFactory.Create(path, target, threads);
-            InputName = _fresh.InputNames[0];
         }
     }
 
-    /// <summary>The model's input.</summary>
-    public string InputName { get; }
-
-    /// <summary>Reads a model's first output in place (valid only during the call).</summary>
-    public delegate T OutputReader<out T>(ReadOnlySpan<float> output, ReadOnlySpan<long> shape);
+    /// <summary>DirectML: a session for the next new size, made outside the budget's lock, so a card's models build side by side.</summary>
+    public void Prepare()
+    {
+        if (_budget is not null)
+        {
+            Interlocked.Exchange(ref _fresh, SessionFactory.Create(_path, _target, _threads))?.Dispose();
+        }
+        else
+        {
+            _ = _single?.Value;
+        }
+    }
 
     /// <summary>
     /// Runs the model on the first values of <paramref name="input"/> (shape <paramref name="shape"/>) and hands its first output
@@ -56,7 +79,7 @@ internal sealed class ShapeSessions : IDisposable
     {
         if (_single is not null)
         {
-            return RunOn(_single, input, shape, read);
+            return RunOn(_single.Value, input, shape, read);
         }
 
         // DirectML: the session of this size, held for the call (never freed while it runs).
@@ -74,7 +97,7 @@ internal sealed class ShapeSessions : IDisposable
         }
     }
 
-    private T RunOn<T>(InferenceSession session, float[] input, long[] shape, OutputReader<T> read)
+    private static T RunOn<T>(InferenceSession session, float[] input, long[] shape, OutputReader<T> read)
     {
         var length = 1L;
         foreach (var d in shape)
@@ -84,14 +107,18 @@ internal sealed class ShapeSessions : IDisposable
 
         using var value = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, input.AsMemory(0, (int)length), shape);
         using var options = new RunOptions(); // each call its own: one session runs many calls at once
-        using var results = session.Run(options, [InputName], [value], [session.OutputNames[0]]);
+        using var results = session.Run(options, [session.InputNames[0]], [value], [session.OutputNames[0]]);
         var output = results[0];
         return read(output.GetTensorDataAsSpan<float>(), output.GetTensorTypeAndShape().Shape);
     }
 
     public void Dispose()
     {
-        _single?.Dispose();
+        if (_single is { IsValueCreated: true })
+        {
+            _single.Value.Dispose();
+        }
+
         _budget?.Release(this);
         Interlocked.Exchange(ref _fresh, null)?.Dispose();
     }

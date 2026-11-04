@@ -177,6 +177,9 @@ public enum LoadState
 
     /// <summary>Red: the load stayed at 95 % or more for 30 s, or a reader reads less than half of its frame rate.</summary>
     Overloaded = 2,
+
+    /// <summary>The readers wait for the graphics card's test (<see cref="Readers.ReaderRules.Starting"/>).</summary>
+    Starting = 3,
 }
 
 /// <summary>
@@ -379,6 +382,9 @@ public sealed record EngineInfo
     /// <summary>The setting "Use GPU" (on by default).</summary>
     public bool UseGpu { get; init; } = true;
 
+    /// <summary>The plugin started and the graphics card's test runs: the readers wait for it.</summary>
+    public bool GpuStarting { get; init; }
+
     /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
 }
@@ -485,8 +491,11 @@ public sealed record AreaDetails
     /// <summary>The value's cut-out picture as JPEG (base64 in JSON); only in <see cref="ReadingReply"/>, null without one.</summary>
     public byte[]? Cutout { get; init; }
 
-    /// <summary>Lines lower than 10 px were left out (the page: <see cref="Readers.ReaderRules.TooSmall"/>).</summary>
+    /// <summary>Lines lower than 10 px were left out and nothing else was read: a held frame shows <see cref="Readers.ReaderRules.TooSmall"/>.</summary>
     public bool TooSmall { get; init; }
+
+    /// <summary>Lines lower than 10 px were left out, whatever else was read: live, the page's alert after <see cref="OcrLimits.SmallTextWait"/> without a value.</summary>
+    public bool SmallText { get; init; }
 }
 
 /// <summary>The live event <see cref="OcrMethods.ReadingTopic"/>.</summary>
@@ -528,6 +537,9 @@ public sealed record PreviewReply
 
     /// <summary>Paused, and the held frame is being read with the newest draft: a reading follows as the event <see cref="OcrMethods.PreviewTopic"/>.</summary>
     public bool Rereading { get; init; }
+
+    /// <summary>The held frame's readings so far (<see cref="PreviewEvent.HeldRead"/>): an event with a higher number already brought what this answer announces.</summary>
+    public int HeldRead { get; init; }
 }
 
 /// <summary>The answer of <see cref="OcrMethods.PausePreview"/>.</summary>
@@ -546,12 +558,21 @@ public sealed record PauseReply
 
     /// <summary>The further values of each area with the cut-outs.</summary>
     public IReadOnlyList<AreaDetails> Details { get; init; } = [];
+
+    /// <summary>The frame is held for a draft its reading does not fit: a reading follows as the event <see cref="OcrMethods.PreviewTopic"/>.</summary>
+    public bool Rereading { get; init; }
+
+    /// <summary>See <see cref="PreviewReply.HeldRead"/>.</summary>
+    public int HeldRead { get; init; }
 }
 
 /// <summary>The live event <see cref="OcrMethods.PreviewTopic"/>.</summary>
 public sealed record PreviewEvent
 {
     public string PreviewId { get; init; } = string.Empty;
+
+    /// <summary>The how many reading of the held frame this is; 0 for a live reading.</summary>
+    public int HeldRead { get; init; }
 
     public Reading Reading { get; init; } = new();
 

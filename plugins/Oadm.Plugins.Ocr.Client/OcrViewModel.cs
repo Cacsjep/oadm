@@ -123,14 +123,23 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     /// <summary>A change of Use GPU is on its way: turning it on can take seconds (the server tries the graphics card).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanSetGpu))]
+    [NotifyPropertyChangedFor(nameof(CanSetGpu), nameof(ShowGpuRing))]
     public partial bool IsSettingGpu { get; private set; }
 
+    /// <summary>The server tests the graphics card after the plugin's start; the readers wait for it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSetGpu), nameof(ShowGpuRing), nameof(GpuBlockedReason))]
+    public partial bool IsGpuStarting { get; private set; }
+
+    /// <summary>The ring next to Use GPU.</summary>
+    public bool ShowGpuRing => IsSettingGpu || IsGpuStarting;
+
     /// <summary>The setting is server-wide: the change right and all devices (the server refuses users with a device group).</summary>
-    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable && !IsSettingGpu;
+    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable && !IsSettingGpu && !IsGpuStarting;
 
     public string? GpuBlockedReason =>
-        !GpuAvailable ? OcrTexts.NoGpu
+        IsGpuStarting ? OcrTexts.TestingGpu
+        : !GpuAvailable ? OcrTexts.NoGpu
         : !_ctx.HasAllDevices ? DeviceGroupMessages.AllDevicesOnly
         : null;
 
@@ -149,10 +158,36 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(stats);
         Stats.Apply(stats);
+        if (stats.State == LoadState.Starting)
+        {
+            IsGpuStarting = true;
+        }
+        else if (IsGpuStarting)
+        {
+            // The test ended: what reads now, and the readers' first readings.
+            IsGpuStarting = false;
+            _ = AfterGpuStartAsync(_active?.Token ?? CancellationToken.None);
+        }
+
         _rates = stats.Readers.GroupBy(r => r.ReaderId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
         foreach (var row in _rows.Values)
         {
             row.SetRate(_rates.GetValueOrDefault(row.Id));
+        }
+    }
+
+    private async Task AfterGpuStartAsync(CancellationToken ct)
+    {
+        try
+        {
+            await LoadEngineAsync(ct).ConfigureAwait(true);
+            if (Editor is { } editor)
+            {
+                await editor.SendPreviewAsync(ct).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
         }
     }
 
@@ -299,6 +334,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             RunsOnShortText = OcrTexts.RunsOnShort(engine.RunsOn);
             GpuAvailable = engine.GpuAvailable;
             UseGpu = engine.UseGpu;
+            IsGpuStarting = engine.GpuStarting;
         }
         finally
         {
@@ -451,6 +487,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
                     var preview = OcrJson.Deserialize<PreviewEvent>(e.PayloadJson);
                     if (Editor is { PreviewId: { } id } editor && id == preview.PreviewId)
                     {
+                        editor.HeardHeldRead(preview.HeldRead);
                         _ = editor.RefreshPreviewAsync(_active?.Token ?? CancellationToken.None);
                     }
 

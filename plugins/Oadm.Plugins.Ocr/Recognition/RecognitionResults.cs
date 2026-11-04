@@ -69,6 +69,7 @@ public sealed record RecognitionResult(Resolution Resolution, IReadOnlyList<Area
     public RecognizedPicture ToPicture() => new(Resolution, Areas.Select(a => (IReadOnlyList<TextLine>)a.Lines.Select(l => l.Line).ToList()).ToList())
     {
         TooSmallPerArea = [.. Areas.Select(a => a.Hint is not null)],
+        SmallTextPerArea = [.. Areas.Select(a => a.TooSmall > 0)],
         TooManyTexts = TooManyTexts,
         ReusedAreas = ReusedAreas,
     };

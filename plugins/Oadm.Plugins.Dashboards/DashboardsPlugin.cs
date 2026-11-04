@@ -320,6 +320,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     /// Creates or changes a dashboard after checking its name, widgets, version and the limits. A new one belongs to the
     /// caller's devices; a change keeps the owner (another group's dashboard answers like a deleted one). Every device of a
     /// widget must be in the owner's devices (else NOT_FOUND, nothing stored); names are unique among the owner's dashboards.
+    /// A stored widget the caller could not see stays, unchanged and in its place (<see cref="WithHidden"/>).
     /// </summary>
     internal async Task<Dashboard> SaveAsync(ICallContext caller, SaveDashboardRequest request, CancellationToken ct)
     {
@@ -363,6 +364,18 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
 
             await OwnerScope.RequireDevicesAsync(Context, caller, owner, widgets.Select(DeviceOf).OfType<Guid>(), ct).ConfigureAwait(false);
 
+            // A group's page holds only what it may see: what it never held is not deleted by its save.
+            HashSet<Guid>? seen = null;
+            if (index >= 0 && !caller.HasAllDevices)
+            {
+                seen = (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id).ToHashSet();
+                widgets = WithHidden(dashboards[index], widgets, seen);
+                if (DashboardRules.WidgetsProblem(widgets) is { } limitProblem)
+                {
+                    throw new ArgumentException(limitProblem);
+                }
+            }
+
             if (index >= 0 && request.Version != 0 && request.Version != dashboards[index].Version)
             {
                 throw new ArgumentException(DashboardRules.ChangedMeanwhile(dashboards[index].Name));
@@ -393,7 +406,8 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             }
 
             await StoreAsync(next, owner).ConfigureAwait(false);
-            return dropped == 0 ? saved : saved with { Dropped = dropped };
+            var answer = seen is null ? saved : Within(saved, seen); // the widgets kept for others never reach this caller
+            return dropped == 0 ? answer : answer with { Dropped = dropped };
         }
         finally
         {
@@ -481,6 +495,38 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     {
         bool Shown(Widget w) => DeviceOf(w) is { } id ? devices.Contains(id) : !w.FixedDevice; // a fixed device nobody can name now: fail closed
         return dashboard.Widgets.All(Shown) ? dashboard : dashboard with { Widgets = [.. dashboard.Widgets.Where(Shown)] };
+    }
+
+    /// <summary>
+    /// The widgets a user who sees <paramref name="devices"/> saves, with every widget of <paramref name="stored"/> that user
+    /// could not see (<see cref="Within"/>) unchanged in its place. A saved widget never takes the place of a hidden one by its
+    /// id: what the user could not see is not theirs to change.
+    /// </summary>
+    private List<Widget> WithHidden(Dashboard stored, IEnumerable<Widget> saved, HashSet<Guid> devices)
+    {
+        var shown = Within(stored, devices).Widgets.Select(w => w.Id).ToHashSet(StringComparer.Ordinal);
+        var hidden = stored.Widgets.Where(w => !shown.Contains(w.Id)).Select(w => w.Id).ToHashSet(StringComparer.Ordinal);
+        var left = new Queue<Widget>(saved.Where(w => !hidden.Contains(w.Id)));
+        if (hidden.Count == 0)
+        {
+            return [.. left];
+        }
+
+        var merged = new List<Widget>(stored.Widgets.Count + left.Count);
+        foreach (var widget in stored.Widgets)
+        {
+            if (hidden.Contains(widget.Id))
+            {
+                merged.Add(widget);
+            }
+            else if (left.TryDequeue(out var next))
+            {
+                merged.Add(next);
+            }
+        }
+
+        merged.AddRange(left);
+        return merged;
     }
 
     /// <summary>What the event type says about a widget's event; <see cref="EventShape.None"/> for no event or an unknown one.</summary>

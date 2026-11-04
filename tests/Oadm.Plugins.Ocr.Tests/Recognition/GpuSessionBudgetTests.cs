@@ -97,7 +97,7 @@ public sealed class GpuSessionBudgetTests
         var kept = budget.Get(Detection, "a", 1 * Gb, () => new FakeSession("a"));
         var made = false;
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => budget.Get(Detection, "huge", 5 * Gb, () =>
+        Assert.Throws<SessionTooLargeException>(() => budget.Get(Detection, "huge", 5 * Gb, () =>
         {
             made = true;
             return new FakeSession("huge");
@@ -105,6 +105,31 @@ public sealed class GpuSessionBudgetTests
         Assert.False(made);
         Assert.False(kept.Disposed);
         Assert.Equal(1, budget.Count);
+    }
+
+    [Fact]
+    public void A_call_over_the_cap_never_waits_for_a_held_session()
+    {
+        using var budget = new GpuSessionBudget(4 * Gb, new FakeTimeProvider());
+        budget.Hold(Detection, "held", 1 * Gb, () => new FakeSession("held"));
+
+        Assert.Throws<SessionTooLargeException>(() => budget.Hold(Detection, "huge", 5 * Gb, () => new FakeSession("huge")));
+        Assert.Equal(1, budget.Count);
+    }
+
+    [Fact]
+    public void A_session_a_call_holds_is_never_freed_under_it()
+    {
+        var budget = new GpuSessionBudget(4 * Gb, new FakeTimeProvider());
+        var held = budget.Hold(Detection, "held", Gb, () => new FakeSession("held"));
+        var free = budget.Get(Detection, "free", Gb, () => new FakeSession("free"));
+
+        budget.Release(Detection);
+        Assert.False(held.Disposed);
+        Assert.True(free.Disposed);
+
+        budget.Dispose();
+        Assert.False(held.Disposed); // left to the process: the hung call still runs on it
     }
 
     [Theory]

@@ -58,10 +58,14 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo, IRecognizer
     /// <summary>How often the plugin handed the setting over.</summary>
     public int SetUseGpuCalls { get; private set; }
 
-    public void SetUseGpu(bool useGpu)
+    /// <summary>While set, handing "Use GPU" on over is a test of the card that ends with this task.</summary>
+    public Task? CardTest { get; set; }
+
+    public Task SetUseGpu(bool useGpu)
     {
         UsesGpu = useGpu;
         SetUseGpuCalls++;
+        return useGpu && CardTest is { } test ? test : Task.CompletedTask;
     }
 
     /// <summary>Per area: lines were too small (handed to the reading as <see cref="RecognizedPicture.TooSmallPerArea"/>).</summary>
@@ -108,6 +112,7 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo, IRecognizer
         return new RecognizedPicture(new Resolution(1920, 1080), [.. Enumerable.Range(0, count).Select(_ => (IReadOnlyList<TextLine>)lines)])
         {
             TooSmallPerArea = TooSmall,
+            SmallTextPerArea = TooSmall,
             TooManyTexts = TooManyTexts,
         };
     }

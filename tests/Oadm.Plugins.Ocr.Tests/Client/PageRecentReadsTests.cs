@@ -175,10 +175,11 @@ public sealed class PageRecentReadsTests
             var (vm, editor) = await ReadingAsync(ctx, () => Samples.Reads(3));
             using (vm)
             {
-                Assert.Equal("Lane: " + ReaderRules.TooSmall, editor.ReadingNote);
+                Assert.Null(editor.ReadingNote);
                 Assert.All(editor.Results, r => Assert.False(r.TooSmall));
 
-                // With the reading's own note.
+                // With the reading's own note, once the area had no value for the wait.
+                ((FakeTimeProvider)editor.PreviewTime).Advance(OcrLimits.SmallTextWait);
                 ctx.Answers[OcrMethods.GetPreview] = _ => Samples.ReplyJson(Samples.GateReading() with { Note = ReaderRules.TooManyTexts }, Samples.GateExtras, null, Samples.Reads(3));
                 await editor.RefreshPreviewAsync(CancellationToken.None);
                 Assert.Equal(ReaderRules.TooManyTexts + " Lane: " + ReaderRules.TooSmall, editor.ReadingNote);
@@ -508,9 +509,12 @@ public sealed class PageRecentReadsTests
             view.DataContext = vm;
             await vm.LoadAsync(CancellationToken.None);
             var editor = vm.Editor!;
-            editor.PreviewTime = new FakeTimeProvider();
+            var clock = new FakeTimeProvider();
+            editor.PreviewTime = clock;
             editor.StartPreview();
             await Eventually.TrueAsync(() => editor.PreviewId is not null, "the preview started");
+            await editor.RefreshPreviewAsync(CancellationToken.None);
+            clock.Advance(OcrLimits.SmallTextWait);
             await editor.RefreshPreviewAsync(CancellationToken.None);
             Headless.Pump();
 

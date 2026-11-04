@@ -81,6 +81,78 @@ public sealed class PagePauseTests
     }
 
     [Fact]
+    public async Task Pause_shows_the_ring_while_the_server_reads_the_held_frame_again()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            Server(ctx, Pixel());
+            ctx.Answers[OcrMethods.PausePreview] = _ => OcrJson.Serialize(new PauseReply { Paused = true, Picture = Pixel(), Reading = Samples.GateReading(), Details = Samples.GateExtras, Rereading = true });
+            using var vm = await LoadedAsync(ctx);
+            var editor = await ReadingAsync(vm);
+
+            await editor.TogglePauseCommand.ExecuteAsync(null);
+            Assert.True(editor.IsRereading);
+
+            await editor.RefreshPreviewAsync(CancellationToken.None);
+            Assert.False(editor.IsRereading);
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task An_event_that_overtakes_the_answer_leaves_no_ring_on()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            Server(ctx, Pixel());
+            using var vm = await LoadedAsync(ctx);
+            var editor = await ReadingAsync(vm);
+            await editor.TogglePauseCommand.ExecuteAsync(null);
+            Assert.False(editor.IsRereading);
+
+            // The server's answer was made before its reading ended, and reaches the page after that reading's event.
+            var overtaken = new TaskCompletionSource<string?>();
+            ctx.Answers[OcrMethods.StartPreview] = json => OcrJson.Serialize(new PreviewReply { PreviewId = OcrJson.Deserialize<PreviewRequest>(json).PreviewId, Paused = true, Rereading = true, HeldRead = 0 });
+            editor.Areas[0].FormatText = "@@@U ###### *";
+            await Eventually.TrueAsync(() => ctx.CallsOf(OcrMethods.StartPreview) >= 2, "the draft sent");
+            await Eventually.TrueAsync(() => editor.IsRereading, "the first answer");
+            vm.HandleEvent(new PluginEvent(OcrMethods.PreviewTopic, OcrJson.Serialize(new PreviewEvent { PreviewId = editor.PreviewId!, HeldRead = 1, Reading = Samples.GateReading() })));
+            await Eventually.TrueAsync(() => !editor.IsRereading, "the reading arrived");
+
+            await editor.SendPreviewAsync(CancellationToken.None); // the late answer
+
+            Assert.False(editor.IsRereading);
+
+            // A newer draft after that reading announces its own: the ring again.
+            ctx.Answers[OcrMethods.StartPreview] = json => OcrJson.Serialize(new PreviewReply { PreviewId = OcrJson.Deserialize<PreviewRequest>(json).PreviewId, Paused = true, Rereading = true, HeldRead = 1 });
+            await editor.SendPreviewAsync(CancellationToken.None);
+            Assert.True(editor.IsRereading);
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task A_draft_the_server_never_took_leaves_no_ring_on()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            Server(ctx, Pixel());
+            using var vm = await LoadedAsync(ctx);
+            var editor = await ReadingAsync(vm);
+            await editor.TogglePauseCommand.ExecuteAsync(null);
+
+            ctx.Answers[OcrMethods.StartPreview] = _ => throw new InvalidOperationException("The server has gone.");
+            editor.Areas[0].FormatText = "@@@U ###### *";
+
+            await Eventually.TrueAsync(() => editor.PreviewProblem is not null && !editor.IsRereading, "the ring went");
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Pause_shows_the_servers_frame_and_Resume_goes_back_live()
     {
         await Headless.Session.Dispatch(async () =>
@@ -144,7 +216,7 @@ public sealed class PagePauseTests
             Server(ctx, Pixel());
             using var vm = await LoadedAsync(ctx);
             var editor = await ReadingAsync(vm);
-            Assert.Equal("Lane: " + Oadm.Plugins.Ocr.Readers.ReaderRules.TooSmall, editor.ReadingNote); // live: no values
+            Assert.Null(editor.ReadingNote); // live: the alert waits, see PageNoteTests
 
             await editor.TogglePauseCommand.ExecuteAsync(null);
 

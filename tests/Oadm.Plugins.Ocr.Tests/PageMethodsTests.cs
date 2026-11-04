@@ -25,7 +25,7 @@ public sealed class PageMethodsTests
         var json = await plugin.InvokeAsync(OcrMethods.GetEngine, "{}", CancellationToken.None);
 
         Assert.Equal(
-            $$"""{"runsOn":"{{ReaderRules.CpuText(Environment.ProcessorCount)}}","gpuAvailable":false,"useGpu":true,"fpsChoices":[1,2,4,8,12,15]}""",
+            $$"""{"runsOn":"{{ReaderRules.CpuText(Environment.ProcessorCount)}}","gpuAvailable":false,"useGpu":true,"gpuStarting":false,"fpsChoices":[1,2,4,8,12,15]}""",
             json);
         Assert.Equal("CPU (8 cores)", ReaderRules.CpuText(8));
         Assert.Equal("CPU (1 core)", ReaderRules.CpuText(1));
@@ -78,7 +78,7 @@ public sealed class PageMethodsTests
 
         // A restart reads the setting and hands it over again.
         await ocr.Plugin.StopAsync(CancellationToken.None);
-        ocr.Recognizer.SetUseGpu(true);
+        await ocr.Recognizer.SetUseGpu(true);
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
         Assert.False(ocr.Recognizer.UsesGpu);
         Assert.False(OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.GetEngine)).UseGpu);
@@ -198,6 +198,7 @@ public sealed class PageMethodsTests
         var reply = await ocr.ReadOnceAsync(reader.Id);
 
         Assert.Equal([true, false], reply.Details.Select(d => d.TooSmall));
+        Assert.Equal([true, false], reply.Details.Select(d => d.SmallText));
         var live = OcrJson.Deserialize<ReadingEvent>(ocr.Context.PublishedEvents.Last(e => e.Topic == OcrMethods.ReadingTopic).PayloadJson);
         Assert.Equal([true, false], live.Details.Select(d => d.TooSmall));
 

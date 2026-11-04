@@ -53,6 +53,10 @@ public sealed class CardRoutingTests
             Failed = true;
             return first;
         }
+
+        public int TooLarge { get; private set; }
+
+        public void CallTooLarge() => TooLarge++;
     }
 
     [Fact]
@@ -86,6 +90,21 @@ public sealed class CardRoutingTests
         Assert.Equal((7, 8), (first, second));
         Assert.Equal(1, cardCalls);
         Assert.Equal(["device removed"], told); // one log line
+    }
+
+    [Fact]
+    public async Task A_call_over_the_cap_reads_on_the_cpu_alone_and_the_card_stays_in_use()
+    {
+        var card = new FakeCard();
+        var told = new List<string>();
+
+        var first = await CardRunner.Guarded(() => Task.FromException<int>(new SessionTooLargeException(5, 4)), () => Task.FromResult(7), card, told.Add, CancellationToken.None);
+        var second = await CardRunner.Guarded(() => Task.FromResult(1), () => Task.FromResult(8), card, told.Add, CancellationToken.None);
+
+        Assert.Equal((7, 1), (first, second));
+        Assert.False(card.Failed);
+        Assert.Empty(told);
+        Assert.Equal(1, card.TooLarge);
     }
 
     [Fact]

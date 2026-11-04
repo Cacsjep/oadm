@@ -97,25 +97,119 @@ public sealed class PageNoteTests
     }
 
     [Fact]
-    public async Task A_live_alert_stays_five_seconds_after_the_last_reading_that_had_it()
+    public async Task Small_text_beside_a_value_says_nothing_however_long_it_stays()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            using var page = await OpenAsync(Samples.Context());
+            var editor = page.Editor;
+            var read = Samples.GateReading();
+            var valueInLane = read with { Areas = [read.Areas[0], read.Areas[1], read.Areas[2] with { Text = "G3", MatchesFormat = true }] };
+
+            // A belt: small sender addresses all the time, the lane's value in every reading.
+            for (var second = 0; second < 30; second++)
+            {
+                await page.ReadingAsync(valueInLane, Samples.GateExtras);
+                page.Clock.Advance(TimeSpan.FromSeconds(1));
+                Assert.False(editor.HasReadingNote);
+            }
+
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Text_too_small_shows_after_ten_seconds_without_a_value_and_goes_with_the_next_value()
     {
         await Headless.Session.Dispatch(async () =>
         {
             using var page = await OpenAsync(Samples.Context());
             var editor = page.Editor;
             var small = "Lane: " + ReaderRules.TooSmall;
+            var read = Samples.GateReading();
+            var valueInLane = read with { Areas = [read.Areas[0], read.Areas[1], read.Areas[2] with { Text = "G3", MatchesFormat = true }] };
 
+            // The area's first reading starts the wait, and small text alone does not end it.
+            await page.ReadingAsync(read, Samples.GateExtras);
+            page.Clock.Advance(OcrLimits.SmallTextWait - TimeSpan.FromSeconds(1));
+            await page.ReadingAsync(read, Samples.GateExtras);
+            Assert.False(editor.HasReadingNote);
+
+            // The time ends without another reading.
+            page.Clock.Advance(TimeSpan.FromSeconds(1));
+            await Eventually.TrueAsync(() => editor.ReadingNote == small, "the alert came");
+
+            // A reading with a value ends it at once.
+            await page.ReadingAsync(valueInLane, Fine);
+            Assert.False(editor.HasReadingNote);
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Without_small_text_for_the_whole_wait_the_alert_goes()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            using var page = await OpenAsync(Samples.Context());
+            var editor = page.Editor;
             await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
-            Assert.Equal(small, editor.ReadingNote);
+            page.Clock.Advance(OcrLimits.SmallTextWait);
+            await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
+            Assert.True(editor.HasReadingNote);
+
+            page.Clock.Advance(OcrLimits.SmallTextWait);
+            await Eventually.TrueAsync(() => !editor.HasReadingNote, "the note went");
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task With_any_text_anything_readable_counts_as_a_value()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            using var page = await OpenAsync(Samples.Context());
+            var editor = page.Editor;
+            var read = Samples.GateReading();
+
+            // "Type" has no format: its raw lines count, while "Lane" has a format and "G3" does not match it.
+            var details = (IReadOnlyList<AreaDetails>)[new AreaDetails { Area = "Container number" }, new AreaDetails { Area = "Type", SmallText = true }, new AreaDetails { Area = "Lane" }];
+            var rawOnly = read with { Areas = [read.Areas[0], read.Areas[1] with { Text = string.Empty, TextRead = "22G1", MatchesFormat = false }, read.Areas[2]] };
+            await page.ReadingAsync(rawOnly, details);
+            page.Clock.Advance(OcrLimits.SmallTextWait);
+            await page.ReadingAsync(rawOnly, details);
+            Assert.False(editor.HasReadingNote);
+
+            var nothing = read with { Areas = [read.Areas[0], read.Areas[1] with { Text = string.Empty, TextRead = string.Empty, MatchesFormat = false }, read.Areas[2]] };
+            await page.ReadingAsync(nothing, details);
+            page.Clock.Advance(OcrLimits.SmallTextWait);
+            await page.ReadingAsync(nothing, details);
+            Assert.Equal("Type: " + ReaderRules.TooSmall, editor.ReadingNote);
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task More_than_30_texts_stays_five_seconds_after_the_last_reading_that_had_it()
+    {
+        await Headless.Session.Dispatch(async () =>
+        {
+            using var page = await OpenAsync(Samples.Context());
+            var editor = page.Editor;
+            var many = Samples.GateReading() with { Note = ReaderRules.TooManyTexts };
+
+            await page.ReadingAsync(many, Fine);
+            Assert.Equal(ReaderRules.TooManyTexts, editor.ReadingNote);
 
             // Readings without it: it stays. One with it starts the time again.
             page.Clock.Advance(TimeSpan.FromSeconds(4));
             await page.ReadingAsync(Samples.GateReading(), Fine);
-            Assert.Equal(small, editor.ReadingNote);
-            await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
+            Assert.Equal(ReaderRules.TooManyTexts, editor.ReadingNote);
+            await page.ReadingAsync(many, Fine);
             page.Clock.Advance(TimeSpan.FromSeconds(4.9));
             await page.ReadingAsync(Samples.GateReading(), Fine);
-            Assert.Equal(small, editor.ReadingNote);
+            Assert.Equal(ReaderRules.TooManyTexts, editor.ReadingNote);
 
             // The time ends without another reading.
             page.Clock.Advance(TimeSpan.FromSeconds(0.1));
@@ -133,24 +227,32 @@ public sealed class PageNoteTests
             var editor = page.Editor;
             var changes = 0;
             editor.PropertyChanged += (_, e) => changes += e.PropertyName == nameof(ReaderEditorViewModel.ReadingNote) ? 1 : 0;
+            var many = Samples.GateReading() with { Note = ReaderRules.TooManyTexts };
 
-            await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
+            await page.ReadingAsync(many, Samples.GateExtras);
             Assert.Equal(1, changes);
-            foreach (var details in new[] { Fine, Samples.GateExtras, Fine, Samples.GateExtras })
+            foreach (var reading in new[] { Samples.GateReading(), many, Samples.GateReading(), many })
             {
-                await page.ReadingAsync(Samples.GateReading(), details); // an alert that comes and goes per frame does not flicker
+                await page.ReadingAsync(reading, Samples.GateExtras); // an alert that comes and goes per frame does not flicker
             }
 
             Assert.Equal(1, changes);
 
-            await page.ReadingAsync(Samples.GateReading() with { Note = ReaderRules.TooManyTexts }, Fine);
+            // The steady alert stays, the other joins it when its wait ends.
+            for (var i = 0; i < 3; i++)
+            {
+                page.Clock.Advance(TimeSpan.FromSeconds(3));
+                await page.ReadingAsync(many, Samples.GateExtras);
+            }
+
+            Assert.Equal(1, changes);
+            page.Clock.Advance(TimeSpan.FromSeconds(1));
+            await Eventually.TrueAsync(() => editor.ReadingNote == ReaderRules.TooManyTexts + " Lane: " + ReaderRules.TooSmall, "the second alert came");
             Assert.Equal(2, changes);
-            Assert.Equal(ReaderRules.TooManyTexts + " Lane: " + ReaderRules.TooSmall, editor.ReadingNote);
 
             // Each alert goes by its own time.
-            page.Clock.Advance(OcrLimits.NoteHold / 2);
             await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
-            page.Clock.Advance(OcrLimits.NoteHold / 2);
+            page.Clock.Advance(TimeSpan.FromSeconds(4));
             await Eventually.TrueAsync(() => editor.ReadingNote == "Lane: " + ReaderRules.TooSmall, "the older alert went");
             return true;
         }, CancellationToken.None);
@@ -192,7 +294,7 @@ public sealed class PageNoteTests
         await Headless.Session.Dispatch(async () =>
         {
             using var page = await OpenAsync(Samples.Context());
-            await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
+            await page.ReadingAsync(Samples.GateReading() with { Note = ReaderRules.TooManyTexts }, Samples.GateExtras);
             Assert.True(page.Editor.HasReadingNote);
 
             page.Editor.StopPreview();
@@ -271,6 +373,8 @@ public sealed class PageNoteTests
         {
             using var page = await OpenAsync(Samples.Context());
             page.Editor.MovingObjects = true;
+            await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
+            page.Clock.Advance(OcrLimits.SmallTextWait);
             await page.ReadingAsync(Samples.GateReading(), Samples.GateExtras);
             Headless.Capture(page.Window, $"ocr-note-{suffix}.png");
 

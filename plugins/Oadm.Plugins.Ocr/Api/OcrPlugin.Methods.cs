@@ -172,8 +172,11 @@ public sealed partial class OcrPlugin
                 await ctx.Settings.SetAsync(UseGpuSetting, useGpu ? "true" : "false", ct).ConfigureAwait(false);
                 _useGpu = useGpu;
 
-                // Turning it on may try the graphics card for the first time (seconds).
-                await Task.Run(() => runtime.Engine?.SetUseGpu(useGpu), CancellationToken.None).ConfigureAwait(false);
+                // Turning it on may try the graphics card for the first time (seconds): the answer tells how that went.
+                if (runtime.Engine?.SetUseGpu(useGpu) is { } applied)
+                {
+                    await applied.ConfigureAwait(false);
+                }
 
                 // The readers go on where the recognition reads now (their limits follow the cores, not the card).
                 await runtime.SyncAsync().ConfigureAwait(false);
@@ -208,6 +211,7 @@ public sealed partial class OcrPlugin
             // With the setting off the card is not tried: the box stays usable, turning it on finds out.
             GpuAvailable = engine is not null && (engine.GpuAvailable || !_useGpu),
             UseGpu = _useGpu,
+            GpuStarting = runtime.Starting,
             FpsChoices = OcrLimits.FpsChoices,
         };
     }

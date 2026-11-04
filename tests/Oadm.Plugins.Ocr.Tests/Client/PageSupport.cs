@@ -393,7 +393,7 @@ internal static class Samples
     [
         new AreaDetails { Area = "Container number", AllMatches = "MSKU 123456 7", MatchBox = new(0.485, 0.29, 0.25, 0.08) },
         new AreaDetails { Area = "Type" },
-        new AreaDetails { Area = "Lane", TooSmall = true },
+        new AreaDetails { Area = "Lane", TooSmall = true, SmallText = true },
     ];
 
     /// <summary>The details with the server's cut-out of the first area's match.</summary>

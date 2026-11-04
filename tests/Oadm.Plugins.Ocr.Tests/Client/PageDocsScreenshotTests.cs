@@ -97,7 +97,11 @@ public sealed class PageDocsScreenshotTests
                 await vm.LoadAsync(CancellationToken.None);
                 var editor = vm.Editor!;
                 editor.MovingObjects = true;
+                var clock = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+                editor.PreviewTime = clock;
                 editor.StartPreview();
+                await editor.RefreshPreviewAsync(CancellationToken.None);
+                clock.Advance(OcrLimits.SmallTextWait);
                 await editor.RefreshPreviewAsync(CancellationToken.None);
                 Headless.Pump();
                 Assert.True(editor.HasReadingNote);

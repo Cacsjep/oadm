@@ -377,6 +377,29 @@ public sealed class AddOnInstallerTests
     }
 
     [Fact]
+    public async Task AnInstallPastItsUploadRunsToItsEndWhenTheCallerGoes()
+    {
+        using var rig = await StartedAsync();
+        using var cancel = new CancellationTokenSource();
+
+        // The caller goes in the moment the last byte is in.
+        async IAsyncEnumerable<ReadOnlyMemory<byte>> ThenGone()
+        {
+            await foreach (var chunk in AddOnRig.ChunksOf(rig.GenuineZip))
+            {
+                yield return chunk;
+            }
+
+            await cancel.CancelAsync();
+        }
+
+        var status = await rig.Installer.InstallFileAsync(rig.UploadOf(rig.GenuineZip) with { Data = ThenGone() }, new ProgressLog(), cancel.Token);
+
+        Assert.Equal(AddOnState.Installed, status.State);
+        Assert.True(rig.Registry.HasPackage(Id));
+    }
+
+    [Fact]
     public async Task AFolderTheLoaderRefusesBringsThePreviousFolderBack()
     {
         using var rig = await UpdatedAsync();
@@ -576,6 +599,32 @@ public sealed class AddOnInstallerTests
         Assert.Equal(AddOnState.NotInstalled, removed.State);
         Assert.False(Directory.Exists(rig.Folder));
         Assert.Empty(rig.List.Items);
+    }
+
+    [Fact]
+    public async Task ARemovedFailedAddOnWhoseFolderStaysIsNeverTakenUpAgain()
+    {
+        var rig = new AddOnRig { Limits = o => o with { DeleteFolder = _ => false } };
+        using (rig)
+        {
+            rig.Restart();
+            rig.PlaceFolder(version: "4.10.0");
+            rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+            await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+            var removed = await rig.Installer.RemoveAsync(Id, CancellationToken.None);
+
+            Assert.Equal(AddOnState.NotInstalled, removed.State);
+            Assert.True(Directory.Exists(rig.Folder));
+            Assert.Equal([new InstalledAddOn(Id, "4.10.0", Removed: true)], rig.List.Items);
+
+            // The next start tries the folder again and loads nothing.
+            rig.Restart();
+            await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+            Assert.False(rig.Registry.HasPackage(Id));
+            Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        }
     }
 
     [Fact]

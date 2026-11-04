@@ -16,8 +16,8 @@ public sealed record OcrEngineOptions
     /// <summary>Start on the graphics card; off never touches it (no DirectML) until <see cref="OnnxTextRecognizer.SetUseGpu"/> turns it on.</summary>
     public bool UseGraphicsCard { get; init; } = true;
 
-    /// <summary>Finds and tries the graphics card (tests count the calls: they never touch a real card).</summary>
-    internal Func<string, ILogger, ExecutionTarget?> FindGraphicsCard { get; init; } = SessionFactory.TryGraphicsCard;
+    /// <summary>Finds the graphics card's provider (tests count the calls: they never touch a real card).</summary>
+    internal Func<string, ILogger, ExecutionTarget?> FindGraphicsCard { get; init; } = SessionFactory.FindGraphicsCard;
 
     /// <summary>The clock of the load measurement (tests pass a fake one).</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
@@ -83,6 +83,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The most accurate sets on the CPU at once (the server models are large).</summary>
     private const int MaxAccurateCpuSets = 2;
 
+    /// <summary>The graphics card's test takes at most this long; then the readers start on the CPU.</summary>
+    internal static readonly TimeSpan CardStartLimit = TimeSpan.FromMinutes(1);
+
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _pictures;
     private readonly CpuWorkers<ModelSet> _cpu;
@@ -90,6 +93,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly CharacterList _accurateCharacters;
     private readonly OcrEngineOptions _options;
     private readonly Lock _cardStart = new();
+    private readonly CancellationTokenSource _cardStop = new();
+    private Task? _cardTry;
+    private bool _cardGaveUp;
     private volatile CardModels? _card;
     private CardRoute _route;
     private GpuSessionBudget? _gpuBudget;
@@ -101,7 +107,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly BusyMeter _cardReaderBusy;
     private readonly CombinedBusy _busy;
     private volatile bool _useGpu;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public OnnxTextRecognizer(OcrEngineOptions options, ILogger? logger = null)
     {
@@ -123,25 +129,51 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, OcrLimits.ThreadsPerWorker),
             _cpuBusy);
 
-        _useGpu = options.UseGraphicsCard;
-        if (_useGpu)
-        {
-            StartGraphicsCard();
-        }
-
         _cpuDevice = new RecognitionDevice(false, CpuName(options.ProcessorCount));
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
+        if (options.UseGraphicsCard)
+        {
+            _ = SetUseGpu(true);
+        }
     }
 
-    /// <summary>Loads the provider and the text finder on the card; a card that fails leaves the CPU. Only while the setting is on.</summary>
-    private void StartGraphicsCard()
+    /// <summary>
+    /// One try of the graphics card on a pool thread, at most <see cref="CardStartLimit"/>. A try that takes longer gives up: the
+    /// readers go on without the card, no later call tries again, and whatever it still makes is freed when it ends.
+    /// </summary>
+    private async Task TryCardAsync()
+    {
+        var start = Task.Run(() => StartGraphicsCardAsync(_cardStop.Token), CancellationToken.None);
+        try
+        {
+            await start.WaitAsync(CardStartLimit, _options.Time).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            lock (_cardStart)
+            {
+                _cardGaveUp = true;
+            }
+
+            await _cardStop.CancelAsync().ConfigureAwait(false);
+            RecognitionLog.GraphicsCardFailed(_logger, "its test did not end within 1 minute");
+        }
+    }
+
+    /// <summary>
+    /// Finds the provider and tries the models on the card (<see cref="CardModels.ProbeAsync"/>); a card that fails leaves the
+    /// CPU. Only while the setting is on. The card counts only once it is complete: a stop or the limit in between frees it.
+    /// </summary>
+    private async Task StartGraphicsCardAsync(CancellationToken ct)
     {
         var folder = _options.ModelDirectory;
+        var watch = Stopwatch.StartNew();
         if (_options.FindGraphicsCard(Path.Combine(folder, ModelFiles.DetectionMobile), _logger) is not { } target)
         {
             return;
         }
 
+        var find = watch.Elapsed;
         GpuSessionBudget? budget = null;
         CardModels? card = null;
         try
@@ -150,20 +182,46 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 ? new GpuSessionBudget(_options.GpuMaxBytes ?? GpuSessionBudget.CapFor(SessionFactory.GraphicsCardMemory(target)), _options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max / (1024 * 1024)))
                 : null;
             var fast = _options.CpuModels;
-            card = new CardModels(Path.Combine(folder, fast.Detection), Path.Combine(folder, _options.AccurateModels.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), target, _cardBusy, _cardReaderBusy, budget);
-            var route = card.Probe(Path.Combine(folder, fast.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), (model, reason) => RecognitionLog.CardModelFailed(_logger, model, reason));
+            card = new CardModels(Path.Combine(folder, fast.Detection), Path.Combine(folder, _options.AccurateModels.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), target, _cardBusy, _cardReaderBusy, budget, _options.Time, () => RecognitionLog.GraphicsCardCallTooLarge(_logger));
+            CardStartTimes times = default;
+            var route = await card.ProbeAsync(Path.Combine(folder, fast.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), (model, reason) => RecognitionLog.CardModelFailed(_logger, model, reason), t => times = t, ct).ConfigureAwait(false);
+            RecognitionLog.CardStarted(_logger, (long)watch.Elapsed.TotalMilliseconds, (long)find.TotalMilliseconds, (long)times.Build.TotalMilliseconds, (long)times.Calls.TotalMilliseconds);
             RecognitionLog.CardRoute(_logger, route.Finder, route.Reader, route.Angle);
-            if (!route.Any)
+            var device = new RecognitionDevice(true, CardName(_options.ProcessorCount, SessionFactory.GraphicsCardName(target)));
+            bool used;
+            lock (_cardStart)
             {
+                used = route.Any && !ct.IsCancellationRequested && !_disposed;
+                if (used)
+                {
+                    _route = route;
+                    _gpuDevice = device;
+                    _gpuBudget = budget;
+                    _card = card; // last: readers of the card see it complete
+                }
+            }
+
+            if (!used)
+            {
+                if (!route.Any)
+                {
+                    RecognitionLog.GraphicsCardFailed(_logger, "no model passed its test");
+                }
+
                 card.Dispose();
                 budget?.Dispose();
                 return;
             }
 
-            _route = route;
-            _gpuDevice = new RecognitionDevice(true, CardName(_options.ProcessorCount, SessionFactory.GraphicsCardName(target)));
-            _gpuBudget = budget;
-            _card = card; // last: readers of the card see it complete
+            if (_useGpu)
+            {
+                RecognitionLog.RunsOn(_logger, RunsOn.Name);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            card?.Dispose();
+            budget?.Dispose();
         }
 #pragma warning disable CA1031 // A graphics card that fails with the real models falls back to the CPU too.
         catch (Exception ex)
@@ -193,27 +251,46 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     public bool OnGpu => ActiveCard is not null;
 
     /// <summary>
-    /// "Use GPU" (docs/spec/ocr.md "GPU"): off sends the next readings to the CPU, on back to the graphics card
-    /// when there is one, trying it first if that did not happen yet (seconds: not on the UI's call path). Readings in work
+    /// "Use GPU" (docs/spec/ocr.md "GPU"): takes effect at once; off sends the next readings to the CPU, on back to the graphics
+    /// card when there is one. On with no card tried yet starts one try in the background: the task ends with it (at most
+    /// <see cref="CardStartLimit"/>), never faults on a card's failure, and readings use the card from then on. Readings in work
     /// finish where they started; the graphics card keeps its models until disposed.
     /// </summary>
-    public void SetUseGpu(bool useGpu)
+    public Task SetUseGpu(bool useGpu)
     {
+        var changed = _useGpu != useGpu;
+        _useGpu = useGpu;
+        if (changed && (!useGpu || _card is not null))
+        {
+            RecognitionLog.RunsOn(_logger, RunsOn.Name);
+        }
+
+        if (!useGpu)
+        {
+            return Task.CompletedTask;
+        }
+
         lock (_cardStart)
         {
-            if (useGpu && _card is null && !_disposed)
+            if (_card is not null || _disposed || _cardGaveUp)
             {
-                StartGraphicsCard();
+                return Task.CompletedTask;
+            }
+
+            return _cardTry is { IsCompleted: false } running ? running : _cardTry = TryCardAsync();
+        }
+    }
+
+    /// <summary>The try of the graphics card now, ended when none runs (tests, measurements).</summary>
+    internal Task CardTry
+    {
+        get
+        {
+            lock (_cardStart)
+            {
+                return _cardTry ?? Task.CompletedTask;
             }
         }
-
-        if (_useGpu == useGpu)
-        {
-            return;
-        }
-
-        _useGpu = useGpu;
-        RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
 
     /// <summary>
@@ -440,7 +517,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             await ReadWholeAreasAsync(picture, areas, patterns, perArea, set, ct).ConfigureAwait(false);
             StageClock.Add(Stage.WallWhole, wholeStart);
 
-            // The card leaves the lines of a cancelled reading blank: such a result is no reading, nothing may keep or fire it.
+            // A cancelled reading is no reading: nothing may keep or fire it.
             ct.ThrowIfCancellationRequested();
             for (var a = 0; a < areas.Count; a++)
             {
@@ -809,8 +886,8 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     /// <summary>
     /// Waits for the readings in work (at most <see cref="DisposeWait"/>), then frees the models; readings asked for later end
-    /// with <see cref="ObjectDisposedException"/>. The graphics card's text finder still in use after the wait is left to the process
-    /// rather than freed under a running call.
+    /// with <see cref="ObjectDisposedException"/>. The graphics card's models still in use after the wait are left to the process
+    /// rather than freed under a running call. A card still in its test is not waited for: it frees itself when the test ends.
     /// </summary>
     public void Dispose()
     {
@@ -819,7 +896,12 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             return;
         }
 
-        _disposed = true;
+        lock (_cardStart)
+        {
+            _disposed = true; // a card still in its test is freed when the test ends
+        }
+
+        _cardStop.Cancel();
         var taken = 0;
         while (taken < Workers && _pictures.Wait(DisposeWait))
         {
@@ -833,6 +915,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             {
                 _card?.Dispose();
                 _gpuBudget?.Dispose();
+                if (_card is { LeftHanging: true })
+                {
+                    RecognitionLog.StillReading(_logger);
+                }
             }
         }
         else

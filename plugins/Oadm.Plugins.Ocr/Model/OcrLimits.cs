@@ -69,6 +69,9 @@ public static class OcrLimits
     /// <summary>The page keeps a live reading's note this long after the last reading that had it, so it can be read on a belt.</summary>
     public static readonly TimeSpan NoteHold = TimeSpan.FromSeconds(5);
 
+    /// <summary>The page shows "Text too small" only for an area without a value for this long that saw small text within it.</summary>
+    public static readonly TimeSpan SmallTextWait = TimeSpan.FromSeconds(10);
+
     /// <summary>The longest pause before a dropped stream is opened again (the pause grows up to it).</summary>
     public static readonly TimeSpan MaxReopenPause = TimeSpan.FromMinutes(1);
 

@@ -212,7 +212,8 @@ internal sealed partial class ReaderRuntime
             preview.Problem = null;
             RereadHeld(preview);
             var reply = ReplyOf(last, withCutouts: true);
-            return new PauseReply { Paused = true, Picture = last.Jpeg.ToArray(), Reading = reply.Reading, Details = reply.Details };
+            var state = ReplyOf(preview);
+            return new PauseReply { Paused = true, Picture = last.Jpeg.ToArray(), Reading = reply.Reading, Details = reply.Details, Rereading = state.Rereading, HeldRead = state.HeldRead };
         }
         finally
         {
@@ -250,13 +251,20 @@ internal sealed partial class ReaderRuntime
     });
 
     /// <summary>What the page hears of its preview now.</summary>
-    private static PreviewReply ReplyOf(Preview preview) => new()
+    private PreviewReply ReplyOf(Preview preview)
     {
-        PreviewId = preview.Id,
-        Problem = preview.Problem ?? preview.StreamProblem,
-        Paused = preview.Held is not null,
-        Rereading = preview.Held is { } held && !SameAreas(held.ReadFor, preview.Reader),
-    };
+        lock (_previews)
+        {
+            return new PreviewReply
+            {
+                PreviewId = preview.Id,
+                Problem = preview.Problem ?? preview.StreamProblem,
+                Paused = preview.Held is not null,
+                Rereading = preview.Held is { } held && !SameAreas(held.ReadFor, preview.Reader),
+                HeldRead = preview.Held?.Reads ?? 0,
+            };
+        }
+    }
 
     /// <summary>
     /// The draft changed while a frame is held: one worker reads that frame with the newest draft through the same recognition
@@ -306,6 +314,11 @@ internal sealed partial class ReaderRuntime
 
                 if (SameAreas(reader, preview.Reader))
                 {
+                    lock (_previews)
+                    {
+                        held.Reads++;
+                    }
+
                     KeepPreview(preview, read, held);
                 }
             }
@@ -396,6 +409,7 @@ internal sealed partial class ReaderRuntime
         var json = OcrJson.Serialize(new PreviewEvent
         {
             PreviewId = preview.Id,
+            HeldRead = held?.Reads ?? 0,
             Reading = reading.Reading,
             Details = [.. reading.Details.Select(d => d with { Cutout = null })],
         });
@@ -487,6 +501,7 @@ internal sealed partial class ReaderRuntime
         }
 
         var (problem, camera) = await CheckAsync(reader, CancellationToken.None).ConfigureAwait(false);
+        problem ??= Starting ? ReaderRules.Starting : null; // the sync after the graphics card's test starts it
         if (problem is not null)
         {
             await StopOwnStreamAsync(preview).ConfigureAwait(false);
@@ -631,6 +646,9 @@ internal sealed partial class ReaderRuntime
         public Task Worker { get; set; } = Task.CompletedTask;
 
         public bool Working { get; set; }
+
+        /// <summary>The readings of this frame that reached the page: each event carries its number.</summary>
+        public int Reads { get; set; }
 
         /// <summary>The draft of the frame's latest reading; null: none fits (it is read once more).</summary>
         public Reader? ReadFor { get; set; }

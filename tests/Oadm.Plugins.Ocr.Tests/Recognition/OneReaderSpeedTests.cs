@@ -47,6 +47,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     public async Task One_picture_per_stage()
     {
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         foreach (var (name, width, height) in new[] { ("1080p", 1920, 1080), ("720p", 1280, 720) })
         {
             var frames = ParcelScene.Frames(width, height, 32);
@@ -116,6 +117,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     {
         var frames = ParcelScene.Frames(width, height, 64);
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         await using var ocr = new OcrHarness(recognizer: new Borrowed(recognizer), matcher: new TextMatcher(), processorCount: Environment.ProcessorCount, clock: TimeProvider.System, processorTime: () => Environment.CpuUsage.TotalTime);
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
         var box = search ? new RelativeBox(0.05, 0.05, 0.9, 0.9) : Belt;
@@ -181,6 +183,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     public async Task Cpu_time_per_stage()
     {
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         foreach (var (name, width, height) in new[] { ("1080p", 1920, 1080), ("720p", 1280, 720) })
         {
             var frames = ParcelScene.Frames(width, height, 16);
@@ -303,6 +306,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     public async Task Moving_and_blurred_labels_read_their_values()
     {
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         var characters = 0;
         var variants = new (string Name, int Width, int Height, double Scale, float Blur, int Quality)[]
         {
@@ -354,6 +358,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     public async Task Dash_formats_on_moving_labels()
     {
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         const int Count = 110;
         var variants = new (string Name, int Width, int Height, double Scale, float Blur, int Quality)[]
         {
@@ -439,6 +444,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     public async Task Twenty_readers_at_once()
     {
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         var box = await File.ReadAllBytesAsync(Path.Combine(AccuracySet.Folder, "box-1920x1080.jpg"));
         Area[] small = [new() { Name = "Brand", Box = new RelativeBox(0.28, 0.54, 0.16, 0.10) }];
         var frames = ParcelScene.Frames(1920, 1080, 8);
@@ -475,6 +481,7 @@ public sealed class OneReaderSpeedTests(ITestOutputHelper output)
     {
         Say(string.Create(CultureInfo.InvariantCulture, $"Before the models: {Memory()}"));
         using var recognizer = Cpu();
+        await recognizer.CardTry;
         var frames = ParcelScene.Frames(1920, 1080, 8);
         var search = new Area[] { new() { Name = "Search", Box = new RelativeBox(0.05, 0.05, 0.9, 0.9), Expected = ExpectedText.WithFormat(Tracking) } };
         await recognizer.ReadAsync(frames[0], Areas(Tracking), CancellationToken.None);

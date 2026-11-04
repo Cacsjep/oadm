@@ -187,7 +187,8 @@ The Applications (ACAP) dialog and task take several `.eap` files of the same ap
 
 Vendors ship an application as a ZIP with one `.eap` per architecture. Both dialogs (Applications (ACAP) and Install
 applications) take it next to loose files, also mixed in one pick, through one shared class,
-`EapPackageFiles` (`plugins/Oadm.Plugins.Acap/Shared`):
+`EapPackageFiles` (`plugins/Oadm.Plugins.Acap/Shared`). Temp folders a client that ended hard left behind go at the client's
+next start, older than a day, best effort, once, off the UI thread (`SweepOnce`, from the Applications dialog's load):
 
 - **Client only.** The picker offers `*.eap` and `*.zip` together, plus All files. The client unpacks the `.eap` files of
   each ZIP, also from subfolders, into a private temp folder of the dialog; other files and the copies macOS adds

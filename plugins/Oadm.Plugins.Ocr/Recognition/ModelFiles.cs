@@ -37,8 +37,8 @@ internal enum ExecutionTarget
 
 /// <summary>
 /// Creates ONNX Runtime sessions (docs/spec/ocr.md "GPU"): on the CPU with <see cref="Model.OcrLimits.ThreadsPerWorker"/>
-/// threads each; on a graphics card with DirectML (Windows) or CUDA (Linux x64). Picks the graphics card when its provider
-/// loads and a test reading succeeds, else the CPU with one log line.
+/// threads each; on a graphics card with DirectML (Windows) or CUDA (Linux x64). The graphics card's test is
+/// <see cref="CardModels.ProbeAsync"/>, per model; without a provider the CPU with one log line.
 /// </summary>
 internal static class SessionFactory
 {
@@ -105,34 +105,18 @@ internal static class SessionFactory
     }
 
     /// <summary>
-    /// Tries the graphics card: a session of <paramref name="testModel"/> and one reading of a small blank picture. Null when it
-    /// fails (logged once).
+    /// The provider to try, or null with one log line. No session here: the test of each model builds its own, so a card that
+    /// cannot run fails there, and the start spends no time on a session nothing uses.
     /// </summary>
-    public static ExecutionTarget? TryGraphicsCard(string testModel, ILogger logger)
+    public static ExecutionTarget? FindGraphicsCard(string testModel, ILogger logger)
     {
         var target = GraphicsCardTarget();
         if (target is null)
         {
             RecognitionLog.NoGraphicsCardProvider(logger);
-            return null;
         }
 
-        try
-        {
-            using var session = Create(testModel, target.Value, 1);
-            var input = session.InputNames[0];
-            var tensor = new DenseTensor<float>(new float[3 * 64 * 64], [1, 3, 64, 64]);
-            using var results = session.Run([NamedOnnxValue.CreateFromTensor(input, tensor)]);
-            _ = results[0].AsTensor<float>().Length;
-            return target;
-        }
-#pragma warning disable CA1031 // Any failure of the provider (missing driver, CUDA or cuDNN) means the CPU.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            RecognitionLog.GraphicsCardFailed(logger, ex.Message);
-            return null;
-        }
+        return target;
     }
 
     /// <summary>The card's memory in bytes as DirectML reports it ("15997 MB"), or null when it does not tell.</summary>
