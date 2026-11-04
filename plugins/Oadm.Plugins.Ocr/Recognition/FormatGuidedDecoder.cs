@@ -25,7 +25,7 @@ internal readonly record struct FormatToken(FormatTokenKind Kind, char Literal, 
 /// character as written, like <see cref="TextFormat"/> without the leading and trailing spaces and dashes; a space of the format
 /// may be missing in the text, a dash may not. Gaps the reader saw between the
 /// characters (the drums of a meter) do not break a match: the match is written in the format's own layout. A format whose
-/// first 11 letters and digits are <c>@@@U</c> and seven <c>#</c> is a container number with an ISO 6346 check digit
+/// first 11 letters and digits are <c>@@@</c>, U, J or Z and seven <c>#</c> is a container number with an ISO 6346 check digit
 /// (<see cref="ContainerCheck"/>, the same rule as the matcher's), also with more after it ("@@@U ###### # 22G1").
 /// </summary>
 internal sealed class FormatPattern
@@ -43,7 +43,7 @@ internal sealed class FormatPattern
     /// <summary>The positions (spaces dropped).</summary>
     public IReadOnlyList<FormatToken> Tokens { get; }
 
-    /// <summary>Starts with a container number: the owner code, U, six digits and the ISO 6346 check digit.</summary>
+    /// <summary>Starts with a container number: the owner code, U, J or Z, six digits and the ISO 6346 check digit.</summary>
     public bool IsContainerNumber { get; }
 
     /// <summary>The format's positions, or null for a format without any.</summary>

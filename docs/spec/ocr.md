@@ -194,8 +194,10 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   counter `#####`. A match never starts or ends inside a run of letters and digits; a format that starts or ends with a
   sign (`(###)`) may touch them.
 - **Container numbers** (`Matching/ContainerCheck`, the one rule of the matcher and the format-guided decoding): a
-  format whose first 11 letters and digits are `@@@U` and seven `#` checks the 11th as the ISO 6346 check digit of the
-  10 before it; what follows (`@@@U ###### # 22G1` with the size and type code) is not checked; `@@@U ######` has no
+  format whose first 11 letters and digits are `@@@`, the equipment category and seven `#` checks the 11th as the ISO
+  6346 check digit of the 10 before it. The category is U (freight container), J (detachable equipment) or Z (trailer or
+  chassis), in either case like every letter of a format (decision 2026-11-04: `@@@Z` and `@@@u` checked nothing until
+  then); `@@@@ ###### #` stays unchecked; what follows (`@@@U ###### # 22G1` with the size and type code) is not checked; `@@@U ######` has no
   check digit and checks nothing. A wrong check digit is no match: no character is ever changed to make it fit
   (decision 2026-11-03; a misread check digit never becomes a sure value).
 - **Format-guided reading never makes a dash up or leaves one out**: the search may pass a dash of the format by, but such a match is

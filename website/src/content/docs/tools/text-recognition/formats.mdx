@@ -57,12 +57,14 @@ The value is always written the way the format is: with `@@@U ###### #` the text
 	label="The format @@@U ###### # under the container number MSKU 123456 5, with the owner, U, the serial number and the check digit"
 />
 
-A format that starts with `@@@U ###### #` turns on the check digit. A number whose check digit does not fit never matches.
+A format that starts with `@@@U ###### #` turns on the check digit. A number whose check digit does not fit never matches. Chassis and trailer numbers (`@@@Z ###### #`) and container equipment (`@@@J ###### #`) are checked the same way.
 
 | Format | Check digit |
 |---|---|
 | `@@@U ###### #` | Checked |
 | `@@@U ###### # 22G1` | Checked. The size and type code after it is not |
+| `@@@Z ###### #` | Checked, a chassis number |
+| `@@@@ ###### #` | Not checked: write U, J or Z for the fourth letter |
 | `@@@U ######` | Not checked: the format has no check digit |
 
 ## More than one value

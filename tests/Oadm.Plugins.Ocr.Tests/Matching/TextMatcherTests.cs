@@ -302,6 +302,8 @@ public sealed class TextMatcherTests
     [InlineData("@@@U ###### # 22G1", "CSQU 305438 3 22G1", "CSQU 305438 3 22G1")] // the size and type code after it
     [InlineData("@@@U ###### # 22G1", "CSQU3054383 22G1", "CSQU 305438 3 22G1")]
     [InlineData("@@@U-######-#", "CSQU-305438-3", "CSQU-305438-3")]
+    [InlineData("@@@Z ###### #", "TRLZ1234560", "TRLZ 123456 0")] // a chassis number
+    [InlineData("@@@J ###### #", "CSQJ 305438 6", "CSQJ 305438 6")]
     public void ContainerFormatsCheckTheFirstElevenLettersAndDigits(string format, string text, string value)
     {
         Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
@@ -313,6 +315,10 @@ public sealed class TextMatcherTests
     [InlineData("@@@U ######", false)]
     [InlineData("@@@U ###### @", false)]
     [InlineData("@@@@ ###### #", false)]
+    [InlineData("@@@J ###### #", true)]
+    [InlineData("@@@Z ###### #", true)]
+    [InlineData("@@@u ###### #", true)]
+    [InlineData("@@@X ###### #", false)]
     [InlineData("#####", false)]
     public void AFormatHasACheckDigitWhenItStartsWithAContainerNumber(string format, bool check)
     {
@@ -323,6 +329,13 @@ public sealed class TextMatcherTests
     [Fact]
     public void AWrongCheckDigitBeforeATypeCodeIsNoMatch() =>
         Assert.False(TextMatcher.MatchAll([Line("CSQU 305438 4 22G1", 0.1, 0.1)], ExpectedText.WithFormat("@@@U ###### # 22G1")).MatchesFormat);
+
+    [Theory]
+    [InlineData("@@@Z ###### #", "TRLZ 123456 1")] // a chassis number
+    [InlineData("@@@J ###### #", "CSQJ 305438 5")]
+    [InlineData("@@@u ###### #", "CSQU 305438 4")]
+    public void AWrongCheckDigitIsNoMatchForEveryEquipmentCategory(string format, string text) =>
+        Assert.False(TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).MatchesFormat);
 
     [Theory]
     [InlineData("(###)", "Lane(123)", "(123)")] // a format that starts with a sign may touch letters
