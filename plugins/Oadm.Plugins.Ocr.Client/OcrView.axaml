@@ -205,12 +205,15 @@
                 <!-- Off and On in full, like the format help (docs/spec/ocr.md "Moving objects"). -->
                 <ToolTip.Tip>
                   <StackPanel x:Name="MovingObjectsHelp" Spacing="6" MaxWidth="300">
-                    <TextBlock Classes="tipTitle" Text="{x:Static vm:OcrTexts.MovingObjects}" />
+                    <StackPanel Spacing="2">
+                      <TextBlock Classes="tipTitle" Text="{x:Static vm:OcrTexts.MovingObjects}" />
+                      <TextBlock Classes="secondary" Text="Turn on when the text moves through the picture." TextWrapping="Wrap" />
+                    </StackPanel>
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
                       <TextBlock Classes="tipKey" Text="Off" />
-                      <TextBlock Grid.Column="1" Text="Compares the last 5 pictures. The result must stay the same for 2 pictures. For signs and meters." TextWrapping="Wrap" />
+                      <TextBlock Grid.Column="1" Text="For text that stays, like signs and meters. OADM compares several pictures, so a result takes longer." TextWrapping="Wrap" />
                       <TextBlock Grid.Row="1" Classes="tipKey" Text="On" />
-                      <TextBlock Grid.Row="1" Grid.Column="1" Text="Counts a value read the same in 2 pictures in a row. For belts and vehicles." TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="For text that passes, like belts and vehicles. 2 equal reads are enough, so a result comes fast." TextWrapping="Wrap" />
                     </Grid>
                   </StackPanel>
                 </ToolTip.Tip>
