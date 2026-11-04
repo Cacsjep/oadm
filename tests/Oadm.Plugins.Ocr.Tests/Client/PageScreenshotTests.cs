@@ -224,6 +224,14 @@ public sealed class PageScreenshotTests
             Headless.Capture(notice, $"ocr-on-action-message-{suffix}.png");
             notice.Close();
 
+            // The short message after Use read text as format made a format that checks a container number.
+            var check = new MessageWindow { Heading = OcrTexts.CheckFormatTitle, Message = OcrTexts.CheckFormatNotice, ConfirmText = "OK", CancelText = null };
+            Oadm.Client.App.ApplyCrispText(check);
+            check.Show();
+            Headless.Pump();
+            Headless.Capture(check, $"ocr-check-format-message-{suffix}.png");
+            check.Close();
+
             // A value: the async lambda is then awaited to its end (Dispatch has no overload for a plain Task, so its
             // assertions after the first await would otherwise never reach the test).
             return true;
