@@ -19,7 +19,7 @@ const icons = {
 const check = '<path d="M20 6 9 17l-5-5"/>';
 const cross = '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>';
 
-// Per two years (the maintenance period of most project offers). Three plans per server, sized by the devices it supports
+// Per year. Three plans per server, sized by the devices it supports
 // (support scope only: OADM never limits devices by license), and one for a whole company. Euro, without VAT. No plan is recommended; the one under the pointer lights up.
 const all = ['Support with an SLA', 'EST server', '802.1X server', 'Feature requests first'];
 const plans = [
@@ -58,13 +58,12 @@ const custom = [
 
 
 	<h3 class="pro-title">Plans</h3>
-	<p class="pro-lead">Every plan runs two years, the maintenance period of most project offers.</p>
 	<div class="pro-plans">
 		{plans.map((p) => (
 			<div class="pro-plan" data-plan={p.devices}>
 				<strong>{p.devices}</strong>
 				<span class="pro-plan-text">{p.text}</span>
-				<span class="pro-price"><b>{p.price}</b> per 2 years</span>
+				<span class="pro-price"><b>{p.price}</b> per year</span>
 				<ul>
 					{p.included.map((i) => (
 						<li><svg viewBox="0 0 24 24" aria-hidden="true" set:html={check} />{i.startsWith('Support with an SLA') ? <a href="#sla">{i}</a> : i}</li>

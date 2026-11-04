@@ -286,7 +286,7 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   `/activate/`); icon cards; a plan lights up on hover (none recommended); no buy button: "Estimated launch: end of
   November 2026"; commercial support with an SLA, feature requests with a higher priority, the enterprise plugin EST
   server.
-  - Plans per two years (the maintenance period of project offers): up to 200 devices per server €440, up to 1,000
+  - Plans per year: up to 200 devices per server €440, up to 1,000
     per server €1,940, up to 100,000 per server €4,870 (`OadmPro.astro`; the devices a plan supports, never enforced), Unlimited (a
     license key for each server of one company, any number of devices) €9,740 (prices end in 40, 50 or 70, never 99 or
     round), without VAT; every plan with SLA support, the enterprise plugins and a 30-day trial. Below the plans:
