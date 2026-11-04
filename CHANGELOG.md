@@ -5,11 +5,26 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [Unreleased]
+## [4.10.1] - 2026-11-04
+
+### Added
+
+- Text recognition: the format @@@? ###### # reads containers and chassis in one area and checks their check digit.
+- Text recognition: the events Reader problem and Any reader problem tell a rule when a text reader stops reading.
+- Event rules: the event Optional plugin not loaded tells a rule when an optional plugin must be installed again after an update.
+
+### Changed
+
+- Text recognition: Use read text as format gives @@@? ###### # for a container or chassis number, so its check digit is checked, and asks you to check the format.
+- Text recognition: a format such as @@@Z ###### # now refuses numbers with a wrong check digit. Use @@@@ for codes that are no container numbers.
 
 ### Fixed
 
 - Text recognition: the container check digit also works for chassis numbers (Z), container equipment (J) and a lower-case u in the format.
+
+### Thanks
+
+- Thanks to Matthew Visher for the check digit fix and the reports that led to the new reader events.
 
 ## [4.10.0] - 2026-11-04
 
