@@ -34,6 +34,18 @@ public sealed class RuntimePackageRegistryTests : IDisposable
     }
 
     [Fact]
+    public void AReaderOfTheRegistryThatFailsNeverUndoesALoadedPackage()
+    {
+        _registry.MarkStarted();
+        _registry.PackageAdded += (_, _) => throw new InvalidOperationException("The reader failed.");
+
+        Assert.NotNull(_loader.LoadPackage(SampleDirectory));
+
+        Assert.True(_registry.HasPackage("oadm.sample"));
+        Assert.Contains(_registry.Errors, e => e.Message.Contains("The reader failed.", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void APackageLoadedDuringTheStartIsNotReportedAsAdded()
     {
         Assert.NotNull(_loader.LoadPackage(SampleDirectory));

@@ -184,6 +184,19 @@ public sealed class ServerUpdateHelperTests
     }
 
     [Fact]
+    public async Task TheMacHelperKeepsTheServicesEnvironment()
+    {
+        var commands = new FakeCommands();
+        var starter = new ServerHelperStarter(UpdateOs.MacOs, commands, new FakeLauncher(), new Dictionary<string, string> { ["OADM_DATA_DIR"] = "/data" });
+
+        await starter.StartAsync("/data/update/helper-1/Oadm.Server", ["--update"], CancellationToken.None);
+
+        Assert.Equal(
+            ["submit", "-l", ServerHelperStarter.LaunchdLabel, "--", ServerHelperStarter.Env, "OADM_DATA_DIR=/data", "/data/update/helper-1/Oadm.Server", "--update"],
+            commands.Runs.Last().Args);
+    }
+
+    [Fact]
     public async Task AWindowsHelperWithBadArgumentsRunsNothing()
     {
         var commands = new FakeCommands();

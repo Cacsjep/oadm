@@ -56,7 +56,7 @@ public sealed record UpdateOutcome(string Title, bool IsDone, IReadOnlyList<stri
     /// <summary>The client after its own update: the version it runs now says whether the installer did it.</summary>
     public static UpdateOutcome OfClient(string runningVersion, string to, string? reason)
     {
-        if (UpdateVersions.Parse(runningVersion) is { } now && UpdateVersions.Parse(to) is { } target && now >= target)
+        if (UpdateVersions.Parse(runningVersion) is not null && UpdateVersions.Parse(to) is not null && !UpdateVersions.IsOlder(runningVersion, to))
         {
             return new UpdateOutcome(UpdateTexts.ClientUpdated(to), true, []);
         }

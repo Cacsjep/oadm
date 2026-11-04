@@ -18,6 +18,7 @@ public interface IAddOnPartLoader
     /// returns how many parts (dialogs, pages, toolbar entries) it brought. The assemblies load on the thread pool; the parts
     /// join the registry on the calling (UI) thread. The package counts as loaded afterwards.
     /// </summary>
+    /// <exception cref="AddOnPartException">No dll brought a part and one could not be loaded: nothing joined the registry and a later sync tries again.</exception>
     Task<int> LoadAddOnAsync(string packageId, string folder);
 }
 
@@ -117,10 +118,13 @@ public sealed partial class AddOnClientSync(
         }
     }
 
-    private string ServerKey()
+    private string ServerKey() => CacheKey(serverKey?.Invoke());
+
+    /// <summary>The cache folder of a pinned fingerprint ("3F:A2:..."): its hex digits in lower case, no colons (never in a folder name).</summary>
+    internal static string CacheKey(string? fingerprint)
     {
-        string? key = serverKey?.Invoke();
-        return string.IsNullOrEmpty(key) ? UnpinnedServer : key.ToLowerInvariant();
+        string key = (fingerprint ?? string.Empty).Replace(":", string.Empty, StringComparison.Ordinal);
+        return key.Length == 0 ? UnpinnedServer : key.ToLowerInvariant();
     }
 
     private async Task<int> SyncOneAsync(string server, AddOnInfo addOn, CancellationToken ct)

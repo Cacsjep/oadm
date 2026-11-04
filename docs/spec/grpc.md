@@ -289,8 +289,8 @@ used again.
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
 - **`BackupService`** (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,
   `Restore`, see `docs/spec/settings-backup.md` "Backup and restore".
-- **`UpdateService`** (`update.proto`, `docs/spec/self-update.md`): `Get` and `Start` need `server.update` (the
-  Administrator's alone, AccessPolicy Admin); `Watch` every signed-in user. `Get`: the server's version, platform and
+- **`UpdateService`** (`update.proto`, `docs/spec/self-update.md`): `Get` and `Start` are Administrators only
+  (AccessPolicy Admin); `Watch` every signed-in user. `Get`: the server's version, platform and
   machine name, `same_computer` (the caller connects from a loopback address or one of the server's own addresses and
   names the server's machine name), `installed`, running tasks, the latest stable release (cached 10 minutes; empty when
   GitHub is not reached), the running update, the last record, sites with an older node. `Start` (version): the latest

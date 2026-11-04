@@ -15,6 +15,9 @@ public interface IServerTrust
     /// <summary>Fingerprint the current server presented in the last handshake.</summary>
     string? PresentedFingerprint { get; }
 
+    /// <summary>The fingerprint pinned for the current server, null without a pin: stable, unlike the last handshake's.</summary>
+    string? PinnedFingerprint { get; }
+
     /// <summary>Clears <see cref="LastCheck"/> before a new attempt.</summary>
     void ResetCheck();
 
@@ -31,6 +34,8 @@ public sealed class GrpcServerTrust(GrpcOadmApi api) : IServerTrust
     public PinCheck LastCheck => api.ServerUri.Scheme == Uri.UriSchemeHttps ? api.Pinning.LastCheck(api.ServerUri) : PinCheck.None;
 
     public string? PresentedFingerprint => api.Pinning.PresentedFingerprint(api.ServerUri);
+
+    public string? PinnedFingerprint => api.Pinning.PinnedFingerprint(api.ServerUri);
 
     public void ResetCheck() => api.Pinning.ResetCheck(api.ServerUri);
 
@@ -53,6 +58,8 @@ public sealed class NoServerTrust : IServerTrust
     public PinCheck LastCheck => PinCheck.None;
 
     public string? PresentedFingerprint => null;
+
+    public string? PinnedFingerprint => null;
 
     public void ResetCheck()
     {

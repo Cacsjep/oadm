@@ -20,6 +20,7 @@ public static class UpdateTexts
     public const string DevelopmentBuild = "A development build cannot be updated.";
     public const string NotLatest = "Only the latest release can be installed.";
     public const string Running = "An update is already running.";
+    public const string AddOnRunning = "An optional plugin is being installed or removed. Try again when it is done.";
     public const string NotEnoughSpace = "Not enough free disk space for the update.";
     public const string DownloadFailed = "Could not download the update. Install it from the download page.";
     public const string WrongChecksum = "The download does not match the release's checksum. It was deleted.";

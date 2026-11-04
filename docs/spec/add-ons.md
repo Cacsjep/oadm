@@ -52,9 +52,11 @@ computer. A client loads the client part its server hands it: the user must trus
    not guaranteed.
 6. **Clients get the client part from the server**, never from the internet: one call per add-on, the files checked
    against the SHA-256 and the whole part against the digest the server sends, kept per server (its pinned certificate
-   fingerprint) and version in the client's own `<datafolder>/plugin-cache/` (never the server's `addons/`: a server and a
+   fingerprint, hex digits only) and version in the client's own `<datafolder>/plugin-cache/` (never the server's `addons/`: a server and a
    client of the same user share the data folder), loaded into its own load context while connected (the pages follow as
-   on Turn on), else at the next connect. A cached copy is used only while it matches the digest the server lists. A
+   on Turn on), else at the next connect. A cached copy is used only while it matches the digest the server lists; a
+   client that cannot replace one that no longer matches loads nothing. A part that fails to load is tried again at the next
+   sync. A
    removed add-on's client files, and the versions an add-on no longer uses, go at the client's next start. A client
    never installs anything on its computer and needs no rights for it.
 7. **GPU when there is one, the CPU always works, no own service.** Vision plugins run inside the server's plugin; their
@@ -106,7 +108,9 @@ computer. A client loads the client part its server hands it: the user must trus
   folders of removed add-ons and loads every add-on whose folder names this exact version (no event, the start reads the
   registry). Any other installed add-on (after an update, after a restore, a folder of another version) stays unloaded: state
   Failed with "Not loaded. Install it again for this OADM version." (`AddOnTexts.InstallAgain`, one phrase for all of them);
-  its old folder stays until the new one is in place or the add-on is removed.
+  its old folder stays until the new one is in place or the add-on is removed. When the service had to fix the data
+  folder's permissions at this start no add-on folder is used, listed or not: each is deleted (log line) and a listed add-on
+  shows the same text; a folder that cannot go is stored as Removed.
 - Wiring: `IAddOnListStore` = `SettingsAddOnListStore`, `IAddOnHashes` = `AssemblyAddOnHashes`, `IAddOnActivation` =
   `PluginActivationAddOns` (Turn off through
   `PluginActivation.SetEnabledAsync`; the stored choice through `PluginRegistry.ChoiceOf`; waits for
@@ -136,7 +140,9 @@ computer. A client loads the client part its server hands it: the user must trus
   a bad hash file). All server texts are `Oadm.Server.AddOns.AddOnTexts`, the card's are the client's `OptionalPluginTexts`.
 - `AddOnStatus.DownloadUrl`: the ZIP of this version and system on the OADM release
   (`GitHubReleaseFeed.DownloadPrefix` + `v<version>/` + the file name); none in a build without the hash.
-- One install or remove at a time; while a self update runs both are refused ("The server is updating.").
+- One install or remove at a time; while a self update runs both are refused ("The server is updating."), and Install now
+  is refused while one runs, also while its file uploads ("An optional plugin is being installed or removed. Try again when
+  it is done."; `UpdateGate.TryBegin` and `TryBeginAddOnWork` decide under one lock).
 - The client part is read and hashed once per version and kept in memory; one call at a time per session.
 - Remove keeps the add-on's settings, records and `plugin-data/<id>` (as when a plugin is turned off); installing it
   again picks them up. An add-on that is not loaded (state Failed) is removed at once, its folder deleted; a folder that cannot

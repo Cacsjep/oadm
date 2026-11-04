@@ -148,6 +148,16 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
             return 0; // another load got there first
         }
 
+        if (parts.Failures > 0 && parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count == 0)
+        {
+            foreach (AssemblyLoadContext context in parts.Contexts)
+            {
+                context.Unload();
+            }
+
+            throw new AddOns.AddOnPartException($"The client part of {packageId} could not be loaded.");
+        }
+
         int count = Merge(parts);
         _loadedPackages.Add(packageId);
         return count;
@@ -184,6 +194,9 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
         /// <summary>Packages of this root (one package may have several client dlls).</summary>
         public HashSet<string> Packages { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The dlls that could not be loaded (logged).</summary>
+        public int Failures { get; set; }
     }
 
     /// <summary>
@@ -256,6 +269,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
             catch (Exception ex)
             {
                 LogLoadFailed(_logger, ex, dll);
+                parts.Failures++;
             }
         }
 

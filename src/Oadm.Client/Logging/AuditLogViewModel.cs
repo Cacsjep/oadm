@@ -134,9 +134,9 @@ public sealed partial class AuditLogViewModel(IOadmApi api) : ObservableObject
     public async Task RefreshAsync()
     {
         IsLoading = true;
+        var lastUpdate = LoadLastUpdateAsync(); // side by side: it may wait for GitHub, the rows never do
         try
         {
-            await LoadLastUpdateAsync().ConfigureAwait(true);
             AuditList list = await api.ListAuditAsync(PageSize, CancellationToken.None).ConfigureAwait(true);
             _all = list.Entries.Select(e => new AuditRowViewModel(e)).ToList();
             Error = null;
@@ -151,6 +151,8 @@ public sealed partial class AuditLogViewModel(IOadmApi api) : ObservableObject
         {
             IsLoading = false;
         }
+
+        await lastUpdate.ConfigureAwait(true);
     }
 
     /// <summary>Clears the rows (logout).</summary>

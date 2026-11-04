@@ -124,6 +124,40 @@ public sealed class ServerUpdateServiceTests
     }
 
     [Fact]
+    public async Task InstallNowIsRefusedWhileAnOptionalPluginIsInstalled()
+    {
+        var fakes = new Fakes();
+        await using var host = await StartAsync(fakes);
+        var gate = host.Get<UpdateGate>();
+        Assert.True(gate.TryBeginAddOnWork());
+
+        Assert.Equal(UpdateTexts.AddOnRunning, await RefusalAsync(host, "4.9.0"));
+
+        gate.EndAddOnWork();
+        Assert.Empty(fakes.Starter.Starts);
+        Assert.Null(gate.UpdatingTo);
+    }
+
+    [Fact]
+    public void AnUpdateAndTheWorkOnAnOptionalPluginExcludeEachOther()
+    {
+        var gate = new UpdateGate();
+
+        Assert.True(gate.TryBeginAddOnWork());
+        Assert.False(gate.TryBegin("4.9.0"));
+        Assert.Null(gate.UpdatingTo);
+
+        gate.EndAddOnWork();
+        Assert.False(gate.AddOnWorkRuns);
+        Assert.True(gate.TryBegin("4.9.0"));
+        Assert.False(gate.TryBeginAddOnWork());
+        Assert.False(gate.AddOnWorkRuns);
+
+        gate.End();
+        Assert.True(gate.TryBeginAddOnWork());
+    }
+
+    [Fact]
     public async Task AServerNotInstalledWithTheInstallerKeepsTheDownloadPage()
     {
         var fakes = new Fakes { Installed = false };
@@ -495,6 +529,106 @@ public sealed class ServerUpdateServiceTests
         Assert.Equal("From 4.8.0 to 4.9.0: " + UpdateTexts.InstallerBusy, failed.Detail);
         var last = (await Client(host).GetAsync(new Proto.Empty())).Last;
         Assert.Equal((UpdateRecord.Failed, UpdateTexts.InstallerBusy), (last.Result, last.Reason));
+    }
+
+    [Fact]
+    public async Task AServerOnAPreReleaseUpdatesToItsStableRelease()
+    {
+        var fakes = new Fakes { Version = "4.9.0-rc.2" };
+        await using var host = await StartAsync(fakes);
+        var updates = host.Get<ServerUpdateCoordinator>();
+
+        Assert.Null(await updates.RefusalAsync("4.9.0", CancellationToken.None));
+        Assert.Equal(UpdateTexts.Downgrade, await updates.RefusalAsync("4.8.0", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task APreReleaseOfTheTargetIsNotTheNewVersion()
+    {
+        var fakes = new Fakes { Version = "4.9.0-rc.2" };
+        await using var host = await StartAsync(fakes, Seed(Running()));
+
+        Assert.True(host.Get<UpdateRecordFile>().Read()!.IsRunning);
+        Assert.True(host.Get<ServerUpdateCoordinator>().IsHolding);
+    }
+
+    [Fact]
+    public async Task TheNewServerWaitsForTheInstallerThatStartedIt()
+    {
+        var data = Seed(Running() with { Step = UpdateRecord.StepInstalling });
+        var fakes = new Fakes { Version = "4.9.0" };
+        await using var host = await StartAsync(fakes, data);
+        var updates = host.Get<ServerUpdateCoordinator>();
+        var records = host.Get<UpdateRecordFile>();
+        Assert.True(records.Read()!.IsRunning); // the postinst or the MSI started it: only the helper knows the result
+        Assert.True(updates.IsHolding);
+
+        await records.UpdateRunningAsync(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerBusy }, CancellationToken.None);
+        await Eventually.TrueAsync(
+            () =>
+            {
+                fakes.Time.Advance(ServerUpdateCoordinator.FollowInterval);
+                return !updates.IsHolding;
+            },
+            "the helper's result ends the hold");
+
+        Assert.Equal((UpdateRecord.Failed, UpdateTexts.InstallerBusy), (records.Read()!.Result, records.Read()!.Reason));
+        Assert.Single(await AuditAsync(host), e => e.Action == AuditActions.ServerUpdateFailed);
+        Assert.DoesNotContain(await AuditAsync(host), e => e.Action == AuditActions.ServerUpdated);
+    }
+
+    [Fact]
+    public async Task AHelperThatNeverFinishedLeavesTheNewVersionDone()
+    {
+        var data = Seed(Running() with { Step = UpdateRecord.StepInstalling });
+        var fakes = new Fakes { Version = "4.9.0" };
+        await using var host = await StartAsync(fakes, data);
+        var updates = host.Get<ServerUpdateCoordinator>();
+
+        await Eventually.TrueAsync(
+            () =>
+            {
+                fakes.Time.Advance(ServerUpdateCoordinator.GiveUpAfter);
+                return !updates.IsHolding;
+            },
+            "the follow gives up");
+
+        Assert.Equal(UpdateRecord.Done, host.Get<UpdateRecordFile>().Read()!.Result);
+        Assert.Single(await AuditAsync(host), e => e.Action == AuditActions.ServerUpdated);
+    }
+
+    [Fact]
+    public async Task ARecordThatIsGoneNeverLeavesTheServerClosed()
+    {
+        var fakes = new Fakes();
+        await using var host = await StartAsync(fakes, Seed(Running()));
+        var updates = host.Get<ServerUpdateCoordinator>();
+        Assert.True(updates.IsHolding);
+
+        File.Delete(host.Get<UpdateRecordFile>().FilePath);
+        await Eventually.TrueAsync(
+            () =>
+            {
+                fakes.Time.Advance(ServerUpdateCoordinator.GiveUpAfter);
+                return !updates.IsHolding;
+            },
+            "the server opens again");
+    }
+
+    [Fact]
+    public async Task AFailedGitHubReadIsAskedAgainAfterAMinute()
+    {
+        var fakes = new Fakes();
+        fakes.Feed.Unreachable = true;
+        await using var host = await StartAsync(fakes);
+        var updates = host.Get<ServerUpdateCoordinator>();
+        Assert.Null(await updates.LatestAsync(CancellationToken.None));
+
+        fakes.Feed.Unreachable = false;
+        Assert.Null(await updates.LatestAsync(CancellationToken.None)); // no second wait right away
+
+        fakes.Time.Advance(ServerUpdateCoordinator.LatestFailedCacheTime);
+        Assert.NotNull(await updates.LatestAsync(CancellationToken.None));
     }
 
     private static UpdateRecord Running(string to = "4.9.0") => new()

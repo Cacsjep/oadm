@@ -196,6 +196,31 @@ public sealed partial class PluginActivation(
         return registry.Packages.First(p => string.Equals(p.Id, packageId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>Stores Off for a package that is not loaded (an optional plugin removed while it failed to load).</summary>
+    public async Task StoreOffAsync(string packageId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
+        await _gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var before = registry.ChoiceOf(packageId);
+            var states = registry.SetEnabled(packageId, false);
+            try
+            {
+                await settings.SetJsonAsync(SettingKey, JsonSerializer.Serialize(states), CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                registry.RestoreChoice(packageId, before);
+                throw;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     /// <summary>
     /// Starts and stops the PRO packages when the OADM PRO license changes (imported, removed, ran out): the registry gates
     /// them, this applies it to the running core plugins. The administrator's choice stays stored.

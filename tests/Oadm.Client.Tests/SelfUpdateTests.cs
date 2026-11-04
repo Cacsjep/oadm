@@ -51,14 +51,14 @@ public sealed class SelfUpdateTests
     private static ClientUpdater InstalledWindowsClient(IClientHelperLauncher? launcher = null, FakeFeed? feed = null, string folder = "update") =>
         Updater(Facts(UpdateOs.Windows, @"C:\Program Files\OADM\Client\"), launcher, feed, folder);
 
-    private static UpdateNotifier Notifier(ClientUpdater? client = null, IOadmApi? api = null, bool admin = true, ServerUpdateTracker? tracker = null, IDialogService? dialogs = null)
+    private static UpdateNotifier Notifier(ClientUpdater? client = null, IOadmApi? api = null, bool admin = true, ServerUpdateTracker? tracker = null, IDialogService? dialogs = null, string version = "4.8.0")
     {
         var session = new Shell.UserSession();
         session.SignIn(new UserInfo { UserName = admin ? "admin" : "op", Role = admin ? UserRole.Admin : UserRole.Operator, AllPermissions = admin }, "srv");
         var settings = Substitute.For<IClientSettingsStore>();
         settings.Current.Returns(new ClientSettings());
         return new UpdateNotifier(Substitute.For<IReleaseCheck>(), settings, dialogs ?? Substitute.For<IDialogService>(), Substitute.For<IUrlLauncher>(),
-            NullLogger<UpdateNotifier>.Instance, null, api, session, tracker, client) { CurrentVersion = "4.8.0" };
+            NullLogger<UpdateNotifier>.Instance, null, api, session, tracker, client) { CurrentVersion = version };
     }
 
     [Fact]
@@ -249,14 +249,14 @@ public sealed class SelfUpdateTests
     }
 
     [Fact]
-    public void The_client_helper_copy_lies_in_the_clients_own_data_folder()
+    public async Task The_client_helper_copy_lies_in_the_clients_own_data_folder()
     {
         var folder = Path.Combine(Path.GetTempPath(), "oadm-client-update-tests", Guid.NewGuid().ToString("N"), "update");
         var processes = new FakeProcesses();
         var quit = 0;
         try
         {
-            new ClientHelperLauncher(processes, folder, () => quit++).StartAndQuit(["--update-helper", "wait"]);
+            await new ClientHelperLauncher(processes, folder, () => quit++).StartAndQuitAsync(["--update-helper", "wait"]);
 
             var (file, _) = Assert.Single(processes.Starts);
             Assert.StartsWith(Path.Combine(folder, "helper-"), file, StringComparison.Ordinal); // never a shared temporary folder
@@ -357,6 +357,84 @@ public sealed class SelfUpdateTests
         var client = UpdateOutcome.OfClient("4.8.0", "4.9.0", UpdateTexts.Cancelled);
         Assert.Equal(("The update failed", false), (client.Title, client.IsDone));
         Assert.Equal([UpdateTexts.Cancelled], client.Lines);
+    }
+
+    [Fact]
+    public void A_pre_release_is_offered_its_stable_release()
+    {
+        Assert.NotNull(Notifier(version: "4.9.0-rc.2").Offer(Latest, null));
+        Assert.Null(Notifier(version: "4.9.0").Offer(Latest, null));
+        Assert.Equal(UpdateOffer.Server, Notifier(InstalledWindowsClient()).Offer(Latest, Server(version: "4.9.0-rc.2"))!.Offer);
+        Assert.False(UpdateOutcome.OfClient("4.9.0-rc.2", "4.9.0", null).IsDone);
+        Assert.True(UpdateOutcome.OfClient("4.9.0", "4.9.0", null).IsDone);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task A_failed_update_reaches_an_Administrator_without_the_dialog(bool admin, bool shows)
+    {
+        var api = Substitute.For<IOadmApi>();
+        var info = Server();
+        info.Last = Record("failed", UpdateTexts.InstallerBusy);
+        api.GetUpdateAsync(Arg.Any<CancellationToken>()).Returns(info);
+        var tracker = new ServerUpdateTracker(new ImmediateUiDispatcher(), new FakeTimeProvider());
+        var shown = new TaskCompletionSource<UpdateViewModel>();
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.ShowUpdateAsync(Arg.Any<UpdateViewModel>()).Returns(ci =>
+        {
+            shown.TrySetResult(ci.Arg<UpdateViewModel>());
+            return Task.CompletedTask;
+        });
+        var notifier = Notifier(InstalledWindowsClient(), api, admin, tracker, dialogs);
+        await notifier.ShowIfNewerAsync(CancellationToken.None);
+        dialogs.ClearReceivedCalls();
+        shown = new TaskCompletionSource<UpdateViewModel>();
+
+        tracker.Apply(new UpdateProgress { ToVersion = "4.9.0", Finished = true, Failed = UpdateTexts.InstallerBusy });
+
+        if (shows)
+        {
+            Assert.Equal("The update failed. The server runs V4.8.0.", (await shown.Task.WaitAsync(TimeSpan.FromSeconds(30))).Title);
+        }
+        else
+        {
+            Assert.False(shown.Task.IsCompleted); // the handler decides at once: nothing started for this user
+            await dialogs.DidNotReceive().ShowUpdateAsync(Arg.Any<UpdateViewModel>());
+        }
+    }
+
+    [Fact]
+    public async Task An_update_that_ended_well_shows_no_notice()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.GetUpdateAsync(Arg.Any<CancellationToken>()).Returns(Server(version: "4.9.0"));
+        var tracker = new ServerUpdateTracker(new ImmediateUiDispatcher(), new FakeTimeProvider());
+        var dialogs = Substitute.For<IDialogService>();
+        var notifier = Notifier(InstalledWindowsClient(), api, tracker: tracker, dialogs: dialogs);
+        await notifier.ShowIfNewerAsync(CancellationToken.None);
+        api.ClearReceivedCalls();
+
+        tracker.Apply(new UpdateProgress { ToVersion = "4.9.0", Finished = true });
+
+        await api.DidNotReceive().GetUpdateAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task The_audit_rows_never_wait_for_the_last_update()
+    {
+        var api = Substitute.For<IOadmApi>();
+        var github = new TaskCompletionSource<UpdateInfo>();
+        api.GetUpdateAsync(Arg.Any<CancellationToken>()).Returns(github.Task);
+        api.ListAuditAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new AuditList { TotalCount = 7 });
+        var audit = new Logging.AuditLogViewModel(api);
+
+        var refresh = audit.RefreshAsync();
+
+        Assert.Equal(7, audit.TotalCount);
+        Assert.False(audit.IsLoading);
+        github.SetResult(Server());
+        await refresh;
     }
 
     [Fact]
@@ -503,6 +581,9 @@ public sealed class SelfUpdateTests
     public async Task Update_client_downloads_checks_and_hands_over_to_the_helper()
     {
         var folder = Path.Combine(Path.GetTempPath(), "oadm-client-update-tests", Guid.NewGuid().ToString("N"));
+        var earlier = Path.Combine(folder, "OADM-4.8.0-win-x64.msi");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(earlier, "the old msi");
         var launcher = new FakeLauncher();
         var steps = new List<UpdateStep>();
         try
@@ -514,6 +595,7 @@ public sealed class SelfUpdateTests
             Assert.Equal(Path.Combine(folder, "OADM-4.9.0-win-x64.msi"), args.Installer);
             Assert.Equal("the msi", await File.ReadAllTextAsync(args.Installer!));
             Assert.Equal([UpdateStep.Download, UpdateStep.Check, UpdateStep.Install], steps.Distinct());
+            Assert.False(File.Exists(earlier)); // the installer of the update before
         }
         finally
         {
@@ -881,7 +963,11 @@ public sealed class SelfUpdateTests
     {
         public ConcurrentQueue<IReadOnlyList<string>> Starts { get; } = new();
 
-        public void StartAndQuit(IReadOnlyList<string> arguments) => Starts.Enqueue(arguments);
+        public Task StartAndQuitAsync(IReadOnlyList<string> arguments)
+        {
+            Starts.Enqueue(arguments);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeDisk : IDiskSpace

@@ -94,8 +94,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   and Viewer by the permission's default, custom roles nothing, so a limited role never gains a right by itself. Keys a
   role has but no loaded plugin declares are kept. **Administrator only, never grantable**: users and roles, the
   credential list (list, add, remove, reveal), plugins on / off, `SettingsService.Set`, the audit log, self update
-  (`server.update`: `UpdateService.Get` and `Start`, Install now and Update client; `HostPermissions.ServerUpdate`, never a
-  row of the matrix, docs/spec/self-update.md). Every gRPC method
+  (`UpdateService.Get` and `Start`, Install now and Update client; the `AccessRule.Admin` of `AccessPolicy`, never a row of
+  the matrix, docs/spec/self-update.md). Every gRPC method
   has a rule in `AccessPolicy` (Open, SignedIn, a permission, InCall, Admin; a test checks that every contract method is
   listed, an unlisted one is Admin): device list, tags, tasks list and settings Get need only a login; plugin calls and
   task runs are checked in the call (`InCall`). The operator default withholds the risky rights:

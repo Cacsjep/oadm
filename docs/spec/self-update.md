@@ -12,8 +12,8 @@ installer results, disk space; no offline path).
 
 ## Rules that never break
 
-1. **Administrators only.** Updating the server and a client needs the permission `server.update`, which
-   only the Administrator role holds. Other users see the new version dialog as today (Open download page).
+1. **Administrators only.** Updating the server and a client is the rule `AccessRule.Admin`: only the
+   Administrator role, never grantable. Other users see the new version dialog as today (Open download page).
 2. **The installers do the work.** The server and the client run their own MSI, .deb or .pkg silently
    ([packaging.md](packaging.md)): services, firewall rules, folder rights, plugin cleanup and the MSI's rollback stay the
    installers' job. Never a file swap of a running installation.
@@ -120,7 +120,7 @@ with the installer from the download page.
 
 ## gRPC
 
-`UpdateService` ([grpc.md](grpc.md)), `Get` and `Start` need `server.update`:
+`UpdateService` ([grpc.md](grpc.md)), `Get` and `Start` are Administrators only:
 
 - `Get`: the server's version, platform and machine name, whether the caller runs on the server's computer, whether the
   server is installed, the running tasks, the latest release, the running update, the last result and the sites with an
@@ -153,18 +153,24 @@ the reconnect.
   holds, writes the step `installing` before the installer runs (a helper launchd starts again never runs it twice),
   kills the installer's process tree after 30 minutes, waits only for clients run from the installed client folder and
   asks the server for its version with the server's own pinned certificate. A record still running longer than the
-  helper's worst case plus 5 minutes (`GiveUpAfter`, about 40 minutes) is failed ("The installer did not finish."); a
-  not-back or given-up record of a server that runs the new version is done. The record is written through a temporary
+  helper's worst case plus 5 minutes (`GiveUpAfter`, about 40 minutes) is failed ("The installer did not finish."), done
+  when this server is the new version; a not-back or given-up record of a server that runs the new version is done.
+  A record that stays unreadable that long ends the follow, so the server never stays closed. The record is written through a temporary
   file of its own; a change is read, decided and written under `update/state.json.lock` (the give-up never overwrites the
   helper's result), and a file the other process holds open is read or replaced again a few times (async pauses, never a
   blocked thread). The server follows a running record until it is finished
   and always lets tasks, event rule actions and calls start again; an old server that starts while the record still runs
-  (the MSI rolled back) holds task starts and event rule actions until the helper's result. A task that started between
+  (the MSI rolled back) holds task starts and event rule actions until the helper's result. So does the new server while
+  the record's step is `installing`: the MSI and the postinst start it before the installer ends, and only the helper knows
+  whether the installer succeeded. A failed update of a server that keeps running reaches every Administrator's client,
+  also without the dialog open (`ServerUpdateTracker.EndedWithoutRestart`, the result dialog). A task that started between
   the check and the hold is counted before the download ("1 task is running."). A download that receives nothing for 60
   seconds or takes longer than 30 minutes stops ("Could not download the update. ..."); after GitHub's redirects a file
   may only come from github.com, objects.githubusercontent.com or release-assets.githubusercontent.com
-  (`GitHubReleaseFeed.AllowedHosts`). Progress goes out once per whole percent. An old installer that cannot be deleted
-  stays (never a reason to stop); the earlier database copy goes only once the new one is complete. A task a plugin
+  (`GitHubReleaseFeed.AllowedHosts`). Progress goes out once per whole percent. The latest release is cached 10 minutes,
+  a GitHub read without an answer 1 minute (`LatestFailedCacheTime`). Server and client delete their earlier installers
+  after a download (`UpdateFolder.DeleteOldInstallers`). An old installer that cannot be deleted stays (never a reason to
+  stop); the earlier database copy goes only once the new one is complete. A task a plugin
   starts during the update is refused like Run (FAILED_PRECONDITION "Updating the server to V4.9.0. Try again after the
   update."). A macOS helper with bad arguments removes its launchd job before it ends.
 - **Client** (`Oadm.Client/Updates`): `UpdateNotifier` (which dialog), `UpdateViewModel` (offer, steps, away, result),
@@ -182,7 +188,8 @@ the reconnect.
 ## Not part of it
 
 - Automatic or scheduled updates: always an Administrator's click.
-- Pre-releases (`-rc.N`).
+- Pre-releases (`-rc.N`) as a target. A server or client that runs one counts as older than its own stable release
+  (`UpdateVersions.IsOlder`, 4.10.0-rc.2 is offered 4.10.0), and only the stable version ends an update (`IsRelease`).
 - A release signature: the SHA-256 of the same GitHub release is the check (decision 2026-11-02).
 - Updating clients of other users or other computers from the server.
 - Updating site nodes (see "Site nodes").

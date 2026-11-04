@@ -89,6 +89,10 @@ public sealed class PluginActivationAddOns(Plugins.PluginActivation activation, 
         {
             await activation.SetEnabledAsync(packageId, false, ct).ConfigureAwait(false);
         }
+        else
+        {
+            await activation.StoreOffAsync(packageId, ct).ConfigureAwait(false); // not loaded (Failed): nothing runs
+        }
     }
 
     public Task PackageFollowedAsync(string packageId, CancellationToken ct) => activation.AddedPackagesFollowed.WaitAsync(ct);

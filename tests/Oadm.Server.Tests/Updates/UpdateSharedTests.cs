@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 using Oadm.Contracts.Updates;
 
@@ -29,6 +30,73 @@ public sealed class UpdateSharedTests
     [InlineData("v4.9.0-rc.2", false)]
     [InlineData("nonsense", false)]
     public void OnlyPlainVersionsAreStable(string text, bool stable) => Assert.Equal(stable, UpdateVersions.ParseStable(text) is not null);
+
+    [Theory]
+    [InlineData("4.8.0", "4.9.0", true)]
+    [InlineData("4.9.0-rc.2", "4.9.0", true)] // a pre-release is older than its own stable release
+    [InlineData("4.9.0-rc.2", "v4.9.0", true)]
+    [InlineData("4.9.0", "4.9.0", false)]
+    [InlineData("4.9.0", "4.9.0-rc.2", false)]
+    [InlineData("4.9.0-rc.1", "4.9.0-rc.2", false)]
+    [InlineData("4.9.1-rc.1", "4.9.0", false)]
+    [InlineData("nonsense", "4.9.0", false)]
+    public void APreReleaseIsOlderThanItsStableRelease(string version, string than, bool older) =>
+        Assert.Equal(older, UpdateVersions.IsOlder(version, than));
+
+    [Theory]
+    [InlineData("4.9.0", "4.9.0", true)]
+    [InlineData("4.9.0+abc", "4.9.0", true)]
+    [InlineData("4.9.0-rc.2", "4.9.0", false)]
+    [InlineData("4.8.0", "4.9.0", false)]
+    [InlineData(null, "4.9.0", false)]
+    public void OnlyTheStableVersionIsTheRelease(string? running, string target, bool release) =>
+        Assert.Equal(release, UpdateVersions.IsRelease(running, target));
+
+    [Theory]
+    [InlineData("""{"tag_name":"v4.9.0","assets":["a text"]}""")]
+    [InlineData("""{"tag_name":"v4.9.0","assets":[{"name":"a.msi","size":"12","browser_download_url":"https://github.com/a.msi"}]}""")]
+    public void AnAssetOfAnotherShapeIsLeftOut(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Empty(GitHubReleaseFeed.Parse(document.RootElement)!.Assets);
+    }
+
+    [Fact]
+    public void HelperArgumentsAreFoundByName()
+    {
+        Assert.Equal("4.9.0", HelperCommandLine.Value(["--a", "1", "--TO", "4.9.0"], "--to"));
+        Assert.Null(HelperCommandLine.Value(["--to"], "--to")); // nothing after it
+    }
+
+    [Fact]
+    public void OnlyTheEarlierInstallersGo()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "oadm-update-folder-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string[] names = ["OADM-4.8.0-win-x64.msi", "oadm-client_4.8.0_amd64.deb", "OADM-4.8.0-osx-x64.pkg", "OADM-4.9.0-win-x64.msi", "install.log"];
+            foreach (var name in names)
+            {
+                File.WriteAllText(Path.Combine(folder, name), "x");
+            }
+
+            UpdateFolder.DeleteOldInstallers(folder, Path.Combine(folder, "OADM-4.9.0-win-x64.msi"));
+
+            Assert.Equal(["OADM-4.9.0-win-x64.msi", "install.log"], Directory.GetFiles(folder).Select(f => Path.GetFileName(f)).Order(StringComparer.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(folder)!, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void LinuxNeedsPkexecWhereTheCommandRunsIt()
+    {
+        Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/var/lib/dpkg/info/oadm-client.list", "/bin/pkexec")));
+        Assert.True(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/var/lib/dpkg/info/oadm-client.list", InstallerCommands.Pkexec)));
+    }
 
     [Theory]
     [InlineData("0.1.0-dev", true)]

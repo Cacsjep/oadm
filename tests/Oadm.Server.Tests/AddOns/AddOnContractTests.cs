@@ -172,6 +172,19 @@ public sealed class AddOnContractTests
     }
 
     [Fact]
+    public async Task AnAddOnThatIsNotLoadedHasItsOnChoiceStoredOff()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var registry = host.Get<PluginRegistry>();
+        const string notLoaded = "oadm.not-loaded";
+        registry.SetEnabled(notLoaded, true);
+
+        await new PluginActivationAddOns(host.Get<PluginActivation>(), registry).TurnOffAsync(notLoaded, CancellationToken.None);
+
+        Assert.False(registry.ChoiceOf(notLoaded));
+    }
+
+    [Fact]
     public async Task AFileOfAnotherVersionIsRefusedBeforeTheClientSendsAll()
     {
         var zip = AddOnRig.Zip();

@@ -348,7 +348,6 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         DevicesNotAvailableException notAvailable => Auth.AuthInterceptor.NotAvailable(notAvailable),
         DeviceAccessRefusedException refused => Auth.AuthInterceptor.Refused(refused),
         KeyNotFoundException => GrpcGuard.NotFound(ex.Message),
-        Core.Tasks.TasksHeldException => GrpcGuard.FailedPrecondition(ex.Message), // "Updating the server to V4.9.0. Try again after the update."
         InvalidOperationException => GrpcGuard.FailedPrecondition(ex.Message),
         ArgumentException => GrpcGuard.InvalidArgument(ex.Message),
         _ => new RpcException(new Status(StatusCode.Internal, $"Plugin {pluginId} failed: {ex.Message}")),

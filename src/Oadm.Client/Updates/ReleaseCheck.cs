@@ -1,6 +1,7 @@
-using System.Globalization;
 using System.Net.Http.Headers;
 using System.Text.Json;
+
+using Oadm.Contracts.Updates;
 
 namespace Oadm.Client.Updates;
 
@@ -78,39 +79,11 @@ public static class ClientVersion
     public static string Text { get; } = Settings.AboutViewModel.VersionOf(typeof(ClientVersion).Assembly);
 
     /// <summary>A development build has no release version: it never asks for a newer one.</summary>
-    public static bool IsDevelopmentBuild(string text) => Parse(text) is not { } v || v == new Version(1, 0, 0);
+    public static bool IsDevelopmentBuild(string text) => UpdateVersions.IsDevelopmentBuild(text);
 
     /// <summary>Major.minor.patch of "v4.6.0", "4.6.0-rc.1" or "4.6.0+abc"; null when it is none.</summary>
-    public static Version? Parse(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        string core = text.Trim().TrimStart('v', 'V').Split('+')[0].Split('-')[0];
-        string[] parts = core.Split('.');
-        if (parts.Length != 3)
-        {
-            return null;
-        }
-
-        var numbers = new int[3];
-        for (int i = 0; i < 3; i++)
-        {
-            if (!int.TryParse(parts[i], NumberStyles.None, CultureInfo.InvariantCulture, out numbers[i]))
-            {
-                return null;
-            }
-        }
-
-        return new Version(numbers[0], numbers[1], numbers[2]);
-    }
+    public static Version? Parse(string? text) => UpdateVersions.Parse(text);
 
     /// <summary>"V4.6.0".</summary>
-    public static string Format(Version version)
-    {
-        ArgumentNullException.ThrowIfNull(version);
-        return string.Create(CultureInfo.InvariantCulture, $"V{version.Major}.{version.Minor}.{version.Build}");
-    }
+    public static string Format(Version version) => UpdateVersions.Display(version);
 }

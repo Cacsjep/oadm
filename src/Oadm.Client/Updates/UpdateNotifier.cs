@@ -83,19 +83,18 @@ public sealed partial class UpdateNotifier(
             if (client is { UpdatesWithServer: true } && api is not null)
             {
                 LogClosingForServer(logger, version);
-                try
-                {
-                    client.CloseForServer(version, api.ServerAddress);
-                }
-#pragma warning disable CA1031 // A helper that cannot start leaves this client open (the installer may ask to close it).
-                catch (Exception ex)
-#pragma warning restore CA1031
-                {
-                    LogHelperFailed(logger, ex.Message);
-                }
+                _ = CloseForServerAsync(version, api.ServerAddress);
             }
         };
         tracker.ServerBack += (_, version) => _ = ShowServerResultAsync(version, CancellationToken.None);
+        tracker.EndedWithoutRestart += (_, progress) =>
+        {
+            // An open dialog shows it through its steps; otherwise a failed update must not just go quiet.
+            if (progress.Failed.Length > 0 && _open is null && IsAdmin)
+            {
+                _ = ShowServerResultAsync(progress.ToVersion, CancellationToken.None);
+            }
+        };
         tracker.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ServerUpdateTracker.IsNotBack) && tracker.IsNotBack)
@@ -112,6 +111,20 @@ public sealed partial class UpdateNotifier(
                     vm.ActiveTasks = tasks.ActiveCount;
                 }
             };
+        }
+    }
+
+    private async Task CloseForServerAsync(string version, string serverAddress)
+    {
+        try
+        {
+            await client!.CloseForServerAsync(version, serverAddress).ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // A helper that cannot start leaves this client open (the installer may ask to close it).
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogHelperFailed(logger, ex.Message);
         }
     }
 
@@ -164,7 +177,6 @@ public sealed partial class UpdateNotifier(
     /// <summary>The dialog this start shows; null when nothing is newer.</summary>
     internal UpdateViewModel? Offer(ReleaseInfo? latest, UpdateInfo? server)
     {
-        var current = ClientVersion.Parse(CurrentVersion);
         if (server is { Installed: true } && latest is not null && server.Running is null
             && !UpdateVersions.IsDevelopmentBuild(server.ServerVersion) && UpdateVersions.IsOlder(server.ServerVersion, UpdateVersions.Plain(latest.Version)))
         {
@@ -181,7 +193,7 @@ public sealed partial class UpdateNotifier(
             return new UpdateViewModel(new ReleaseInfo(serverVersion, ClientVersion.Format(serverVersion), notes), CurrentVersion, UpdateOffer.Client, this);
         }
 
-        return latest is not null && current is not null && latest.Version > current ? new UpdateViewModel(latest, CurrentVersion) : null;
+        return latest is not null && UpdateVersions.IsOlder(CurrentVersion, UpdateVersions.Plain(latest.Version)) ? new UpdateViewModel(latest, CurrentVersion) : null;
     }
 
     /// <summary>UpdateService.Get for an Administrator; null for other users and servers without self update.</summary>

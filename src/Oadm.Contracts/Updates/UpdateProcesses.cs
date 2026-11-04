@@ -160,10 +160,9 @@ public sealed class SystemClientProcesses(string clientFolder) : IClientProcesse
     {
         ArgumentNullException.ThrowIfNull(executable);
         ArgumentNullException.ThrowIfNull(folder);
-        static string Clean(string p) => p.Replace('\\', '/').TrimEnd('/');
-        var directory = Clean(executable);
+        var directory = Installation.CleanPath(executable);
         var at = directory.LastIndexOf('/');
-        return at > 0 && string.Equals(directory[..at], Clean(folder), StringComparison.OrdinalIgnoreCase);
+        return at > 0 && string.Equals(directory[..at], Installation.CleanPath(folder), StringComparison.OrdinalIgnoreCase);
     }
 }
 
@@ -209,6 +208,62 @@ public sealed class GrpcServerVersionProbe(string? pinnedFingerprint = null) : I
         {
             return null;
         }
+    }
+}
+
+/// <summary>The helpers' command lines: the value after a name.</summary>
+public static class HelperCommandLine
+{
+    /// <summary>The argument after <paramref name="name"/>; null when it is missing.</summary>
+    public static string? Value(IReadOnlyList<string> args, string name)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+        for (int i = 0; i < args.Count - 1; i++)
+        {
+            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
+            {
+                return args[i + 1];
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>The installers an update leaves behind in its folder.</summary>
+public static class UpdateFolder
+{
+    /// <summary>
+    /// Deletes every installer in <paramref name="folder"/> but <paramref name="current"/>; one that cannot go is told to
+    /// <paramref name="kept"/> and stays until the next update.
+    /// </summary>
+    public static void DeleteOldInstallers(string folder, string current, Action<string, string>? kept = null)
+    {
+        try
+        {
+            foreach (var old in Directory.EnumerateFiles(folder).Where(f => IsOldInstaller(f, current)))
+            {
+                try
+                {
+                    File.Delete(old);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    kept?.Invoke(old, ex.Message);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            kept?.Invoke(folder, ex.Message);
+        }
+    }
+
+    private static bool IsOldInstaller(string file, string current)
+    {
+        var name = Path.GetFileName(file);
+        return !string.Equals(file, current, StringComparison.Ordinal)
+            && (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
     }
 }
 

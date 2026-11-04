@@ -47,18 +47,7 @@ public sealed record ClientHelperArguments
     public static ClientHelperArguments? Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        string? Value(string name)
-        {
-            for (int i = 0; i < args.Count - 1; i++)
-            {
-                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return args[i + 1];
-                }
-            }
-
-            return null;
-        }
+        string? Value(string name) => HelperCommandLine.Value(args, name);
 
         var mode = Value(Flag);
         if (mode is not (Install or Wait) || Value("--update-start") is not { } start || Value("--update-from") is not { } from || Value("--update-to") is not { } to)
@@ -92,18 +81,7 @@ public sealed record UpdatedArguments(string Kind, string From, string To, strin
     public static UpdatedArguments? Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        string? Value(string name)
-        {
-            for (int i = 0; i < args.Count - 1; i++)
-            {
-                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return args[i + 1];
-                }
-            }
-
-            return null;
-        }
+        string? Value(string name) => HelperCommandLine.Value(args, name);
 
         return Value(Flag) is (Client or Server) and var kind && Value("--update-from") is { } from && Value("--update-to") is { } to
             ? new UpdatedArguments(kind, from, to, Value("--update-reason"))
@@ -115,7 +93,7 @@ public sealed record UpdatedArguments(string Kind, string From, string To, strin
 public interface IClientHelperLauncher
 {
     /// <summary>Copies this program to a temporary folder, starts the copy with <paramref name="arguments"/> and closes the client.</summary>
-    void StartAndQuit(IReadOnlyList<string> arguments);
+    Task StartAndQuitAsync(IReadOnlyList<string> arguments);
 }
 
 /// <summary>
@@ -124,9 +102,10 @@ public interface IClientHelperLauncher
 /// </summary>
 public sealed class ClientHelperLauncher(IProcessLauncher processes, string updateFolder, Action quit) : IClientHelperLauncher
 {
-    public void StartAndQuit(IReadOnlyList<string> arguments)
+    public async Task StartAndQuitAsync(IReadOnlyList<string> arguments)
     {
-        var copy = HelperCopy.Make(updateFolder);
+        // A copy of the whole program: never on the UI thread, then back to it to close.
+        var copy = await Task.Run(() => HelperCopy.Make(updateFolder)).ConfigureAwait(true);
         processes.Start(copy, arguments);
         quit();
     }
@@ -138,8 +117,8 @@ public sealed class ClientHelperLauncher(IProcessLauncher processes, string upda
 /// </summary>
 public sealed class ClientUpdater(IReleaseFeed feed, UpdateDownloader downloader, IClientHelperLauncher launcher, InstallFacts facts, UpdatePlatform platform, string updateFolder, string currentVersion)
 {
-    /// <summary>The update folder of this client (installers, helper copies); earlier helper copies are removed.</summary>
-    public string UpdateFolder => updateFolder;
+    /// <summary>The update folder of this client (the last installer, helper copies); earlier helper copies are removed.</summary>
+    public string Folder => updateFolder;
 
     /// <summary>Removes the helper copies of earlier updates (client start; a running helper keeps its own).</summary>
     public void CleanUp() => HelperCopy.CleanUp(updateFolder);
@@ -163,7 +142,7 @@ public sealed class ClientUpdater(IReleaseFeed feed, UpdateDownloader downloader
         }
 
         var target = UpdateVersions.ParseStable(version) ?? throw new UpdateRefusedException(UpdateTexts.PreRelease);
-        if (UpdateVersions.Parse(currentVersion) is { } current && target <= current)
+        if (UpdateVersions.Parse(currentVersion) is { } current && !UpdateVersions.IsOlder(currentVersion, version))
         {
             throw new UpdateRefusedException(target == current ? UpdateTexts.SameVersion : UpdateTexts.Downgrade);
         }
@@ -172,20 +151,21 @@ public sealed class ClientUpdater(IReleaseFeed feed, UpdateDownloader downloader
         progress(UpdateStep.Download, 0);
         var release = await feed.ByVersionAsync(target, ct).ConfigureAwait(true) ?? throw new UpdateRefusedException(UpdateTexts.DownloadFailed);
         var installer = await downloader.DownloadAsync(release, name, updateFolder, progress, ct).ConfigureAwait(true);
+        UpdateFolder.DeleteOldInstallers(updateFolder, installer);
         progress(UpdateStep.Install, 0);
-        launcher.StartAndQuit(new ClientHelperArguments
+        await launcher.StartAndQuitAsync(new ClientHelperArguments
         {
             Mode = ClientHelperArguments.Install,
             Start = Executable,
             From = currentVersion,
             To = UpdateVersions.Plain(target),
             Installer = installer,
-        }.ToList());
+        }.ToList()).ConfigureAwait(true);
     }
 
     /// <summary>The server's installer starts here: the helper waits for the server's result and starts the new client.</summary>
-    public void CloseForServer(string version, string serverAddress) =>
-        launcher.StartAndQuit(new ClientHelperArguments
+    public Task CloseForServerAsync(string version, string serverAddress) =>
+        launcher.StartAndQuitAsync(new ClientHelperArguments
         {
             Mode = ClientHelperArguments.Wait,
             Start = Executable,
@@ -281,14 +261,13 @@ public sealed class ClientUpdateHelper(UpdateOs os, InstallFacts facts, IInstall
     private async Task WaitForServerAsync(ClientHelperArguments arguments, CancellationToken ct)
     {
         var server = Contracts.Security.OadmChannel.NormalizeAddress(arguments.Server);
-        var target = UpdateVersions.Parse(arguments.To);
         var start = time.GetUtcNow();
         var deadline = start + ServerWait;
         var began = false; // the server said it updates, or went silent (the installer stopped it)
         while (true)
         {
             var answer = await probe.AnswerAsync(server, ct).ConfigureAwait(false);
-            if (answer is not null && UpdateVersions.Parse(answer.Version) == target)
+            if (answer is not null && UpdateVersions.IsRelease(answer.Version, arguments.To))
             {
                 return; // the new version runs
             }

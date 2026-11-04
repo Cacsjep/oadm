@@ -56,6 +56,9 @@ public sealed partial class ServerUpdateCoordinator(
     /// <summary>The latest release is read again after this long.</summary>
     public static readonly TimeSpan LatestCacheTime = TimeSpan.FromMinutes(10);
 
+    /// <summary>GitHub without an answer is asked again after this long (a server without internet waits for no timeout on each read).</summary>
+    public static readonly TimeSpan LatestFailedCacheTime = TimeSpan.FromMinutes(1);
+
     /// <summary>How often a running record is read while the helper works.</summary>
     public static readonly TimeSpan FollowInterval = TimeSpan.FromSeconds(5);
 
@@ -119,7 +122,7 @@ public sealed partial class ServerUpdateCoordinator(
     {
         lock (_gate)
         {
-            if (!fresh && _latest is { } cached && time.GetUtcNow() - cached.At < LatestCacheTime)
+            if (!fresh && _latest is { } cached && time.GetUtcNow() - cached.At < (cached.Release is null ? LatestFailedCacheTime : LatestCacheTime))
             {
                 return cached.Release;
             }
@@ -175,6 +178,11 @@ public sealed partial class ServerUpdateCoordinator(
             return UpdateTexts.Running;
         }
 
+        if (gate.AddOnWorkRuns)
+        {
+            return UpdateTexts.AddOnRunning;
+        }
+
         if (UpdateVersions.IsDevelopmentBuild(environment.ServerVersion))
         {
             return UpdateTexts.DevelopmentBuild;
@@ -190,15 +198,9 @@ public sealed partial class ServerUpdateCoordinator(
             return UpdateTexts.PreRelease;
         }
 
-        var current = UpdateVersions.Parse(environment.ServerVersion)!;
-        if (target == current)
+        if (!UpdateVersions.IsOlder(environment.ServerVersion, version))
         {
-            return UpdateTexts.SameVersion;
-        }
-
-        if (target < current)
-        {
-            return UpdateTexts.Downgrade;
+            return target == UpdateVersions.Parse(environment.ServerVersion) ? UpdateTexts.SameVersion : UpdateTexts.Downgrade;
         }
 
         if (tasks.ActiveCount is var active and > 0)
@@ -228,7 +230,14 @@ public sealed partial class ServerUpdateCoordinator(
                 throw new UpdateRefusedException(refusal);
             }
 
-            await RunAsync(UpdateVersions.ParseStable(version)!, requestedBy, clientAddress, ct).ConfigureAwait(false);
+            var target = UpdateVersions.ParseStable(version)!;
+            if (!gate.TryBegin(UpdateVersions.Plain(target)))
+            {
+                LogRefused(version, UpdateTexts.AddOnRunning); // an install that started after the check
+                throw new UpdateRefusedException(UpdateTexts.AddOnRunning);
+            }
+
+            await RunAsync(target, requestedBy, clientAddress, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -371,34 +380,8 @@ public sealed partial class ServerUpdateCoordinator(
     }
 
     /// <summary>The installers of earlier updates go; one that cannot be deleted now stays (never a reason to stop).</summary>
-    private void DeleteOldInstallers(string current)
-    {
-        try
-        {
-            foreach (var old in Directory.EnumerateFiles(records.Folder).Where(f => IsOldInstaller(f, current)))
-            {
-                try
-                {
-                    File.Delete(old);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    LogOldInstallerKept(old, ex.Message);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            LogOldInstallerKept(records.Folder, ex.Message);
-        }
-    }
-
-    private static bool IsOldInstaller(string file, string current)
-    {
-        var name = Path.GetFileName(file);
-        return !string.Equals(file, current, StringComparison.Ordinal)
-            && (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
-    }
+    private void DeleteOldInstallers(string current) =>
+        UpdateFolder.DeleteOldInstallers(records.Folder, current, LogOldInstallerKept);
 
     /// <summary>
     /// Server start: completes the record of the last update (the new version that answers is done; a result the helper
@@ -430,14 +413,15 @@ public sealed partial class ServerUpdateCoordinator(
             HelperCopy.CleanUp(records.Folder);
         }
 
-        if (UpdateVersions.Parse(environment.ServerVersion) is { } v && UpdateVersions.Parse(record.To) == v)
+        if (UpdateVersions.IsRelease(environment.ServerVersion, record.To))
         {
             // The new version runs: done (a note such as "Restart the computer" stays; a give-up is audited again as done).
-            // Decided on the record as it is under the lock: a result the helper wrote meanwhile counts.
+            // Decided on the record as it is under the lock: a result the helper wrote meanwhile counts. While the installer
+            // runs, which starts this server itself (MSI, postinst), only the helper knows the result: followed below.
             await records.ChangeAsync(
                 r =>
                 {
-                    if (r is null)
+                    if (r is null || r is { IsRunning: true, Step: UpdateRecord.StepInstalling })
                     {
                         return null;
                     }
@@ -458,7 +442,8 @@ public sealed partial class ServerUpdateCoordinator(
 
         if (await records.ReadAsync(ct).ConfigureAwait(false) is { IsRunning: true } running)
         {
-            // The old server runs again while the helper still works (e.g. the MSI rolled back): hold until its result.
+            // The old server runs again while the helper still works (e.g. the MSI rolled back), or the new one while the
+            // installer is not done: hold until its result.
             Hold(running.To);
             StartFollowing();
             return;
@@ -531,10 +516,13 @@ public sealed partial class ServerUpdateCoordinator(
 
     /// <summary>
     /// Reads the running record until it is finished (a record that cannot be read now, e.g. while the helper replaces it,
-    /// is read again next time), or gives up <see cref="GiveUpAfter"/> after its start.
+    /// is read again next time), or gives up <see cref="GiveUpAfter"/> after its start. A helper that never finished leaves
+    /// a done update when this server is the new version. A record that stays unreadable ends the follow as long after it
+    /// began: the caller opens the server again.
     /// </summary>
     private async Task FollowAsync(CancellationToken ct)
     {
+        var began = time.GetUtcNow();
         while (!ct.IsCancellationRequested)
         {
             try
@@ -549,7 +537,11 @@ public sealed partial class ServerUpdateCoordinator(
                 if (record is not null && time.GetUtcNow() - record.StartedUtc > GiveUpAfter)
                 {
                     // Under the lock: a result the helper wrote meanwhile stays.
-                    await records.UpdateRunningAsync(r => r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerDidNotFinish, FinishedUtc = time.GetUtcNow() }, ct).ConfigureAwait(false);
+                    await records.UpdateRunningAsync(
+                        r => UpdateVersions.IsRelease(environment.ServerVersion, r.To)
+                            ? r with { Result = UpdateRecord.Done, FinishedUtc = time.GetUtcNow() }
+                            : r with { Result = UpdateRecord.Failed, Reason = UpdateTexts.InstallerDidNotFinish, FinishedUtc = time.GetUtcNow() },
+                        ct).ConfigureAwait(false);
                     continue;
                 }
             }
@@ -558,17 +550,28 @@ public sealed partial class ServerUpdateCoordinator(
                 LogFollowFailed(ex); // read again next time
             }
 
+            if (time.GetUtcNow() - began > GiveUpAfter)
+            {
+                return;
+            }
+
             await Task.Delay(FollowInterval, time, ct).ConfigureAwait(false);
         }
     }
 
     private int _holding;
+    private string _heldTo = string.Empty;
 
     /// <summary>This process holds tasks and event rule actions (and, once the helper started, calls) for an update.</summary>
     internal bool IsHolding => Volatile.Read(ref _holding) == 1;
 
     private void Hold(string to)
     {
+        lock (_gate)
+        {
+            _heldTo = to;
+        }
+
         Volatile.Write(ref _holding, 1);
         gate.Begin(to);
         tasks.HoldStarts(UpdateTexts.Updating(to) + ". Try again after the update.");
@@ -589,7 +592,7 @@ public sealed partial class ServerUpdateCoordinator(
         string to;
         lock (_gate)
         {
-            to = _current?.ToVersion ?? string.Empty;
+            to = _current?.ToVersion ?? _heldTo;
         }
 
         Publish(new Contracts.V1.UpdateProgress { ToVersion = to, Finished = true, Failed = failed ?? string.Empty });

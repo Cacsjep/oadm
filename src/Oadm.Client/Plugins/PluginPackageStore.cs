@@ -112,7 +112,7 @@ public sealed partial class PluginPackageStore(IOadmApi api, ILogger<PluginPacka
 
         if (sync.AnyInstalling && !_polling)
         {
-            // The server downloads an add-on (after its update): ask again until it is done, then its pages follow.
+            // Another administrator installs an add-on: ask again until it is done, then its pages follow.
             _polling = true;
             try
             {

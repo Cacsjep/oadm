@@ -18,18 +18,7 @@ public sealed record HelperArguments(string DataDirectory, string To, Uri Status
     public static HelperArguments? Parse(IReadOnlyList<string> args)
     {
         ArgumentNullException.ThrowIfNull(args);
-        string? Value(string name)
-        {
-            for (int i = 0; i < args.Count - 1; i++)
-            {
-                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
-                {
-                    return args[i + 1];
-                }
-            }
-
-            return null;
-        }
+        string? Value(string name) => HelperCommandLine.Value(args, name);
 
         return Value("--data") is { Length: > 0 } data && Value("--to") is { Length: > 0 } to
             && Uri.TryCreate(Value("--status"), UriKind.Absolute, out var status)
@@ -244,11 +233,10 @@ public sealed class ServerUpdateHelper(
     private async Task WaitForNewVersionAsync(HelperArguments arguments, UpdateRecord record, string log, string? note, CancellationToken ct)
     {
         await records.UpdateRunningAsync(r => r with { Step = UpdateRecord.StepWait, Reason = note ?? r.Reason, InstallerLog = log }, ct).ConfigureAwait(false);
-        var target = UpdateVersions.Parse(record.To);
         var deadline = time.GetUtcNow() + NewVersionWait;
         while (true)
         {
-            if (UpdateVersions.Parse(await probe.VersionAsync(arguments.StatusUrl, ct).ConfigureAwait(false)) == target)
+            if (UpdateVersions.IsRelease(await probe.VersionAsync(arguments.StatusUrl, ct).ConfigureAwait(false), record.To))
             {
                 Write("The new version answers.");
                 await FinishAsync(UpdateRecord.Done, note, log, ct, keepReason: note is null).ConfigureAwait(false);

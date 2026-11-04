@@ -114,17 +114,17 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     // ----- Server start -----
 
     /// <summary>The start of a server whose data folder was not fixed at this start (tests, a console run).</summary>
-    public Task LoadInstalledAsync(CancellationToken ct) => LoadInstalledAsync(takeUpFolders: true, ct);
+    public Task LoadInstalledAsync(CancellationToken ct) => LoadInstalledAsync(foldersTrusted: true, ct);
 
     /// <summary>
     /// Server start, right after the bundled plugins are loaded: deletes the folders of removed add-ons, of ids this version
-    /// does not offer and the leftovers of an install that stopped, takes up folders put in by hand (only with
-    /// <paramref name="takeUpFolders"/>: not when the service had to fix the data folder's permissions at this start, a folder
-    /// put there before could come from anyone), and loads every installed add-on whose folder names this exact version (no
-    /// event: the start reads the registry afterwards). An id a bundled plugin has is not loaded (log line). Any other add-on
-    /// stays unloaded with <see cref="AddOnTexts.InstallAgain"/>.
+    /// does not offer and the leftovers of an install that stopped, takes up folders put in by hand, and loads every installed
+    /// add-on whose folder names this exact version (no event: the start reads the registry afterwards). An id a bundled
+    /// plugin has is not loaded (log line). Any other add-on stays unloaded with <see cref="AddOnTexts.InstallAgain"/>.
+    /// Without <paramref name="foldersTrusted"/> (the service had to fix the data folder's permissions at this start, a folder
+    /// there could come from anyone) no add-on folder is used: each is deleted, a listed add-on is installed again.
     /// </summary>
-    public async Task LoadInstalledAsync(bool takeUpFolders, CancellationToken ct)
+    public async Task LoadInstalledAsync(bool foldersTrusted, CancellationToken ct)
     {
         Directory.CreateDirectory(Root);
         AddOnFolders.CleanTemporary(Root);
@@ -173,9 +173,15 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 continue;
             }
 
-            if (!takeUpFolders)
+            if (!foldersTrusted)
             {
                 LogNotTakenUp(_logger, entry.Id);
+                if (!_options.DeleteFolder(FolderOf(entry)))
+                {
+                    list.Add(new InstalledAddOn(entry.Id, string.Empty, Removed: true)); // gone at a later start, never taken up
+                    changed = true;
+                }
+
                 continue;
             }
 
@@ -208,6 +214,17 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             {
                 // Removed: its folder could not be deleted; not loaded, gone at a later start.
                 continue;
+            }
+
+            if (!foldersTrusted && Directory.Exists(FolderOf(entry)))
+            {
+                LogNotTrusted(_logger, entry.Id);
+                if (!_options.DeleteFolder(FolderOf(entry)))
+                {
+                    list[list.IndexOf(installed)] = installed with { Removed = true };
+                    changed = true;
+                    continue;
+                }
             }
 
             // The exact version, read from the folder itself: the folder of "4.11.0-rc.1" is not the add-on of 4.11.0.
@@ -305,7 +322,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         finally
         {
-            ReleaseQuietly(_turn);
+            Leave();
         }
     }
 
@@ -360,7 +377,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         finally
         {
-            ReleaseQuietly(_turn);
+            Leave();
         }
     }
 
@@ -404,7 +421,9 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
             if (!loaded)
             {
-                // Failed and never loaded: nothing holds the folder, it goes now. One that stays is marked, so no start takes it up again.
+                // Off, so a later install starts off (rule 5). Failed and never loaded: nothing holds the folder, it goes now. One
+                // that stays is marked, so no start takes it up again.
+                await _activation.TurnOffAsync(entry.Id, ct).ConfigureAwait(false);
                 var deleted = _options.DeleteFolder(FolderOf(entry));
                 await SaveAsync(entry.Id, deleted ? null : new InstalledAddOn(entry.Id, version, Removed: true), CancellationToken.None).ConfigureAwait(false);
                 lock (_sync)
@@ -438,7 +457,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
         finally
         {
-            ReleaseQuietly(_turn);
+            Leave();
         }
     }
 
@@ -734,11 +753,17 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             throw new InvalidOperationException(AddOnTexts.Busy);
         }
 
-        if (_update.UpdatingTo is not null)
+        if (!_update.TryBeginAddOnWork())
         {
             ReleaseQuietly(_turn);
             throw new InvalidOperationException(AddOnTexts.Updating);
         }
+    }
+
+    private void Leave()
+    {
+        _update.EndAddOnWork();
+        ReleaseQuietly(_turn);
     }
 
     private AddOnStatus StatusOf(AddOnEntry entry)
@@ -878,6 +903,9 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} found in the folder of the optional plugins is not loaded: the data folder's permissions were reset at this start. Install it on the Plugins page")]
     private static partial void LogNotTakenUp(ILogger logger, string id);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} is not loaded and its folder goes: the data folder's permissions were fixed at this start. Install it again")]
+    private static partial void LogNotTrusted(ILogger logger, string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} is not loaded: a plugin that came with the server has the same id")]
     private static partial void LogBundledWins(ILogger logger, string id);

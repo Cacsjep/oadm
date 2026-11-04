@@ -127,7 +127,7 @@ public static class ServiceRegistration
             sp.GetRequiredService<Plugins.AddOns.AddOnClientCache>(),
             sp.GetRequiredService<Plugins.AddOns.IAddOnPartLoader>(),
             sp.GetRequiredService<ILogger<Plugins.AddOns.AddOnClientSync>>(),
-            () => sp.GetRequiredService<IServerTrust>().PresentedFingerprint));
+            () => sp.GetRequiredService<IServerTrust>().PinnedFingerprint));
         services.AddSingleton(sp => new Plugins.AddOns.AddOnsViewModel(
             sp.GetRequiredService<IOadmApi>(),
             sp.GetRequiredService<Plugins.PluginPackageStore>(),

@@ -187,8 +187,18 @@ public sealed partial class PluginLoader
             LogPackageLoaded(manifest.Id, manifest.Version, directory, registered);
             if (registered > 0)
             {
-                // Loaded while the server runs (an add-on just installed): every reader of the registry follows it.
-                _registry.PackageRegistered(manifest.Id);
+                // Loaded while the server runs (an add-on just installed): every reader of the registry follows it. The package
+                // stays loaded when one of them fails: only a load that failed may be undone.
+                try
+                {
+                    _registry.PackageRegistered(manifest.Id);
+                }
+#pragma warning disable CA1031 // A reader of the registry must never undo a loaded package.
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    _registry.AddError(new PluginLoadError(manifest.Id, ex.Message, ex));
+                }
             }
 
             return package;

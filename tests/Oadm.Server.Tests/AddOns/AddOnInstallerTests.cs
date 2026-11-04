@@ -713,11 +713,80 @@ public sealed class AddOnInstallerTests
         using var rig = new AddOnRig();
         rig.PlaceFolder();
 
-        await rig.Installer.LoadInstalledAsync(takeUpFolders: false, CancellationToken.None);
+        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.List.Items);
+        Assert.False(Directory.Exists(rig.Folder)); // the next start must not take it up either
         Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task AListedAddOnIsNotLoadedWhenTheDataFolderWasFixedAtThisStartNorAtTheNext()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder();
+        rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
+
+        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.False(Directory.Exists(rig.Folder));
+        var status = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (status.State, status.Message));
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Equal(AddOnState.Failed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task AFolderThatCannotGoWhenTheDataFolderWasFixedIsNeverLoaded()
+    {
+        var rig = new AddOnRig { Limits = o => o with { DeleteFolder = _ => false } };
+        using (rig)
+        {
+            rig.Restart();
+            rig.PlaceFolder();
+            rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
+
+            await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+            Assert.False(rig.Registry.HasPackage(Id));
+            Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version, Removed: true)], rig.List.Items);
+
+            rig.Restart();
+            await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+            Assert.False(rig.Registry.HasPackage(Id));
+        }
+    }
+
+    [Fact]
+    public async Task AnInstallOrRemoveCountsForTheUpdateOnlyWhileItRuns()
+    {
+        using var rig = new AddOnRig();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        var zip = AddOnRig.Zip();
+        rig.Hashes.Allow(zip);
+
+        await rig.InstallAsync(zip);
+        Assert.False(rig.Gate.AddOnWorkRuns);
+
+        await rig.Installer.RemoveAsync(Id, CancellationToken.None);
+        Assert.False(rig.Gate.AddOnWorkRuns);
+
+        Assert.True(rig.Gate.TryBeginAddOnWork());
+        rig.Gate.EndAddOnWork();
+    }
+
+    [Fact]
+    public async Task ARemoveAfterAnUpdateStoresOffSoALaterInstallStartsOff()
+    {
+        using var rig = await UpdatedAsync();
+
+        await rig.Installer.RemoveAsync(Id, CancellationToken.None);
+
+        Assert.Contains("off " + Id, rig.Activation.Calls);
     }
 
     [Fact]

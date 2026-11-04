@@ -64,17 +64,14 @@ public static class Installation
         };
     }
 
-    /// <summary>pkexec of polkit, the system's elevation prompt of the Linux client update.</summary>
-    public static readonly IReadOnlyList<string> PkexecPaths = ["/usr/bin/pkexec", "/bin/pkexec"];
-
     /// <summary>
     /// Update client can run here: the client is installed, no server is installed on this computer
-    /// (<see cref="HasLocalServer"/>) and, on Linux, pkexec exists (otherwise the client keeps Open download page).
+    /// (<see cref="HasLocalServer"/>) and, on Linux, pkexec of polkit at the path the command runs (otherwise the client keeps Open download page).
     /// </summary>
     public static bool CanUpdateClient(InstallFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
-        return IsClientInstalled(facts) && !HasLocalServer(facts) && (facts.Os != UpdateOs.Linux || PkexecPaths.Any(facts.FileExists));
+        return IsClientInstalled(facts) && !HasLocalServer(facts) && (facts.Os != UpdateOs.Linux || facts.FileExists(InstallerCommands.Pkexec));
     }
 
     /// <summary>
@@ -112,7 +109,9 @@ public static class Installation
             return false;
         }
 
-        static string Clean(string p) => p.Replace('\\', '/').TrimEnd('/');
-        return string.Equals(Clean(a), Clean(b), os == UpdateOs.Linux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        return string.Equals(CleanPath(a), CleanPath(b), os == UpdateOs.Linux ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>A path to compare: forward slashes, no slash at the end.</summary>
+    internal static string CleanPath(string path) => path.Replace('\\', '/').TrimEnd('/');
 }

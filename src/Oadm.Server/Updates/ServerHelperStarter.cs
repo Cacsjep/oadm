@@ -13,12 +13,15 @@ public interface IServerHelperStarter
 /// <summary>
 /// Windows: a detached process (the Service Control Manager does not stop a service's child processes). Linux: its own
 /// transient unit (<c>systemd-run --unit=oadm-update --collect</c>: systemd stops every process of the service's control
-/// group). macOS: its own launchd job (<c>launchctl submit -l com.oadm.update</c>; the helper removes the job at its end).
+/// group). macOS: its own launchd job (<c>launchctl submit -l com.oadm.update</c>, which takes no environment, so <c>env</c>
+/// sets it; the helper removes the job at its end).
 /// </summary>
-public sealed class ServerHelperStarter(UpdateOs os, ICommandRunner commands, IProcessLauncher processes) : IServerHelperStarter
+/// <param name="kept">The environment the helper keeps; null: <see cref="ServiceEnvironment"/>.</param>
+public sealed class ServerHelperStarter(UpdateOs os, ICommandRunner commands, IProcessLauncher processes, IReadOnlyDictionary<string, string>? kept = null) : IServerHelperStarter
 {
     public const string SystemdRun = "/usr/bin/systemd-run";
     public const string Launchctl = "/bin/launchctl";
+    public const string Env = "/usr/bin/env";
     public const string UnitName = "oadm-update";
     public const string LaunchdLabel = "com.oadm.update";
 
@@ -41,7 +44,7 @@ public sealed class ServerHelperStarter(UpdateOs os, ICommandRunner commands, IP
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(helper);
         ArgumentNullException.ThrowIfNull(arguments);
-        var environment = ServiceEnvironment();
+        var environment = kept ?? ServiceEnvironment();
         switch (os)
         {
             case UpdateOs.Windows:
@@ -66,7 +69,14 @@ public sealed class ServerHelperStarter(UpdateOs os, ICommandRunner commands, IP
             {
                 // A job of an earlier update that is still loaded would refuse the label.
                 _ = await commands.RunAsync(Launchctl, ["remove", LaunchdLabel], ct).ConfigureAwait(false);
-                List<string> submit = ["submit", "-l", LaunchdLabel, "--", helper];
+                List<string> submit = ["submit", "-l", LaunchdLabel, "--"];
+                if (environment.Count > 0)
+                {
+                    submit.Add(Env);
+                    submit.AddRange(environment.Select(e => $"{e.Key}={e.Value}"));
+                }
+
+                submit.Add(helper);
                 submit.AddRange(arguments);
                 var result = await commands.RunAsync(Launchctl, submit, ct).ConfigureAwait(false);
                 if (!result.Succeeded)

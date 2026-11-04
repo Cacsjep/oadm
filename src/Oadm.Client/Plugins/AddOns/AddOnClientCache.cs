@@ -115,7 +115,8 @@ public sealed partial class AddOnClientCache
             hashes.Add((file.Path, sha));
         }
 
-        if (part.Digest.Length > 0 && !string.Equals(AddOnLayout.Digest(hashes), part.Digest, StringComparison.OrdinalIgnoreCase))
+        string digest = AddOnLayout.Digest(hashes);
+        if (part.Digest.Length > 0 && !string.Equals(digest, part.Digest, StringComparison.OrdinalIgnoreCase))
         {
             throw new AddOnPartException($"The client part of {expectedId} is damaged.");
         }
@@ -134,9 +135,18 @@ public sealed partial class AddOnClientCache
 
             if (Directory.Exists(target))
             {
-                // Another client of this user got there first: its folder is complete (a copy that no longer matched
-                // was deleted by Find).
-                return target;
+                if (string.Equals(DigestOf(target), digest, StringComparison.OrdinalIgnoreCase))
+                {
+                    return target; // another client of this user got there first: the same files
+                }
+
+                // A copy that no longer matches and could not be deleted before is never used.
+                LogChanged(_logger, part.Id, part.Version);
+                DeleteQuietly(target);
+                if (Directory.Exists(target))
+                {
+                    throw new AddOnPartException($"The old client part of {expectedId} could not be replaced.");
+                }
             }
 
             Directory.Move(temp, target);

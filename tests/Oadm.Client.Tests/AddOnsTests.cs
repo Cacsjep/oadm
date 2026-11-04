@@ -79,11 +79,20 @@ public sealed class AddOnsTests : IDisposable
 
         public List<(string Id, string Folder)> Loads { get; } = [];
 
+        /// <summary>The next loads that fail, like a part with a missing dependency.</summary>
+        public int FailNext { get; set; }
+
         public bool HasPackage(string packageId) => Packages.Contains(packageId);
 
         public Task<int> LoadAddOnAsync(string packageId, string folder)
         {
             Loads.Add((packageId, folder));
+            if (FailNext > 0)
+            {
+                FailNext--;
+                throw new AddOnPartException("Not loaded.");
+            }
+
             Packages.Add(packageId);
             return Task.FromResult(1);
         }
@@ -123,6 +132,111 @@ public sealed class AddOnsTests : IDisposable
         Assert.Equal(1, await otherServer.SyncAsync(CancellationToken.None));
         Assert.Equal(VersionFolder("ab12"), Assert.Single(other.Loads).Folder);
         Assert.Equal(2, api.AddOnClientPartCalls);
+    }
+
+    [Theory]
+    [InlineData(null, AddOnClientSync.UnpinnedServer)]
+    [InlineData("", AddOnClientSync.UnpinnedServer)]
+    [InlineData("3F:A2:0B", "3fa20b")]
+    public void The_cache_folder_of_a_server_holds_the_hex_digits_of_its_fingerprint(string? fingerprint, string key) =>
+        Assert.Equal(key, AddOnClientSync.CacheKey(fingerprint));
+
+    [Fact]
+    public async Task A_server_pinned_with_a_real_fingerprint_gets_its_client_part_stored_found_and_loaded()
+    {
+        using var ecdsa = ECDsa.Create();
+        var request = new System.Security.Cryptography.X509Certificates.CertificateRequest("CN=oadm", ecdsa, HashAlgorithmName.SHA256);
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch.AddYears(100));
+        string fingerprint = Oadm.Contracts.Security.ServerCertificatePinning.Fingerprint(certificate);
+        Assert.Contains(':', fingerprint);
+
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        await InstallAsync(api);
+        api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        var loader = new RecordingLoader();
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => fingerprint);
+
+        Assert.Equal(1, await sync.SyncAsync(CancellationToken.None));
+
+        string folder = VersionFolder(fingerprint.Replace(":", string.Empty, StringComparison.Ordinal).ToLowerInvariant());
+        Assert.Equal(folder, Assert.Single(loader.Loads).Folder);
+        Assert.True(System.IO.File.Exists(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll")));
+
+        // The next start finds it in the cache of this server.
+        var restarted = new RecordingLoader();
+        using var next = new AddOnClientSync(api, Cache(), restarted, NullLogger<AddOnClientSync>.Instance, () => fingerprint);
+        Assert.Equal(1, await next.SyncAsync(CancellationToken.None));
+        Assert.Equal(folder, Assert.Single(restarted.Loads).Folder);
+        Assert.Equal(1, api.AddOnClientPartCalls);
+    }
+
+    [Fact]
+    public void A_stored_copy_that_no_longer_matches_is_replaced_never_returned()
+    {
+        AddOnClientPart part = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        string folder = Directory.CreateDirectory(VersionFolder()).FullName;
+        System.IO.File.WriteAllText(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll"), "changed");
+
+        Assert.Equal(folder, Cache().Store(Server, FakeOadmApi.TextRecognitionAddOnId, part));
+
+        Assert.Equal("client", System.IO.File.ReadAllText(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll")));
+    }
+
+    [Fact]
+    public void A_stored_copy_of_the_same_files_is_kept()
+    {
+        AddOnClientPart part = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        string folder = Cache().Store(Server, FakeOadmApi.TextRecognitionAddOnId, part);
+        DateTime written = System.IO.File.GetLastWriteTimeUtc(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll"));
+
+        Assert.Equal(folder, Cache().Store(Server, FakeOadmApi.TextRecognitionAddOnId, part));
+
+        Assert.Equal(written, System.IO.File.GetLastWriteTimeUtc(Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll")));
+    }
+
+    [Fact]
+    public void A_copy_that_no_longer_matches_and_cannot_be_deleted_is_refused()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // only Windows keeps an open file from being deleted
+        }
+
+        AddOnClientPart part = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        string folder = Directory.CreateDirectory(VersionFolder()).FullName;
+        string file = Path.Combine(folder, "Oadm.Plugins.Ocr.Client.dll");
+        System.IO.File.WriteAllText(file, "changed");
+        using var locked = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        Assert.Throws<AddOnPartException>(() => Cache().Store(Server, FakeOadmApi.TextRecognitionAddOnId, part));
+    }
+
+    [Fact]
+    public async Task A_part_that_failed_to_load_is_tried_again_at_the_next_sync()
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        await InstallAsync(api);
+        api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        var loader = new RecordingLoader { FailNext = 1 };
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+
+        Assert.Equal(0, await sync.SyncAsync(CancellationToken.None));
+        Assert.Equal(1, await sync.SyncAsync(CancellationToken.None));
+
+        Assert.Equal(2, loader.Loads.Count);
+        Assert.Equal(1, api.AddOnClientPartCalls); // the files stayed in the cache
+    }
+
+    [Fact]
+    public async Task A_client_part_without_a_loadable_dll_is_not_recorded_as_loaded()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(_root, "broken")).FullName;
+        System.IO.File.WriteAllText(Path.Combine(folder, "Broken.Client.dll"), "not an assembly");
+        var loader = new ClientPluginLoader([], NullLogger<ClientPluginLoader>.Instance);
+
+        await Assert.ThrowsAsync<AddOnPartException>(() => loader.LoadAddOnAsync("oadm.broken", folder));
+
+        Assert.False(loader.HasPackage("oadm.broken"));
     }
 
     [Fact]

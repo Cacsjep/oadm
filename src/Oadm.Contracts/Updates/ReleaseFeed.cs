@@ -108,8 +108,9 @@ public sealed class GitHubReleaseFeed(HttpClient http, string userAgent, TimePro
         {
             foreach (var asset in list.EnumerateArray())
             {
-                if (asset.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
-                    && asset.TryGetProperty("size", out var size) && size.TryGetInt64(out var bytes)
+                if (asset.ValueKind == JsonValueKind.Object
+                    && asset.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String
+                    && asset.TryGetProperty("size", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var bytes)
                     && asset.TryGetProperty("browser_download_url", out var link) && link.ValueKind == JsonValueKind.String
                     && Uri.TryCreate(link.GetString(), UriKind.Absolute, out var uri))
                 {
