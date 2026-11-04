@@ -23,8 +23,6 @@ public static class OcrTexts
     /// <summary>The reader's setting for belts and passing vehicles.</summary>
     public const string MovingObjects = "Moving objects";
 
-    public const string MovingObjectsTip = "For belts and vehicles: no vote over frames";
-
     /// <summary>The reader list's chip of a reader whose camera does not answer: the device grid's status name.</summary>
     public static readonly string NotReachable = DeviceMessages.StatusText(DeviceStatus.Unreachable);
 

@@ -93,7 +93,7 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 ### Moving objects
 
 A checkbox per reader in the settings form (decision 2026-11-04, `Reader.MovingObjects`), off by default, shown only for
-Watching, tooltip "For belts and vehicles: no vote over frames". Additive in JSON: an older record reads as off, and a reader
+Watching, its tooltip tells Off and On in full, like the format help (decision 2026-11-04). Additive in JSON: an older record reads as off, and a reader
 switched to On action keeps the value without using it (`ReaderRules.IsMoving`). A change of it starts the loop again.
 
 - **No vote.** A value counts once it was read in 2 frames in a row, same value and same area (`Matching/TwoFrames` inside

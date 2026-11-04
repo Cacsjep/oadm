@@ -170,6 +170,13 @@ public sealed class PageLayoutTests
             Headless.Pump();
             Headless.Capture(tipWindow, "ocr-format-tooltip.png");
             tipWindow.Close();
+
+            var movingTip = (Control)ToolTip.GetTip(view.FindControl<CheckBox>("MovingObjectsBox")!)!;
+            var movingWindow = new Window { Width = 340, Height = 160, Content = new Border { Padding = new Thickness(12), Child = movingTip } };
+            movingWindow.Show();
+            Headless.Pump();
+            Headless.Capture(movingWindow, "ocr-moving-objects-tooltip.png");
+            movingWindow.Close();
             window.Close();
             return true;
         }, CancellationToken.None);

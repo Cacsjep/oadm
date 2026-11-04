@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 
 using Microsoft.Extensions.Time.Testing;
@@ -333,7 +334,9 @@ public sealed class PageNoteTests
             var box = page.View.FindControl<CheckBox>("MovingObjectsBox")!;
             Assert.True(box.IsEffectivelyVisible);
             Assert.Equal(OcrTexts.MovingObjects, box.Content);
-            Assert.Equal(OcrTexts.MovingObjectsTip, ToolTip.GetTip(box));
+            var help = Assert.IsAssignableFrom<Control>(ToolTip.GetTip(box)).GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+            Assert.Contains("Waits until the pictures agree. For signs and meters.", help);
+            Assert.Contains("Counts a value read the same in 2 pictures in a row. For belts and vehicles.", help);
             Assert.False(box.IsChecked);
             Assert.False(editor.IsDirty);
 

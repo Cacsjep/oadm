@@ -201,7 +201,20 @@
                 </Button>
               </ui:FormField>
               <CheckBox x:Name="MovingObjectsBox" Content="{x:Static vm:OcrTexts.MovingObjects}" IsChecked="{Binding MovingObjects}"
-                        IsVisible="{Binding IsWatching}" ToolTip.Tip="{x:Static vm:OcrTexts.MovingObjectsTip}" />
+                        IsVisible="{Binding IsWatching}">
+                <!-- Off and On in full, like the format help (docs/spec/ocr.md "Moving objects"). -->
+                <ToolTip.Tip>
+                  <StackPanel x:Name="MovingObjectsHelp" Spacing="6" MaxWidth="300">
+                    <TextBlock Classes="tipTitle" Text="{x:Static vm:OcrTexts.MovingObjects}" />
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+                      <TextBlock Classes="tipKey" Text="Off" />
+                      <TextBlock Grid.Column="1" Text="Waits until the pictures agree. For signs and meters." TextWrapping="Wrap" />
+                      <TextBlock Grid.Row="1" Classes="tipKey" Text="On" />
+                      <TextBlock Grid.Row="1" Grid.Column="1" Text="Counts a value read the same in 2 pictures in a row. For belts and vehicles." TextWrapping="Wrap" />
+                    </Grid>
+                  </StackPanel>
+                </ToolTip.Tip>
+              </CheckBox>
             </StackPanel>
 
             <!-- The Areas header: the title left, New (it starts drawing on the video) at the right edge. -->
