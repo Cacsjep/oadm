@@ -5,24 +5,23 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [4.10.0-rc.1] - 2026-11-04
+## [Unreleased]
 
 ### Added
 
-- Dashboards: Button widgets that run event rules, for example to open a gate or switch a light. Update every client: older clients cannot open Dashboards once a dashboard has a button.
-- Plugin SDK 0.10.0.
+- Text recognition: a new optional vision plugin reads container numbers, meters, signs and labels. (OCR).
+- Dashboards: Table widget that lists each event's text with its time, the last 1,000 rows, with a search. 
+- Dashboards: a Text recognition widget shows one area of its reader and uses the reader's camera by itself. Widgets on a reader with several areas ask for the area once.
+- Applications: install from a vendor's ZIP file, alone or together with .eap files.
+- Dashboards: Button widget that can trigger event rules
 - Administrators update the server and their client from inside OADM with Install now.
 - The Sites page says which site nodes are older than the server, with a link to the download page.
 - Servers and clients before this version are updated by hand once; from then on Install now does it.
-- Optional plugins: administrators install them on the Plugins page from the OADM release, without a restart.
-- Text recognition (optional plugin): reads container numbers, meters, signs and labels in camera pictures for the event rules.
-- Text recognition reads inside the areas you draw, watching at 1 to 15 frames per second or when a rule runs Read text; a graphics card speeds up searches over the whole picture.
-- Text recognition works with cameras at sites; its picture streams never hold up AXIS OS upgrades, applications or exports there.
 - Navigation rail: the new group Vision holds Text recognition.
-- Download page: the optional plugins as ZIP files per system, for servers without internet.
 
 ### Changed
 
+- Optional plugins: download the ZIP from the link on the Plugins page and install it through the client, online or offline; after an OADM update, install it again.
 - Firmware is now called AXIS OS, as Axis names it: Upgrade AXIS OS, the AXIS OS column.
 - The device list export names its Firmware column AXIS OS now; scripts that read the export need the new header.
 - Event rules: events are chosen from a tree with search (Devices, Certificates, Sites), so an event is quick to find.
