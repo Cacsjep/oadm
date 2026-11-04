@@ -5,7 +5,7 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [4.10.0-rc.2] - 2026-11-04
+## [4.10.0] - 2026-11-04
 
 ### Added
 
@@ -14,6 +14,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Dashboards: a Text recognition widget shows one area of its reader and uses the reader's camera by itself. Widgets on a reader with several areas ask for the area once.
 - Applications: install from a vendor's ZIP file, alone or together with .eap files.
 - Dashboards: Button widget that can trigger event rules.
+- Update every client: older clients cannot open Dashboards once a dashboard has a Button or Table widget.
 - Plugin SDK 0.10.0.
 - Administrators update the server and their client from inside OADM with Install now.
 - The Sites page says which site nodes are older than the server, with a link to the download page.
