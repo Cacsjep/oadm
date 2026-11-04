@@ -215,6 +215,7 @@ public sealed class DeviceClockTests
             Capture(window, outDir, "client-clock-column-sorted");
             clock.ClearSort();
             window.Close();
+            Dispatcher.UIThread.RunJobs(); // now, not in the session's reset, which gives a busy machine only seconds
             return true;
         }, CancellationToken.None);
         Assert.True(done);

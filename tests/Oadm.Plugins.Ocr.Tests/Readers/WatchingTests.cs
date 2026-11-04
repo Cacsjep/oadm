@@ -74,7 +74,11 @@ public sealed class WatchingTests
         Assert.Equal(OcrLimits.MaxFramesInWork, ocr.Recognizer.Started);
         gate.Release(OcrLimits.MaxFramesInWork + 1);
         await Eventually.TrueAsync(() => ocr.Readings == OcrLimits.MaxFramesInWork + 1, "the newest frame read too");
-        Assert.Equal("L4", ocr.Recognizer.Read[^1]);
+
+        // The frames in work end in any order: the newest is among them, the older ones were dropped.
+        var read = ocr.Recognizer.Read.ToList();
+        Assert.Contains("L4", read);
+        Assert.DoesNotContain(read, text => text is "L0" or "L1" or "L2" or "L3");
     }
 
     [Fact]
