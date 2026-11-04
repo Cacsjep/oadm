@@ -93,6 +93,9 @@ public static class ReaderRules
     public static string BusyLoad(double load) =>
         string.Create(CultureInfo.InvariantCulture, $"Busy: recognition is at {Math.Round(Math.Clamp(load, 0, 100))} %");
 
+    /// <summary>The readings of a watching reader keep failing (<see cref="OcrLimits.FailedReadingsForProblem"/>).</summary>
+    public const string ReadingFailed = "Text recognition fails on the pictures of this reader. The server log has the details.";
+
     /// <summary>The action Read text with a reader without areas: text is read only inside areas.</summary>
     public const string NoAreas = "The reader has no area. Draw one on the Text recognition page.";
 

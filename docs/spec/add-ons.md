@@ -154,6 +154,11 @@ computer. A client loads the client part its server hands it: the user must trus
   "Update this client to install optional plugins."), `RemoveAddOn`, `GetAddOnClientPart` (the client part's files with
   their SHA-256 and the part's digest). Rules in `AccessPolicy`; spec in `docs/spec/grpc.md`.
 
+- **Event Optional plugin not loaded** (`AddOns/AddOnEventSource`, decision 2026-11-04, issue #33): one stateful server event of the
+  host, folder Optional plugins, on while an installed add-on is not loaded (`AddOnInstaller.NotLoaded`: the state Failed, so
+  Install again after an update or a restore and a load that failed), values `count` and `plugin` (the names). A plugin that is
+  not loaded sends nothing, so the host says it. Reported after every install or remove and at the start, once the rules run.
+
 ## Client
 
 - `PluginPackageStore.LoadAsync` announces the plugin list first; then `AddOnClientSync` brings the client parts in the

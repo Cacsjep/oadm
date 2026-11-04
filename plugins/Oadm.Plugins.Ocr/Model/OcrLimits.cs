@@ -96,6 +96,9 @@ public static class OcrLimits
     /// <summary>From this input size on a text finder call is large (<see cref="LargeTextFinderCalls"/>).</summary>
     public const int LargeTextFinderPixels = 200_000;
 
+    /// <summary>Failed readings in a row that make a problem of a watching reader; a single one may be a bad frame.</summary>
+    public const int FailedReadingsForProblem = 3;
+
     /// <summary>
     /// Rows of the last reads per reader and per preview (docs/spec/ocr.md "The last 20 reads"): server memory only, the oldest
     /// drops first.

@@ -508,6 +508,13 @@ public static partial class OadmServerHost
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(SiteEventSource.EventSourceId),
             sp.GetRequiredService<ILogger<SiteEventSource>>()));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<SiteEventSource>());
+        // "Optional plugin not loaded": a plugin that is not loaded cannot send anything itself.
+        services.AddSingleton(sp =>
+        {
+            var installer = sp.GetRequiredService<AddOns.AddOnInstaller>();
+            return new AddOns.AddOnEventSource(() => installer.NotLoaded, () => sp.GetRequiredService<RuleEngine>().PublisherFor(AddOns.AddOnEventSource.EventSourceId));
+        });
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<AddOns.AddOnEventSource>());
         // Polling.ClockToleranceSeconds: the Clock column's off state and Any device: clock off follow it live.
         services.AddSingleton(sp => new ClockTolerance(
             sp.GetRequiredService<ServerSettingsStore>(),
@@ -741,6 +748,9 @@ public static partial class OadmServerHost
         compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.Start();
+        var addOnEvents = sp.GetRequiredService<AddOns.AddOnEventSource>();
+        addOns.StateChanged += (_, _) => addOnEvents.Report();
+        addOnEvents.Report();
         sp.GetRequiredService<Core.Sites.SiteStatusPublisher>().Start();
         sp.GetRequiredService<ExpiryWarningPublisher>().Start(); // the grid's Certificate expires chip follows PKI's policies
         await sp.GetRequiredService<CorePluginHost>().StartAllAsync(ct).ConfigureAwait(false);

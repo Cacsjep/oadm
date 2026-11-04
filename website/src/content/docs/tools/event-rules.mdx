@@ -60,6 +60,8 @@ and the event log.
 | Certificate expires soon, Certificate expired, and their Any device events (group Certificates) | The HTTPS certificate of the device, with the days of the **Expiry warning** policy on the [PKI](../pki/) page |
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 | Text read (group Text recognition, one per reader): Area, Text, Text read, All matches, Number, Confidence, Matches format | The readers of [Text recognition](../text-recognition/events/#event-text-read) |
+| Reader problem (one per reader), Any reader problem | On while a text reader cannot read, see [Text recognition](../text-recognition/events/#event-reader-problem) |
+| Optional plugin not loaded (group Optional plugins) | On while an optional plugin must be installed again; `{count}` and `{plugin}` |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.

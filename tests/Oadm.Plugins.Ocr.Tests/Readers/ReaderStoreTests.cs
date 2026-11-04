@@ -53,7 +53,7 @@ public sealed class ReaderStoreTests
         await ocr.CallAsync(OcrMethods.DeleteReader, new ReaderRequest { ReaderId = saved.Id });
         Assert.Empty((await ocr.ListAsync()).Readers);
         Assert.Empty(await ocr.Context.PluginRecords.ListAsync(ReaderStore.Collection, CancellationToken.None));
-        Assert.Empty(ocr.Plugin.EventTypes);
+        Assert.Equal(OcrInfo.AnyReaderProblemTypeId, Assert.Single(ocr.Plugin.EventTypes).Id);
         var gone = await Assert.ThrowsAsync<ArgumentException>(() => ocr.CallAsync(OcrMethods.GetReader, new ReaderRequest { ReaderId = saved.Id }));
         Assert.Equal(ReaderRules.Gone, gone.Message);
         await ocr.CallAsync(OcrMethods.DeleteReader, new ReaderRequest { ReaderId = saved.Id }); // twice: nothing to do

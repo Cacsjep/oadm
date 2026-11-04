@@ -42,6 +42,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly Dictionary<string, WatchLoop> _loops = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderSlot> _slots = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ReaderReading> _last = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _actionProblems = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string> _readingProblems = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _streamProblems = new(StringComparer.Ordinal);
     private readonly ITimer _recheck;
     private readonly ITimer _sweep;
@@ -155,9 +157,12 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
     /// <summary>
     /// Why the reader cannot read now as of the last check (<see cref="CheckAsync"/>, the watching limits), else why its
-    /// stream gives no pictures; null while it reads.
+    /// stream gives no pictures, else why its readings fail, else why the action's last reading of an On action reader failed;
+    /// null while it reads.
     /// </summary>
-    public string? ProblemOf(string readerId) => _problems.GetValueOrDefault(readerId) ?? _streamProblems.GetValueOrDefault(readerId);
+    public string? ProblemOf(string readerId) =>
+        _problems.GetValueOrDefault(readerId) ?? _streamProblems.GetValueOrDefault(readerId)
+        ?? _readingProblems.GetValueOrDefault(readerId) ?? _actionProblems.GetValueOrDefault(readerId);
 
     /// <summary>The last reading of a reader; null without one.</summary>
     public ReaderReading? Last(string readerId) => _last.TryGetValue(readerId, out var reading) ? reading : null;
@@ -170,6 +175,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         {
             reads.ForgetValues();
         }
+
+        SetProblem(_actionProblems, readerId, null);
     }
 
     /// <summary>Drops everything of a deleted reader (after <see cref="SyncAsync"/> stopped its loop).</summary>
@@ -180,6 +187,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         _recent.TryRemove(readerId, out _);
         _slots.TryRemove(readerId, out _);
         _streamProblems.TryRemove(readerId, out _);
+        _readingProblems.TryRemove(readerId, out _);
+        _actionProblems.TryRemove(readerId, out _);
     }
 
     /// <summary>
@@ -237,7 +246,31 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         return task;
     }
 
+    /// <summary>
+    /// <see cref="ReadAndFireAsync"/> with the action's result as the problem of an On action reader: it has no stream that could
+    /// tell, so a failed reading is on until a reading works. "Already reading" and a deleted reader are no problem of a reader.
+    /// </summary>
     private async Task<ReaderReading> ReadOnceCoreAsync(Reader reader, CancellationToken callerCt)
+    {
+        try
+        {
+            var reading = await ReadAndFireAsync(reader, callerCt).ConfigureAwait(false);
+            SetProblem(_actionProblems, reader.Id, null);
+            return reading;
+        }
+        catch (OperationCanceledException) when (!_stopped && !Starting && reader.Mode == ReaderMode.OnAction)
+        {
+            SetProblem(_actionProblems, reader.Id, DeviceMessages.TimedOut); // the rule's time for an action ran out
+            throw;
+        }
+        catch (Exception ex) when (!_stopped && reader.Mode == ReaderMode.OnAction && ex is not OperationCanceledException && ex.Message is not (OcrInfo.AlreadyReading or ReaderRules.Gone))
+        {
+            SetProblem(_actionProblems, reader.Id, ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<ReaderReading> ReadAndFireAsync(Reader reader, CancellationToken callerCt)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(callerCt, _stopping.Token);
         var ct = linked.Token;
@@ -411,8 +444,14 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                     continue;
                 }
 
-                if (stored.Mode != ReaderMode.Watching || stored.Areas.Count == 0 || _maker is null || _frames is null)
+                if (stored.Mode != ReaderMode.Watching || stored.Areas.Count == 0)
                 {
+                    continue;
+                }
+
+                if (_maker is null || _frames is null)
+                {
+                    problems[stored.Id] = ReaderRules.NotInstalled; // it would read nothing: the chip and the rules say so
                     continue;
                 }
 
@@ -449,9 +488,19 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 wanted.Clear();
             }
 
+            // Only an On action reader keeps the result of its last action.
+            var actionGone = false;
+            foreach (var id in _actionProblems.Keys)
+            {
+                if (!readers.Any(r => r.Id == id && r.Mode == ReaderMode.OnAction))
+                {
+                    actionGone |= _actionProblems.TryRemove(id, out _);
+                }
+            }
+
             var before = _problems;
             _problems = problems;
-            if (before.Count != problems.Count || problems.Any(p => before.GetValueOrDefault(p.Key) != p.Value))
+            if (actionGone || before.Count != problems.Count || problems.Any(p => before.GetValueOrDefault(p.Key) != p.Value))
             {
                 RaiseProblemsChanged();
             }
@@ -535,6 +584,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             await loop.Run.ConfigureAwait(false);
             loop.Stop.Dispose();
             cleared |= _streamProblems.TryRemove(loop.Reader.Id, out _);
+            cleared |= _readingProblems.TryRemove(loop.Reader.Id, out _);
         }
 
         if (cleared)
@@ -560,15 +610,15 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         {
             _stats.CountReading(r.Id);
             Keep(r, reading);
-        }, problem => SetStreamProblem(id, problem), SlotOf(id), ct);
+        }, problem => SetProblem(_streamProblems, id, problem), SlotOf(id), ct, problem => SetProblem(_readingProblems, id, problem));
     }
 
-    /// <summary>A watching reader's stream gives no pictures (<paramref name="problem"/>) or does again (null): the list says so.</summary>
-    private void SetStreamProblem(string readerId, string? problem)
+    /// <summary>A reader's stream or action fails (<paramref name="problem"/>) or works again (null): the list and the event rules say so.</summary>
+    private void SetProblem(ConcurrentDictionary<string, string> problems, string readerId, string? problem)
     {
         var changed = problem is null
-            ? _streamProblems.TryRemove(readerId, out _)
-            : !string.Equals(_streamProblems.GetValueOrDefault(readerId), problem, StringComparison.Ordinal) && (_streamProblems[readerId] = problem) is not null;
+            ? problems.TryRemove(readerId, out _)
+            : !string.Equals(problems.GetValueOrDefault(readerId), problem, StringComparison.Ordinal) && (problems[readerId] = problem) is not null;
         if (changed && !_stopped)
         {
             RaiseProblemsChanged();
@@ -586,10 +636,12 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// the areas vote and publish their events; without (a preview) every frame's own result is kept and nothing is published
     /// to the rules, or with Moving objects the same 2 frames rule as the reader's, still without an event. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped. Areas whose
     /// pixels have not changed since the last reading of <paramref name="source"/> give that reading again (docs/spec/ocr.md
-    /// "Unchanged areas"). <paramref name="problem"/> hears why the stream gives no pictures.
+    /// "Unchanged areas"). <paramref name="problem"/> hears why the stream gives no pictures, <paramref name="failing"/> when
+    /// <see cref="OcrLimits.FailedReadingsForProblem"/> readings in a row failed (<see cref="ReaderRules.ReadingFailed"/>) and when one works again.
     /// </summary>
-    private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, string source, Action<Reader, ReaderReading> keep, Action<string?> problem, ReaderSlot? slot, CancellationToken ct)
+    private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, string source, Action<Reader, ReaderReading> keep, Action<string?> problem, ReaderSlot? slot, CancellationToken ct, Action<string?>? failing = null)
     {
+        var failed = 0;
         var watches = vote ? WatchesOf(stream) : null;
         (Reader Reader, AreaWatch[] Watches)? moving = null; // a preview's draft can change Moving objects and its areas under a running stream
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
@@ -607,7 +659,18 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             {
                 if (done.Read is null)
                 {
+                    if (!ct.IsCancellationRequested && ++failed == OcrLimits.FailedReadingsForProblem)
+                    {
+                        failing?.Invoke(ReaderRules.ReadingFailed);
+                    }
+
                     return;
+                }
+
+                if (failed > 0)
+                {
+                    failed = 0;
+                    failing?.Invoke(null);
                 }
 
                 if (watches is null)

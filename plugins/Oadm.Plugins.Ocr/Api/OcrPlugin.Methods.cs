@@ -57,6 +57,9 @@ public sealed partial class OcrPlugin
                     return OcrJson.Serialize(new SaveReaderReply { Errors = ex.Errors });
                 }
 
+                // Before the sync: a problem it finds is the first report of the reader's new type.
+                EventTypesChanged?.Invoke(this, EventArgs.Empty);
+
                 // After the sync: a reading of the old camera or areas still in work is kept by nobody (it no longer fits the
                 // stored reader), and the last one goes.
                 await runtime.SyncAsync().ConfigureAwait(false);
@@ -65,7 +68,7 @@ public sealed partial class OcrPlugin
                     runtime.Forget(saved.Id);
                 }
 
-                EventTypesChanged?.Invoke(this, EventArgs.Empty);
+                ReportProblems();
                 PublishReaders(saved.OwnerScopeKey, before?.OwnerScopeKey);
                 return OcrJson.Serialize(new SaveReaderReply { Reader = saved with { OwnerScopeKey = null } });
             }
@@ -78,6 +81,7 @@ public sealed partial class OcrPlugin
                     await runtime.SyncAsync().ConfigureAwait(false);
                     runtime.Remove(deleted.Id);
                     EventTypesChanged?.Invoke(this, EventArgs.Empty);
+                    ReportProblems();
                     PublishReaders(deleted.OwnerScopeKey);
                 }
 

@@ -46,6 +46,36 @@ The placeholders work in every text of an action, next to OADM's own such as `{t
 | **Text** contains `LOADING` | A sign shows a word |
 | **Area** equals `Container number` | One area of the reader |
 
+### Reads close together
+
+A rule's **Dead time** (default 10 s) counts per camera: after a run the rule skips every further read of that camera for
+that time, from any area and with any text.
+
+For two areas that read at the same moment, or for containers and vehicles passing one after the other, set **Dead time**
+to 0:
+
+- A watching reader fires only when the text changes, so the same text does not repeat.
+- **Max per minute** still limits the rule. Raise it for a busy gate.
+- Add a check such as **Matches format** is yes, so that text leaving an area runs nothing.
+- A rule that runs **Read text** with its own reader is then limited by **Max per minute** alone.
+
+## Event: Reader problem
+
+Each reader also has the event **Reader problem**, next to **Text read**. It is on while the reader's chip on the page is red
+and off when the reader reads again, so a rule can tell a broken reader from a quiet gate.
+
+| Event | On while | Values |
+|---|---|---|
+| **Reader problem** | This reader has a problem | **Reader**, **Problem** (`{reader}`, `{problem}`) |
+| **Any reader problem** | At least one reader has a problem, new readers included | `{count}`, `{reader}` with the names |
+| **Optional plugin not loaded**, folder **Optional plugins** | Text recognition must be installed again after an update | `{count}`, `{plugin}` |
+
+An **On action** reader has no stream that could fail: **Reader problem** also turns on when **Read text** fails, and off with
+the next good read.
+
+**Any reader problem** runs a rule once, when the first reader fails. A second reader failing while it is on runs nothing
+new. Use **Reader problem** to hear of each reader.
+
 ## Action: Read text
 
 **Read text**, in the group **Text recognition**, reads one picture of the chosen **Reader** now and sends **Text read**

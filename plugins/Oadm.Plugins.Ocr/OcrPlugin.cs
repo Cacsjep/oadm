@@ -15,8 +15,9 @@ namespace Oadm.Plugins.Ocr;
 /// Core plugin "Text recognition" (docs/spec/ocr.md): reads text in the cameras' pictures and hands it to the event rules.
 /// An add-on (docs/spec/add-ons.md), off by default (plugin.json). Read only for devices. The saved readers
 /// (<see cref="ReaderStore"/>, the only thing it stores) are at work in <see cref="ReaderRuntime"/>; each reader publishes
-/// the event "Text read" (<see cref="TextReadEvents"/>, one type per reader, so the types change with the readers) and the
-/// action "Read text" (<see cref="ReadTextAction"/>) reads one picture of a reader now. Page backend methods:
+/// the events "Text read" (<see cref="TextReadEvents"/>) and "Reader problem" (<see cref="ReaderProblemEvents"/>), one type of
+/// each per reader, so the types change with the readers, and the action "Read text" (<see cref="ReadTextAction"/>) reads one
+/// picture of a reader now. Page backend methods:
 /// <see cref="OcrMethods"/> (Api/OcrPlugin.Methods.cs).
 /// </summary>
 public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActionSource, IAsyncDisposable
@@ -25,6 +26,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     private ICorePluginContext? _ctx;
     private ReaderStore? _store;
     private ReaderRuntime? _runtime;
+    private ReaderProblemReporter? _problems;
     private readonly ConcurrentDictionary<Guid, (DateTimeOffset At, CameraOptions Options)> _cameraOptions = new();
     private volatile bool _useGpu = true;
 
@@ -56,8 +58,10 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>"Read text".</summary>
     public IReadOnlyList<IActionPlugin> ActionPlugins { get; }
 
-    /// <summary>The event "Text read" of every reader.</summary>
-    public IReadOnlyList<EventTypeInfo> EventTypes => [.. AllReaders.Select(TextReadEvents.TypeOf)];
+    /// <summary>The events "Text read" and "Reader problem" of every reader and "Any reader problem"; none while the plugin is stopped.</summary>
+    public IReadOnlyList<EventTypeInfo> EventTypes => _store is null
+        ? []
+        : [.. AllReaders.Select(TextReadEvents.TypeOf), .. AllReaders.Select(ReaderProblemEvents.TypeOf), ReaderProblemEvents.AnyType];
 
     /// <summary>Every reader, whoever owns it (the action, the event types); none while the plugin is stopped.</summary>
     internal IReadOnlyList<Reader> AllReaders => _store?.All ?? [];
@@ -86,7 +90,12 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         _cameraOptions.Clear();
         var runtime = new ReaderRuntime(ctx, _parts, ctx.Logger, () => store.All);
         _runtime = runtime;
-        runtime.ProblemsChanged += (_, _) => PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+        _problems = ctx.EventPublisher is { } publisher ? new ReaderProblemReporter(publisher) : null;
+        runtime.ProblemsChanged += (_, _) =>
+        {
+            PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+            ReportProblems();
+        };
         if (ctx.DeviceScopes is { } scopes)
         {
             scopes.Changed += OnScopeChanged;
@@ -100,9 +109,20 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
             if (ReferenceEquals(_runtime, runtime))
             {
                 PublishReaders([.. AllReaders.Select(r => r.OwnerScopeKey)]);
+                ReportProblems();
             }
         });
         await runtime.SyncAsync().ConfigureAwait(false);
+        ReportProblems();
+    }
+
+    /// <summary>Tells the event rules of the readers' problems; the types of a saved reader become ready with it.</summary>
+    private void ReportProblems()
+    {
+        if (_runtime is { } runtime)
+        {
+            _problems?.Report(AllReaders, runtime.ProblemOf);
+        }
     }
 
     /// <summary>Stops every reader's loop (also when the plugin is turned off); the readers stay stored.</summary>
@@ -116,6 +136,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         var runtime = _runtime;
         var store = _store;
         _runtime = null;
+        _problems = null;
         _store = null;
         _ctx = null;
         if (runtime is not null)

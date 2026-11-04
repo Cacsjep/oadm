@@ -80,6 +80,9 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo, IRecognizer
     /// <summary>The next reading throws this once.</summary>
     public Exception? FailNext { get; set; }
 
+    /// <summary>Every reading fails with this until it is cleared.</summary>
+    public Exception? FailAll { get; set; }
+
     /// <summary>The texts of the pictures read, in order of their end.</summary>
     public IReadOnlyList<string> Read => [.. _read];
 
@@ -97,6 +100,11 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo, IRecognizer
         if (GateOf is { } gateOf)
         {
             await gateOf(Frame.TextOf(jpeg));
+        }
+
+        if (FailAll is { } always)
+        {
+            throw always;
         }
 
         if (FailNext is { } fail)
@@ -156,6 +164,9 @@ internal sealed class FakeFrames : IFrameSource
     /// <summary>A real picture the single request answers instead of <see cref="Single"/>.</summary>
     public ReadOnlyMemory<byte>? SinglePicture { get; set; }
 
+    /// <summary>What the single request fails with; null: it answers.</summary>
+    public Exception? SingleError { get; set; }
+
     public int Singles => Volatile.Read(ref _singles);
 
     /// <summary>Streams open now.</summary>
@@ -173,7 +184,7 @@ internal sealed class FakeFrames : IFrameSource
     public Task<ReadOnlyMemory<byte>> SingleAsync(FrameRequest request, CancellationToken ct)
     {
         Interlocked.Increment(ref _singles);
-        return Task.FromResult(SinglePicture ?? Frame.Of(Single));
+        return SingleError is { } error ? Task.FromException<ReadOnlyMemory<byte>>(error) : Task.FromResult(SinglePicture ?? Frame.Of(Single));
     }
 
     public async IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, [EnumeratorCancellation] CancellationToken ct)
@@ -230,7 +241,7 @@ internal sealed class FakeFrames : IFrameSource
 internal sealed class OcrHarness : IAsyncDisposable
 {
     /// <summary>Over the fakes, or with real parts: <paramref name="recognizer"/>, <paramref name="matcher"/> and <paramref name="cutter"/> in place of the fakes.</summary>
-    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null, int processorCount = 8, Func<ReadOnlyMemory<byte>, bool>? pictureFits = null, TimeProvider? clock = null, Func<TimeSpan>? processorTime = null)
+    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null, int processorCount = 8, Func<ReadOnlyMemory<byte>, bool>? pictureFits = null, TimeProvider? clock = null, Func<TimeSpan>? processorTime = null, bool noRecognition = false)
     {
         Context = new FakeCoreContext { EventPublisher = Publisher };
         Inside = Context.Add(new FakeDevice { Address = "10.0.0.1" });
@@ -239,7 +250,7 @@ internal sealed class OcrHarness : IAsyncDisposable
         Parts = new ReaderParts
         {
             Frames = _ => Frames,
-            Recognizer = _ => recognizer ?? Recognizer,
+            Recognizer = _ => noRecognition ? null : recognizer ?? Recognizer,
             Matcher = matcher ?? new FakeMatcher(),
             Cutter = cutter,
             PictureFits = pictureFits ?? (_ => true),
@@ -267,6 +278,14 @@ internal sealed class OcrHarness : IAsyncDisposable
     public ReaderParts Parts { get; }
 
     public OcrPlugin Plugin { get; }
+
+    /// <summary>A plugin without its models: no recognition.</summary>
+    public static async Task<OcrHarness> StartWithoutRecognitionAsync()
+    {
+        var harness = new OcrHarness(noRecognition: true);
+        await harness.Plugin.StartAsync(harness.Context, CancellationToken.None);
+        return harness;
+    }
 
     public static async Task<OcrHarness> StartAsync(bool onGpu = false, int processorCount = 8)
     {

@@ -256,7 +256,7 @@ must never break.
   default): readers (camera, up to 8 areas, Any text or a format such as `@@@U ###### #`) read text only inside their
   areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
   in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
-  readers by the CPU cores, 4 per site); event Text read for the rules; read only, pictures never stored.
+  readers by the CPU cores, 4 per site); events Text read and Reader problem for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

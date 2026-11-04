@@ -151,6 +151,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
+        Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded); // the event rules hear of it
         Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
     }
 

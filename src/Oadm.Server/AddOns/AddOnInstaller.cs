@@ -276,6 +276,21 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         }
     }
 
+    /// <summary>Raised after an install or a remove: <see cref="NotLoaded"/> may have changed.</summary>
+    public event EventHandler? StateChanged;
+
+    /// <summary>The names of the add-ons that are installed but not loaded now (<see cref="AddOnState.Failed"/>).</summary>
+    public IReadOnlyList<string> NotLoaded
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. AddOnCatalog.Entries.Where(e => _slots[e.Id] is { Loaded: false, Failed: not null }).Select(e => e.DisplayName)];
+            }
+        }
+    }
+
     // ----- IAddOnInstaller -----
 
     public Task<IReadOnlyList<AddOnStatus>> ListAsync(CancellationToken ct) =>
@@ -764,6 +779,16 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     {
         _update.EndAddOnWork();
         ReleaseQuietly(_turn);
+        try
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+#pragma warning disable CA1031 // Telling the event rules never changes the result of an install.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogStateNotReported(_logger, ex);
+        }
     }
 
     private AddOnStatus StatusOf(AddOnEntry entry)
@@ -909,6 +934,9 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} is not loaded: a plugin that came with the server has the same id")]
     private static partial void LogBundledWins(ILogger logger, string id);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The event rules could not be told of the optional plugins' state")]
+    private static partial void LogStateNotReported(ILogger logger, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Version} loaded")]
     private static partial void LogLoaded(ILogger logger, string id, string version);

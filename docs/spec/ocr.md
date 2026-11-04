@@ -197,7 +197,8 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   format whose first 11 letters and digits are `@@@`, the equipment category and seven `#` checks the 11th as the ISO
   6346 check digit of the 10 before it. The category is U (freight container), J (detachable equipment) or Z (trailer or
   chassis), in either case like every letter of a format (decision 2026-11-04: `@@@Z` and `@@@u` checked nothing until
-  then); `@@@@ ###### #` stays unchecked; what follows (`@@@U ###### # 22G1` with the size and type code) is not checked; `@@@U ######` has no
+  then), or `?` for any of the three (`@@@? ###### #`, decision 2026-11-04: an area with containers and chassis; the value has
+  the letter read; a `?` anywhere else is a plain character); `@@@@ ###### #` stays unchecked; what follows (`@@@U ###### # 22G1` with the size and type code) is not checked; `@@@U ######` has no
   check digit and checks nothing. A wrong check digit is no match: no character is ever changed to make it fit
   (decision 2026-11-03; a misread check digit never becomes a sure value).
 - **Format-guided reading never makes a dash up or leaves one out**: the search may pass a dash of the format by, but such a match is
@@ -217,7 +218,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
 - The page's format field has the format help as its tooltip.
 - **Use read text as format** (area's ⋯ menu, decision 2026-11-04; off without a read text in that area or the change
   right): the format field takes the shape of the text read now, digits `#`, letters `@`, the rest as written
-  (`Matching/TextFormat.FromText`): the user then adjusts it (`@@@@` to `@@@U`) and saves.
+  (`Matching/TextFormat.FromText`); a container number with a fitting check digit (category U, J or Z) gets `@@@? ###### #`, so its format checks it (decision 2026-11-04, a misread stays `@@@@`), and a short message says so ("Check this format", OK only: the format then refuses other text). The user then adjusts it and saves.
 
 ### Runtime safety
 
@@ -256,6 +257,19 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   declares the reader's camera as its fixed device (`FixedDeviceId`) and Area as its split field (`SplitField`): on a
   dashboard the event is chosen per reader, the widget takes the camera by itself and shows the area chosen in its Area
   select ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
+- Event **Reader problem** per reader (same folder, stateful, on the reader's camera, decision 2026-11-04, issue #33): on at once
+  while the reader's chip on the page is red (`ReaderRuntime.ProblemOf`), off when it reads again; no waiting time. Values:
+  Reader (no check), Problem (the server's full text, the chip's tooltip). **Any reader problem** (folder Text recognition,
+  stateful, server, for users with all devices): on while at least one reader has a problem, values Readers (the count) and
+  Reader (the names); a new reader needs no rule of its own. `ReaderProblemReporter` (`Events/ReaderProblemEvents.cs`) sends each type one full report, then
+  changes; a new text while on updates the values without an edge. `ReaderRules.Starting` is no problem, the type waits
+  until the graphics card's test ended. A watching reader whose recognition fails 3 times in a row (`OcrLimits.FailedReadingsForProblem`, a
+  single bad frame is none) has a problem until a reading works; one without its models has "not installed" (`ReaderRules.NotInstalled`).
+  An On action reader has no stream, so a failed action Read text is its problem too until a reading works or its picture or mode changes
+  (`Already reading` and a deleted reader are none; a run cut by the rule's 30 s is "timed out", not while the card's test holds it), and
+  the chip shows it. Problems live in memory, so after a restart a watching reader that is still broken goes off, then on again
+  (decision 2026-11-04), a save that restarts its stream too; an On action reader stays off until its next failed action. A plugin that is not loaded sends nothing: that is the host's event
+  Optional plugin not loaded (`docs/spec/add-ons.md`).
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
   in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). An area that becomes empty publishes once with Text empty.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
@@ -266,6 +280,9 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   action never ends "Already reading" because of it. Another single reading already running for an On action reader:
   the action ends "Already reading" and nothing is queued. Loops (a Text read event that runs Read text of the same
   reader) are held by the rule limits (dead time, maximum per minute).
+- A rule's dead time counts per camera (`RuleEngine.Limit`), so it also skips another area or the next value. That stays
+  (decision 2026-11-04, issue #32): such a rule sets Dead time 0, the docs say so; a watching reader never repeats a value
+  and Max per minute still holds.
 
 ## Page
 

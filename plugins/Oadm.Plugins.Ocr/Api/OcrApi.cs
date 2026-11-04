@@ -45,8 +45,36 @@ public static class OcrInfo
         return TextReadTypePrefix + readerId;
     }
 
+    /// <summary>The start of a reader's event type id for its problems: <c>oadm.ocr.reader-problem.&lt;reader id&gt;</c>.</summary>
+    public const string ReaderProblemTypePrefix = PluginId + ".reader-problem.";
+
+    /// <summary>The name of the event that is on while a reader has a problem.</summary>
+    public const string ReaderProblemName = "Reader problem";
+
+    /// <summary>The event type that is on while at least one reader has a problem.</summary>
+    public const string AnyReaderProblemTypeId = PluginId + ".any-reader-problem";
+
+    /// <summary>The name of <see cref="AnyReaderProblemTypeId"/>.</summary>
+    public const string AnyReaderProblemName = "Any reader problem";
+
+    /// <summary>The event type of a reader "Reader problem" (stable while the reader lives).</summary>
+    public static string ReaderProblemTypeId(string readerId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(readerId);
+        return ReaderProblemTypePrefix + readerId;
+    }
+
     /// <summary>The folders of a reader's event in the rule dialog: Text recognition / reader name.</summary>
     public static IReadOnlyList<string> TextReadPath(string readerName) => [EventGroup, readerName];
+
+    /// <summary>The values of the problem events: the reader's name (the names of "Any reader problem").</summary>
+    public const string ReaderField = "reader";
+
+    /// <summary>The server's full text, as the tooltip of the reader's red chip.</summary>
+    public const string ProblemField = "problem";
+
+    /// <summary>"Any reader problem": how many readers have a problem.</summary>
+    public const string CountField = "count";
 
     /// <summary>The event's values (fields), docs/spec/ocr.md "Events and the rule action".</summary>
     public const string AreaField = "area";

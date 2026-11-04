@@ -38,7 +38,7 @@ public sealed class TextReadEventTests
 
         await ocr.CallAsync(OcrMethods.DeleteReader, new ReaderRequest { ReaderId = reader.Id });
         Assert.Equal(3, changed);
-        Assert.Single(ocr.Plugin.EventTypes);
+        Assert.DoesNotContain(ocr.Plugin.EventTypes, t => t.Id == OcrInfo.TextReadTypeId(reader.Id) || t.Id == OcrInfo.ReaderProblemTypeId(reader.Id));
     }
 
     [Fact]
