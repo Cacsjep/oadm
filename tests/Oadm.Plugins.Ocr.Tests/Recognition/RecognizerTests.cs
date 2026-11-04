@@ -182,6 +182,32 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
     }
 
     [Fact]
+    public void With_the_setting_off_the_graphics_card_is_tried_only_when_it_is_turned_on()
+    {
+        var tries = 0;
+        using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions
+        {
+            ModelDirectory = RecognizerFixture.ModelFolder,
+            UseGraphicsCard = false,
+            ProcessorCount = 2,
+            FindGraphicsCard = (_, _) =>
+            {
+                tries++;
+                return null; // no real card in a test
+            },
+        });
+
+        Assert.Equal(0, tries);
+        recognizer.SetUseGpu(false);
+        Assert.Equal(0, tries);
+
+        recognizer.SetUseGpu(true);
+        Assert.Equal(1, tries);
+        Assert.False(recognizer.GpuAvailable);
+        Assert.False(recognizer.OnGpu);
+    }
+
+    [Fact]
     public void Without_the_graphics_card_the_cpu_runs_with_half_the_cores()
     {
         using var recognizer = new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = RecognizerFixture.ModelFolder, UseGraphicsCard = false, ProcessorCount = 8 });

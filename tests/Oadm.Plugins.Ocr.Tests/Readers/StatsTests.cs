@@ -142,9 +142,14 @@ public sealed class StatsTests
         // A reader not judged yet (watching less than 10 s) never turns it orange.
         Assert.Equal(LoadState.Ok, ReaderStats.Light(0, false, [(8, 0, false)]).State);
 
-        // Red: a reader below half of its rate, or the load held at 95 % for 30 s.
+        // A reader far below its rate on a machine with room is slower than set, never overloaded.
+        Assert.Equal((LoadState.Busy, "Busy: 1 reader reads slower than set"), ReaderStats.Light(16, false, [(15, 5.1, true)]));
+
+        // Red: the load held at 95 % for 30 s while a reader falls behind, or with no reader to judge. A reader that keeps up at
+        // that load uses the room it found: orange.
         var red = (LoadState.Overloaded, "Overloaded: lower the frames per second or the number of readers");
-        Assert.Equal(red, ReaderStats.Light(10, false, [(8, 3.9, true)]));
+        Assert.Equal(red, ReaderStats.Light(99, true, [(8, 3.9, true)]));
+        Assert.Equal((LoadState.Busy, "Busy: recognition is at 96 %"), ReaderStats.Light(96, true, [(25, 25, true)]));
         Assert.Equal(red, ReaderStats.Light(96, true, []));
     }
 
@@ -210,7 +215,7 @@ public sealed class StatsTests
         var live = OcrJson.Deserialize<OcrStats>(ocr.Context.PublishedEvents.Last(e => e.Topic == OcrMethods.StatsTopic).PayloadJson);
         Assert.Equal(1, Assert.Single(live.Readers).Reads, 1);
         Assert.True(live.Readers[0].Slow);
-        Assert.Equal((LoadState.Busy, ReaderRules.BusySlow(1)), (live.State, live.StateText)); // half its rate: orange, below half: red
+        Assert.Equal((LoadState.Busy, ReaderRules.BusySlow(1)), (live.State, live.StateText)); // slower than set: orange
         Assert.True(live.PicturesPerSecond > 0);
 
         // 30 s without a call: the live stats stop.

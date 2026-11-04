@@ -3,14 +3,43 @@ using System.Text;
 namespace Oadm.Plugins.Ocr.Matching;
 
 /// <summary>
-/// A parsed format of an area's expected text (docs/spec/ocr.md "Expected text"): <c>#</c> a digit, <c>A</c> a letter,
-/// <c>*</c> a letter or digit; every other character must appear as written (letters in any case), except spaces and dashes,
-/// which may be missing in the text. A match is written in the format's form (its spaces, dashes and literals), with the
+/// A parsed format of an area's expected text (docs/spec/ocr.md "Expected text"): <c>#</c> a digit, <c>@</c> a letter,
+/// <c>*</c> a letter or digit; every other character must appear as written (letters in any case), a dash with spaces around
+/// it allowed; spaces may be missing in the text. A match is written in the format's form (its spaces, dashes and literals), with the
 /// look-alike characters fixed by position as the last step: where a digit is expected O becomes 0, I and L 1, S 5, B 8,
 /// Z 2, G 6; where a letter is expected the reverse.
 /// </summary>
 public sealed class TextFormat
 {
+    /// <summary>
+    /// The area menu's "Use read text as format" (docs/spec/ocr.md "Page"): a read text turned into a format. Every digit
+    /// becomes <c>#</c>, every letter (umlauts too) <c>A</c>, everything else stays as written; line breaks and runs of spaces
+    /// become one space, the ends are trimmed. "MSKU 123456 7" gives "@@@@ ###### #", "4/12" "#/##".
+    /// </summary>
+    public static string FromText(string? text)
+    {
+        var format = new StringBuilder(text?.Length ?? 0);
+        var space = false;
+        foreach (var c in text ?? string.Empty)
+        {
+            if (char.IsWhiteSpace(c) || char.IsControl(c))
+            {
+                space = format.Length > 0;
+                continue;
+            }
+
+            if (space)
+            {
+                format.Append(' ');
+                space = false;
+            }
+
+            format.Append(char.IsDigit(c) ? '#' : char.IsLetter(c) ? '@' : c);
+        }
+
+        return format.ToString();
+    }
+
     private readonly Token[] _tokens;
 
     private TextFormat(string pattern, Token[] tokens)
@@ -53,7 +82,7 @@ public sealed class TextFormat
             var kind = c switch
             {
                 '#' => TokenKind.Digit,
-                'A' => TokenKind.Letter,
+                '@' => TokenKind.Letter,
                 '*' => TokenKind.LetterOrDigit,
                 ' ' => TokenKind.Space,
                 '-' => TokenKind.Dash,
@@ -61,7 +90,7 @@ public sealed class TextFormat
             };
             if (kind is TokenKind.Space or TokenKind.Dash && tokens.Count > 0 && tokens[^1].Kind is TokenKind.Space or TokenKind.Dash)
             {
-                // "A - #": one separator; a dash wins over a space.
+                // "@ - #": one separator; a dash wins over a space.
                 if (kind == TokenKind.Dash)
                 {
                     tokens[^1] = new Token(TokenKind.Dash, '-');
@@ -153,9 +182,8 @@ public sealed class TextFormat
 
                 break;
             case TokenKind.Dash:
-                // Spaces, an optional dash, spaces.
+                // A dash, spaces around it allowed.
                 var after = SkipSpaces(text, pos);
-                Walk(text, after, token + 1, ref best);
                 if (after < text.Length && text[after] == '-')
                 {
                     Walk(text, SkipSpaces(text, after + 1), token + 1, ref best);
@@ -204,12 +232,7 @@ public sealed class TextFormat
                     value.Append(' ');
                     break;
                 case TokenKind.Dash:
-                    pos = SkipSpaces(text, pos);
-                    if (pos < text.Length && text[pos] == '-')
-                    {
-                        pos = SkipSpaces(text, pos + 1);
-                    }
-
+                    pos = SkipSpaces(text, SkipSpaces(text, pos) + 1);
                     value.Append('-');
                     break;
                 case TokenKind.Digit:
@@ -283,8 +306,8 @@ public static class LookAlike
 
 /// <summary>
 /// The ISO 6346 check digit of container numbers (docs/spec/ocr.md "Accuracy"), the one rule of the matcher and the
-/// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>AAAU</c> and seven <c>#</c> is a
-/// container number ("AAAU ###### #", also "AAAU ###### # 22G1" with the size and type code after it), and the 11th letter
+/// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>@@@U</c> and seven <c>#</c> is a
+/// container number ("@@@U ###### #", also "@@@U ###### # 22G1" with the size and type code after it), and the 11th letter
 /// or digit of its value is the check digit of the 10 before it. A value whose check digit does not fit is no match; no
 /// character is ever changed to make it fit.
 /// </summary>
@@ -293,7 +316,7 @@ public static class ContainerCheck
     /// <summary>The owner code, category and serial number: 4 letters and 6 digits.</summary>
     private const int CodeLength = 10;
 
-    /// <summary>True when the first 11 letters and digits of <paramref name="format"/> are <c>AAAU</c> and seven <c>#</c>.</summary>
+    /// <summary>True when the first 11 letters and digits of <paramref name="format"/> are <c>@@@U</c> and seven <c>#</c>.</summary>
     public static bool FormatHasCheckDigit(string? format)
     {
         if (format is null)
@@ -313,7 +336,7 @@ public static class ContainerCheck
             first[count++] = c;
             if (count == first.Length)
             {
-                return ((ReadOnlySpan<char>)first).StartsWith("AAAU", StringComparison.Ordinal) && first[4..].IndexOfAnyExcept('#') < 0;
+                return ((ReadOnlySpan<char>)first).StartsWith("@@@U", StringComparison.Ordinal) && first[4..].IndexOfAnyExcept('#') < 0;
             }
         }
 

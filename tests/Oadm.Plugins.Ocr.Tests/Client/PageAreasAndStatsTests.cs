@@ -41,6 +41,72 @@ public sealed class PageAreasAndStatsTests
     };
 
     [Fact]
+    public async Task With_a_format_only_the_line_of_its_value_shows_on_the_video()
+    {
+        using var vm = await LoadedAsync(Samples.Context());
+        var editor = vm.Editor!;
+        var gate = Samples.GateReading();
+        var container = gate.Areas[0];
+        var other = new TextLine("PARCEL EXPRESS", new(0.1, 0.8, 0.2, 0.05), 90);
+        var touching = new TextLine("GERMANY", new(0.5, 0.3, 0.1, 0.05), 90); // a turned label: the boxes overlap
+
+        // One box: the value at its place. A line elsewhere goes, one that touches its box too.
+        editor.ApplyReading(gate with { Areas = [container with { Lines = [.. container.Lines, other, touching] }] }, Samples.GateExtras);
+        var shown = Assert.Single(editor.Lines);
+        Assert.Equal(container.Text, shown.Text);
+        Assert.Equal(Samples.GateExtras[0].MatchBox, shown.Box);
+
+        // No match: no boxes.
+        editor.ApplyReading(gate with { Areas = [container with { Text = string.Empty, MatchesFormat = false, Lines = [other] }] }, Samples.GateExtras);
+        Assert.Empty(editor.Lines);
+
+        // Any text: every line.
+        editor.Areas[0].FormatText = string.Empty;
+        editor.ApplyReading(gate with { Areas = [container with { Lines = [.. container.Lines, other] }] }, Samples.GateExtras);
+        Assert.Contains(other, editor.Lines);
+    }
+
+    [Fact]
+    public async Task Use_read_text_as_format_gives_the_area_the_shape_of_its_text()
+    {
+        using var vm = await LoadedAsync(Samples.Context());
+        var editor = vm.Editor!;
+        var type = editor.Areas[1]; // "Type": any text, read "22G1"
+        Assert.True(editor.UseReadTextAsFormatCommand.CanExecute(type));
+
+        editor.UseReadTextAsFormatCommand.Execute(type);
+
+        Assert.True(type.IsFormat);
+        Assert.Equal("##@#", type.FormatText);
+        Assert.True(editor.IsDirty);
+        Assert.Null(type.ErrorOf(nameof(AreaViewModel.FormatText)));
+    }
+
+    [Fact]
+    public async Task Use_read_text_as_format_is_off_without_a_text_or_the_change_right()
+    {
+        var viewer = Samples.Context();
+        viewer.Denied.Add(OcrViewModel.ChangePermissionKey);
+        using var readOnly = await LoadedAsync(viewer);
+        Assert.False(readOnly.Editor!.UseReadTextAsFormatCommand.CanExecute(readOnly.Editor.Areas[1]));
+
+        using var vm = await LoadedAsync(Samples.Context());
+        var editor = vm.Editor!;
+        var empty = Samples.GateReading() with
+        {
+            Areas = [Samples.GateReading().Areas[0] with { Text = string.Empty, TextRead = string.Empty, Lines = [] }],
+        };
+        var changes = 0;
+        editor.UseReadTextAsFormatCommand.CanExecuteChanged += (_, _) => changes++;
+
+        editor.ApplyReading(empty, Samples.GateExtras);
+
+        Assert.True(changes > 0, "an open menu follows the readings");
+        Assert.False(editor.UseReadTextAsFormatCommand.CanExecute(editor.Areas[0]));
+        Assert.False(editor.UseReadTextAsFormatCommand.CanExecute(editor.Areas[1])); // no row for it
+    }
+
+    [Fact]
     public async Task A_moved_area_stays_where_the_drag_ended_while_readings_and_keep_alives_arrive()
     {
         // The snap-back: the drag's end is the area's new place, whatever the preview sends meanwhile.
@@ -73,7 +139,7 @@ public sealed class PageAreasAndStatsTests
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
-        Assert.Equal(3, editor.ShownLines.Count);
+        Assert.Equal(2, editor.ShownLines.Count);
         var changed = new List<string?>();
         editor.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
@@ -83,13 +149,13 @@ public sealed class PageAreasAndStatsTests
         editor.ApplyReading(Samples.GateReading("TGHU 765432 1"), Samples.GateExtras); // a reading during the drag stays hidden
         Assert.Empty(editor.ShownLines);
         editor.SetAdjusting(false);
-        Assert.Equal(3, editor.ShownLines.Count);
+        Assert.Equal(2, editor.ShownLines.Count);
 
         editor.NewAreaCommand.Execute(null);
         Assert.True(editor.IsDrawing);
         Assert.Empty(editor.ShownLines);
         editor.StopDrawing();
-        Assert.Equal(3, editor.ShownLines.Count);
+        Assert.Equal(2, editor.ShownLines.Count);
     }
 
     [Fact]
@@ -128,19 +194,23 @@ public sealed class PageAreasAndStatsTests
     }
 
     [Fact]
-    public async Task The_note_of_a_reading_shows_below_the_video()
+    public async Task The_note_of_a_reading_shows_its_alerts_and_the_held_values()
     {
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
-        Assert.False(editor.HasReadingNote);
+        Assert.True(editor.HasReadingNote); // the lane's text is too small
 
-        editor.ApplyReading(Samples.GateReading() with { Note = ReaderRules.TooManyTexts }, Samples.GateExtras);
+        // A held frame: its note first, then a line per area with a format.
+        IReadOnlyList<AreaDetails> fine = [new AreaDetails { Area = "Container number" }];
+        editor.ApplyReading(Samples.GateReading() with { Note = ReaderRules.TooManyTexts }, fine);
         Assert.True(editor.HasReadingNote);
-        Assert.Equal("More than 30 texts found. Only the first 30 are read. Draw smaller areas.", editor.ReadingNote);
+        Assert.Equal(
+            "More than 30 texts found. Only the first 30 are read. Draw smaller areas.\nContainer number: MSKU 123456 7\nLane: no match",
+            editor.ReadingNote);
 
-        editor.ApplyReading(Samples.GateReading(), Samples.GateExtras);
-        Assert.False(editor.HasReadingNote);
+        editor.ApplyReading(Samples.GateReading(), fine);
+        Assert.Equal("Container number: MSKU 123456 7\nLane: no match", editor.ReadingNote);
     }
 
     [Fact]

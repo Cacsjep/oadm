@@ -1,4 +1,18 @@
+using System.Text.Json.Serialization;
+
 namespace Oadm.Plugins.Ocr.Model;
+
+/// <summary>
+/// How a line lies in its picture, as the reader saw it (docs/spec/ocr.md "Reading" step 5): the rotated box in picture pixels,
+/// with <see cref="Width"/> along the text and <see cref="Angle"/> the direction the text runs in, its 90 degree and upside
+/// down turns included. Turning the picture by minus that angle shows the text upright.
+/// </summary>
+/// <param name="CenterX">The box's centre, left to right, in picture pixels.</param>
+/// <param name="CenterY">The box's centre, top to bottom, in picture pixels.</param>
+/// <param name="Width">The box along the text, in pixels.</param>
+/// <param name="Height">The box across the text, in pixels.</param>
+/// <param name="Angle">The direction of the text in radians, clockwise from left to right.</param>
+public readonly record struct LineTurn(float CenterX, float CenterY, float Width, float Height, float Angle);
 
 /// <summary>A line of text found in a picture.</summary>
 /// <param name="Text">The text read.</param>
@@ -8,7 +22,12 @@ namespace Oadm.Plugins.Ocr.Model;
 /// match), so an area's confidence is the lowest character probability of its value. Lines whose characters' mean
 /// probability is below <see cref="OcrLimits.MinConfidence"/> are dropped.
 /// </param>
-public sealed record TextLine(string Text, RelativeBox Box, double Confidence);
+public sealed record TextLine(string Text, RelativeBox Box, double Confidence)
+{
+    /// <summary>How the line lies in the picture, for its upright cut-out; server only, null when not known.</summary>
+    [JsonIgnore]
+    public LineTurn? Turn { get; init; }
+}
 
 /// <summary>What <see cref="ITextMatcher"/> makes of an area's lines.</summary>
 /// <param name="Value">The area's value: the match with a format (empty without one), else all lines joined with line breaks.</param>

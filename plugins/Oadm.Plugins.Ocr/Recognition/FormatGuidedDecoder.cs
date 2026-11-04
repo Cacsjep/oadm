@@ -14,16 +14,17 @@ internal enum FormatTokenKind
 /// <summary>One position of a format.</summary>
 /// <param name="Kind">Digit, letter, either or a literal character.</param>
 /// <param name="Literal">The character of a literal.</param>
-/// <param name="Optional">A dash, which may be missing in the text.</param>
+/// <param name="Optional">A dash: the search may pass it by, and a match that does is no match (<see cref="GuidedMatch.AllDashesRead"/>).</param>
 /// <param name="SpaceBefore">The format has a space before it: the text may have one there (or none).</param>
 internal readonly record struct FormatToken(FormatTokenKind Kind, char Literal, bool Optional, bool SpaceBefore = false);
 
 /// <summary>
-/// A format of an area's expected text, parsed: <c>#</c> a digit, <c>A</c> a letter, <c>*</c> a letter or digit, every other
-/// character as written; a space or a dash of the format may be missing in the text. Gaps the reader saw between the
+/// A format of an area's expected text, parsed: <c>#</c> a digit, <c>@</c> a letter, <c>*</c> a letter or digit, every other
+/// character as written, like <see cref="TextFormat"/> without the leading and trailing spaces and dashes; a space of the format
+/// may be missing in the text, a dash may not. Gaps the reader saw between the
 /// characters (the drums of a meter) do not break a match: the match is written in the format's own layout. A format whose
-/// first 11 letters and digits are <c>AAAU</c> and seven <c>#</c> is a container number with an ISO 6346 check digit
-/// (<see cref="ContainerCheck"/>, the same rule as the matcher's), also with more after it ("AAAU ###### # 22G1").
+/// first 11 letters and digits are <c>@@@U</c> and seven <c>#</c> is a container number with an ISO 6346 check digit
+/// (<see cref="ContainerCheck"/>, the same rule as the matcher's), also with more after it ("@@@U ###### # 22G1").
 /// </summary>
 internal sealed class FormatPattern
 {
@@ -53,7 +54,7 @@ internal sealed class FormatPattern
 
         var tokens = new List<FormatToken>();
         var space = false;
-        foreach (var ch in format)
+        foreach (var ch in format.Trim(' ', '-'))
         {
             if (ch == ' ')
             {
@@ -66,7 +67,7 @@ internal sealed class FormatPattern
                 case '#':
                     tokens.Add(new FormatToken(FormatTokenKind.Digit, ch, false));
                     break;
-                case 'A':
+                case '@':
                     tokens.Add(new FormatToken(FormatTokenKind.Letter, ch, false));
                     break;
                 case '*':
@@ -112,6 +113,9 @@ internal sealed record GuidedMatch(IReadOnlyList<DecodedChar> Chars, int FirstFr
 
     /// <summary>The match in the format's layout: its characters with the format's spaces.</summary>
     public string Formatted => string.Concat(Chars.Select((c, i) => (i > 0 && i < SpaceBefore.Count && SpaceBefore[i] ? " " : string.Empty) + c.Text));
+
+    /// <summary>The search used every dash of the format; a match that passed one by is no match (docs/spec/ocr.md "Expected text").</summary>
+    public bool AllDashesRead { get; init; } = true;
 
     /// <summary>The match's text.</summary>
     public string Text => CtcDecoder.Text(Chars);
@@ -470,7 +474,11 @@ internal static class FormatGuidedDecoder
 
         // A container number's check digit is checked as read: a misread is no match, never repaired.
         var valid = !pattern.IsContainerNumber || ContainerCheck.IsValid(CtcDecoder.Text(chars));
-        return new GuidedMatch(chars, first, last, logScore, valid) { SpaceBefore = [.. segments.Select(seg => tokens[seg.Token].SpaceBefore)] };
+        return new GuidedMatch(chars, first, last, logScore, valid)
+        {
+            SpaceBefore = [.. segments.Select(seg => tokens[seg.Token].SpaceBefore)],
+            AllDashesRead = segments.Count(seg => tokens[seg.Token].Optional) == tokens.Count(t => t.Optional),
+        };
     }
 
     private static bool AllOptionalAfter(IReadOnlyList<FormatToken> tokens, int j)

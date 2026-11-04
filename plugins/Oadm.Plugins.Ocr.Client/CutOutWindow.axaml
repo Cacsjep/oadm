@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Ocr.Client"
+        x:Class="Oadm.Plugins.Ocr.Client.CutOutWindow"
+        x:DataType="vm:CutOutViewModel"
+        Title="{x:Static vm:CutOutViewModel.Title}"
+        Width="672" SizeToContent="Height" MaxHeight="760"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation (docs/spec/ocr.md "The last 20 reads"): the picture without smoothing, so characters can be judged. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:CutOutViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <ScrollViewer>
+        <StackPanel Spacing="12">
+          <Image x:Name="Picture" Source="{Binding Picture}" Width="{Binding ShownWidth}" Height="{Binding ShownHeight}" Stretch="Fill"
+                 HorizontalAlignment="Left" RenderOptions.BitmapInterpolationMode="None" />
+          <ui:FormField Classes="wide" LabelAbove="True" Label="Text">
+            <TextBlock Classes="mono" Text="{Binding Text}" TextWrapping="Wrap" />
+          </ui:FormField>
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+            <ui:FormField Classes="wide" LabelAbove="True" Label="Area">
+              <TextBlock Text="{Binding Area}" TextTrimming="CharacterEllipsis" />
+            </ui:FormField>
+            <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="Time">
+              <TextBlock Text="{Binding Time}" />
+            </ui:FormField>
+          </Grid>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelText="Close" CancelCommand="{Binding CloseCommand}" />
+  </Grid>
+</Window>

@@ -1,19 +1,25 @@
 namespace Oadm.Plugins.Ocr.Recognition;
 
 /// <summary>
-/// The graphics card's memory for the text finder of Search (docs/spec/ocr.md "GPU", graphics card memory). On DirectML each
+/// The graphics card's memory for the models (docs/spec/ocr.md "GPU", graphics card memory). On DirectML each
 /// input size is a session of its own, and each session keeps its own copy of the model and its own buffers for that size on
 /// the card until it is disposed. The budget counts each session by its input pixels (<see cref="Estimate"/>: measured
 /// <see cref="BytesPerPixel"/> per pixel of a call plus <see cref="SessionBytes"/>) and keeps the sum at or below
 /// <see cref="MaxBytes"/>: before a new session the least recently used ones go (one log line the first time). A session larger
 /// than the cap is never made (the callers split a Search into calls of at most <see cref="MaxCallBytes"/>). Every session
-/// unused for <see cref="IdleTimeout"/> is freed. Every model call runs inside <see cref="Gate"/>, so a session is never
-/// disposed while it runs (the card's calls run one at a time anyway).
+/// unused for <see cref="IdleTimeout"/> is freed. A model call holds its session (<see cref="Hold"/>), so a session is never
+/// disposed while it runs.
 /// </summary>
 internal sealed class GpuSessionBudget : IDisposable
 {
-    /// <summary>The estimated card memory of all sessions together at most: 4 GB, whatever the cameras' resolution.</summary>
+    /// <summary>The estimated card memory of all sessions together on a card that does not tell its size: 4 GB.</summary>
     public const long MaxBytes = 4L * 1024 * 1024 * 1024;
+
+    /// <summary>The share of the card's memory the sessions may take together; the rest stays with the desktop and other programs.</summary>
+    public const double CardShare = 0.8;
+
+    /// <summary>The cap for a card of <paramref name="cardBytes"/>; null (it does not tell): <see cref="MaxBytes"/>.</summary>
+    public static long CapFor(long? cardBytes) => cardBytes is > 0 ? (long)(cardBytes.Value * CardShare) : MaxBytes;
 
     /// <summary>
     /// Card memory per input pixel of a text finder call (the pixels of all tiles of the call), measured on DirectML
@@ -56,6 +62,12 @@ internal sealed class GpuSessionBudget : IDisposable
         _trim = _time.CreateTimer(_ => TrimIdle(), null, period, period);
     }
 
+    /// <summary>Card memory of a mobile text finder session by its pixels (measured 2026-11-04: 640 x 736 240 MB, 4 pictures 630 MB).</summary>
+    public static long EstimateFinder(long inputPixels) => (128L * 1024 * 1024) + (inputPixels * 400);
+
+    /// <summary>Card memory of a reader or angle session by its pixels (measured 2026-11-04: 1 x 48 x 320 120 MB, 32 x 48 x 1280 920 MB).</summary>
+    public static long EstimateReader(long inputPixels) => (128L * 1024 * 1024) + (inputPixels * 300);
+
     /// <summary>The estimated card memory of a session whose calls carry <paramref name="inputPixels"/> pixels (all tiles).</summary>
     public static long Estimate(long inputPixels) => SessionBytes + (inputPixels * BytesPerPixel);
 
@@ -73,7 +85,7 @@ internal sealed class GpuSessionBudget : IDisposable
         return (tiles + calls - 1) / calls;
     }
 
-    /// <summary>Held around every model call: the session it uses is never freed meanwhile.</summary>
+    /// <summary>Guards the sessions.</summary>
     public object Gate { get; } = new();
 
     /// <summary>Sessions kept now.</summary>
@@ -128,15 +140,58 @@ internal sealed class GpuSessionBudget : IDisposable
             }
 
             ArgumentOutOfRangeException.ThrowIfGreaterThan(bytes, _max);
-            while (_bytes + bytes > _max && _entries.Count > 0)
+            while (_bytes + bytes > _max && _entries.Values.Any(e => e.Held == 0))
             {
-                Evict(_entries.MinBy(e => e.Value.Order).Key);
+                Evict(_entries.Where(e => e.Value.Held == 0).MinBy(e => e.Value.Order).Key);
             }
 
             var session = create();
             _entries[(owner, key)] = new Entry(session, bytes) { Used = now, Order = ++_clock };
             _bytes += bytes;
             return session;
+        }
+    }
+
+    /// <summary>
+    /// The session like <see cref="Get"/>, held for a call: it is not freed before <see cref="Free"/>. A new session that does not
+    /// fit while the others are held waits for their calls.
+    /// </summary>
+    public T Hold<T>(object owner, string key, long bytes, Func<T> create)
+        where T : class, IDisposable
+    {
+        lock (Gate)
+        {
+            while (!_entries.ContainsKey((owner, key)) && _entries.Values.Where(e => e.Held > 0).Sum(e => e.Bytes) + bytes > _max && _entries.Values.Any(e => e.Held > 0))
+            {
+                Monitor.Wait(Gate);
+            }
+
+            var session = Get(owner, key, bytes, create);
+            _entries[(owner, key)].Held++;
+            return session;
+        }
+    }
+
+    /// <summary>The call that held the session ended.</summary>
+    public void Free(object owner, string key)
+    {
+        lock (Gate)
+        {
+            if (_entries.TryGetValue((owner, key), out var entry))
+            {
+                entry.Held--;
+            }
+
+            Monitor.PulseAll(Gate);
+        }
+    }
+
+    /// <summary>The session exists, or <paramref name="bytes"/> fit beside the others without pushing one out.</summary>
+    public bool Fits(object owner, string key, long bytes)
+    {
+        lock (Gate)
+        {
+            return _entries.ContainsKey((owner, key)) || _bytes + bytes <= _max;
         }
     }
 
@@ -170,7 +225,7 @@ internal sealed class GpuSessionBudget : IDisposable
             }
 
             var now = _time.GetTimestamp();
-            foreach (var key in _entries.Where(e => _time.GetElapsedTime(e.Value.Used, now) >= IdleTimeout).Select(e => e.Key).ToList())
+            foreach (var key in _entries.Where(e => e.Value.Held == 0 && _time.GetElapsedTime(e.Value.Used, now) >= IdleTimeout).Select(e => e.Key).ToList())
             {
                 Remove(key);
             }
@@ -220,6 +275,9 @@ internal sealed class GpuSessionBudget : IDisposable
 
         /// <summary>When it was last used (the idle release).</summary>
         public long Used { get; set; }
+
+        /// <summary>Calls that hold it now: it is not freed.</summary>
+        public int Held { get; set; }
 
         /// <summary>The order of the last use (the least recently used goes first).</summary>
         public long Order { get; set; }

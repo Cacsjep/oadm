@@ -94,8 +94,36 @@ public sealed partial class OcrPlugin
                 }
 
                 await CallDevices.RequireAsync(caller, [draft.DeviceId], ct).ConfigureAwait(false);
+                if (!MaySeePictures(caller))
+                {
+                    // Live view taken away while paused: the frame goes (fail closed).
+                    await runtime.ResumePreviewAsync(request.PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false);
+                }
+
                 return OcrJson.Serialize(await runtime.StartPreviewAsync(request.PreviewId, draft, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false));
             }
+
+            case OcrMethods.PausePreview:
+            {
+                // The held picture is a piece of the camera's video: only for users who may see it, the camera in their devices.
+                if (!MaySeePictures(caller))
+                {
+                    throw new DeviceAccessRefusedException(ReaderRules.PauseNeedsLiveView);
+                }
+
+                var previewId = OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId;
+                var owner = OwnerScope.Of(caller.DeviceScopeKey);
+                if (runtime.PreviewOf(previewId, owner, caller.UserName) is not { } preview)
+                {
+                    return OcrJson.Serialize(new PauseReply());
+                }
+
+                await CallDevices.RequireAsync(caller, [preview.Reader.DeviceId], ct).ConfigureAwait(false);
+                return OcrJson.Serialize(await runtime.PausePreviewAsync(previewId, owner, caller.UserName).ConfigureAwait(false));
+            }
+
+            case OcrMethods.ResumePreview:
+                return OcrJson.Serialize(await runtime.ResumePreviewAsync(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false));
 
             case OcrMethods.StopPreview:
                 await runtime.StopPreviewAsync(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName).ConfigureAwait(false);
@@ -103,20 +131,27 @@ public sealed partial class OcrPlugin
 
             case OcrMethods.GetPreview:
             {
-                if (runtime.PreviewOf(OcrJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName) is not { } preview)
+                var request = OcrJson.Deserialize<PreviewRequest>(payloadJson);
+                var maySee = MaySeePictures(caller);
+                if (runtime.PreviewOf(request.PreviewId, OwnerScope.Of(caller.DeviceScopeKey), caller.UserName, maySee, request.KnownCutouts) is not { } preview)
                 {
                     return OcrJson.Serialize(new ReadingReply());
                 }
 
                 await CallDevices.RequireAsync(caller, [preview.Reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(preview.Last is { } last ? runtime.ReplyOf(last, MaySeePictures(caller)) : new ReadingReply());
+
+                // Live the rows carry the cut-outs: the reading's own are cut only for a held frame, never at every frame.
+                var reply = preview.Last is { } last ? runtime.ReplyOf(last, maySee && preview.Paused) : new ReadingReply();
+                return OcrJson.Serialize(reply with { Recent = preview.Recent });
             }
 
             case OcrMethods.GetReading:
             {
                 var reader = Visible(store, caller, payloadJson);
                 await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
-                return OcrJson.Serialize(runtime.Last(reader.Id) is { } last ? runtime.ReplyOf(last, MaySeePictures(caller)) : new ReadingReply());
+                var maySee = MaySeePictures(caller);
+                var reply = runtime.Last(reader.Id) is { } last ? runtime.ReplyOf(last, maySee) : new ReadingReply();
+                return OcrJson.Serialize(reply with { Recent = runtime.RecentOf(reader.Id, maySee, OcrJson.Deserialize<ReaderRequest>(payloadJson).KnownCutouts) });
             }
 
             case OcrMethods.GetStats:
@@ -136,7 +171,9 @@ public sealed partial class OcrPlugin
                 var useGpu = OcrJson.Deserialize<UseGpuRequest>(payloadJson).UseGpu;
                 await ctx.Settings.SetAsync(UseGpuSetting, useGpu ? "true" : "false", ct).ConfigureAwait(false);
                 _useGpu = useGpu;
-                runtime.Engine?.SetUseGpu(useGpu);
+
+                // Turning it on may try the graphics card for the first time (seconds).
+                await Task.Run(() => runtime.Engine?.SetUseGpu(useGpu), CancellationToken.None).ConfigureAwait(false);
 
                 // The readers go on where the recognition reads now (their limits follow the cores, not the card).
                 await runtime.SyncAsync().ConfigureAwait(false);
@@ -152,7 +189,7 @@ public sealed partial class OcrPlugin
         }
     }
 
-    /// <summary>The plugin setting "Use the graphics card" (JSON true or false; on when missing).</summary>
+    /// <summary>The plugin setting "Use GPU" (JSON true or false; on when missing).</summary>
     internal const string UseGpuSetting = "useGpu";
 
     /// <summary>How long the video sources and sizes of a camera are kept (the page reads them on every open).</summary>
@@ -168,7 +205,8 @@ public sealed partial class OcrPlugin
         return new EngineInfo
         {
             RunsOn = engine?.RunsOn.Name is { Length: > 0 } runsOn ? runsOn : ReaderRules.CpuText(Environment.ProcessorCount),
-            GpuAvailable = engine?.GpuAvailable ?? false,
+            // With the setting off the card is not tried: the box stays usable, turning it on finds out.
+            GpuAvailable = engine is not null && (engine.GpuAvailable || !_useGpu),
             UseGpu = _useGpu,
             FpsChoices = OcrLimits.FpsChoices,
         };

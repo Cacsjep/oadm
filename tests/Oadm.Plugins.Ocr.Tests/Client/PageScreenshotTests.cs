@@ -42,7 +42,7 @@ public sealed class PageScreenshotTests
             var ctx = Samples.Context();
             ctx.Video!.Still = Samples.ContainerPicture();
             ctx.Answers[OcrMethods.GetReading] = json => OcrJson.Deserialize<ReaderRequest>(json).ReaderId == "r1"
-                ? Samples.ReplyJson(Samples.GateReading(), Samples.WithCutout(Samples.GateExtras, Samples.ContainerPicture()), null)
+                ? Samples.ReplyJson(Samples.GateReading(), [.. Samples.GateExtras.Select(d => d with { TooSmall = false })], null, Samples.WithCutOuts(Samples.Reads(9)))
                 : "{}";
             using (var vm = new OcrViewModel(ctx) { DecodePicture = Samples.Decode })
             {
@@ -58,12 +58,12 @@ public sealed class PageScreenshotTests
                 var host = view.FindControl<ContentControl>("VideoHost")!;
                 Assert.Same(ctx.Video.Created[^1].View, host.Content);
                 Assert.True(host.IsEffectivelyVisible);
-                Assert.True(editor.Results[0].HasCutOut); // the server's cut-out of the match
-                Assert.False(editor.Results[1].HasCutOut); // Any text: none
+                Assert.Equal(9, editor.Results.Count);
+                Assert.All(editor.Results, r => Assert.True(r.HasCutOut)); // the server's cut-out of each read
                 var picture = view.PictureControl;
                 Assert.True(picture.PictureRect.Width > 100);
                 Assert.Equal(16.0 / 9, picture.PictureRect.Width / picture.PictureRect.Height, 2);
-                Assert.Equal(3, editor.Lines.Count);
+                Assert.Equal(2, editor.Lines.Count);
                 Assert.Equal("Configure · 1920x1080 @ 1 fps", editor.StreamSummary);
                 var draw = view.FindControl<ToolbarButton>("NewAreaButton")!;
                 Assert.True(draw.IsEffectivelyVisible);
@@ -86,7 +86,7 @@ public sealed class PageScreenshotTests
                 vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Overloaded, ReaderRules.Overloaded, 99,
                     new ReaderRate { ReaderId = "r1", Fps = 1, Reads = 0.4, Slow = true }));
                 Headless.Pump();
-                Assert.Contains(view.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == ReaderRules.Overloaded && c.IsError);
+                Assert.Contains(view.FindControl<StackPanel>("StatsPanel")!.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == ReaderRules.Overloaded && c.IsError);
                 Headless.Capture(window, $"ocr-stats-overloaded-{suffix}.png");
                 vm.ApplyStats(PageAreasAndStatsTests.Stats(LoadState.Ok, ReaderRules.KeepUp, 42));
 
@@ -98,7 +98,7 @@ public sealed class PageScreenshotTests
                 Headless.Capture(window, $"ocr-dragging-{suffix}.png");
                 picture.CancelEdit();
                 Headless.Pump();
-                Assert.Equal(3, editor.ShownLines.Count);
+                Assert.Equal(2, editor.ShownLines.Count);
 
                 // A selected area: solid, with its handles; a drag on its corner resizes it (Esc cancels a drag).
                 editor.SelectedArea = editor.Areas[0];
@@ -156,8 +156,8 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 view.FindControl<ListBox>("AreaList")!.ContainerFromItem(lane)!.BringIntoView();
                 Headless.Pump();
-                Assert.Equal("A format needs at least one #, A or *.", lane.ErrorOf(nameof(AreaViewModel.FormatText)));
-                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "A format needs at least one #, A or *.");
+                Assert.Equal("A format needs at least one #, @ or *.", lane.ErrorOf(nameof(AreaViewModel.FormatText)));
+                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "A format needs at least one #, @ or *.");
                 Assert.False(editor.SaveCommand.CanExecute(null));
                 Headless.Capture(window, $"ocr-format-error-{suffix}.png");
 
@@ -170,12 +170,12 @@ public sealed class PageScreenshotTests
 
                 // An On action reader without a reading: no frame rate.
                 ctx.ConfirmAnswer = true;
-                lane.FormatText = "A#";
+                lane.FormatText = "@#";
                 await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
                 Headless.Pump();
                 Assert.Equal("Water meter", vm.Editor!.Name);
                 Assert.True(vm.Editor.IsOnAction);
-                Assert.Equal("Configure · 1920x1080", ((Oadm.Plugins.Ocr.Client.ReaderEditorViewModel)view.FindControl<Grid>("EditorPanel")!.DataContext!).StreamSummary); // no frame rate
+                Assert.Equal("Configure · 1920x1080", ((Oadm.Plugins.Ocr.Client.ReaderEditorViewModel)view.FindControl<Grid>("SettingsColumn")!.DataContext!).StreamSummary); // no frame rate
                 Headless.Capture(window, $"ocr-on-action-{suffix}.png");
 
                 // A refusal of the server for the resolution: in the summary's place below Stream settings.

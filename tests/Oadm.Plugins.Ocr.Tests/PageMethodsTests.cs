@@ -10,7 +10,7 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Ocr.Tests;
 
 /// <summary>
-/// The page methods beyond the readers (docs/spec/ocr.md "GPU", "Readers", "Accuracy"): the engine and Use the graphics card,
+/// The page methods beyond the readers (docs/spec/ocr.md "GPU", "Readers", "Accuracy"): the engine and Use GPU,
 /// the camera's sources and sizes, the field errors of a save, the frame rate in the list and the too-small flag.
 /// </summary>
 public sealed class PageMethodsTests
@@ -44,6 +44,20 @@ public sealed class PageMethodsTests
         Assert.Equal([1, 2, 4, 8, 12, 15], engine.FpsChoices);
         Assert.True(ocr.Recognizer.UsesGpu);
         Assert.Equal(1, ocr.Recognizer.SetUseGpuCalls); // handed over at the start
+    }
+
+    [Fact]
+    public async Task WithTheSettingOffTheBoxStaysUsableAndTurningItOnFindsOutAboutTheCard()
+    {
+        await using var ocr = await OcrHarness.StartAsync(onGpu: false);
+
+        var off = OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.SetUseGpu, new UseGpuRequest { UseGpu = false }));
+        Assert.False(off.UseGpu);
+        Assert.True(off.GpuAvailable);
+
+        var on = OcrJson.Deserialize<EngineInfo>(await ocr.CallAsync(OcrMethods.SetUseGpu, new UseGpuRequest { UseGpu = true }));
+        Assert.True(on.UseGpu);
+        Assert.False(on.GpuAvailable);
     }
 
     [Fact]
@@ -152,7 +166,7 @@ public sealed class PageMethodsTests
         var json = await ocr.CallAsync(OcrMethods.SaveReader, new SaveReaderRequest { Reader = reader });
 
         Assert.Equal(
-            """{"errors":[{"field":"name","message":"Enter a name."},{"field":"areas[0].format","message":"A format needs at least one #, A or *."}]}""",
+            """{"errors":[{"field":"name","message":"Enter a name."},{"field":"areas[0].format","message":"A format needs at least one #, @ or *."}]}""",
             json);
         Assert.Empty(await ocr.Context.PluginRecords.ListAsync(ReaderStore.Collection, CancellationToken.None));
 

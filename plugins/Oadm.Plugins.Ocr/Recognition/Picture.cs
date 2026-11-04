@@ -49,8 +49,7 @@ internal sealed class Picture : IDisposable
         using var codec = SKCodec.Create(skData) ?? throw new InvalidDataException("The camera's answer is not a picture.");
         var width = codec.Info.Width;
         var height = codec.Info.Height;
-        if (width is < 1 or > Readers.ReaderRules.MaxSide || height is < 1 or > Readers.ReaderRules.MaxSide
-            || (long)width * height > Readers.ReaderRules.MaxPixels)
+        if (!WithinLimits(width, height))
         {
             // The header's size before any pixel memory: a picture that claims 65,000 x 65,000 never allocates gigabytes.
             throw new InvalidDataException("The camera's answer is not a picture.");
@@ -73,6 +72,21 @@ internal sealed class Picture : IDisposable
 
         return new Picture(bitmap, width, height, 0, 0);
     }
+
+    /// <summary>
+    /// The picture's header says a size within the limits (no pixel is decoded): a page's held frame (docs/spec/ocr.md
+    /// "Pause") never passes what a reading would refuse.
+    /// </summary>
+    public static bool Fits(ReadOnlyMemory<byte> data)
+    {
+        using var skData = SKData.CreateCopy(data.Span);
+        using var codec = SKCodec.Create(skData);
+        return codec is not null && WithinLimits(codec.Info.Width, codec.Info.Height);
+    }
+
+    private static bool WithinLimits(int width, int height) =>
+        width is >= 1 and <= Readers.ReaderRules.MaxSide && height is >= 1 and <= Readers.ReaderRules.MaxSide
+        && (long)width * height <= Readers.ReaderRules.MaxPixels;
 
     /// <summary>The rows and columns of <paramref name="part"/> through the line decoder, or null when the codec cannot.</summary>
     private static SKBitmap? DecodePart(SKCodec codec, SKImageInfo full, SKRectI part)

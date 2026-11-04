@@ -30,7 +30,7 @@ public sealed class WorkerTests
     public void Workers_are_half_the_cores_and_at_least_one(int cores, int workers)
     {
         Assert.Equal(workers, OcrLimits.Workers(cores));
-        Assert.Equal(2, OcrLimits.ThreadsPerWorker);
+        Assert.Equal(1, OcrLimits.ThreadsPerWorker);
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class WorkerTests
     }
 
     [Fact]
-    public async Task The_gate_holds_calls_to_the_slots_and_reuses_the_sets()
+    public async Task The_gate_holds_calls_to_the_slots_and_all_share_one_set()
     {
         var created = 0;
         using var workers = new CpuWorkers<FakeSet>(3, 1, accurate =>
@@ -84,8 +84,8 @@ public sealed class WorkerTests
         var sets = await Task.WhenAll(calls);
 
         Assert.Equal(3, Volatile.Read(ref most));
-        Assert.Equal(3, created);
-        Assert.Equal(3, sets.Distinct().Count());
+        Assert.Equal(1, created);
+        Assert.Single(sets.Distinct());
         Assert.Equal(0, workers.Busy);
     }
 
@@ -160,9 +160,9 @@ public sealed class WorkerTests
     }
 
     [Fact]
-    public async Task Sets_unused_for_a_while_are_disposed()
+    public async Task A_set_unused_for_a_while_is_disposed_and_made_again()
     {
-        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
+        var time = new FakeTimeProvider();
         var made = new List<FakeSet>();
         using var workers = new CpuWorkers<FakeSet>(3, 1, _ =>
         {
@@ -175,15 +175,7 @@ public sealed class WorkerTests
             return set;
         }, time: time);
 
-        // Three calls at once make three sets.
-        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var calls = Enumerable.Range(0, 3).Select(_ => workers.RunAsync(false, async set => { await release.Task; return set; }, CancellationToken.None)).ToList();
-        await Eventually.TrueAsync(() => workers.Busy == 3, "three calls running");
-        release.SetResult();
-        await Task.WhenAll(calls);
-        Assert.Equal(3, workers.Idle);
-
-        // One set keeps being used; the other two age out.
+        // Used every minute: it stays.
         for (var minute = 0; minute < 3; minute++)
         {
             await workers.RunAsync(false, set => Task.FromResult(set), CancellationToken.None);
@@ -191,8 +183,80 @@ public sealed class WorkerTests
         }
 
         Assert.Equal(1, workers.Idle);
-        Assert.Equal(2, made.Count(s => s.Disposed));
+        Assert.False(made[0].Disposed);
+
+        // Unused: it goes, and the next call makes it again.
+        time.Advance(TimeSpan.FromMinutes(2));
+        Assert.True(made[0].Disposed);
+        Assert.Equal(0, workers.Idle);
+
+        await workers.RunAsync(false, set => Task.FromResult(set), CancellationToken.None);
+        Assert.Equal(2, made.Count);
     }
+
+    [Fact]
+    public async Task A_set_in_use_is_never_freed_as_idle()
+    {
+        var time = new FakeTimeProvider();
+        using var workers = new CpuWorkers<FakeSet>(2, 1, _ => new FakeSet(), time: time);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        FakeSet? inUse = null;
+        var call = workers.RunAsync(false, async set =>
+        {
+            inUse = set;
+            await release.Task;
+            return set.Disposed;
+        }, CancellationToken.None);
+        await Eventually.TrueAsync(() => Volatile.Read(ref inUse) is not null, "the call running");
+
+        time.Advance(TimeSpan.FromMinutes(5));
+        release.SetResult();
+
+        Assert.False(await call);
+    }
+
+    [Fact]
+    public async Task Room_means_a_free_worker_and_nothing_waiting()
+    {
+        using var workers = new CpuWorkers<FakeSet>(1, 1, _ => new FakeSet());
+        Assert.True(workers.HasRoom);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = 0;
+        var calls = Enumerable.Range(0, 2).Select(_ => workers.RunAsync(false, async set =>
+        {
+            Interlocked.Increment(ref running);
+            await release.Task;
+            return set;
+        }, CancellationToken.None)).ToList();
+
+        await Eventually.TrueAsync(() => Volatile.Read(ref running) == 1, "one call running");
+        Assert.False(workers.HasRoom);
+        release.SetResult();
+        await Task.WhenAll(calls);
+        Assert.True(workers.HasRoom);
+    }
+
+    [Fact]
+    public async Task Large_text_finder_calls_wait_without_holding_a_worker()
+    {
+        using var workers = new CpuWorkers<FakeSet>(OcrLimits.LargeTextFinderCalls + 2, 1, _ => new FakeSet());
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var running = 0;
+        var calls = Enumerable.Range(0, OcrLimits.LargeTextFinderCalls * 2).Select(_ => workers.RunLargeAsync(false, async set =>
+        {
+            Interlocked.Increment(ref running);
+            await release.Task;
+            return set;
+        }, CancellationToken.None)).ToList();
+
+        await Eventually.TrueAsync(() => Volatile.Read(ref running) == OcrLimits.LargeTextFinderCalls, "the large calls at once");
+        Assert.Equal(OcrLimits.LargeTextFinderCalls, workers.Busy); // the others hold no worker
+        Assert.False(workers.HasRoom);
+        release.SetResult();
+        await Task.WhenAll(calls);
+        Assert.Equal(OcrLimits.LargeTextFinderCalls * 2, Volatile.Read(ref running));
+    }
+
 
     private static void InterlockedMax(ref int target, int value)
     {

@@ -48,7 +48,7 @@ public sealed class SearchRoutingTests
 
         public override bool BatchTiles => true;
 
-        public override int DetectionSide(int pixels) => CardTextFinder.SteppedSide(pixels);
+        public override int DetectionSide(int pixels) => CardModels.SteppedSide(pixels);
 
         public int TilesPerCall(int tiles, int tileWidth, int tileHeight) => GpuSessionBudget.TilesPerCall(tiles, tileWidth, tileHeight);
 
@@ -177,7 +177,7 @@ public sealed class SearchRoutingTests
     [Fact]
     public void Runs_on_names_the_cpu_and_the_card_of_search()
     {
-        Assert.Equal("CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti", OnnxTextRecognizer.SearchOnCardName(24, "NVIDIA GeForce RTX 5070 Ti"));
+        Assert.Equal("CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", OnnxTextRecognizer.CardName(24, "NVIDIA GeForce RTX 5070 Ti"));
     }
 
     private static void Busy(FakeTimeProvider time, BusyMeter meter, TimeSpan length)

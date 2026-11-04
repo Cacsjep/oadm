@@ -11,10 +11,11 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// The page's previews (docs/spec/ocr.md "Page"): while a page shows a reader, the server reads it live, saved or not, at the
 /// reader's rate (On action: 1 per second), and publishes no rule events. A preview of a saved watching reader that the page
 /// did not change shares the reader's stream (its readings are the preview's); any other preview has its own stream through
-/// the same loop with the vote and the events off, and counts against the watching limits (also per site), after the saved
+/// the same loop with the vote and the events off (with Moving objects its values follow the 2 frames rule), and counts against the watching limits (also per site), after the saved
 /// readers. At most <see cref="OcrLimits.MaxPreviews"/>, <see cref="OcrLimits.MaxPreviewsPerUser"/> per user; each belongs to
 /// the user who started it and ends <see cref="OcrLimits.PreviewLease"/> after the page's last call, so a closed client never
-/// leaves one running.
+/// leaves one running. Pause holds the frame of a preview's latest reading (<see cref="HeldFrame"/>, docs/spec/ocr.md "Pause"):
+/// the stream stops or is no longer shared, the draft re-reads that frame, and a saved reader's loop never hears of it.
 /// </summary>
 internal sealed partial class ReaderRuntime
 {
@@ -98,8 +99,13 @@ internal sealed partial class ReaderRuntime
                 preview.Expires = _time.GetUtcNow() + OcrLimits.PreviewLease;
             }
 
+            if (preview.Held is { } held && !held.Fits(preview.Reader))
+            {
+                await ReleaseHeldAsync(preview).ConfigureAwait(false); // another camera, source, size or reader: that frame is not its picture
+            }
+
             await ReconcileAsync(preview).ConfigureAwait(false);
-            return new PreviewReply { PreviewId = preview.Id, Problem = preview.Problem ?? preview.StreamProblem };
+            return ReplyOf(preview);
         }
         finally
         {
@@ -125,17 +131,220 @@ internal sealed partial class ReaderRuntime
     /// The reader and the last reading of the preview <paramref name="previewId"/> of <paramref name="user"/> of the scope
     /// <paramref name="owner"/>; null when it ended or is another user's.
     /// </summary>
-    public (Reader Reader, ReaderReading? Last)? PreviewOf(string? previewId, string owner, string user)
+    public (Reader Reader, ReaderReading? Last, bool Paused, IReadOnlyList<RecentRead> Recent)? PreviewOf(string? previewId, string owner, string user) =>
+        PreviewOf(previewId, owner, user, withCutouts: false, known: null);
+
+    /// <summary>
+    /// <see cref="PreviewOf(string?, string, string)"/> with the rows the page shows (<see cref="ReadsOf(Preview)"/>): none
+    /// while paused, the cut-outs when <paramref name="withCutouts"/> and not in <paramref name="known"/>.
+    /// </summary>
+    public (Reader Reader, ReaderReading? Last, bool Paused, IReadOnlyList<RecentRead> Recent)? PreviewOf(string? previewId, string owner, string user, bool withCutouts, IReadOnlyList<long>? known)
     {
+        Preview? preview;
+        ReaderReading? last;
         lock (_previews)
         {
-            if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out var preview) || !preview.IsOf(owner, user))
+            if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out preview) || !preview.IsOf(owner, user))
             {
                 return null;
             }
 
-            return (preview.Reader, _previewLast.TryGetValue(previewId, out var last) ? last : null);
+            last = _previewLast.TryGetValue(previewId, out var kept) ? kept : null;
         }
+
+        var paused = preview.Held is not null;
+        return (preview.Reader, last, paused, paused ? [] : RowsOf(ReadsOf(preview), withCutouts, known));
+    }
+
+    /// <summary>
+    /// Holds the frame of the latest reading of the preview <paramref name="previewId"/> of <paramref name="user"/>: in memory
+    /// only, the bytes that reading already keeps (no copy), within the limits of a reading. Its own stream stops, a shared one
+    /// is left alone: a saved watching reader goes on and fires its events. A frame of a shared stream carries the vote's
+    /// values, and a draft changed since then fits no longer: such a frame is read at once with the draft. Runs without the caller.
+    /// </summary>
+    public Task<PauseReply> PausePreviewAsync(string? previewId, string owner, string user) => Detached(async () =>
+    {
+        if (_maker is null)
+        {
+            throw new InvalidOperationException(ReaderRules.NotInstalled);
+        }
+
+        await _sync.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            Preview? preview;
+            ReaderReading? last;
+            lock (_previews)
+            {
+                if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out preview) || !preview.IsOf(owner, user))
+                {
+                    return new PauseReply();
+                }
+
+                if (!_previewLast.TryGetValue(previewId, out last))
+                {
+                    return new PauseReply { Problem = ReaderRules.NothingToPause };
+                }
+
+                if (preview.Held is null)
+                {
+                    if (last.Jpeg.Length > Frames.MjpegParser.MaxFrameBytes || !_pictureFits(last.Jpeg))
+                    {
+                        return new PauseReply { Problem = ReaderRules.PictureTooLarge };
+                    }
+
+                    // Under this lock: from here on no live reading replaces the one held (KeepPreview).
+                    var voted = preview.SharedWith is not null || ReaderRules.IsMoving(preview.Reader);
+                    preview.Held = new HeldFrame(last.Jpeg, last.Reading.Time, last.Reader ?? preview.Reader) { ReadFor = voted ? null : last.Reader };
+                    preview.SharedWith = null;
+                }
+            }
+
+            await StopOwnStreamAsync(preview).ConfigureAwait(false);
+            preview.Problem = null;
+            RereadHeld(preview);
+            var reply = ReplyOf(last, withCutouts: true);
+            return new PauseReply { Paused = true, Picture = last.Jpeg.ToArray(), Reading = reply.Reading, Details = reply.Details };
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    });
+
+    /// <summary>
+    /// The held frame of the preview <paramref name="previewId"/> of <paramref name="user"/> goes, with the reading it gave, and
+    /// the preview reads live again. An ended preview or another user's answers like one that does not hold a frame. Runs
+    /// without the caller.
+    /// </summary>
+    public Task<PreviewReply> ResumePreviewAsync(string? previewId, string owner, string user) => Detached(async () =>
+    {
+        await _sync.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            Preview? preview;
+            lock (_previews)
+            {
+                if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out preview) || !preview.IsOf(owner, user))
+                {
+                    return new PreviewReply { PreviewId = previewId ?? string.Empty };
+                }
+            }
+
+            await ReleaseHeldAsync(preview).ConfigureAwait(false);
+            await ReconcileAsync(preview).ConfigureAwait(false);
+            return ReplyOf(preview);
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    });
+
+    /// <summary>What the page hears of its preview now.</summary>
+    private static PreviewReply ReplyOf(Preview preview) => new()
+    {
+        PreviewId = preview.Id,
+        Problem = preview.Problem ?? preview.StreamProblem,
+        Paused = preview.Held is not null,
+        Rereading = preview.Held is { } held && !SameAreas(held.ReadFor, preview.Reader),
+    };
+
+    /// <summary>
+    /// The draft changed while a frame is held: one worker reads that frame with the newest draft through the same recognition
+    /// workers as every reading. Latest wins: a burst of edits never queues readings, a reading of an older draft is never
+    /// shown. Every area is read (no reuse: the held frame's pixels never change, so "unchanged" would say nothing). Under
+    /// <see cref="_sync"/>.
+    /// </summary>
+    private void RereadHeld(Preview preview)
+    {
+        lock (_previews)
+        {
+            if (preview.Held is not { } held || held.Working || SameAreas(held.ReadFor, preview.Reader))
+            {
+                return;
+            }
+
+            held.Working = true;
+            var ct = held.Stop.Token;
+            held.Worker = Task.Run(() => RereadLoopAsync(preview, held, ct), CancellationToken.None);
+        }
+    }
+
+    private async Task RereadLoopAsync(Preview preview, HeldFrame held, CancellationToken ct)
+    {
+        while (true)
+        {
+            Reader reader;
+            lock (_previews)
+            {
+                if (preview.Held != held || SameAreas(held.ReadFor, preview.Reader))
+                {
+                    held.Working = false;
+                    return;
+                }
+
+                reader = preview.Reader;
+            }
+
+            try
+            {
+                var read = await _maker!.ReadAsync(reader, held.Jpeg, reuseSource: null, ct).ConfigureAwait(false);
+                read = read with { Reading = read.Reading with { Time = held.Time } }; // the time of the frame, not of the edit
+                lock (_previews)
+                {
+                    held.ReadFor = reader;
+                }
+
+                if (SameAreas(reader, preview.Reader))
+                {
+                    KeepPreview(preview, read, held);
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                lock (_previews)
+                {
+                    held.Working = false;
+                }
+
+                return;
+            }
+#pragma warning disable CA1031 // A failed reading is logged; the page keeps its results and the next edit tries again.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogReadingFailed(_logger, reader.Name, ex);
+                lock (_previews)
+                {
+                    held.ReadFor = reader;
+                }
+            }
+        }
+    }
+
+    /// <summary>The held frame goes, with the reading that keeps its bytes. Under <see cref="_sync"/>.</summary>
+    private async Task ReleaseHeldAsync(Preview preview)
+    {
+        HeldFrame? held;
+        lock (_previews)
+        {
+            held = preview.Held;
+            preview.Held = null;
+            if (held is not null)
+            {
+                _previewLast.TryRemove(preview.Id, out _);
+            }
+        }
+
+        if (held is null)
+        {
+            return;
+        }
+
+        await held.Stop.CancelAsync().ConfigureAwait(false);
+        await held.Worker.ConfigureAwait(false);
+        held.Stop.Dispose();
     }
 
     /// <summary>The previews that share the stream of the saved reader <paramref name="readerId"/>.</summary>
@@ -148,16 +357,25 @@ internal sealed partial class ReaderRuntime
     }
 
     /// <summary>Keeps a preview's reading and tells the user's pages (without the cut-outs).</summary>
-    private void KeepPreview(Preview preview, ReaderReading reading)
+    /// <param name="preview">The preview.</param>
+    /// <param name="reading">Its reading.</param>
+    /// <param name="held">The held frame this reading is of; null: a live reading, dropped while a frame is held.</param>
+    /// <param name="ownStream">A frame of its own stream: its new values are the preview's rows (a shared stream's are the reader's).</param>
+    private void KeepPreview(Preview preview, ReaderReading reading, HeldFrame? held = null, bool ownStream = false)
     {
         lock (_previews)
         {
-            if (!_previews.ContainsKey(preview.Id))
+            if (!_previews.ContainsKey(preview.Id) || preview.Held != held)
             {
-                return; // ended meanwhile
+                return; // ended or paused meanwhile
             }
 
             _previewLast[preview.Id] = reading;
+        }
+
+        if (ownStream)
+        {
+            AddReads(preview.Recent, reading.Reader ?? preview.Reader, reading);
         }
 
         if (_ctx.Events is not { } events)
@@ -235,6 +453,22 @@ internal sealed partial class ReaderRuntime
     private async Task ReconcileAsync(Preview preview)
     {
         var reader = preview.Reader;
+        if (preview.Held is not null)
+        {
+            // The frame needs no camera: only a camera that left the owner's devices or a deleted reader ends the pause (fail closed).
+            var off = (await CheckAsync(reader, CancellationToken.None).ConfigureAwait(false)).Problem == ReaderRules.Off;
+            if (!off && (reader.Id.Length == 0 || StoredOf(reader.Id) is not null))
+            {
+                await StopOwnStreamAsync(preview).ConfigureAwait(false);
+                preview.SharedWith = null;
+                preview.Problem = null;
+                RereadHeld(preview);
+                return;
+            }
+
+            await ReleaseHeldAsync(preview).ConfigureAwait(false);
+        }
+
         if (reader.Areas.Count == 0)
         {
             // Text is read only inside areas: no area, no stream (the page asks to draw one).
@@ -299,7 +533,7 @@ internal sealed partial class ReaderRuntime
         preview.StreamProblem = null;
         var loop = new WatchLoop(reader, stop) { Site = site, SiteName = camera?.SiteName };
         loop.Run = Task.Run(
-            () => LoopAsync(reader, () => preview.Reader, vote: false, source: "preview:" + preview.Id, (_, reading) => KeepPreview(preview, reading), p => preview.StreamProblem = p, slot: null, stop.Token),
+            () => LoopAsync(reader, () => preview.Reader, vote: false, source: "preview:" + preview.Id, (_, reading) => KeepPreview(preview, reading, ownStream: true), p => preview.StreamProblem = p, slot: null, stop.Token),
             CancellationToken.None);
         preview.Loop = loop;
     }
@@ -335,6 +569,7 @@ internal sealed partial class ReaderRuntime
         foreach (var preview in ending)
         {
             await StopOwnStreamAsync(preview).ConfigureAwait(false);
+            await ReleaseHeldAsync(preview).ConfigureAwait(false);
         }
     }
 
@@ -361,13 +596,42 @@ internal sealed partial class ReaderRuntime
     /// <summary>A preview id a page made: 32 hex digits.</summary>
     private static bool IsPreviewId(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigit);
 
-    /// <summary>The draft reads like the saved reader's loop: the same camera, source, resolution, rate and areas.</summary>
+    /// <summary>The draft reads like the saved reader's loop: the same camera, source, resolution, rate, Moving objects and areas.</summary>
     private static bool SameReading(Reader loop, Reader draft) =>
-        SamePicture(loop, draft) && loop.Fps == draft.Fps && loop.Areas.Zip(draft.Areas).All(p => p.First.Name == p.Second.Name);
+        SamePicture(loop, draft) && loop.Fps == draft.Fps && ReaderRules.IsMoving(loop) == ReaderRules.IsMoving(draft) && loop.Areas.Zip(draft.Areas).All(p => p.First.Name == p.Second.Name);
+
+    /// <summary>The areas read alike: the same names, places and expected texts, in the same order; null fits nothing.</summary>
+    private static bool SameAreas(Reader? a, Reader b) => a is not null && a.Areas.SequenceEqual(b.Areas);
 
     /// <summary>The same stream: camera, source, resolution and rate.</summary>
     private static bool SameStream(Reader a, Reader b) =>
         a.DeviceId == b.DeviceId && a.VideoSource == b.VideoSource && a.Resolution == b.Resolution && a.Fps == b.Fps;
+
+    /// <summary>
+    /// The frame a paused preview keeps (docs/spec/ocr.md "Pause"): server memory only, one per preview, the bytes of the reading
+    /// it came from. <see cref="ReadFor"/> and the worker's state change under the lock of the previews.
+    /// </summary>
+    private sealed class HeldFrame(ReadOnlyMemory<byte> jpeg, DateTimeOffset time, Reader reader)
+    {
+        public ReadOnlyMemory<byte> Jpeg { get; } = jpeg;
+
+        /// <summary>When the frame was read: its results keep this time through every re-read.</summary>
+        public DateTimeOffset Time { get; } = time;
+
+        public CancellationTokenSource Stop { get; } = new();
+
+        public Task Worker { get; set; } = Task.CompletedTask;
+
+        public bool Working { get; set; }
+
+        /// <summary>The draft of the frame's latest reading; null: none fits (it is read once more).</summary>
+        public Reader? ReadFor { get; set; }
+
+        /// <summary>The frame is a picture of <paramref name="draft"/>: its camera, video source and size, the same reader (a new one may be saved meanwhile).</summary>
+        public bool Fits(Reader draft) =>
+            draft.DeviceId == reader.DeviceId && draft.VideoSource == reader.VideoSource && draft.Resolution == reader.Resolution
+            && (reader.Id.Length == 0 || draft.Id == reader.Id);
+    }
 
     /// <summary>One page's preview. Its fields change under <see cref="_sync"/>; <see cref="Reader"/> is read by its loop.</summary>
     private sealed class Preview(string id, string owner, string user, long order)
@@ -397,6 +661,12 @@ internal sealed partial class ReaderRuntime
         public string? SharedWith { get; set; }
 
         public WatchLoop? Loop { get; set; }
+
+        /// <summary>The frame it holds while paused; set and cleared under the lock of the previews.</summary>
+        public HeldFrame? Held { get; set; }
+
+        /// <summary>The new values of its own stream; goes with the preview.</summary>
+        public RecentReadList Recent { get; } = new();
 
         public Guid? Site { get; set; }
 

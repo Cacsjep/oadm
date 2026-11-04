@@ -188,7 +188,7 @@ public sealed class PageEdgeCaseTests
             DeviceId = Samples.Gate.Id,
             Areas =
             [
-                new Area { Name = "Area 1", Box = new(0.1, 0.1, 0.2, 0.1), Expected = ExpectedText.WithFormat("A#") },
+                new Area { Name = "Area 1", Box = new(0.1, 0.1, 0.2, 0.1), Expected = ExpectedText.WithFormat("@#") },
                 new Area { Name = "Area 1", Box = new(0.5, 0.5, 0.2, 0.1) },
             ],
         }, isNew: false);
@@ -205,10 +205,10 @@ public sealed class PageEdgeCaseTests
 
         editor.ApplyReading(reading, [new AreaDetails { Area = "Area 1" }, new AreaDetails { Area = "Area 1", TooSmall = true }]);
 
-        Assert.True(editor.Results[0].IsMatch);
-        Assert.False(editor.Results[0].TooSmall);
-        Assert.False(editor.Results[1].HasFormat);
-        Assert.True(editor.Results[1].TooSmall);
+        Assert.True(editor.HeldAreas[0].IsMatch);
+        Assert.False(editor.HeldAreas[0].TooSmall);
+        Assert.False(editor.HeldAreas[1].HasFormat);
+        Assert.True(editor.HeldAreas[1].TooSmall);
     }
 
     [Fact]
@@ -218,17 +218,17 @@ public sealed class PageEdgeCaseTests
         var ctx = Samples.Context();
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
-        Assert.Equal(3, editor.Results.Count);
+        Assert.Equal(2, editor.Results.Count);
         Assert.All(editor.Results, r => Assert.False(r.HasCutOut));
-        Assert.Equal("MSKU 123456 7", editor.Results[0].Text);
+        Assert.Equal("MSKU 123456 7", editor.Results[1].Text);
         Assert.Empty(ctx.Messages);
 
         // A cut-out that does not decode: no image, no error.
         var broken = Samples.Context();
         broken.Answers[OcrMethods.GetReading] = _ => Samples.ReplyJson(Samples.GateReading(), Samples.WithCutout(Samples.GateExtras, [1, 2, 3]), null);
         using var other = await LoadedAsync(broken);
-        Assert.Equal(3, other.Editor!.Results.Count);
-        Assert.False(other.Editor.Results[0].HasCutOut);
+        Assert.Equal(2, other.Editor!.Results.Count);
+        Assert.False(other.Editor.Results[1].HasCutOut);
         Assert.Null(other.ErrorText);
         Assert.Empty(broken.Messages);
     }

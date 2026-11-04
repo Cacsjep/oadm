@@ -3,7 +3,6 @@ using System.ComponentModel;
 
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Media.Imaging;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -15,6 +14,7 @@ using Oadm.Plugins.Ocr.Readers;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Ocr.Client;
 
@@ -55,6 +55,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     private long _readSeq;
     private long _shownSeq;
     private bool _disposed;
+    private int _pauseVersion;
+
+    /// <summary>From the press on Pause until Resume: the table keeps its rows, whatever a reply says.</summary>
+    private bool _tableFrozen;
     private CancellationTokenSource? _preview;
     private (Guid Device, int Source)? _shown;
 
@@ -77,6 +81,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         _onActionNoticeShown = onActionNoticeShown ?? new HashSet<string>(StringComparer.Ordinal);
         IsNew = isNew;
         MayChange = ctx.Has(OcrViewModel.ChangePermissionKey);
+        MayPause = ctx.Has(HostPermissionKeys.DevicesLiveView);
+
         FpsChoices = Ordered(engine.FpsChoices);
 
         _loading = true;
@@ -85,6 +91,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         DeviceId = reader.DeviceId;
         CameraText = cameraText(reader.DeviceId);
         Mode = reader.Mode;
+        MovingObjects = reader.MovingObjects;
         Fps = OfferedFps(reader.Fps, FpsChoices);
         VideoSources = [new CameraSource { Number = reader.VideoSource, Name = SourceName(reader.VideoSource) }];
         SelectedSource = VideoSources[0];
@@ -187,6 +194,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>Watching: the frame rate shows.</summary>
     public bool IsWatching => Mode == ReaderMode.Watching;
 
+    /// <summary>Belts and passing vehicles: no vote, a value counts once it was read in 2 frames in a row (only while Watching).</summary>
+    [ObservableProperty]
+    public partial bool MovingObjects { get; set; }
+
     [ObservableProperty]
     public partial int Fps { get; set; }
 
@@ -269,6 +280,187 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     public bool HasLiveVideo => _video is not null;
 
+    /// <summary>The live video shows: not while paused, the held frame is in its place (a hidden video stops streaming).</summary>
+    public bool ShowLiveVideo => HasLiveVideo && !IsPaused;
+
+    /// <summary>The user may see the held picture (the host's Live view); without it Pause is not offered.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(TogglePauseCommand))]
+    public partial bool MayPause { get; private set; }
+
+    /// <summary>The page shows a frame the server holds: edits re-read that frame.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowLiveVideo), nameof(PauseTip), nameof(ShowPauseState), nameof(IsPauseWorking), nameof(ResultsEmptyText))]
+    [NotifyCanExecuteChangedFor(nameof(TogglePauseCommand))]
+    public partial bool IsPaused { get; private set; }
+
+    /// <summary>The frame the server holds while paused; the editor owns it.</summary>
+    [ObservableProperty]
+    public partial Bitmap? HeldPicture { get; private set; }
+
+    /// <summary>A Pause or Resume call is on its way.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPauseState), nameof(IsPauseWorking))]
+    [NotifyCanExecuteChangedFor(nameof(TogglePauseCommand))]
+    public partial bool IsPausing { get; private set; }
+
+    /// <summary>The held frame is being read with the newest draft.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowPauseState), nameof(IsPauseWorking))]
+    public partial bool IsRereading { get; private set; }
+
+    /// <summary>This page's preview has a reading: there is a frame to pause on.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(TogglePauseCommand))]
+    public partial bool HasPreviewReading { get; private set; }
+
+    /// <summary>The ring next to the button.</summary>
+    public bool IsPauseWorking => IsPausing || IsRereading;
+
+    /// <summary>The backing of the chip and the ring on the video.</summary>
+    public bool ShowPauseState => IsPaused || IsPauseWorking;
+
+    /// <summary>The tooltip of the button on the video.</summary>
+    public string PauseTip => IsPaused ? OcrTexts.Resume : OcrTexts.Pause;
+
+    private bool CanTogglePause() => MayPause && !IsPausing && (IsPaused || HasPreviewReading);
+
+    /// <summary>Pause or Resume, the one button on the video.</summary>
+    [RelayCommand(CanExecute = nameof(CanTogglePause))]
+    private Task TogglePauseAsync() => IsPaused ? ResumeAsync() : PauseAsync();
+
+    /// <summary>
+    /// Pause: the server holds the frame of the latest reading and answers it, the very picture that was read (the client's
+    /// video is another picture, the lines would not fit). A refusal stays in the host's message; nothing changes.
+    /// </summary>
+    private async Task PauseAsync()
+    {
+        if (PreviewId is not { } id)
+        {
+            return;
+        }
+
+        IsPausing = true;
+        _tableFrozen = true;
+        try
+        {
+            var json = await _ctx.InvokeAsync(OcrMethods.PausePreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), CancellationToken.None)
+                .ConfigureAwait(true);
+            var reply = OcrJson.Deserialize<PauseReply>(json);
+            if (_disposed || PreviewId != id)
+            {
+                return;
+            }
+
+            if (!reply.Paused)
+            {
+                HasPreviewReading = false;
+                if (reply.Problem is { } problem)
+                {
+                    await _ctx.ShowMessageAsync(OcrTexts.Pause, problem).ConfigureAwait(true);
+                }
+
+                return;
+            }
+
+            var picture = reply.Picture is { Length: > 0 } bytes ? await _decode(bytes).ConfigureAwait(true) : null;
+            if (_disposed || PreviewId != id)
+            {
+                picture?.Dispose();
+                return;
+            }
+
+            if (picture is null)
+            {
+                await _ctx.InvokeAsync(OcrMethods.ResumePreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), CancellationToken.None).ConfigureAwait(true);
+                return; // a picture that does not decode: live again
+            }
+
+            _pauseVersion++;
+            HeldPicture = picture;
+            IsPaused = true;
+            await ApplyReplyJsonAsync(json, ++_readSeq).ConfigureAwait(true); // newer than any fetch still on its way
+        }
+#pragma warning disable CA1031 // The server's reason in the host's message: the page stays live.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(OcrTexts.Pause, ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsPausing = false;
+            _tableFrozen = IsPaused;
+        }
+    }
+
+    /// <summary>Resume: the server drops the frame and reads live; the page waits for the next reading before Pause works again.</summary>
+    private async Task ResumeAsync()
+    {
+        IsPausing = true;
+        try
+        {
+            if (PreviewId is { } id)
+            {
+                var json = await _ctx.InvokeAsync(OcrMethods.ResumePreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), CancellationToken.None)
+                    .ConfigureAwait(true);
+                if (!_disposed)
+                {
+                    PreviewProblem = OcrJson.Deserialize<PreviewReply>(json).Problem;
+                }
+            }
+
+            if (!_disposed)
+            {
+                LeavePause();
+                await RefreshPreviewAsync(_preview?.Token ?? CancellationToken.None).ConfigureAwait(true); // the last reads again, at once
+            }
+        }
+#pragma warning disable CA1031 // The server's reason in the host's message: the page stays paused.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(OcrTexts.Resume, ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsPausing = false;
+        }
+    }
+
+    /// <summary>
+    /// The frame is gone (Resume, the server's answer, the page hides): the live video again, the table comes up to date with the
+    /// next fetch. A fetch still on its way may hold the paused answer, without rows: it no longer counts.
+    /// </summary>
+    private void LeavePause()
+    {
+        if (IsPaused)
+        {
+            HeldAreas = [];
+            ClearNote();
+            _shownSeq = ++_readSeq;
+        }
+
+        _tableFrozen = false;
+        _pauseVersion++;
+        var held = HeldPicture;
+        HasPreviewReading = false;
+        IsRereading = false;
+        IsPaused = false;
+        HeldPicture = null;
+        held?.Dispose();
+    }
+
+    /// <summary>The user's permissions changed: without Live view the frame goes, the server drops it with the next call.</summary>
+    public void ApplyPermissions()
+    {
+        MayPause = _ctx.Has(HostPermissionKeys.DevicesLiveView);
+        if (!MayPause && IsPaused)
+        {
+            _ = ResumeAsync();
+        }
+    }
+
     /// <summary>The picture's shape for the overlay: the reader's resolution.</summary>
     public Resolution PictureSize => SelectedResolution;
 
@@ -280,19 +472,33 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     /// <summary>The lines drawn over the live video: none while an area is drawn, moved or resized.</summary>
     public IReadOnlyList<TextLine> ShownLines => IsDrawing || IsAdjustingArea ? [] : Lines;
 
-    /// <summary>The latest reading's note ("More than 30 texts found. ..."); null without one.</summary>
+    /// <summary>
+    /// The note above Save ("More than 30 texts found. ...", "Lane: Text too small. ..."): live each alert stays
+    /// <see cref="OcrLimits.NoteHold"/> after the last reading that had it, so it can be read on a belt; while paused the held
+    /// frame's own note with a line per area with a format ("Lane: no match"), at once. Null without one.
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasReadingNote))]
+    [NotifyPropertyChangedFor(nameof(HasReadingNote), nameof(NoteMaxLines))]
     public partial string? ReadingNote { get; private set; }
 
     public bool HasReadingNote => !string.IsNullOrEmpty(ReadingNote);
 
+    /// <summary>Four for the first line of the note, which wraps in the settings column; one more for each line after it.</summary>
+    public int NoteMaxLines => 4 + (ReadingNote?.Count(c => c == '\n') ?? 0);
+
+    /// <summary>The last reads, newest on top; frozen while paused (only <see cref="ApplyLive"/> changes them).</summary>
     public RangeObservableCollection<ResultRow> Results { get; } = [];
 
     public bool HasResults => Results.Count > 0;
 
-    /// <summary>Below the results while there are none: why the preview reads nothing, else that it waits (nothing without areas: the video says it).</summary>
-    public string ResultsEmptyText => PreviewProblem ?? (HasAreas ? OcrTexts.WaitingForPicture : string.Empty);
+    /// <summary>The held frame's result per area, in the reader's order; empty while live.</summary>
+    public IReadOnlyList<ResultRow> HeldAreas { get; private set; } = [];
+
+    /// <summary>
+    /// Below the results while there are none: why the preview reads nothing, else that it waits (nothing without areas: the
+    /// video says it). While paused nothing comes in.
+    /// </summary>
+    public string ResultsEmptyText => PreviewProblem ?? (!HasAreas ? string.Empty : IsPaused ? OcrTexts.NoReads : OcrTexts.WaitingForPicture);
 
     /// <summary>
     /// This page's preview of the reader; null while there is none. The page makes the id itself and sends it with every
@@ -342,6 +548,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         VideoSource = SelectedSource?.Number ?? 1,
         Resolution = SelectedResolution,
         Mode = Mode,
+        MovingObjects = MovingObjects,
         Fps = Fps,
         Areas = [.. Areas.Select(a => a.ToArea())],
     };
@@ -470,7 +677,56 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         }
     }
 
-    /// <summary>Rename (the tag icon in an area's row): the dialog with the area's name; Rename sets it.</summary>
+    /// <summary>The entries of an area's row menu (ui:RowActions).</summary>
+    public IReadOnlyList<Oadm.Sdk.Client.Controls.IssuedCertificateAction> ActionsOf(AreaViewModel area) =>
+    [
+        new(OcrTexts.UseReadTextAsFormat, UseReadTextAsFormatCommand, area),
+        new(OcrTexts.Rename, RenameAreaCommand, area),
+        Oadm.Sdk.Client.Controls.IssuedCertificateAction.Separator,
+        new("Delete", RemoveAreaCommand, area, IsDanger: true),
+    ];
+
+    /// <summary>
+    /// The boxes an area shows on the video: every line with any text; with a format one box, the value at its place, and
+    /// nothing else: no match gives none, a voted value that is not in this frame has no place and gives none. Other lines
+    /// are never picked by touching that box: a turned label's boxes overlap.
+    /// </summary>
+    private IEnumerable<TextLine> LinesToShow(AreaResult area, AreaDetails? details, int index)
+    {
+        if (index >= Areas.Count || !Areas[index].IsFormat)
+        {
+            return area.Lines;
+        }
+
+        return area.MatchesFormat && details?.MatchBox is { } box ? [new TextLine(area.Text, box, area.Confidence)] : [];
+    }
+
+    /// <summary>The format the area's latest read text gives; null without a text or when it makes no valid format.</summary>
+    private string? FormatFromReadText(AreaViewModel? area)
+    {
+        var index = area is null ? -1 : Areas.IndexOf(area);
+        if (!MayChange || index < 0 || index >= _areaTexts.Count)
+        {
+            return null;
+        }
+
+        var format = Oadm.Plugins.Ocr.Matching.TextFormat.FromText(_areaTexts[index]);
+        return format.Length > 0 && format.Length <= AreaViewModel.MaxFormatLength && ReaderRules.FormatProblem(format) is null ? format : null;
+    }
+
+    private bool CanUseReadTextAsFormat(AreaViewModel? area) => FormatFromReadText(area) is not null;
+
+    /// <summary>The menu entry: the area's format follows the shape of the text read now; the user adjusts it (@@@@ to @@@U).</summary>
+    [RelayCommand(CanExecute = nameof(CanUseReadTextAsFormat))]
+    private void UseReadTextAsFormat(AreaViewModel? area)
+    {
+        if (area is not null && FormatFromReadText(area) is { } format)
+        {
+            area.FormatText = format;
+        }
+    }
+
+    /// <summary>Rename (in an area's menu): the dialog with the area's name; Rename sets it.</summary>
     [RelayCommand]
     private async Task RenameAreaAsync(AreaViewModel? area)
     {
@@ -581,6 +837,12 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
         area.Changed -= OnAreaChanged;
         area.ValidityChanged -= OnAreaValidityChanged;
+        var index = Areas.IndexOf(area);
+        if (index < _areaTexts.Count)
+        {
+            SetAreaTexts([.. _areaTexts.Where((_, i) => i != index)]); // the others keep their own text
+        }
+
         Areas.Remove(area);
         if (ReferenceEquals(SelectedArea, area))
         {
@@ -738,6 +1000,8 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         _sendGeneration++;
         _sending = false;
         _sendAgain = false;
+        LeavePause(); // the server's preview ends and its frame with it
+        ClearNote();
         if (PreviewId is { } id)
         {
             PreviewId = null;
@@ -797,6 +1061,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             {
                 _sendAgain = false;
                 var id = PreviewId ??= Guid.NewGuid().ToString("N");
+                var pauseVersion = _pauseVersion;
                 var request = new PreviewRequest { PreviewId = id, Reader = ToReader() };
                 var json = await _ctx.InvokeAsync(OcrMethods.StartPreview, OcrJson.Serialize(request), ct).ConfigureAwait(true);
                 var reply = OcrJson.Deserialize<PreviewReply>(json);
@@ -809,6 +1074,19 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
                 PreviewId = reply.PreviewId.Length > 0 ? reply.PreviewId : id;
                 PreviewProblem = reply.Problem;
+
+                // An answer from before a Pause or Resume says nothing about it.
+                if (IsPaused && pauseVersion == _pauseVersion)
+                {
+                    if (reply.Paused)
+                    {
+                        IsRereading = reply.Rereading;
+                    }
+                    else
+                    {
+                        LeavePause(); // the frame went on the server: another stream setting, the lease, a restart
+                    }
+                }
             }
             while (_sendAgain && !ct.IsCancellationRequested && !_disposed);
         }
@@ -838,6 +1116,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     {
         if (_preview is { } preview && !_loading)
         {
+            IsRereading = IsPaused; // the ring from the first moment; the answer tells whether a reading follows
             _ = SendPreviewAsync(preview.Token);
         }
     }
@@ -871,13 +1150,17 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
                 }
 
                 var seq = ++_readSeq;
-                var json = await _ctx.InvokeAsync(OcrMethods.GetPreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id }), ct).ConfigureAwait(true);
+                var json = await _ctx.InvokeAsync(OcrMethods.GetPreview, OcrJson.Serialize(new PreviewRequest { PreviewId = id, KnownCutouts = KnownCutouts() }), ct).ConfigureAwait(true);
                 if (_disposed)
                 {
                     return;
                 }
 
-                await ApplyReplyJsonAsync(json, seq).ConfigureAwait(true);
+                if (await ApplyReplyJsonAsync(json, seq).ConfigureAwait(true))
+                {
+                    HasPreviewReading = true;
+                    IsRereading = false;
+                }
             }
             while (_fetchAgain && !ct.IsCancellationRequested && !_disposed);
         }
@@ -924,73 +1207,296 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     /// <summary>
     /// Shows a fetched reading unless a later fetch (<paramref name="seq"/>, in the order the calls started) was shown already:
-    /// the saved reader's last reading never replaces the preview's newer one across the decoding.
+    /// the saved reader's last reading never replaces the preview's newer one across the decoding. True when a reading shows.
     /// </summary>
-    private async Task ApplyReplyJsonAsync(string? json, long seq)
+    private async Task<bool> ApplyReplyJsonAsync(string? json, long seq)
     {
         var reply = OcrJson.Deserialize<ReadingReply>(json);
-        var details = reply.Details;
-
-        // The cut-outs by the area's place (a user without Live view gets none: the rows show the text only).
-        var cutOuts = new Bitmap?[details.Count];
-        for (var i = 0; i < details.Count; i++)
+        if (IsPaused)
         {
-            if (details[i].Cutout is { Length: > 0 } bytes)
+            if (_disposed || seq < _shownSeq)
             {
-                cutOuts[i] = await _decode(bytes).ConfigureAwait(true);
+                return false;
+            }
+
+            _shownSeq = seq;
+            ApplyReading(reply.Reading, reply.Details);
+            return reply.Reading is not null;
+        }
+
+        // Live: only the rows that bring a cut-out are decoded, each once; a row the page has keeps its picture.
+        var decoded = new Dictionary<long, Bitmap?>();
+        foreach (var read in reply.Recent)
+        {
+            if (read.Cutout is { Length: > 0 } bytes && !(_rows.TryGetValue(read.Id, out var row) && row.Picture is not null))
+            {
+                decoded[read.Id] = await _decode(bytes).ConfigureAwait(true);
             }
         }
 
         if (_disposed || seq < _shownSeq)
         {
-            DisposeAll(cutOuts);
-            return;
+            DisposeAll(decoded.Values);
+            return false;
         }
 
         _shownSeq = seq;
-        ApplyReading(reply.Reading, details, cutOuts);
+        ApplyLive(reply, decoded);
+        return reply.Reading is not null;
     }
 
     /// <summary>
-    /// Shows a reading: its lines over the live video, the results with the details and the server's cut-outs matched by the
-    /// area's place in the reader (names can repeat while they are edited); the editor owns the bitmaps from now on.
+    /// The live table: the reading's lines and note, the last reads newest on top. Nothing happens to the grid while the rows
+    /// stay the same (20 rows at 15 frames per second stay cheap); a row that leaves gives its bitmap back. With a Pause on its
+    /// way the rows stay: the server may already answer paused, without rows.
     /// </summary>
-    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details, IReadOnlyList<Bitmap?>? cutOuts = null)
+    private void ApplyLive(ReadingReply reply, Dictionary<long, Bitmap?> decoded)
     {
-        var oldCutOuts = _cutOuts;
-        if (reading is null)
+        if (reply.Reading is null && reply.Recent.Count == 0)
         {
-            DisposeAll(cutOuts);
+            DisposeAll(decoded.Values);
+            return; // the preview ended or has read nothing yet: the next reading tells
+        }
+
+        if (reply.Reading is { } reading)
+        {
+            HoldNote(ShowReading(reading, reply.Details), reply.Details);
+        }
+
+        if (_tableFrozen)
+        {
+            DisposeAll(decoded.Values);
             return;
         }
 
-        _cutOuts = cutOuts is null ? [] : [.. cutOuts.OfType<Bitmap>()];
+        var rows = new List<ResultRow>(reply.Recent.Count);
+        var kept = new HashSet<long>();
+        foreach (var read in Areas.Count == 0 ? [] : reply.Recent)
+        {
+            var bitmap = decoded.Remove(read.Id, out var made) ? made : null;
+            if (!_rows.TryGetValue(read.Id, out var row))
+            {
+                row = new ResultRow(read, bitmap);
+                _rows[read.Id] = row;
+            }
+            else if (row.Picture is null && read.Cutout is { Length: > 0 })
+            {
+                row.Picture = read.Cutout;
+                row.CutOut = bitmap;
+            }
+            else
+            {
+                bitmap?.Dispose();
+            }
+
+            rows.Add(row);
+            kept.Add(read.Id);
+        }
+
+        DisposeAll(decoded.Values);
+        var leaving = _rows.Where(r => !kept.Contains(r.Key)).ToList();
+        if (!rows.SequenceEqual(Results))
+        {
+            Results.ReplaceAll(rows);
+            OnPropertyChanged(nameof(HasResults));
+        }
+
+        foreach (var (id, row) in leaving)
+        {
+            _rows.Remove(id);
+            DisposeCutOut(row);
+        }
+    }
+
+    /// <summary>
+    /// Shows the reading of a held frame: its lines over the picture and its result per area, matched by the area's place in the
+    /// reader (names can repeat while they are edited), in <see cref="HeldAreas"/> and the note; the table stays as it is.
+    /// </summary>
+    public void ApplyReading(Reading? reading, IReadOnlyList<AreaDetails>? details)
+    {
+        if (reading is null)
+        {
+            return;
+        }
+
+        reading = ShowReading(reading, details);
+        var rows = new List<ResultRow>(reading.Areas.Count);
+        for (var i = 0; i < reading.Areas.Count; i++)
+        {
+            var detail = details is not null && i < details.Count ? details[i] : null;
+            rows.Add(new ResultRow(reading.Areas[i], detail, i < Areas.Count && Areas[i].IsFormat, reading.Time));
+        }
+
+        HeldAreas = rows;
+        var values = rows.Where(r => r.HasFormat).Select(r => OcrTexts.HeldValue(r.Area, r.IsMatch ? r.Text : null));
+        ClearNote();
+        ReadingNote = string.Join('\n', new[] { NoteOf(reading, details) }.OfType<string>().Concat(values)) is { Length: > 0 } note ? note : null;
+    }
+
+    /// <summary>What a reading shows besides the table and the note: its lines and each area's text. Answers it as shown.</summary>
+    private Reading ShowReading(Reading reading, IReadOnlyList<AreaDetails>? details)
+    {
         if (Areas.Count == 0)
         {
             // Text is read only inside areas: a reading from before the last area went shows nothing.
             reading = reading with { Areas = [], Note = null };
         }
 
-        Lines = [.. reading.Areas.SelectMany(a => a.Lines)];
-        ReadingNote = reading.Note;
-
-        var rows = new List<ResultRow>(reading.Areas.Count);
-        for (var i = 0; i < reading.Areas.Count; i++)
-        {
-            var area = reading.Areas[i];
-            var detail = details is not null && i < details.Count ? details[i] : null;
-            var hasFormat = i < Areas.Count && Areas[i].IsFormat;
-            IImage? cut = cutOuts is not null && i < cutOuts.Count ? cutOuts[i] : null;
-            rows.Add(new ResultRow(area, detail, hasFormat, reading.Time, hasFormat && area.MatchesFormat && area.Text.Length > 0 ? cut : null));
-        }
-
-        Results.ReplaceAll(rows);
-        OnPropertyChanged(nameof(HasResults));
+        Lines = [.. reading.Areas.SelectMany((a, i) => LinesToShow(a, details is not null && i < details.Count ? details[i] : null, i))];
+        SetAreaTexts([.. reading.Areas.Select((a, i) => a.Text.Length > 0 || (i < Areas.Count && Areas[i].IsFormat) ? a.Text : a.TextRead)]);
         OverlayVersion++;
-        DisposeAll(oldCutOuts);
+        return reading;
     }
 
-    private List<Bitmap> _cutOuts = [];
+    /// <summary>The reading's note and the areas whose text is too small (the table has no row per area).</summary>
+    private static string? NoteOf(Reading reading, IReadOnlyList<AreaDetails>? details) => JoinNote(reading.Note, SmallAreas(reading, details));
+
+    private static List<string> SmallAreas(Reading reading, IReadOnlyList<AreaDetails>? details) =>
+        [.. reading.Areas.Where((_, i) => details is not null && i < details.Count && details[i].TooSmall).Select(a => a.Area)];
+
+    private static string? JoinNote(string? note, List<string> small) =>
+        small.Count == 0 ? note : string.Join(' ', new[] { note, OcrTexts.TooSmallIn(small) }.OfType<string>());
+
+    /// <summary>
+    /// A live reading's alerts: each stays <see cref="OcrLimits.NoteHold"/> after this reading, a new one joins them, so the
+    /// text changes only when an alert comes or goes and never flickers between two readings.
+    /// </summary>
+    private void HoldNote(Reading reading, IReadOnlyList<AreaDetails>? details)
+    {
+        var until = PreviewTime.GetUtcNow() + OcrLimits.NoteHold;
+        if (reading.Note is { } note)
+        {
+            _heldNote = (note, until);
+        }
+
+        foreach (var area in SmallAreas(reading, details))
+        {
+            var at = _heldSmall.FindIndex(s => s.Area == area);
+            if (at >= 0)
+            {
+                _heldSmall[at] = (area, until);
+            }
+            else
+            {
+                _heldSmall.Add((area, until));
+            }
+        }
+
+        ShowHeldNote();
+        if (!_noteClock && (_heldNote is not null || _heldSmall.Count > 0))
+        {
+            _noteClock = true;
+            _ = ExpireNoteAsync(_noteVersion);
+        }
+    }
+
+    /// <summary>Takes the alerts whose time ended away; the rest stay as they are.</summary>
+    private void ShowHeldNote()
+    {
+        var now = PreviewTime.GetUtcNow();
+        if (_heldNote is { } held && held.Until <= now)
+        {
+            _heldNote = null;
+        }
+
+        _heldSmall.RemoveAll(s => s.Until <= now);
+        ReadingNote = JoinNote(_heldNote?.Text, [.. _heldSmall.Select(s => s.Area)]);
+    }
+
+    /// <summary>The note also ends when no reading comes any more.</summary>
+    private async Task ExpireNoteAsync(int version)
+    {
+        while (!_disposed && version == _noteVersion && (_heldNote is not null || _heldSmall.Count > 0))
+        {
+            var next = _heldSmall.Select(s => s.Until).Concat(_heldNote is { } held ? [held.Until] : []).Min();
+            await Task.Delay(next > PreviewTime.GetUtcNow() ? next - PreviewTime.GetUtcNow() : TimeSpan.Zero, PreviewTime).ConfigureAwait(true);
+            if (!_disposed && version == _noteVersion)
+            {
+                ShowHeldNote();
+            }
+        }
+
+        if (version == _noteVersion)
+        {
+            _noteClock = false;
+        }
+    }
+
+    /// <summary>The note goes at once: the reader or the frame it belongs to went.</summary>
+    private void ClearNote()
+    {
+        _noteVersion++;
+        _noteClock = false;
+        _heldNote = null;
+        _heldSmall.Clear();
+        ReadingNote = null;
+    }
+
+    /// <summary>What each area reads now; an open menu's entry follows it.</summary>
+    private void SetAreaTexts(IReadOnlyList<string> texts)
+    {
+        if (!texts.SequenceEqual(_areaTexts))
+        {
+            _areaTexts = texts;
+            UseReadTextAsFormatCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>The ids of the rows whose cut-out the page has, so the server sends each once; null without one.</summary>
+    private List<long>? KnownCutouts()
+    {
+        var known = _rows.Where(r => r.Value.Picture is not null).Select(r => r.Key).ToList();
+        return known.Count > 0 ? known : null;
+    }
+
+    /// <summary>A click on a row's thumbnail: the dialog with its own copy of the picture, so the row may leave while it is open.</summary>
+    [RelayCommand]
+    private async Task OpenCutOutAsync(ResultRow? row)
+    {
+        if (row?.Picture is not { } bytes || Dialogs is not { } dialogs || await _decode(bytes).ConfigureAwait(true) is not { } picture)
+        {
+            return;
+        }
+
+        try
+        {
+            await dialogs.ShowCutOutAsync(new CutOutViewModel(row, picture)).ConfigureAwait(true);
+        }
+        finally
+        {
+            picture.Dispose();
+        }
+    }
+
+    /// <summary>The rows of the last reads by id: a row stays with its decoded picture while it stays in the list.</summary>
+    private readonly Dictionary<long, ResultRow> _rows = [];
+
+    private IReadOnlyList<string> _areaTexts = [];
+
+    private (string Text, DateTimeOffset Until)? _heldNote;
+    private readonly List<(string Area, DateTimeOffset Until)> _heldSmall = [];
+    private bool _noteClock;
+    private int _noteVersion;
+
+    /// <summary>The table empties; every picture goes.</summary>
+    private void ClearResults()
+    {
+        Results.Clear();
+        OnPropertyChanged(nameof(HasResults));
+        foreach (var row in _rows.Values)
+        {
+            DisposeCutOut(row);
+        }
+
+        _rows.Clear();
+    }
+
+    private static void DisposeCutOut(ResultRow row)
+    {
+        var bitmap = row.CutOut as Bitmap;
+        row.CutOut = null;
+        bitmap?.Dispose();
+    }
 
     private static void DisposeAll(IEnumerable<Bitmap?>? bitmaps)
     {
@@ -1010,9 +1516,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         StopPreview();
         _disposed = true;
         _video?.Dispose();
-        Results.Clear();
-        DisposeAll(_cutOuts);
-        _cutOuts = [];
+        ClearResults();
     }
 
     protected override void OnValidationChanged()
@@ -1033,7 +1537,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return;
         }
 
-        if (e.PropertyName is nameof(Name) or nameof(DeviceId) or nameof(SelectedSource) or nameof(SelectedResolution) or nameof(Mode) or nameof(Fps))
+        if (e.PropertyName is nameof(Name) or nameof(DeviceId) or nameof(SelectedSource) or nameof(SelectedResolution) or nameof(Mode) or nameof(Fps) or nameof(MovingObjects))
         {
             UpdateSaveState();
         }
@@ -1092,9 +1596,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         {
             // No area, no reading: the lines and results of the last one go, the video shows the start hint.
             Lines = [];
-            ReadingNote = null;
-            Results.Clear();
-            OnPropertyChanged(nameof(HasResults));
+            ClearNote();
+            SetAreaTexts([]);
+            HeldAreas = [];
+            ClearResults();
         }
 
         OnPropertyChanged(nameof(HasAreas));

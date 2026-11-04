@@ -26,6 +26,24 @@ public sealed class GpuSessionBudgetTests
     private static readonly object Other = new();
 
     [Fact]
+    public void The_cap_is_80_percent_of_the_card_and_4_GB_when_the_card_does_not_tell()
+    {
+        var card = 16L * 1024 * 1024 * 1024;
+        Assert.Equal((long)(card * 0.8), GpuSessionBudget.CapFor(card));
+        Assert.Equal(GpuSessionBudget.MaxBytes, GpuSessionBudget.CapFor(null));
+        Assert.Equal(GpuSessionBudget.MaxBytes, GpuSessionBudget.CapFor(0));
+    }
+
+    [Theory]
+    [InlineData("15997 MB", 15997L * 1024 * 1024)]
+    [InlineData("0 MB", null)]
+    [InlineData("16 GB", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void The_cards_memory_is_read_from_what_DirectML_tells(string? text, long? bytes) =>
+        Assert.Equal(bytes, SessionFactory.ParseVideoMemory(text));
+
+    [Fact]
     public void The_estimate_follows_the_measured_memory_of_the_text_finder()
     {
         // Measured on DirectML (spec "GPU"), GB of the card: the estimate is never below it and not far above.

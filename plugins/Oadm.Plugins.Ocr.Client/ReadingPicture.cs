@@ -21,7 +21,9 @@ public sealed record AreaBoxChange(AreaViewModel Area, RelativeBox Box);
 /// moves it, a drag on a handle resizes it (<see cref="AreaChanged"/> at the end; Esc cancels the drag), the arrow keys
 /// nudge it (<see cref="NudgeRequested"/>). While an area is drawn, moved or resized the lines are hidden
 /// (<see cref="AdjustingChanged"/> tells the reader); without areas (<see cref="ShowStartHint"/>) the picture is dimmed with
-/// "Start by drawing an area". The geometry rules are <see cref="AreaGeometry"/>; colours and fonts come from the theme.
+/// "Start by drawing an area". While the page is paused <see cref="HeldPicture"/> (the frame the server read) is drawn under
+/// them on the same rectangle, so areas and lines fit it exactly. The geometry rules are <see cref="AreaGeometry"/>; colours
+/// and fonts come from the theme.
 /// </summary>
 public sealed class ReadingPicture : Control
 {
@@ -45,6 +47,10 @@ public sealed class ReadingPicture : Control
     public static readonly StyledProperty<bool> ShowStartHintProperty =
         AvaloniaProperty.Register<ReadingPicture, bool>(nameof(ShowStartHint));
 
+    /// <summary>The frame the server holds while paused, drawn in the picture's place; null: the live video shows through.</summary>
+    public static readonly StyledProperty<IImage?> HeldPictureProperty =
+        AvaloniaProperty.Register<ReadingPicture, IImage?>(nameof(HeldPicture));
+
     /// <summary>Changes whenever the areas, the selection or the lines changed: the overlay draws again.</summary>
     public static readonly StyledProperty<int> VersionProperty =
         AvaloniaProperty.Register<ReadingPicture, int>(nameof(Version));
@@ -66,7 +72,7 @@ public sealed class ReadingPicture : Control
 
     static ReadingPicture()
     {
-        AffectsRender<ReadingPicture>(AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty, ShowStartHintProperty);
+        AffectsRender<ReadingPicture>(AreasProperty, LinesProperty, IsDrawingProperty, VersionProperty, ShowStartHintProperty, HeldPictureProperty);
         AffectsMeasure<ReadingPicture>(PictureSizeProperty);
         FocusableProperty.OverrideDefaultValue<ReadingPicture>(true);
         ClipToBoundsProperty.OverrideDefaultValue<ReadingPicture>(true);
@@ -77,6 +83,9 @@ public sealed class ReadingPicture : Control
 
     /// <summary>A press on an area (not drawing): it becomes the selected one.</summary>
     public event EventHandler<AreaViewModel>? AreaSelected;
+
+    /// <summary>A press beside every area: no area is selected any more.</summary>
+    public event EventHandler? SelectionCleared;
 
     /// <summary>A move or resize ended with another box.</summary>
     public event EventHandler<AreaBoxChange>? AreaChanged;
@@ -126,6 +135,12 @@ public sealed class ReadingPicture : Control
         set => SetValue(ShowStartHintProperty, value);
     }
 
+    public IImage? HeldPicture
+    {
+        get => GetValue(HeldPictureProperty);
+        set => SetValue(HeldPictureProperty, value);
+    }
+
     public int Version
     {
         get => GetValue(VersionProperty);
@@ -138,7 +153,10 @@ public sealed class ReadingPicture : Control
     /// <summary>A move or resize is in progress.</summary>
     public bool IsDragging => _edit is not null;
 
-    private double Aspect => PictureSize.Width > 0 && PictureSize.Height > 0 ? (double)PictureSize.Width / PictureSize.Height : 16.0 / 9;
+    private double Aspect => AspectOf(PictureSize);
+
+    /// <summary>The picture's shape.</summary>
+    internal static double AspectOf(Resolution size) => size.Width > 0 && size.Height > 0 ? (double)size.Width / size.Height : 16.0 / 9;
 
     /// <summary>A point of the control relative to the picture (0 to 1 each, clamped).</summary>
     public Point ToRelative(Point point)
@@ -285,6 +303,7 @@ public sealed class ReadingPicture : Control
         var (area, handle) = HitTest(position);
         if (area is null)
         {
+            SelectionCleared?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -426,6 +445,11 @@ public sealed class ReadingPicture : Control
         context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size));
         using (context.PushClip(picture))
         {
+            if (HeldPicture is { } held)
+            {
+                context.DrawImage(held, new Rect(held.Size), picture);
+            }
+
             if (ShowStartHint && !IsDrawing)
             {
                 // No area yet: nothing is read; the picture dimmed a little.
@@ -502,24 +526,28 @@ public sealed class ReadingPicture : Control
 
         var accent = Brush("Oadm.AccentBrush");
         var onAccent = Brush("Oadm.TextOnAccentBrush");
-        var dashed = new Pen(accent, 2, new DashStyle([4, 3], 0));
+        var grey = Brush("Oadm.TextSecondaryBrush");
+        var dashed = new Pen(grey, 2, new DashStyle([4, 3], 0));
         var solid = new Pen(accent, 2);
+        var greyTag = Brush("Oadm.OverlayBrush");
+        var greyText = Brush("Oadm.TextPrimaryBrush");
         var font = Font("Oadm.FontFamily");
         var size = Number("Oadm.FontSizeSmall", 11);
         foreach (var area in areas)
         {
             var box = _edit is { } edit && ReferenceEquals(edit.Area, area) ? edit.Now : area.Box;
             var rect = ToRect(box, picture);
-            context.DrawRectangle(Tint(accent, area.IsSelected ? 0.16 : 0.08), area.IsSelected ? solid : dashed, rect);
+            // Selected: the accent, solid. The others stay grey, so the one being worked on stands out.
+            context.DrawRectangle(area.IsSelected ? Tint(accent, 0.16) : Tint(grey, 0.06), area.IsSelected ? solid : dashed, rect);
             var name = string.IsNullOrWhiteSpace(area.Name) ? " " : area.Name.Trim();
-            var text = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, font, size, onAccent);
+            var text = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, font, size, area.IsSelected ? onAccent : greyText);
             var tag = new Rect(rect.X - 1, rect.Y - text.Height - 4, text.Width + 10, text.Height + 4);
             if (tag.Y < picture.Y)
             {
                 tag = tag.WithY(rect.Y + 1);
             }
 
-            context.FillRectangle(accent, tag, 3);
+            context.FillRectangle(area.IsSelected ? accent : greyTag, tag, 3);
             context.DrawText(text, new Point(tag.X + 5, tag.Y + 2));
             if (area.IsSelected && CanEdit && !IsDrawing)
             {

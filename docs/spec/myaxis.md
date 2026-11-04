@@ -1,6 +1,6 @@
 # MyAxis sign-in
 
-Status: **built**, verified 2026-11-02 on Windows with a real MyAxis account (WebKitGTK glue on Linux not yet).
+Status: **built**, verified with a real MyAxis account on Windows (2026-11-02) and Ubuntu (WebKitGTK 2.52.6); macOS not yet.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -137,8 +137,8 @@ offer Sign in to MyAxis.
 2026-11-02 on Windows (WebView2) with a real MyAxis account: the login returns to `axis_destination`, the session cookie
 is read and accepted, a wrong one-time code or password shows Axis's own page, the listings parse, an AXIS OS download
 passes the checksum (the listings round sizes, hence `SizeFits`) and two M3206-LVE were upgraded to 10.12.363. HEAD on a
-.bin works; a sign-in lasts about 4 weeks (from the cookie's expiry). Still to check: the WebKitGTK glue on Ubuntu 24.04
-(client README) and macOS (WKWebView).
+.bin works; a sign-in lasts about 4 weeks (from the cookie's expiry). On Ubuntu (WebKitGTK 2.52.6) the password, the
+one-time code and the accepted sign-in were checked. Still to check: macOS (WKWebView).
 
 ## Not part of it
 

@@ -1,3 +1,5 @@
+using Avalonia.Media.Imaging;
+
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -16,6 +18,48 @@ public interface IReaderDialogs
 
     /// <summary>Rename of an area: true when the user chose Rename.</summary>
     Task<bool> RenameAreaAsync(RenameAreaViewModel form);
+
+    /// <summary>A row's cut-out, larger.</summary>
+    Task ShowCutOutAsync(CutOutViewModel form);
+}
+
+/// <summary>
+/// The dialog of a row's cut-out (docs/spec/ocr.md "The last 20 reads"): the picture at its real pixels, a small one enlarged by
+/// a whole number so its pixels stay sharp, with the text, the area and the time. The caller owns the picture.
+/// </summary>
+public sealed partial class CutOutViewModel(ResultRow row, Bitmap picture)
+{
+    /// <summary>The widest the picture shows (<see cref="OcrLimits.MaxCutoutSide"/>, the window's content).</summary>
+    public const double MaxWidth = OcrLimits.MaxCutoutSide;
+
+    /// <summary>A small picture fills about this height at most.</summary>
+    public const double MaxHeight = 360;
+
+    /// <summary>Enlarged at most this many times.</summary>
+    public const int MaxScale = 8;
+
+    public static string Title => OcrTexts.CutOut;
+
+    public Bitmap Picture { get; } = picture ?? throw new ArgumentNullException(nameof(picture));
+
+    public string Text { get; } = (row ?? throw new ArgumentNullException(nameof(row))).Text;
+
+    public string Area { get; } = row.Area;
+
+    public string Time { get; } = row.Time;
+
+    /// <summary>The whole number the picture's pixels are enlarged by.</summary>
+    public int Scale => Math.Clamp((int)Math.Min(MaxWidth / Picture.PixelSize.Width, MaxHeight / Picture.PixelSize.Height), 1, MaxScale);
+
+    public double ShownWidth => Picture.PixelSize.Width * Scale;
+
+    public double ShownHeight => Picture.PixelSize.Height * Scale;
+
+    /// <summary>Close: the view closes the window.</summary>
+    public event EventHandler? CloseRequested;
+
+    [RelayCommand]
+    private void Close() => CloseRequested?.Invoke(this, EventArgs.Empty);
 }
 
 /// <summary>

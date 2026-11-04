@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 
 using Microsoft.Extensions.Time.Testing;
 
+using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Ocr.Readers;
 using Oadm.Plugins.Ocr.Recognition;
@@ -90,6 +91,37 @@ public sealed class UnchangedReuseTests
         Assert.True(options.ReuseUnchanged);
         Assert.Equal("preview:" + reply.PreviewId, options.Source);
         Assert.NotEqual(saved.Id, options.Source);
+    }
+
+    [Fact]
+    public async Task AnEditOnAHeldFrameIsNeverAnsweredWithTheOldReading()
+    {
+        var recognizer = new DetailedFake { Reused = int.MaxValue }; // every reuse call says: all areas unchanged
+        await using var ocr = await StartAsync(recognizer);
+        var draft = ocr.NewReader("Belt");
+        var id = (await ocr.PreviewAsync(draft)).PreviewId;
+        await Eventually.TrueAsync(() => ocr.Frames.Open > 0, "the preview watches");
+        var before = ocr.PreviewReadings;
+        ocr.Frames.Send(ocr.Inside.Id, "A");
+        await Eventually.TrueAsync(() => ocr.PreviewReadings > before, "the preview read the frame");
+        Assert.True(recognizer.Calls.Last()!.ReuseUnchanged); // live: reuse on
+        await ocr.CallAsync(OcrMethods.PausePreview, new PreviewRequest { PreviewId = id });
+
+        // The same pixels with another format, then another place: read anew each time, the new draft's result.
+        foreach (var edited in new[]
+        {
+            draft with { Areas = [OcrHarness.DefaultArea with { Expected = ExpectedText.WithFormat("@") }] },
+            draft with { Areas = [OcrHarness.DefaultArea with { Box = new(0.2, 0.2, 0.3, 0.3), Expected = ExpectedText.WithFormat("@") }] },
+        })
+        {
+            var kept = ocr.PreviewReadings;
+            var calls = recognizer.Calls.Count;
+            await ocr.PreviewAsync(edited, id);
+            await Eventually.TrueAsync(() => ocr.PreviewReadings > kept, "the held frame was read");
+            Assert.Null(recognizer.Calls.Skip(calls).Single()); // the plain call: no options, no reuse
+            var reply = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetPreview, new PreviewRequest { PreviewId = id }));
+            Assert.True(Assert.Single(reply.Reading!.Areas).MatchesFormat);
+        }
     }
 
     [Fact]

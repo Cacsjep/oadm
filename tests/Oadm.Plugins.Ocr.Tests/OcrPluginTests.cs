@@ -154,7 +154,7 @@ public sealed class OcrPluginTests
             Fps = 4,
             Areas =
             [
-                new Area { Name = "Container number", Box = new RelativeBox(0.1, 0.2, 0.3, 0.1), Expected = ExpectedText.WithFormat("AAAU ###### #") },
+                new Area { Name = "Container number", Box = new RelativeBox(0.1, 0.2, 0.3, 0.1), Expected = ExpectedText.WithFormat("@@@U ###### #") },
                 new Area { Name = "All" },
             ],
         };

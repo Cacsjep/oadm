@@ -60,7 +60,7 @@ public static class ReaderRules
 
     public static readonly string FormatTooLong = string.Create(CultureInfo.InvariantCulture, $"A format has at most {MaxFormatLength} characters.");
 
-    public const string FormatWithoutPlaceholder = "A format needs at least one #, A or *.";
+    public const string FormatWithoutPlaceholder = "A format needs at least one #, @ or *.";
 
     public const string FormatInvalid = "Use letters, digits and signs only.";
 
@@ -153,6 +153,15 @@ public static class ReaderRules
     /// <summary>A preview that would go beyond what the server reads at once (the watching limits, also per site).</summary>
     public const string PreviewBusy = "No live results now: OADM already reads as many cameras as it can.";
 
+    /// <summary>Pause before the page's preview read a picture.</summary>
+    public const string NothingToPause = "No picture to pause yet.";
+
+    /// <summary>Pause on a picture beyond the limits of a reading.</summary>
+    public const string PictureTooLarge = "This picture is too large to pause. Choose a lower resolution.";
+
+    /// <summary>The refusal of Pause for a user without the host's Live view: the held picture is a piece of the camera's video.</summary>
+    public const string PauseNeedsLiveView = "Your role does not allow: Live view";
+
     /// <summary>
     /// The reader a preview reads (docs/spec/ocr.md "Page"): the page's draft as far as it can be read now. The camera and the
     /// resolution must be right (else <see cref="ArgumentException"/> with their text); areas outside the picture are left
@@ -239,6 +248,13 @@ public static class ReaderRules
 
         var lower = choices.Where(c => c < reader.Fps).ToList();
         return reader with { Fps = lower.Count > 0 ? lower.Max() : OcrLimits.DefaultFps };
+    }
+
+    /// <summary>The reader decides by 2 frames in a row instead of the vote: Moving objects, only while Watching.</summary>
+    public static bool IsMoving(Reader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        return reader.Mode == ReaderMode.Watching && reader.MovingObjects;
     }
 
     /// <summary>The first problem of a normalized reader (<see cref="Normalize"/>), or null.</summary>
@@ -353,6 +369,6 @@ public static class ReaderRules
             return FormatInvalid;
         }
 
-        return text.Any(c => c is '#' or 'A' or '*') ? null : FormatWithoutPlaceholder;
+        return text.Any(c => c is '#' or '@' or '*') ? null : FormatWithoutPlaceholder;
     }
 }

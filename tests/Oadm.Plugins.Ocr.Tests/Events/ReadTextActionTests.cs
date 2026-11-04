@@ -121,7 +121,9 @@ public sealed class ReadTextActionTests
         Assert.Equal("815", Assert.Single(reply.Details).Number);
         Assert.Equal("0815", Assert.Single(ocr.TextRead).Data[OcrInfo.TextField]);
         var json = await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id });
-        Assert.Equal(OcrJson.Serialize(new ReadingReply { Reading = reply.Reading, Details = reply.Details }), json);
+        var page = OcrJson.Deserialize<ReadingReply>(json);
+        Assert.Equal(OcrJson.Serialize(new ReadingReply { Reading = reply.Reading, Details = reply.Details, Recent = page.Recent }), json);
+        Assert.Equal("0815", Assert.Single(page.Recent).Text);
         Assert.DoesNotContain("jpeg", json, StringComparison.OrdinalIgnoreCase); // the page shows the live video, never the frame
     }
 }

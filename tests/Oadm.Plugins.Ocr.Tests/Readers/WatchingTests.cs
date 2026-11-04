@@ -19,6 +19,83 @@ public sealed class WatchingTests
         return saved;
     }
 
+    [Fact]
+    public async Task WithRoomFramesOverlapAndTheirResultsComeInOrder()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        ocr.Recognizer.HasRoom = true;
+        ocr.Recognizer.GateOf = text => text == "A" ? first.Task : Task.CompletedTask;
+        await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching) with { Fps = 15 });
+
+        // A stays in work; B and C are read beside it and finish first.
+        ocr.Frames.Send(ocr.Inside.Id, "A");
+        await Eventually.TrueAsync(() => ocr.Recognizer.Started == 1, "A in work");
+        foreach (var (text, started) in new[] { ("B", 2), ("C", 3) })
+        {
+            ocr.Frames.Send(ocr.Inside.Id, text);
+            await Eventually.TrueAsync(() => ocr.Recognizer.Started == started, text + " in work");
+        }
+
+        await Eventually.TrueAsync(() => ocr.Recognizer.Read.Count == 2, "B and C read");
+        Assert.Equal(["B", "C"], ocr.Recognizer.Read);
+        Assert.Equal(0, ocr.Readings); // nothing kept before the oldest frame ended
+
+        first.SetResult();
+        await Eventually.TrueAsync(() => ocr.Readings == 3, "the frames kept");
+        var last = ocr.Plugin.Runtime!.Last(ocr.Plugin.AllReaders.Single().Id);
+        Assert.Equal("C", Frame.TextOf(last!.Jpeg)); // the newest frame's reading stays the last
+    }
+
+    [Fact]
+    public async Task AtMostSoManyFramesAreInWorkAndOlderOnesAreDropped()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var gate = new SemaphoreSlim(0);
+        ocr.Recognizer.HasRoom = true;
+        ocr.Recognizer.Gate = gate;
+        await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching) with { Fps = 15 });
+
+        for (var i = 0; i < OcrLimits.MaxFramesInWork; i++)
+        {
+            ocr.Frames.Send(ocr.Inside.Id, "F" + i);
+            var started = i + 1;
+            await Eventually.TrueAsync(() => ocr.Recognizer.Started == started, "a frame in work");
+        }
+
+        // No more start: the slot of one keeps the newest of the rest.
+        for (var i = 0; i < 5; i++)
+        {
+            var taken = ocr.Frames.Taken;
+            ocr.Frames.Send(ocr.Inside.Id, "L" + i);
+            await Eventually.TrueAsync(() => ocr.Frames.Taken > taken, "the pump took the frame");
+        }
+
+        Assert.Equal(OcrLimits.MaxFramesInWork, ocr.Recognizer.Started);
+        gate.Release(OcrLimits.MaxFramesInWork + 1);
+        await Eventually.TrueAsync(() => ocr.Readings == OcrLimits.MaxFramesInWork + 1, "the newest frame read too");
+        Assert.Equal("L4", ocr.Recognizer.Read[^1]);
+    }
+
+    [Fact]
+    public async Task WithoutRoomAReaderStaysAtOneFrame()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var gate = new SemaphoreSlim(0);
+        ocr.Recognizer.Gate = gate;
+        await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching) with { Fps = 15 });
+
+        ocr.Frames.Send(ocr.Inside.Id, "A");
+        await Eventually.TrueAsync(() => ocr.Recognizer.Started == 1, "A in work");
+        var taken = ocr.Frames.Taken;
+        ocr.Frames.Send(ocr.Inside.Id, "B");
+        await Eventually.TrueAsync(() => ocr.Frames.Taken > taken, "the pump took B");
+
+        Assert.Equal(1, ocr.Recognizer.Started);
+        gate.Release(2);
+        await Eventually.TrueAsync(() => ocr.Readings == 2, "both read, one after the other");
+    }
+
     private static IReadOnlyList<string> Texts(OcrHarness ocr) => [.. ocr.TextRead.Select(e => e.Data[OcrInfo.TextField])];
 
     [Fact]

@@ -98,11 +98,11 @@ public sealed class FrameVoteTests
     public void TheVoteForgetsFramesOlderThanTheWindow()
     {
         var vote = new FrameVote();
-        Feed(vote, Read("AAA", 99), Read("AAA", 99), Read("AAA", 99), Read("AAA", 99), Read("AAA", 99));
+        Feed(vote, Read("@@@", 99), Read("@@@", 99), Read("@@@", 99), Read("@@@", 99), Read("@@@", 99));
 
         var published = Feed(vote, Read("BBB", 10), Read("BBB", 10), Read("BBB", 10), Read("BBB", 10), Read("BBB", 10), Read("BBB", 10));
 
-        // With 5 frames in the window, "BBB" outweighs "AAA" only once all five old frames are gone, then holds a second frame.
+        // With 5 frames in the window, "BBB" outweighs "@@@" only once all five old frames are gone, then holds a second frame.
         Assert.Equal(5, FrameVote.Window);
         Assert.Equal([null, null, null, null, null, "BBB"], published);
     }
@@ -122,7 +122,7 @@ public sealed class FrameVoteTests
     [Fact]
     public void AContainerVoteMustHoldItsCheckDigit()
     {
-        var accepts = FrameVote.AcceptorOf(ExpectedText.WithFormat("AAAU ###### #"))!;
+        var accepts = FrameVote.AcceptorOf(ExpectedText.WithFormat("@@@U ###### #"))!;
 
         Assert.True(accepts("CSQU 305438 3"));
         Assert.False(accepts("CSQU 305438 4"));

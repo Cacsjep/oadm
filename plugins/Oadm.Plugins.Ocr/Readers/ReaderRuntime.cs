@@ -20,7 +20,7 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// the event only on change (<see cref="AreaWatch"/>);</item>
 /// <item>single readings (the action Read text) through <see cref="IFrameSource.SingleAsync"/> that publish every area's
 /// event; a watching reader answers with its fresh reading instead (<see cref="ReadOnceAsync"/>);</item>
-/// <item>the last reading of each reader (picture, results, cut-outs) in memory only.</item>
+/// <item>the last reading of each reader (picture, results, cut-outs) and its last reads in memory only.</item>
 /// </list>
 /// A reader reads only while its camera is in its owner's devices (fail closed: a deleted group's readers read nothing).
 /// All work runs without the user's call (background boundary of docs/spec/device-scope.md).
@@ -33,6 +33,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     private readonly ITextRecognizer? _recognizer;
     private readonly ReadingMaker? _maker;
     private readonly IPictureCutter? _cutter;
+    private readonly Func<ReadOnlyMemory<byte>, bool> _pictureFits;
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<ReaderReading, IReadOnlyList<AreaDetails>> _cutouts = new();
     private readonly ConcurrentDictionary<string, (string Signature, DateTimeOffset At)> _published = new(StringComparer.Ordinal);
     private int _kept;
@@ -71,6 +72,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _frames = parts.Frames?.Invoke(ctx);
         _cutter = parts.Cutter;
+        _pictureFits = parts.PictureFits;
         _recognizer = parts.Recognizer?.Invoke(ctx);
         _stats = new ReaderStats(parts.Time, parts.ProcessorTime, parts.ProcessorCount);
         MaxWatching = OcrLimits.MaxWatching(parts.ProcessorCount);
@@ -83,6 +85,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
 
         _time = parts.Time;
+        _readIds = parts.Time.GetUtcNow().ToUnixTimeMilliseconds(); // a plugin started again never repeats an id the page holds
     }
 
     /// <summary>How often the readers' cameras are checked again (a camera that refused connections starts when it is Ok).</summary>
@@ -97,7 +100,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// <summary>True while the recognition uses a graphics card (<see cref="IEngineInfo.OnGpu"/>).</summary>
     public bool OnGpu => _recognizer is IEngineInfo { OnGpu: true };
 
-    /// <summary>What the recognition runs on and "Use the graphics card"; null while the recognizer does not tell.</summary>
+    /// <summary>What the recognition runs on and "Use GPU"; null while the recognizer does not tell.</summary>
     public IEngineInfo? Engine => _recognizer as IEngineInfo;
 
     /// <summary>The ids of the readers with a loop now (tests).</summary>
@@ -130,14 +133,22 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     /// <summary>The last reading of a reader; null without one.</summary>
     public ReaderReading? Last(string readerId) => _last.TryGetValue(readerId, out var reading) ? reading : null;
 
-    /// <summary>Drops the last reading of a reader (its camera or areas changed).</summary>
-    public void Forget(string readerId) => _last.TryRemove(readerId, out _);
+    /// <summary>Drops the last reading of a reader (its camera or areas changed); its rows stay, each area's next value is a new one.</summary>
+    public void Forget(string readerId)
+    {
+        _last.TryRemove(readerId, out _);
+        if (_recent.TryGetValue(readerId, out var reads))
+        {
+            reads.ForgetValues();
+        }
+    }
 
     /// <summary>Drops everything of a deleted reader (after <see cref="SyncAsync"/> stopped its loop).</summary>
     public void Remove(string readerId)
     {
         _published.TryRemove(readerId, out _);
         _last.TryRemove(readerId, out _);
+        _recent.TryRemove(readerId, out _);
         _slots.TryRemove(readerId, out _);
         _streamProblems.TryRemove(readerId, out _);
     }
@@ -224,6 +235,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
                 && recent.Reading.Time >= asked - FreshReading && SamePicture(reader, recent.Reader))
             {
                 // The watching loop read the camera just now: its (voted) reading answers, every area's event again.
+                AddReads(reader, recent);
                 FireAll(reader, recent);
                 return recent;
             }
@@ -254,6 +266,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
             if (SamePicture(stored, reader))
             {
+                AddReads(reader, reading);
                 Keep(reader, reading);
             }
 
@@ -298,6 +311,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             await _statsTimer.DisposeAsync().ConfigureAwait(false);
             await StopLoopsAsync(_ => true).ConfigureAwait(false);
             await EndPreviewsAsync(_ => true).ConfigureAwait(false);
+            await _cutWork.ConfigureAwait(false);
         }
         finally
         {
@@ -521,17 +535,22 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    /// One stream of a camera: a pump takes the frames into a slot of one (the newest replaces an unread one), the loop
-    /// reads the slot's frame, one at a time, with the reader <paramref name="current"/> gives at that moment (a preview takes
-    /// the page's new areas without opening the stream again). With <paramref name="vote"/> (a saved watching reader) the
-    /// areas vote and publish their events; without (a preview) every frame's own result is kept and nothing is published to
-    /// the rules. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped. Areas whose
+    /// One stream of a camera: a pump takes the frames into a slot of one (the newest replaces an unread one), the loop reads the
+    /// slot's frame with the reader <paramref name="current"/> gives at that moment (a preview takes the page's new areas without
+    /// opening the stream again). One frame is in work at a time; a further one starts beside it only while the recognition has
+    /// room (<see cref="ReadingMaker.HasRoom"/>, at most <see cref="OcrLimits.MaxFramesInWork"/>), so an idle server carries one
+    /// reader at full speed and busy workers fall back to one frame per reader. The results are taken in the order of the frames,
+    /// so an older frame's result never replaces a newer one and the vote sees the frames in order. Frames that find no room
+    /// are dropped, newest wins, never queued, so the lag stays bounded. With <paramref name="vote"/> (a saved watching reader)
+    /// the areas vote and publish their events; without (a preview) every frame's own result is kept and nothing is published
+    /// to the rules, or with Moving objects the same 2 frames rule as the reader's, still without an event. A frame that arrives while the action reads the same reader (<paramref name="slot"/>) is dropped. Areas whose
     /// pixels have not changed since the last reading of <paramref name="source"/> give that reading again (docs/spec/ocr.md
     /// "Unchanged areas"). <paramref name="problem"/> hears why the stream gives no pictures.
     /// </summary>
     private async Task LoopAsync(Reader stream, Func<Reader> current, bool vote, string source, Action<Reader, ReaderReading> keep, Action<string?> problem, ReaderSlot? slot, CancellationToken ct)
     {
-        var watches = vote ? stream.Areas.Select(a => new AreaWatch(a.Expected)).ToArray() : null;
+        var watches = vote ? WatchesOf(stream) : null;
+        (Reader Reader, AreaWatch[] Watches)? moving = null; // a preview's draft can change Moving objects and its areas under a running stream
         var latest = Channel.CreateBounded<ReadOnlyMemory<byte>>(new BoundedChannelOptions(1)
         {
             FullMode = BoundedChannelFullMode.DropOldest,
@@ -539,43 +558,100 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             SingleWriter = true,
         });
         var pump = Task.Run(() => PumpAsync(stream, latest.Writer, problem, ct), CancellationToken.None);
+        var inWork = new Queue<Task<(Reader Reader, ReaderReading? Read)>>();
+
+        void Deliver((Reader Reader, ReaderReading? Read) done)
+        {
+            try
+            {
+                if (done.Read is null)
+                {
+                    return;
+                }
+
+                if (watches is null)
+                {
+                    if (!ReaderRules.IsMoving(done.Reader))
+                    {
+                        moving = null;
+                        keep(done.Reader, done.Read);
+                        return;
+                    }
+
+                    if (moving is not { } now || !SamePicture(now.Reader, done.Reader))
+                    {
+                        moving = (done.Reader, WatchesOf(done.Reader));
+                    }
+
+                    keep(done.Reader, Decide(done.Reader, done.Read, moving.Value.Watches, publish: false));
+                }
+                else if (IsCurrent(done.Reader))
+                {
+                    // A reader deleted or changed while the frame was read publishes nothing (the sync stops its loop).
+                    keep(done.Reader, Decide(done.Reader, done.Read, watches, publish: true));
+                }
+            }
+#pragma warning disable CA1031 // A failed reading is logged; the reader goes on with the next frame.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogReadingFailed(_logger, done.Reader.Name, ex);
+            }
+            finally
+            {
+                slot?.ExitFrame();
+            }
+        }
+
         try
         {
-            await foreach (var frame in latest.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            var arrived = latest.Reader.WaitToReadAsync(ct).AsTask();
+            while (true)
             {
-                if (slot is not null && !slot.TryEnter())
+                ct.ThrowIfCancellationRequested();
+                while (inWork.TryPeek(out var head) && head.IsCompleted)
                 {
-                    Interlocked.Increment(ref _dropped);
+                    Deliver(await inWork.Dequeue().ConfigureAwait(false));
+                }
+
+                if (arrived.IsCompleted)
+                {
+                    if (!await arrived.ConfigureAwait(false))
+                    {
+                        break;
+                    }
+
+                    if (inWork.Count == 0 || (inWork.Count < OcrLimits.MaxFramesInWork && _maker!.HasRoom))
+                    {
+                        if (latest.Reader.TryRead(out var frame))
+                        {
+                            if (slot is not null && !slot.TryEnterFrame())
+                            {
+                                Interlocked.Increment(ref _dropped);
+                            }
+                            else
+                            {
+                                inWork.Enqueue(ReadFrameAsync(current(), frame, source, ct));
+                            }
+                        }
+
+                        arrived = latest.Reader.WaitToReadAsync(ct).AsTask();
+                        continue;
+                    }
+
+                    // No room: the frame waits in the slot of one, a newer one replaces it. Asked again at the next frame or
+                    // when the oldest frame ends.
+                    await Task.WhenAny(inWork.Peek(), Task.Delay(TimeSpan.FromSeconds(1.0 / Math.Max(1, stream.Fps)), _time, ct)).ConfigureAwait(false);
                     continue;
                 }
 
-                var reader = current();
-                try
+                if (inWork.Count == 0)
                 {
-                    var read = await _maker!.ReadAsync(reader, frame, source, ct).ConfigureAwait(false);
-                    if (watches is null)
-                    {
-                        keep(reader, read);
-                    }
-                    else if (IsCurrent(reader))
-                    {
-                        // A reader deleted or changed while the frame was read publishes nothing (the sync stops its loop).
-                        keep(reader, Vote(reader, read, watches));
-                    }
+                    await arrived.ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                else
                 {
-                    break;
-                }
-#pragma warning disable CA1031 // A failed reading is logged; the reader goes on with the next frame.
-                catch (Exception ex)
-#pragma warning restore CA1031
-                {
-                    LogReadingFailed(_logger, reader.Name, ex);
-                }
-                finally
-                {
-                    slot?.Exit();
+                    await Task.WhenAny(arrived, inWork.Peek()).ConfigureAwait(false);
                 }
             }
         }
@@ -585,7 +661,34 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
         finally
         {
+            // Every frame in work ends before the loop does: the recognizer is never freed under one.
+            while (inWork.TryDequeue(out var left))
+            {
+                var done = await left.ConfigureAwait(false);
+                Deliver(ct.IsCancellationRequested ? (done.Reader, null) : done);
+            }
+
             await pump.ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>One frame's reading; a failure is logged and gives no reading.</summary>
+    private async Task<(Reader Reader, ReaderReading? Read)> ReadFrameAsync(Reader reader, ReadOnlyMemory<byte> frame, string source, CancellationToken ct)
+    {
+        try
+        {
+            return (reader, await _maker!.ReadAsync(reader, frame, source, ct).ConfigureAwait(false));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return (reader, null);
+        }
+#pragma warning disable CA1031 // A failed reading is logged; the reader goes on with the next frame.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogReadingFailed(_logger, reader.Name, ex);
+            return (reader, null);
         }
     }
 
@@ -614,32 +717,55 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
     }
 
-    /// <summary>Each area's vote over the frame's result; the areas whose voted value changed publish their event.</summary>
-    private ReaderReading Vote(Reader reader, ReaderReading read, AreaWatch[] watches)
+    /// <summary>One watch per area of <paramref name="reader"/>: the vote, or the 2 frames rule with Moving objects.</summary>
+    private static AreaWatch[] WatchesOf(Reader reader)
+    {
+        var moving = ReaderRules.IsMoving(reader);
+        return [.. reader.Areas.Select(a => new AreaWatch(a.Expected, moving))];
+    }
+
+    /// <summary>
+    /// Each area's watch over the frame's result. With <paramref name="publish"/> (a saved reader) the areas whose value changed
+    /// add their row and publish their event, both from the frame the value was read in; a preview only shows the values.
+    /// </summary>
+    private ReaderReading Decide(Reader reader, ReaderReading read, AreaWatch[] watches, bool publish)
     {
         var areas = new AreaResult[watches.Length];
         var details = new AreaDetails[watches.Length];
-        var publish = new bool[watches.Length];
+        var decisions = new AreaDecision[watches.Length];
+        var sources = new ValueFrame[watches.Length];
+        var elsewhere = false;
         for (var i = 0; i < watches.Length; i++)
         {
             var frameResult = i < read.Reading.Areas.Count ? read.Reading.Areas[i] : new AreaResult { Area = i < reader.Areas.Count ? reader.Areas[i].Name : string.Empty };
             var frameDetails = i < read.Details.Count ? read.Details[i] : new AreaDetails { Area = frameResult.Area };
-            (areas[i], publish[i]) = watches[i].Add(frameResult);
-            details[i] = string.Equals(areas[i].Text, frameResult.Text, StringComparison.Ordinal)
-                ? frameDetails
-                : ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null) with { TooSmall = frameDetails.TooSmall };
+            decisions[i] = watches[i].Add(frameResult, new ValueFrame(read.Jpeg, frameDetails.MatchBox, frameDetails.MatchTurn));
+            areas[i] = decisions[i].Voted;
+            if (string.Equals(areas[i].Text, frameResult.Text, StringComparison.Ordinal))
+            {
+                details[i] = frameDetails;
+            }
+            else
+            {
+                // A value this frame does not hold has no place in it: no box, its picture comes from its own frame.
+                details[i] = ReadingMaker.DetailsOf(areas[i], areas[i].MatchesFormat && frameDetails.AllMatches.Length > 0 ? [areas[i].Text] : [], null) with { TooSmall = frameDetails.TooSmall };
+                sources[i] = decisions[i].Seen;
+                elsewhere = true;
+            }
         }
 
-        for (var i = 0; i < watches.Length; i++)
+        for (var i = 0; publish && i < watches.Length; i++)
         {
-            if (publish[i])
+            if (decisions[i].Publish)
             {
+                // The same moment as its event.
+                AddRead(ReadsOf(reader.Id), reader, i, areas[i], decisions[i].Seen, read.Reading.Time);
                 Fire(reader, areas[i], details[i]);
             }
         }
 
         // Kept afterwards: the page's event tells that the reading is complete, its rule events included.
-        return read with { Reading = read.Reading with { Areas = areas }, Details = details };
+        return read with { Reading = read.Reading with { Areas = areas }, Details = details, Sources = elsewhere ? sources : null };
     }
 
     /// <summary>The stored reader of <paramref name="readerId"/>; null after a delete.</summary>
@@ -735,7 +861,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
         var details = _cutouts.GetValue(reading, r => _cutter is null
             ? r.Details
-            : [.. r.Details.Select(d => d.MatchBox is { } box && d.Cutout is null ? d with { Cutout = _cutter.Cut(r.Jpeg, box) } : d)]);
+            : [.. r.Details.Select(d => d.MatchBox is { } box && d.Cutout is null ? d with { Cutout = _cutter.Cut(r.Jpeg, box, d.MatchTurn) } : d)]);
         return new ReadingReply { Reading = reading.Reading, Details = details };
     }
 
@@ -756,10 +882,10 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
 
     /// <summary>
     /// A loop of <paramref name="before"/> can go on for <paramref name="now"/>: the same picture (<see cref="SamePicture"/>),
-    /// frame rate and owner. A new name or new area names never restart it (the vote and the published values stay).
+    /// frame rate, owner and Moving objects. A new name or new area names never restart it (the vote and the published values stay).
     /// </summary>
     private static bool SameLoop(Reader now, Reader before) =>
-        SamePicture(now, before) && now.Fps == before.Fps
+        SamePicture(now, before) && now.Fps == before.Fps && ReaderRules.IsMoving(now) == ReaderRules.IsMoving(before)
         && string.Equals(now.OwnerScopeKey, before.OwnerScopeKey, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Work started from a user's call runs without it, like every other background work of the plugin.</summary>
@@ -809,21 +935,71 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         public string? SiteName { get; init; }
     }
 
-    /// <summary>One reading at a time per reader; <see cref="Exited"/> ends when the reading in work ends.</summary>
+    /// <summary>
+    /// The readings of one reader: the watching loop's frames (several at once when there is room) or one single reading, never
+    /// both; <see cref="Exited"/> ends when a reading in work ends.
+    /// </summary>
     private sealed class ReaderSlot
     {
-        private int _busy;
+        private readonly object _lock = new();
+        private int _frames;
+        private bool _single;
         private TaskCompletionSource _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        /// <summary>Ends at the next <see cref="Exit"/> (take it before <see cref="TryEnter"/>).</summary>
+        /// <summary>Ends at the next exit (take it before <see cref="TryEnter"/>).</summary>
         public Task Exited => Volatile.Read(ref _exited).Task;
 
-        public bool TryEnter() => Interlocked.CompareExchange(ref _busy, 1, 0) == 0;
+        /// <summary>A single reading: only while nothing is in work.</summary>
+        public bool TryEnter()
+        {
+            lock (_lock)
+            {
+                if (_single || _frames > 0)
+                {
+                    return false;
+                }
+
+                _single = true;
+                return true;
+            }
+        }
+
+        /// <summary>A frame of the watching loop: beside other frames, never beside a single reading.</summary>
+        public bool TryEnterFrame()
+        {
+            lock (_lock)
+            {
+                if (_single)
+                {
+                    return false;
+                }
+
+                _frames++;
+                return true;
+            }
+        }
 
         public void Exit()
         {
-            Volatile.Write(ref _busy, 0);
-            Interlocked.Exchange(ref _exited, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
+            lock (_lock)
+            {
+                _single = false;
+            }
+
+            Tell();
         }
+
+        public void ExitFrame()
+        {
+            lock (_lock)
+            {
+                _frames--;
+            }
+
+            Tell();
+        }
+
+        private void Tell() =>
+            Interlocked.Exchange(ref _exited, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
     }
 }

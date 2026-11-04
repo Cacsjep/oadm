@@ -62,7 +62,7 @@ public sealed class RuntimeSafetyTests
     }
 
     [Fact]
-    public async Task CutOutsAreCutOnlyWhenAPageAsksAndOncePerReading()
+    public async Task CutOutsAreCutOncePerNewValueNeverPerFrameAndOncePerReadingWhenAPageAsks()
     {
         var cutter = new CountingCutter();
         await using var ocr = new OcrHarness(cutter: cutter);
@@ -74,12 +74,13 @@ public sealed class RuntimeSafetyTests
             await ocr.SendAndWaitAsync(ocr.Inside.Id, "A");
         }
 
-        Assert.Equal(0, cutter.Calls); // never per frame
+        await Eventually.TrueAsync(() => cutter.Calls == 1, "the new value's row was cut"); // never per frame
+        Assert.Equal(1, cutter.Calls);
 
         var first = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id }));
         var again = OcrJson.Deserialize<ReadingReply>(await ocr.CallAsync(OcrMethods.GetReading, new ReaderRequest { ReaderId = reader.Id }));
 
-        Assert.Equal(1, cutter.Calls);
+        Assert.Equal(2, cutter.Calls); // the reading's own, once
         Assert.Equal([7, 7], Assert.Single(first.Details).Cutout);
         Assert.Equal([7, 7], Assert.Single(again.Details).Cutout);
     }

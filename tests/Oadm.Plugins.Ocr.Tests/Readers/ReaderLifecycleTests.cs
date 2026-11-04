@@ -145,7 +145,7 @@ public sealed class ReaderLifecycleTests
     {
         await using var ocr = new OcrHarness(cutter: new FixedCutter());
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
-        var reader = await ocr.SaveAsync(ocr.NewReader("Gate", areas: new Area { Name = "Code", Expected = ExpectedText.WithFormat("A"), Box = new RelativeBox(0, 0, 1, 1) }));
+        var reader = await ocr.SaveAsync(ocr.NewReader("Gate", areas: new Area { Name = "Code", Expected = ExpectedText.WithFormat("@"), Box = new RelativeBox(0, 0, 1, 1) }));
         ocr.Frames.Single = "A";
         await ocr.ReadOnceAsync(reader.Id);
         var payload = OcrJson.Serialize(new ReaderRequest { ReaderId = reader.Id });
@@ -185,7 +185,7 @@ public sealed class ReaderLifecycleTests
     }
 
     /// <summary>A user whose role lacks the host's Live view.</summary>
-    private sealed class WithoutLiveView(FakeCallContext inner) : ICallContext
+    internal sealed class WithoutLiveView(FakeCallContext inner) : ICallContext
     {
         public string UserName => inner.UserName;
 

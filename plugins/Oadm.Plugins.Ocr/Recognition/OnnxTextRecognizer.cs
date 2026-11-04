@@ -13,8 +13,11 @@ public sealed record OcrEngineOptions
     /// <summary>The folder with the model files (<see cref="ModelFiles.Folder"/>).</summary>
     public required string ModelDirectory { get; init; }
 
-    /// <summary>The page's "Use the graphics card" (on by default); off forces the CPU.</summary>
+    /// <summary>Start on the graphics card; off never touches it (no DirectML) until <see cref="OnnxTextRecognizer.SetUseGpu"/> turns it on.</summary>
     public bool UseGraphicsCard { get; init; } = true;
+
+    /// <summary>Finds and tries the graphics card (tests count the calls: they never touch a real card).</summary>
+    internal Func<string, ILogger, ExecutionTarget?> FindGraphicsCard { get; init; } = SessionFactory.TryGraphicsCard;
 
     /// <summary>The clock of the load measurement (tests pass a fake one).</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
@@ -28,8 +31,8 @@ public sealed record OcrEngineOptions
     /// <summary>The models for Accurate; its text finder is the graphics card's for Search.</summary>
     internal ModelChoice AccurateModels { get; init; } = ModelChoice.Server;
 
-    /// <summary>The graphics card's memory cap (<see cref="GpuSessionBudget.MaxBytes"/>; measurements: less).</summary>
-    internal long GpuMaxBytes { get; init; } = GpuSessionBudget.MaxBytes;
+    /// <summary>The graphics card's memory cap; null: <see cref="GpuSessionBudget.CapFor"/> of the card (<see cref="GpuSessionBudget.MaxBytes"/>; measurements: less).</summary>
+    internal long? GpuMaxBytes { get; init; }
 }
 
 /// <summary>
@@ -38,12 +41,11 @@ public sealed record OcrEngineOptions
 /// <see cref="TileSize"/> pixels in overlapping tiles, boxes found twice merged), turns each line level (90 degrees for tall
 /// boxes, the angle model for upside down), scales it to the reader's 48 pixels (small text enlarged, text below
 /// <see cref="MinTextHeight"/> pixels left out), reads it (PP-OCRv5 Latin, CTC) and, with a format, decodes the format's
-/// match with the characters limited per position. Every model call on the CPU (a tile, a batch of lines) takes one of
-/// <see cref="OcrLimits.Workers"/> workers with sessions of its own of <see cref="OcrLimits.ThreadsPerWorker"/> threads, so an
-/// idle server reads the tiles of one picture at once. With a graphics card only the text finder of Search (an area read in
-/// tiles) runs there, one call at a time within a memory cap by picture size (<see cref="GpuSessionBudget"/>); fixed-place
-/// areas, the reader and the angle model stay on the CPU workers (measured: the card is faster only for Search). At most
-/// <see cref="OcrLimits.Workers"/> pictures are in work at once.
+/// match with the characters limited per position. Every model call on the CPU (a tile, a line) takes one of
+/// <see cref="OcrLimits.Workers"/> workers on one thread, all sharing one session of each model, so an idle server reads the
+/// lines of one picture at once. With a usable graphics card the models run there (<see cref="CardModels"/>, each by its
+/// <see cref="CardRoute"/>), the CPU decodes, cuts and decodes the text; a card that fails sends the readings back to the CPU.
+/// At most <see cref="OcrLimits.Workers"/> pictures are in work at once.
 /// </summary>
 public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, IRecognizerLoad, IDisposable
 {
@@ -72,6 +74,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>The smallest side the text finder gets (smaller areas are scaled up).</summary>
     private const int MinDetectionSide = 64;
 
+    /// <summary>A line box grows past the area by less than a line height: at most this much more of the picture is decoded.</summary>
+    private const int MaxRegionPad = 128;
+
     /// <summary>From this probability of the angle model on, a line is read both ways.</summary>
     private const float UpsideDownCandidate = 0.3f;
 
@@ -83,26 +88,32 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private readonly CpuWorkers<ModelSet> _cpu;
     private readonly CharacterList _cpuCharacters;
     private readonly CharacterList _accurateCharacters;
-    private readonly CardTextFinder? _card;
-    private readonly GpuSessionBudget? _gpuBudget;
+    private readonly OcrEngineOptions _options;
+    private readonly Lock _cardStart = new();
+    private volatile CardModels? _card;
+    private CardRoute _route;
+    private GpuSessionBudget? _gpuBudget;
     private readonly RecognitionDevice _cpuDevice;
     private readonly UnchangedAreas _unchanged = new();
-    private readonly RecognitionDevice? _gpuDevice;
+    private RecognitionDevice? _gpuDevice;
     private readonly BusyMeter _cpuBusy;
     private readonly BusyMeter _cardBusy;
+    private readonly BusyMeter _cardReaderBusy;
     private readonly CombinedBusy _busy;
-    private volatile bool _useGpu = true;
+    private volatile bool _useGpu;
     private bool _disposed;
 
     public OnnxTextRecognizer(OcrEngineOptions options, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        _options = options;
         _logger = logger ?? NullLogger.Instance;
         Workers = OcrLimits.Workers(options.ProcessorCount);
         _pictures = new SemaphoreSlim(Workers, Workers);
         _cpuBusy = new BusyMeter(options.Time);
         _cardBusy = new BusyMeter(options.Time);
-        _busy = new CombinedBusy(_cpuBusy, _cardBusy, Workers);
+        _cardReaderBusy = new BusyMeter(options.Time);
+        _busy = new CombinedBusy(_cpuBusy, _cardBusy, Workers, _cardReaderBusy);
         var folder = options.ModelDirectory;
         _cpuCharacters = CharacterList.Load(Path.Combine(folder, options.CpuModels.Characters));
         _accurateCharacters = CharacterList.Load(Path.Combine(folder, options.AccurateModels.Characters));
@@ -112,59 +123,90 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             accurate => new ModelSet(folder, accurate ? options.AccurateModels : options.CpuModels, OcrLimits.ThreadsPerWorker),
             _cpuBusy);
 
-        var gpu = options.UseGraphicsCard
-            ? SessionFactory.TryGraphicsCard(Path.Combine(folder, ModelFiles.DetectionMobile), _logger)
-            : null;
-        if (gpu is { } target)
+        _useGpu = options.UseGraphicsCard;
+        if (_useGpu)
         {
-            try
-            {
-                _gpuBudget = target == ExecutionTarget.DirectMl
-                    ? new GpuSessionBudget(options.GpuMaxBytes, options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max / (1024 * 1024)))
-                    : null;
-                _card = new CardTextFinder(Path.Combine(folder, options.AccurateModels.Detection), target, _cardBusy, _gpuBudget);
-                _gpuDevice = new RecognitionDevice(true, SearchOnCardName(options.ProcessorCount, SessionFactory.GraphicsCardName(target)));
-            }
-#pragma warning disable CA1031 // A graphics card that fails with the real models falls back to the CPU too.
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                RecognitionLog.GraphicsCardFailed(_logger, ex.Message);
-                _card?.Dispose();
-                _card = null;
-                _gpuBudget?.Dispose();
-                _gpuBudget = null;
-                _gpuDevice = null;
-            }
+            StartGraphicsCard();
         }
 
         _cpuDevice = new RecognitionDevice(false, CpuName(options.ProcessorCount));
         RecognitionLog.RunsOn(_logger, RunsOn.Name);
     }
 
+    /// <summary>Loads the provider and the text finder on the card; a card that fails leaves the CPU. Only while the setting is on.</summary>
+    private void StartGraphicsCard()
+    {
+        var folder = _options.ModelDirectory;
+        if (_options.FindGraphicsCard(Path.Combine(folder, ModelFiles.DetectionMobile), _logger) is not { } target)
+        {
+            return;
+        }
+
+        GpuSessionBudget? budget = null;
+        CardModels? card = null;
+        try
+        {
+            budget = target == ExecutionTarget.DirectMl
+                ? new GpuSessionBudget(_options.GpuMaxBytes ?? GpuSessionBudget.CapFor(SessionFactory.GraphicsCardMemory(target)), _options.Time, max => RecognitionLog.GraphicsCardSessionsCapped(_logger, max / (1024 * 1024)))
+                : null;
+            var fast = _options.CpuModels;
+            card = new CardModels(Path.Combine(folder, fast.Detection), Path.Combine(folder, _options.AccurateModels.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), target, _cardBusy, _cardReaderBusy, budget);
+            var route = card.Probe(Path.Combine(folder, fast.Detection), Path.Combine(folder, fast.Recognition), Path.Combine(folder, ModelFiles.Orientation), (model, reason) => RecognitionLog.CardModelFailed(_logger, model, reason));
+            RecognitionLog.CardRoute(_logger, route.Finder, route.Reader, route.Angle);
+            if (!route.Any)
+            {
+                card.Dispose();
+                budget?.Dispose();
+                return;
+            }
+
+            _route = route;
+            _gpuDevice = new RecognitionDevice(true, CardName(_options.ProcessorCount, SessionFactory.GraphicsCardName(target)));
+            _gpuBudget = budget;
+            _card = card; // last: readers of the card see it complete
+        }
+#pragma warning disable CA1031 // A graphics card that fails with the real models falls back to the CPU too.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            RecognitionLog.GraphicsCardFailed(_logger, ex.Message);
+            card?.Dispose();
+            budget?.Dispose();
+        }
+    }
+
     private static string CpuName(int cores) => $"CPU ({cores} cores)";
 
-    /// <summary>What reads with a graphics card: "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti".</summary>
-    internal static string SearchOnCardName(int cores, string card) => $"{CpuName(cores)} · search on {card}";
+    /// <summary>What reads with a graphics card: "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti".</summary>
+    internal static string CardName(int cores, string card) => $"{CpuName(cores)} · {card}";
 
     /// <summary>
-    /// What runs the recognition now: the CPU, with Search on the graphics card while there is one and "Use the graphics card"
-    /// is on ("CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti").
+    /// What runs the recognition now: the CPU, with the models on the graphics card while there is one and "Use GPU"
+    /// is on ("CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti").
     /// </summary>
     public RecognitionDevice RunsOn => OnGpu ? _gpuDevice! : _cpuDevice;
 
-    /// <summary>A graphics card passed the test reading and holds the models.</summary>
+    /// <summary>A graphics card passed the test reading and holds the models; false until it was tried (setting off).</summary>
     public bool GpuAvailable => _card is not null;
 
-    /// <summary>True while the text finder of Search runs on the graphics card.</summary>
-    public bool OnGpu => _useGpu && _card is not null;
+    /// <summary>True while models run on the graphics card.</summary>
+    public bool OnGpu => ActiveCard is not null;
 
     /// <summary>
-    /// "Use the graphics card" (docs/spec/ocr.md "GPU"): off sends the next readings to the CPU, on back to the graphics card
-    /// when there is one. Readings in work finish where they started; the graphics card keeps its models until disposed.
+    /// "Use GPU" (docs/spec/ocr.md "GPU"): off sends the next readings to the CPU, on back to the graphics card
+    /// when there is one, trying it first if that did not happen yet (seconds: not on the UI's call path). Readings in work
+    /// finish where they started; the graphics card keeps its models until disposed.
     /// </summary>
     public void SetUseGpu(bool useGpu)
     {
+        lock (_cardStart)
+        {
+            if (useGpu && _card is null && !_disposed)
+            {
+                StartGraphicsCard();
+            }
+        }
+
         if (_useGpu == useGpu)
         {
             return;
@@ -182,6 +224,12 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
 
     /// <summary>Model calls at once: the CPU workers (the graphics card's time is counted in worker time).</summary>
     public int Capacity => Workers;
+
+    /// <summary>A CPU worker is free and no model call or picture waits (<see cref="IRecognizerLoad.HasRoom"/>).</summary>
+    public bool HasRoom => _pictures.CurrentCount > 0 && (ActiveCard?.HasRoom ?? _cpu.HasRoom);
+
+    /// <summary>The card while it is used and has not failed.</summary>
+    private CardModels? ActiveCard => _useGpu && _card is { Failed: false } card ? card : null;
 
     /// <summary>The graphics card's sessions (tests, measurements); null without DirectML.</summary>
     internal GpuSessionBudget? GpuBudget => _gpuBudget;
@@ -208,7 +256,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             return new RecognitionResult(default, []);
         }
 
-        IModelRunner runner = new CpuRunner(_cpu, options.Accurate ? _accurateCharacters : _cpuCharacters, options.Accurate, _useGpu ? _card : null);
+        IModelRunner cpu = new CpuRunner(_cpu, options.Accurate ? _accurateCharacters : _cpuCharacters, options.Accurate);
+        var runner = !options.Accurate && ActiveCard is { } card
+            ? new CardRunner((CpuRunner)cpu, card, _route, reason => RecognitionLog.GraphicsCardFailed(_logger, reason))
+            : cpu;
         await _pictures.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -284,17 +335,20 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     {
         var results = new AreaRecognition[areas.Count];
         var lineBitmaps = new List<SKBitmap>();
+        var rented = new List<LineScores>();
         var lineBoxes = new List<(int Area, RotatedBox Box)>();
         var tooSmall = new int[areas.Count];
         var tooMany = false;
         try
         {
             // The areas' text finding at once (on the CPU each call takes a worker of its own).
+            var findStart = Stopwatch.GetTimestamp();
             var found = await Task.WhenAll(areas.Select(area =>
             {
                 var rect = PixelRect(area.Box, picture.Width, picture.Height);
                 return rect.Width < 4 || rect.Height < 4 ? Task.FromResult(new List<RotatedBox>()) : FindLinesAsync(picture, rect, set, ct);
             })).ConfigureAwait(false);
+            StageClock.Add(Stage.WallFind, findStart);
             var candidates = new List<(int Area, RotatedBox Box)>();
             for (var a = 0; a < areas.Count; a++)
             {
@@ -323,27 +377,37 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             StageClock.Add(Stage.CutLines, cutStart);
 
             var own = lineBitmaps.Count;
+            var readStart = Stopwatch.GetTimestamp();
             var scores = own == 0 ? [] : await set.RecognizeAsync(lineBitmaps, ct).ConfigureAwait(false);
+            rented.AddRange(scores);
+            StageClock.Add(Stage.WallRead, readStart);
 
             // Upside down lines (a receipt laid the other way round): the angle model names the candidates among the lines not
             // read surely upright; each candidate is read turned too and the reading the reader is surer of wins (the angle
             // model alone turns some coloured print).
+            var upsideDownLines = new HashSet<int>();
             var unsure = Enumerable.Range(0, own).Where(i => !SurelyUpright(scores[i], set.Characters)).ToList();
             if (unsure.Count > 0)
             {
+                var angleStart = Stopwatch.GetTimestamp();
                 var upsideDown = await set.UpsideDownAsync([.. unsure.Select(i => lineBitmaps[i])], ct).ConfigureAwait(false);
+                StageClock.Add(Stage.WallAngle, angleStart);
                 var maybeTurned = unsure.Where((_, k) => upsideDown[k] >= UpsideDownCandidate).ToList();
                 if (maybeTurned.Count > 0)
                 {
+                    var turnedStart = Stopwatch.GetTimestamp();
                     var turned = maybeTurned.Select(i => Turn180(lineBitmaps[i])).ToList();
                     lineBitmaps.AddRange(turned);
                     var turnedScores = await set.RecognizeAsync(turned, ct).ConfigureAwait(false);
+                    rented.AddRange(turnedScores);
+                    StageClock.Add(Stage.WallTurned, turnedStart);
                     for (var k = 0; k < maybeTurned.Count; k++)
                     {
                         var i = maybeTurned[k];
                         if (Sureness(turnedScores[k], set.Characters) > Sureness(scores[i], set.Characters))
                         {
                             scores[i] = turnedScores[k];
+                            upsideDownLines.Add(i);
                         }
                     }
                 }
@@ -363,13 +427,15 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 var line = LineReader.Read(scores[i], set.Characters, patterns[a], ToRelative(box, picture.Width, picture.Height));
                 if (line is not null)
                 {
-                    perArea[a].Add(line);
+                    perArea[a].Add(WithTurn(line, box, upsideDownLines.Contains(i)));
                 }
             }
 
             StageClock.Add(Stage.Decoding, decodingStart);
 
+            var wholeStart = Stopwatch.GetTimestamp();
             await ReadWholeAreasAsync(picture, areas, patterns, perArea, set, ct).ConfigureAwait(false);
+            StageClock.Add(Stage.WallWhole, wholeStart);
             for (var a = 0; a < areas.Count; a++)
             {
                 results[a] = new AreaRecognition(Order(perArea[a]), tooSmall[a]);
@@ -382,6 +448,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
         finally
         {
+            foreach (var scores in rented)
+            {
+                scores.Release();
+            }
+
             foreach (var bitmap in lineBitmaps)
             {
                 bitmap.Dispose();
@@ -448,8 +519,10 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
                 var line = LineReader.Read(scores[i], set.Characters, patterns[a], ToRelative(box, picture.Width, picture.Height));
                 if (line?.FormatMatch is not null)
                 {
-                    perArea[a].Add(line);
+                    perArea[a].Add(WithTurn(line, box, upsideDown: false));
                 }
+
+                scores[i].Release();
             }
         }
         finally
@@ -471,7 +544,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         foreach (var area in areas)
         {
             var rect = PixelRect(area.Box, width, height);
-            var pad = Margin + Math.Min(rect.Width, rect.Height);
+            var pad = Margin + Math.Min(MaxRegionPad, Math.Min(rect.Width, rect.Height));
             rect = new SKRectI(rect.Left - pad, rect.Top - pad, rect.Right + pad, rect.Bottom + pad);
             region = region.IsEmpty ? rect : SKRectI.Union(region, rect);
         }
@@ -620,16 +693,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// </summary>
     private static SKBitmap CutLine(Picture picture, RotatedBox box)
     {
-        var angle = box.Angle;
-        var w = box.Width;
-        var h = box.Height;
-        if (h >= 1.5f * w)
-        {
-            // Turned by 90 degrees: read along the long side (the angle model turns it round when it is the other way).
-            angle += MathF.PI / 2;
-            (w, h) = (h, w);
-        }
-
+        var (angle, w, h) = Along(box);
         var scale = ModelSet.LineHeight / h;
         var outW = Math.Clamp((int)MathF.Round(w * scale), 8, ModelSet.MaxLineWidth);
         var scaleX = outW / w;
@@ -640,6 +704,18 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         var line = picture.Render(matrix, outW, ModelSet.LineHeight, Math.Min(scale, scaleX), SKColors.Black);
         Levels.Stretch(line, Levels.LineContrast);
         return line;
+    }
+
+    /// <summary>The direction a line is read in and its size along and across that direction.</summary>
+    private static (float Angle, float Along, float Across) Along(RotatedBox box) =>
+        // Turned by 90 degrees: read along the long side (the angle model turns it round when it is the other way).
+        box.Height >= 1.5f * box.Width ? (box.Angle + (MathF.PI / 2), box.Height, box.Width) : (box.Angle, box.Width, box.Height);
+
+    /// <summary><paramref name="line"/> with how it lies in the picture, the way it was read: for its upright cut-out.</summary>
+    private static RecognizedLine WithTurn(RecognizedLine line, RotatedBox box, bool upsideDown)
+    {
+        var (angle, along, across) = Along(box);
+        return line with { Line = line.Line with { Turn = new LineTurn(box.CenterX, box.CenterY, along, across, upsideDown ? angle + MathF.PI : angle) } };
     }
 
     /// <summary>Characters that read as another plausible character upside down (6 and 9, n and u, digits that look like letters).</summary>
@@ -747,8 +823,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         // The card's calls run inside the readings: once all readings are out, none runs.
         if (taken == Workers)
         {
-            _card?.Dispose();
-            _gpuBudget?.Dispose();
+            lock (_cardStart)
+            {
+                _card?.Dispose();
+                _gpuBudget?.Dispose();
+            }
         }
         else
         {

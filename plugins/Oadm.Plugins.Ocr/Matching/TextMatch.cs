@@ -48,9 +48,15 @@ public sealed record TextMatch
     /// <summary>Where <see cref="Text"/> was read (the union of its lines' boxes, for the page's cut-out); null without text.</summary>
     public RelativeBox? TextBox { get; init; }
 
+    /// <summary>How the value's line lies in the picture; null when not known (a value joined over two lines): the cut-out stays level.</summary>
+    public LineTurn? Turn { get; init; }
+
+    /// <summary>The frame this reading comes from (a reference, in the vote only); empty for an empty value.</summary>
+    public ReadOnlyMemory<byte> Frame { get; init; }
+
     /// <summary>Value, matches format, raw text.</summary>
     public AreaMatch ToAreaMatch() => new(Text, MatchesFormat, RawText);
 
     /// <summary>The model's form for <see cref="ITextMatcher"/>: with every match, the confidence and the value's box.</summary>
-    public AreaValue ToAreaValue() => new(ToAreaMatch(), AllMatches, Text.Length == 0 ? 0 : Confidence, Text.Length == 0 ? null : TextBox);
+    public AreaValue ToAreaValue() => new(ToAreaMatch(), AllMatches, Text.Length == 0 ? 0 : Confidence, Text.Length == 0 ? null : TextBox) { MatchTurn = Text.Length == 0 ? null : Turn };
 }

@@ -12,6 +12,77 @@ public sealed class TextMatcherTests
         new(text, new RelativeBox(x, y, width, height), confidence);
 
     [Fact]
+    public void A_label_line_without_dashes_never_beats_the_value_with_them()
+    {
+        var format = ExpectedText.WithFormat("@@-####-##");
+        var label = new TextLine("CP037400 78 3 AT", new(0.1, 0.7, 0.4, 0.1), 100);
+        var routing = new TextLine("STD DE-2009-39", new(0.1, 0.4, 0.4, 0.1), 85);
+
+        var match = TextMatcher.MatchAll([label, routing], format);
+
+        Assert.Equal("DE-2009-39", match.Text);
+        Assert.Equal(["DE-2009-39"], match.AllMatches);
+    }
+
+    [Theory]
+    [InlineData("CP037400 78 3 AT")]
+    [InlineData("CX 1152 72 44 0 AT")]
+    [InlineData("CX 1152 7244 0 AT")]
+    [InlineData("AB123456")]
+    [InlineData("AB 1234 56")]
+    [InlineData("AB-123456")] // one dash of two
+    [InlineData("AB1234-56")]
+    public void A_dash_of_the_format_must_be_a_dash_in_the_text(string text)
+    {
+        var match = TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat("@@-####-##"));
+
+        Assert.False(match.MatchesFormat);
+        Assert.Empty(match.Text);
+        Assert.Empty(match.AllMatches);
+    }
+
+    [Theory]
+    [InlineData("DE-2009-39", "DE-2009-39")]
+    [InlineData("STD DE-2009-39", "DE-2009-39")]
+    [InlineData("DE - 2009 - 39", "DE-2009-39")]
+    [InlineData("DE -2009- 39", "DE-2009-39")]
+    public void Spaces_around_a_dash_are_allowed(string text, string value) =>
+        Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat("@@-####-##")).Text);
+
+    [Theory]
+    [InlineData("@@@U ###### #", "MSKU1234565", "MSKU 123456 5")]
+    [InlineData("@@@U ###### #", "MSKU 123456 5", "MSKU 123456 5")]
+    [InlineData("### ###", "123456", "123 456")]
+    [InlineData("#####", "12345", "12345")]
+    public void Spaces_of_a_format_stay_optional_and_a_format_without_a_dash_behaves_as_before(string format, string text, string value) =>
+        Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
+
+    [Fact]
+    public void Of_several_matches_the_surest_wins_whatever_its_spaces()
+    {
+        var match = TextMatcher.MatchAll(
+            [new TextLine("1234 5678", new(0.1, 0.1, 0.4, 0.1), 80), new TextLine("87654321", new(0.1, 0.4, 0.4, 0.1), 95)],
+            ExpectedText.WithFormat("#### ####"));
+
+        Assert.Equal("8765 4321", match.Text);
+    }
+
+    [Fact]
+    public void The_value_keeps_how_its_line_lies_and_a_value_over_two_lines_has_no_turn()
+    {
+        var turn = new LineTurn(100, 200, 300, 40, MathF.PI);
+        var line = Line("Order 1001", 0.1, 0.1) with { Turn = turn };
+        Assert.Equal(turn, _matcher.Match([line], ExpectedText.WithFormat("Order ####")).MatchTurn);
+        Assert.Equal(turn, _matcher.Match([line], ExpectedText.AnyText).MatchTurn);
+
+        var split = new[] { Line("CSQU 3054", 0.1, 0.1) with { Turn = turn }, Line("38 3", 0.1, 0.2) with { Turn = turn } };
+        var value = _matcher.Match(split, ExpectedText.WithFormat("@@@U ###### #"));
+        Assert.Equal("CSQU 305438 3", value.Match.Value);
+        Assert.Null(value.MatchTurn);
+        Assert.Null(_matcher.Match(split, ExpectedText.AnyText).MatchTurn);
+    }
+
+    [Fact]
     public void LinesAreReadTopToBottomThenLeftToRight()
     {
         // Out of order; "B" and "A" share a row though "B" sits a little lower.
@@ -74,12 +145,12 @@ public sealed class TextMatcherTests
 
     [Theory]
     [InlineData("#####", "Counter 01234 kWh", "01234")]
-    [InlineData("AAAU ###### #", "MSCU 123456 6", "MSCU 123456 6")]
-    [InlineData("AAAU ###### #", "MSCU1234566", "MSCU 123456 6")]
-    [InlineData("## ## #### ###-#", "31 80 4955 123 4", "31 80 4955 123-4")]
-    [InlineData("## ## #### ###-#", "318049551234", "31 80 4955 123-4")]
+    [InlineData("@@@U ###### #", "MSCU 123456 6", "MSCU 123456 6")]
+    [InlineData("@@@U ###### #", "MSCU1234566", "MSCU 123456 6")]
+    [InlineData("## ## #### ###-#", "31 80 4955 123-4", "31 80 4955 123-4")]
+    [InlineData("## ## #### ###-#", "31804955123-4", "31 80 4955 123-4")]
     [InlineData("## ## #### ###-#", "31 80 4955 123 - 4", "31 80 4955 123-4")]
-    [InlineData("*-###", "Bay x123", "x-123")]
+    [InlineData("*-###", "Bay x-123", "x-123")]
     [InlineData("Order ####", "order 4711 paid", "Order 4711")]
     public void TheFormatFindsItsTextAndWritesItInItsForm(string format, string text, string value)
     {
@@ -94,9 +165,11 @@ public sealed class TextMatcherTests
     [InlineData("#####", "1234")]
     [InlineData("#####", "123456")]
     [InlineData("#####", "x12345")]
-    [InlineData("AAA", "A1-")] // a dash is no letter
+    [InlineData("@@@", "A1-")] // a dash is no letter
     [InlineData("##.#", "12,5")]
-    [InlineData("A#A", "a 1 b")] // a space where the format has none
+    [InlineData("@#@", "a 1 b")] // a space where the format has none
+    [InlineData("## ## #### ###-#", "31 80 4955 123 4")] // a space is no dash
+    [InlineData("*-###", "Bay x123")]
     public void TextThatDoesNotFitIsNoMatch(string format, string text)
     {
         var match = TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format));
@@ -110,9 +183,9 @@ public sealed class TextMatcherTests
     [Theory]
     [InlineData("#####", "O1ISB", "01158")]
     [InlineData("####", "LZG8", "1268")]
-    [InlineData("AAA", "05I", "OSI")]
-    [InlineData("AAAA", "1826", "IBZG")]
-    [InlineData("A#", "80", "B0")] // by position: a letter, then a digit
+    [InlineData("@@@", "05I", "OSI")]
+    [InlineData("@@@@", "1826", "IBZG")]
+    [InlineData("@#", "80", "B0")] // by position: a letter, then a digit
     public void LookAlikesAreFixedByPosition(string format, string text, string value)
     {
         var match = TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format));
@@ -127,7 +200,7 @@ public sealed class TextMatcherTests
         Assert.True(ContainerCheck.IsValid("CSQU 305438 3"));
         Assert.False(ContainerCheck.IsValid("CSQU 305438 4"));
 
-        var format = ExpectedText.WithFormat("AAAU ###### #");
+        var format = ExpectedText.WithFormat("@@@U ###### #");
         Assert.Equal("CSQU 305438 3", TextMatcher.MatchAll([Line("CSQU 305438 3", 0.1, 0.1)], format).Text);
         Assert.False(TextMatcher.MatchAll([Line("CSQU 305438 4", 0.1, 0.1)], format).MatchesFormat);
 
@@ -140,7 +213,7 @@ public sealed class TextMatcherTests
     {
         var lines = new[] { Line("CSQU 3054", 0.1, 0.1, confidence: 95), Line("38 3", 0.1, 0.2, confidence: 80) };
 
-        var match = TextMatcher.MatchAll(lines, ExpectedText.WithFormat("AAAU ###### #"));
+        var match = TextMatcher.MatchAll(lines, ExpectedText.WithFormat("@@@U ###### #"));
 
         Assert.True(match.MatchesFormat);
         Assert.Equal("CSQU 305438 3", match.Text);
@@ -225,21 +298,21 @@ public sealed class TextMatcherTests
     }
 
     [Theory]
-    [InlineData("AAAU ######", "MSCU 123456", "MSCU 123456")] // no check digit in the format: nothing to check
-    [InlineData("AAAU ###### # 22G1", "CSQU 305438 3 22G1", "CSQU 305438 3 22G1")] // the size and type code after it
-    [InlineData("AAAU ###### # 22G1", "CSQU3054383 22G1", "CSQU 305438 3 22G1")]
-    [InlineData("AAAU-######-#", "CSQU-305438-3", "CSQU-305438-3")]
+    [InlineData("@@@U ######", "MSCU 123456", "MSCU 123456")] // no check digit in the format: nothing to check
+    [InlineData("@@@U ###### # 22G1", "CSQU 305438 3 22G1", "CSQU 305438 3 22G1")] // the size and type code after it
+    [InlineData("@@@U ###### # 22G1", "CSQU3054383 22G1", "CSQU 305438 3 22G1")]
+    [InlineData("@@@U-######-#", "CSQU-305438-3", "CSQU-305438-3")]
     public void ContainerFormatsCheckTheFirstElevenLettersAndDigits(string format, string text, string value)
     {
         Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
     }
 
     [Theory]
-    [InlineData("AAAU ###### #", true)]
-    [InlineData(" AAAU-######-# 22G1", true)]
-    [InlineData("AAAU ######", false)]
-    [InlineData("AAAU ###### A", false)]
-    [InlineData("AAAA ###### #", false)]
+    [InlineData("@@@U ###### #", true)]
+    [InlineData(" @@@U-######-# 22G1", true)]
+    [InlineData("@@@U ######", false)]
+    [InlineData("@@@U ###### @", false)]
+    [InlineData("@@@@ ###### #", false)]
     [InlineData("#####", false)]
     public void AFormatHasACheckDigitWhenItStartsWithAContainerNumber(string format, bool check)
     {
@@ -249,7 +322,7 @@ public sealed class TextMatcherTests
 
     [Fact]
     public void AWrongCheckDigitBeforeATypeCodeIsNoMatch() =>
-        Assert.False(TextMatcher.MatchAll([Line("CSQU 305438 4 22G1", 0.1, 0.1)], ExpectedText.WithFormat("AAAU ###### # 22G1")).MatchesFormat);
+        Assert.False(TextMatcher.MatchAll([Line("CSQU 305438 4 22G1", 0.1, 0.1)], ExpectedText.WithFormat("@@@U ###### # 22G1")).MatchesFormat);
 
     [Theory]
     [InlineData("(###)", "Lane(123)", "(123)")] // a format that starts with a sign may touch letters

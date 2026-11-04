@@ -9,13 +9,15 @@ namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
 /// One area of the reader being edited: its name ("Area 2" from the page, Rename changes it), where it is on the picture and
-/// Any text or a Format. The rules show their error directly below the field (CLAUDE.md "validation errors directly below
+/// its format, empty for any text. The rules show their error directly below the field (CLAUDE.md "validation errors directly below
 /// the field"); the name's below the name in the row.
 /// </summary>
 public sealed partial class AreaViewModel : ValidatingViewModel
 {
     private readonly Func<AreaViewModel, string, bool> _nameTaken;
-    private string _keptFormat = string.Empty;
+
+    /// <summary>The empty format field: the area reads any text.</summary>
+    public const string FormatPlaceholder = OcrTexts.AnyText;
 
     public AreaViewModel(Area area, Func<AreaViewModel, string, bool> nameTaken)
     {
@@ -23,10 +25,7 @@ public sealed partial class AreaViewModel : ValidatingViewModel
         _nameTaken = nameTaken ?? throw new ArgumentNullException(nameof(nameTaken));
         Name = area.Name;
         Box = area.Box;
-        var isFormat = area.Expected.Kind == ExpectedTextKind.Format;
-        _keptFormat = area.Expected.Format ?? string.Empty;
-        FormatText = isFormat ? _keptFormat : string.Empty;
-        IsFormat = isFormat;
+        FormatText = area.Expected is { Kind: ExpectedTextKind.Format, Format: { } format } ? format : string.Empty;
         Validation
             .Rule(nameof(Name), NameProblem)
             .Rule(nameof(FormatText), () => IsFormat ? ReaderRules.FormatProblem(FormatText) : null)
@@ -43,26 +42,8 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial RelativeBox Box { get; set; }
 
-    /// <summary>Format instead of Any text.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Mode), nameof(FormatPlaceholder))]
-    public partial bool IsFormat { get; set; }
-
-    /// <summary>The format field's example while Format is chosen; empty for Any text (the field is off then).</summary>
-    public string FormatPlaceholder => IsFormat ? FormatExample : string.Empty;
-
-    /// <summary>The example in the empty format field.</summary>
-    public const string FormatExample = "AAAU ###### #";
-
-    /// <summary>The choices of the area's Mode select.</summary>
-    public static IReadOnlyList<string> Modes { get; } = [OcrTexts.AnyText, OcrTexts.Format];
-
-    /// <summary>The Mode select: <see cref="OcrTexts.AnyText"/> or <see cref="OcrTexts.Format"/>.</summary>
-    public string Mode
-    {
-        get => IsFormat ? OcrTexts.Format : OcrTexts.AnyText;
-        set => IsFormat = value == OcrTexts.Format;
-    }
+    /// <summary>A format to match instead of any text.</summary>
+    public bool IsFormat => FormatText.Trim().Length > 0;
 
     [ObservableProperty]
     public partial string FormatText { get; set; }
@@ -70,9 +51,6 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     /// <summary>Shown in the picture with a solid border.</summary>
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
-
-    /// <summary>The format field's tooltip (no hint line below it: each area is one row).</summary>
-    public static string FormatHint => OcrInfo.FormatHint;
 
     /// <summary>The longest name and format (the text boxes' limits).</summary>
     public static int MaxNameLength => ReaderRules.MaxNameLength;
@@ -132,26 +110,6 @@ public sealed partial class AreaViewModel : ValidatingViewModel
     partial void OnNameChanged(string value) => Changed?.Invoke(this, EventArgs.Empty);
 
     partial void OnBoxChanged(RelativeBox value) => Changed?.Invoke(this, EventArgs.Empty);
-
-    partial void OnIsFormatChanged(bool value)
-    {
-        // Any text: the format field is empty and off; the format typed before comes back with Format.
-        if (value)
-        {
-            if (FormatText.Length == 0)
-            {
-                FormatText = _keptFormat;
-            }
-        }
-        else
-        {
-            _keptFormat = FormatText;
-            FormatText = string.Empty;
-        }
-
-        Validation.Validate();
-        Changed?.Invoke(this, EventArgs.Empty);
-    }
 
     partial void OnFormatTextChanged(string value) => Changed?.Invoke(this, EventArgs.Empty);
 }

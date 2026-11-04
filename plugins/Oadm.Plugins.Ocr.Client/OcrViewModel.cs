@@ -14,7 +14,7 @@ namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
 /// The Text recognition page (docs/spec/ocr.md "Page"): the readers on the left (New, Delete, search), the selected reader on
-/// the right (<see cref="Editor"/>), "Runs on" and Use the graphics card below the list. <see cref="Activate"/> when the
+/// the right (<see cref="Editor"/>), "Runs on" and Use GPU below the list. <see cref="Activate"/> when the
 /// page is shown reads the list and the engine, watches the live events (readers changed, a reading, the preview's readings)
 /// and previews the shown reader. <see cref="Deactivate"/> stops both: nothing is read or fetched while the page is hidden.
 /// </summary>
@@ -110,15 +110,21 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string RunsOnText { get; private set; } = string.Empty;
 
+    /// <summary>The page header's short form of <see cref="RunsOnText"/>.</summary>
+    [ObservableProperty]
+    public partial string RunsOnShortText { get; private set; } = string.Empty;
+
     [ObservableProperty]
     public partial bool GpuAvailable { get; private set; }
 
-    /// <summary>Use the graphics card (on by default); saved at once.</summary>
+    /// <summary>Use GPU (on by default); saved at once.</summary>
     [ObservableProperty]
     public partial bool UseGpu { get; set; } = true;
 
+    private bool _settingGpu;
+
     /// <summary>The setting is server-wide: the change right and all devices (the server refuses users with a device group).</summary>
-    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable;
+    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable && !_settingGpu;
 
     public string? GpuBlockedReason =>
         !GpuAvailable ? OcrTexts.NoGpu
@@ -287,6 +293,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         try
         {
             RunsOnText = string.IsNullOrEmpty(engine.RunsOn) ? string.Empty : OcrTexts.RunsOn(engine.RunsOn);
+            RunsOnShortText = OcrTexts.RunsOnShort(engine.RunsOn);
             GpuAvailable = engine.GpuAvailable;
             UseGpu = engine.UseGpu;
         }
@@ -311,6 +318,9 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     private async Task SetUseGpuAsync(bool value)
     {
+        // Turning it on can take seconds (the server tries the graphics card): the box waits.
+        _settingGpu = true;
+        OnPropertyChanged(nameof(CanSetGpu));
         try
         {
             var json = await _ctx.InvokeAsync(OcrMethods.SetUseGpu, OcrJson.Serialize(new UseGpuRequest { UseGpu = value }), CancellationToken.None)
@@ -322,7 +332,12 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 #pragma warning restore CA1031
         {
             ApplyEngine(Engine);
-            await _ctx.ShowMessageAsync("Use the graphics card", ServerErrors.Message(ex)).ConfigureAwait(true);
+            await _ctx.ShowMessageAsync("Use GPU", ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+        finally
+        {
+            _settingGpu = false;
+            OnPropertyChanged(nameof(CanSetGpu));
         }
     }
 
@@ -793,6 +808,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     private void OnPermissionsChanged(object? sender, EventArgs e)
     {
         MayChange = _ctx.Has(ChangePermissionKey);
+        Editor?.ApplyPermissions();
         OnPropertyChanged(nameof(CanSetGpu));
         OnPropertyChanged(nameof(GpuBlockedReason));
         NewCommand.NotifyCanExecuteChanged();

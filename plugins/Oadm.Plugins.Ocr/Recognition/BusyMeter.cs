@@ -16,7 +16,13 @@ internal sealed class BusyMeter(TimeProvider time)
     public long Start() => time.GetTimestamp();
 
     /// <summary>The call that started at <paramref name="started"/> ended.</summary>
-    public void Stop(long started) => Interlocked.Add(ref _ticks, time.GetElapsedTime(started).Ticks);
+    public void Stop(long started) => Stop(started, 1);
+
+    /// <summary>
+    /// A call of the graphics card ended with <paramref name="filled"/> of its places in use: only that share counts, so 100 % still
+    /// means no more fits (blank places take the next lines at no cost).
+    /// </summary>
+    public void Stop(long started, double filled) => Interlocked.Add(ref _ticks, (long)(time.GetElapsedTime(started).Ticks * filled));
 }
 
 /// <summary>
@@ -26,11 +32,12 @@ internal sealed class BusyMeter(TimeProvider time)
 /// the larger of the CPU's and the card's load per sample, so 100 % still means no more fits: every worker busy, or the card
 /// never idle (its calls run one at a time).
 /// </summary>
-internal sealed class CombinedBusy(BusyMeter cpu, BusyMeter card, int workers)
+internal sealed class CombinedBusy(BusyMeter cpu, BusyMeter card, int workers, BusyMeter? cardReader = null)
 {
     private readonly object _lock = new();
     private TimeSpan _cpuSeen;
     private TimeSpan _cardSeen;
+    private TimeSpan _readerSeen;
     private TimeSpan _total;
 
     /// <summary>The combined busy time so far (each read takes the growth since the last one).</summary>
@@ -43,7 +50,11 @@ internal sealed class CombinedBusy(BusyMeter cpu, BusyMeter card, int workers)
                 var cpuNow = cpu.Busy;
                 var cardNow = card.Busy;
                 var cpuGrowth = cpuNow - _cpuSeen;
-                var cardGrowth = (cardNow - _cardSeen) * workers;
+                var readerNow = cardReader?.Busy ?? TimeSpan.Zero;
+                var finderGrowth = cardNow - _cardSeen;
+                var readerGrowth = readerNow - _readerSeen;
+                var cardGrowth = (finderGrowth > readerGrowth ? finderGrowth : readerGrowth) * workers;
+                _readerSeen = readerNow;
                 _total += cpuGrowth > cardGrowth ? cpuGrowth : cardGrowth;
                 _cpuSeen = cpuNow;
                 _cardSeen = cardNow;

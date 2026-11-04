@@ -28,6 +28,9 @@ public sealed class ReaderParts
     /// <summary>Cuts the found values out of the frames for the page; null: the page cuts by <c>MatchBox</c>.</summary>
     public IPictureCutter? Cutter { get; init; }
 
+    /// <summary>A picture a page may hold on Pause: within the pixel limits of a reading (<c>Picture.Fits</c>).</summary>
+    public Func<ReadOnlyMemory<byte>, bool> PictureFits { get; init; } = static _ => true;
+
     /// <summary>The clock of the readings' times and of the frame source.</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
 
@@ -50,10 +53,12 @@ public sealed class ReaderParts
         {
             Frames = ctx => new VapixFrameSource(ctx.System.Vapix, clock, ctx.Logger),
             Recognizer = ctx => ctx.PluginDirectory is { } folder && Directory.Exists(ModelFiles.Folder(folder))
-                ? new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = ModelFiles.Folder(folder), Time = clock }, ctx.Logger)
+                // Never the card here: the plugin hands over the stored setting next, and off must not load DirectML.
+                ? new OnnxTextRecognizer(new OcrEngineOptions { ModelDirectory = ModelFiles.Folder(folder), UseGraphicsCard = false, Time = clock }, ctx.Logger)
                 : LogNotInstalled(ctx.Logger),
             Matcher = new TextMatcher(),
             Cutter = new PictureCutter(),
+            PictureFits = Picture.Fits,
             Time = clock,
         };
     }

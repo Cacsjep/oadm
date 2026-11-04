@@ -205,7 +205,8 @@ internal sealed class ReaderStats
     public static (LoadState State, string Text) Light(double load, bool overloaded, IEnumerable<(int Fps, double Reads, bool Judged)> readers)
     {
         var judged = readers.Where(r => r.Judged && r.Fps > 0).ToList();
-        if (overloaded || judged.Any(r => r.Reads < VerySlowShare * r.Fps))
+        // Red only when the machine has no room left: a reader slower than set on a machine with room is orange.
+        if (overloaded && (judged.Count == 0 || judged.Any(r => r.Reads < SlowShare * r.Fps)))
         {
             return (LoadState.Overloaded, ReaderRules.Overloaded);
         }

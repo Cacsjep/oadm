@@ -101,6 +101,8 @@ public sealed class PictureTests
         }
 
         Assert.Throws<InvalidDataException>(() => Picture.Decode(jpeg));
+        Assert.False(Picture.Fits(jpeg)); // a page's held frame follows the same limits
+        Assert.True(Picture.Fits(data.ToArray()));
         Assert.Null(new PictureCutter().Cut(jpeg, new RelativeBox(0, 0, 0.5, 0.5)));
     }
 }

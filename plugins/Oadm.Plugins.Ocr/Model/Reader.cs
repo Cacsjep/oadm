@@ -67,6 +67,12 @@ public sealed record Reader
     /// <summary>Frames per second while Watching, one of <see cref="OcrLimits.FpsChoices"/>.</summary>
     public int Fps { get; init; } = OcrLimits.DefaultFps;
 
+    /// <summary>
+    /// Watching: belts and passing vehicles (docs/spec/ocr.md "Moving objects"): no vote, a value counts once it was read in 2
+    /// frames in a row. Off in records of older versions.
+    /// </summary>
+    public bool MovingObjects { get; init; }
+
     /// <summary>Up to <see cref="OcrLimits.MaxAreas"/> areas; none: nothing is read (text is read only inside areas).</summary>
     public IReadOnlyList<Area> Areas { get; init; } = [];
 

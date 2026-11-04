@@ -18,20 +18,32 @@ that better (the docs say so).
 1. **Read only.** The plugin only receives pictures from the cameras; it never changes a setting on a device.
 2. **Pictures never stored.** Frames live in server memory while they are read (with a coarse brightness print per area
    for unchanged areas, "Reading" step 8); the last result of each reader (text,
-   boxes, the frame for the page) is kept in memory only. The texts reach the event log as event fields, never the frames.
+   boxes, the frame for the page) is kept in memory only. A paused preview holds one frame in server memory, one per
+   preview ("Pause"): it goes on Resume, when the preview's lease ends, when the reader changes and when the page closes,
+   never on disk, never in a log. The last 20 reads ("The last 20 reads") keep one cut-out per row, at most 20 per reader
+   and per preview, each at most 640 px on its longer side and 64 KB: in server memory only, never on disk, never in a log,
+   dropped with their row, gone on a server restart, with a deleted reader, with the preview and when the plugin turns off.
+   The vote keeps a reference to the frames of its last 5 readings per area, none for an empty value, released as the window
+   moves on, so a value's cut-out comes from the frame it was read in ("Several frames vote"). The texts reach the event log as
+   event fields, never the frames.
 3. **Choose the camera first.** A reader starts from one camera (`DevicePickerWindow.ShowOneAsync`) and one of its video
    sources; nothing streams before that. Only cameras of the user's device group; readers are owned by the device scope
    that made them (`docs/spec/device-scope.md`).
-4. **Bounded load.** Recognition runs on the CPU in at most `max(1, cores / 2)` workers at once, each with at most 2
-   threads, so OADM stays responsive. The limit counts model calls (a tile, a batch of lines), so an idle server reads the
-   tiles of one picture at once; at most as many pictures as workers are in work. Per reader one frame at a time: the
-   newest frame wins, older ones are dropped, never queued. At most 50 readers per server; watching readers by the
+4. **Bounded load.** Recognition runs on the CPU in at most `max(1, cores / 2)` model calls at once, each on one thread, so
+   half the machine stays free and OADM stays responsive; all calls share one session of each model. At most 3 large text
+   finder calls at once (`OcrLimits.LargeTextFinderCalls`, measured: more only burn the CPU). The limit counts model calls (a
+   tile, a line), so an idle server reads the lines of one picture at once; at most as many pictures as workers are in work.
+   A reader has one frame in work, up to 4 while the recognition has room (`OcrLimits.MaxFramesInWork`,
+   `IRecognizerLoad.HasRoom`: a worker free and nothing waiting), so an idle machine carries one reader at full speed and busy
+   workers fall back to one frame per reader, shared as before. Results are taken in the order of the frames: an older
+   frame's result never replaces a newer one. A frame without room is dropped, the newest wins, nothing queues, so the lag is
+   bounded by the frames in work. At most 50 readers per server; watching readers by the
    server's cores, 4 per worker, at least 8 and at most 50 ("Limits"); at most 4 watching readers per site (a site node's
    link carries their streams; they take none of the site's large transfer slots). At most 8 page previews per server
    and 2 per user; a preview with a stream of its own counts against the watching limits after the saved readers; a
    preview ends 30 s after the page's last call and never publishes events ("Page").
-5. **GPU when there is one, the CPU always works.** ONNX Runtime and the models come with the add-on; nothing is
-   downloaded at run time. A missing or failing GPU falls back to the CPU (one log line); the page says what reads.
+5. **GPU when there is one, the CPU always works.** With a usable card the models run there unless one is clearly slower ("GPU"), so the CPU stays free. ONNX Runtime and the models come with the add-on; nothing is
+   downloaded at run time. A missing or failing GPU, also during a run, falls back to the CPU (one log line); the page says what reads.
 6. **Measured accuracy.** Every change to reading keeps or raises the accuracy on the recorded test set ("Accuracy"
    below); a test fails when it drops.
 
@@ -69,7 +81,7 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
     one." or "... this video source ..." (from the camera's error text), "The camera sends no pictures." (not opened in
     15 s); it clears with the next picture.
   - A rename of the reader or of its areas goes on in the running loop (the vote and the published values stay); a new
-    camera place, source, resolution, rate or area place or format starts it again.
+    camera place, source, resolution, rate, Moving objects or area place or format starts it again.
   - **On action**: reads one picture when an event rule runs the action **Read text** (below). No stream (the page's
     preview aside, "Page"). Choosing it on the page shows a short message (`ui:MessageWindow`, OK only) once per reader
     and client session: "Reads only on an action", "This reader reads only when an event rule runs the action Read text
@@ -78,18 +90,38 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
 - **Single pictures** (the action Read text): `/axis-cgi/jpg/image.cgi` with the same resolution and source.
 - No H.264 or H.265: decoding video would need FFmpeg on the server.
 
+### Moving objects
+
+A checkbox per reader in the settings form (decision 2026-11-04, `Reader.MovingObjects`), off by default, shown only for
+Watching, tooltip "For belts and vehicles: no vote over frames". Additive in JSON: an older record reads as off, and a reader
+switched to On action keeps the value without using it (`ReaderRules.IsMoving`). A change of it starts the loop again.
+
+- **No vote.** A value counts once it was read in 2 frames in a row, same value and same area (`Matching/TwoFrames` inside
+  `Readers/AreaWatch`). It comes from the second frame: its row, event, cut-out and box all belong to that frame. Frames in a
+  row are frames the reader read, so a slower server counts every frame it reaches; at 1 frame per second that is 2 s.
+- A value seen once changes nothing, which filters single misreads; an empty area needs 2 frames too. A value that stays is
+  one row and one event. A, B, A gives three, each confirmed by 2 frames. A value lost for 2 frames in a row and read again is
+  a new read, as in "The last 20 reads".
+- Between values the area shows the last confirmed value, without a box when this frame does not hold it. It keeps no frame
+  beyond the one of that value.
+- **A preview follows the setting**: with it on the preview's own stream uses the same 2 frames rule, on the same stream when
+  the draft changes it, and still publishes no events. With it off a preview stays as before, without a vote, each frame's own
+  result. A draft with another setting never shares the saved reader's stream. Pause reads the held frame once with the draft,
+  so the note shows that frame's own value.
+- Sites and rule events work as for any reader; backups keep the field; device groups do not change.
+
 ## Reading
 
-1. Decode the JPEG (SkiaSharp), only the part the areas need (each area with a margin of 16 px plus its shorter side:
+1. Decode the JPEG (SkiaSharp), only the part the areas need (each area with a margin of 16 px plus its shorter side, at most 128 px more:
    rows above skipped, rows below never read, columns outside cut by the JPEG decoder; full HD with one small area 2.5
    instead of 16 ms), and cut out each area at full resolution. The page's cut-out of a value is decoded the same way.
-2. **Find text**: the PP-OCRv5 detection model per area (mobile on the CPU, server for Search on a graphics card and for
+2. **Find text**: the PP-OCRv5 detection model per area (mobile for fixed-place areas and on the CPU, server for Search on a graphics card and for
    Accurate),
    sides a multiple of 32, turn its map into line boxes (threshold 0.3, box score 0.6, box enlarged by 1.5; own C#, no
    OpenCV). An area up to 960 px on its long side is read as it is (a small one scaled up to 64 px, a 16 px margin
    around it); a larger one (Search over the whole picture) in tiles at full resolution: the fewest tiles that cover it
    at up to 960 px each with at least 15 % overlap, all of one size and spread evenly (full HD: 3 x 2 = 6 tiles of
-   736 x 608). On the CPU each tile is a model call of its own; with a graphics card an area read in tiles goes to the
+   736 x 608). The text finder never gets a smaller or larger picture than this: both lose text (measured: a cap of 640 px reads 6 of 25 moving values with 4 px blur instead of 25; a padded 768 x 768 reads 25 of 31 small labels instead of 31). On the CPU each tile is a model call of its own; with a graphics card an area read in tiles goes to the
    card, its tiles in calls of one size within the card's memory cap ("GPU").
 3. **At most 30 text boxes** per reading, over all areas together: the boxes with the highest detection scores are
    read, the others dropped, and the reading carries the note "More than 30 texts found. Only the first 30 are read. Draw
@@ -99,7 +131,8 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
    meter) become one line: same direction, about the same height, on one line, overlapping or closer than 0.6 line
    heights.
 5. **Straighten** each box: a slanted line is turned level; a line clearly taller than wide (a receipt or label turned
-   by 90 degrees) is turned by 90 degrees. Each line is read first as it is; the angle model looks only at the lines
+   by 90 degrees) is turned by 90 degrees; the line keeps this rotated box and its turn for its upright cut-out
+   (`TextLine.Turn`, server only). Each line is read first as it is; the angle model looks only at the lines
    not read surely upright (fewer than 3 characters, a character below 90 %, or fewer than 2 letters that read as
    nothing upside down, so lines of digits always): it names the lines that may be upside down (probability at least
    0.3), those are read turned too and the reading the recognition is surer of wins (the angle model alone turned
@@ -122,12 +155,12 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
    carries the note). Prints and readings live in memory only (at most 512 areas). A picture whose areas were all
    unchanged runs no model and counts in the runtime stats as "Unchanged pictures per second", not as a picture read.
 
-Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the output read where it lies). On the CPU
-the lines go to the reader in pairs of similar width, each pair a call of its own, so the lines of one picture spread
-over the free workers. On DirectML the card's text finder sides come in the steps 256, 512, 768 and 1024, and the
-tiles of an area go in calls of one size (`GpuSessionBudget.TilesPerCall`), so few input sizes exist (each is a session
-of its own there, bounded by memory: "GPU"). Session sets of a CPU worker unused for 2 minutes are freed; stopping the
-recognizer waits for the readings in work (at most 30 s) before it frees the models.
+Model calls reuse their buffers (rented, the input pinned for ONNX Runtime, the output read where it lies; the reader's
+scores rented too, handed back when the reading ends). On the CPU every line is a model call of its own at its own width
+(at least 64 px, no padding to 320: a short line costs a third and the accuracy set reads better), so the lines of one
+picture spread over the free workers. On a graphics card calls come in few sizes ("GPU"). The session set of the CPU
+workers unused for 2 minutes is freed; stopping the recognizer waits for the readings in work (at most 30 s) before it
+frees the models.
 
 There is no Latin server recognition model: PaddleOCR publishes Latin PP-OCRv5 recognition as mobile only, and the
 multilingual server model read Latin text worse (no spaces between words). Every device reads with the mobile Latin
@@ -152,40 +185,50 @@ characters.
 
 ### Expected text
 
-Per area: **Any text** (default) or **Format**.
+Per area: **Any text** (default) or **Format**. The page has one field: empty (the default) reads any text, anything else
+is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a format).
 
-- Format: `#` a digit, `A` a letter, `*` a letter or digit; every other character must appear as written, except spaces
-  and dashes, which may be missing in the text. Example: container number `AAAU ###### #`, wagon `## ## #### ###-#`,
+- Format: `#` a digit, `@` a letter (decision 2026-11-04, `A` until then: every letter now means itself), `*` a letter or digit; every other character must appear as written. A `-` must be a `-` in the text, with spaces
+  around it allowed (decision 2026-11-04, a barcode line fit `@@-####-##` until then: `CX 1152 7244 0 AT` gave `CX-1152-72`); a space
+  may be missing in the text. Example: container number `@@@U ###### #`, wagon `## ## #### ###-#`,
   counter `#####`. A match never starts or ends inside a run of letters and digits; a format that starts or ends with a
   sign (`(###)`) may touch them.
 - **Container numbers** (`Matching/ContainerCheck`, the one rule of the matcher and the format-guided decoding): a
-  format whose first 11 letters and digits are `AAAU` and seven `#` checks the 11th as the ISO 6346 check digit of the
-  10 before it; what follows (`AAAU ###### # 22G1` with the size and type code) is not checked; `AAAU ######` has no
+  format whose first 11 letters and digits are `@@@U` and seven `#` checks the 11th as the ISO 6346 check digit of the
+  10 before it; what follows (`@@@U ###### # 22G1` with the size and type code) is not checked; `@@@U ######` has no
   check digit and checks nothing. A wrong check digit is no match: no character is ever changed to make it fit
   (decision 2026-11-03; a misread check digit never becomes a sure value).
+- **Format-guided reading never makes a dash up or leaves one out**: the search may pass a dash of the format by, but such a match is
+  dropped and the line keeps its free reading; a match with dashes must hold exactly the dashes the reader's own best reading has
+  in its frames (`LineReader.DashesAsRead`).
+  Measured below ("Measured: dashes").
 - With a format the reader looks for matches in each line on its own, then in neighbouring lines joined (for a number
   split over two lines). The match fixes look-alike characters by position: where a digit is expected O becomes 0, I
   and L 1, S 5, B 8, Z 2, G 6; where a letter is expected the reverse.
 - Several matches (the same order number on two receipts, two parcels): the area's value is the match read with the
   highest confidence, on a tie the larger text; the event field All matches lists every different match, at most 10.
-- The page shows the matched text's cut-out picture next to its value (in memory only, like the frames).
-- No match: the area's value is empty and **Matches format** is No; the raw text stays in **Text read**.
+- The page shows the value's cut-out picture next to it (in memory only, like the frames; "The last 20 reads").
+- No match: the area's value is empty and **Matches format** is No; the raw text stays in the event's **Text read**, the page
+  shows neither a box nor the raw text (decision 2026-11-04).
 - **Any text** has no format to match: Matches format is always No (decision 2026-11-03: a rule "Matches format is
   Yes" fires only for a format that matched; "text was read" is a Text that is not empty).
-- The page's format field tooltip: "# digit, A letter, * letter or digit".
-- Not part of this version: taking a read text as the format: later (decision 2026-11-03).
+- The page's format field has the format help as its tooltip.
+- **Use read text as format** (area's ⋯ menu, decision 2026-11-04; off without a read text in that area or the change
+  right): the format field takes the shape of the text read now, digits `#`, letters `@`, the rest as written
+  (`Matching/TextFormat.FromText`): the user then adjusts it (`@@@@` to `@@@U`) and saves.
 
 ### Runtime safety
 
-- Every sync of the readers' loops (a save, a delete, Use the graphics card, a device group's change, the 1-minute check)
+- Every sync of the readers' loops (a save, a delete, Use GPU, a device group's change, the 1-minute check)
   reads the stored readers under the runtime's lock, never a list taken before it: an older list never wins, a deleted
   reader never streams or fires again.
 - A stop cancels the single readings of the action Read text and waits for them before the recognition is disposed; a
   reading asked for afterwards ends "The Text recognition plugin is not running." Timer and event work never throws (a
   failure is logged); the runtime's locks are never disposed under late callbacks.
-- Cut-outs are cut only when a page asks for a reading (`getReading`, `getPreview`), once per reading, never per frame,
-  and only for a user with the host's **Live view** (`HostPermissionKeys.DevicesLiveView`; they are pieces of the
-  camera's picture). The page never gets the picture itself: it shows the live video.
+- Cut-outs are made once per new value ("The last 20 reads"), never per frame, and once per reading of a held frame or of
+  `getReading`. They reach only a user with the host's **Live view** (`HostPermissionKeys.DevicesLiveView`; they are pieces
+  of the camera's picture). The page gets the picture itself only on Pause ("Pause"), under the same rule; else it shows the
+  live video.
 - The event `reading` reaches the pages only when a reader's values or note change, else at most once a second per reader;
   a preview's readings go only to the user who started it.
 - A reading is kept as the reader's last and fires its events only while the reader is still stored with the same camera,
@@ -205,9 +248,12 @@ Per area: **Any text** (default) or **Format**.
   Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading; written with "."
   without leading zeros or trailing decimal zeros, every digit kept, never through a floating point number,
   `Matching/NumberText`; empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
-  of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence).
+  of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence). The type
+  declares the reader's camera as its fixed device (`FixedDeviceId`) and Area as its split field (`SplitField`): on a
+  dashboard the event is chosen per reader, the widget takes the camera by itself and shows the area chosen in its Area
+  select ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
-  in a row (no flicker between two readings of one picture). An area that becomes empty publishes once with Text empty.
+  in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). An area that becomes empty publishes once with Text empty.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
   at its save: "Choose a reader."). Reads one picture now and publishes every area's event, changed or not; a reader
   without an area ends "The reader has no area. Draw one on the Text recognition page." and reads nothing. A watching
@@ -219,11 +265,20 @@ Per area: **Any text** (default) or **Format**.
 
 ## Page
 
-- Three columns, no splitter: readers (fixed 320 px) | live video and results (the rest) | settings (fixed 320 px, the
-  narrowest where the form, the format field and the areas fit; labels above their fields). The video gets every pixel
-  the two fixed columns leave.
+- Three fixed columns, four cards: readers (fixed 320 px) | live video above results (the rest) | settings (fixed 320 px, the
+  narrowest where the form, the format field and the areas fit; labels above their fields). The columns have no splitter;
+  the video and results cards get every pixel the two fixed columns leave.
+- **The resizer** (decision 2026-11-04): the shared `GridSplitter.paneSplitter` between the video card and the results card, as
+  their 16 px gap. Dragging it up gives the table more height. At first the video card is as large as the picture wants, while
+  the results keep 280 px (`ResultsMinHeight`). A drag stops at 30 % of the column's height for the video card
+  (`VideoMinShare`) and at 140 px for the results card (`ResultsDragMinHeight`: the table's header and one row). `OcrView.LimitsOf`
+  sets the limits when the column changes; when they do not all fit, in this order: the cards never overflow the
+  column, the video keeps its 30 %, the results their minimum, the video what its card holds (padding, the video surface's
+  120 px). The client's window minimum (640 px) leaves room for all of them. The position lasts as long as the page's view, one
+  connection (the page keeps no client settings), for every reader.
 - Left: the readers (name, camera, mode, last text), **New** and **Delete** (red, with a confirmation); below the list
-  Settings (Runs on, Use the graphics card) and the runtime stats ("Runtime stats"). The "Runs on" text is the server's.
+  the rest of its height for the list. "Runs on" and Use GPU sit in the page header right of the load
+  (decision 2026-11-04); the "Runs on" text is the server's.
   - The reader's chip: "Watching · 2 fps" (green), "Watching · 8 fps (reads 5.1)" (orange, slower than set), "On action",
     or a short red chip per kind of problem with the server's full text as its tooltip (`OcrTexts.ProblemChip`, one
     phrase per concept): Limit reached (the watching limits, also per site), Credentials required (the stored login is refused, no
@@ -239,23 +294,30 @@ Per area: **Any text** (default) or **Format**.
 - The selected reader in two columns, no toolbar row:
   - **Left: the camera's live video**, the shared live video component (`ICorePluginClientContext.LiveVideo`,
     docs/spec/live-view.md) of the reader's camera and video source, with the picture only (no channel switch,
-    fullscreen, quality switch or controls: nothing sits under the areas or leaves them behind). Over it
-    (`ReadingPicture`) the areas (dashed accent, solid when selected, name tag) and the found lines of the latest reading
-    (teal boxes with their text), placed on the reader's resolution centered in the video's space: the same letterboxing
+    fullscreen, quality switch or controls: nothing sits under the areas or leaves them behind; the one exception is the
+    Pause button in the picture's corner, decision 2026-11-04, "Pause"). Over it
+    (`ReadingPicture`) the areas (dashed grey, the selected one solid in the accent, a press beside every area clears the selection, decision 2026-11-04; name tag) and the found lines of the latest reading
+    (teal boxes with their text; with a format one box, the value at its place, none without a match or for a voted value this frame does not hold, also while paused, decision 2026-11-04), placed on the reader's resolution centered in the video's space: the same letterboxing
     as the video's picture (Stretch Uniform). The video shows the camera's own picture shape; a resolution of another
     shape than the video source (4:3 on a 16:9 camera) draws the areas on the reader's shape. Without the host's live
-    video (an older OADM) the overlay sits on the dark video surface. Below the video the reading's note when it has one
-    (warning chip: "More than 30 texts found. ..."), then the **results grid** (Area, Text, Confidence right-aligned,
-    Matches format, the time) in the rest of the column's height; while there are none "Waiting for the first picture."
-    or why the preview reads nothing. The results, their details and cut-outs belong to the area at the same place in the
-    reader (names may repeat while they are edited). A row shows the value's cut-out only when the server sent one (users
-    with Live view); without one, or one that does not decode, the text alone.
+    video (an older OADM) the overlay sits on the dark video surface. Nothing in the video card changes height: the video never
+    moves when a note comes or goes, and the Pause button does not jump (decision 2026-11-04).
+  - **Below it, in a card of its own: the results grid** (Time, Area, Text with the cut-out, Confidence right-aligned, Matches
+    format): the last 20 reads, newest on top ("The last 20 reads"), in the rest of the column's height (on a wide screen the
+    video shrinks and keeps its shape, the results stay on the page); while there are none "Waiting for the first picture."
+    or why the preview reads nothing, while paused "No reads yet." A row shows the value's cut-out only when the server sent
+    one (users with Live view); without one, or one that does not decode, the text alone.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
     nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
     while drawing the drawing hint shows instead.
-  - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream**), the Areas
+  - **Right, a grid of four rows**: the form (Name, Mode with Watching and On action, **Stream**, Moving objects), the Areas
     header, the area rows (the only part that scrolls: with many areas New above and Save below stay in reach), then the
-    save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
+    reading's note and below it the save status left of **Save**. No camera field (the camera is the reader's for good, "Readers").
+  - **The note** (decision 2026-11-04: below the video it moved the picture and on a belt it flickered too fast to read): a warning
+    chip directly above the Save row, its lines as needed, the area rows give it their height. A live alert ("More than 30 texts
+    found. ...", "Lane: Text too small. ...") stays `OcrLimits.NoteHold` (5 s) after the last reading that had it (`PreviewTime`, the
+    page's `TimeProvider`); a new alert joins the others, each ends by its own time, so the text changes only when an alert comes
+    or goes. While paused it holds the frame's own lines at once, without a hold. It goes with the reader and the frame.
   - **Stream**: a secondary button (video icon) that opens a small dialog **Stream settings** (single operation: no card,
     `Border.dialogBody`, 400 px wide, OK and Cancel): Video source, Resolution and, only while Watching, Frames per second
     as a select of the server's choices (1, 2, 4, 8, 12, 15; the select follows the choices of each reader list and of
@@ -268,14 +330,14 @@ Per area: **Any text** (default) or **Format**.
     No status line under the video: the reader's state is in the reader list.
   - **Areas panel**: header Areas left and **New** at the right edge (flat command button, plus icon; it starts drawing on
     the video; tooltip "Draw an area on the video"; at 8 areas off with "A reader has at most 8 areas."); no count. Each
-    area in two lines (decision 2026-11-03): the name as plain text (trimmed, the whole name as tooltip; a refusal of the
-    name or the box below it, each under its own key: a rename never clears the box's, a move or resize does) with Rename
-    and delete at the right; below it, indented, Mode and Format. Mode is a select (Any text, Format); the Format field stays in place, empty and off for Any text (the format
-    typed before comes back with Format), its example "AAAU ###### #" as the placeholder and the format syntax as its
-    tooltip; errors directly below the field. **Rename** (icon only, tag icon, tooltip "Rename") opens a small dialog
+    area in one row (decision 2026-11-04): the name as plain text (trimmed, the whole name as tooltip; a refusal of the
+    name or the box below it, each under its own key: a rename never clears the box's, a move or resize does), the
+    format field and the ⋯ menu (`ui:RowActions`: Use read text as format, Rename, then Delete in red, decision 2026-11-04): empty for any text ("Any text" as the placeholder),
+    otherwise the format. Its tooltip is the whole format help with examples (decision 2026-11-04, longer than other
+    tooltips on purpose); errors directly below the field. **Rename** opens a small dialog
     (single operation, one Name field: required, unique in the reader, at most 64 characters, the error below it; Rename
-    and Cancel). The rows are a list (`ListBox.areaRows`): the selected area's row is softly highlighted (the hover fill
-    and an accent bar on its left edge, so the inputs and a red error stay readable), and selecting a row (or a field in
+    and Cancel). The rows are a list (`ListBox.areaRows`): the selected area's name is in the accent colour, without a fill (decision
+    2026-11-04), and selecting a row (or a field in
     it) selects the area on the video. A refusal of the area list as a whole (`areas`: too many areas) shows directly
     below the area rows (small red text) until the areas change, never in the host's message.
 - **Areas on the live video**: New, then a drag draws one (at least 2 % of the picture each way, `OcrLimits.MinAreaSide`
@@ -298,7 +360,7 @@ Per area: **Any text** (default) or **Format**.
     not offered the default.
   - A saved watching reader whose draft is unchanged shares the reader's stream (its readings are the preview's); any
     other preview has its own stream through the watching loop with the vote and the events off, and shows each frame's
-    own result.
+    own result; with Moving objects its values follow the 2 frames rule ("Moving objects").
   - Limits: at most 8 previews per server ("At most 8 readers can be shown live at once. Try again when another page
     closes.") and 2 per user (a third ends that user's oldest: a page closed without a word); a preview's own stream
     counts with the watching readers against the watching limit ("Limits") and 4 per site, after them: a saved reader
@@ -317,7 +379,85 @@ Per area: **Any text** (default) or **Format**.
     (another user's id answers like an ended one); a saved reader of another scope answers like an unknown id; the camera
     must be in the caller's devices.
   - On open the page shows the saved reader's last reading (`getReading`) until the preview's first one arrives.
+- **Pause** (decision 2026-11-04, the running belt: a format cannot be tuned against a moving picture). The server keeps the
+  frame: the client's video and the frames the server reads are different pictures, so the lines would not fit a frozen
+  video.
+  - The button: one icon-only button in the bottom left corner of the picture, inside the letterboxing, 10 px from its
+    edges (`PicturePlace` on the rectangle of `ReadingPicture`), tooltip Pause or Resume, on the video's own backing
+    (`Border.videoOverlay`, like the live video's buttons). It is the one thing over the areas: only its own rectangle is
+    covered, a press on it never draws, selects or moves an area, it never takes the keyboard focus (Esc and the arrow keys
+    stay with the picture, and it cannot be reached with Tab). A drag that started beside it passes over it; an area
+    under it is chosen on its row and moved with the arrow keys. Next to it the chip Paused (tooltip "Saved readers keep
+    reading.") and a ring while a Pause, a Resume or a reading of the held frame is on its way.
+  - Off until this page's preview has a reading; not there without the host's **Live view**.
+  - Pause holds the frame of the preview's latest reading: the page shows that exact picture in the video's place, drawn on
+    the rectangle of the overlay, with its areas and lines, and the live video is hidden (it stops streaming).
+  - **The table stays the last 20 reads, frozen** (decision 2026-11-04: pause and look whether the readings were OK): from the
+    press on Pause until Resume no reply changes it, also not one with newer rows, so no row arrives or moves, and a click on a
+    crop still opens it. A reply on its way around a Pause or Resume never empties it. Resume brings it up to date with the next
+    fetch; rows that stay keep their pictures. A re-read of the held frame never adds a row.
+  - **The held frame's result** is a list of its own (`ReaderEditorViewModel.HeldAreas`, one per area by its place in the reader,
+    names may repeat while they are edited), never in the table. Use read text as format takes the area's text of the current
+    frame, live and paused, never a row. While paused the note above Save shows it, one line per area with a format
+    ("Area 1: DE-1011-22", "Area 1: no match"), after the reading's own note and "Text too small"; the lines go with the frame.
+  - While paused the draft re-reads the **same frame**: a changed format, a moved, resized, new or removed area. The
+    note and the lines follow. Use read text as format works on it, Save too (the pause stays). A frame of a shared
+    stream carries the vote's values, and a draft changed since it was read no longer fits: such a frame, and a frame of a preview
+    with Moving objects, is read once with the draft on Pause.
+  - One worker per held frame, latest wins: a reading in work ends, then the newest draft is read; a burst of edits never
+    queues readings, a reading of an older draft is never shown. It goes through the same recognition workers and counts in
+    the stats. Every area is read: no reuse (`reuseSource` null), the pixels never change, so "unchanged" would answer with
+    the old format's reading.
+  - Preview only: a saved watching reader keeps its stream, its vote and its events; its readings no longer reach the
+    paused preview. A preview publishes no rule events, paused or not.
+  - A paused preview's own stream stops and a shared one is left; Resume opens or shares it again, within the limits of the
+    moment. It stays one of the 8 previews and 2 per user, needs the keep-alive and ends with the lease.
+  - The frame is the reading's bytes, not a copy, within the limits of a reading: at most 10 MB and the pixel limits of
+    `Recognition/Picture` (`Picture.Fits`, refused with "This picture is too large to pause. Choose a lower resolution.").
+  - It goes on Resume, on `stopPreview`, when the lease ends, when another camera, video source or resolution is sent
+    (name, mode and rate keep it), when the reader is deleted, when the camera leaves the owner's devices and when the
+    user no longer has Live view (the next keep-alive). The reading that keeps its bytes goes with it. The page leaves the
+    pause when `startPreview` answers `paused: false`.
+  - An offline camera does not end a pause: the frame needs no camera.
 - Empty page: "Create a reader to read text from a camera."
+- **The last 20 reads** (decision 2026-11-04): the results grid shows what the reader read lately, so a value that went by
+  can be looked at with its picture.
+  - The server keeps per saved reader the last `OcrLimits.RecentReads` (20) reads in memory only (`Readers/RecentReadList`), the
+    oldest drops first. Nothing is ever on disk: gone on a server restart, with a deleted reader and when the plugin turns off.
+  - **A read is a new value in an area**, not a frame: a row is added when an area's value differs from that area's last value
+    and is not empty (with a format only a match, with any text the text read). A value that goes A, B, A gives three rows, A,
+    empty, A two. On a Watching reader that is the moment of its Text read event, after the vote, so the list fills with the page
+    closed. The action Read text adds its values by the same rule: the same value twice is one row. A change of the reader's
+    picture (`Forget`) keeps the rows; each area's next value is a new one.
+  - **A preview** of an unsaved or changed draft has no events: its own stream's new values go into a list of that preview (one
+    per preview, no vote, with Moving objects by the 2 frames rule), which ends with the preview. A preview that shares a saved watching reader shows that reader's
+    list. The page of a saved On action reader whose draft is unchanged shows the preview's list and the reader's together, newest
+    first: the action's reads would else never show, since the page's preview always reads.
+  - **Cut-outs**: every row keeps its value's cut-out, also the old ones, at most `OcrLimits.MaxCutoutSide` (640 px) on its longer
+    side (a larger one scaled down) and `OcrLimits.MaxCutoutBytes` (64 KB): lower JPEG quality, then half the size, a longer one
+    is not kept. So a list holds at most 1.3 MB of pictures. Cut from the frame the value was read in and at its box, never the
+    whole area for a voted value: each candidate of the vote remembers its frame, its box and its turn (`ValueFrame`, a value the
+    vote put together those of the newest reading of its length), and a reply of Read text that answers with a voted value
+    uses them too (`ReaderReading.Sources`). A row's cut-out, thumbnail and the dialog show the text upright, the way the reader
+    saw it: the line's rotated box with its 90 degree and upside down turns (`LineTurn`) and a margin of a quarter of its height;
+    a value joined over two lines or several lines of any text have no one direction and stay level. A line that cuts wrongly
+    falls back to the level cut-out, never to none. Perspective is not undone: the line cut has only the rotated box. `TextLine.Box`
+    stays level for the overlay. One worker cuts the rows, a row per list in
+    turn, newest first (`ReaderRuntime.Recent`): the frame's loop never waits for it, a row holds its frame only until it is cut,
+    and a row that drops first is never cut. A reply cuts what the worker has not reached.
+  - Per frame: comparing the values allocates nothing, a value that did not change costs no row, no picture, no call.
+  - **The calls**: the rows come with the page's reading calls (`recent` in the replies of `getReading` and `getPreview`), no
+    polling of their own, with the same device group and permission checks; a reply holds only the rows of that reader or
+    preview, at most 20, with at most 500 characters of text each. A row's cut-out comes once: the page names what it has
+    (`knownCutouts`, ids unique on the server and never repeated by a new start) and those rows come without it. Live the reading's
+    own cut-outs are not cut. While paused `recent` is empty and the page keeps its rows.
+  - **The grid**: one `ReplaceAll` when the rows changed, nothing when they did not. A row stays by its id with its decoded
+    thumbnail, so 20 rows at 15 frames per second decode only what is new; a row that leaves disposes its bitmap. Times with
+    seconds.
+  - **Open a cut-out**: a click on a thumbnail opens a dialog (no card, `CutOutWindow`, Close): the picture at its real pixels, a
+    small one enlarged by a whole number (at most 8 times, up to 640 x 360 px), without smoothing so characters can be judged,
+    with the text, the area and the time. It decodes its own copy: the row may leave while it is open.
+  - **Text too small** has no row of its own: the areas it applies to show in the reading's note, live and paused, only while it applies.
 - One contract: the page uses the server part's payloads (`Api/`) and the texts of `ReaderRules`, never copies. The
   camera's video sources and sizes (largest first) come from `getCameraOptions` (read only, the caller's devices, kept
   10 min per camera). A save refused by a check answers `{"errors":[{"field","message"}]}` with stable field keys
@@ -329,18 +469,24 @@ Per area: **Any text** (default) or **Format**.
     draft, an unknown or ended one starts a new preview. Refusals: the 8 previews, a camera outside the caller's
     devices, another scope's reader.
   - `stopPreview` `{"previewId":"9f3c..."}` → `{}`.
-  - `getPreview` `{"previewId":"9f3c..."}` → `{"reading":{...},"details":[...]}` with the cut-outs (Live view only), no
-    picture (`{}` without a reading).
+  - `getPreview` `{"previewId":"9f3c...","knownCutouts":[17]}` → `{"reading":{...},"details":[...],"recent":[{"id":18,"time":"...","area":"Gate","text":"MSKU 123456 7","confidence":96,"hasFormat":true,"matchesFormat":true,"cutout":"<JPEG, base64>"}]}`,
+    the last reads newest first, each cut-out once; the reading's own cut-outs only while paused; Live view only, no picture
+    (`{}` for an ended preview).
+  - `pausePreview` `{"previewId":"9f3c..."}` → `{"paused":true,"picture":"<JPEG, base64>","reading":{...},"details":[...]}`
+    with the cut-outs; `{"problem":"No picture to pause yet."}` without a reading, `{}` for an ended preview or another
+    user's. Also needs the host's Live view (refused otherwise, fail closed) and the camera in the caller's devices.
+  - `resumePreview` `{"previewId":"9f3c..."}` → as `startPreview`: drops the frame and reads live again.
+  - `startPreview` also answers `paused` and, while paused, `rereading` (a reading of the held frame follows as the event).
   - Event `preview` `{"previewId":"9f3c...","reading":{...},"details":[...]}` after each reading of a preview (without
     the cut-outs), only to the user who started it (`PluginEventAudience.User`); the page fetches with `getPreview` only
     its own, one call at a time (newest wins).
-  - `getReading` → `{"reading":{...},"details":[...]}`: the reader's last reading with the cut-outs (Live view only),
-    never the picture.
+  - `getReading` `{"readerId":"...","knownCutouts":[17]}` → `{"reading":{...},"details":[...],"recent":[...]}`: the reader's
+    last reading and last reads with the cut-outs (Live view only), never the picture.
 
 ## Runtime stats
 
-The page shows whether the recognition keeps up, in the readers column below Settings, live every 2 s while the page is
-open. Measured on the server, cheap: each reading adds to counters (no allocation per picture); every 2 s a sample takes
+The page shows whether the recognition keeps up at the right end of its header (`ui:PageHeader.Trailing`: the state chip
+in one line and the load bar, decision 2026-11-04), live every 2 s while the page is open. Measured on the server, cheap: each reading adds to counters (no allocation per picture); every 2 s a sample takes
 the counters (`Readers/ReaderStats`); every figure is the newest sample against the oldest of the last 10 s (shorter right
 after the start). All time through the plugin's `TimeProvider`.
 
@@ -348,14 +494,14 @@ after the start). All time through the plugin's `TimeProvider`.
   - green "All readers keep up": every watching reader reaches at least 90 % of its frame rate and the load is below 75 %;
   - orange "Busy: 2 readers read slower than set" ("Busy: 1 reader reads slower than set") when a reader reads below
     90 % of its rate; "Busy: recognition is at 82 %" when only the load is 75 % or more;
-  - red "Overloaded: lower the frames per second or the number of readers" when a reader reads below 50 % of its rate,
-    or the load stayed at 95 % or more for 30 s (every sample from the first at 95 % on).
+  - red "Overloaded: lower the frames per second or the number of readers" only when the machine has no room left: the load
+    stayed at 95 % or more for 30 s (every sample from the first at 95 % on) and a reader reads slower than set, or no reader is judged. A reader far below its rate with room left is orange (decision 2026-11-04: "Overloaded" at 16 % load was wrong); a reader that keeps up at that load uses the room it found: orange.
   - A reader is judged only once it watched for the whole 10 s (a reader that just started is never orange).
 - **Recognition load** (bar with %): the share of the last 10 s the recognition was busy: the sum of the time every model
   call held its worker (`IRecognizerLoad.BusyTime`, `Recognition/BusyMeter`) divided by the window times the capacity
   (`IRecognizerLoad.Capacity`, the CPU workers `max(1, cores / 2)`), each CPU call counted while it holds its slot. With a
-  graphics card (Search's text finder there, one call at a time) the busy time grows per sample by the larger of the
-  workers' time and the card's time times the workers (`Recognition/CombinedBusy`): the load is the larger of the CPU's
+  graphics card the busy time grows per sample by the larger of the
+  workers' time and the busier card lane's time times the workers (`Recognition/CombinedBusy`), a reader call counted by how full it is (blank places take the next lines at no cost): the load is the larger of the CPU's
   and the card's. So 100 % still means no more fits: every CPU worker busy, or the card never idle.
 - **Numbers** (in `getStats` only, never shown on the page: decision 2026-11-03, the traffic light already says whether
   all is well): pictures per second (all readers, previews included; pictures whose areas were all unchanged are not
@@ -374,11 +520,11 @@ after the start). All time through the plugin's `TimeProvider`.
 
 ## Limits
 
-Decision 2026-11-03 (with the graphics card reading only Search's text finder, "GPU"): the limits follow the CPU on every
+The limits follow the CPU on every
 server, the traffic light ("Runtime stats") is the real guard.
 
 - **Frames per second**: 1, 2, 4, 8, 12 or 15 for every reader on every server (`OcrLimits.FpsChoices`; default 1). A
-  fixed area costs a worker about 28 ms (35 pictures per second), an unchanged one about 5 ms, so one reader at 15 is
+  small fixed area costs a worker about 28 ms (35 pictures per second), an unchanged one about 5 ms, so one reader at 15 is
   about half a worker; a server that cannot keep up turns the light orange or red and says which reader reads slower.
 - **Watching readers**: 4 per recognition worker (`max(1, cores / 2)`), at least 8 and at most 50
   (`OcrLimits.MaxWatching(cores)`): 2 or 4 cores 8, 8 cores 16, 16 cores 32, 24 cores 48. Measured on 24 cores: 20
@@ -394,8 +540,8 @@ server, the traffic light ("Runtime stats") is the real guard.
 
 ## Permissions
 
-- **View text recognition**: the page, the readers and their results.
-- **Change text readers**: New, Delete, Save, moving and drawing areas.
+- **View text recognition**: the page, the readers and their results. Pause needs the host's **Live view** too.
+- **Change text readers**: New, Delete, Save, moving and drawing areas, Use GPU (with all devices).
 - Running the action is part of the event rules' own permissions.
 
 ## Accuracy
@@ -404,19 +550,21 @@ The goal is to read better than the commercial readers (VAXTOR Generic Reader as
 often, from worse pictures, and never a wrong value reported as sure.
 
 - **Format-guided reading**: with a format, the recognition's character choice is limited per position (digits where
-  `#`, letters where `A`) while decoding, not fixed afterwards; the look-alike table stays as a last step. A check
+  `#`, letters where `@`) while decoding, not fixed afterwards; the look-alike table stays as a last step. A check
   digit is checked where the format has one (ISO 6346 for container numbers, "Expected text"); a wrong check digit is no
   match, never repaired by changing a character (the decoder once changed one character to make it fit; dropped
   2026-11-03, the accuracy set kept its baseline).
-- **Several frames vote** (Watching): per area the last 5 readings are combined character by character, weighted by
+- **Several frames vote** (Watching, unless Moving objects is on): per area the last 5 readings are combined character by character, weighted by
   confidence; the value is published once it holds: the vote must give the same value in 2 frames in a row. With a
   format the combined value must be a whole match of it, check digit included (`FrameVote.AcceptorOf`): characters of
   different readings that together break it are never published; the whole reading with the most weight wins instead.
-  A single bad frame (motion blur, a hand in front) changes nothing.
+  A single bad frame (motion blur, a hand in front) changes nothing. Each candidate remembers the frame it was read in and its
+  box (a reference; at most the 5 frames of the window per area, shared between the areas of a frame), so the row of a voted value
+  always shows that value.
 - **Small text is enlarged** before reading: a line lower than 24 px is scaled up (bicubic) to the model's 48 px; lines
   below 10 px are left out with "Text too small. Draw a smaller area or choose a higher resolution." on the page.
-- **Two text finders**: the PP-OCRv5 mobile text finder on the CPU, the server text finder (finds small text the mobile
-  one misses, about 6 times the work) on a GPU; one Latin reader everywhere. "Accurate" (the server text finder on the
+- **Two text finders**: the PP-OCRv5 mobile text finder on fixed-place areas and on the CPU, the server text finder (finds small text the mobile
+  one misses, about 6 times the work) for Search on a GPU; one Latin reader everywhere. "Accurate" (the server text finder on the
   CPU, at most 2 such model sets at once) exists in the recognition; the reader setting for it is not built yet.
 - **Confidence that means something**: the area's confidence is the lowest character probability of its value, not the
   mean; rules can require "Confidence greater than 90".
@@ -449,37 +597,57 @@ often, from worse pictures, and never a wrong value reported as sure.
 | Linux x64 with NVIDIA | CUDA | the NVIDIA driver and the CUDA 12 and cuDNN 9 runtime on the server (the docs say how); without them the CPU |
 | Linux arm64, macOS x64 | CPU | nothing |
 
-- The plugin picks at start: the graphics card when the provider loads and a test reading succeeds, else the CPU only.
-  Settings card of the page: "Runs on: CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8
-  cores)", and **Use the graphics card** (on by default) to force the CPU. `getEngine` / `setUseGpu` answer
+- The plugin picks at start: with **Use GPU** on, the graphics card when the provider loads and a test
+  reading succeeds, else the CPU only. With it off the provider is never loaded at start (no DirectML in the process);
+  turning it on tries the card then, without a restart (seconds, the box is off meanwhile), and `gpuAvailable` stays true
+  while the setting is off so the box can be used. Off during a run moves the readings to the CPU; DirectML, once loaded,
+  leaves with the next start.
+  Page header, short ("CPU 24 cores · RTX 5070 Ti", the full text as tooltip): "Runs on: CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8
+  cores)", and **Use GPU** (on by default) to force the CPU. `getEngine` / `setUseGpu` answer
   `{runsOn, gpuAvailable, useGpu, fpsChoices}`; `setUseGpu` is server-wide: the change right and all devices
   (`RequiresAllDevices`; the page disables the box for a user with a device group), audited. The setting is a plugin
-  setting handed to the recognizer (`IEngineInfo`) at start and on change; the next readings run where it says, the
+  setting handed to the recognizer (`IEngineInfo`) at start, before any card is tried, and on change; the next readings run where it says, the
   graphics card keeps its sessions until they idle or the plugin stops. Without a recognizer: the CPU, no graphics card.
-- **The graphics card reads Search only** (decision 2026-11-03, by the measurements below): the text finder of an area
-  read in tiles (larger than 960 px on its long side, `OnnxTextRecognizer.TileSize`; Search over the whole picture)
-  runs on the card with the server text finder (`Recognition/CardTextFinder`, one call at a time). Everything else runs
-  on the CPU workers as without a card: the text finder of fixed-place areas (mobile, Accurate: server), the reader and
-  the angle model for every line, Search's lines too. Measured: fixed areas are as fast on the card as on the CPU, 20
-  readers at once slower (the card's calls run one at a time), and Search's lines on the card would make one full HD
-  Search about 80 ms faster (the card read 32 lines in one call of 82 ms, the old path's reader 29 ms per picture) but
-  take a fifth more of the card's time per picture, which several Search readers share, and need reader sessions on
-  the card; on the CPU's 12 workers they run beside the card's next text finder call.
-- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): the card holds only the text finder's sessions.
-  On DirectML every input size is a session of its own that keeps its own copy of the model and its buffers on the card
-  until it is disposed (the provider frees nothing while a session lives). The budget counts each session by the pixels
-  of its calls: `512 MB + 1,500 bytes x count x height x width` (`Estimate`, never below a measured session), and keeps
-  the sum at or below **4 GB** (`MaxBytes`) whatever the cameras' resolution:
+- **With a usable card the models run there** (decision 2026-11-04, replaces "the graphics card reads Search only" of
+  2026-11-03 by the measurements in "Measured: one reader"): text finder, reader and angle model on the card, Search with
+  the server text finder, fixed-place areas with the mobile one; the CPU decodes, cuts and decodes the text. Each model is
+  tried at the start of the card (`CardModels.Probe`): a model whose test call fails or takes more than 1.5 times the CPU's
+  time (`CardRoute`) stays on the CPU, one log line. A card call that fails during a run (a driver reset) ends the card's use:
+  that call and all later ones run on the CPU, one log line, `OnGpu` false. Accurate stays on the CPU. Fixed areas were as
+  fast on the card as on the CPU only for small areas; the old rule also held all the lines on the CPU, by far the largest
+  stage on a label (525 of 670 core-ms).
+- **Two lanes, shared calls** (`Recognition/CardModels`): the text finder and angle model run one call at a time on one lane,
+  the reader on the other, each on a thread of its own, so a text finder call never waits for lines (one lane: busy 89 % of
+  the time with the card busy 48 %). What waits goes into the next call, so the lines and pictures of several readers share
+  calls. Text finder: 1 picture, or 4 when more wait (blank places fill the call; 4 pictures take twice the time of 1).
+  Reader: lines of one width in calls of 4 or 16 (blank places change no reading). Angle model: 1 or 16.
+- **Exact sizes, little padding.** The card must read what the CPU reads, so no size is bought with a reading:
+  - A fixed-place area goes to the text finder at the CPU's size (a multiple of 32). The old steps of 256, 512, 768 and 1024
+    lost text: small labels 25 of 31 at 768 x 768, 31 of 31 at 640 x 736. Search's tiles keep the steps: a tile holds picture to
+    its edges.
+  - Line widths are about 1.25 apart (`CardModels.LineWidths`): 128, 160, 200, 256, 320, 400, 512, 640, 800, 1024, 1280, 1600,
+    3200. Moving labels with 4 px blur: steps of 2 read 19 of 25, steps of 1.4 read 24, steps of 1.25 all 25, as on the CPU.
+    Only lines of one width share a call: narrower lines in a wider call read 2 of 25. Padding stays 0: repeating the line's
+    last column read far worse (1 of 25).
+  - A text finder size whose session does not fit beside the others reads on the CPU (`CardModels.FinderFits`), so many area
+    sizes never make the card build sessions at every picture.
+- **Graphics card memory** (`Recognition/GpuSessionBudget`, no setting): on DirectML every input size is a session of its own
+  that keeps its own copy of the model and its buffers on the card until it is disposed (the provider frees nothing while a
+  session lives). The budget counts each session by the pixels of its calls: server text finder `512 MB + 1,500 bytes x
+  count x height x width` (`Estimate`, never below a measured session), mobile text finder `128 MB + 400 bytes` per pixel
+  (`EstimateFinder`), reader and angle model `128 MB + 300 bytes` per pixel (`EstimateReader`), and keeps the sum at or below
+  **80 % of the card's memory** as the card reports it (`CardShare`, decision 2026-11-04; 4 GB, `MaxBytes`, when it does not tell), whatever the cameras' resolution; a Search call may take half of that, so a large card sends more tiles per call. More sizes than that do not pay: 8 line widths in 5 batch sizes filled
+  the budget and rebuilt sessions at every picture (5.1 pictures per second, the card 22 % busy):
   - a Search is split into calls of one size of at most half the cap (`TilesPerCall`: the fewest calls, the tiles spread
     evenly, blank tiles fill the last one), so two Search sizes (two cameras' resolutions) stay on the card together; a
-    single tile of 1024 x 1024 (1.96 GB estimated) always fits. Full HD: 6 calls of one 768 x 768 tile (two would be
-    2.15 GB); QHD: 6 calls of one 1024 x 1024 tile; 4K: 15. The calls' inputs and boxes are made on the CPU while the card
+    single tile of 1024 x 1024 (1.96 GB estimated) always fits. At the 4 GB cap: full HD 6 calls of one 768 x 768 tile (two would
+    be 2.15 GB), QHD 6 calls of one 1024 x 1024 tile, 4K 15; a card of 16 GB (cap 12.8 GB) takes a whole Search in one call. The calls' inputs and boxes are made on the CPU while the card
     runs another call (at most 3 calls ahead);
   - before a new session the least recently used ones go until it fits (made again when needed, 0.5 to 1 s) and the
-    first time the server logs "Text recognition keeps at most 4096 MB of model sessions on the graphics card"; a session
+    first time the server logs "Text recognition keeps at most <cap> MB of model sessions on the graphics card"; a session
     larger than the cap is never made;
   - a session unused for 2 minutes is freed (like the CPU workers' sets), so an idle server gives the card back;
-  - every call runs inside the budget's gate, so a session is never freed while it runs; memory pattern off and
+  - every call holds its session (`Hold`, `Free`), so a session is never freed while it runs, a new one that does not fit waits; memory pattern off and
     sequential execution as the DirectML provider asks;
   - CUDA: one session takes every size; its memory pool grows by what a call needs
     (`arena_extend_strategy=kSameAsRequested`, not the next power of two), bounded by the same calls per Search.
@@ -502,11 +670,11 @@ often, from worse pictures, and never a wrong value reported as sure.
     fixed place, 4 areas and 20 readers 0.1 GB (no session on the card); full HD Search 1.25 GB; QHD and 4K Search after
     it 2.7 GB (the full HD and the 1024 x 1024 sessions, 3.29 GB estimated, none freed); the accuracy set 1.3 GB. No
     driver reset in any run.
-- The limits do not depend on the graphics card ("Limits"): it reads only Search's text finder, the CPU every fixed area
-  and every line.
+- The limits do not depend on the graphics card ("Limits"): the CPU decodes every picture and works when the card fails;
+  the traffic light shows what a server carries.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the
   CPU; 20 fixed-place readers at 4 frames per second.
-- Measured (2026-11-03, development PC: Ryzen 9 3900X, 24 cores, RTX 5070 Ti with nothing else on the card,
+- Speeds of small fixed areas and Search before the models moved to the card (2026-11-03, development PC: Ryzen 9 3900X, 24 cores, RTX 5070 Ti with nothing else on the card,
   `RecognitionBenchmarkTests`, Perf; the full HD picture of the coffee box, QHD and 4K the same picture scaled up; ms per
   picture, one after the other; 20 readers: all at once, ms per picture in all; other work ran on the PC, the best of 2
   runs):
@@ -543,6 +711,122 @@ often, from worse pictures, and never a wrong value reported as sure.
   The old all-card path read camera-box 75 % and hard-sign with 4.8 % character errors (its server text finder on the
   fixed areas).
 
+## Measured: one reader
+
+Measured 2026-11-04 on the development PC (Ryzen 9 3900X, 24 threads, dual-channel memory, RTX 5070 Ti 16 GB, driver 616.92,
+Release, the desktop on the card), `Recognition/OneReaderSpeedTests` (Perf; `OADM_SPEED_CARD=1` for the card, by hand): a
+belt of parcels made in memory, a label of 15 lines moving 12 px per frame, about 16 lines in view, 1 area of 600 x 700 px,
+format `@@-####-##`, frames sent at the set rate to a real watching reader for 18 s, the first 4 not counted. The ship target
+is 25 frames per second on 1920 x 1080. The page offers at most 15 (decision 2026-11-04): the margin keeps the machine calm.
+
+| One reader, 25 fps set | Before (2 threads per call, 12 sessions) | CPU now | DirectML |
+|---|---|---|---|
+| Reads per second | 4.5 (at 15 set) | 8.4 | 25.0 |
+| Latency of a picture | 223 ms | 390 ms | 101 ms |
+| Load, state | 26 %, Overloaded | 55 %, Busy: 1 reader reads slower than set | 44 %, All readers keep up |
+| Process CPU (cores of 24) | 7.2 (30 %) | 6.8 (28 %) | 1.4 (6 %) |
+| Core-ms per picture | 1,654 | 802 | 58 |
+| Working set, every worker busy | 2.7 GB (Search 3.7, peak 3.9) | 0.65 GB (Search 1.07, peak 1.24) | 1.2 GB (Search 1.4, peak 1.7) |
+| Allocated per picture | 4.6 MB | 2.0 MB | 1.3 MB |
+| GC pause | | 1.6 ms per second | 2.4 ms per second |
+| On the card | | | 2.3 GB, about half busy |
+
+**The target needs the card.** On the CPU 25 per second is out of reach on this PC. Two stages stop it:
+
+- The text finder at 640 x 736 tops out at about 14 calls per second however many threads or sessions run it (alone 8 per
+  second at 122 core-ms; 2 at once 12; 4 at once 14 at 270; 12 at once 13 at 892): a shared limit of the machine, most likely
+  its memory. So at most 3 large calls run at once (`OcrLimits.LargeTextFinderCalls`).
+- The reader costs 32 core-ms per line on one thread. 16 lines at 25 per second are 13 cores, more than half this CPU.
+
+| A picture, per stage | Before: core-ms (wall ms) | CPU now: core-ms (wall ms) | Worth moving |
+|---|---|---|---|
+| Decode | 15 (15) | 7.6 (7.3) | no: little, and needs the CPU |
+| Text finder's input, boxes | 5 | 4 | no |
+| Text finder model | 157 (80) | 116 (117) | yes |
+| Cut lines | 8 (8) | 8 (8) | no |
+| Reader model and input | 1,276 (89) | 525 (67) | yes: by far the most |
+| Angle model | 5.6 (8) | 5.1 (11) | little, goes along |
+| Second reading of the area | 0 (the area is no strip) | 0 | no |
+| Decoding the text, matching | 5 | 5 | no |
+| Whole picture | 1,563 (207) | 670 (217) | |
+
+On the card a whole picture costs about 50 to 60 core-ms, of which model calls about 25 (they wait for the card) and the rest
+decode, cut and decode the text. 720p: 12.6 per second on the CPU (before 6.6), 15 of 15 on the card.
+
+| Many readers | Before | CPU now | DirectML | CUDA (same calls, no plugin) |
+|---|---|---|---|---|
+| 1 reader at most, pictures per second | 4.5 | 8.4 | 31 | 44 |
+| 10 readers, pictures per second in all | 6 | 10 at 9.5 cores | 47 at 2.2 cores | 71 |
+| 10 readers at 4 fps | 0.6 each | 1.0 each | 4.0 each, 2.0 cores, keeps up | |
+| 10 readers at 8 fps | | 1.0 each | 4.9 each | about 7 each |
+| 10 readers at 25 fps | 0.6 each | 1.0 each | 4.9 each | about 7 each |
+| 20 small fixed areas at once, in all | 150 | 260 | 620 | |
+| 20 label readers at once, in all | 6 | 10 | 56 | |
+| Search over full HD, one reader | 2.0 at 10.5 cores | 2.6 at 5.8 cores | 3.8 to 4.7 at 0.8 cores | |
+| Model process memory | | | 0.5 GB | 1.3 GB |
+| First call after the start | | | 2 s | 9 to 79 s |
+
+What the numbers changed:
+
+- **One thread per call, one session per model.** 12 calls of 2 threads with sessions of their own: 100 lines per second at
+  223 core-ms. 12 calls of 1 thread on one session: 226 lines per second at 44 core-ms, 131 instead of 310 MB. More threads per
+  call barely help (1 thread 31 ms, 2 threads 17, 4 threads 13, 8 threads 14 at 115 core-ms), 24 calls at once collapse to half
+  (the hardware threads share their cores). Batches of 8 lines and more are worse per line on the CPU.
+- **No padding to 320 on the CPU**: a short line costs a third, the accuracy set reads better (hard receipts 37.5 to 50 %
+  exact), moving labels no worse.
+- **Frames overlap only with room**: without a free worker a reader stays at one frame, as before; 20 readers at once read
+  more, never less.
+- Kept: ONNX Runtime's arena and memory pattern (without the arena 20 times slower, without the pattern a third slower).
+
+Tried, not kept:
+
+- **A smaller text finder input.** A cap of 640 px on the long side reads 6 of 25 moving labels with 4 px blur, 480 px 10 of
+  25, all 25 at full size. The accuracy set does not show it: its fixed areas are smaller.
+- **More frames in work.** 8 frames: fewer pictures at twice the latency (the text finder's limit above).
+- **Reusing a line's reading from the frame before.** Only 58 % of the lines had the same text a frame earlier, and half of
+  those lay as far from their print as other text does: little gain, and the risk of a stale digit.
+- **The second reading of a fixed-place area, and the angle model, as suspects:** an area of 600 x 700 is no strip, so no
+  second reading; 1.4 lines per picture ask the angle model, 5 core-ms. Nothing to gain.
+- **A CPU thread pool over all calls** (intra 12 on a shared session, no spinning): 120 lines per second at 183 core-ms.
+- Not tried: quantized models. They could help a CPU-only server; they need the accuracy set to hold.
+
+**Accuracy** (`AccuracySetTests`, `Moving_and_blurred_labels_read_their_values`, 2026-11-04): the set on the CPU 90.7 % exact
+with a format (88.9 % before, hard receipts 50 %), any text 91.7 %; on DirectML every group at or above the baseline, hard
+receipts 50 %, hard signs 66.7 %. Moving labels, the same on the CPU and on DirectML: sharp, 2 px and 4 px motion blur 25 of
+25, small labels 31 of 31, with 2 px blur 28 of 31, very small 32 of 32, 720p 25 of 25, one wrong match over all.
+
+**Open**: DirectML is measured on one NVIDIA card only. AMD and Intel cards and the plugin on CUDA (Linux) are not tested; a
+test call and the 1.5 rule guard them, a card that reads differently would not be noticed. Search's goal of 10 per second
+is still open (3.8 to 4.7). 25 frames per second from a real camera's MJPEG stream is not measured.
+
+## Measured: dashes
+
+Measured 2026-11-04 on the CPU, `Dash_formats_on_moving_labels` (Perf): the belt of "Measured: one reader" with a barcode line
+(`CX 1379 2379 0 AT`) and a reference (`CP013790 78 3 AT`) on each label, 2 whole parcels, 110 frames, 15 frames per second, the
+variants sharp, 2 and 4 px blur, small with 2 px blur, very small with strong JPEG, 720p with 2 px blur; 1,188 values in view.
+Before, a dash of the format could be missing in the text.
+
+| Format | Frames read | Frames with a wrong value | Rows with a wrong value, vote | With Moving objects |
+|---|---|---|---|---|
+| `@@-####-##` | 377 to 368 of 396 | 130 to 8 | 21 to 0 | 25 to 0 |
+| `####-####` | 234 to 332 of 396 | 224 to 15 | 35 to 2 | 33 to 1 |
+| `####-##-##` | 330 to 331 of 396 | 90 to 6 | 16 to 0 | 14 to 0 |
+| All | 941 to 1,031 | 444 to 29 | 72 to 2 | 72 to 1 |
+
+The frames lost are on 4 px blur, where the dash itself goes (`@@-####-##` 49 to 40 of 61 frames); every parcel still gives its row
+(right rows 20 before and after). `####-####` gains frames: `2026-11-04` no longer passes as `2026-1104`, so the label's order number
+wins. What stays wrong are single digits misread on a line with its real dashes. `Moving_and_blurred_labels_read_their_values`:
+every variant reads as before (25 of 25 up to 28 of 31), matches on other lines 742 to 0, wrong values 1 to 0. The accuracy set has no
+dash format and stays the same: 90.7 % exact with a format, any text 91.7 %.
+
+**Dashes in the guided decoding**: optional in the search, then a match with dashes must hold exactly the dashes of the free reading
+in its frames (`LineReader.DashesAsRead`). Required in the search would force a dash onto frames without one and need a limit of its
+own. The check against the free reading works both ways: it refuses a dash found under another character (no effect on this belt)
+and a dash the search left out (157 of the 188 wrong frames left by the first rule). A format without a dash behaves as before.
+
+**Moving objects** against the vote on the same frames: right rows 50 and 50, wrong rows 1 and 2; with every second frame read (a CPU
+at 8 per second) right rows 47 and 47, wrong none.
+
 ## Packaging and dependencies
 
 - Add-on (`docs/spec/add-ons.md`): one ZIP per server platform with ONNX Runtime (MIT: `Microsoft.ML.OnnxRuntime.DirectML`
@@ -554,7 +838,7 @@ often, from worse pictures, and never a wrong value reported as sure.
   LICENSE TERMS – DIRECTML" allow passing it on inside applications for Windows, and its section 2a says the software
   may collect data and send it to Microsoft. Its full license is in the plugin's notices (`OadmNoticePackage` item in
   the csproj; `check-addon-zip.sh` fails a Windows ZIP without it). The user docs say that the graphics card on Windows
-  runs on Microsoft DirectML under Microsoft's terms; turning off **Use the graphics card** keeps it unused (CPU only:
+  runs on Microsoft DirectML under Microsoft's terms; with **Use GPU** off it is not loaded at a start (CPU only:
   ONNX Runtime MIT, SkiaSharp MIT, models Apache-2.0).
 - The models are never in git: the build downloads each from its pinned Hugging Face revision into a local cache, checks
   its SHA-256 (another hash fails the build) and copies it into the output's `Models/` (`Models/Models.targets`,
@@ -571,10 +855,11 @@ the real parts once per start (`ReaderParts.Real`), the tests hand fakes:
 |---|---|---|
 | `IRecognizerLoad` (optional) | `Recognition/OnnxTextRecognizer` (`BusyMeter` in the CPU slots and the graphics card's calls) | busy time and capacity for the runtime stats |
 | `IFrameSource` | `Frames/VapixFrameSource` (the plugin's full device access, `ctx.System.Vapix`) | single pictures and the MJPEG stream of a camera |
-| `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas, unchanged areas given again for a reuse source (`ReadAsync(jpeg, areas, reuseSource, ct)`; `IDetailedTextRecognizer` adapts it); what reads (`OnGpu`, `RunsOn`), Use the graphics card |
+| `ITextRecognizer` (+ `IEngineInfo`) | `Recognition/OnnxTextRecognizer` (the plugin folder's `Models/`) | lines per area with box and confidence, the too small areas, unchanged areas given again for a reuse source (`ReadAsync(jpeg, areas, reuseSource, ct)`; `IDetailedTextRecognizer` adapts it); what reads (`OnGpu`, `RunsOn`), Use GPU |
 | `ITextMatcher` | `Matching/TextMatcher` | an area's value (`AreaValue`): whether it matches, the raw text, every match, its confidence and box |
-| `IPictureCutter` | `Recognition/PictureCutter` (SkiaSharp) | the value's cut-out for the page |
+| `IPictureCutter` | `Recognition/PictureCutter` (SkiaSharp) | the value's cut-out for the page, upright when its turn is known, within the size limits ("The last 20 reads") |
 | the vote | `Matching/FrameVote` inside `Readers/AreaWatch` | the last 5 frames and the publish rule (2 in a row, only on change) |
+| Moving objects | `Matching/TwoFrames` inside `Readers/AreaWatch` | a value read in 2 frames in a row, from the second one, no vote |
 
 The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), never copies ("Page").
 
@@ -584,15 +869,23 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   without decoding); at most 30 text boxes, the strongest, and the reading's note.
 - Recognition from recorded camera pictures with known text (`tests/Oadm.Plugins.Ocr.Tests/Fixtures`, recorded read-only
   from the development cameras): lines found, text and order, several lines, a slanted line.
-- Format: the syntax, look-alike fixes by position, a number split over two lines, no match.
+- Format: the syntax, look-alike fixes by position, a number split over two lines, no match; a dash must be a dash, on the matcher and on what the reader read (`TextMatcherTests`, `DecodingTests`).
+- Moving objects and a value's frame (`Readers/AreaWatchTests`, `Readers/MovingObjectsTests`): off equals the plain vote, on needs 2 frames in a row, a misread in one frame gives no row and no event, A, B, A three, the second frame's picture, a voted value's cut-out from its own frame, also through the action, the frames held per area, a preview with and without the setting and changing it on a running stream, a draft that never shares another setting's stream, Pause; the setting saved, restarted and missing in an older record. The page (`Client/PageNoteTests`): the checkbox only while Watching and in the draft, the note above Save, the video's height unchanged, the 5 s hold on a fake clock, an alert that joins without a change, the paused lines at once, a short window, screenshots at 2000 x 870.
+- Upright cut-outs (`Recognition/UprightCutOutTests`): labels turned by 180, 90, -90, 15, -30 and 165 degrees read for real on the CPU, the cut-out wide, not upside down, reading its value again; no turn or a bad one never fails; the limits; a screenshot of the dialog.
 - Watching: the vote over 5 frames (a single bad frame changes nothing), a value published only when the vote holds in 2 frames and only on change; newest frame wins; a dropped stream reopens
   with the growing pause (`FakeTimeProvider`).
 - The action: one reading, "Already reading", the events of every area.
 - The preview (`Readers/PreviewTests`): the draft read live without rule events, new areas without a new stream, the
   lease (`FakeTimeProvider`), 8 previews and the watching limit, sharing an unchanged watching reader's stream, device
   groups, what a draft allows.
-- The page (`Client/`): fixed columns without a splitter and the results below the video; Name, Mode and Stream
-  with its summary (no camera field), the area rows under one header with the name as text, the mode select, Rename and
+- Pause (`Readers/PauseTests`): the frame that was read answered and read again by each edit, Resume, a saved reader
+  running and firing beside it, a burst of edits gated to the newest draft, the lease and the 8 previews, another picture,
+  a deleted reader, Live view and device groups, the pixel limits; an edit never answered with the old reading
+  (`UnchangedReuseTests`). The page (`Client/PagePauseTests`): the frame in the video's place, the ring, leaving the pause, a
+  refusal, no Live view, a real pointer press on the button that touches no area and leaves the keys with the picture,
+  a drag across it; screenshots live, paused and after an edit, and the frames the alignment is measured on.
+- The page (`Client/`): fixed columns without a splitter and the results below the video, also in a wide window; Name, Mode and Stream
+  with its summary (no camera field), the area rows under one header with the name as text, the ⋯ menu, the format help and
   the row selection following the area; with 8 areas in a short window only the rows scroll, New and Save stay in reach; a real pointer drag that moves
   and resizes an area which stays there (`PageLayoutTests`, headless); the lines hidden while an area is drawn or
   adjusted, the start hint without areas, the reading's note, the stats panel and a slow reader's orange chip
@@ -616,14 +909,14 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   (`Recognition/SearchRoutingTests`: the larger of the CPU workers' and the card's busy time), the
   server CPU, a reader judged only after a whole window, the traffic light's thresholds, red only after 30 s at 95 %, the
   live event only while asked, device groups; the busy time each worker call adds (`WorkerTests`).
-- Limits: at most `max(1, cores / 2)` workers held by a gate; 50 readers, the watching readers by the cores (4 per worker, 8 to 50) and 4 per site, a reader beyond them with the limit as its problem, the saved readers before the previews' own streams, 2 previews per user; GPU fallback to the CPU; the accuracy set and its score; device groups; Use the graphics card only with all devices.
+- Limits: at most `max(1, cores / 2)` workers held by a gate, one session set shared by all calls, 3 large text finder calls at once, a frame beside another only with room, in order (`WatchingTests`); 50 readers, the watching readers by the cores (4 per worker, 8 to 50) and 4 per site, a reader beyond them with the limit as its problem, the saved readers before the previews' own streams, 2 previews per user; GPU fallback to the CPU; the accuracy set and its score; device groups; Use GPU only with all devices.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
 - End to end with the real parts (`EndToEndTests`): recorded pictures of the coffee box through a watching reader give
   each value once and an empty value once when the box is gone; the action Read text reads a container number with its
   format and the page gets its cut-out.
 - The model sources: `Models.targets` and `Models/README.md` name the same files, revisions and SHA-256.
-- Speeds (`RecognitionSpeedTests` and `RecognitionBenchmarkTests` with the time of each stage, Perf, not in `manage
-  test unit`): the numbers of "GPU".
+- Speeds (`RecognitionSpeedTests`, `RecognitionBenchmarkTests` and `OneReaderSpeedTests` with the time and CPU of each stage, Perf, not in `manage
+  test unit`): the numbers of "GPU" and "Measured: one reader". The card's rules without a card (`CardRoutingTests`): a model's route, the calls' sizes, the fallback, the load by how full a call is, sessions held for their calls.
 - Partial decode (`PictureTests`: the same pixels as a full decode), unchanged areas (`UnchangedAreasTests`: reuse,
   a changed area read anew, other readers, 10 uses in a row), the angle model's skip rule, idle session sets freed
   (`FakeTimeProvider`), a set in use freed only after its call.
@@ -632,6 +925,18 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   recently used out, a session over the cap never made, Search split into calls of half the cap, idle sessions freed
   (`GpuSessionBudgetTests`, fake sessions); fixed-place areas on the CPU and Search on the card, full HD, QHD and 4K
   Search within the cap, the runs-on text (`SearchRoutingTests`, fake runners, no graphics card).
+- The last 20 reads (`Readers/RecentReadsTests`, `Client/PageRecentReadsTests`): the 20 and the oldest dropped with its cut-out,
+  newest first, a value twice one row, A, B, A three, no row for an empty value or a non-match, a row with each event of a
+  watching reader, a preview's list against the saved reader's, an On action reader's page, a deleted reader, no row from a
+  held frame's re-reads, device groups, no cut-out without Live view, a cut-out once per row, the frame gone once cut, the
+  memory bound, no allocation for an unchanged value, the real cutter within its limits on noise; the page: one reset per
+  change and none without, one decode per row, a bitmap disposed when its row leaves, the note, a table frozen while paused (newer
+  rows, re-reads, replies around a Pause and a Resume) and up to date on Resume, Use read text as format with older rows, a real
+  click on a thumbnail, the dialog's whole-number scale without smoothing; screenshots with 20 rows at 2000 x 870, paused and the
+  dialog.
+- The resizer (`Client/PageLayoutTests`): a real pointer drag, the stops at 30 % and at the results' minimum, a short window, the
+  order of the limits; screenshots at 2000 x 870 by default and dragged up to the limit. The paused note (`Client/PagePauseTests`):
+  match, no match, eight areas in a short window.
 - A reader's life (`Readers/ReaderLifecycleTests`): a rename keeps the stream and the published values, a reading of a
   deleted reader is neither kept nor fired, one of old areas not kept, a stream's problem in the list until pictures
   come, Read text from a watching reader's fresh reading or the one in work, cut-outs only with Live view, no text of a
@@ -647,8 +952,8 @@ mobile text finder by `Recognition/AngleSweepTests` (Perf, about 10 minutes on 2
 pinned by `Recognition/AngleLimitsTests` (a normal test, 5 s).
 
 - **Pictures**: made in memory (`Recognition/AngleSweep.cs`, SkiaSharp), full HD, the plate in the middle: the container
-  number `MSKU 123456 5` (`AAAU ###### #`, `45G1` below it) on a ribbed door, `4/12` (`#/##`, `INTENSITY` above it) on a
-  label, `LOADING DOCK 3` (Any text, one line) on a sign, `36F1A` (`##A#A`, `TOTAL EUR 10.60` below it) on a receipt.
+  number `MSKU 123456 5` (`@@@U ###### #`, `45G1` below it) on a ribbed door, `4/12` (`#/##`, `INTENSITY` above it) on a
+  label, `LOADING DOCK 3` (Any text, one line) on a sign, `36F1A` (`##@#@`, `TOTAL EUR 10.60` below it) on a receipt.
   20 variants per text and angle: Roboto Bold and Regular (from the repository), Arial Bold, Consolas Bold, cap heights
   24 to 40 px, each block of 5 clean, blurred (1.2 px), noisy (sigma 8) or strong JPEG (quality 40).
 - **Fixed place**: one square area around the plate, large enough for any turn (the same area at every angle). **Search**:

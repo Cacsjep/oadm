@@ -234,7 +234,7 @@ public sealed class PreviewTests
             [
                 new Area { Name = "", Box = new(0.1, 0.1, 0.2, 0.2), Expected = ExpectedText.WithFormat("12") },
                 new Area { Name = "Out", Box = new(0.9, 0.9, 0.5, 0.5) },
-                new Area { Name = "Code", Box = new(0.5, 0.5, 0.2, 0.2), Expected = ExpectedText.WithFormat("A#") },
+                new Area { Name = "Code", Box = new(0.5, 0.5, 0.2, 0.2), Expected = ExpectedText.WithFormat("@#") },
             ],
         };
 
@@ -244,7 +244,7 @@ public sealed class PreviewTests
         Assert.Equal(OcrLimits.DefaultFps, ReaderRules.PreviewOf(draft with { Fps = 10 }).Fps); // no choice: the default
         Assert.Equal(["Area 1", "Code"], cpu.Areas.Select(a => a.Name)); // outside the picture: left out
         Assert.Equal(ExpectedTextKind.Any, cpu.Areas[0].Expected.Kind); // a format with a problem reads any text
-        Assert.Equal("A#", cpu.Areas[1].Expected.Format);
+        Assert.Equal("@#", cpu.Areas[1].Expected.Format);
         Assert.Equal(OcrLimits.PreviewFpsOnAction, ReaderRules.PreviewOf(draft with { Mode = ReaderMode.OnAction }).Fps);
         Assert.Equal(ReaderRules.CameraMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { DeviceId = Guid.Empty })).Message);
         Assert.Equal(ReaderRules.ResolutionMissing, Assert.Throws<ArgumentException>(() => ReaderRules.PreviewOf(draft with { Resolution = new(10, 10) })).Message);

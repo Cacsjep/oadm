@@ -13,6 +13,12 @@ public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> D
 {
     /// <summary>The reader as it read the picture (camera, areas); null when not known.</summary>
     public Reader? Reader { get; init; }
+
+    /// <summary>
+    /// Per area: the frame a voted value was read in, when this picture does not hold it (an empty entry: this picture). Null
+    /// when every value is this picture's own.
+    /// </summary>
+    public IReadOnlyList<ValueFrame>? Sources { get; init; }
 }
 
 /// <summary>
@@ -21,6 +27,9 @@ public sealed record ReaderReading(Reading Reading, IReadOnlyList<AreaDetails> D
 /// </summary>
 internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matcher, TimeProvider time, ReaderStats? stats = null)
 {
+    /// <summary>A reader may start another frame beside the ones it has in work (<see cref="IRecognizerLoad.HasRoom"/>).</summary>
+    public bool HasRoom => recognizer is IRecognizerLoad { HasRoom: true };
+
     /// <summary>Reads <paramref name="jpeg"/> with the areas of <paramref name="reader"/>.</summary>
     /// <param name="reuseSource">
     /// Watching and previews: who reads (the reader's or the preview's id); an area whose pixels have barely changed since that
@@ -83,7 +92,7 @@ internal sealed class ReadingMaker(ITextRecognizer recognizer, ITextMatcher matc
             MatchesFormat = value.Match.MatchesFormat,
             Lines = lines,
         };
-        return (result, DetailsOf(result, value.AllMatches, value.MatchBox));
+        return (result, DetailsOf(result, value.AllMatches, value.MatchBox) with { MatchTurn = value.MatchTurn });
     }
 
     /// <summary>The further values of a (voted) result.</summary>

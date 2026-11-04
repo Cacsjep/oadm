@@ -82,10 +82,14 @@ public interface ITextMatcher
 /// <param name="AllMatches">Every different match of the format (at most 10); empty without a format.</param>
 /// <param name="Confidence">0 to 100: the lowest character probability of the value (its lines' <see cref="TextLine.Confidence"/>); 0 without a value.</param>
 /// <param name="MatchBox">Where the value was found, relative to the picture; null without a value.</param>
-public sealed record AreaValue(AreaMatch Match, IReadOnlyList<string> AllMatches, double Confidence, RelativeBox? MatchBox);
+public sealed record AreaValue(AreaMatch Match, IReadOnlyList<string> AllMatches, double Confidence, RelativeBox? MatchBox)
+{
+    /// <summary>How the value's line lies in the picture, for its upright cut-out; null when not known.</summary>
+    public LineTurn? MatchTurn { get; init; }
+}
 
 /// <summary>
-/// Optional next to <see cref="ITextRecognizer"/>: what reads the pictures and the setting "Use the graphics card"
+/// Optional next to <see cref="ITextRecognizer"/>: what reads the pictures and the setting "Use GPU"
 /// (docs/spec/ocr.md "GPU"). The plugin stores the setting and hands it over at start and on every change; the recognizer
 /// applies it (false: the CPU, <see cref="OnGpu"/> false). Without it the page shows the CPU and no graphics card.
 /// </summary>
@@ -94,13 +98,13 @@ public interface IEngineInfo
     /// <summary>True while the recognition runs on a graphics card (more watching readers, higher frame rates).</summary>
     bool OnGpu { get; }
 
-    /// <summary>What reads now: "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)"; an empty name: the plugin names the CPU.</summary>
+    /// <summary>What reads now: "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)"; an empty name: the plugin names the CPU.</summary>
     RecognitionDevice RunsOn { get; }
 
     /// <summary>A graphics card was found and passed the test reading.</summary>
     bool GpuAvailable { get; }
 
-    /// <summary>Applies the setting "Use the graphics card" (on by default).</summary>
+    /// <summary>Applies the setting "Use GPU" (on by default).</summary>
     void SetUseGpu(bool useGpu);
 }
 
@@ -119,6 +123,12 @@ public interface IRecognizerLoad
     /// run one at a time on one shared set).
     /// </summary>
     int Capacity { get; }
+
+    /// <summary>
+    /// True while a worker is free and no model call waits: a reader may start another frame before its last one ended
+    /// (<see cref="OcrLimits.MaxFramesInWork"/>). The default: one frame at a time.
+    /// </summary>
+    bool HasRoom => false;
 }
 
 /// <summary>Cuts the picture of a found value out of a frame for the page. Optional.</summary>
@@ -126,11 +136,17 @@ public interface IPictureCutter
 {
     /// <summary>The part <paramref name="box"/> of <paramref name="jpeg"/> as JPEG; null when it cannot be cut.</summary>
     byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box);
+
+    /// <summary>
+    /// The value at <paramref name="box"/> shown upright by <paramref name="turn"/>, as the reader saw it; null turn: the level
+    /// cut-out of <paramref name="box"/>. The default ignores the turn.
+    /// </summary>
+    byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box, LineTurn? turn) => Cut(jpeg, box);
 }
 
 /// <summary>What runs the recognition (<see cref="IEngineInfo.RunsOn"/>): the CPU with its cores, and the graphics card while it reads Search.</summary>
 /// <param name="IsGraphicsCard">True while a graphics card helps (DirectML or CUDA).</param>
-/// <param name="Name">"CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)".</param>
+/// <param name="Name">"CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)".</param>
 public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)
 {
     /// <summary>The page's settings line: "Runs on: CPU (8 cores)".</summary>

@@ -15,16 +15,18 @@ internal sealed class ShapeSessions : IDisposable
     private readonly ExecutionTarget _target;
     private readonly int _threads;
     private readonly GpuSessionBudget? _budget;
+    private readonly Func<long, long> _estimate;
     private readonly InferenceSession? _single;
-    private readonly RunOptions _runOptions = new();
     private InferenceSession? _fresh;
 
     /// <param name="budget">DirectML: the sessions on the card (required there); else unused.</param>
-    public ShapeSessions(string path, ExecutionTarget target, int threads, GpuSessionBudget? budget = null)
+    /// <param name="estimate">The card memory of a session by its input pixels (default <see cref="GpuSessionBudget.Estimate"/>).</param>
+    public ShapeSessions(string path, ExecutionTarget target, int threads, GpuSessionBudget? budget = null, Func<long, long>? estimate = null)
     {
         _path = path;
         _target = target;
         _threads = threads;
+        _estimate = estimate ?? GpuSessionBudget.Estimate;
         if (target != ExecutionTarget.DirectMl)
         {
             _single = SessionFactory.Create(path, target, threads);
@@ -57,13 +59,18 @@ internal sealed class ShapeSessions : IDisposable
             return RunOn(_single, input, shape, read);
         }
 
-        // DirectML: the session of this size, held in the budget's gate for the call (never freed while it runs).
-        lock (_budget!.Gate)
+        // DirectML: the session of this size, held for the call (never freed while it runs).
+        // Counted by the input's pixels: [count, channels, height, width].
+        var bytes = _estimate(shape[0] * shape[2] * shape[3]);
+        var key = string.Join('x', shape);
+        var session = _budget!.Hold(this, key, bytes, () => Interlocked.Exchange(ref _fresh, null) ?? SessionFactory.Create(_path, _target, _threads));
+        try
         {
-            // Counted by the input's pixels: [count, channels, height, width].
-            var bytes = GpuSessionBudget.Estimate(shape[0] * shape[2] * shape[3]);
-            var session = _budget.Get(this, string.Join('x', shape), bytes, () => Interlocked.Exchange(ref _fresh, null) ?? SessionFactory.Create(_path, _target, _threads));
             return RunOn(session, input, shape, read);
+        }
+        finally
+        {
+            _budget.Free(this, key);
         }
     }
 
@@ -76,7 +83,8 @@ internal sealed class ShapeSessions : IDisposable
         }
 
         using var value = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, input.AsMemory(0, (int)length), shape);
-        using var results = session.Run(_runOptions, [InputName], [value], [session.OutputNames[0]]);
+        using var options = new RunOptions(); // each call its own: one session runs many calls at once
+        using var results = session.Run(options, [InputName], [value], [session.OutputNames[0]]);
         var output = results[0];
         return read(output.GetTensorDataAsSpan<float>(), output.GetTensorTypeAndShape().Shape);
     }
@@ -86,6 +94,5 @@ internal sealed class ShapeSessions : IDisposable
         _single?.Dispose();
         _budget?.Release(this);
         Interlocked.Exchange(ref _fresh, null)?.Dispose();
-        _runOptions.Dispose();
     }
 }

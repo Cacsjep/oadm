@@ -136,6 +136,42 @@ internal static class SessionFactory
     }
 
     /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") or a general one.</summary>
+    /// <summary>The card's memory in bytes as DirectML reports it ("15997 MB"), or null when it does not tell.</summary>
+    public static long? GraphicsCardMemory(ExecutionTarget target)
+    {
+        if (target != ExecutionTarget.DirectMl)
+        {
+            return null;
+        }
+
+        try
+        {
+            foreach (var device in OrtEnv.Instance().GetEpDevices())
+            {
+                if (device.EpName == "DmlExecutionProvider" && device.HardwareDevice.Metadata.Entries.TryGetValue("DxgiVideoMemory", out var memory))
+                {
+                    return ParseVideoMemory(memory);
+                }
+            }
+        }
+#pragma warning disable CA1031 // Only the size: a failure keeps the general cap.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
+        return null;
+    }
+
+    /// <summary>"15997 MB" in bytes; null for anything else.</summary>
+    internal static long? ParseVideoMemory(string? text)
+    {
+        var parts = (text ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 2 && parts[1] == "MB" && long.TryParse(parts[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var mb) && mb > 0
+            ? mb * 1024 * 1024
+            : null;
+    }
+
     public static string GraphicsCardName(ExecutionTarget target)
     {
         try

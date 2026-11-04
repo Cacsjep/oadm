@@ -17,16 +17,19 @@ internal sealed record ModelChoice(string Detection, string Recognition, string 
 }
 
 /// <summary>
-/// One CPU worker's set of sessions: text finder, angle model and reader with its character list. The graphics card holds only
-/// the text finder of Search (<see cref="CardTextFinder"/>, docs/spec/ocr.md "GPU").
+/// The CPU workers' set of sessions, shared by all calls: text finder, angle model and reader with its character list. The graphics card has its own
+/// sessions (<see cref="CardModels"/>, docs/spec/ocr.md "GPU").
 /// </summary>
 internal sealed class ModelSet : IDisposable
 {
     /// <summary>The reader's input height.</summary>
     public const int LineHeight = 48;
 
-    /// <summary>The narrowest reader input (PaddleOCR pads shorter lines to it).</summary>
-    public const int MinLineWidth = 320;
+    /// <summary>
+    /// The narrowest reader input. PaddleOCR pads to 320; without that padding a short line costs a third and the accuracy
+    /// set reads better (hard receipts 37.5 to 50 % exact), moving labels no worse.
+    /// </summary>
+    public const int MinLineWidth = 64;
 
     /// <summary>The widest reader input; longer lines are squeezed.</summary>
     public const int MaxLineWidth = 3200;
@@ -142,7 +145,9 @@ internal sealed class ModelSet : IDisposable
                         // Only the frames of the line itself (and a little after it); the padding's frames are blank.
                         var line = order[first + i];
                         var own = Math.Min(frames, (lines[line].Width + 7) / 8 + 2);
-                        result[line] = new LineScores(output.Slice(i * frames * classes, own * classes).ToArray(), own, classes);
+                        var kept = System.Buffers.ArrayPool<float>.Shared.Rent(own * classes);
+                        output.Slice(i * frames * classes, own * classes).CopyTo(kept);
+                        result[line] = new LineScores(kept, own, classes) { Rented = true };
                     }
 
                     return true;

@@ -398,6 +398,14 @@
   <Style Selector="TextBlock.mono, SelectableTextBlock.mono">
     <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
   </Style>
+  <!-- A longer tooltip with sections (the format help of Text recognition): a section title, and what to type in the accent. -->
+  <Style Selector="TextBlock.tipTitle">
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.tipKey">
+    <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
   <!-- A key typed or pasted as it is: the license key of a plugin -->
   <Style Selector="TextBox.mono">
     <Setter Property="FontFamily" Value="{StaticResource Oadm.FontFamilyMono}" />
@@ -1718,35 +1726,32 @@
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
   </Style>
-  <!-- Rows of inputs that select something elsewhere (the areas of a Text recognition reader): the selected row is only a
-       soft fill (the hover background) with an accent bar on its left edge, so the inputs and a red error below them stay
-       readable in both themes. The bar's place is kept on every row, the contents never shift. -->
+  <!-- Rows of inputs that select something elsewhere (the areas of a Text recognition reader): the selected row has no fill,
+       its name turns to the accent colour, so the inputs and a red error below them stay readable in both themes. -->
   <Style Selector="ListBox.areaRows">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
-    <!-- The rows start and end level with the fields above: the accent bar and the padding (8 px) sit outside the column. -->
+    <!-- The rows start and end level with the fields above: the padding (8 px) sits outside the column. -->
     <Setter Property="Margin" Value="-8,0,-8,0" />
   </Style>
   <Style Selector="ListBox.areaRows ListBoxItem">
-    <Setter Property="Padding" Value="5,5,8,5" />
+    <Setter Property="Padding" Value="8,5,8,5" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
-  </Style>
-  <Style Selector="ListBox.areaRows ListBoxItem /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="BorderThickness" Value="3,0,0,0" />
-    <Setter Property="BorderBrush" Value="Transparent" />
   </Style>
   <Style Selector="ListBox.areaRows ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
   </Style>
   <Style Selector="ListBox.areaRows ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:focus /template/ ContentPresenter#PART_ContentPresenter, ListBox.areaRows ListBoxItem:selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
-    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentBrush}" />
+    <Setter Property="Background" Value="Transparent" />
   </Style>
   <!-- The name in such a row: plain text on its own line, trimmed (the full name as tooltip) -->
   <Style Selector="ListBox.areaRows TextBlock.areaName">
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="ListBox.areaRows ListBoxItem:selected TextBlock.areaName">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentBrush}" />
   </Style>
   <Style Selector="StackPanel.deviceTreeDevice">
     <Setter Property="Margin" Value="20,0,0,0" />
@@ -2029,6 +2034,16 @@
   <Style Selector="StackPanel.rowActions > Button.iconOnly">
     <Setter Property="Padding" Value="5" />
     <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <!-- A picture in a grid row that opens larger: as small as the picture -->
+  <Style Selector="Button.iconOnly.thumbnail">
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="MinWidth" Value="0" />
+  </Style>
+  <!-- In a cell the picture starts where the column's texts do -->
+  <Style Selector="DataGridCell Button.iconOnly.thumbnail">
+    <Setter Property="Margin" Value="8,0,0,0" />
   </Style>
   <Style Selector="Border.dragGhost">
     <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />

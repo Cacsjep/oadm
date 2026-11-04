@@ -74,11 +74,11 @@ public sealed class PagePreviewSafetyTests
         var last = editor.LoadLastReadingAsync(CancellationToken.None);
         await Eventually.TrueAsync(() => Volatile.Read(ref decoding) == 1, "the last reading decodes");
         await editor.RefreshPreviewAsync(CancellationToken.None);
-        Assert.Equal("NEW 111111 1", editor.Results[0].Text);
+        Assert.Equal("NEW 111111 1", editor.Results[1].Text);
 
         decodeHeld.SetResult(null);
         await last;
 
-        Assert.Equal("NEW 111111 1", editor.Results[0].Text);
+        Assert.Equal("NEW 111111 1", editor.Results[1].Text);
     }
 }

@@ -24,11 +24,21 @@ internal static class Frame
 /// Recognition of the fakes: each area has one line with the picture's text (none for an empty picture). A test can hold
 /// readings at a gate and make the next reading fail.
 /// </summary>
-internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
+internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo, IRecognizerLoad
 {
     private readonly ConcurrentQueue<string> _read = new();
     private int _started;
     private bool _gpu;
+
+    public TimeSpan BusyTime => TimeSpan.Zero;
+
+    public int Capacity => 1;
+
+    /// <summary>A reader may start a frame beside the ones in work.</summary>
+    public bool HasRoom { get; set; }
+
+    /// <summary>When set, a reading waits for the gate of its text (<see cref="Gate"/> holds them all).</summary>
+    public Func<string, Task>? GateOf { get; set; }
 
     /// <summary>Reads on a graphics card: one is there (<see cref="GpuAvailable"/>) and the setting allows it.</summary>
     public bool OnGpu
@@ -78,6 +88,11 @@ internal sealed class FakeRecognizer : ITextRecognizer, IEngineInfo
         if (Gate is { } gate)
         {
             await gate.WaitAsync(ct);
+        }
+
+        if (GateOf is { } gateOf)
+        {
+            await gateOf(Frame.TextOf(jpeg));
         }
 
         if (FailNext is { } fail)
@@ -210,7 +225,7 @@ internal sealed class FakeFrames : IFrameSource
 internal sealed class OcrHarness : IAsyncDisposable
 {
     /// <summary>Over the fakes, or with real parts: <paramref name="recognizer"/>, <paramref name="matcher"/> and <paramref name="cutter"/> in place of the fakes.</summary>
-    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null, int processorCount = 8)
+    public OcrHarness(bool onGpu = false, ITextRecognizer? recognizer = null, ITextMatcher? matcher = null, IPictureCutter? cutter = null, int processorCount = 8, Func<ReadOnlyMemory<byte>, bool>? pictureFits = null, TimeProvider? clock = null, Func<TimeSpan>? processorTime = null)
     {
         Context = new FakeCoreContext { EventPublisher = Publisher };
         Inside = Context.Add(new FakeDevice { Address = "10.0.0.1" });
@@ -222,8 +237,9 @@ internal sealed class OcrHarness : IAsyncDisposable
             Recognizer = _ => recognizer ?? Recognizer,
             Matcher = matcher ?? new FakeMatcher(),
             Cutter = cutter,
-            Time = Time,
-            ProcessorTime = () => TimeSpan.Zero,
+            PictureFits = pictureFits ?? (_ => true),
+            Time = clock ?? Time,
+            ProcessorTime = processorTime ?? (() => TimeSpan.Zero),
             ProcessorCount = processorCount,
         };
         Plugin = new OcrPlugin(Parts);

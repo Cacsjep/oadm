@@ -59,7 +59,7 @@ internal static class LineReader
     /// <summary>Whether the guided match is a real one and not forced onto other text.</summary>
     private static bool Accept(GuidedMatch match, List<DecodedChar> free, CharacterList characters)
     {
-        if (!match.CheckDigitValid || match.MinProbability < MinMatchProbability || match.LogScore < MinMatchLogScore)
+        if (!match.AllDashesRead || !DashesAsRead(match, free) || !match.CheckDigitValid || match.MinProbability < MinMatchProbability || match.LogScore < MinMatchLogScore)
         {
             return false;
         }
@@ -68,6 +68,30 @@ internal static class LineReader
         var freeCount = free.Count(c => c.FirstFrame >= match.FirstFrame && c.LastFrame <= match.LastFrame && !IsSeparator(c, characters));
         var matchCount = match.Chars.Count(c => !IsSeparator(c, characters));
         return Math.Abs(freeCount - matchCount) <= Math.Max(1, matchCount / 4);
+    }
+
+    /// <summary>
+    /// A match with dashes holds the dashes the reader read there, no other: the format never makes one up ("12X34" for ##-##) and
+    /// never leaves one out ("2026-11-04" for ####-####). A format without a dash behaves as it did.
+    /// </summary>
+    private static bool DashesAsRead(GuidedMatch match, List<DecodedChar> free)
+    {
+        var dashes = 0;
+        foreach (var dash in match.Chars)
+        {
+            if (dash.Text != "-")
+            {
+                continue;
+            }
+
+            dashes++;
+            if (!free.Exists(c => c.Text == "-" && c.FirstFrame <= dash.LastFrame && c.LastFrame >= dash.FirstFrame))
+            {
+                return false;
+            }
+        }
+
+        return dashes == 0 || dashes == free.Count(c => c.Text == "-" && c.LastFrame >= match.FirstFrame && c.FirstFrame <= match.LastFrame);
     }
 
     /// <summary>

@@ -125,26 +125,50 @@ public sealed partial class ReaderRow : ObservableObject
     }
 }
 
-/// <summary>One row of the results: an area of the last reading.</summary>
-public sealed class ResultRow
+/// <summary>
+/// A read of the last 20 (docs/spec/ocr.md "The last 20 reads"), a row of the results, or an area of the held frame's reading
+/// (<see cref="ReaderEditorViewModel.HeldAreas"/>, never in the table). The editor owns <see cref="CutOut"/> and keeps a row
+/// while it stays in the list, so its picture is decoded once.
+/// </summary>
+public sealed partial class ResultRow : ObservableObject
 {
-    public ResultRow(AreaResult result, AreaDetails? details, bool hasFormat, DateTimeOffset time, IImage? cutOut)
+    /// <summary>A read of the last 20.</summary>
+    public ResultRow(RecentRead read, IImage? cutOut)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        ReadId = read.Id;
+        Area = read.Area;
+        Text = read.Text;
+        Confidence = read.Confidence;
+        ConfidenceText = OcrTexts.Percent(read.Confidence);
+        HasFormat = read.HasFormat;
+        Matches = read.MatchesFormat;
+        Time = OcrTexts.Time(read.Time);
+        CutOut = cutOut;
+        Picture = read.Cutout;
+    }
+
+    /// <summary>An area of a held frame's reading.</summary>
+    public ResultRow(AreaResult result, AreaDetails? details, bool hasFormat, DateTimeOffset time)
     {
         ArgumentNullException.ThrowIfNull(result);
         Area = result.Area;
-        Text = result.Text.Length > 0 ? result.Text : result.TextRead;
+        // With a format only the value shows; what else was read stays in the event's Text read.
+        Text = result.Text.Length > 0 || hasFormat ? result.Text : result.TextRead;
         Confidence = result.Confidence;
         ConfidenceText = Text.Length == 0 ? string.Empty : OcrTexts.Percent(result.Confidence);
         HasFormat = hasFormat;
         Matches = result.MatchesFormat;
         TooSmall = details?.TooSmall ?? false;
         Time = OcrTexts.Time(time);
-        CutOut = cutOut;
     }
+
+    /// <summary>The read's id; null for a held frame's area.</summary>
+    public long? ReadId { get; }
 
     public string Area { get; }
 
-    /// <summary>The value; without a match the raw text (docs/spec/ocr.md "Expected text": the raw text stays in Text read).</summary>
+    /// <summary>The value; with a format and no match nothing (docs/spec/ocr.md "Expected text": the raw text stays in Text read).</summary>
     public string Text { get; }
 
     public double Confidence { get; }
@@ -168,8 +192,13 @@ public sealed class ResultRow
 
     public string Time { get; }
 
-    /// <summary>The value's cut-out of the frame (a format's match); null without one.</summary>
-    public IImage? CutOut { get; }
+    /// <summary>The value's cut-out of the frame; null without one.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCutOut))]
+    public partial IImage? CutOut { get; set; }
 
     public bool HasCutOut => CutOut is not null;
+
+    /// <summary>The cut-out as the server sent it; the dialog decodes its own copy, the row's may go while it is open.</summary>
+    public byte[]? Picture { get; set; }
 }

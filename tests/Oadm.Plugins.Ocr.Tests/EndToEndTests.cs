@@ -68,7 +68,7 @@ public sealed class EndToEndTests(RecognizerFixture fixture)
         await using var ocr = Harness();
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
         var reader = await ocr.SaveAsync(ocr.NewReader("Gate 2", areas:
-            new Area { Name = "Container number", Box = new RelativeBox(0.4501, 0.1235, 0.4602, 0.1648), Expected = ExpectedText.WithFormat("AAAU ###### #") }));
+            new Area { Name = "Container number", Box = new RelativeBox(0.4501, 0.1235, 0.4602, 0.1648), Expected = ExpectedText.WithFormat("@@@U ###### #") }));
         ocr.Frames.SinglePicture = Picture("container-01.jpg");
         var log = new FakeActionContext();
 

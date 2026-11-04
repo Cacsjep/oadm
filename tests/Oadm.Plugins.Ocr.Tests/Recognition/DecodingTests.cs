@@ -92,14 +92,14 @@ public sealed class DecodingTests
         var scores = Scores(frames);
         Assert.Equal("ORDER 36FIA", CtcDecoder.Text(CtcDecoder.Greedy(scores, Chars)));
 
-        var match = FormatGuidedDecoder.Decode(scores, Chars, FormatPattern.Parse("##A#A")!);
+        var match = FormatGuidedDecoder.Decode(scores, Chars, FormatPattern.Parse("##@#@")!);
 
         Assert.NotNull(match);
         Assert.Equal("36F1A", match.Text);
         Assert.Equal(0.3f, match.MinProbability, 3);
         Assert.True(match.LogScore < 0);
 
-        var line = LineReader.Read(scores, Chars, FormatPattern.Parse("##A#A"), RelativeBox.Whole);
+        var line = LineReader.Read(scores, Chars, FormatPattern.Parse("##@#@"), RelativeBox.Whole);
         Assert.NotNull(line);
         Assert.Equal("ORDER 36F1A", line.Line.Text);
         Assert.Equal("36F1A", line.FormatMatch);
@@ -110,14 +110,103 @@ public sealed class DecodingTests
     }
 
     [Fact]
-    public void Dashes_and_spaces_of_a_format_may_be_missing()
+    public void The_search_may_pass_a_dash_by_but_only_a_dash_it_used_counts()
     {
         var withDash = FormatGuidedDecoder.Decode(Scores(Frames("12-345")), Chars, FormatPattern.Parse("##-###")!);
         var without = FormatGuidedDecoder.Decode(Scores(Frames("12345")), Chars, FormatPattern.Parse("## - ###")!);
 
         Assert.Equal("12-345", withDash!.Text);
+        Assert.True(withDash.AllDashesRead);
         Assert.Equal("12345", without!.Text);
+        Assert.False(without.AllDashesRead);
     }
+
+    [Theory]
+    [InlineData("CX 1152 7244 0 AT")]
+    [InlineData("CX 1152 72 44 0 AT")]
+    [InlineData("CP037400 78 3 AT")]
+    public void A_line_without_the_dashes_of_its_format_keeps_its_free_reading(string text)
+    {
+        var line = LineReader.Read(Scores(Frames(text)), Chars, FormatPattern.Parse("@@-####-##"), RelativeBox.Whole);
+
+        Assert.NotNull(line);
+        Assert.Null(line.FormatMatch);
+        Assert.Equal(text, line.Line.Text); // no dash made up, no gap dropped
+        Assert.DoesNotContain('-', line.Line.Text);
+    }
+
+    [Fact]
+    public void A_dash_the_reader_only_suspected_makes_no_match()
+    {
+        // A faint mark where a dash would be: the free reading has none, so the format has none either.
+        var frames = Frames("DE").Concat(["-:0.3", "_"]).Concat(Frames("2009")).Concat(["-:0.3", "_"]).Concat(Frames("39")).ToArray();
+
+        var line = LineReader.Read(Scores(frames), Chars, FormatPattern.Parse("@@-####-##"), RelativeBox.Whole);
+
+        Assert.NotNull(line);
+        Assert.Null(line.FormatMatch);
+        Assert.Equal("DE200939", line.Line.Text);
+    }
+
+    [Fact]
+    public void A_dash_the_format_found_under_another_character_makes_no_match()
+    {
+        // The reader saw an X where the format wants a dash, the dash its second choice: the search takes it, it was never read.
+        var scores = Scores("1", "_", "2", "_", "X|-:0.35", "_", "3", "_", "4");
+        var pattern = FormatPattern.Parse("##-##")!;
+        Assert.Equal("12-34", FormatGuidedDecoder.Decode(scores, Chars, pattern)!.Text);
+
+        var line = LineReader.Read(scores, Chars, pattern, RelativeBox.Whole);
+
+        Assert.Null(line!.FormatMatch);
+        Assert.Equal("12X34", line.Line.Text);
+    }
+
+    [Fact]
+    public void A_dash_the_reader_read_is_never_left_out_of_a_match()
+    {
+        var line = LineReader.Read(Scores(Frames("2026-11-04")), Chars, FormatPattern.Parse("####-####"), RelativeBox.Whole);
+
+        Assert.Null(line!.FormatMatch);
+        Assert.Equal("2026-11-04", line.Line.Text);
+    }
+
+    [Fact]
+    public void A_format_without_a_dash_passes_a_read_dash_by_as_before() =>
+        Assert.Equal("12345", LineReader.Read(Scores(Frames("12-345")), Chars, FormatPattern.Parse("#####"), RelativeBox.Whole)!.FormatMatch);
+
+    [Theory]
+    [InlineData("DE-2009-39", "DE-2009-39")]
+    [InlineData("STD DE-2009-39", "STD DE-2009-39")]
+    [InlineData("DE - 2009 - 39", "DE-2009-39")] // the format's layout: gaps inside the match go
+    public void A_line_with_the_dashes_of_its_format_matches(string text, string lineText)
+    {
+        var line = LineReader.Read(Scores(Frames(text)), Chars, FormatPattern.Parse("@@-####-##"), RelativeBox.Whole);
+
+        Assert.NotNull(line);
+        Assert.Equal("DE-2009-39", line.FormatMatch);
+        Assert.Equal(lineText, line.Line.Text);
+    }
+
+    [Fact]
+    public void A_format_with_a_dash_still_fixes_characters_by_position()
+    {
+        var frames = Frames("DE-").Concat(["O|0:0.3", "O|0:0.3", "_"]).Concat(Frames("009-39")).ToArray();
+
+        Assert.Equal("DE-0009-39", LineReader.Read(Scores(frames), Chars, FormatPattern.Parse("@@-####-##"), RelativeBox.Whole)!.FormatMatch);
+    }
+
+    [Fact]
+    public void Spaces_of_a_format_stay_optional_in_the_decoding()
+    {
+        var line = LineReader.Read(Scores(Frames("MSKU1234565")), Chars, FormatPattern.Parse("@@@U ###### #"), RelativeBox.Whole);
+
+        Assert.Equal("MSKU 123456 5", line!.FormatMatch);
+    }
+
+    [Fact]
+    public void Dashes_at_the_ends_of_a_format_mean_nothing_as_in_the_matcher() =>
+        Assert.Equal("123", LineReader.Read(Scores(Frames("123")), Chars, FormatPattern.Parse("-###-"), RelativeBox.Whole)!.FormatMatch);
 
     [Fact]
     public void A_line_too_short_for_the_format_gives_no_match()
@@ -148,7 +237,7 @@ public sealed class DecodingTests
         // changed to make the check digit fit: a misread never becomes a value reported as sure.
         var frames = Frames("CSQU 305438 ").Concat(["8|3:0.25", "8|3:0.25", "_"]).ToArray();
         var scores = Scores(frames);
-        var pattern = FormatPattern.Parse("AAAU ###### #")!;
+        var pattern = FormatPattern.Parse("@@@U ###### #")!;
         Assert.True(pattern.IsContainerNumber);
 
         var match = FormatGuidedDecoder.Decode(scores, Chars, pattern);
@@ -163,7 +252,7 @@ public sealed class DecodingTests
     public void A_container_number_with_its_check_digit_matches()
     {
         var scores = Scores(Frames("CSQU 305438 3"));
-        var line = LineReader.Read(scores, Chars, FormatPattern.Parse("AAAU ###### #"), RelativeBox.Whole);
+        var line = LineReader.Read(scores, Chars, FormatPattern.Parse("@@@U ###### #"), RelativeBox.Whole);
 
         Assert.NotNull(line);
         Assert.Equal("CSQU 305438 3", line.FormatMatch);
@@ -172,9 +261,9 @@ public sealed class DecodingTests
     [Fact]
     public void A_container_number_with_more_after_it_is_checked_on_its_first_eleven()
     {
-        var pattern = FormatPattern.Parse("AAAU ###### # 22G1")!;
+        var pattern = FormatPattern.Parse("@@@U ###### # 22G1")!;
         Assert.True(pattern.IsContainerNumber);
-        Assert.False(FormatPattern.Parse("AAAU ######")!.IsContainerNumber);
+        Assert.False(FormatPattern.Parse("@@@U ######")!.IsContainerNumber);
 
         Assert.True(FormatGuidedDecoder.Decode(Scores(Frames("CSQU 305438 3 22G1")), Chars, pattern)!.CheckDigitValid);
         Assert.False(FormatGuidedDecoder.Decode(Scores(Frames("CSQU 305438 4 22G1")), Chars, pattern)!.CheckDigitValid);

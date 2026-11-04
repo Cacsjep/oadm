@@ -14,6 +14,12 @@ internal static partial class RecognitionLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition runs on the CPU: the graphics card could not be used ({Reason})")]
     public static partial void GraphicsCardFailed(ILogger logger, string reason);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text recognition: {Model} stays on the CPU, the graphics card could not run it ({Reason})")]
+    public static partial void CardModelFailed(ILogger logger, string model, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Text recognition on the graphics card: text finder {Finder}, reader {Reader}, angle model {Angle}")]
+    public static partial void CardRoute(ILogger logger, bool finder, bool reader, bool angle);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Text recognition keeps at most {MaxMegabytes} MB of model sessions on the graphics card: the least recently used picture size is freed and made again when needed")]
     public static partial void GraphicsCardSessionsCapped(ILogger logger, long maxMegabytes);
 

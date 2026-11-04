@@ -472,13 +472,13 @@ also on Dashboards.
 
 `plugins/Oadm.Plugins.Dashboards` (+ `.Client`), id `oadm.dashboards`, rail page **Dashboards** (group Monitoring, icon
 `gauge`), **off by default**. Live values of OADM's events (mostly device triggers: a temperature, a plate, a gate open)
-and live video on saved dashboards: a grid of widgets, each one value of one device (On / Off, Text, Number, Gauge, Live
+and live video on saved dashboards: a grid of widgets, each one value of one device (On / Off, Text, Number, Gauge, Table, Live
 video), and Button widgets that run event rules. Empty states for Device triggers off (`ICorePluginClientContext.IsPluginOn`), no trigger yet (**Open Device
 triggers**) and no dashboard.
 
 - Rules that must hold: the plugin never talks to a device; the values come from `ICorePluginContext.EventSubscriptions`
-  and live in server memory only (latest per event type and device, at most 100,000 keys, least recently updated dropped
-  first, O(1) per event; nothing kept while the plugin is off); an event offers its declared values at once (Active of an
+  and live in server memory only (latest per event type, device and split value, at most 100,000 keys, least recently updated
+  dropped first, O(1) per event; nothing kept while the plugin is off); an event offers its declared values at once (Active of an
   on / off event first; received values refine the type of a text value) and only its own devices
   (`EventTypeInfo.DeviceIds`); a value that may be old is dimmed with the reason (event gone, its plugin off, the
   trigger's connection lost, the device Unreachable / Credentials required / Certificate changed); pages watch only the
@@ -487,6 +487,20 @@ triggers**) and no dashboard.
   version refused), the grid is the shared `ui:TileGrid` (20 x 20, at least 2 x 2, never overlapping), at most 50 widgets
   of them 16 live videos and 20 buttons, and 200 dashboards; colors and icons are theme names; the server checks every rule
   again (`DashboardRules`).
+- Fixed device and split (`EventTypeInfo.FixedDeviceId`, `SplitField`, no special case for any plugin): an event of a fixed
+  device has no Device row and no Copy for other devices; the widget stores no device (`Widget.FixedDevice`), the device is
+  read from the event type and followed when it changes, and goes through the same device group checks as a chosen one, fail
+  closed (a widget whose event type is unknown is hidden from a group). An event split by a choice field has a select with
+  that field's label (Area), the choice by its text (`Widget.Split`), preselected when there is one, and the field is no
+  Value. A widget without a choice says "Choose an area." and is not saved; one whose choice is gone says "Area no longer
+  exists", is saved and offers the choices again. Stored dashboards read as before; an event without either behaves as
+  before. Tables share rows only with the same split value.
+- Tables: a Table widget adds one row (time and text, newest first) per event that carries its value, with a search; no
+  header, no sorting. Rows live in server memory only, gone after a restart or turned off, at most 1,000 per table with the
+  oldest dropped first, each text at most 100 characters on one line of data, wrapped in its row; at most 10 tables per dashboard; only values of
+  stored table widgets are recorded (per split value), O(1) per event. The server keeps every row (the pushes keep only the latest value), the
+  page reads what is new after a push, one read at a time, and each batch is one change of a virtualized list; rows follow
+  the same device group checks as `watch`.
 - Buttons: a Button widget never touches a device and has none; it is one stateless server event per button for the event
   rules (`IDynamicEventSource`, id `oadm.dashboards.button.<dashboard id>.<widget id>`, name = its label 1..32, used once
   per dashboard ("Another button of this dashboard has this label."), folders
@@ -598,7 +612,7 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
 `plugins/Oadm.Plugins.Acap` (+ `.Client`), id `oadm.acap`, always on, context menu (Applications) **Applications
 (ACAP)**: lists the installed applications, starts, stops and removes them (remove confirmed) and installs or upgrades
 an uploaded `.eap` on all selected devices (classic Application API 1.x; several `.eap` files of one application and
-version at once, one per architecture, each device gets its own), installs license key files (with the package or on
+version at once, one per architecture, each device gets its own; also a ZIP of them, unpacked on the client), installs license key files (with the package or on
 their own, matched by the MAC address in the key), and changes the settings an application registered (action
 `settings`, started from the Applications page, `docs/spec/app-management.md`). Compliance check type **Application running**
 (`ApplicationRunningCheck`, `docs/spec/compliance.md`): the application is installed / running, optionally at least a
@@ -611,7 +625,9 @@ version and a valid license; the choices are read from one device.
   a license code is not offered (the device has no API for it, its web page asks Axis online). Several packages: same
   application and version, one per architecture, refused in the dialog before any upload otherwise; the task picks the
   file again from a fresh basicdeviceinfo, a device without one is Done with warnings "No package for armv7hf.", nothing
-  changed. Change settings: every name must be a setting of the installed application and every value fit its type and
+  changed. A ZIP stays on the client: `EapPackageFiles` unpacks its `.eap` files into a private temp folder with limits
+  (16 files, 2 GB, counted while writing), entry names are never paths, then the checks and the upload of loose files run
+  unchanged (`docs/spec/app-management.md` "A ZIP of packages"). Change settings: every name must be a setting of the installed application and every value fit its type and
   range before the one write, read back afterwards (passwords never read back); setting values never appear in a log,
   step text, task name or the audit log.
 

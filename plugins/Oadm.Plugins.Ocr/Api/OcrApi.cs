@@ -81,8 +81,6 @@ public static class OcrInfo
     /// <summary>The action's answer while a reading of that reader runs; nothing is queued.</summary>
     public const string AlreadyReading = "Already reading";
 
-    /// <summary>The page format field's hint.</summary>
-    public const string FormatHint = "# digit, A letter, * letter or digit";
 }
 
 /// <summary>Page backend methods (<c>InvokeAsync</c>) and live event topics.</summary>
@@ -104,8 +102,8 @@ public static class OcrMethods
     public const string DeleteReader = "deleteReader";
 
     /// <summary>
-    /// <see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading with the values' cut-outs (only
-    /// for a user with Live view), never the picture (empty without one). View.
+    /// <see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading and last reads with the cut-outs
+    /// (only for a user with Live view), never the picture (empty without one). View.
     /// </summary>
     public const string GetReading = "getReading";
 
@@ -120,8 +118,22 @@ public static class OcrMethods
     /// <summary><see cref="PreviewRequest"/> (the id only) -> {}: ends the preview. View.</summary>
     public const string StopPreview = "stopPreview";
 
-    /// <summary><see cref="PreviewRequest"/> (the id only) -> <see cref="ReadingReply"/>: the preview's last reading with the cut-outs, no picture. View.</summary>
+    /// <summary>
+    /// <see cref="PreviewRequest"/> (the id only) -> <see cref="ReadingReply"/>: the preview's last reading and last reads, no
+    /// picture; the reading's own cut-outs only while paused, the rows' cut-outs for a user with Live view. View.
+    /// </summary>
     public const string GetPreview = "getPreview";
+
+    /// <summary>
+    /// <see cref="PreviewRequest"/> (the id only) -> <see cref="PauseReply"/>: holds the frame of the preview's latest reading
+    /// in server memory and answers it, so the page tunes on the very picture that was read; the draft then re-reads that
+    /// frame (docs/spec/ocr.md "Pause"). View and the host's Live view.
+    /// </summary>
+    public const string PausePreview = "pausePreview";
+
+    /// <summary><see cref="PreviewRequest"/> (the id only) -> <see cref="PreviewReply"/>: the held frame goes, the preview reads live again. View.</summary>
+    public const string ResumePreview = "resumePreview";
+
     /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview, only to the user who started it (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
     /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
     public const string PreviewTopic = "preview";
@@ -129,7 +141,7 @@ public static class OcrMethods
     /// <summary>{} -> <see cref="EngineInfo"/>: what reads the pictures and the frame rates it offers. View.</summary>
     public const string GetEngine = "getEngine";
 
-    /// <summary><see cref="UseGpuRequest"/> -> <see cref="EngineInfo"/>: "Use the graphics card" on or off (a plugin setting). Change.</summary>
+    /// <summary><see cref="UseGpuRequest"/> -> <see cref="EngineInfo"/>: "Use GPU" on or off (a plugin setting). Change.</summary>
     public const string SetUseGpu = "setUseGpu";
 
     /// <summary><see cref="CameraOptionsRequest"/> -> <see cref="CameraOptions"/>: the video sources and picture sizes of one camera (read only). View.</summary>
@@ -276,7 +288,7 @@ public sealed record ReaderList
 {
     public IReadOnlyList<ReaderSummary> Readers { get; init; } = [];
 
-    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12, 15 or 25 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = [];
 
     /// <summary>Watching readers per server at most (by the server's cores: 4 per recognition worker, 8 to 50).</summary>
@@ -287,6 +299,9 @@ public sealed record ReaderList
 public sealed record ReaderRequest
 {
     public string ReaderId { get; init; } = string.Empty;
+
+    /// <summary><see cref="OcrMethods.GetReading"/>: the reads whose cut-out the page has (see <see cref="ReadingReply.Recent"/>); null: none.</summary>
+    public IReadOnlyList<long>? KnownCutouts { get; init; }
 }
 
 /// <summary>The request of <see cref="OcrMethods.SaveReader"/>: the whole reader (empty id: a new one).</summary>
@@ -362,10 +377,10 @@ public sealed record EngineInfo
     /// <summary>A graphics card was found and passed the test reading.</summary>
     public bool GpuAvailable { get; init; }
 
-    /// <summary>The setting "Use the graphics card" (on by default).</summary>
+    /// <summary>The setting "Use GPU" (on by default).</summary>
     public bool UseGpu { get; init; } = true;
 
-    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12, 15 or 25 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
 }
 
@@ -409,6 +424,41 @@ public sealed record ReadingReply
     /// user with the host's Live view permission.
     /// </summary>
     public IReadOnlyList<AreaDetails> Details { get; init; } = [];
+
+    /// <summary>
+    /// The last reads, newest first, at most <see cref="OcrLimits.RecentReads"/>; empty while paused. A cut-out comes once per
+    /// row: a row named in the request's known cut-outs comes without it.
+    /// </summary>
+    public IReadOnlyList<RecentRead> Recent { get; init; } = [];
+}
+
+/// <summary>
+/// One row of the last reads: a new value in an area (docs/spec/ocr.md "The last 20 reads"). Server memory only.
+/// </summary>
+public sealed record RecentRead
+{
+    /// <summary>Unique on the server, growing: the page keeps a row's decoded cut-out by it.</summary>
+    public long Id { get; init; }
+
+    /// <summary>When the picture was taken.</summary>
+    public DateTimeOffset Time { get; init; }
+
+    /// <summary>The area's name at that moment.</summary>
+    public string Area { get; init; } = string.Empty;
+
+    /// <summary>The value, at most <see cref="Events.TextReadEvents.MaxTextLength"/> characters.</summary>
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary>0 to 100.</summary>
+    public double Confidence { get; init; }
+
+    /// <summary>The area had a format.</summary>
+    public bool HasFormat { get; init; }
+
+    public bool MatchesFormat { get; init; }
+
+    /// <summary>The value's cut-out as JPEG (base64 in JSON), at most <see cref="OcrLimits.MaxCutoutBytes"/>; only for a user with Live view.</summary>
+    public byte[]? Cutout { get; init; }
 }
 
 /// <summary>
@@ -428,6 +478,10 @@ public sealed record AreaDetails
 
     /// <summary>Where the value was found, relative to the picture; null without a value.</summary>
     public RelativeBox? MatchBox { get; init; }
+
+    /// <summary>How the value's line lies in the picture, for its upright cut-out; server only.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public LineTurn? MatchTurn { get; init; }
 
     /// <summary>The value's cut-out picture as JPEG (base64 in JSON); only in <see cref="ReadingReply"/>, null without one.</summary>
     public byte[]? Cutout { get; init; }
@@ -456,6 +510,9 @@ public sealed record PreviewRequest
 
     /// <summary>The page's draft; only <see cref="OcrMethods.StartPreview"/> reads it.</summary>
     public Reader? Reader { get; init; }
+
+    /// <summary><see cref="OcrMethods.GetPreview"/>: the reads whose cut-out the page has (see <see cref="ReadingReply.Recent"/>); null: none.</summary>
+    public IReadOnlyList<long>? KnownCutouts { get; init; }
 }
 
 /// <summary>The answer of <see cref="OcrMethods.StartPreview"/>.</summary>
@@ -466,6 +523,30 @@ public sealed record PreviewReply
 
     /// <summary>Why the preview reads nothing now (the camera, the limits); null while it reads.</summary>
     public string? Problem { get; init; }
+
+    /// <summary>The preview holds a frame (<see cref="OcrMethods.PausePreview"/>); false after the frame went, whatever the reason.</summary>
+    public bool Paused { get; init; }
+
+    /// <summary>Paused, and the held frame is being read with the newest draft: a reading follows as the event <see cref="OcrMethods.PreviewTopic"/>.</summary>
+    public bool Rereading { get; init; }
+}
+
+/// <summary>The answer of <see cref="OcrMethods.PausePreview"/>.</summary>
+public sealed record PauseReply
+{
+    /// <summary>The frame is held; false: <see cref="Problem"/> says why not (the preview ended: no text).</summary>
+    public bool Paused { get; init; }
+
+    public string? Problem { get; init; }
+
+    /// <summary>The held frame as the camera sent it (base64 in JSON): the exact picture of <see cref="Reading"/>.</summary>
+    public byte[]? Picture { get; init; }
+
+    /// <summary>The reading of that frame.</summary>
+    public Reading? Reading { get; init; }
+
+    /// <summary>The further values of each area with the cut-outs.</summary>
+    public IReadOnlyList<AreaDetails> Details { get; init; } = [];
 }
 
 /// <summary>The live event <see cref="OcrMethods.PreviewTopic"/>.</summary>

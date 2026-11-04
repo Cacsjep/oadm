@@ -6,16 +6,41 @@
              x:Class="Oadm.Plugins.Ocr.Client.OcrView"
              x:DataType="vm:OcrViewModel"
              ui:PageHeader.Subtitle="{x:Static api:OcrInfo.Description}">
+  <!-- How the recognition keeps up (docs/spec/ocr.md "Runtime stats"), live every 2 s, at the right end of the page header. -->
+  <ui:PageHeader.Trailing>
+    <!-- The host sets the outer panel's DataContext to the page's. Lowered without a taller header: clear of the window buttons. -->
+    <StackPanel Margin="0,13,0,-18" Orientation="Horizontal" Spacing="24">
+      <StackPanel x:Name="StatsPanel" DataContext="{Binding Stats}" x:DataType="vm:OcrStatsViewModel" Orientation="Horizontal" Spacing="16"
+                  VerticalAlignment="Center" IsVisible="{Binding HasStats}">
+        <ui:StatusChip VerticalAlignment="Center" MaxWidth="300" Text="{Binding StateText}" ToolTip.Tip="{Binding StateText}" IsOk="{Binding IsOk}"
+                       IsWarning="{Binding IsBusy}" IsError="{Binding IsOverloaded}" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Classes="secondary" Text="Load" VerticalAlignment="Center" />
+          <ProgressBar Width="120" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Load}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding LoadText}" VerticalAlignment="Center" />
+        </StackPanel>
+      </StackPanel>
+      <!-- What reads the pictures (docs/spec/ocr.md "GPU"). -->
+      <StackPanel x:Name="EnginePanel" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center"
+                  IsVisible="{Binding RunsOnText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Classes="secondary" Text="{Binding RunsOnShortText}" ToolTip.Tip="{Binding RunsOnText}" MaxWidth="340" TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center" />
+        <CheckBox Content="Use GPU" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}" VerticalAlignment="Center"
+                  ToolTip.Tip="{Binding GpuBlockedReason}" ToolTip.ShowOnDisabled="True" />
+      </StackPanel>
+    </StackPanel>
+  </ui:PageHeader.Trailing>
   <!-- Own cards (ICorePluginPage.HasOwnCards), docs/spec/ocr.md "Page": left the readers in a fixed column (New, red Delete,
-       search, the list, Runs on and Use the graphics card, the runtime stats below it); then the selected reader in two
-       columns: the camera's live video with the areas and the found lines over it (drawing, moving and resizing areas happen
-       there), the reading's note and the results below it; right of it a fixed column with the form (Name, Mode,
-       Stream settings), the areas (New in their header, one row per area, only the rows scroll) and the save status left of Save. Shared controls and theme classes only. -->
-  <Grid x:Name="Panes" ColumnDefinitions="320,*" ColumnSpacing="16">
+       search, the list); then the selected reader in two
+       columns: a card with the camera's live video with the areas and the found lines over it (drawing, moving and resizing
+       areas happen there), the shared splitter, a card with the results; right of it a fixed column
+       with the form (Name, Mode,
+       Stream settings), the areas (New in their header, one row per area, only the rows scroll), the reading's note and the save status left of Save. Shared controls and theme classes only. -->
+  <Grid x:Name="Panes" ColumnDefinitions="320,*,Auto" ColumnSpacing="16">
 
     <!-- Left: the readers. -->
     <Border Grid.Column="0" Classes="card">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="8">
+      <Grid x:Name="ReadersColumn" RowDefinitions="Auto,Auto,*" RowSpacing="8">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10">
           <TextBlock Grid.Column="0" Classes="cardTitle" Text="Readers" VerticalAlignment="Center" Margin="0,0,2,0" />
           <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayChange}">
@@ -45,98 +70,117 @@
           <ui:LoadingOverlay Text="{x:Static vm:OcrTexts.ReadingReaders}" IsVisible="{Binding IsLoading}" />
         </Panel>
 
-        <StackPanel Grid.Row="3" Spacing="16">
-          <!-- What reads the pictures (docs/spec/ocr.md "GPU"). -->
-          <StackPanel Spacing="4" IsVisible="{Binding RunsOnText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-            <TextBlock Classes="cardTitle subsection" Text="Settings" />
-            <TextBlock Classes="secondary" Text="{Binding RunsOnText}" TextWrapping="Wrap" />
-            <CheckBox Content="Use the graphics card" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}"
-                      ToolTip.Tip="{Binding GpuBlockedReason}" ToolTip.ShowOnDisabled="True" />
-          </StackPanel>
-
-          <!-- How the recognition keeps up (docs/spec/ocr.md "Runtime stats"), live every 2 s. -->
-          <StackPanel x:Name="StatsPanel" DataContext="{Binding Stats}" x:DataType="vm:OcrStatsViewModel" Spacing="8" IsVisible="{Binding HasStats}">
-            <TextBlock Classes="cardTitle subsection" Text="Recognition" />
-            <ui:StatusChip HorizontalAlignment="Left" MaxLines="2" Text="{Binding StateText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsBusy}"
-                           IsError="{Binding IsOverloaded}" />
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-              <TextBlock Classes="secondary" Text="Load" VerticalAlignment="Center" />
-              <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Load}" />
-              <TextBlock Grid.Column="2" Text="{Binding LoadText}" VerticalAlignment="Center" />
-            </Grid>
-          </StackPanel>
-        </StackPanel>
       </Grid>
     </Border>
 
-    <!-- Right: the selected reader. -->
-    <Border Grid.Column="1" Classes="card">
-      <Panel>
+    <!-- Middle: the selected reader, or one card that says what to do first. -->
+    <Panel Grid.Column="1">
+      <Border Classes="card" IsVisible="{Binding !HasEditor}">
         <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:OcrViewModel.EmptyText}"
                    IsVisible="{Binding ShowEmpty}" />
+      </Border>
 
-        <Grid x:Name="EditorPanel" DataContext="{Binding Editor}" x:DataType="vm:ReaderEditorViewModel"
-              IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).HasEditor, FallbackValue=False}"
-              ColumnDefinitions="*,320" ColumnSpacing="16">
-
-          <!-- The live video with the areas and the lines over it; the reading's note and the results below it (the reader's
-               state is in the reader list, not repeated here). -->
-          <Grid Grid.Column="0" RowDefinitions="Auto,Auto,*" RowSpacing="8">
+      <!-- Two cards with the shared splitter as their gap: the live video with the areas and the lines over it, the results below
+           it (the reader's state is in the reader list, not repeated here). The first row sizes to the
+           picture until the splitter is dragged; the view sets the limits of both rows. -->
+      <Grid x:Name="VideoColumn" DataContext="{Binding Editor}" x:DataType="vm:ReaderEditorViewModel"
+            IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).HasEditor, FallbackValue=False}"
+            RowDefinitions="Auto,Auto,*">
+        <Border x:Name="VideoCard" Classes="card">
             <Panel x:Name="VideoPanel">
               <Border Classes="liveViewSurface" />
-              <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding HasLiveVideo}" />
+              <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding ShowLiveVideo}" />
               <vm:ReadingPicture x:Name="Picture" PictureSize="{Binding PictureSize}" Areas="{Binding Areas}" Lines="{Binding ShownLines}"
                                  IsDrawing="{Binding IsDrawing}" ShowStartHint="{Binding ShowStartHint}" CanEdit="{Binding MayChange}"
-                                 Version="{Binding OverlayVersion}" />
+                                 HeldPicture="{Binding HeldPicture}" Version="{Binding OverlayVersion}" />
+              <!-- Pause and Resume in the picture's bottom left corner, the one thing over the areas (decision 2026-11-04): only the
+                   button's own rectangle is covered. It never takes the focus, so Esc and the arrow keys stay with the picture. -->
+              <vm:PicturePlace x:Name="PicturePlace" PictureSize="{Binding PictureSize}" IsVisible="{Binding MayPause}">
+                <StackPanel x:Name="PauseBar" Classes="videoCorner" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                  <Border Classes="videoOverlay">
+                    <Button x:Name="PauseButton" Classes="toolbar iconOnly" Focusable="False" Command="{Binding TogglePauseCommand}"
+                            ToolTip.Tip="{Binding PauseTip}" ToolTip.ShowOnDisabled="True">
+                      <Panel>
+                        <ui:OadmIcon Data="{StaticResource Icon.pause}" IsVisible="{Binding !IsPaused}" />
+                        <ui:OadmIcon Data="{StaticResource Icon.start}" IsVisible="{Binding IsPaused}" />
+                      </Panel>
+                    </Button>
+                  </Border>
+                  <Border Classes="videoOverlay" IsVisible="{Binding ShowPauseState}" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <ui:ProgressRing x:Name="PauseRing" Width="16" Height="16" Margin="4,0,0,0" IsVisible="{Binding IsPauseWorking}" VerticalAlignment="Center" />
+                      <ui:StatusChip x:Name="PausedChip" Text="{x:Static vm:OcrTexts.Paused}" IsWarning="True" ToolTip.Tip="{x:Static vm:OcrTexts.PausedTip}"
+                                     IsVisible="{Binding IsPaused}" />
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+              </vm:PicturePlace>
             </Panel>
-            <ui:StatusChip Grid.Row="1" HorizontalAlignment="Left" MaxLines="2" IsWarning="True" Text="{Binding ReadingNote}" IsVisible="{Binding HasReadingNote}" />
+        </Border>
 
-            <!-- The results of the latest reading, one row per area, below the video. -->
-            <Panel Grid.Row="2">
-              <DataGrid x:Name="ResultsGrid" Classes="wrapRows" ItemsSource="{Binding Results}" IsReadOnly="True" CanUserSortColumns="False"
-                        CanUserReorderColumns="False" CanUserResizeColumns="True" SelectionMode="Single" VerticalAlignment="Top"
-                        HeadersVisibility="Column">
-                <DataGrid.Columns>
-                  <DataGridTextColumn Header="Area" Width="1*" MinWidth="70" Binding="{Binding Area}" x:DataType="vm:ResultRow" />
-                  <DataGridTemplateColumn Header="Text" Width="2*" MinWidth="100">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:ResultRow">
-                        <StackPanel Spacing="4" Margin="0,4" VerticalAlignment="Center">
-                          <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Image Source="{Binding CutOut}" Height="28" MaxWidth="160" Stretch="Uniform" IsVisible="{Binding HasCutOut}"
-                                   VerticalAlignment="Center" />
-                            <TextBlock Classes="mono" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                          </StackPanel>
-                          <ui:StatusChip Text="{x:Static vm:ResultRow.TooSmallText}" IsWarning="True" MaxLines="2" IsVisible="{Binding TooSmall}" />
+        <GridSplitter x:Name="ResultsSplitter" Grid.Row="1" Classes="paneSplitter" />
+
+        <!-- The last 20 reads, newest on top; frozen while paused. A click on a thumbnail opens the cut-out. Every thumbnail has
+             one width, so the texts start level. -->
+        <Border x:Name="ResultsCard" Grid.Row="2" Classes="card">
+          <Panel>
+            <DataGrid x:Name="ResultsGrid" Classes="wrapRows" ItemsSource="{Binding Results}" IsReadOnly="True" CanUserSortColumns="False"
+                      CanUserReorderColumns="False" CanUserResizeColumns="True" SelectionMode="Single" VerticalAlignment="Top"
+                      HeadersVisibility="Column">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Time" Width="85" MinWidth="85" Binding="{Binding Time}" x:DataType="vm:ResultRow" />
+                <DataGridTextColumn Header="Area" Width="1*" MinWidth="70" Binding="{Binding Area}" x:DataType="vm:ResultRow" />
+                <DataGridTemplateColumn Header="Text" Width="2*" MinWidth="100">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:ResultRow">
+                      <StackPanel Spacing="4" Margin="0,4" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <Button x:Name="CutOutButton" Classes="toolbar iconOnly thumbnail" Click="OnCutOut" IsVisible="{Binding HasCutOut}" VerticalAlignment="Center"
+                                  ToolTip.Tip="{x:Static vm:OcrTexts.OpenCutOut}">
+                            <Image Source="{Binding CutOut}" Width="120" Height="28" Stretch="Uniform" />
+                          </Button>
+                          <TextBlock Classes="mono" Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
                         </StackPanel>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTextColumn Width="120" MinWidth="115" Binding="{Binding ConfidenceText}" CellStyleClasses="number" x:DataType="vm:ResultRow">
-                    <DataGridTextColumn.Header>
-                      <TextBlock Classes="numberHeader" Text="Confidence" />
-                    </DataGridTextColumn.Header>
-                  </DataGridTextColumn>
-                  <DataGridTemplateColumn Header="Matches format" Width="140" MinWidth="135">
-                    <DataGridTemplateColumn.CellTemplate>
-                      <DataTemplate x:DataType="vm:ResultRow">
-                        <Panel>
-                          <ui:StatusChip Text="{Binding MatchText}" IsOk="{Binding IsMatch}" IsWarning="{Binding IsNoMatch}" IsVisible="{Binding HasFormat}" />
-                          <TextBlock Classes="secondary" Text="{Binding MatchText}" VerticalAlignment="Center" IsVisible="{Binding !HasFormat}" />
-                        </Panel>
-                      </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                  </DataGridTemplateColumn>
-                  <DataGridTextColumn Header="Time" Width="85" MinWidth="85" Binding="{Binding Time}" x:DataType="vm:ResultRow" />
-                </DataGrid.Columns>
-              </DataGrid>
-              <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,48,0,0" TextWrapping="Wrap"
-                         Text="{Binding ResultsEmptyText}" IsVisible="{Binding !HasResults}" />
-            </Panel>
-          </Grid>
+                        <ui:StatusChip Text="{x:Static vm:ResultRow.TooSmallText}" IsWarning="True" MaxLines="2" IsVisible="{Binding TooSmall}" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Width="120" MinWidth="115" Binding="{Binding ConfidenceText}" CellStyleClasses="number" x:DataType="vm:ResultRow">
+                  <DataGridTextColumn.Header>
+                    <TextBlock Classes="numberHeader" Text="Confidence" />
+                  </DataGridTextColumn.Header>
+                </DataGridTextColumn>
+                <DataGridTemplateColumn Header="Matches format" Width="140" MinWidth="135">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="vm:ResultRow">
+                      <Panel>
+                        <ui:StatusChip Text="{Binding MatchText}" IsOk="{Binding IsMatch}" IsWarning="{Binding IsNoMatch}" IsVisible="{Binding HasFormat}" />
+                        <TextBlock Classes="secondary" Text="{Binding MatchText}" VerticalAlignment="Center" IsVisible="{Binding !HasFormat}" />
+                      </Panel>
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+              </DataGrid.Columns>
+            </DataGrid>
+            <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,48,0,0" TextWrapping="Wrap"
+                       Text="{Binding ResultsEmptyText}" IsVisible="{Binding !HasResults}" />
+          </Panel>
+        </Border>
+      </Grid>
+
+      <Border Classes="card" IsVisible="{Binding IsOpening}">
+        <ui:LoadingOverlay Text="{x:Static vm:OcrTexts.ReadingReader}" />
+      </Border>
+    </Panel>
+
+    <!-- Right: the selected reader's settings in a card of their own. -->
+    <Border x:Name="SettingsCard" Grid.Column="2" Classes="card"
+            IsVisible="{Binding HasEditor}">
 
           <!-- The settings, in four rows: the form and the Areas header stay, only the area rows scroll, Save stays at the bottom. -->
-          <Grid x:Name="SettingsColumn" Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+          <Grid x:Name="SettingsColumn" Width="{x:Static vm:OcrView.SettingsWidth}" DataContext="{Binding Editor}" x:DataType="vm:ReaderEditorViewModel"
+              RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
 
             <!-- The form: Name, Mode, Stream settings (their dialog) with the summary or its error below. -->
             <StackPanel Grid.Row="0" Spacing="8" IsEnabled="{Binding MayChange}">
@@ -155,6 +199,8 @@
                   <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding StreamSummary}" />
                 </Button>
               </ui:FormField>
+              <CheckBox x:Name="MovingObjectsBox" Content="{x:Static vm:OcrTexts.MovingObjects}" IsChecked="{Binding MovingObjects}"
+                        IsVisible="{Binding IsWatching}" ToolTip.Tip="{x:Static vm:OcrTexts.MovingObjectsTip}" />
             </StackPanel>
 
             <!-- The Areas header: the title left, New (it starts drawing on the video) at the right edge. -->
@@ -169,7 +215,7 @@
             </StackPanel>
 
             <!-- At most 8 areas, two lines each: the name with rename and delete at the right; below it, indented, Mode and Format.
-                 The selected area's row softly highlighted. The rows scroll by themselves, so New above stays in reach. A refusal
+                 The selected area's name in the accent colour. The rows scroll by themselves, so New above stays in reach. A refusal
                  of the server for the area list as a whole (too many areas) directly below the rows. -->
             <DockPanel Grid.Row="2" VerticalAlignment="Top">
               <TextBlock x:Name="AreasError" DockPanel.Dock="Bottom" Classes="fieldMessage error"
@@ -178,52 +224,72 @@
                        IsVisible="{Binding HasAreas}" KeyboardNavigation.TabNavigation="Continue">
                 <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="vm:AreaViewModel">
-                    <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
-                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
-                        <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
-                          <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
-                        </ui:FormField>
-                        <!-- The shared row actions (like the dashboard and view lists): compact icon buttons, delete red. -->
-                        <StackPanel Grid.Column="1" Classes="rowActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                          <Button x:Name="RenameButton" Classes="toolbar iconOnly" ToolTip.Tip="{x:Static vm:OcrTexts.Rename}"
-                                  CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RenameAreaCommand}">
-                            <ui:OadmIcon Data="{DynamicResource Icon.tag}" />
-                          </Button>
-                          <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete area"
-                                  CommandParameter="{Binding}" Command="{Binding $parent[ListBox].((vm:ReaderEditorViewModel)DataContext).RemoveAreaCommand}">
-                            <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
-                          </Button>
-                        </StackPanel>
-                      </Grid>
-                      <Grid Grid.Row="1" ColumnDefinitions="104,*" ColumnSpacing="4" Margin="12,0,0,0"
-                            IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
-                        <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Top">
-                          <ComboBox x:Name="ModeBox" ItemsSource="{x:Static vm:AreaViewModel.Modes}" SelectedItem="{Binding Mode}"
-                                    HorizontalAlignment="Stretch" ToolTip.Tip="Mode" />
-                        </ui:FormField>
-                        <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Top">
-                          <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}" IsEnabled="{Binding IsFormat}"
-                                   PlaceholderText="{Binding FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}"
-                                   ToolTip.Tip="{x:Static vm:AreaViewModel.FormatHint}" />
-                        </ui:FormField>
-                      </Grid>
+                    <Grid ColumnDefinitions="116,*,Auto" ColumnSpacing="8">
+                      <ui:FormField Classes="wide" LabelAbove="True" VerticalAlignment="Center" Error="{Binding NameError}">
+                        <TextBlock x:Name="AreaName" Classes="areaName" Text="{Binding Name}" ToolTip.Tip="{Binding Name}" />
+                      </ui:FormField>
+                      <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" VerticalAlignment="Center"
+                                    IsEnabled="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                        <TextBox x:Name="FormatBox" Classes="mono" Text="{Binding FormatText}"
+                                 PlaceholderText="{x:Static vm:AreaViewModel.FormatPlaceholder}" MaxLength="{x:Static vm:AreaViewModel.MaxFormatLength}">
+                          <!-- The whole format help (docs/spec/ocr.md "Expected text"). -->
+                          <ToolTip.Tip>
+                            <StackPanel x:Name="FormatHelp" Spacing="10" MaxWidth="300">
+                              <StackPanel Spacing="2">
+                                <TextBlock Classes="tipTitle" Text="Format" />
+                                <TextBlock Classes="secondary" Text="The shape of the text. Leave empty to read any text." TextWrapping="Wrap" />
+                              </StackPanel>
+                              <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="2">
+                                  <TextBlock Classes="tipKey" Text="#" />
+                                  <TextBlock Grid.Column="1" Text="A digit" />
+                                  <TextBlock Grid.Row="1" Classes="tipKey" Text="@" />
+                                  <TextBlock Grid.Row="1" Grid.Column="1" Text="A letter" />
+                                  <TextBlock Grid.Row="2" Classes="tipKey" Text="*" />
+                                  <TextBlock Grid.Row="2" Grid.Column="1" Text="A letter or digit" />
+                                </Grid>
+                                <TextBlock Classes="secondary" Text="Any other character must appear as written, like the U in @@@U. Spaces may be missing in the text." TextWrapping="Wrap" />
+                              </StackPanel>
+                              <StackPanel Spacing="4">
+                                <TextBlock Classes="tipTitle" Text="Examples" />
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="2">
+                                  <TextBlock Classes="tipKey" Text="@@@U ###### #" />
+                                  <TextBlock Grid.Column="1" Classes="secondary" Text="Container number" />
+                                  <TextBlock Grid.Row="1" Classes="tipKey" Text="## ## #### ###-#" />
+                                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="secondary" Text="Wagon number" />
+                                  <TextBlock Grid.Row="2" Classes="tipKey" Text="##@#@" />
+                                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="secondary" Text="Order code" />
+                                </Grid>
+                              </StackPanel>
+                            </StackPanel>
+                          </ToolTip.Tip>
+                        </TextBox>
+                      </ui:FormField>
+                      <!-- One ⋯ button with the row's actions (ui:RowActions): Rename, then Delete in red. -->
+                      <Button x:Name="AreaActions" Grid.Column="2" Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}"
+                              Click="OnAreaActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
+                        <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                      </Button>
                     </Grid>
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
             </DockPanel>
 
-            <!-- The save status directly left of Save. -->
-            <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" IsVisible="{Binding MayChange}">
-              <ui:StatusChip Grid.Column="1" VerticalAlignment="Center" Text="{Binding SaveStatus}" IsOk="{Binding IsSaveStatusOk}"
-                             IsWarning="{Binding !IsSaveStatusOk}" IsVisible="{Binding HasSaveStatus}" />
-              <Button Grid.Column="2" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
-                      ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
-            </Grid>
+            <!-- The reading's note above Save: here it never moves the video, and the area rows give it their height. -->
+            <StackPanel Grid.Row="3" Spacing="10">
+              <ui:StatusChip x:Name="NoteChip" HorizontalAlignment="Left" MaxLines="{Binding NoteMaxLines}" IsWarning="True"
+                             Text="{Binding ReadingNote}" IsVisible="{Binding HasReadingNote}" />
+
+              <!-- The save status directly left of Save. -->
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" IsVisible="{Binding MayChange}">
+                <ui:StatusChip Grid.Column="1" VerticalAlignment="Center" Text="{Binding SaveStatus}" IsOk="{Binding IsSaveStatusOk}"
+                               IsWarning="{Binding !IsSaveStatusOk}" IsVisible="{Binding HasSaveStatus}" />
+                <Button Grid.Column="2" Classes="primary" Content="Save" Command="{Binding SaveCommand}"
+                        ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+              </Grid>
+            </StackPanel>
           </Grid>
-        </Grid>
-        <ui:LoadingOverlay Text="{x:Static vm:OcrTexts.ReadingReader}" IsVisible="{Binding IsOpening}" />
-      </Panel>
     </Border>
   </Grid>
 </UserControl>

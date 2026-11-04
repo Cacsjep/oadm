@@ -71,10 +71,10 @@ internal static class AngleSweep
 
     public static readonly SweepText[] Texts =
     [
-        new("container", Container, "AAAU ###### #", SweepBackground.Door),
+        new("container", Container, "@@@U ###### #", SweepBackground.Door),
         new("4/12", "4/12", "#/##", SweepBackground.Label),
         new("sign", "LOADING DOCK 3", null, SweepBackground.Sign),
-        new("order", "36F1A", "##A#A", SweepBackground.Receipt),
+        new("order", "36F1A", "##@#@", SweepBackground.Receipt),
     ];
 
     /// <summary>Roboto from the repository: the same pixels on every platform.</summary>

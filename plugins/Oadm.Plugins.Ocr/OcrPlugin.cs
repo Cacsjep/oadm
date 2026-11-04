@@ -126,7 +126,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         ? "counts the watching readers per site (a limit of the site node), shows no device data"
         : null;
 
-    /// <summary>"Use the graphics card" is server-wide: only users with all devices (the host refuses the others first).</summary>
+    /// <summary>"Use GPU" is server-wide: only users with all devices (the host refuses the others first).</summary>
     public bool RequiresAllDevices(string method) => method is OcrMethods.SetUseGpu;
 
     public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu;
@@ -138,7 +138,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers."),
     ];
 
-    /// <summary>New, Delete, Save and Use the graphics card: "change"; the rest (the page's preview too): "show".</summary>
+    /// <summary>New, Delete, Save and Use GPU: "change"; the rest (the page's preview too): "show".</summary>
     public string? RequiredPermission(string method) =>
         method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
 

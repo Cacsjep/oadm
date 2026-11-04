@@ -12,14 +12,14 @@ public sealed class ReaderStoreTests
     public async Task ASavedReaderIsStoredListedAndKeptOverARestart()
     {
         await using var ocr = await OcrHarness.StartAsync();
-        var area = new Area { Name = " Container number ", Box = new RelativeBox(0.1, 0.1, 0.4, 0.2), Expected = ExpectedText.WithFormat(" AAAU ###### # ") };
+        var area = new Area { Name = " Container number ", Box = new RelativeBox(0.1, 0.1, 0.4, 0.2), Expected = ExpectedText.WithFormat(" @@@U ###### # ") };
 
         var saved = await ocr.SaveAsync(ocr.NewReader(" Gate 2 ", areas: area) with { OwnerScopeKey = "forged" });
 
         Assert.False(string.IsNullOrEmpty(saved.Id));
         Assert.Equal("Gate 2", saved.Name);
         Assert.Equal("Container number", saved.Areas[0].Name);
-        Assert.Equal("AAAU ###### #", saved.Areas[0].Expected.Format);
+        Assert.Equal("@@@U ###### #", saved.Areas[0].Expected.Format);
         Assert.Null(saved.OwnerScopeKey); // never from the page, never to the page
         var list = await ocr.ListAsync();
         var row = Assert.Single(list.Readers);

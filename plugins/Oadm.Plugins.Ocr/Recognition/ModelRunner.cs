@@ -19,7 +19,7 @@ internal interface ITextFinder
     Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct);
 }
 
-/// <summary>Runs the three models for one reading: the CPU workers, the text finder of Search on the graphics card when there is one.</summary>
+/// <summary>Runs the three models for one reading: the CPU workers, or the graphics card (<see cref="CardRunner"/>).</summary>
 internal interface IModelRunner : ITextFinder
 {
     /// <summary>The reader's character list.</summary>
@@ -28,7 +28,7 @@ internal interface IModelRunner : ITextFinder
     /// <summary>The text finder of an area read in tiles (Search over a large area): the graphics card's when it is used.</summary>
     ITextFinder Search { get; }
 
-    /// <summary>True when <see cref="Search"/> is the graphics card (an area's reading on the card is never reused on the CPU).</summary>
+    /// <summary>True when the text finder is the graphics card (an area's reading on the card is never reused on the CPU).</summary>
     bool SearchOnCard { get; }
 
     /// <summary>The probability that each line is upside down.</summary>
@@ -39,11 +39,12 @@ internal interface IModelRunner : ITextFinder
 }
 
 /// <summary>
-/// The CPU workers (docs/spec/ocr.md rule 4): every model call takes one of <see cref="Model.OcrLimits.Workers"/> slots and a
-/// session set of its own (<see cref="Model.OcrLimits.ThreadsPerWorker"/> threads). The tiles of one picture and its batches
-/// of lines are separate calls, so an otherwise idle server reads one picture on several workers at once, and many readers
-/// share the same slots fairly. A set unused for <see cref="IdleTimeout"/> is disposed (its memory goes back); a set still in
-/// use when the workers are disposed is disposed when its call ends, never while it runs.
+/// The CPU workers (docs/spec/ocr.md rule 4): every model call takes one of <see cref="Model.OcrLimits.Workers"/> slots and runs
+/// on one thread (<see cref="Model.OcrLimits.ThreadsPerWorker"/>). All calls share one session set: a session runs calls at
+/// once (the model's weights in memory once), and a call of one thread runs on its caller. The tiles of one picture and its
+/// lines are separate calls, so an otherwise idle server reads one picture on several workers at once, and many readers share
+/// the same slots fairly. A set unused for <see cref="IdleTimeout"/> is disposed (its memory goes back); a set still in use
+/// when the workers are disposed is disposed when its last call ends, never while it runs.
 /// </summary>
 internal sealed class CpuWorkers<TSet> : IDisposable
     where TSet : class, IDisposable
@@ -53,13 +54,15 @@ internal sealed class CpuWorkers<TSet> : IDisposable
 
     private readonly SemaphoreSlim _slots;
     private readonly SemaphoreSlim _accurate;
+    private readonly SemaphoreSlim _large;
     private readonly Func<bool, TSet> _create;
     private readonly BusyMeter? _busy;
     private readonly TimeProvider _time;
     private readonly object _lock = new();
-    private readonly List<(TSet Set, long Since)> _idle = [];
-    private readonly List<(TSet Set, long Since)> _idleAccurate = [];
+    private readonly object _creating = new();
+    private readonly Shared?[] _sets = new Shared?[2];
     private readonly ITimer _trim;
+    private int _waiting;
     private bool _disposed;
 
     /// <param name="slots">Model calls at once.</param>
@@ -72,6 +75,8 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         _busy = busy;
         _slots = new SemaphoreSlim(slots, slots);
         _accurate = new SemaphoreSlim(accurateSets, accurateSets);
+        var large = Math.Clamp(Model.OcrLimits.LargeTextFinderCalls, 1, slots);
+        _large = new SemaphoreSlim(large, large);
         _create = create;
         _time = time ?? TimeProvider.System;
         Slots = slots;
@@ -85,6 +90,26 @@ internal sealed class CpuWorkers<TSet> : IDisposable
     /// <summary>Slots in use now (tests: the gate holds).</summary>
     public int Busy => Slots - _slots.CurrentCount;
 
+    /// <summary>A slot is free and no call waits for one.</summary>
+    public bool HasRoom => _slots.CurrentCount > 0 && Volatile.Read(ref _waiting) == 0 && _large.CurrentCount > 0;
+
+    /// <summary>
+    /// Runs a large text finder call: at most <see cref="Model.OcrLimits.LargeTextFinderCalls"/> at once, the others wait without
+    /// holding a worker.
+    /// </summary>
+    public async Task<T> RunLargeAsync<T>(bool accurate, Func<TSet, Task<T>> work, CancellationToken ct)
+    {
+        await _large.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await RunAsync(accurate, work, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _large.Release();
+        }
+    }
+
     /// <summary>Session sets kept for the next calls (tests: the idle trimming).</summary>
     public int Idle
     {
@@ -92,16 +117,25 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         {
             lock (_lock)
             {
-                return _idle.Count + _idleAccurate.Count;
+                return _sets.Count(s => s is { InUse: 0 });
             }
         }
     }
 
-    /// <summary>Runs <paramref name="work"/> on a free slot with a set of its own.</summary>
+    /// <summary>Runs <paramref name="work"/> on a free slot with the shared set.</summary>
     /// <exception cref="ObjectDisposedException">The workers were disposed.</exception>
     public async Task<T> RunAsync<T>(bool accurate, Func<TSet, Task<T>> work, CancellationToken ct)
     {
-        await _slots.WaitAsync(ct).ConfigureAwait(false);
+        Interlocked.Increment(ref _waiting);
+        try
+        {
+            await _slots.WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _waiting);
+        }
+
         try
         {
             if (accurate)
@@ -109,30 +143,16 @@ internal sealed class CpuWorkers<TSet> : IDisposable
                 await _accurate.WaitAsync(ct).ConfigureAwait(false);
             }
 
-            TSet? set = null;
+            Shared? held = null;
             try
             {
-                lock (_lock)
-                {
-                    ObjectDisposedException.ThrowIf(_disposed, this);
-
-                    // The most recently used set: the others age out.
-                    var idle = accurate ? _idleAccurate : _idle;
-                    if (idle.Count > 0)
-                    {
-                        set = idle[^1].Set;
-                        idle.RemoveAt(idle.Count - 1);
-                    }
-                }
-
-                set ??= _create(accurate);
+                held = Take(accurate);
 
                 // Off the caller's thread: the model call blocks its thread for the length of the call.
-                var taken = set;
                 var started = _busy?.Start() ?? 0;
                 try
                 {
-                    return await Task.Run(() => work(taken), ct).ConfigureAwait(false);
+                    return await Task.Run(() => work(held.Set), ct).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -141,9 +161,9 @@ internal sealed class CpuWorkers<TSet> : IDisposable
             }
             finally
             {
-                if (set is not null)
+                if (held is not null)
                 {
-                    Return(set, accurate);
+                    Return(held);
                 }
 
                 if (accurate)
@@ -158,6 +178,48 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         }
     }
 
+    private Shared Take(bool accurate)
+    {
+        var index = accurate ? 1 : 0;
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_sets[index] is { } set)
+            {
+                set.InUse++;
+                return set;
+            }
+        }
+
+        // Made outside the lock (a second or so): the calls of the other set go on.
+        lock (_creating)
+        {
+            lock (_lock)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (_sets[index] is { } set)
+                {
+                    set.InUse++;
+                    return set;
+                }
+            }
+
+            var made = new Shared(_create(accurate));
+            lock (_lock)
+            {
+                if (_disposed)
+                {
+                    made.Set.Dispose();
+                    throw new ObjectDisposedException(GetType().Name);
+                }
+
+                made.InUse = 1;
+                _sets[index] = made;
+                return made;
+            }
+        }
+    }
+
     /// <summary>Disposes the sets unused for <see cref="IdleTimeout"/>.</summary>
     internal void TrimIdle()
     {
@@ -165,10 +227,13 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         var old = new List<TSet>();
         lock (_lock)
         {
-            foreach (var idle in (List<(TSet Set, long Since)>[])[_idle, _idleAccurate])
+            for (var i = 0; i < _sets.Length; i++)
             {
-                old.AddRange(idle.Where(e => _time.GetElapsedTime(e.Since, now) >= IdleTimeout).Select(e => e.Set));
-                idle.RemoveAll(e => _time.GetElapsedTime(e.Since, now) >= IdleTimeout);
+                if (_sets[i] is { InUse: 0 } set && _time.GetElapsedTime(set.Since, now) >= IdleTimeout)
+                {
+                    old.Add(set.Set);
+                    _sets[i] = null;
+                }
             }
         }
 
@@ -178,27 +243,29 @@ internal sealed class CpuWorkers<TSet> : IDisposable
         }
     }
 
-    private void Return(TSet set, bool accurate)
+    private void Return(Shared held)
     {
+        bool last;
         lock (_lock)
         {
-            if (!_disposed)
-            {
-                (accurate ? _idleAccurate : _idle).Add((set, _time.GetTimestamp()));
-                return;
-            }
+            held.InUse--;
+            held.Since = _time.GetTimestamp();
+            last = _disposed && held.InUse == 0;
         }
 
-        set.Dispose();
+        if (last)
+        {
+            held.Set.Dispose();
+        }
     }
 
     /// <summary>
-    /// Disposes the idle sets now and every set in use when its call ends. The semaphores stay (a call in flight still releases
+    /// Disposes an idle set now and a set in use when its last call ends. The semaphores stay (a call in flight still releases
     /// its slot); calls that get a slot afterwards end with <see cref="ObjectDisposedException"/>.
     /// </summary>
     public void Dispose()
     {
-        List<TSet> sets;
+        List<TSet> idle = [];
         lock (_lock)
         {
             if (_disposed)
@@ -207,130 +274,75 @@ internal sealed class CpuWorkers<TSet> : IDisposable
             }
 
             _disposed = true;
-            sets = [.. _idle.Select(e => e.Set), .. _idleAccurate.Select(e => e.Set)];
-            _idle.Clear();
-            _idleAccurate.Clear();
+            for (var i = 0; i < _sets.Length; i++)
+            {
+                if (_sets[i] is { InUse: 0 } set)
+                {
+                    idle.Add(set.Set);
+                }
+
+                _sets[i] = null;
+            }
         }
 
         _trim.Dispose();
-        foreach (var set in sets)
+        foreach (var set in idle)
         {
             set.Dispose();
         }
     }
+
+    /// <summary>A session set with the calls that use it now.</summary>
+    private sealed class Shared(TSet set)
+    {
+        public TSet Set { get; } = set;
+
+        public int InUse { get; set; }
+
+        public long Since { get; set; }
+    }
 }
 
 /// <summary>
-/// The CPU runner: each call through <see cref="CpuWorkers"/>; lines in pairs of similar width, the pairs at once. With
-/// <paramref name="search"/> the text finder of areas read in tiles runs there (the graphics card).
+/// The CPU runner: each call through <see cref="CpuWorkers"/>; every line a call of its own, the calls at once.
 /// </summary>
-internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList characters, bool accurate, CardTextFinder? search = null) : IModelRunner
+internal sealed class CpuRunner(CpuWorkers<ModelSet> workers, CharacterList characters, bool accurate) : IModelRunner
 {
     public CharacterList Characters => characters;
 
-    public ITextFinder Search => search ?? (ITextFinder)this;
+    public ITextFinder Search => this;
 
-    public bool SearchOnCard => search is not null;
+    public bool SearchOnCard => false;
 
     public bool BatchTiles => false;
 
     public int DetectionSide(int pixels) => OnnxTextRecognizer.RoundUp32(pixels);
 
     public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
-        workers.RunAsync(accurate, set => set.DetectAsync(input, count, height, width, ct), ct);
+        height * width >= Model.OcrLimits.LargeTextFinderPixels
+            ? workers.RunLargeAsync(accurate, set => set.DetectAsync(input, count, height, width, ct), ct)
+            : workers.RunAsync(accurate, set => set.DetectAsync(input, count, height, width, ct), ct);
 
     public Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct) =>
         workers.RunAsync(accurate, set => set.UpsideDownAsync(lines, ct), ct);
 
     public async Task<LineScores[]> RecognizeAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
     {
-        // Pairs of lines of similar width (little padding), each pair a call of its own: the lines of a picture spread over the
-        // free workers (a reader with 4 areas: 147 to 87 ms on 24 cores).
-        var order = Enumerable.Range(0, lines.Count).OrderBy(i => lines[i].Width).ToArray();
-        const int Batch = 2;
-        var calls = new List<Task<LineScores[]>>();
-        for (var start = 0; start < order.Length; start += Batch)
+        // Every line a call of its own: no padding to a wider neighbour, and the lines of a picture spread over the free workers.
+        var calls = new Task<LineScores[]>[lines.Count];
+        for (var i = 0; i < calls.Length; i++)
         {
-            var chunk = order.Skip(start).Take(Batch).Select(i => lines[i]).ToList();
-            calls.Add(workers.RunAsync(accurate, set => set.RecognizeAsync(chunk, ct), ct));
+            IReadOnlyList<SKBitmap> line = [lines[i]];
+            calls[i] = workers.RunAsync(accurate, set => set.RecognizeAsync(line, ct), ct);
         }
 
         var parts = await Task.WhenAll(calls).ConfigureAwait(false);
-        var result = new LineScores[lines.Count];
-        var k = 0;
-        foreach (var part in parts)
+        var result = new LineScores[calls.Length];
+        for (var i = 0; i < calls.Length; i++)
         {
-            foreach (var scores in part)
-            {
-                result[order[k++]] = scores;
-            }
+            result[i] = parts[i][0];
         }
 
         return result;
-    }
-}
-
-/// <summary>
-/// The graphics card's text finder (docs/spec/ocr.md "GPU"): the server text finder for Search, the areas read in tiles. One
-/// call at a time (the card's time counted in its <see cref="BusyMeter"/>); on DirectML each input size is a session of its own
-/// in the <see cref="GpuSessionBudget"/> (counted by its pixels, capped), the sides in steps and the tiles of an area in calls
-/// of one size that fits <see cref="GpuSessionBudget.MaxCallBytes"/>. Reader and angle model run on the CPU workers.
-/// </summary>
-internal sealed class CardTextFinder : ITextFinder, IDisposable
-{
-    private static readonly int[] Steps = [256, 512, 768, 1024];
-
-    private readonly ShapeSessions _sessions;
-    private readonly SemaphoreSlim _serial = new(1, 1);
-    private readonly BusyMeter _busy;
-    private readonly ExecutionTarget _target;
-    private readonly long _maxCallBytes;
-
-    /// <param name="busy">Counts the time each call holds the card.</param>
-    /// <param name="budget">DirectML: the card's sessions (required there); CUDA: unused.</param>
-    public CardTextFinder(string modelPath, ExecutionTarget target, BusyMeter busy, GpuSessionBudget? budget)
-    {
-        _target = target;
-        _busy = busy;
-        _maxCallBytes = (budget?.Max ?? GpuSessionBudget.MaxBytes) / 2;
-        _sessions = new ShapeSessions(modelPath, target, OcrLimits.ThreadsPerWorker, budget);
-    }
-
-    public bool BatchTiles => true;
-
-    /// <summary>On DirectML each input size is a session of its own: sides in four steps.</summary>
-    public int DetectionSide(int pixels) => _target == ExecutionTarget.DirectMl ? SteppedSide(pixels) : OnnxTextRecognizer.RoundUp32(pixels);
-
-    /// <summary>The DirectML side for <paramref name="pixels"/>: 256, 512, 768 or 1024 (tiles are at most 960).</summary>
-    internal static int SteppedSide(int pixels) => Steps.FirstOrDefault(s => s >= pixels, OnnxTextRecognizer.RoundUp32(pixels));
-
-    public int TilesPerCall(int tiles, int tileWidth, int tileHeight) => GpuSessionBudget.TilesPerCall(tiles, tileWidth, tileHeight, _maxCallBytes);
-
-    public async Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct)
-    {
-        await _serial.WaitAsync(ct).ConfigureAwait(false);
-        var started = _busy.Start();
-        try
-        {
-            return ModelSet.Timed(
-                () => _sessions.Run(input.Array, [count, 3, height, width], static (output, _) =>
-                {
-                    var map = PooledFloats.Rent(output.Length, clear: false);
-                    output.CopyTo(map.Span);
-                    return map;
-                }),
-                Stage.DetectModel);
-        }
-        finally
-        {
-            _busy.Stop(started);
-            _serial.Release();
-        }
-    }
-
-    public void Dispose()
-    {
-        _sessions.Dispose();
-        _serial.Dispose();
     }
 }

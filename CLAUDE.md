@@ -236,7 +236,7 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
   settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
-- **[MyAxis sign-in](docs/spec/myaxis.md)** (built; verified 2026-11-02 on Windows with a real MyAxis account, WebKitGTK glue not yet): each user signs in to their own MyAxis account (title
+- **[MyAxis sign-in](docs/spec/myaxis.md)** (built; verified on Windows and Ubuntu with a real MyAxis account, macOS not yet): each user signs in to their own MyAxis account (title
   bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
   server, sent only to axis.com, never to plugins; Upgrade AXIS OS downloads the versions from axis.com with it (Recommended, Latest LTS,
   Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
@@ -247,13 +247,14 @@ must never break.
   ZIP and `dotnet run` keep Open download page); never a real installer in tests;
   site nodes are updated by hand (they run with few rights).
 - **[Add-on plugins](docs/spec/add-ons.md)** (built; users see "Optional plugins", never "add-on"): OADM's own plugins
-  outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the server downloads only the add-on of its own
-  version from its GitHub release, checked by `SHA256SUMS.txt`, Administrators only; clients get the client part from the
-  server; updated with the server; never a file upload.
+  outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the user downloads the ZIP and sends it
+  through the client, the server never downloads one; only the exact genuine ZIP of this server's version and system installs (its SHA-256 built into every server build, checked before
+  unpacking, an OADM login must not become code as SYSTEM or root), Administrators only, audited; clients get the client part from the server; after a server update Install again, OADM runs
+  as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
 - **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
-  default): readers (camera, up to 8 areas, Any text or a format such as `AAAU ###### #`) read text only inside their
-  areas on the CPU, a search over a large area on a graphics card when there is one (ONNX Runtime, PaddleOCR models, never
-  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps (watching
+  default): readers (camera, up to 8 areas, Any text or a format such as `@@@U ###### #`) read text only inside their
+  areas, on a usable graphics card unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
+  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 25 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); event Text read for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
@@ -289,7 +290,8 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 HARD RULE for every UI text and every doc. We write for installers who know Axis devices and come from ADM.
 
 - Short and plain. Intros and subtitles: one short sentence, or none. Never explain what a visible control already shows.
-- Tooltips only when they add something, at most about 8 words. Never repeat the label.
+- Tooltips only when they add something, at most about 8 words (one exception: the format help of Text recognition).
+  Never repeat the label.
 - No protocol, API or internal names in UI text (mDNS, Bonjour, zero-conf, fwmgr 1.x, stratum, ASCII, passphrase
   policy, full refresh, device record, ports, internal limits). Say what the user can do instead. Exception: facts an
   installer acts on keep their names (ports and protocols for a firewall, hardening checks named as in the AXIS hardening
@@ -396,7 +398,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 - Core plugin pages never repeat the page title in a card heading: the description goes into
   the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
   header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the
-  PKI page); the card starts with
+  PKI page; a live status of the whole page may sit there: Text recognition's load); the card starts with
   the form. User-facing texts use plain language (no protocol jargon such as stratum, DISCOVER/OFFER).
 - Dialogs with a single operation (one form: back up, import, generate, static lease, export) have no card: the form sits
   in `Border.dialogBody` (theme, padded like `ui:MessageWindow`) between title bar and footer, and the window sizes to its

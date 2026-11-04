@@ -42,6 +42,8 @@ public static class TextReadEvents
         {
             Description = $"The reader {reader.Name} read the text of an area.",
             DeviceIds = [reader.DeviceId],
+            FixedDeviceId = reader.DeviceId,
+            SplitField = OcrInfo.AreaField,
             OwnerScopeKey = OwnerScope.Of(reader.OwnerScopeKey),
             Path = OcrInfo.TextReadPath(reader.Name),
         };

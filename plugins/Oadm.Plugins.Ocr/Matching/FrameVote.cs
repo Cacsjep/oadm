@@ -60,6 +60,9 @@ public sealed class FrameVote(Func<string, bool>? accepts = null)
     /// </summary>
     public TextMatch? Current => _lastVote is null ? null : SourceOf(_lastVote);
 
+    /// <summary>The frames the window holds now, at most <see cref="Window"/>.</summary>
+    public int HeldFrames => _window.Count(r => !r.Frame.IsEmpty);
+
     /// <summary>
     /// Adds the newest reading of the area and returns what to publish now, or null. The result is the newest reading in
     /// the window that read the voted value, else the newest of the voted length with its text replaced by the vote.

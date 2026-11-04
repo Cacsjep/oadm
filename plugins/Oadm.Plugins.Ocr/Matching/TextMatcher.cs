@@ -42,6 +42,7 @@ public sealed class TextMatcher : ITextMatcher
                 Confidence = ordered.Min(l => l.Confidence),
                 Lines = ordered,
                 TextBox = Union(ordered),
+                Turn = ordered.Count == 1 ? ordered[0].Turn : null,
             };
         }
 
@@ -67,6 +68,7 @@ public sealed class TextMatcher : ITextMatcher
             MatchesFormat = true,
             Lines = ordered,
             TextBox = best.Box,
+            Turn = best.Turn,
         };
     }
 
@@ -79,7 +81,7 @@ public sealed class TextMatcher : ITextMatcher
             var line = ordered[i];
             foreach (var m in format.FindAll(texts[i]))
             {
-                found.Add((i, m.Start, new Candidate(m.Value, line.Confidence, line.Box.Height, line.Box)));
+                found.Add((i, m.Start, new Candidate(m.Value, line.Confidence, line.Box.Height, line.Box, line.Turn)));
             }
         }
 
@@ -100,7 +102,8 @@ public sealed class TextMatcher : ITextMatcher
                             m.Value,
                             Math.Min(a.Confidence, b.Confidence),
                             Math.Max(a.Box.Height, b.Box.Height),
-                            Union([a, b]))));
+                            Union([a, b]),
+                            null))); // two lines have no one direction: the cut-out stays level
                     }
                 }
             }
@@ -123,5 +126,5 @@ public sealed class TextMatcher : ITextMatcher
         return new RelativeBox(left, top, right - left, bottom - top);
     }
 
-    private sealed record Candidate(string Value, double Confidence, double TextHeight, RelativeBox? Box);
+    private sealed record Candidate(string Value, double Confidence, double TextHeight, RelativeBox? Box, LineTurn? Turn);
 }

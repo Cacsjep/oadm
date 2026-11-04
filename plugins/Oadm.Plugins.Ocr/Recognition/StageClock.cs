@@ -14,6 +14,13 @@ internal enum Stage
     RecognizeInput,
     RecognizeModel,
     Decoding,
+
+    /// <summary>Wall time of the phases of one reading (the stages above sum over threads).</summary>
+    WallFind,
+    WallRead,
+    WallAngle,
+    WallTurned,
+    WallWhole,
     Count,
 }
 

@@ -51,7 +51,7 @@ internal static class AccuracySetGenerator
             var scale = 0.55f + (float)random.NextDouble() * 0.4f;
             Place(scene, receipt, random, turn, scale);
             Save(scene, Path.Combine(folder, name), damage, random);
-            pictures.Add(new AccuracyPicture(name, "receipt-search", [new AccuracyArea("Order", [0, 0, 1, 1], "##A#A", code)]));
+            pictures.Add(new AccuracyPicture(name, "receipt-search", [new AccuracyArea("Order", [0, 0, 1, 1], "##@#@", code)]));
         }
 
         // Container numbers: fixed place (an area around the number) and Search (the whole picture).
@@ -66,7 +66,7 @@ internal static class AccuracySetGenerator
             var box = ContainerScene(scene, number, random, search, 1);
             Save(scene, Path.Combine(folder, name), damage, random);
             var area = search ? new[] { 0.0, 0, 1, 1 } : box;
-            pictures.Add(new AccuracyPicture(name, search ? "container-search" : "container-fixed", [new AccuracyArea("Container number", area, "AAAU ###### #", number)]));
+            pictures.Add(new AccuracyPicture(name, search ? "container-search" : "container-fixed", [new AccuracyArea("Container number", area, "@@@U ###### #", number)]));
         }
 
         // Meter digits, fixed place.
@@ -103,7 +103,7 @@ internal static class AccuracySetGenerator
             using var receipt = Receipt(code, random);
             Place(scene, receipt, random, turn, 0.38f + (float)random.NextDouble() * 0.12f);
             Save(scene, Path.Combine(folder, name), hard[i % hard.Length], random);
-            pictures.Add(new AccuracyPicture(name, "hard-receipt-search", [new AccuracyArea("Order", [0, 0, 1, 1], "##A#A", code)]));
+            pictures.Add(new AccuracyPicture(name, "hard-receipt-search", [new AccuracyArea("Order", [0, 0, 1, 1], "##@#@", code)]));
         }
 
         for (var i = 0; i < 6; i++)
@@ -113,7 +113,7 @@ internal static class AccuracySetGenerator
             using var scene = new SKBitmap(1280, 720, SKColorType.Rgba8888, SKAlphaType.Premul);
             var box = ContainerScene(scene, number, random, false, 0.5f);
             Save(scene, Path.Combine(folder, name), hard[i % hard.Length], random);
-            pictures.Add(new AccuracyPicture(name, "hard-container", [new AccuracyArea("Container number", box, "AAAU ###### #", number)]));
+            pictures.Add(new AccuracyPicture(name, "hard-container", [new AccuracyArea("Container number", box, "@@@U ###### #", number)]));
         }
 
         for (var i = 0; i < 6; i++)
@@ -161,7 +161,7 @@ internal static class AccuracySetGenerator
         list.Add(new AccuracyPicture("yard-1280x720.jpg", "no-text",
         [
             new AccuracyArea("Anything", [0, 0, 1, 1], null, string.Empty),
-            new AccuracyArea("Order", [0, 0, 1, 1], "##A#A", string.Empty),
+            new AccuracyArea("Order", [0, 0, 1, 1], "##@#@", string.Empty),
         ]));
         return list;
     }

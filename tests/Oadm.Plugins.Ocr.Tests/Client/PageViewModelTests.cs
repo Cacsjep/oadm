@@ -22,6 +22,14 @@ public sealed class PageViewModelTests
         return vm;
     }
 
+    [Theory]
+    [InlineData("CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti", "CPU 24 cores · RTX 5070 Ti")]
+    [InlineData("CPU (8 cores)", "CPU 8 cores")]
+    [InlineData("CPU (16 cores) · search on AMD Radeon RX 7900", "CPU 16 cores · Radeon RX 7900")]
+    [InlineData("CPU (8 cores) · search on Intel Arc A770", "CPU 8 cores · Intel Arc A770")]
+    public void The_header_shows_the_short_form_of_what_reads(string name, string shortText) =>
+        Assert.Equal(shortText, OcrTexts.RunsOnShort(name));
+
     [Fact]
     public async Task Load_lists_the_readers_and_opens_the_first_with_its_reading()
     {
@@ -49,15 +57,14 @@ public sealed class PageViewModelTests
         Assert.Equal(2, editor.VideoSources.Count);
         Assert.Equal(new Resolution(1920, 1080), editor.SelectedResolution);
 
-        // The results: a match, Any text, a format without a match whose lines were too small.
-        Assert.Equal(3, editor.Results.Count);
-        Assert.True(editor.Results[0].IsMatch);
-        Assert.Equal("96 %", editor.Results[0].ConfidenceText);
-        Assert.Equal(OcrTexts.NoFormat, editor.Results[1].MatchText);
-        Assert.True(editor.Results[2].IsNoMatch);
-        Assert.Equal("G3", editor.Results[2].Text);
-        Assert.True(editor.Results[2].TooSmall);
-        Assert.Equal(3, editor.Lines.Count);
+        // The last reads, newest on top: Any text, a match; the lane's format has no value, so no row, its warning in the note.
+        Assert.Equal(2, editor.Results.Count);
+        Assert.Equal(OcrTexts.NoFormat, editor.Results[0].MatchText);
+        Assert.True(editor.Results[1].IsMatch);
+        Assert.Equal("96 %", editor.Results[1].ConfidenceText);
+        Assert.All(editor.Results, r => Assert.False(r.TooSmall));
+        Assert.Equal("Lane: " + ReaderRules.TooSmall, editor.ReadingNote);
+        Assert.Equal(2, editor.Lines.Count);
         Assert.Equal("{\"readerId\":\"r1\"}", ctx.LastPayloadOf(OcrMethods.GetReading));
     }
 
@@ -111,12 +118,12 @@ public sealed class PageViewModelTests
     }
 
     [Theory]
-    [InlineData("AAAU ###### #", null)]
+    [InlineData("@@@U ###### #", null)]
     [InlineData("####.#", null)]
     [InlineData("*", null)]
     [InlineData("", "Enter a format.")]
     [InlineData("   ", "Enter a format.")]
-    [InlineData("1234", "A format needs at least one #, A or *.")]
+    [InlineData("1234", "A format needs at least one #, @ or *.")]
     [InlineData("#################################################################", "A format has at most 64 characters.")]
     [InlineData("##\t#", "Use letters, digits and signs only.")]
     public void The_format_is_checked_with_the_servers_rule(string format, string? error) => Assert.Equal(error, ReaderRules.FormatProblem(format));
@@ -131,55 +138,48 @@ public sealed class PageViewModelTests
         Assert.Null(area.ErrorOf(nameof(AreaViewModel.FormatText)));
         area.FormatText = "1234";
 
-        Assert.Equal("A format needs at least one #, A or *.", area.ErrorOf(nameof(AreaViewModel.FormatText)));
+        Assert.Equal("A format needs at least one #, @ or *.", area.ErrorOf(nameof(AreaViewModel.FormatText)));
         Assert.True(editor.IsDirty);
         Assert.Equal(OcrTexts.NotSaved, editor.SaveStatus);
         Assert.False(editor.SaveCommand.CanExecute(null));
-        Assert.Equal("A format needs at least one #, A or *.", editor.SaveBlockedReason);
+        Assert.Equal("A format needs at least one #, @ or *.", editor.SaveBlockedReason);
 
-        area.FormatText = "AAAU ###### #";
+        area.FormatText = "@@@U ###### #";
         Assert.Null(area.ErrorOf(nameof(AreaViewModel.FormatText)));
         Assert.False(editor.IsDirty); // back to the saved state
         Assert.Null(editor.SaveStatus);
 
-        // Any text needs no format.
+        // An empty field reads any text.
         area.FormatText = string.Empty;
-        Assert.False(editor.SaveCommand.CanExecute(null));
-        area.Mode = OcrTexts.AnyText;
         Assert.True(editor.SaveCommand.CanExecute(null));
+        Assert.Equal(ExpectedText.AnyText, area.ToArea().Expected);
     }
 
     [Fact]
-    public async Task The_mode_select_switches_between_any_text_and_a_format()
+    public async Task The_empty_format_field_reads_any_text()
     {
         using var vm = await LoadedAsync(Samples.Context());
         var editor = vm.Editor!;
-        var number = editor.Areas[0]; // Format "AAAU ###### #"
+        var number = editor.Areas[0]; // Format "@@@U ###### #"
         var type = editor.Areas[1]; // Any text
-        Assert.Equal([OcrTexts.AnyText, OcrTexts.Format], AreaViewModel.Modes);
-        Assert.Equal(OcrTexts.Format, number.Mode);
-        Assert.Equal(AreaViewModel.FormatExample, number.FormatPlaceholder);
-        Assert.Equal(OcrTexts.AnyText, type.Mode);
+        Assert.True(number.IsFormat);
         Assert.Equal(string.Empty, type.FormatText);
-        Assert.Equal(string.Empty, type.FormatPlaceholder);
+        Assert.False(type.IsFormat);
 
-        // Any text: the format field is empty (and off); Format brings the format back.
-        number.Mode = OcrTexts.AnyText;
+        // Emptied: any text; a lone * is a format of one letter or digit.
+        number.FormatText = string.Empty;
         Assert.False(number.IsFormat);
-        Assert.Equal(string.Empty, number.FormatText);
         Assert.Equal(ExpectedText.AnyText, editor.ToReader().Areas[0].Expected);
         Assert.True(editor.IsDirty);
-        number.Mode = OcrTexts.Format;
-        Assert.Equal("AAAU ###### #", number.FormatText);
+        number.FormatText = "@@@U ###### #";
         Assert.False(editor.IsDirty); // back to the saved state
+        number.FormatText = "*";
+        Assert.Equal(ExpectedText.WithFormat("*"), editor.ToReader().Areas[0].Expected);
+        number.FormatText = "@@@U ###### #";
 
-        // Format needs one: Save stays off until it is typed.
-        type.Mode = OcrTexts.Format;
-        Assert.False(editor.SaveCommand.CanExecute(null));
-        Assert.Equal("Enter a format.", editor.SaveBlockedReason);
-        type.FormatText = "##A#";
+        type.FormatText = "##@#";
         Assert.Null(type.ErrorOf(nameof(AreaViewModel.FormatText)));
-        Assert.Equal(ExpectedText.WithFormat("##A#"), editor.ToReader().Areas[1].Expected);
+        Assert.Equal(ExpectedText.WithFormat("##@#"), editor.ToReader().Areas[1].Expected);
     }
 
     [Fact]
@@ -323,7 +323,6 @@ public sealed class PageViewModelTests
         Assert.Equal("Area 1", area.Name);
         Assert.Same(area, editor.SelectedArea);
         Assert.True(area.IsSelected);
-        area.IsFormat = true;
         area.FormatText = "#####";
         Assert.True(editor.SaveCommand.CanExecute(null));
 
@@ -436,7 +435,7 @@ public sealed class PageViewModelTests
         gate.SetResult(Samples.ReplyJson(Samples.GateReading("MSKU 000000 0"), Samples.GateExtras, null));
         await first;
         Assert.Equal(before + 2, ctx.CallsOf(OcrMethods.GetPreview));
-        Assert.Equal("TGHU 765432 1", editor.Results[0].Text);
+        Assert.Equal("TGHU 765432 1", editor.Results[1].Text);
         Assert.Equal("{\"previewId\":\"" + id + "\"}", ctx.LastPayloadOf(OcrMethods.GetPreview));
 
         // Live: the page's own preview fetches; the readings event updates the list's last text only.
@@ -654,7 +653,6 @@ public sealed class PageViewModelTests
         using var vm = await LoadedAsync(ctx);
         var editor = vm.Editor!;
         Assert.True(editor.Areas.Count >= 2);
-        editor.Areas[1].IsFormat = true;
         editor.Areas[1].FormatText = "####";
         ctx.Answers[OcrMethods.SaveReader] = _ => OcrJson.Serialize(new SaveReaderReply
         {
@@ -860,6 +858,8 @@ public sealed class PageViewModelTests
         public Task<bool> EditStreamAsync(StreamSettingsViewModel form) => Task.FromResult(Stream(form));
 
         public Task<bool> RenameAreaAsync(RenameAreaViewModel form) => Task.FromResult(Rename(form));
+
+        public Task ShowCutOutAsync(CutOutViewModel form) => Task.CompletedTask;
     }
 
     [Fact]

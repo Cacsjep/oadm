@@ -20,6 +20,11 @@ public static class OcrTexts
 
     public const string Watching = "Watching";
 
+    /// <summary>The reader's setting for belts and passing vehicles.</summary>
+    public const string MovingObjects = "Moving objects";
+
+    public const string MovingObjectsTip = "For belts and vehicles: no vote over frames";
+
     /// <summary>The reader list's chip of a reader whose camera does not answer: the device grid's status name.</summary>
     public static readonly string NotReachable = DeviceMessages.StatusText(DeviceStatus.Unreachable);
 
@@ -55,6 +60,25 @@ public static class OcrTexts
     /// <summary>Over the dimmed video of a reader without areas: text is read only inside areas.</summary>
     public const string StartHint = "Start by drawing an area";
 
+    /// <summary>The button on the video.</summary>
+    public const string Pause = "Pause";
+
+    public const string Resume = "Resume";
+
+    /// <summary>The chip next to it while the page shows a held frame.</summary>
+    public const string Paused = "Paused";
+
+    /// <summary>The chip's tooltip: pausing is about this page only.</summary>
+    public const string PausedTip = "Saved readers keep reading.";
+
+    /// <summary>Below the empty table while paused: nothing to wait for.</summary>
+    public const string NoReads = "No reads yet.";
+
+    /// <summary>The dialog of a row's picture: its title and the thumbnail's tooltip.</summary>
+    public const string CutOut = "Cut-out";
+
+    public const string OpenCutOut = "Open the cut-out";
+
     public const string Saved = "Saved";
 
     public const string NotSaved = "Not saved";
@@ -63,7 +87,7 @@ public static class OcrTexts
 
     public const string AnyText = "Any text";
 
-    public const string Format = "Format";
+    public const string UseReadTextAsFormat = "Use read text as format";
 
     /// <summary>The heading of the camera picker of New.</summary>
     public const string ChooseCamera = "Choose a camera";
@@ -107,8 +131,26 @@ public static class OcrTexts
 
     public static string Time(DateTimeOffset time) => time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
+    /// <summary>The reading's note of the areas whose text is too small: "Lane: Text too small. ...".</summary>
+    public static string TooSmallIn(IEnumerable<string> areas) => string.Join(", ", areas) + ": " + ReaderRules.TooSmall;
+
+    /// <summary>What a held frame gives for an area with a format: "Area 1: DE-1011-22", "Area 1: no match".</summary>
+    public static string HeldValue(string area, string? value) => area + ": " + (string.IsNullOrEmpty(value) ? "no match" : value);
+
     /// <summary>"Runs on: CPU (8 cores)".</summary>
     public static string RunsOn(string what) => "Runs on: " + what;
+
+    /// <summary>
+    /// The short form in the page header (the full text is its tooltip): "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti"
+    /// gives "CPU 24 cores · RTX 5070 Ti". Only the words every card repeats go; an unknown name stays as it is.
+    /// </summary>
+    public static string RunsOnShort(string what) => (what ?? string.Empty)
+        .Replace("CPU (", "CPU ", StringComparison.Ordinal)
+        .Replace(" cores)", " cores", StringComparison.Ordinal)
+        .Replace("search on ", string.Empty, StringComparison.Ordinal)
+        .Replace("NVIDIA ", string.Empty, StringComparison.Ordinal)
+        .Replace("GeForce ", string.Empty, StringComparison.Ordinal)
+        .Replace("AMD ", string.Empty, StringComparison.Ordinal);
 
     /// <summary>
     /// The reader list's short chip for the server's problem text of a reader (the full text is its tooltip): the watching

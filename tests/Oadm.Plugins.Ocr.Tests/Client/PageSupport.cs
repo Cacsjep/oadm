@@ -315,9 +315,9 @@ internal static class Samples
         Fps = 1,
         Areas =
         [
-            new Area { Name = "Container number", Box = new(0.47, 0.27, 0.27, 0.12), Expected = ExpectedText.WithFormat("AAAU ###### #") },
+            new Area { Name = "Container number", Box = new(0.47, 0.27, 0.27, 0.12), Expected = ExpectedText.WithFormat("@@@U ###### #") },
             new Area { Name = "Type", Box = new(0.47, 0.40, 0.12, 0.08) },
-            new Area { Name = "Lane", Box = new(0.88, 0.31, 0.10, 0.13), Expected = ExpectedText.WithFormat("A#") },
+            new Area { Name = "Lane", Box = new(0.88, 0.31, 0.10, 0.13), Expected = ExpectedText.WithFormat("@#") },
         ],
     };
 
@@ -408,8 +408,67 @@ internal static class Samples
     /// The reading reply JSON as the server sends it: <c>{"reading":{...},"jpeg":...,"details":[...]}</c> (the picture as
     /// PNG bytes in the JPEG field: the page decodes either).
     /// </summary>
-    public static string ReplyJson(Reading reading, IReadOnlyList<AreaDetails> details, byte[]? picture) =>
-        OcrJson.Serialize(new { reading, jpeg = picture, details });
+    public static string ReplyJson(Reading reading, IReadOnlyList<AreaDetails> details, byte[]? picture, IReadOnlyList<RecentRead>? recent = null) =>
+        OcrJson.Serialize(new { reading, jpeg = picture, details, recent = recent ?? RecentOf(reading, details) });
+
+    /// <summary>The last reads of a reading: a row per area with a value, its id the same for the same text.</summary>
+    public static IReadOnlyList<RecentRead> RecentOf(Reading reading, IReadOnlyList<AreaDetails> details) =>
+    [
+        .. reading.Areas
+            .Select((a, i) => (Area: a, Index: i))
+            .Where(a => a.Area.Text.Length > 0)
+            .Reverse()
+            .Select(a => new RecentRead
+            {
+                Id = ((a.Index + 1) * 1_000_000L) + a.Area.Text.Sum(c => c),
+                Time = reading.Time,
+                Area = a.Area.Area,
+                Text = a.Area.Text,
+                Confidence = a.Area.Confidence,
+                HasFormat = a.Index != 1,
+                MatchesFormat = a.Area.MatchesFormat,
+                Cutout = a.Index < details.Count ? details[a.Index].Cutout : null,
+            }),
+    ];
+
+    /// <summary><paramref name="count"/> reads, newest first, the first id <paramref name="newest"/>, one every two seconds.</summary>
+    public static IReadOnlyList<RecentRead> Reads(int count, long newest = 1000, byte[]? cutout = null) =>
+    [
+        .. Enumerable.Range(0, count).Select(i =>
+        {
+            var format = i % 3 != 2;
+            return new RecentRead
+            {
+                Id = newest - i,
+                Time = Time.AddSeconds(-2 * i),
+                Area = format ? "Container number" : "Type",
+                Text = format ? string.Create(CultureInfo.InvariantCulture, $"MSKU {123456 + (newest * 7) - i} 7") : "22G1",
+                Confidence = 90 + (i % 9),
+                HasFormat = format,
+                MatchesFormat = format,
+                Cutout = cutout,
+            };
+        }),
+    ];
+
+    /// <summary>Each read with a picture of its own text.</summary>
+    public static IReadOnlyList<RecentRead> WithCutOuts(IReadOnlyList<RecentRead> reads) => [.. reads.Select(r => r with { Cutout = CutOutPicture(r.Text) })];
+
+    /// <summary>A small picture of <paramref name="text"/> as PNG bytes, like a value's cut-out; needs the headless session.</summary>
+    public static byte[] CutOutPicture(string text = "MSKU 123456 7")
+    {
+        using var target = new RenderTargetBitmap(new PixelSize(220, 40));
+        using (var dc = target.CreateDrawingContext())
+        {
+            dc.FillRectangle(new SolidColorBrush(Color.Parse("#1f5f8a")), new Rect(0, 0, 220, 40));
+            var label = new FormattedText(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Typeface.Default, 24, Brushes.White);
+            dc.DrawText(label, new Point(8, 5));
+        }
+
+        using var stream = new MemoryStream();
+        target.Save(stream, PngBitmapEncoderOptions.Default);
+        return stream.ToArray();
+    }
 
     public static EngineInfo Engine => new() { RunsOn = "NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true, UseGpu = true, FpsChoices = [1, 2, 4, 8, 12, 15] };
 

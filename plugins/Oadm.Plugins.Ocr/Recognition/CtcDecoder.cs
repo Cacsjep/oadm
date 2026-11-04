@@ -8,6 +8,18 @@ public sealed record LineScores(float[] Probabilities, int Frames, int Classes)
 {
     /// <summary>The probabilities of frame <paramref name="t"/>.</summary>
     public ReadOnlySpan<float> Frame(int t) => Probabilities.AsSpan(t * Classes, Classes);
+
+    /// <summary>The probabilities are rented: <see cref="Release"/> gives them back when the reading ended.</summary>
+    internal bool Rented { get; init; }
+
+    /// <summary>Gives a rented buffer back; the scores are not used afterwards.</summary>
+    internal void Release()
+    {
+        if (Rented)
+        {
+            System.Buffers.ArrayPool<float>.Shared.Return(Probabilities);
+        }
+    }
 }
 
 /// <summary>One character of a decoded line.</summary>
