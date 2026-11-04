@@ -1,0 +1,129 @@
+---
+title: Speed and limits
+description: Whether the server keeps up, the graphics card, the limits and how large a server to plan.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import ok from '../../../../assets/screens/text-recognition-status-ok.png';
+import busy from '../../../../assets/screens/text-recognition-status-busy.png';
+import overloaded from '../../../../assets/screens/text-recognition-status-overloaded.png';
+import readers from '../../../../assets/screens/text-recognition-readers.png';
+
+## Does the server keep up
+
+The top right of the page shows the status, **Load** and what reads the pictures.
+
+<Image src={ok} alt="All readers keep up, Load 42 %, CPU 24 cores and RTX 5070 Ti, Use GPU" class="screen fit" />
+
+<Image src={busy} alt="Busy: 1 reader reads slower than set, Load 81 %" class="screen fit" />
+
+<Image src={overloaded} alt="Overloaded, Load 99 %" class="screen fit" />
+
+| Status | Means |
+|---|---|
+| **All readers keep up** | Every watching reader reads at its frames per second and **Load** is under 75 % |
+| **Busy: 2 readers read slower than set** | Readers read under 90 % of their frames per second |
+| **Busy: recognition is at 82 %** | All readers keep up, **Load** is 75 % or more |
+| **Overloaded: lower the frames per second or the number of readers** | The server has no room left: **Load** stayed at 95 % or more for 30 seconds and a reader falls behind |
+
+**Load** is the share of the last 10 seconds the recognition was busy. A new reader counts after 10 seconds.
+
+A slow reader turns orange in the list, for example **Watching · 8 fps (reads 5.1)**. It skips pictures and reads the newest,
+so it never falls further behind.
+
+<Image src={readers} alt="The reader list with an orange slow reader, an On action reader and a reader with Limit reached" class="screen fit" />
+
+On **Busy** or **Overloaded**:
+
+- Lower the frames per second. Most readers need 1 or 2.
+- Set readers that do not need to watch to **On action**.
+- Draw smaller areas: a tight area reads many times faster than a Search.
+- Use a graphics card.
+
+## Graphics card
+
+With a usable card the models run on the card and the CPU stays free. A model the card cannot run, or runs clearly slower
+than the CPU, stays on the CPU. When a card fails the CPU takes over, and the page shows what reads, for example
+`CPU 24 cores · RTX 5070 Ti` or `CPU 8 cores`. Hover over it for the full name.
+
+| Server | Graphics card | What you need |
+|---|---|---|
+| Windows x64 | Any card (NVIDIA, AMD, Intel) through Microsoft DirectML | Nothing, it comes with the plugin |
+| Linux x64 | NVIDIA | The NVIDIA driver, CUDA 12 and cuDNN 9, installed by you |
+| Linux arm64, macOS x64 | None, the CPU reads | Nothing |
+
+Text recognition uses at most 80 % of the card's memory, or 4 GB when the card does not tell its size. It gives the memory
+back after 2 minutes without reading.
+
+**Use GPU** is on by default and counts for the whole server. Turn it off to read on the CPU only. Turning it on needs no
+restart. Only users with all devices can change it.
+
+When the card cannot be used, the CPU reads and the server log says why, in one line starting with **Text recognition runs
+on the CPU**.
+
+<Aside>
+On Windows the graphics card is used through Microsoft DirectML, which comes under Microsoft's own license terms; they
+include collecting data. Turn off **Use GPU** and restart the server to keep DirectML from loading.
+</Aside>
+
+### Linux with an NVIDIA card
+
+<Steps>
+
+1. Check the driver: `nvidia-smi` lists the card.
+2. Install the CUDA 12 libraries and cuDNN 9 for CUDA 12 from NVIDIA's package repository, for example on Ubuntu
+   `sudo apt install cuda-libraries-12-6 libcudnn9-cuda-12`.
+3. Check that they are found: `ldconfig -p | grep -E 'libcublas.so.12|libcudnn.so.9'` shows both.
+4. Restart the server: `sudo systemctl restart oadm-server`. The page shows the card.
+
+</Steps>
+
+## Limits
+
+| What | At most |
+|---|---|
+| Readers per server | 50 |
+| Watching readers per server | 2 per CPU core, at least 8, at most 50 |
+| Watching readers per [site](../../../sites/overview/) | 4 |
+| Areas per reader | 8 |
+| Texts read per picture | 30 |
+| Frames per second of a reader | 15 |
+| Last reads kept per reader | 20 |
+| Readers shown live on pages at once | 8 per server, 2 per user |
+
+| Server | 4 cores | 8 cores | 16 cores | 24 cores | 26 cores or more |
+|---|---|---|---|---|---|
+| Watching readers | 8 | 16 | 32 | 48 | 50 |
+
+- The graphics card does not change the limits: they follow the CPU.
+- A reader shown on a page counts as watching while the page shows it, unless it is a saved, unchanged watching reader. Saved
+  readers come first.
+- A reader beyond a limit reads nothing and shows **Limit reached** in the list.
+- Cameras at sites work like any other. Their streams never hold up AXIS OS upgrades, application installs or exports there.
+
+## Server size
+
+What a server reads is counted in pictures per second: a watching reader at 2 frames per second needs 2. What one picture
+costs depends on its areas and how many lines of text they hold.
+
+These figures were measured on a test bench, with test pictures at 1920x1080 and no live camera: AMD Ryzen 9 3900X (12 cores,
+24 threads) with an NVIDIA GeForce RTX 5070 Ti, on Windows. They are for planning.
+
+| Case | CPU only | With the graphics card |
+|---|---|---|
+| 1 reader, area of 600 x 700 pixels, about 16 lines | 8.4 reads per second, 6.8 cores | 25 reads per second, 1.4 cores |
+| 10 such readers, in all | 10 reads per second, 9.5 cores | 47 reads per second, 2.2 cores |
+| 20 readers with a small area, in all | 260 reads per second | 620 reads per second |
+| 1 Search over the whole picture | 2.6 reads per second, 5.8 cores | 6.9 reads per second |
+| Memory of the server at its peak | About 1.2 GB | About 1.7 GB |
+
+- A small area with one line costs a small part of a large area with 16 lines: every line costs about the same.
+- A scene that does not change, such as a meter between two reads or an empty gate, costs almost nothing.
+- **On action** readers cost only when a rule runs them.
+- Recognition uses at most half of the CPU cores, so the server stays responsive.
+- Many lines at high rates need a graphics card. The 25 reads per second were measured at a set rate of 25; the page offers
+  at most 15 frames per second.
+
+The status on the page shows the real load of your server: add readers until it turns orange, then stop or lower the frames
+per second.

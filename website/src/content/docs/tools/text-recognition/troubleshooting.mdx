@@ -1,0 +1,60 @@
+---
+title: Troubleshooting
+description: Permissions of Text recognition and what to do about each message.
+---
+
+## Permissions
+
+| Permission | Allows |
+|---|---|
+| **View text recognition** | The page, the readers and their results |
+| **Change text readers** | **New**, **Delete**, **Save**, drawing and moving areas, **Use GPU** |
+| **Live view** | Cut-outs and Pause |
+
+A user limited to a [device group](../../../admin/device-groups/) sees only the readers of their group's cameras. **Use GPU**
+and event rules are for users with all devices.
+
+## Read problems
+
+| You see | Do this |
+|---|---|
+| No text found | Draw the area tighter, with a little margin. Check focus and light in the camera's live view. Choose a higher resolution |
+| **Text too small. Draw a smaller area or choose a higher resolution.** | The letters are under about 10 pixels high: choose a higher resolution or zoom the camera |
+| Wrong characters, O for 0 or S for 5 | Set a [format](../formats/): it fixes look-alikes and finds only the shape you want |
+| A value split or missing on a busy picture | Draw smaller areas. With a large area use a format |
+| **More than 30 texts found. Only the first 30 are read. Draw smaller areas.** | Draw smaller areas around the texts you need |
+| A text on a belt shows no row | Turn on [Moving objects](../tuning/#belts-and-passing-vehicles) and raise the frames per second |
+| Tuning a format on a belt | Use [Pause](../tuning/#pause-to-tune-a-format) |
+
+## The reader's chip in the list
+
+Hover over a red chip for the full reason.
+
+| Chip | Means | Do this |
+|---|---|---|
+| **Unreachable**, **Certificate changed**, **Site offline** | The camera cannot be reached | Check it on the Devices page |
+| **Credentials required** | The camera refuses the login, for example **Unauthorized - HTTP 401 (check the credentials)** | Check OADM's account on the camera on the Devices page. It must be allowed to see video |
+| **Stream error** | The camera gives no pictures | See the messages below |
+| **Limit reached**, for example **At most 16 readers can watch at once. Set another reader to On action first.** | Too many watching readers | Set another reader to **On action**, or use a server with more cores. [Limits](../speed/#limits) |
+| **Not in device group** | The camera left the reader's device group | Put the camera back in the device group, or delete the reader |
+| **Not installed** | **Text recognition is not installed completely. Install it again on the Plugins page.** | **Remove** it on the Plugins page, restart the server and **Install** it again |
+
+## Messages
+
+| Message | Do this |
+|---|---|
+| **The camera does not offer this resolution. Choose another one.** | Choose another **Resolution** under **Stream** |
+| **The camera does not offer this video source. Choose another one.** | Choose another **Video source** under **Stream** |
+| **The camera sends no pictures.** | The stream did not start within 15 seconds: check the camera's live view |
+| **At most 8 readers can be shown live at once. Try again when another page closes.** | Close the page on another client |
+| **No live results now: OADM already reads as many cameras as it can.** | Close the page on another client or set a reader to **On action** |
+| **This picture is too large to pause. Choose a lower resolution.** | Choose a lower **Resolution** under **Stream** |
+| **Not loaded. Install it again for this OADM version.** on the Plugins page | OADM was updated: click **Download ZIP** and **Install** |
+
+## Speed
+
+| You see | Do this |
+|---|---|
+| **Busy** or **Overloaded**, an orange reader | See [Does the server keep up](../speed/#does-the-server-keep-up) |
+| The page shows only the CPU although the server has a graphics card | Check **Use GPU**. On Linux check [CUDA and cuDNN](../speed/#linux-with-an-nvidia-card). The server log says why |
+| **Use GPU** cannot be changed | Hover over it: the server has no graphics card, or your user does not have all devices |

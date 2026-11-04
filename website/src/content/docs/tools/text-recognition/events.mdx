@@ -1,0 +1,103 @@
+---
+title: Events and rules
+description: The event Text read, the action Read text, example rules and text readers on dashboards.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## Event: Text read
+
+Each reader has its own event **Text read**, in the event tree under **Text recognition** > reader name. There is one event
+per area and read.
+
+| Value | What it holds | Placeholder |
+|---|---|---|
+| **Area** | The area's name, a choice of the reader's areas | `{area}` |
+| **Text** | With a format: the match. Without: all lines | `{text}` |
+| **Text read** | All lines as read, without the format | `{textRead}` |
+| **All matches** | Every different match of the format, separated by a space, at most 10. Empty without a format | `{allMatches}` |
+| **Number** | The value as a number when it is one, `.` or `,` as the decimal sign. Empty otherwise | `{number}` |
+| **Confidence** | 0 to 100, from the value's least sure character | `{confidence}` |
+| **Matches format** | Yes when the value matches the area's format. Always no for **Any text** | `{matchesFormat}` |
+
+`1234,5` gives the **Number** `1234.5` and `00815` gives `815`. Long counters keep every digit. Texts hold at most 500
+characters.
+
+The placeholders work in every text of an action, next to OADM's own such as `{time}` and `{device}`. See
+[Placeholders](../../event-rules/#placeholders).
+
+### When it fires
+
+| Reader | Fires |
+|---|---|
+| **Watching** | When an area's text changes and holds: the reader compares the last 5 pictures and sends the new text once 2 pictures in a row agree. A single bad picture changes nothing |
+| **Watching** with **Moving objects** | Once a value was read in [2 pictures in a row](../tuning/#belts-and-passing-vehicles) |
+| **On action** | For every area, every time **Read text** runs, changed or not |
+| Text gone from a watching area | Once, with an empty **Text** |
+| Live results on the page, also while [paused](../tuning/#pause-to-tune-a-format) | Never |
+
+### Typical checks
+
+| Check | Fires when |
+|---|---|
+| **Matches format** is yes | A format matched |
+| **Text** is not empty | Text was read in an area with **Any text** |
+| **Confidence** > 90 | The read is sure |
+| **Number** > 5000 | A meter passes a value |
+| **Text** contains `LOADING` | A sign shows a word |
+| **Area** equals `Container number` | One area of the reader |
+
+## Action: Read text
+
+**Read text**, in the group **Text recognition**, reads one picture of the chosen **Reader** now and sends **Text read**
+for each area. The event log lists what each area read.
+
+| Reader | Result |
+|---|---|
+| **On action** | Reads one picture |
+| **On action**, still reading | Skipped with **Already reading**. Nothing is queued |
+| **Watching** | Answers with what it read in the last second, or with the picture it is reading |
+| Without an area | The log says **The reader has no area. Draw one on the Text recognition page.** |
+
+## Example rules
+
+Each rule starts with **New rule** in [Event rules](../../event-rules/). **When** is **Text read** of the reader.
+
+| Goal | Reader | Checks | Then |
+|---|---|---|---|
+| Email for a container at the gate | **Watching**, 2 frames per second, `@@@U ###### #` | **Matches format** is yes, **Confidence** > 90 | **Send email**, subject `Container {text} at gate 2` |
+| Alert above a meter value | **Watching**, 1 frame per second, small area, `#####` | **Number** > 5000 | **Send email** or **Send HTTP request** with `{number}` |
+| Order code on a counter | **Watching**, 1 frame per second, highest resolution, one large area, `##@#@` | **Matches format** is yes | **Send HTTP request** with `{text}`, or `{allMatches}` for several receipts |
+| A sign shows LOADING | **Watching**, 1 frame per second, **Any text** | **Text** contains `LOADING` | **Set output** to switch a lamp on, or **Send email** |
+
+A watching reader sends **Text read** only when the reading changes, so these rules run once per new value.
+
+### Read a number when a truck stops at the scale
+
+<Steps>
+
+1. On the camera, set up an AXIS Object Analytics scenario **Object in area** for vehicles over the scale.
+2. Add the scenario's event as a [Device trigger](../../device-triggers/).
+3. Create a reader on the camera, **On action**, with an area where the number is when a truck stands on the scale,
+   format `@@@U ###### #`. Click **Save**.
+4. Rule 1: **When** the scenario's event, **Then** **Read text** with the reader.
+5. Rule 2: **When** **Text read** of the reader, **Add check** **Matches format** is yes, **Then** **Send HTTP request** to
+   your weighing system with `{text}`.
+
+</Steps>
+
+## On a dashboard
+
+<Steps>
+
+1. In the dashboard's **Events**, click **Text read** under **Text recognition** and the reader's name. The widget uses the
+   reader's camera, also after you change it.
+2. Choose the **Area**. With one area it is already chosen.
+3. Choose the **Value**, such as **Text**, **Number** or **Confidence**.
+
+</Steps>
+
+Each widget shows one area, and a table lists only that area's reads. A widget whose area was renamed or deleted says **Area
+no longer exists**: choose the area again in its settings.
+
+To read on demand, put a button on a [dashboard](../../dashboards/) whose rule runs **Read text**.

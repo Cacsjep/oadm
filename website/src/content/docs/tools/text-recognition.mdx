@@ -3,445 +3,84 @@ title: Text recognition
 description: Read text in camera pictures, such as container numbers, meters, signs and labels, and use it in event rules.
 ---
 
-import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/text-recognition-page.png';
 
-Text recognition reads the text in your cameras' pictures: container and wagon numbers at a gate, meter readings, signs,
-displays, order numbers on receipts, labels on parcels. Each reading is an event for the
-[event rules](../event-rules/), so you can send an email, call a web service or switch a relay when a text shows up.
+Text recognition reads text in your cameras' pictures: container and wagon numbers, meters, signs, labels. Each read is
+an event for the [event rules](../event-rules/). The server does the reading, nothing changes on the camera and pictures
+are never stored.
 
-The server reads the pictures itself, on its CPU or graphics card. Nothing is installed on the cameras and nothing on
-them changes.
+<Image src={page} alt="The Text recognition page: the readers, the live video with areas, the last reads and the reader's settings" class="screen" />
 
-<Aside>
-Text recognition is an optional plugin: it is not in the OADM installers. An administrator installs it under
-**Optional plugins** on the [Plugins page](../../admin/plugins/#optional-plugins) and then turns it on in the list
-above. It opens as **Text recognition** in the group **Vision** of the navigation rail.
-</Aside>
+| Where | What |
+|---|---|
+| Left | **Readers**: **New**, **Delete**, search, and each reader's mode and last text |
+| Middle | The live video with the areas, the last 20 reads below it |
+| Right | The reader's settings, its **Areas** and **Save** |
+| Top right | Whether the server keeps up, **Load**, what reads the pictures, **Use GPU** |
 
 <Aside type="tip">
 For license plates use AXIS License Plate Verifier on the camera. It reads plates better than a general text reader.
 </Aside>
 
-## The page
+## Install
 
-- **Left**: **Readers** with **New**, **Delete** and a search. Each reader shows its name, camera, mode and the last
-  text read. Below: **Settings** (**Runs on** and **Use the graphics card**) and **Recognition**, which shows whether the
-  server keeps up (see [Speed and graphics card](#speed-and-graphics-card)).
-- **Middle**: the live video of the reader's camera with its areas and the lines found drawn over it. Below the video
-  the results: **Area**, **Text**, **Confidence**, **Matches format** and **Time**, with a cut-out of the text found.
-- **Right**: the reader's settings, its **Areas** and **Save**.
-
-## Create a reader
-
-A reader is one camera, one video source and up to 8 areas around the texts you want to read.
+Text recognition is an optional plugin: it is not in the OADM installers.
 
 <Steps>
 
-1. Click **New** and choose the camera. A reader keeps its camera; for another camera create another reader.
-2. Enter a **Name**, for example `Gate 2 containers`, and choose the **Mode**: **Watching** reads all the time,
-   **On action** reads one picture when an event rule runs the action **Read text**. See
-   [Watching or On action](#watching-or-on-action).
-3. Under **Stream** click the button to choose the **Video source**, the **Resolution** and, while Watching, the **Frames per
-   second**. The button shows them, for example `Configure · 1920x1080 @ 2 fps`. The default resolution
-   is 1920x1080 or the largest below it. Small text needs pixels: choose a higher resolution before you draw larger areas.
-4. Under **Areas** click **New** and drag a rectangle over the text on the video. Draw one area around each text you
-   want to read. Areas are named **Area 1**, **Area 2** and so on; the tag button renames one, for example to
-   `Container number`. Rules see this name.
-5. Below the area's name choose **Any text** or **Format**, and enter the format if you chose one. See
-   [Formats](#formats).
-6. Watch the results below the video. When they are right, click **Save**.
+1. On the [Plugins page](../../admin/plugins/#optional-plugins), under **Optional plugins**, click **Download ZIP**.
+2. Click **Install** and choose the ZIP. The server checks the checksum and refuses any other file.
+3. Turn on **Text recognition** in the list above. It opens under **Vision** in the navigation rail.
 
 </Steps>
 
-The results follow your changes before you save: the server reads the reader live while the page shows it. These live
-results never start a rule; only saved readers do.
+After an OADM update, install it again: the row says **Not loaded. Install it again for this OADM version.** Readers and
+settings stay.
 
-### Areas
+## Quick start
 
-Text is read only inside areas. A reader without an area reads nothing: the video is dimmed with **Start by drawing an
-area**.
-
-- **New** in the **Areas** header, then drag on the video. **Esc** stops drawing.
-- Click an area on the video or its row to select it. Handles appear at its corners and edges.
-- Drag inside the area to move it, drag a handle to resize it. **Esc** cancels the drag.
-- The arrow keys move the selected area a little, with **Shift** more.
-- The tag button next to an area's name renames it, the bin deletes it. A new area takes the lowest free number, and
-  the others keep theirs.
-- At most 8 areas per reader. Areas stay in place when you change the resolution.
-
-Two ways to place them:
-
-| Way | Area | Use it for |
-|---|---|---|
-| Fixed place | Small, tight around where the text always is | A meter, a sign, the number on a gate lane. The best and fastest reading |
-| Search | Large, up to the whole picture, with a **Format** | A text that can be anywhere: an order number on a receipt on a counter, a label on a parcel |
-
-A large area with **Any text** reads everything in it, which rarely helps a rule. Use a format there.
-
-An area can hold several lines. They are read top to bottom and left to right and joined with a space; a line that ends
-with `-` is joined without one. Draw one area per value: the number of lines found changes with light and focus, so
-"the second line" is not a stable place.
-
-At most 30 texts are read per picture over all areas, the clearest first. With more, the page says **More than 30 texts
-found. Only the first 30 are read. Draw smaller areas.**
-
-### Watching or On action
-
-| Mode | Reads | Events |
-|---|---|---|
-| **Watching** | All the time, at the frames per second you choose | When an area's text changes |
-| **On action** | One picture each time an event rule runs **Read text** with this reader | Every area, every time |
-
-When you switch a reader to On action, OADM says once: **Reads only on an action**.
-
-**Frames per second**: 1, 2, 4, 8, 12 or 15. Start with 1 or 2. A fast-moving text (a truck passing) needs more; a meter
-needs 1. The **Recognition** panel tells when the server no longer keeps up.
-
-A rename of the reader or of an area keeps it reading without a break.
-
-## Formats
-
-With **Format** the reader looks for a text of that shape and fixes characters that look alike. The value of the area is
-the match; the rest of what was read stays in **Text read**.
-
-| Character | Means |
-|---|---|
-| `#` | A digit |
-| `A` | A letter (any letter: a capital A always means "a letter") |
-| `*` | A letter or a digit |
-| Space or `-` | As written, but may be missing in the text |
-| Any other character | Exactly this character (upper or lower case do not matter), for example `.`, `/` or `U` |
-
-The value is always written in the format's layout: with format `AAAU ###### #` the text `MSKU1234565` gives
-`MSKU 123456 5`. A match never starts or ends inside a word, so `###` does not find `123` in `A1234`.
-
-**Look-alike characters** are fixed by their position:
-
-| Where the format expects | Read | Becomes |
-|---|---|---|
-| A digit (`#`) | O, I, L, S, B, Z, G | 0, 1, 1, 5, 8, 2, 6 |
-| A letter (`A`) | 0, 1, 5, 8, 2, 6 | O, I, S, B, Z, G |
-
-- **Split over two lines**: a value broken over two neighbouring lines is still found (`MSCU 123` above `4565`).
-- **Several matches** in one area (the same order number on two receipts): the value is the match read most surely; the
-  event's **All matches** lists every different match, at most 10.
-- **No match**: the area's value is empty and **Matches format** is No.
-- **Container numbers**: a format that starts with `AAAU ###### #` is a container number. Its 11th character must be
-  the right check digit, so a misread number never matches; OADM never changes a character to make it fit. More may
-  follow, for example the size and type code: `AAAU ###### # 22G1`. `AAAU ######` has no check digit and is not checked.
-
-### Examples
-
-| Text | Format | Example value |
-|---|---|---|
-| Container number | `AAAU ###### #` | `MSKU 123456 5` |
-| Railway wagon number | `## ## #### ###-#` | `31 80 6651 012-3` |
-| Meter, whole numbers | `#####` | `04512` |
-| Meter with one decimal | `####.#` | `1234.5` |
-| Order code on a receipt | `##A#A` | `12B4C` |
-| Intensity or level on a display | `#/##` | `4/12` |
-| Lane or door sign | `A#` | `B7` |
-
-The field shows the reminder **# digit, A letter, * letter or digit**. A format needs at least one `#`, `A` or `*` and has
-at most 64 characters.
-
-## Events and actions
-
-### Event: Text read
-
-Each reader has its own event **Text read**, in the event tree under **Text recognition** > reader name, on the reader's
-camera. One event per area and reading, with these values:
-
-| Value | Type | What it holds | Placeholder |
-|---|---|---|---|
-| **Area** | Choice of the reader's areas | The area's name | `{area}` |
-| **Text** | Text | With a format: the match. Without: all lines | `{text}` |
-| **Text read** | Text | All lines, as read, without the format | `{textRead}` |
-| **All matches** | Text | Every different match of the format, separated by a space. Empty without a format | `{allMatches}` |
-| **Number** | Number | The value as a number when it is one, `.` or `,` as the decimal sign (`1234,5` gives `1234.5`, `00815` gives `815`; long counters keep every digit). Empty otherwise | `{number}` |
-| **Confidence** | Number | 0 to 100: how sure the reading is, from its least sure character | `{confidence}` |
-| **Matches format** | Yes or no | Yes when the value matches the area's format. Always no for **Any text**: to check that text was read, check that **Text** is not empty | `{matchesFormat}` |
-
-Texts hold at most 500 characters. The placeholders work in every text of an action, together with OADM's own ones such
-as `{time}` and `{device}` (see [Placeholders](../event-rules/#placeholders)).
-
-When it fires:
-
-- **Watching**: when an area's text changes and holds. The reader compares the last 5 pictures and sends the new text once
-  2 pictures in a row agree, so a single bad picture (a hand in front, motion blur) changes nothing. When the text
-  disappears, the event fires once with an empty **Text**.
-- **On action**: every area, every time **Read text** runs, changed or not.
-- **Live results on the page**: never.
-
-Typical checks: **Matches format** is yes, **Confidence** > 90, **Number** > 5000, **Text** contains `LOADING`, **Area**
-equals `Container number`.
-
-### Action: Read text
-
-**Read text** (group **Text recognition**) reads one picture of the chosen **Reader** now and sends **Text read** for
-each of its areas. It works with On action and Watching readers.
-
-- A reader without an area reads nothing; the event log says **The reader has no area. Draw one on the Text recognition
-  page.**
-- A **Watching** reader answers with what it read in the last second, or with the picture it is reading: no second
-  picture is taken.
-- While an **On action** reader is still reading, the action is skipped with **Already reading**. Nothing is queued.
-- The event log lists what each area read.
-
-## Examples
-
-### Read a container number at the gate and send an email
+Read a container number in 2 minutes.
 
 <Steps>
 
-1. Create a reader on the gate camera, **Watching**, 2 frames per second.
-2. Draw an area where the container number passes, named `Container number`, **Format** `AAAU ###### #`. **Save**.
-3. In **Event rules** click **New rule**. **When**: **Text read** of this reader, on its camera.
-4. **Add check**: **Matches format** is yes. **Add check**: **Confidence** > 90.
-5. **Then**: **Send email**, subject `Container {text} at gate 2`, text `Read at {time}, confidence {confidence} %`.
-6. **Save**.
+1. Open **Text recognition**, click **New** and choose the camera.
+2. Enter a **Name**. Leave **Mode** on **Watching**.
+3. Under **Areas** click **New** and drag a rectangle around the text on the video.
+4. In the area's row enter the format `@@@U ###### #`. Leave the field empty to read any text.
+5. Check the reads in the table below the video, then click **Save**.
+6. In [Event rules](../event-rules/) create a rule with the event **Text read** of this reader.
 
 </Steps>
 
-### Read the container number when a truck stops at the scale
+## What happens to one picture
 
-The camera's AXIS Object Analytics sees the truck; OADM reads the number only then.
+```mermaid
+flowchart LR
+    A[Picture from<br/>the camera] --> B[Cut out<br/>the areas]
+    B --> C[Find and<br/>read the text]
+    C --> D[Apply<br/>the format]
+    D --> E[Compare<br/>the pictures]
+    E --> F[New value:<br/>row and event]
+```
 
-<Steps>
-
-1. On the camera, set up an AXIS Object Analytics scenario **Object in area** for vehicles over the scale.
-2. In OADM add the camera's scenario event as a [Device trigger](../device-triggers/).
-3. Create a reader on the camera, **On action**. Draw an area where the number is when a truck stands on the scale, named
-   `Container number`, **Format** `AAAU ###### #`. **Save**.
-4. Rule 1: **When** the scenario's event, **Then** **Read text** with the reader.
-5. Rule 2: **When** **Text read** of the reader, **Add check** **Matches format** is yes, **Then** **Send HTTP request**
-   to your weighing system with `{text}`.
-
-</Steps>
-
-### Read a meter and alert above a value
-
-<Steps>
-
-1. Create a reader on the meter camera, **Watching**, 1 frame per second. Draw a small area tight around the digits,
-   named `Meter`, **Format** `#####` (or `####.#` with a decimal). **Save**.
-2. Rule: **When** **Text read** of the meter reader, **Add check** **Number** > 5000, **Then** **Send email** or **Send
-   HTTP request** with `{number}`.
-
-</Steps>
-
-The reader sends **Text read** only when the reading changes, so the rule runs once per new value. A meter that does not
-move costs almost nothing. To read on demand instead, put a button on a [dashboard](../dashboards/) whose rule runs
-**Read text** with the reader.
-
-### Find an order code on receipts anywhere on the counter
-
-<Steps>
-
-1. Create a reader on the counter camera, **Watching**, 1 frame per second, at the highest resolution.
-2. Draw one large area over the whole counter, named `Receipt`, **Format** `##A#A`.
-3. Check the results with a receipt on the counter, also turned and upside down. **Save**.
-4. Rule: **When** **Text read**, **Add check** **Matches format** is yes, **Then** **Send HTTP request** to your
-   system with `{text}`, or `{allMatches}` when several receipts lie there.
-
-</Steps>
-
-### Check that a sign shows LOADING
-
-<Steps>
-
-1. Create a reader on the camera, **Watching**, 1 frame per second. Draw an area around the sign, named `Sign`, **Any
-   text**. **Save**.
-2. Rule: **When** **Text read**, **Add check** **Text** contains `LOADING`, **Then** **Set output** on the I/O box to
-   switch on a lamp, or **Send email**.
-3. For the opposite (the sign goes dark or shows something else), a second rule with **Text** does not equal `LOADING`.
-
-</Steps>
-
-## Speed and graphics card
-
-**Runs on** says what reads, for example `Runs on: CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti`, or
-`Runs on: CPU (8 cores)` without a graphics card. The graphics card reads only areas larger than about 960 pixels, such
-as a search over the whole picture: there it is 1.5 to 2.5 times faster than the CPU. Smaller areas are read on the CPU,
-which is as fast for them. Text recognition limits how much it reads at once on the CPU, so OADM stays responsive.
-
-Text recognition uses at most 4 GB of the graphics card's memory, whatever the cameras' resolution, and gives it back
-after 2 minutes without a search.
-
-| Server | Graphics card | What you need |
+| Step | What happens | You set |
 |---|---|---|
-| Windows x64 | Any card (NVIDIA, AMD, Intel) through Microsoft DirectML | Nothing; it comes with the plugin |
-| Linux x64 | NVIDIA | The NVIDIA driver, CUDA 12 and cuDNN 9, installed by you |
-| Linux arm64, macOS | None, the CPU reads | Nothing |
+| Picture | **Watching**: a stream at your frames per second. **On action**: one picture | **Mode**, **Stream** |
+| Areas | Only the inside of your areas counts. An area that did not change keeps its last result | **Areas** |
+| Read | Lines are found and read, at most 30 per picture. Text under about 10 pixels high is left out | Area size, **Resolution** |
+| Format | The value that fits is kept and look-alike characters are fixed | [Format](formats/) |
+| Compare | A watching reader counts a value once it holds over 2 pictures in a row | [Moving objects](tuning/#belts-and-passing-vehicles) |
+| New value | A row in the last 20 reads and the event **Text read** | [Event rules](events/) |
 
-When the graphics card cannot be used, the CPU reads and the server log says why, in one line starting with **Text
-recognition runs on the CPU**.
+## Learn more
 
-**Use the graphics card** (on by default) is for the whole server. Turn it off to read on the CPU only. Only users with
-all devices can change it.
-
-<Aside>
-On Windows the graphics card is used through Microsoft DirectML, which comes under Microsoft's own license terms; they
-include collecting data. Turn off **Use the graphics card** to read on the CPU only.
-</Aside>
-
-### Linux with an NVIDIA card
-
-<Steps>
-
-1. Check the driver: `nvidia-smi` lists the card.
-2. Install the CUDA 12 libraries and cuDNN 9 for CUDA 12 from NVIDIA's package repository, for example on Ubuntu
-   `sudo apt install cuda-libraries-12-6 libcudnn9-cuda-12`.
-3. Check that they are found: `ldconfig -p | grep -E 'libcublas.so.12|libcudnn.so.9'` shows both.
-4. Restart the server: `sudo systemctl restart oadm-server`. **Runs on** shows the card.
-
-</Steps>
-
-### Recognition
-
-The **Recognition** panel shows whether the server keeps up, with the load as a bar:
-
-| Light | Text | Means |
-|---|---|---|
-| Green | **All readers keep up** | Every watching reader reads at its frames per second |
-| Orange | **Busy: 2 readers read slower than set** or **Busy: recognition is at 82 %** | Some readers fall behind, or the load is 75 % or more |
-| Red | **Overloaded: lower the frames per second or the number of readers** | A reader gets less than half its frames, or the load stayed at 95 % or more for 30 seconds |
-
-A reader that falls behind shows it in the list, for example **Watching · 8 fps (reads 5.1)**. On orange or red:
-
-- lower the frames per second, most readers need 1 or 2;
-- set readers that do not need to watch to **On action**;
-- draw smaller areas: a tight area reads many times faster than a search over the whole picture;
-- for searches, use a graphics card.
-
-Areas whose picture has not changed cost almost nothing: the reader keeps their last result.
-
-### Limits
-
-| What | At most |
-|---|---|
-| Readers per server | 50 |
-| Watching readers | 2 per CPU core of the server, at least 8 and at most 50 (8 cores: 16, 24 cores: 48) |
-| Watching readers per [site](../../sites/overview/) | 4 |
-| Areas per reader | 8 |
-| Texts read per picture | 30 |
-| Readers shown live on pages at once | 8, of them 2 per user |
-
-A reader shown on a page that is not a saved, unchanged watching reader counts as watching while the page shows it; the
-saved readers come first. The graphics card does not change the limits: the CPU reads every small area.
-
-At a site, the readers' picture streams never hold up AXIS OS upgrades, application installs or exports there.
-
-A reader beyond a limit (for example after a move to a smaller server) reads nothing and shows the limit in the list.
-
-## Sizing the server
-
-What a server reads is counted in **pictures per second**: a watching reader with 2 frames per second needs 2. What one
-picture costs depends on its areas.
-
-### On the CPU
-
-Measured on an AMD Ryzen 9 3900X (12 cores, 24 threads, PassMark CPU Mark about 32,800), Windows, Full HD pictures:
-
-| One picture with | Time on its own | Cost compared to one small area |
-|---|---|---|
-| 1 small area (fixed place) | 31 ms | 1 |
-| 4 small areas | 87 ms | about 3 |
-| 1 area over the whole picture (search) | 546 ms | about 18 |
-| 1 small area, picture unchanged | 6 ms | about 1/5 |
-
-With many readers at once this CPU reads about **92 pictures per second** with one small area each. That is about 8
-pictures per second per core: one small area at 1 frame per second costs about 13 % of one core, about 1 % of this CPU.
-
-Plan for 75 % of it, where the light turns orange: about **6 pictures per second per core** of a similar CPU, or about
-**2 pictures per second per 1,000 points** of the PassMark CPU Mark for other CPUs. Then:
-
-| On this CPU (about 70 pictures per second planned) | Fits |
-|---|---|
-| Readers with 1 small area | 20 readers at 2 frames per second, or 17 at 4 |
-| Readers with 4 small areas | 12 readers at 2 frames per second |
-| Search over the whole picture | 4 pictures per second in all, for example 4 readers at 1 frame per second |
-
-- Twice the frames per second costs twice as much. Twice the areas costs about twice as much.
-- A larger area costs more: keep areas tight, use a search only where the text moves.
-- A scene that does not change (a meter between two readings, an empty gate) costs about a fifth.
-- On action readers cost only when a rule runs them.
-- At most 2 readers per core watch (16 on 8 cores, 48 on this CPU); whether they keep up at the frames per second you
-  choose is what the light shows.
-
-These are estimates for planning. The **Recognition** panel shows the real load of your server: add readers until the
-light turns orange, then stop or lower the frames per second.
-
-### On a graphics card
-
-The graphics card reads only searches (areas larger than about 960 pixels). Small areas are read on the CPU, as without
-a card: plan them with the CPU table above.
-
-Measured on an NVIDIA GeForce RTX 5070 Ti with the Ryzen 9 3900X above, Windows:
-
-| Search over the whole picture | Time on its own | Searches per second in all |
-|---|---|---|
-| Full HD (1920 x 1080) | 321 ms (CPU only: 483 ms) | about 5.7 |
-| QHD (2560 x 1440) | 377 ms (CPU only: 945 ms) | about 4 |
-| 4K (3840 x 2160) | 923 ms (CPU only: 2,190 ms) | about 1.5 |
-
-**Searches per second in all** is what one card reads for all search readers together, for example 5 readers at 1
-frame per second over full HD pictures. The text found is then read on the CPU: plan one full HD search like about 15
-small areas in the CPU table.
-
-A graphics card does not raise the number of watching readers or the frames per second: both follow the CPU.
-
-## Permissions
-
-| Permission | Allows |
-|---|---|
-| **View text recognition** | The page, the readers and their results |
-| **Change text readers** | New, Delete, Save, drawing and moving areas, Use the graphics card |
-
-The cut-out of the text found is a piece of the camera's picture: only users with **Live view** see it.
-
-A user limited to a [device group](../../admin/device-groups/) sees only the readers of their group's cameras. Event rules
-are for users with all devices.
-
-## Troubleshooting
-
-| You see | Do this |
-|---|---|
-| No text found | Draw the area tighter around the text, with a little margin. Check focus and light on the camera's live view. Choose a higher resolution |
-| **Text too small. Draw a smaller area or choose a higher resolution.** | The letters are under about 10 pixels high: choose a higher resolution or zoom the camera |
-| Wrong characters (O for 0, S for 5) | Set a **Format**: it fixes look-alikes and finds only the shape you want |
-| A value split or missing on a busy picture | Draw smaller areas; with a large area use a format |
-| **More than 30 texts found. ...** | Draw smaller areas around the texts you need |
-| The reader shows **Unreachable**, **Credentials required**, **Certificate changed** or **Site offline** | The camera is offline or refuses the stored login. Check it on the Devices page |
-| The reader shows **Stream error** | The camera gives no pictures; hover the chip for the reason (below) |
-| The reader shows **Limit reached**, for example **At most 16 readers can watch at once. ...** | Set another reader to **On action**, or use a server with more cores. At a site, at most 4 readers watch |
-| **Unauthorized - HTTP 401 (check the credentials)** at a reader | OADM's account on the camera may not see video: check it on the Devices page |
-| **The camera does not offer this resolution. Choose another one.** | Choose another resolution under **Stream** |
-| **The camera does not offer this video source. Choose another one.** | Choose another video source under **Stream** |
-| **The camera sends no pictures.** | The camera did not start the picture stream within 15 seconds; check it in the live view |
-| **No live results now: OADM already reads as many cameras as it can.** | Close the page on another client or set a reader to On action |
-| Orange or red light | See [Recognition](#recognition) |
-| **Runs on** shows the CPU although the server has a graphics card | Check **Use the graphics card**; on Linux check CUDA and cuDNN (above); the server log says why |
-| **Text recognition is not installed completely. Install it again on the Plugins page.** | **Remove** it on the Plugins page, restart the server and **Install** it again |
-
-## Good to know
-
-- Read only: Text recognition only takes pictures from the cameras and changes nothing on them.
-- Pictures are never stored. The server keeps the latest reading of each reader in memory; the event log keeps the texts.
-- It reads Latin script (English, German with umlauts, French and others) and digits. Text written top to bottom with one
-  character per line (container doors) is not read.
-- Turned or upside-down text is read, a slanted line too.
-- Cameras at sites work through the site node like any other camera.
-
-## Camera angle
-
-Text reads best when it faces the camera and stands upright.
-
-| The text is | Reads well |
-|---|---|
-| Turned in the picture | Up to 10° either way, also upside down. A single line, such as a sign, at any angle |
-| Lying on its side | Only when it lies exactly on its side |
-| Tilted away from the camera | Up to 60°, seen from the side or from above |
-
-Beyond that, mount the camera more frontal or zoom in. A turned value reads less surely when another line of text is
-close to it.
+<CardGrid>
+	<LinkCard title="Readers and areas" description="Modes, stream settings, where to draw areas, camera angle." href="readers/" />
+	<LinkCard title="Formats" description="Tell a reader the shape of the text." href="formats/" />
+	<LinkCard title="Events and rules" description="Text read, Read text, examples, dashboards." href="events/" />
+	<LinkCard title="Check and tune" description="The last 20 reads, Pause, Moving objects." href="tuning/" />
+	<LinkCard title="Speed and limits" description="Graphics card, limits, server size." href="speed/" />
+	<LinkCard title="Troubleshooting" description="Permissions and what each message means." href="troubleshooting/" />
+</CardGrid>

@@ -1,0 +1,113 @@
+---
+title: Readers and areas
+description: Set up a text reader with its camera, mode, stream settings and areas.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import settings from '../../../../assets/screens/text-recognition-settings.png';
+import stream from '../../../../assets/screens/text-recognition-stream-settings.png';
+import drawing from '../../../../assets/screens/text-recognition-drawing.png';
+
+A reader is one camera, one video source and up to 8 areas around the texts you want to read.
+
+## Set up a reader
+
+<Image src={settings} alt="The reader's settings: Name, Mode, Stream, Moving objects, the areas with their formats, a note and Save" class="screen fit" />
+
+<Steps>
+
+1. Click **New** and choose the camera. A saved reader keeps its camera: for another camera create another reader.
+2. Enter a **Name** and choose the **Mode**.
+3. Click the button under **Stream** to set the video source, resolution and frames per second.
+4. [Draw an area](#areas) around each text you want to read.
+5. Enter a [format](../formats/) for the area, or leave the field empty to read any text.
+6. Check the table below the video, then click **Save**.
+
+</Steps>
+
+The table follows your changes before you save. These live results never start a rule: only saved readers do.
+
+| Setting | What it does | New reader |
+|---|---|---|
+| **Name** | Shows in the event tree of the rules | `Reader 1`, `Reader 2` and so on |
+| **Mode** | **Watching** or **On action** | **Watching** |
+| **Video source** | The camera's view area | The camera's first |
+| **Resolution** | Small text needs pixels: go higher before you draw larger areas | 1920x1080 or the largest below it |
+| **Frames per second** | 1, 2, 4, 8, 12 or 15, only for **Watching** | 1 |
+| **Moving objects** | For [belts and passing vehicles](../tuning/#belts-and-passing-vehicles), only for **Watching** | Off |
+
+<Image src={stream} alt="The Stream settings dialog with Video source, Resolution and Frames per second" class="screen fit" />
+
+## Watching or On action
+
+| Mode | Reads | Sends **Text read** |
+|---|---|---|
+| **Watching** | All the time | When an area's text changes |
+| **On action** | One picture each time a rule runs the action **Read text** | For every area, every time |
+
+Start with 1 or 2 frames per second. A meter needs 1, a passing truck needs more. The top right of the page tells when the
+server [no longer keeps up](../speed/#does-the-server-keep-up).
+
+Renaming a reader or an area never stops the reading.
+
+## Areas
+
+Text is read only inside areas. A reader without an area reads nothing: the video is dimmed with **Start by drawing an
+area**.
+
+<Image src={drawing} alt="Drawing an area on the live video: a rectangle being dragged, the hint Drag to draw an area" class="screen" />
+
+| To | Do this |
+|---|---|
+| Draw an area | **New** in the **Areas** header, then drag on the video. **Esc** stops |
+| Select an area | Click it on the video or click its row. Click beside the areas to clear the selection |
+| Move an area | Drag inside it, or use the arrow keys (**Shift** moves further) |
+| Resize an area | Drag a handle. **Esc** cancels the drag |
+| Rename or delete | The ⋯ menu of the area |
+| Turn a read text into a format | **Use read text as format** in the ⋯ menu, see [Formats](../formats/#start-from-a-read-text) |
+
+New areas are named **Area 1**, **Area 2** and so on, with the lowest free number. Rules see this name, so rename an area
+to something like `Container number`. Areas stay in place when you change the resolution.
+
+### Fixed place or Search
+
+| Way | Size | Use it for |
+|---|---|---|
+| Fixed place | Up to about 960 pixels on the long side, tight around the text | A text that is always in one place: a meter, a sign, a number on a gate lane. Best and fastest |
+| Search | Larger, up to the whole picture, with a format | A text that can be anywhere: an order number on a receipt, a label on a parcel |
+
+The pixels are those of the reader's resolution: at 1920x1080 a Search starts at half the picture's width. A large area
+with **Any text** reads everything in it, which rarely helps a rule.
+
+### Several lines
+
+An area can hold several lines. They are read top to bottom and left to right and joined with a space. A line that ends
+with `-` is joined without one.
+
+Draw one area per value. The number of lines found changes with light and focus, so "the second line" is not a stable
+place.
+
+## What it reads
+
+| Text | Read |
+|---|---|
+| Latin script (English, German with umlauts, French and others) and digits | Yes |
+| Up to 30 texts per picture, over all areas | Yes, the clearest first |
+| Letters under about 10 pixels high | No: **Text too small** |
+| Written top to bottom with one character per line, as on container doors | No |
+
+## Camera angle
+
+Text reads best when it faces the camera and stands upright.
+
+| The text is | Reads well |
+|---|---|
+| Turned in the picture | Up to 10° either way, a container number up to 15° |
+| Upside down | The same angles around upside down |
+| Lying on its side | Only exactly on its side |
+| A single line with **Any text** | At any angle |
+| Tilted away from the camera | Up to 60°, from the side or from above |
+
+Beyond that, mount the camera more frontal or zoom in. A turned value reads less surely when another line of text is close
+to it.

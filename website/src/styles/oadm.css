@@ -113,6 +113,12 @@ html[data-has-hero] header site-search {
 	width: 70%;
 }
 
+/* A small picture, a part of a page or a dialog, at its own size. */
+.screen.fit {
+	width: auto;
+	max-width: 100%;
+}
+
 /* Landing page feature rows: text and screenshot side by side, stacked on phones. */
 .feature {
 	display: grid;

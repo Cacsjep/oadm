@@ -1,0 +1,76 @@
+---
+// A format under a real text, character by character (tools/text-recognition/formats): the text on a label, the format
+// below it, and brackets that name each part. Colours from Starlight's variables, so both appearances stay readable.
+interface Props {
+	text: string;
+	format: string;
+	/** [first character, last character, caption]. */
+	groups: [number, number, string][];
+	label: string;
+}
+
+const { text, format, groups, label } = Astro.props;
+const cell = 44;
+const side = 20;
+const width = text.length * cell + side * 2;
+const x = (i: number) => side + i * cell + cell / 2;
+---
+
+<svg class="format-label" viewBox={`0 0 ${width} 172`} role="img" aria-label={label}>
+	<rect class="plate" x="4" y="4" width={width - 8} height="64" rx="8" />
+	{[...text].map((c, i) => <text class="value" x={x(i)} y="48">{c}</text>)}
+	{[...format].map((c, i) => <text class="format" x={x(i)} y="108">{c}</text>)}
+	{
+		groups.map(([from, to, caption]) => (
+			<>
+				<path class="bracket" d={`M ${x(from) - 16} 120 v 8 H ${x(to) + 16} v -8`} />
+				<text class="caption" x={(x(from) + x(to)) / 2} y="150">{caption}</text>
+			</>
+		))
+	}
+</svg>
+
+<style>
+	.format-label {
+		display: block;
+		width: 100%;
+		max-width: 640px;
+		height: auto;
+		margin-block: 1rem;
+	}
+
+	.plate {
+		fill: var(--sl-color-gray-6);
+		stroke: var(--sl-color-gray-4);
+	}
+
+	text {
+		text-anchor: middle;
+	}
+
+	.value,
+	.format {
+		font-family: var(--sl-font-mono);
+		font-size: 30px;
+		font-weight: 600;
+	}
+
+	.value {
+		fill: var(--sl-color-white);
+	}
+
+	.format {
+		fill: var(--sl-color-text-accent);
+	}
+
+	.bracket {
+		fill: none;
+		stroke: var(--sl-color-gray-3);
+		stroke-width: 1.5;
+	}
+
+	.caption {
+		fill: var(--sl-color-gray-2);
+		font-size: 15px;
+	}
+</style>

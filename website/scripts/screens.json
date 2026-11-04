@@ -103,6 +103,17 @@
   "sites-page.png": "sites-page.png",
   "snapshot-report-page.png": "snapshot-report-page.png",
   "system-report-dialog.png": "system-report-dialog.png",
+  "text-recognition-cut-out.png": "ocr-cutout-upside-down-dark.png",
+  "text-recognition-drawing.png": "ocr-docs-drawing-dark.png",
+  "text-recognition-last-reads.png": "ocr-split-dragged-dark.png",
+  "text-recognition-page.png": "ocr-docs-page-dark.png",
+  "text-recognition-paused.png": "ocr-pause-paused-dark.png",
+  "text-recognition-readers.png": "ocr-docs-readers-dark.png",
+  "text-recognition-settings.png": "ocr-docs-settings-dark.png",
+  "text-recognition-status-busy.png": "ocr-docs-status-busy-dark.png",
+  "text-recognition-status-ok.png": "ocr-docs-status-ok-dark.png",
+  "text-recognition-status-overloaded.png": "ocr-docs-status-overloaded-dark.png",
+  "text-recognition-stream-settings.png": "ocr-docs-stream-settings-dark.png",
   "update-dialog.png": "update-dialog-notes.png",
   "web-view-page.png": "web-view-page.png"
 }

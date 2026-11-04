@@ -1,0 +1,99 @@
+---
+title: Formats
+description: Tell a text reader the shape of the text, fix look-alike characters and check container numbers.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+import FormatLabel from '../../../../components/FormatLabel.astro';
+
+A format tells the reader the shape of the text. The reader then finds that shape, fixes characters that look alike and
+ignores the rest. An empty field reads any text.
+
+<FormatLabel
+	text="DE-1011-22"
+	format="@@-####-##"
+	groups={[[0, 1, '2 letters'], [2, 2, 'dash'], [3, 6, '4 digits'], [7, 7, 'dash'], [8, 9, '2 digits']]}
+	label="The format @@-####-## under the text DE-1011-22: two letters, a dash, four digits, a dash, two digits"
+/>
+
+| Write | Means |
+|---|---|
+| `#` | A digit |
+| `@` | A letter |
+| `*` | A letter or a digit |
+| Space | A space that may be missing in the text |
+| `-` | A real dash in the text, with or without spaces around it |
+| Any other letter or character | Itself, upper or lower case do not matter, for example `U`, `.` or `/` |
+
+A format needs at least one `#`, `@` or `*` and has at most 64 characters. Hover over the format field for this help.
+
+## How a text matches
+
+With the format `@@-####-##`:
+
+| Text read | Value | Why |
+|---|---|---|
+| `DE-1011-22` | `DE-1011-22` | Fits |
+| `DE - 1011 - 22` | `DE-1011-22` | Spaces around a dash are allowed |
+| `DE-1O11-22` | `DE-1011-22` | The letter O stands where a digit belongs |
+| `DE101122` | No match | The dashes are missing |
+| `XDE-1011-22` | No match | A match never starts or ends inside a word |
+
+The value is always written the way the format is: with `@@@U ###### #` the text `MSKU1234565` gives `MSKU 123456 5`.
+
+## Look-alike characters
+
+| Where the format expects | Read | Becomes |
+|---|---|---|
+| A digit (`#`) | O, I, L, S, B, Z, G | 0, 1, 1, 5, 8, 2, 6 |
+| A letter (`@`) | 0, 1, 5, 8, 2, 6 | O, I, S, B, Z, G |
+
+## Container numbers
+
+<FormatLabel
+	text="MSKU 123456 5"
+	format="@@@U ###### #"
+	groups={[[0, 2, 'owner'], [3, 3, 'U'], [5, 10, 'serial number'], [12, 12, 'check digit']]}
+	label="The format @@@U ###### # under the container number MSKU 123456 5, with the owner, U, the serial number and the check digit"
+/>
+
+A format that starts with `@@@U ###### #` turns on the check digit. A number whose check digit does not fit never matches.
+OADM never changes a character to make it fit.
+
+| Format | Check digit |
+|---|---|
+| `@@@U ###### #` | Checked |
+| `@@@U ###### # 22G1` | Checked. The size and type code after it is not |
+| `@@@U ######` | Not checked: the format has no check digit |
+
+## More than one value
+
+| In the area | Result |
+|---|---|
+| A value split over two lines, `MSCU 123` above `4565` | Found |
+| Several matches, such as the same order number on two receipts | The value is the match read most surely. [All matches](../events/#event-text-read) lists every different match, at most 10 |
+| No match | The area has no value and no box on the video. **Text read** of the event keeps what was read |
+
+## Examples
+
+| Text | Format | Example value |
+|---|---|---|
+| Container number | `@@@U ###### #` | `MSKU 123456 5` |
+| Railway wagon number | `## ## #### ###-#` | `31 80 6651 012-3` |
+| Meter, whole numbers | `#####` | `04512` |
+| Meter with one decimal | `####.#` | `1234.5` |
+| Order code on a receipt | `##@#@` | `12B4C` |
+| Level on a display | `#/##` | `4/12` |
+| Lane or door sign | `@#` | `B7` |
+
+## Start from a read text
+
+<Steps>
+
+1. Let the reader read the text with an empty format field.
+2. In the area's ⋯ menu click **Use read text as format**. `MSKU 123456 5` becomes `@@@@ ###### #`.
+3. Adjust it: change `@@@@` to `@@@U` for a container number.
+
+</Steps>
+
+On a belt, [Pause](../tuning/#pause-to-tune-a-format) first.
