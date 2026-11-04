@@ -257,7 +257,7 @@ public sealed class ServerUpdateServiceTests
             () =>
             {
                 fakes.Time.Advance(ServerUpdateCoordinator.FollowInterval);
-                return host.Get<UpdateGate>().ClosedFor is null;
+                return host.Get<UpdateGate>().ClosedFor is null && host.Get<TaskEngine>().HeldReason is null && !host.Get<ActionRunner>().IsHeld;
             },
             "the server reads the helper's result");
         Assert.Null(host.Get<TaskEngine>().HeldReason);
@@ -281,7 +281,7 @@ public sealed class ServerUpdateServiceTests
             () =>
             {
                 fakes.Time.Advance(ServerUpdateCoordinator.FollowInterval);
-                return host.Get<TaskEngine>().HeldReason is null;
+                return host.Get<TaskEngine>().HeldReason is null && !host.Get<ActionRunner>().IsHeld;
             },
             "the server reads the helper's result");
         Assert.False(host.Get<ActionRunner>().IsHeld);
@@ -517,7 +517,7 @@ public sealed class ServerUpdateServiceTests
             () =>
             {
                 fakes.Time.Advance(ServerUpdateCoordinator.FollowInterval);
-                return records.Read()!.Audited;
+                return records.Read()!.Audited && host.Get<TaskEngine>().HeldReason is null && !host.Get<ActionRunner>().IsHeld;
             },
             "the server reads the helper's result");
 
@@ -702,7 +702,7 @@ public sealed class ServerUpdateServiceTests
             () =>
             {
                 fakes.Time.Advance(TimeSpan.FromMinutes(1));
-                return records.Read()!.Audited;
+                return records.Read()!.Audited && host.Get<TaskEngine>().HeldReason is null && !host.Get<ActionRunner>().IsHeld;
             },
             "the server gives up");
 
