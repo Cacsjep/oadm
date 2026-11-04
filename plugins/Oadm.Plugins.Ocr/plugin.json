@@ -4,6 +4,6 @@
   "minSdkVersion": "0.10.0",
   "displayName": "Text recognition",
   "enabledByDefault": false,
-  "description": "Reads text in camera pictures for the event rules.",
+  "description": "Reads text in camera pictures.",
   "siteSupport": "full"
 }

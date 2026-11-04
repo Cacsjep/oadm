@@ -36,7 +36,7 @@ public sealed class AddOnContractTests
         var list = await op.ListAddOnsAsync(new Proto.ListAddOnsRequest());
 
         var ocr = Assert.Single(list.AddOns);
-        Assert.Equal((Id, "Text recognition", "Reads text in camera pictures for the event rules."), (ocr.Id, ocr.DisplayName, ocr.Description));
+        Assert.Equal((Id, "Text recognition", "Reads text in camera pictures."), (ocr.Id, ocr.DisplayName, ocr.Description));
         Assert.Equal(Proto.AddOnState.AddOnNotInstalled, ocr.State);
         Assert.False(ocr.CanInstall); // a development build: no hash built in
         Assert.Equal(AddOnTexts.NoHash, ocr.Message);
@@ -177,7 +177,8 @@ public sealed class AddOnContractTests
         var zip = AddOnRig.Zip();
         await using var host = await StartReleaseAsync(zip);
 
-        var steps = await UploadAsync(host.Plugins, Id, AddOnCatalog.ReleaseFileName(Id, "4.10.0", AddOnInstallerOptions.CurrentRuntimeId()), zip);
+        // A released system, not this machine's: a name with an unreleased one (osx-arm64 runners) is left to the hash.
+        var steps = await UploadAsync(host.Plugins, Id, AddOnCatalog.ReleaseFileName(Id, "4.10.0", "win-x64"), zip);
 
         Assert.Equal(AddOnTexts.WrongVersion(AddOnRig.Version), Assert.Single(steps).Error);
     }

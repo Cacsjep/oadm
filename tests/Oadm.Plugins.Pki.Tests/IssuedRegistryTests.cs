@@ -129,7 +129,10 @@ public sealed class IssuedRegistryTests
     public async Task A_certificate_stays_30_days_after_it_ended_and_a_revocation_while_it_could_be_valid()
     {
         var time = new FakeTimeProvider(Start);
-        var (registry, records, _, _) = Create(time);
+        var records = new MemoryPluginRecords();
+        // The test prunes by hand: the hourly timer would prune during Advance and still be writing at the asserts.
+        var store = new PkiStore(new InMemoryPluginSettingsProvider().GetSettings(PkiPluginInfo.PluginId));
+        var registry = new IssuedRegistry(store, time, records) { PruneInterval = Timeout.InfiniteTimeSpan };
         await registry.LoadAsync(CancellationToken.None);
         var device = Guid.NewGuid();
         await registry.AddAsync(Entry("01", device, Start.UtcDateTime.AddDays(10)), [1], CancellationToken.None);

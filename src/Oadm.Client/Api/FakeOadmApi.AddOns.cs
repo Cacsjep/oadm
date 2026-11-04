@@ -199,7 +199,7 @@ public sealed partial class FakeOadmApi
         {
             Id = TextRecognitionAddOnId,
             DisplayName = "Text recognition",
-            Description = "Reads text in camera pictures for the event rules.",
+            Description = "Reads text in camera pictures.",
             State = _textRecognitionState,
             Version = AddOnVersion,
             CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsWithoutHash && _textRecognitionState != AddOnState.AddOnInstalling),
@@ -226,7 +226,7 @@ public sealed partial class FakeOadmApi
 
     private PluginPackageInfo TextRecognitionPackage()
     {
-        var package = Package(TextRecognitionAddOnId, "Text recognition", "Reads text in camera pictures for the event rules.", "Vision",
+        var package = Package(TextRecognitionAddOnId, "Text recognition", "Reads text in camera pictures.", "Vision",
             hasPage: true, tasks: 0, enabledByDefault: false);
         package.Enabled = _packageStates.GetValueOrDefault(TextRecognitionAddOnId, false);
         return package;

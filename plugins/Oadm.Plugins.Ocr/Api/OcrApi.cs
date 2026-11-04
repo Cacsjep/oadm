@@ -13,7 +13,7 @@ public static class OcrInfo
     public const string IconKey = "text";
 
     /// <summary>The page's subtitle and the plugin's one line.</summary>
-    public const string Description = "Reads text in camera pictures for the event rules.";
+    public const string Description = "Reads text in camera pictures.";
 
     /// <summary>The empty page.</summary>
     public const string EmptyText = "Create a reader to read text from a camera.";

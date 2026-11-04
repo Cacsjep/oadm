@@ -34,7 +34,7 @@ public static partial class AddOnCatalog
     /// <summary>Every add-on of this version, in the order of the Plugins page.</summary>
     public static readonly IReadOnlyList<AddOnEntry> Entries =
     [
-        new(TextRecognitionId, "Text recognition", "Reads text in camera pictures for the event rules."),
+        new(TextRecognitionId, "Text recognition", "Reads text in camera pictures."),
     ];
 
     /// <summary>The entry with <paramref name="id"/> (ordinal, ignoring case), or null.</summary>
