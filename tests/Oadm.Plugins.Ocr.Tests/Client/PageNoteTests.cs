@@ -335,7 +335,7 @@ public sealed class PageNoteTests
             Assert.True(box.IsEffectivelyVisible);
             Assert.Equal(OcrTexts.MovingObjects, box.Content);
             var help = Assert.IsAssignableFrom<Control>(ToolTip.GetTip(box)).GetLogicalDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
-            Assert.Contains("Waits until the pictures agree. For signs and meters.", help);
+            Assert.Contains("Compares the last 5 pictures. The result must stay the same for 2 pictures. For signs and meters.", help);
             Assert.Contains("Counts a value read the same in 2 pictures in a row. For belts and vehicles.", help);
             Assert.False(box.IsChecked);
             Assert.False(editor.IsDirty);

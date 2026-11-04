@@ -208,7 +208,7 @@
                     <TextBlock Classes="tipTitle" Text="{x:Static vm:OcrTexts.MovingObjects}" />
                     <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
                       <TextBlock Classes="tipKey" Text="Off" />
-                      <TextBlock Grid.Column="1" Text="Waits until the pictures agree. For signs and meters." TextWrapping="Wrap" />
+                      <TextBlock Grid.Column="1" Text="Compares the last 5 pictures. The result must stay the same for 2 pictures. For signs and meters." TextWrapping="Wrap" />
                       <TextBlock Grid.Row="1" Classes="tipKey" Text="On" />
                       <TextBlock Grid.Row="1" Grid.Column="1" Text="Counts a value read the same in 2 pictures in a row. For belts and vehicles." TextWrapping="Wrap" />
                     </Grid>
