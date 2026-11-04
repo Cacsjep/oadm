@@ -318,6 +318,9 @@ public sealed class TextMatcherTests
     [InlineData("@@@J ###### #", true)]
     [InlineData("@@@Z ###### #", true)]
     [InlineData("@@@u ###### #", true)]
+    [InlineData("@@@? ###### #", true)]
+    [InlineData("@@@?-######-#", true)]
+    [InlineData("@@@? ######", false)]
     [InlineData("@@@X ###### #", false)]
     [InlineData("#####", false)]
     public void AFormatHasACheckDigitWhenItStartsWithAContainerNumber(string format, bool check)
@@ -336,6 +339,35 @@ public sealed class TextMatcherTests
     [InlineData("@@@u ###### #", "CSQU 305438 4")]
     public void AWrongCheckDigitIsNoMatchForEveryEquipmentCategory(string format, string text) =>
         Assert.False(TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).MatchesFormat);
+
+    [Fact]
+    public void ALowerCaseCategoryGivesTheValueInUpperCase() =>
+        Assert.Equal("CSQU 305438 3", TextMatcher.MatchAll([Line("CSQU 305438 3", 0.1, 0.1)], ExpectedText.WithFormat("@@@u ###### #")).Text);
+
+    [Theory]
+    [InlineData("CSQU 305438 3")]
+    [InlineData("CSQJ 305438 6")]
+    [InlineData("TRLZ 123456 0")]
+    public void AQuestionMarkReadsEveryEquipmentCategoryAndKeepsTheLetterRead(string text) =>
+        Assert.Equal(text, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat("@@@? ###### #")).Text);
+
+    [Theory]
+    [InlineData("CSQU 305438 4")] // a wrong check digit
+    [InlineData("TRLZ 123456 1")]
+    [InlineData("MSKX 123456 5")] // no category of the standard
+    public void AQuestionMarkStillChecksTheNumber(string text) =>
+        Assert.False(TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat("@@@? ###### #")).MatchesFormat);
+
+    [Fact]
+    public void AQuestionMarkTakesTheLookAlikeOfACategory() =>
+        Assert.Equal("TRLZ 123456 0", TextMatcher.MatchAll([Line("TRL2 123456 0", 0.1, 0.1)], ExpectedText.WithFormat("@@@? ###### #")).Text);
+
+    [Theory]
+    [InlineData("##?", "12?", "12?")] // anywhere else it is a plain character
+    [InlineData("@@@? ######", "ABC? 123456", "ABC? 123456")] // no check digit: no container number
+    [InlineData("@@@U ###### # ?", "CSQU 305438 3 ?", "CSQU 305438 3 ?")]
+    public void AQuestionMarkOutsideAContainerNumberIsItself(string format, string text, string value) =>
+        Assert.Equal(value, TextMatcher.MatchAll([Line(text, 0.1, 0.1)], ExpectedText.WithFormat(format)).Text);
 
     [Theory]
     [InlineData("(###)", "Lane(123)", "(123)")] // a format that starts with a sign may touch letters

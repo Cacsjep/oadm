@@ -5,7 +5,8 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// <summary>
 /// A parsed format of an area's expected text (docs/spec/ocr.md "Expected text"): <c>#</c> a digit, <c>@</c> a letter,
 /// <c>*</c> a letter or digit; every other character must appear as written (letters in any case), a dash with spaces around
-/// it allowed; spaces may be missing in the text. A match is written in the format's form (its spaces, dashes and literals), with the
+/// it allowed; spaces may be missing in the text; <c>?</c> as the category of a container number (<c>@@@? ###### #</c>) is U, J
+/// or Z. A match is written in the format's form (its spaces, dashes and literals), with the
 /// look-alike characters fixed by position as the last step: where a digit is expected O becomes 0, I and L 1, S 5, B 8,
 /// Z 2, G 6; where a letter is expected the reverse.
 /// </summary>
@@ -14,7 +15,9 @@ public sealed class TextFormat
     /// <summary>
     /// The area menu's "Use read text as format" (docs/spec/ocr.md "Page"): a read text turned into a format. Every digit
     /// becomes <c>#</c>, every letter (umlauts too) <c>@</c>, everything else stays as written; line breaks and runs of spaces
-    /// become one space, the ends are trimmed. "MSKU 123456 7" gives "@@@@ ###### #", "4/12" "#/##".
+    /// become one space, the ends are trimmed. "4/12" gives "#/##". A container number with a fitting check digit gets its
+    /// category as <c>?</c>, so its format checks it: "MSKU 123456 5" gives "@@@? ###### #", "MSKU 123456 7" (does not fit)
+    /// "@@@@ ###### #".
     /// </summary>
     public static string FromText(string? text)
     {
@@ -37,7 +40,31 @@ public sealed class TextFormat
             format.Append(char.IsDigit(c) ? '#' : char.IsLetter(c) ? '@' : c);
         }
 
-        return format.ToString();
+        return WithCategory(format.ToString(), text);
+    }
+
+    /// <summary><paramref name="format"/> with <c>?</c> as its fourth letter when <paramref name="text"/> is a container number with a fitting check digit.</summary>
+    private static string WithCategory(string format, string? text)
+    {
+        var place = ContainerCheck.FourthPlace(format);
+        if (text is null || place < 0)
+        {
+            return format;
+        }
+
+        // A "?" read there would mean a category in the format: it stays open like any text that is no number.
+        if (ContainerCheck.CategoryIndex(format) == place && format[place] == ContainerCheck.AnyCategory)
+        {
+            format = string.Concat(format.AsSpan(0, place), "@", format.AsSpan(place + 1));
+        }
+
+        if (format[place] != '@')
+        {
+            return format;
+        }
+
+        var kept = string.Concat(format.AsSpan(0, place), [ContainerCheck.AnyCategory], format.AsSpan(place + 1));
+        return ContainerCheck.IsCategory(text.Where(char.IsLetterOrDigit).ElementAtOrDefault(3)) && ContainerCheck.FormatHasCheckDigit(kept) && ContainerCheck.IsValid(text) ? kept : format;
     }
 
     private readonly Token[] _tokens;
@@ -77,9 +104,12 @@ public sealed class TextFormat
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
         var tokens = new List<Token>();
-        foreach (var c in pattern.Trim(' ', '-'))
+        var trimmed = pattern.Trim(' ', '-');
+        var category = ContainerCheck.CategoryIndex(trimmed);
+        for (var i = 0; i < trimmed.Length; i++)
         {
-            var kind = c switch
+            var c = i == category ? char.ToUpperInvariant(trimmed[i]) : trimmed[i];
+            var kind = i == category && c == ContainerCheck.AnyCategory ? TokenKind.Category : c switch
             {
                 '#' => TokenKind.Digit,
                 '@' => TokenKind.Letter,
@@ -215,6 +245,7 @@ public sealed class TextFormat
         TokenKind.Digit => char.IsAsciiDigit(c) || LookAlike.AsDigit(c) is not null,
         TokenKind.Letter => char.IsLetter(c) || LookAlike.AsLetter(c) is not null,
         TokenKind.LetterOrDigit => char.IsLetterOrDigit(c),
+        TokenKind.Category => ContainerCheck.IsCategory(LookAlike.AsLetter(c) ?? c),
         _ => char.ToUpperInvariant(c) == char.ToUpperInvariant(token.Char),
     };
 
@@ -247,6 +278,10 @@ public sealed class TextFormat
                     value.Append(text[pos]);
                     pos++;
                     break;
+                case TokenKind.Category:
+                    value.Append(char.ToUpperInvariant(LookAlike.AsLetter(text[pos]) ?? text[pos]));
+                    pos++;
+                    break;
                 default:
                     value.Append(t.Char);
                     pos++;
@@ -265,6 +300,7 @@ public sealed class TextFormat
         Space,
         Dash,
         Literal,
+        Category,
     }
 
     private readonly record struct Token(TokenKind Kind, char Char);
@@ -307,8 +343,8 @@ public static class LookAlike
 /// <summary>
 /// The ISO 6346 check digit of container numbers (docs/spec/ocr.md "Accuracy"), the one rule of the matcher and the
 /// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>@@@</c>, the equipment category
-/// (U freight container, J detachable equipment, Z trailer or chassis, either case) and seven <c>#</c> is a container
-/// number ("@@@U ###### #", "@@@Z ###### #", also "@@@U ###### # 22G1" with the size and type code after it), and the 11th letter
+/// (U freight container, J detachable equipment, Z trailer or chassis, either case, or <c>?</c> for any of them) and seven
+/// <c>#</c> is a container number ("@@@U ###### #", "@@@? ###### #", also "@@@U ###### # 22G1" with the size and type code after it), and the 11th letter
 /// or digit of its value is the check digit of the 10 before it. A value whose check digit does not fit is no match; no
 /// character is ever changed to make it fit.
 /// </summary>
@@ -317,9 +353,34 @@ public static class ContainerCheck
     /// <summary>The owner code, category and serial number: 4 letters and 6 digits.</summary>
     private const int CodeLength = 10;
 
+    /// <summary>In a container format the category U, J or Z, whichever the number has; a plain character anywhere else.</summary>
+    public const char AnyCategory = '?';
+
+    /// <summary>An equipment category of ISO 6346, in either case: U freight container, J detachable equipment, Z trailer or chassis.</summary>
+    public static bool IsCategory(char c) => char.ToUpperInvariant(c) is 'U' or 'J' or 'Z';
+
+    /// <summary>Where a container number's category sits in <paramref name="format"/> (trimmed); -1 for any other format.</summary>
+    public static int CategoryIndex(string format) => FormatHasCheckDigit(format) ? FourthPlace(format) : -1;
+
+    /// <summary>The fourth position of <paramref name="format"/> that is no space or dash; -1 without one.</summary>
+    public static int FourthPlace(string format)
+    {
+        ArgumentNullException.ThrowIfNull(format);
+        var places = 0;
+        for (var i = 0; i < format.Length; i++)
+        {
+            if (format[i] is not (' ' or '-') && ++places == 4)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     /// <summary>
     /// True when the first 11 letters and digits of <paramref name="format"/> are <c>@@@</c>, an ISO 6346 equipment category
-    /// (U, J or Z, either case, as every letter of a format) and seven <c>#</c>.
+    /// (U, J or Z, either case, as every letter of a format; or <see cref="AnyCategory"/>) and seven <c>#</c>.
     /// </summary>
     public static bool FormatHasCheckDigit(string? format)
     {
@@ -341,7 +402,7 @@ public static class ContainerCheck
             if (count == first.Length)
             {
                 return ((ReadOnlySpan<char>)first).StartsWith("@@@", StringComparison.Ordinal)
-                    && char.ToUpperInvariant(first[3]) is 'U' or 'J' or 'Z'
+                    && (IsCategory(first[3]) || first[3] == AnyCategory)
                     && first[4..].IndexOfAnyExcept('#') < 0;
             }
         }

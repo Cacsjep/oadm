@@ -719,13 +719,17 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     private bool CanUseReadTextAsFormat(AreaViewModel? area) => FormatFromReadText(area) is not null;
 
-    /// <summary>The menu entry: the area's format follows the shape of the text read now; the user adjusts it (@@@@ to @@@U).</summary>
+    /// <summary>The menu entry: the area's format follows the shape of the text read now; the user adjusts it.</summary>
     [RelayCommand(CanExecute = nameof(CanUseReadTextAsFormat))]
     private void UseReadTextAsFormat(AreaViewModel? area)
     {
         if (area is not null && FormatFromReadText(area) is { } format)
         {
             area.FormatText = format;
+            if (Oadm.Plugins.Ocr.Matching.TextFormat.Parse(format).HasContainerCheckDigit)
+            {
+                _ = _ctx.ShowMessageAsync(OcrTexts.CheckFormatTitle, OcrTexts.CheckFormatNotice); // a guess: the user decides
+            }
         }
     }
 

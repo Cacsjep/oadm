@@ -64,8 +64,11 @@ A format that starts with `@@@U ###### #` turns on the check digit. A number who
 | `@@@U ###### #` | Checked |
 | `@@@U ###### # 22G1` | Checked. The size and type code after it is not |
 | `@@@Z ###### #` | Checked, a chassis number |
+| `@@@? ###### #` | Checked. The `?` is U, J or Z, for an area that sees containers and chassis |
 | `@@@@ ###### #` | Not checked: write U, J or Z for the fourth letter |
 | `@@@U ######` | Not checked: the format has no check digit |
+
+A format with U, J or Z reads only numbers with that letter. For codes that are no container numbers, use `@@@@ ###### #`.
 
 ## More than one value
 
@@ -92,8 +95,8 @@ A format that starts with `@@@U ###### #` turns on the check digit. A number who
 <Steps>
 
 1. Let the reader read the text with an empty format field.
-2. In the area's ⋯ menu click **Use read text as format**. `MSKU 123456 5` becomes `@@@@ ###### #`.
-3. Adjust it: change `@@@@` to `@@@U` for a container number.
+2. In the area's ⋯ menu click **Use read text as format**. `MSKU 123456 5` becomes `@@@? ###### #`, because its check digit fits, and OADM asks you to check the format. Any other text gets `@` for each letter.
+3. Adjust it if needed.
 
 </Steps>
 

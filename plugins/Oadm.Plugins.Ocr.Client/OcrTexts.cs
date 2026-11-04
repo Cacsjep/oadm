@@ -18,6 +18,11 @@ public static class OcrTexts
 
     public const string OnActionNotice = "This reader reads only when an event rule runs the action Read text with it.";
 
+    /// <summary>The short message when Use read text as format made a format that checks a container number.</summary>
+    public const string CheckFormatTitle = "Check this format";
+
+    public const string CheckFormatNotice = "The text looks like a container number, so this format reads only numbers with U, J or Z as the fourth letter and a fitting check digit. If the area reads other text too, change the ? to @.";
+
     public const string Watching = "Watching";
 
     /// <summary>The reader's setting for belts and passing vehicles.</summary>

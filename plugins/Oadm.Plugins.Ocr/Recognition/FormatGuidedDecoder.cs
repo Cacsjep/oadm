@@ -11,10 +11,11 @@ internal enum FormatTokenKind
     Letter,
     LetterOrDigit,
     Literal,
+    Category,
 }
 
 /// <summary>One position of a format.</summary>
-/// <param name="Kind">Digit, letter, either or a literal character.</param>
+/// <param name="Kind">Digit, letter, either, a literal character or a container number's category (U, J or Z).</param>
 /// <param name="Literal">The character of a literal.</param>
 /// <param name="Optional">A dash: the search may pass it by, and a match that does is no match (<see cref="GuidedMatch.AllDashesRead"/>).</param>
 /// <param name="SpaceBefore">The format has a space before it: the text may have one there (or none).</param>
@@ -25,7 +26,7 @@ internal readonly record struct FormatToken(FormatTokenKind Kind, char Literal, 
 /// character as written, like <see cref="TextFormat"/> without the leading and trailing spaces and dashes; a space of the format
 /// may be missing in the text, a dash may not. Gaps the reader saw between the
 /// characters (the drums of a meter) do not break a match: the match is written in the format's own layout. A format whose
-/// first 11 letters and digits are <c>@@@</c>, U, J or Z and seven <c>#</c> is a container number with an ISO 6346 check digit
+/// first 11 letters and digits are <c>@@@</c>, U, J, Z or <c>?</c> (any of them) and seven <c>#</c> is a container number with an ISO 6346 check digit
 /// (<see cref="ContainerCheck"/>, the same rule as the matcher's), also with more after it ("@@@U ###### # 22G1").
 /// </summary>
 internal sealed class FormatPattern
@@ -56,8 +57,12 @@ internal sealed class FormatPattern
 
         var tokens = new List<FormatToken>();
         var space = false;
-        foreach (var ch in format.Trim(' ', '-'))
+        var trimmed = format.Trim(' ', '-');
+        var category = ContainerCheck.CategoryIndex(trimmed);
+        for (var i = 0; i < trimmed.Length; i++)
         {
+            // A category in either case, like every letter of a format; the model reads it upper case.
+            var ch = i == category ? char.ToUpperInvariant(trimmed[i]) : trimmed[i];
             if (ch == ' ')
             {
                 space = true;
@@ -66,6 +71,9 @@ internal sealed class FormatPattern
 
             switch (ch)
             {
+                case ContainerCheck.AnyCategory when i == category:
+                    tokens.Add(new FormatToken(FormatTokenKind.Category, ch, false));
+                    break;
                 case '#':
                     tokens.Add(new FormatToken(FormatTokenKind.Digit, ch, false));
                     break;
@@ -569,6 +577,8 @@ internal static class FormatGuidedDecoder
         return set;
     }
 
+    private static readonly string[] Categories = ["U", "J", "Z"];
+
     private static int[] AllowedClasses(FormatToken token, int index, FormatPattern pattern, CharacterList characters, HashSet<int> seen)
     {
         IEnumerable<int> all = token.Kind switch
@@ -577,6 +587,7 @@ internal static class FormatGuidedDecoder
             FormatTokenKind.Letter when pattern.IsContainerNumber && index < 3 => characters.UpperLatinLetters,
             FormatTokenKind.Letter => characters.Letters,
             FormatTokenKind.LetterOrDigit => characters.Digits.Concat(characters.Letters),
+            FormatTokenKind.Category => Categories.Select(characters.ClassOf).Where(c => c >= 0),
             // A literal as the format writes it: the value comes out in the format's form, like the matcher's.
             _ => characters.ClassOf(token.Literal.ToString()) is var c and >= 0 ? [c] : [],
         };
@@ -585,7 +596,7 @@ internal static class FormatGuidedDecoder
         // and the check digit may need one the model never ranked high).
         return token.Kind switch
         {
-            FormatTokenKind.Literal => all.ToArray(),
+            FormatTokenKind.Literal or FormatTokenKind.Category => all.ToArray(),
             FormatTokenKind.Digit => all.ToArray(),
             _ => all.Where(c => seen.Contains(c) || characters[c] is [>= '0' and <= '9']).Distinct().ToArray(),
         };

@@ -269,14 +269,17 @@
                               </StackPanel>
                               <StackPanel Spacing="4">
                                 <TextBlock Classes="tipTitle" Text="Examples" />
-                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="2">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="2">
                                   <TextBlock Classes="tipKey" Text="@@@U ###### #" />
                                   <TextBlock Grid.Column="1" Classes="secondary" Text="Container number" />
-                                  <TextBlock Grid.Row="1" Classes="tipKey" Text="## ## #### ###-#" />
-                                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="secondary" Text="Wagon number" />
-                                  <TextBlock Grid.Row="2" Classes="tipKey" Text="##@#@" />
-                                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="secondary" Text="Order code" />
+                                  <TextBlock Grid.Row="1" Classes="tipKey" Text="@@@? ###### #" />
+                                  <TextBlock Grid.Row="1" Grid.Column="1" Classes="secondary" Text="Container or chassis number" />
+                                  <TextBlock Grid.Row="2" Classes="tipKey" Text="## ## #### ###-#" />
+                                  <TextBlock Grid.Row="2" Grid.Column="1" Classes="secondary" Text="Wagon number" />
+                                  <TextBlock Grid.Row="3" Classes="tipKey" Text="##@#@" />
+                                  <TextBlock Grid.Row="3" Grid.Column="1" Classes="secondary" Text="Order code" />
                                 </Grid>
+                                <TextBlock Classes="secondary" Text="The first two also verify the check digit. The ? is U, J or Z." TextWrapping="Wrap" />
                               </StackPanel>
                             </StackPanel>
                           </ToolTip.Tip>

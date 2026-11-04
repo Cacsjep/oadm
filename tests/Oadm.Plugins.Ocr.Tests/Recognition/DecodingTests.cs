@@ -67,6 +67,29 @@ public sealed class DecodingTests
         Assert.Equal(upright, OnnxTextRecognizer.SurelyUpright(Scores(Frames(text)), Chars));
     }
 
+    [Theory]
+    [InlineData("CSQU3054383", "CSQU 305438 3")]
+    [InlineData("TRLZ1234560", "TRLZ 123456 0")]
+    [InlineData("CSQJ3054386", "CSQJ 305438 6")]
+    public void A_question_mark_finds_every_category_and_keeps_the_letter_read(string text, string value) =>
+        Assert.Equal(value, LineReader.Read(Scores(Frames(text)), Chars, FormatPattern.Parse("@@@? ###### #"), RelativeBox.Whole)!.FormatMatch);
+
+    [Fact]
+    public void A_lower_case_category_finds_the_upper_case_letter_the_model_reads() =>
+        Assert.Equal("CSQU 305438 3", LineReader.Read(Scores(Frames("CSQU3054383")), Chars, FormatPattern.Parse("@@@u ###### #"), RelativeBox.Whole)!.FormatMatch);
+
+    [Fact]
+    public void A_question_mark_is_a_category_only_in_a_container_number()
+    {
+        Assert.True(FormatPattern.Parse("@@@? ###### #")!.IsContainerNumber);
+        Assert.Equal(FormatTokenKind.Category, FormatPattern.Parse("@@@? ###### #")!.Tokens[3].Kind);
+        Assert.Equal(FormatTokenKind.Literal, FormatPattern.Parse("@@@? ######")!.Tokens[3].Kind);
+    }
+
+    [Fact]
+    public void A_wrong_check_digit_is_no_match_with_a_question_mark_too() =>
+        Assert.Null(LineReader.Read(Scores(Frames("TRLZ1234561")), Chars, FormatPattern.Parse("@@@? ###### #"), RelativeBox.Whole)?.FormatMatch);
+
     [Fact]
     public void The_pooled_tables_of_the_format_search_leave_no_trace_of_an_earlier_line()
     {

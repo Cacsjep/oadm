@@ -67,6 +67,34 @@ public sealed class PageAreasAndStatsTests
     }
 
     [Fact]
+    public async Task Use_read_text_as_format_gives_a_shape_without_a_message()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var type = vm.Editor!.Areas[1]; // "Type": any text, read "22G1"
+
+        vm.Editor.UseReadTextAsFormatCommand.Execute(type);
+
+        Assert.Empty(ctx.Messages);
+    }
+
+    [Fact]
+    public async Task Use_read_text_as_format_on_a_container_number_asks_to_check_the_format()
+    {
+        var ctx = Samples.Context();
+        using var vm = await LoadedAsync(ctx);
+        var editor = vm.Editor!;
+        var area = editor.Areas[0]; // "Container number"
+        editor.ApplyReading(Samples.GateReading("MSKU 123456 5"), Samples.GateExtras);
+        Assert.True(editor.UseReadTextAsFormatCommand.CanExecute(area));
+
+        editor.UseReadTextAsFormatCommand.Execute(area);
+
+        Assert.Equal("@@@? ###### #", area.FormatText);
+        Assert.Equal((OcrTexts.CheckFormatTitle, OcrTexts.CheckFormatNotice), Assert.Single(ctx.Messages));
+    }
+
+    [Fact]
     public async Task Use_read_text_as_format_gives_the_area_the_shape_of_its_text()
     {
         using var vm = await LoadedAsync(Samples.Context());
