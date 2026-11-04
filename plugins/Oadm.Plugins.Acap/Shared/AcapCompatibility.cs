@@ -194,6 +194,9 @@ public static class AcapCompatibility
         return -1;
     }
 
+    /// <summary>The refusal of more files than one install takes.</summary>
+    public static string TooManyFiles { get; } = string.Create(CultureInfo.InvariantCulture, $"Choose at most {AcapPayload.MaxFiles} files.");
+
     /// <summary>
     /// Why several packages cannot be installed together, null when they can: every package names the same application and
     /// version, each a different architecture, and a package for any architecture stands alone. Checked before any upload.
@@ -208,7 +211,7 @@ public static class AcapCompatibility
 
         if (packages.Count > AcapPayload.MaxFiles)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"Choose at most {AcapPayload.MaxFiles} files.");
+            return TooManyFiles;
         }
 
         var first = packages[0].Package;

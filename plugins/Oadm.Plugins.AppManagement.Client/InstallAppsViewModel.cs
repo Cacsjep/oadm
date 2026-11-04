@@ -14,7 +14,7 @@ namespace Oadm.Plugins.AppManagement.Client;
 /// <summary>Picks local files for the page's dialogs (the windows implement it with the platform storage provider).</summary>
 public interface IAppFilePicker
 {
-    /// <summary>One .eap, or one per architecture of the same application.</summary>
+    /// <summary>One .eap, one per architecture of the same application, ZIPs of them, or both.</summary>
     Task<IReadOnlyList<string>> PickEapFilesAsync();
 
     /// <summary>License key files (.key, .xml) or ZIPs of them.</summary>
@@ -101,11 +101,11 @@ public sealed class InstallDeviceRow
 
 /// <summary>
 /// The page's Install applications dialog (docs/spec/app-management.md): the target devices, one or several .eap files (one
-/// per architecture), the check of every device with the Applications plugin's own rules (<see cref="AcapCompatibility.Preview"/>,
+/// per architecture, also in a ZIP), the check of every device with the Applications plugin's own rules (<see cref="AcapCompatibility.Preview"/>,
 /// linked source) against what the page read, then the upload and the Install tasks through the page's server part
 /// (<see cref="AppManagementMethods.Run"/>). Devices that do not fit are skipped; the task checks every device again.
 /// </summary>
-public sealed partial class InstallAppsViewModel : ObservableObject
+public sealed partial class InstallAppsViewModel : ObservableObject, IDisposable
 {
     public const string Title = "Install applications";
     public const string ChooseFilesFirst = "Choose the files.";
@@ -113,7 +113,7 @@ public sealed partial class InstallAppsViewModel : ObservableObject
     public const string NoUpload = "This version of OADM cannot install from this page.";
 
     private readonly ICorePluginClientContext _ctx;
-    private IReadOnlyList<string> _paths = [];
+    private readonly EapPackageFiles _files = new();
     private IReadOnlyList<EapManifest> _packages = [];
     private CancellationTokenSource? _upload;
     private int _version;
@@ -137,6 +137,9 @@ public sealed partial class InstallAppsViewModel : ObservableObject
 
     /// <summary>One row per target device, replaced in one step after each check.</summary>
     public RangeObservableCollection<InstallDeviceRow> Rows { get; } = [];
+
+    /// <summary>The chosen .eap files, also those unpacked from a ZIP.</summary>
+    public EapPackageFiles PackageFiles => _files;
 
     /// <summary>The packages read from the chosen files (one, or one per architecture).</summary>
     public IReadOnlyList<EapManifest> Packages => _packages;
@@ -218,8 +221,9 @@ public sealed partial class InstallAppsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Reads the manifests off the UI thread (one file, or one per architecture of one application and version; a set that
-    /// does not fit together is refused at the file row before any upload), then checks every device.
+    /// Unpacks the ZIPs of the pick, reads the manifests off the UI thread (one file, or one per architecture of one
+    /// application and version; a set that does not fit together is refused at the file row before any upload), then checks
+    /// every device.
     /// </summary>
     public async Task LoadFilesAsync(IReadOnlyList<string> paths)
     {
@@ -229,53 +233,94 @@ public sealed partial class InstallAppsViewModel : ObservableObject
             return;
         }
 
-        _paths = [.. paths];
         _packages = [];
         FileError = null;
-        FileName = paths.Count == 1 ? Path.GetFileName(paths[0]) : string.Create(CultureInfo.CurrentCulture, $"{paths.Count:N0} files");
+        ErrorText = null;
+        FileName = EapPackageFiles.Describe(paths, null);
         FileDetails = null;
-        IsChecking = true;
-        try
+        using (_files.Hold())
         {
-            var several = paths.Count > 1;
-            var read = await Task.Run(async () =>
+            try
             {
-                var list = new List<(string FileName, EapManifest Package)>(paths.Count);
-                foreach (var path in paths)
+                await UnpackAsync(paths).ConfigureAwait(true);
+                FileName = _files.Label;
+                var files = _files.Paths;
+                IsChecking = true;
+                var several = files.Count > 1;
+                var read = await Task.Run(async () =>
                 {
-                    try
+                    var list = new List<(string FileName, EapManifest Package)>(files.Count);
+                    foreach (var path in files)
                     {
-                        list.Add((Path.GetFileName(path), await EapReader.ReadAsync(path, CancellationToken.None).ConfigureAwait(false)));
+                        try
+                        {
+                            list.Add((Path.GetFileName(path), await EapReader.ReadAsync(path, CancellationToken.None).ConfigureAwait(false)));
+                        }
+                        catch (Exception ex) when (several && ex is InvalidEapException or IOException or UnauthorizedAccessException)
+                        {
+                            throw new InvalidEapException(Path.GetFileName(path) + ": " + ex.Message, ex);
+                        }
                     }
-                    catch (Exception ex) when (several && ex is InvalidEapException or IOException or UnauthorizedAccessException)
-                    {
-                        throw new InvalidEapException(Path.GetFileName(path) + ": " + ex.Message, ex);
-                    }
+
+                    return list;
+                }).ConfigureAwait(true);
+
+                if (AcapCompatibility.CheckPackageSet(read) is { } refused)
+                {
+                    FileError = refused;
                 }
-
-                return list;
-            }).ConfigureAwait(true);
-
-            if (AcapCompatibility.CheckPackageSet(read) is { } refused)
-            {
-                FileError = refused;
+                else
+                {
+                    _packages = [.. read.Select(r => r.Package)];
+                    FileDetails = Describe(_packages, files);
+                }
             }
-            else
+            catch (OperationCanceledException)
             {
-                _packages = [.. read.Select(r => r.Package)];
-                FileDetails = Describe(_packages, paths);
+                ErrorText = EapPackageFiles.UnpackCancelled;
             }
-        }
-        catch (Exception ex) when (ex is InvalidEapException or IOException or UnauthorizedAccessException)
-        {
-            FileError = ex.Message;
-        }
-        finally
-        {
-            IsChecking = false;
+            catch (Exception ex) when (ex is InvalidEapException or IOException or UnauthorizedAccessException)
+            {
+                FileError = ex.Message;
+            }
+            finally
+            {
+                IsChecking = false;
+            }
+
+            if (_packages.Count == 0)
+            {
+                _files.Clear();
+            }
         }
 
         await CheckAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Unpacks the ZIPs of a pick with the upload's progress row and Cancel; a pick without a ZIP shows nothing.</summary>
+    private async Task UnpackAsync(IReadOnlyList<string> paths)
+    {
+        if (!EapPackageFiles.HasZip(paths))
+        {
+            await _files.PickAsync(paths, null, CancellationToken.None).ConfigureAwait(true);
+            return;
+        }
+
+        using var cts = new CancellationTokenSource();
+        _upload = cts;
+        UploadProgress = 0;
+        BusyText = EapPackageFiles.Unpacking;
+        IsBusy = true;
+        try
+        {
+            await _files.PickAsync(paths, new Progress<double>(v => UploadProgress = v * 100), cts.Token).ConfigureAwait(true);
+        }
+        finally
+        {
+            _upload = null;
+            IsBusy = false;
+            BusyText = null;
+        }
     }
 
     /// <summary>"Parking Plate Reader 2.10.3 · aarch64, armv7hf · 12.4 MB".</summary>
@@ -382,7 +427,7 @@ public sealed partial class InstallAppsViewModel : ObservableObject
     private async Task InstallAsync()
     {
         var packages = _packages;
-        var paths = _paths;
+        var paths = _files.Paths;
         var devices = Rows.Where(r => r.CanInstall).Select(r => r.DeviceId).ToList();
         IsBusy = true;
         ErrorText = null;
@@ -390,6 +435,9 @@ public sealed partial class InstallAppsViewModel : ObservableObject
         BusyText = "Uploading the files";
         using var cts = new CancellationTokenSource();
         _upload = cts;
+
+        // Unpacked files stay until the upload ended, also when the window closes meanwhile.
+        using var hold = _files.Hold();
         try
         {
             var files = new List<AcapPackageFile>(packages.Count);
@@ -421,6 +469,7 @@ public sealed partial class InstallAppsViewModel : ObservableObject
             await _ctx.InvokeAsync(AppManagementMethods.Run, AppManagementJson.Serialize(request), cts.Token).ConfigureAwait(true);
             _upload = null;
             CloseRequested?.Invoke(this, true);
+            Dispose();
         }
         catch (OperationCanceledException)
         {
@@ -455,5 +504,9 @@ public sealed partial class InstallAppsViewModel : ObservableObject
         }
 
         CloseRequested?.Invoke(this, false);
+        Dispose();
     }
+
+    /// <summary>The dialog closed: deletes the files unpacked from a ZIP (after a running upload).</summary>
+    public void Dispose() => _files.Dispose();
 }

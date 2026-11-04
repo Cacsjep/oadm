@@ -139,6 +139,137 @@ public sealed class DialogTests : IDisposable
         Assert.Empty(ctx.Uploads);
     }
 
+    private string Zip(string name, params (string Name, byte[] Content)[] entries)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllBytes(path, EapBuilder.Zip(entries));
+        return path;
+    }
+
+    private static (string Name, byte[] Content) Package(string name, string architecture, string app = "hello") =>
+        (name, EapBuilder.FromManifest(EapBuilder.Manifest(appName: app, architecture: architecture, friendlyName: app)));
+
+    [Fact]
+    public async Task A_zip_goes_through_the_same_checks_and_only_its_packages_are_uploaded()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1"), Device("10.0.0.2", "armv7hf"), Device("10.0.0.3", "mips")]);
+        var zip = Zip("hello.zip", Package("builds/hello_aarch64.eap", "aarch64"), Package("builds/hello_armv7hf.eap", "armv7hf"), ("readme.txt", [1]));
+
+        await vm.LoadFilesAsync([zip]);
+
+        Assert.Null(vm.FileError);
+        Assert.Equal("hello.zip  ·  2 files", vm.FileName);
+        Assert.Equal(2, vm.Packages.Count);
+        Assert.Equal(2, vm.FitCount); // the mips device has no package: the shared preview
+        Assert.Equal("No package for mips.", vm.Rows[2].Verdict);
+
+        await vm.InstallCommand.ExecuteAsync(null);
+
+        Assert.Equal(["hello_aarch64.eap", "hello_armv7hf.eap"], ctx.Uploads.Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task A_mixed_pick_is_one_set()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1")]);
+        var loose = Eap("hello_armv7hf.eap", EapBuilder.Manifest(architecture: "armv7hf"));
+
+        await vm.LoadFilesAsync([Zip("hello.zip", Package("hello_aarch64.eap", "aarch64")), loose]);
+
+        Assert.Equal("hello.zip and 1 more  ·  2 files", vm.FileName);
+        Assert.Equal(["aarch64", "armv7hf"], vm.Packages.Select(p => p.Architecture));
+        Assert.Equal(loose, vm.PackageFiles.Paths[1]);
+    }
+
+    [Fact]
+    public async Task A_zip_is_refused_at_the_file_row()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1")]);
+
+        await vm.LoadFilesAsync([Zip("two.zip", Package("a.eap", "aarch64"), Package("b.eap", "armv7hf", app: "other"))]);
+        Assert.Equal("b.eap is another application (other). Choose the files of one application.", vm.FileError);
+        Assert.Null(vm.PackageFiles.Folder); // a refused set leaves nothing unpacked
+        Assert.False(vm.InstallCommand.CanExecute(null));
+
+        await vm.LoadFilesAsync([Zip("none.zip", ("readme.txt", [1]))]);
+        Assert.Equal("none.zip has no .eap files.", vm.FileError);
+        Assert.Equal("none.zip", vm.FileName);
+
+        var broken = Path.Combine(_dir, "broken.zip");
+        await File.WriteAllTextAsync(broken, "not a zip");
+        await vm.LoadFilesAsync([broken]);
+        Assert.Equal("broken.zip is damaged or not a ZIP file.", vm.FileError);
+        Assert.Equal(vm.FileError, vm.InstallBlockedReason);
+        Assert.Empty(ctx.Uploads);
+    }
+
+    [Fact]
+    public async Task The_unpacked_files_go_on_a_new_pick_and_on_cancel()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1")]);
+        var zip = Zip("hello.zip", Package("hello_aarch64.eap", "aarch64"));
+
+        await vm.LoadFilesAsync([zip]);
+        var first = vm.PackageFiles.Folder;
+        Assert.True(Directory.Exists(first));
+
+        await vm.LoadFilesAsync([zip]);
+        var second = vm.PackageFiles.Folder;
+        Assert.False(Directory.Exists(first));
+        Assert.True(Directory.Exists(second));
+
+        vm.CancelCommand.Execute(null);
+        Assert.False(Directory.Exists(second));
+    }
+
+    [Fact]
+    public async Task Cancel_stops_an_unpack_and_keeps_the_dialog_open()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1")]);
+        var closed = false;
+        var row = false;
+        vm.CloseRequested += (_, _) => closed = true;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.IsBusy) && vm.IsBusy)
+            {
+                row = vm.BusyText == EapPackageFiles.Unpacking && !vm.ChooseFilesCommand.CanExecute(null);
+                vm.CancelCommand.Execute(null);
+            }
+        };
+
+        await vm.LoadFilesAsync([Zip("hello.zip", Package("hello_aarch64.eap", "aarch64"))]);
+
+        Assert.True(row);
+        Assert.False(closed);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(EapPackageFiles.UnpackCancelled, vm.ErrorText);
+        Assert.Empty(vm.Packages);
+        Assert.Null(vm.PackageFiles.Folder);
+    }
+
+    [Fact]
+    public async Task A_failed_upload_keeps_the_files_for_the_next_try()
+    {
+        var ctx = new FakePageContext().WithEmptyServer();
+        ctx.UploadFailure = new InvalidOperationException("no room");
+        using var vm = new InstallAppsViewModel(ctx, [Device("10.0.0.1")]);
+        await vm.LoadFilesAsync([Zip("hello.zip", Package("hello_aarch64.eap", "aarch64"))]);
+
+        await vm.InstallCommand.ExecuteAsync(null);
+
+        Assert.True(vm.HasError);
+        Assert.All(vm.PackageFiles.Paths, p => Assert.True(File.Exists(p)));
+        ctx.UploadFailure = null;
+        await vm.InstallCommand.ExecuteAsync(null);
+        Assert.Equal(["hello_aarch64.eap"], ctx.Uploads.Select(Path.GetFileName));
+    }
+
     [Fact]
     public async Task Allow_downgrade_checks_again_and_needs_the_right()
     {

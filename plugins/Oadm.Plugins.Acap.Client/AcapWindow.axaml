@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.Acap.Client"
+        xmlns:acap="using:Oadm.Plugins.Acap"
         x:Class="Oadm.Plugins.Acap.Client.AcapWindow"
         x:DataType="vm:AcapDialogViewModel"
         Title="{Binding Title}"
@@ -123,7 +124,7 @@
           <Button Classes="toolbar" Command="{Binding RefreshCommand}">
             <ui:IconLabel Icon="{DynamicResource Icon.refresh}" Text="Refresh" />
           </Button>
-          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="One .eap file per architecture" IsVisible="{Binding MayInstall}">
+          <Button Classes="toolbar" Command="{Binding PickPackageCommand}" ToolTip.Tip="{x:Static acap:EapPackageFiles.ChooseHint}" IsVisible="{Binding MayInstall}">
             <ui:IconLabel Icon="{DynamicResource Icon.upload}" Text="Install or upgrade" />
           </Button>
           <Button Classes="toolbar" Command="{Binding LicenseSelectionCommand}" ToolTip.Tip="{Binding LicenseSelectionBlockedReason}" ToolTip.ShowOnDisabled="True" IsVisible="{Binding MayLicense}">

@@ -14,6 +14,9 @@ internal sealed class FakeDialogContext : ITaskDialogContext
     public List<string> Uploads { get; } = [];
     public Exception? UploadFailure { get; set; }
 
+    /// <summary>Set: an upload that started waits for it.</summary>
+    public Task? UploadGate { get; set; }
+
     /// <summary>The start view a page asked for (SDK 0.7.0); null: the usual start.</summary>
     public string? StartView { get; set; }
 
@@ -31,17 +34,22 @@ internal sealed class FakeDialogContext : ITaskDialogContext
         return Task.FromResult<string?>(Devices[deviceId].ToJson());
     }
 
-    public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct)
+    public async Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct)
     {
         Uploads.Add(localPath);
+        if (UploadGate is { } gate)
+        {
+            await gate.WaitAsync(ct);
+        }
+
         if (UploadFailure is not null)
         {
-            return Task.FromException<UploadedFile>(UploadFailure);
+            throw UploadFailure;
         }
 
         progress?.Report(0.5);
         progress?.Report(1.0);
-        return Task.FromResult(new UploadedFile("file-" + Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Path.GetFileName(localPath), new FileInfo(localPath).Length, "ABCDEF"));
+        return new UploadedFile("file-" + Uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture), Path.GetFileName(localPath), new FileInfo(localPath).Length, "ABCDEF");
     }
 }
 

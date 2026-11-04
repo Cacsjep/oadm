@@ -9,12 +9,12 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Acap.Client;
 
-/// <summary>Picks a local .eap file; implemented by the window with the platform storage provider.</summary>
+/// <summary>Picks local .eap or ZIP files; implemented by the window with the platform storage provider.</summary>
 public interface IEapFilePicker
 {
     Task<string?> PickEapAsync();
 
-    /// <summary>Several .eap files of one application, one per architecture; by default one file.</summary>
+    /// <summary>Several .eap files of one application, one per architecture, ZIPs of them, or both; by default one file.</summary>
     async Task<IReadOnlyList<string>> PickEapFilesAsync() => await PickEapAsync().ConfigureAwait(true) is { Length: > 0 } path ? [path] : [];
 }
 
@@ -85,7 +85,7 @@ public sealed partial class DeviceCompatibilityRow(DeviceChoice device) : Observ
 /// the task payload for install/upgrade, remove, start or stop on all selected devices. Reads
 /// device state only through the plugin query; never talks to devices.
 /// </summary>
-public sealed partial class AcapDialogViewModel : ObservableObject
+public sealed partial class AcapDialogViewModel : ObservableObject, IDisposable
 {
     private readonly ITaskDialogContext _ctx;
     private readonly IEapFilePicker _picker;
@@ -96,7 +96,9 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     public const int MaxParallelQueries = 4;
 
     private readonly Dictionary<Guid, Task<ListApplicationsResult>> _cache = [];
+    private readonly EapPackageFiles _files = new();
     private Action? _cancelUpload;
+    private string? _fileName;
     private bool _initialized;
 
     public AcapDialogViewModel(ITaskDialogContext ctx, IReadOnlyList<IDeviceInfo> devices, IEapFilePicker picker)
@@ -248,14 +250,13 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     /// <summary>A package file was picked (valid or not): the install card is shown.</summary>
     public bool HasPackageFile => !string.IsNullOrEmpty(PackagePath);
 
-    public string? PackageFileName => PackagePath is null ? null
-        : _paths.Count > 1 ? string.Create(CultureInfo.InvariantCulture, $"{_paths.Count} files")
-        : Path.GetFileName(PackagePath);
+    /// <summary>"app.eap", "2 files" or "app.zip  ·  2 files".</summary>
+    public string? PackageFileName => PackagePath is null ? null : _fileName;
 
-    /// <summary>The chosen files (one per architecture when several).</summary>
-    private IReadOnlyList<string> _paths = [];
+    /// <summary>The chosen .eap files (one per architecture when several), also those unpacked from a ZIP.</summary>
+    public EapPackageFiles PackageFiles => _files;
 
-    /// <summary>The packages read from <see cref="_paths"/>, in the same order; empty while a file is refused.</summary>
+    /// <summary>The packages read from <see cref="PackageFiles"/>, in the same order; empty while a file is refused.</summary>
     private IReadOnlyList<EapManifest> _packages = [];
 
     /// <summary>The packages of the install (one, or one per architecture). <see cref="Package"/> is the first.</summary>
@@ -441,12 +442,13 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         await LoadPackagesAsync(paths).ConfigureAwait(true);
     }
 
-    /// <summary>Reads the manifest of a local .eap and checks it against every selected device.</summary>
+    /// <summary>Reads the manifest of a local .eap or the packages of a ZIP and checks them against every selected device.</summary>
     public Task LoadPackageAsync(string path) => LoadPackagesAsync([path]);
 
     /// <summary>
-    /// Reads the manifests of local .eap files (one, or one per architecture of the same application and version) and
-    /// checks them against the selected devices; a set that does not fit together is refused at the file row before any upload.
+    /// Reads the manifests of local .eap files (one, or one per architecture of the same application and version; a ZIP
+    /// counts as the .eap files in it) and checks them against the selected devices; a set that does not fit together is
+    /// refused at the file row before any upload.
     /// </summary>
     public async Task LoadPackagesAsync(IReadOnlyList<string> paths)
     {
@@ -461,50 +463,93 @@ public sealed partial class AcapDialogViewModel : ObservableObject
             CloseLicense();
         }
 
-        _paths = [.. paths];
         _packages = [];
+        _fileName = EapPackageFiles.Describe(paths, null);
         PackagePath = paths[0];
         OnPropertyChanged(nameof(PackageFileName));
         PackageError = null;
         PackageFileDetails = null;
+        UploadStatus = null;
         Package = null;
         Compatibility = [];
-        var read = new List<(string FileName, EapManifest Package)>(paths.Count);
-        var several = paths.Count > 1;
-        try
+        using (_files.Hold())
         {
-            PackageFileDetails = FileSizeText.Format(paths.Sum(p => new FileInfo(p).Length));
-            foreach (var path in paths)
+            try
             {
-                try
+                await UnpackAsync(paths).ConfigureAwait(true);
+                _fileName = _files.Label;
+                OnPropertyChanged(nameof(PackageFileName));
+                var files = _files.Paths;
+                var read = new List<(string FileName, EapManifest Package)>(files.Count);
+                var several = files.Count > 1;
+                PackageFileDetails = FileSizeText.Format(files.Sum(p => new FileInfo(p).Length));
+                foreach (var path in files)
                 {
-                    read.Add((Path.GetFileName(path), await Task.Run(() => EapReader.ReadAsync(path, CancellationToken.None)).ConfigureAwait(true)));
+                    try
+                    {
+                        read.Add((Path.GetFileName(path), await Task.Run(() => EapReader.ReadAsync(path, CancellationToken.None)).ConfigureAwait(true)));
+                    }
+                    catch (Exception ex) when (several && ex is InvalidEapException or IOException or UnauthorizedAccessException)
+                    {
+                        throw new InvalidEapException(Path.GetFileName(path) + ": " + ex.Message, ex);
+                    }
                 }
-                catch (Exception ex) when (several && ex is InvalidEapException or IOException or UnauthorizedAccessException)
+
+                if (AcapCompatibility.CheckPackageSet(read) is { } refused)
                 {
-                    throw new InvalidEapException(Path.GetFileName(path) + ": " + ex.Message, ex);
+                    PackageError = refused;
                 }
+                else
+                {
+                    _packages = [.. read.Select(r => r.Package)];
+                    Package = _packages[0];
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                UploadStatus = EapPackageFiles.UnpackCancelled;
+            }
+            catch (Exception ex) when (ex is InvalidEapException or IOException or UnauthorizedAccessException)
+            {
+                PackageError = ex.Message;
             }
 
-            if (AcapCompatibility.CheckPackageSet(read) is { } refused)
+            if (_packages.Count == 0)
             {
-                PackageError = refused;
+                _files.Clear();
             }
-            else
-            {
-                _packages = [.. read.Select(r => r.Package)];
-                Package = _packages[0];
-            }
-        }
-        catch (Exception ex) when (ex is InvalidEapException or IOException or UnauthorizedAccessException)
-        {
-            PackageError = ex.Message;
         }
 
         OnPropertyChanged(nameof(HasSeveralPackages));
         OnPropertyChanged(nameof(PackageTitle));
         OnPropertyChanged(nameof(PackageDetails));
         await CheckCompatibilityAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>Unpacks the ZIPs of a pick with the upload's progress row and Cancel; a pick without a ZIP shows nothing.</summary>
+    private async Task UnpackAsync(IReadOnlyList<string> paths)
+    {
+        if (!EapPackageFiles.HasZip(paths))
+        {
+            await _files.PickAsync(paths, null, CancellationToken.None).ConfigureAwait(true);
+            return;
+        }
+
+        using var cts = new CancellationTokenSource();
+        _cancelUpload = cts.Cancel;
+        UploadProgress = 0;
+        UploadStatus = EapPackageFiles.Unpacking;
+        IsBusy = true;
+        try
+        {
+            await _files.PickAsync(paths, new Progress<double>(v => UploadProgress = v * 100), cts.Token).ConfigureAwait(true);
+        }
+        finally
+        {
+            UploadStatus = null;
+            IsBusy = false;
+            _cancelUpload = null;
+        }
     }
 
     partial void OnAllowDowngradeChanged(bool value) => _ = CheckCompatibilityAsync();
@@ -642,7 +687,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject
     /// <summary>Why Install is disabled (its tooltip); the package's own error stays at the file row.</summary>
     public string? InstallBlockedReason =>
         IsBusy ? null
-        : Package is null ? PackageError ?? "Choose an ACAP package (.eap)."
+        : Package is null ? PackageError ?? "Choose an ACAP package (.eap or .zip)."
         : CompatibleCount == 0 ? "None of the selected devices can install this package (see Result)."
         : null;
 
@@ -657,11 +702,14 @@ public sealed partial class AcapDialogViewModel : ObservableObject
         UploadStatus = _packages.Count > 1 ? "Uploading the packages to the server..." : "Uploading the package to the server...";
         using var cts = new CancellationTokenSource();
         _cancelUpload = cts.Cancel;
+
+        // Unpacked files stay until the upload ended, also when the window closes meanwhile.
+        using var hold = _files.Hold();
         try
         {
             // Every package is uploaded: the devices the preview did not read pick theirs in the task. Several files: one bar.
             var packages = _packages;
-            var paths = _paths;
+            var paths = _files.Paths;
             var finished = false;
             var current = 0;
             var progress = new Progress<double>(v =>
@@ -726,11 +774,16 @@ public sealed partial class AcapDialogViewModel : ObservableObject
 
         Result = null;
         CloseRequested?.Invoke(this, null);
+        Dispose();
     }
+
+    /// <summary>The dialog closed: deletes the files unpacked from a ZIP (after a running upload).</summary>
+    public void Dispose() => _files.Dispose();
 
     private void Complete(AcapPayload payload)
     {
         Result = payload.ToJson();
         CloseRequested?.Invoke(this, Result);
+        Dispose();
     }
 }

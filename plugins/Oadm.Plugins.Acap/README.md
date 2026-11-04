@@ -4,7 +4,7 @@ Task plugin with a dialog (`.Client`), always on: **Applications (ACAP)** in the
 toolbar entry. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#applications-acap).
 
 The dialog lists the applications on the first selected device (device picker for several devices). The user starts,
-stops or removes one, installs / upgrades an `.eap` package (or one per architecture) or installs license keys. The
+stops or removes one, installs / upgrades an `.eap` package (or one per architecture, also as a ZIP) or installs license keys. The
 Applications page (`oadm.app-management`, [spec](../../docs/spec/app-management.md)) also starts the action Change
 settings; the dialog does not offer it. Each action runs on all selected
 devices, one task per device. The package preview reads at most 25 devices (first the first device of every model and AXIS OS version, 4 queries at
@@ -15,7 +15,7 @@ Manifest: the `schemaVersion` of `manifest.json` ("1.3", "2.1"), or `package.con
 
 | Part | Assembly | Contents |
 |---|---|---|
-| `plugins/Oadm.Plugins.Acap` | `Oadm.Plugins.Acap.Server` | `AcapTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `ApplicationApiClient` (VAPIX), `Shared/` (`.eap` reader, compatibility rules and the per-device install preview `AcapCompatibility.Preview`, license key files and `LicenseKeyMatcher` (the key per device and application), payload and query models, all also linked into the Applications page `oadm.app-management`, `ApplicationSettings.cs` = `AppSettings` settings definitions parser and checks, `ApplicationLog.cs` = `AppLogReader`) |
+| `plugins/Oadm.Plugins.Acap` | `Oadm.Plugins.Acap.Server` | `AcapTaskPlugin` (`ITaskPlugin` + `ITaskPluginQuery`), `ApplicationApiClient` (VAPIX), `Shared/` (`.eap` reader, `EapPackageFiles` (a pick with ZIPs as `.eap` paths), compatibility rules and the per-device install preview `AcapCompatibility.Preview`, license key files and `LicenseKeyMatcher` (the key per device and application), payload and query models, all also linked into the Applications page `oadm.app-management`, `ApplicationSettings.cs` = `AppSettings` settings definitions parser and checks, `ApplicationLog.cs` = `AppLogReader`) |
 | `plugins/Oadm.Plugins.Acap.Client` | `Oadm.Plugins.Acap.Client` | `AcapTaskDialog` (`ITaskPluginDialog`), `AcapWindow` + `AcapDialogViewModel` |
 
 The client part references the server assembly only for the shared models (same plugin folder) and never talks to
@@ -29,6 +29,7 @@ devices.
 | `CanRun` | Status Ok/Unknown **and** cached `device.Apis.Supports("application", "1.0")`. Empty API list = not offered. VAPIX identifies the Application API by `Properties.EmbeddedDevelopment.Version`, not by the API list: AXIS OS 11.x devices with applications may not list it, so `VapixClient.GetApiListAsync` adds "application" 1.0 (status "from parameters") when that property exists (seen on an AXIS OS 11.9 camera). |
 | Before any write | Fresh `GetApiListAsync().Require("application", "1.0")`; payload validated first (no device access on bad payload). |
 | Package source | Uploaded by the dialog (`ITaskDialogContext.UploadAsync`), read in the task from `ctx.Files`; SHA-256 and app name must match what the dialog checked. |
+| ZIP of packages | `EapPackageFiles`, client only: unpacks the `.eap` files of a picked ZIP (also from subfolders, other files ignored) into a private temp folder of the dialog, then the path of loose files runs unchanged; the ZIP is never uploaded. Entry names are never paths, one folder per entry. At most 16 `.eap` per pick, 2 GB unpacked (declared sizes first, then counted while writing), 10,000 entries per ZIP. Deleted on a new pick, a refused read, Cancel and when the window closes; a read or an upload holds it (`Hold`). Spec: `docs/spec/app-management.md` "A ZIP of packages". |
 | Package parsing | `manifest.json` wins, `package.conf` fills gaps; top-level entries only; metadata max 1 MB; app name `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$`; version required. Not an `.eap` -> Failed, nothing changed. |
 | Architecture | Package arch (`architecture` / `APPTYPE`) must equal basicdeviceinfo `Architecture` (`arm64`=`aarch64`, `armhf`=`armv7hf`). Missing / `all` / `noarch` = independent. Device arch unknown + native package -> refuse. |
 | AXIS OS | AXIS OS must be inside one `compatibleOsVersions` range (bounds inclusive at their own precision: max `12` = any 12.x) **and** at least the schema's minimum OS. Newer unknown schema -> highest known minimum + warning. Legacy `package.conf` only: `REQEMBDEVVERSION` <= `Properties.EmbeddedDevelopment.Version`. Unknown AXIS OS version with requirements -> refuse. |

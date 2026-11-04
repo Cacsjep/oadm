@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!-- test method names use underscores -->
-    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

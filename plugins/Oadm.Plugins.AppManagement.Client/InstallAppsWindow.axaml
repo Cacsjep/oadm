@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.AppManagement.Client"
+        xmlns:acap="using:Oadm.Plugins.Acap"
         x:Class="Oadm.Plugins.AppManagement.Client.InstallAppsWindow"
         x:DataType="vm:InstallAppsViewModel"
         Title="{x:Static vm:InstallAppsViewModel.Title}"
@@ -20,7 +21,7 @@
         <!-- One row: the files, then the options right of them. -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="24" Margin="0,0,0,12">
           <ui:FileRow Grid.Column="0" ButtonText="Choose files" FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}"
-                      Command="{Binding ChooseFilesCommand}" ToolTip.Tip="One .eap file per architecture" />
+                      Command="{Binding ChooseFilesCommand}" ToolTip.Tip="{x:Static acap:EapPackageFiles.ChooseHint}" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="24" VerticalAlignment="Top">
             <CheckBox Content="Start after install" IsChecked="{Binding StartAfterInstall}" />
             <CheckBox Content="Allow downgrade" IsChecked="{Binding AllowDowngrade}" IsVisible="{Binding ShowDowngrade}" />

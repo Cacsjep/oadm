@@ -75,6 +75,22 @@ internal static class EapBuilder
 
     public static byte[] FromManifest(string manifest) => Build(("./manifest.json", manifest));
 
+    /// <summary>A ZIP with the given entries (the names as they are, also those no tool would write).</summary>
+    public static byte[] Zip(params (string Name, byte[] Content)[] entries)
+    {
+        using var output = new MemoryStream();
+        using (var zip = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in entries)
+            {
+                using var stream = zip.CreateEntry(name, CompressionLevel.NoCompression).Open();
+                stream.Write(content);
+            }
+        }
+
+        return output.ToArray();
+    }
+
     private static void Add(TarWriter tar, string name, byte[] data)
     {
         var entry = new UstarTarEntry(TarEntryType.RegularFile, name) { DataStream = new MemoryStream(data) };

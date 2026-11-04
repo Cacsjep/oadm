@@ -52,6 +52,12 @@ public sealed class HeadlessDialogTests
         var armv7Path = Path.Combine(dir, "Missing_Features_3_9_1_armv7hf.eap");
         File.WriteAllBytes(arm64Path, EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.1", schema: "1.3", architecture: "aarch64")));
         File.WriteAllBytes(armv7Path, EapBuilder.FromManifest(EapBuilder.Manifest(appName: "ax_msf", friendlyName: "Missing Features", vendor: "Sample Vendor GmbH", version: "3.9.1", schema: "1.3", architecture: "armv7hf")));
+        var zipPath = Path.Combine(dir, "Missing_Features_3_9_1.zip");
+        File.WriteAllBytes(zipPath, EapBuilder.Zip(("Missing_Features_3_9_1_aarch64.eap", File.ReadAllBytes(arm64Path)), ("Missing_Features_3_9_1_armv7hf.eap", File.ReadAllBytes(armv7Path)), ("readme.txt", [1, 2, 3])));
+        var longZipPath = Path.Combine(dir, "Sample_Vendor_Missing_Features_for_AXIS_OS_12_signed_release_build_3_9_1.zip");
+        File.WriteAllBytes(longZipPath, EapBuilder.Zip(("Missing_Features_3_9_1_aarch64.eap", File.ReadAllBytes(arm64Path))));
+        var emptyZipPath = Path.Combine(dir, "Manual.zip");
+        File.WriteAllBytes(emptyZipPath, EapBuilder.Zip(("readme.txt", [1, 2, 3])));
         var keyPath = Path.Combine(Path.GetTempPath(), "oadm-acap-headless-" + Guid.NewGuid().ToString("N") + ".key");
         File.WriteAllText(keyPath, LicenseKeyTests.Key());
 
@@ -97,9 +103,30 @@ public sealed class HeadlessDialogTests
             Capture(window, outDir, "acap-dialog-install-refused.png");
             Assert.NotNull(vm.PackageError);
 
-            await vm.LoadPackagesAsync([arm64Path, armv7Path]);
+            // A vendor's ZIP with one package per architecture, then one the dialog refuses.
+            await vm.LoadPackagesAsync([zipPath]);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-zip.png");
+            Assert.Equal("Missing_Features_3_9_1.zip  ·  2 files", vm.PackageFileName);
+            Assert.Equal(["aarch64 build", "armv7hf build"], vm.Compatibility.Select(r => r.Details));
+
+            await vm.LoadPackagesAsync([emptyZipPath]);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-zip-refused.png");
+            Assert.Equal("Manual.zip has no .eap files.", vm.PackageError);
+
+            // The widest row: a long name next to a loose file, the count still in the button.
+            await vm.LoadPackagesAsync([longZipPath, armv7Path]);
+            Pump();
+            Capture(window, outDir, "acap-dialog-install-zip-long.png");
+            Assert.EndsWith("and 1 more  ·  2 files", vm.PackageFileName, StringComparison.Ordinal);
+
+            await vm.LoadPackagesAsync([zipPath]);
+            var unpacked = vm.PackageFiles.Folder;
+            Assert.True(Directory.Exists(unpacked));
             var result = (vm.Applications.Count, vm.Compatibility.Count);
             window.Close();
+            Assert.False(Directory.Exists(unpacked)); // closing the window deletes what the ZIP unpacked
 
             // Install licenses of the Applications page: the dialog opens on its license part.
             var licenseCtx = new FakeDialogContext { StartView = AcapDialogViewModel.LicenseView };

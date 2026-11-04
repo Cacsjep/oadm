@@ -85,8 +85,8 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 - Actions (command buttons, each with its texts and confirmations):
   - **Install** opens the page's own dialog **Install applications** (chosen 2026-10-28 over the Applications plugin's
     dialog through `RunTaskAsync`: "the same view again"): fixed size, no card. **Choose files** (`ui:FileRow`): one
-    `.eap`, or one per architecture of the same application and version (`AcapCompatibility.CheckPackageSet`, refused at
-    the file row before any upload). A virtualized grid of the target devices: address, model, AXIS OS, SoC,
+    `.eap`, one per architecture of the same application and version, a ZIP of them, or both (see "A ZIP of packages";
+    `AcapCompatibility.CheckPackageSet`, refused at the file row before any upload). A virtualized grid of the target devices: address, model, AXIS OS, SoC,
     architecture, **Result**. Once files are chosen every device is checked off the UI thread with the Applications
     plugin's own preview (`AcapCompatibility.Preview`, linked source, also the Applications dialog's): the package of its
     architecture ("No package for mips."), architecture, AXIS OS range and manifest schema, root apps, signed-only on
@@ -183,6 +183,37 @@ The Applications (ACAP) dialog and task take several `.eap` files of the same ap
 - The payload carries the files (`files: [{fileId, sha256, architecture}]`, the old single `fileId` still read); the task
   picks the file again from a fresh basicdeviceinfo before it uploads.
 
+## A ZIP of packages
+
+Vendors ship an application as a ZIP with one `.eap` per architecture. Both dialogs (Applications (ACAP) and Install
+applications) take it next to loose files, also mixed in one pick, through one shared class,
+`EapPackageFiles` (`plugins/Oadm.Plugins.Acap/Shared`):
+
+- **Client only.** The picker offers `*.eap` and `*.zip` together, plus All files. The client unpacks the `.eap` files of
+  each ZIP, also from subfolders, into a private temp folder of the dialog; other files and the copies macOS adds
+  (`__MACOSX/`, `._name`) are ignored, a ZIP inside a ZIP too. From there on it is the path of several loose `.eap`
+  files: the same read, `CheckPackageSet`, every compatibility and signing check and upload. The ZIP never reaches the
+  server or a device. Several different applications in one install stay refused.
+- **An entry's name is never a path.** Only its last segment counts (`/` and `\`), characters a file system could read
+  as more than a name are replaced, names reserved on Windows become `package.eap`, each entry gets a folder of its own,
+  so equal names never overwrite each other.
+- **Limits** (constants of `EapPackageFiles`): at most `AcapPayload.MaxFiles` (16) `.eap` per pick, loose ones included;
+  `MaxUnpackedBytes` 2 GB unpacked per pick, the default size limit of one upload; `MaxZipEntries` 10,000 entries per ZIP.
+  Sizes are checked first as the ZIP declares them, before anything is written, then again while writing, so a ZIP that
+  lies about its sizes stops at the limit. An entry whose size differs from its record is damaged.
+- **Refusals**, one sentence in the file row, nothing left in the temp folder: "app.zip has no .eap files.", "app.zip is
+  damaged or not a ZIP file.", "app.zip is password protected.", "app.zip is too large to unpack.", "app.zip has too many
+  files.", "Choose at most 16 files."
+- **File row**: "app.zip  ·  2 files", with more in the pick "app.zip and 1 more  ·  3 files", the size below it
+  (the unpacked `.eap` files). A long ZIP name is shortened in the middle, so the count stays visible. Errors name the
+  `.eap` files as for loose files.
+- **Progress**: only a pick with a ZIP shows the dialog's progress row (the upload's) from the first moment, Cancel stops
+  the unpacking and the dialog stays open ("Unpacking cancelled."). It runs on a pool thread.
+- **Temp folder** (`oadm-eap-<id>` in the user's temp folder, on Linux and macOS for the user only): deleted on a new
+  pick, a refused or failed read, Cancel and when the window closes. A read or an upload holds it
+  (`EapPackageFiles.Hold`): closing the window meanwhile deletes it when that ended. A failed or cancelled upload keeps
+  it for the next try. After a crash of the client it stays in the temp folder.
+
 ## Settings values are treated as secret
 
 Shared settings are often server addresses, thresholds or keys (pre-shared keys are plain text parameters). So the task
@@ -205,6 +236,11 @@ Actions: the Applications plugin's task permissions; a role without them sees th
   AXIS apps (preinstalled and named AXIS); status filters; search.
 - A failed or warning task's message in its rows until the next read the user starts; a group user learns only the ends
   of tasks on the group's devices; Open app page for one device only.
+- A ZIP of packages: a set of two architectures, other files, nested folders, a mixed pick, two different applications
+  refused, no `.eap`, a broken ZIP, entry names that leave the folder, equal names, the file and size limits, a ZIP that
+  lies about its size, temp folder deleted on close, cancel and a new pick and kept over an upload, both dialogs through
+  `EapPackageFiles` (`tests/Oadm.Plugins.Acap.Tests/EapPackageFilesTests.cs`, `DialogTests`); headless screenshots of the
+  file row in both dialogs.
 - Install applications and Install licenses: the verdict per row from the shared rules (several files per architecture,
   downgrade, signed-only, not read devices; key found, expired, other application, no license needed), the run request
   sent (files, version, options; keys per application), the permissions (install, downgrade, license) checked by the

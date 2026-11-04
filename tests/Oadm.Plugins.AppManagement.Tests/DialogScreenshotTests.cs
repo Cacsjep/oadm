@@ -33,6 +33,10 @@ public sealed class DialogScreenshotTests : IDisposable
         var arm32 = Path.Combine(_dir, "plate_reader_2_10_3_armv7hf.eap");
         File.WriteAllBytes(arm64, EapBuilder.FromManifest(EapBuilder.Manifest("platereader", "2.10.3", "aarch64", friendlyName: "Parking Plate Reader", vendor: "Acme Parking")));
         File.WriteAllBytes(arm32, EapBuilder.FromManifest(EapBuilder.Manifest("platereader", "2.10.3", "armv7hf", friendlyName: "Parking Plate Reader", vendor: "Acme Parking")));
+        var zip = Path.Combine(_dir, "plate_reader_2_10_3.zip");
+        File.WriteAllBytes(zip, EapBuilder.Zip(("plate_reader_2_10_3_aarch64.eap", File.ReadAllBytes(arm64)), ("plate_reader_2_10_3_armv7hf.eap", File.ReadAllBytes(arm32)), ("readme.txt", [1, 2, 3])));
+        var manual = Path.Combine(_dir, "Manual.zip");
+        File.WriteAllBytes(manual, EapBuilder.Zip(("readme.txt", [1, 2, 3])));
         // The lambda returns a value: Dispatch then waits for its awaits (a lambda without one would run as async void).
         var rendered = await Headless.Session.Dispatch(async () =>
         {
@@ -58,6 +62,26 @@ public sealed class DialogScreenshotTests : IDisposable
             Assert.Equal(4, install.FitCount);
             Headless.Capture(installWindow, $"install-applications-{suffix}.png");
             installWindow.Close();
+
+            // A vendor's ZIP with one package per architecture, then one the dialog refuses.
+            var zipped = new InstallAppsViewModel(ctx, devices);
+            await zipped.LoadFilesAsync([zip]);
+            var zipWindow = new InstallAppsWindow { DataContext = zipped };
+            Oadm.Client.App.ApplyCrispText(zipWindow);
+            zipWindow.Show();
+            Headless.Pump();
+            Assert.Equal(4, zipped.FitCount);
+            Assert.Equal("plate_reader_2_10_3.zip  ·  2 files", zipped.FileName);
+            Headless.Capture(zipWindow, $"install-applications-zip-{suffix}.png");
+            await zipped.LoadFilesAsync([manual]);
+            Headless.Pump();
+            Assert.Equal("Manual.zip has no .eap files.", zipped.FileError);
+            Headless.Capture(zipWindow, $"install-applications-zip-refused-{suffix}.png");
+            await zipped.LoadFilesAsync([zip]);
+            var unpacked = zipped.PackageFiles.Folder;
+            Assert.True(Directory.Exists(unpacked));
+            zipWindow.Close();
+            Assert.False(Directory.Exists(unpacked)); // closing the window deletes what the ZIP unpacked
 
             // Before a choice: the devices, Install off.
             var empty = new InstallAppsWindow { DataContext = new InstallAppsViewModel(ctx, devices) };

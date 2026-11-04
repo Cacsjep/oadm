@@ -22,7 +22,8 @@ log and settings. Free, off by default. Spec: `docs/spec/app-management.md`.
 
 ## Reused code (linked source, never copied)
 
-`plugins/Oadm.Plugins.Acap/ApplicationApiClient.cs` and `Shared/*.cs`: list.cgi and its parser, `EapReader` and
+`plugins/Oadm.Plugins.Acap/ApplicationApiClient.cs` and `Shared/*.cs`: list.cgi and its parser, `EapReader`,
+`EapPackageFiles` (a pick with ZIPs as `.eap` paths, the same class as the Applications dialog's) and
 `AcapCompatibility.Preview` (the install check per device), `LicenseKeySet` and `LicenseKeyMatcher` (key files, the key
 per device and application), `AcapPayload` (the
 dialog's payload, parsed by its own `Parse` before a run), `AcapPermissions`, `AppLogReader`, `AppSettings`
