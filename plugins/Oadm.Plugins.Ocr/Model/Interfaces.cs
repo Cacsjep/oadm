@@ -95,7 +95,7 @@ public sealed record AreaValue(AreaMatch Match, IReadOnlyList<string> AllMatches
 /// </summary>
 public interface IEngineInfo
 {
-    /// <summary>True while the recognition runs on a graphics card (more watching readers, higher frame rates).</summary>
+    /// <summary>True while models run on a graphics card (the limits stay the same: they follow the cores).</summary>
     bool OnGpu { get; }
 
     /// <summary>What reads now: "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)"; an empty name: the plugin names the CPU.</summary>
@@ -144,7 +144,7 @@ public interface IPictureCutter
     byte[]? Cut(ReadOnlyMemory<byte> jpeg, RelativeBox box, LineTurn? turn) => Cut(jpeg, box);
 }
 
-/// <summary>What runs the recognition (<see cref="IEngineInfo.RunsOn"/>): the CPU with its cores, and the graphics card while it reads Search.</summary>
+/// <summary>What runs the recognition (<see cref="IEngineInfo.RunsOn"/>): the CPU with its cores, and the graphics card while models run there.</summary>
 /// <param name="IsGraphicsCard">True while a graphics card helps (DirectML or CUDA).</param>
 /// <param name="Name">"CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "CPU (8 cores)".</param>
 public sealed record RecognitionDevice(bool IsGraphicsCard, string Name)

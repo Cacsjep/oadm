@@ -27,6 +27,7 @@
                    VerticalAlignment="Center" />
         <CheckBox Content="Use GPU" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}" VerticalAlignment="Center"
                   ToolTip.Tip="{Binding GpuBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        <ui:ProgressRing x:Name="GpuRing" Width="16" Height="16" IsVisible="{Binding IsSettingGpu}" VerticalAlignment="Center" />
       </StackPanel>
     </StackPanel>
   </ui:PageHeader.Trailing>
@@ -214,7 +215,7 @@
               <TextBlock Classes="secondary" Text="{x:Static vm:ReaderEditorViewModel.NoAreasText}" TextWrapping="Wrap" IsVisible="{Binding !HasAreas}" />
             </StackPanel>
 
-            <!-- At most 8 areas, two lines each: the name with rename and delete at the right; below it, indented, Mode and Format.
+            <!-- At most 8 areas, one row each: the name, the format field and the ⋯ menu.
                  The selected area's name in the accent colour. The rows scroll by themselves, so New above stays in reach. A refusal
                  of the server for the area list as a whole (too many areas) directly below the rows. -->
             <DockPanel Grid.Row="2" VerticalAlignment="Top">
@@ -265,7 +266,7 @@
                           </ToolTip.Tip>
                         </TextBox>
                       </ui:FormField>
-                      <!-- One ⋯ button with the row's actions (ui:RowActions): Rename, then Delete in red. -->
+                      <!-- One ⋯ button with the row's actions (ui:RowActions): Use read text as format, Rename, then Delete in red. -->
                       <Button x:Name="AreaActions" Grid.Column="2" Classes="toolbar iconOnly" VerticalAlignment="Center" ToolTip.Tip="{x:Static ui:RowActions.Tip}"
                               Click="OnAreaActions" IsVisible="{Binding $parent[UserControl].((vm:OcrViewModel)DataContext).MayChange}">
                         <ui:OadmIcon Data="{StaticResource Icon.more}" />

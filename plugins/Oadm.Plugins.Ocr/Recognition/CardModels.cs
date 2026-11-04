@@ -82,7 +82,7 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     private readonly Thread _finderThread;
     private readonly Thread _readerThread;
     private long _order;
-    private volatile bool _failed;
+    private int _failed;
 
     /// <param name="finder">The text finder of fixed-place areas (mobile).</param>
     /// <param name="serverFinder">The text finder of Search (server).</param>
@@ -110,17 +110,12 @@ internal sealed class CardModels : ITextFinder, ICardFailure, IDisposable
     }
 
     /// <summary>A call failed during a run (a driver reset): the readings go back to the CPU.</summary>
-    public bool Failed => _failed;
+    public bool Failed => Volatile.Read(ref _failed) != 0;
 
-    /// <summary>The first failure ends the card's use; true for the caller that tells the log.</summary>
-    public bool MarkFailed()
-    {
-        var first = !_failed;
-        _failed = true;
-        return first;
-    }
+    /// <summary>The first failure ends the card's use; true for the one caller that tells the log.</summary>
+    public bool MarkFailed() => Interlocked.Exchange(ref _failed, 1) == 0;
 
-    /// <summary>The card can take another picture now: no text finder call and at most a call of lines wait.</summary>
+    /// <summary>The card can take another picture now: at most one text finder call and one full call of lines wait.</summary>
     public bool HasRoom
     {
         get

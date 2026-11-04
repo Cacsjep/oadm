@@ -15,7 +15,7 @@ address (IPv4, IPv6) is probed before the first write (`IAddressProbe`: ping, 2 
 device's own addresses are not probed); an answer fails "<address> is already in use (answers ping). Nothing was
 changed.".
 
-Device groups (`docs/spec/device-scope.md`): every bundled package sets `minSdkVersion` 0.4.0 (Upgrade AXIS OS 0.9.0: downloads from axis.com). Tasks run only on devices
+Device groups (`docs/spec/device-scope.md`): every bundled package sets `minSdkVersion` 0.4.0 or the version of the newest member it uses (`docs/spec/plugins.md` "SDK versions"). Tasks run only on devices
 of the user's view (the host refuses the whole run otherwise) and touch only their own device; queries read only the
 queried device, which the host checks. Packages of task plugins and actions only run no `PluginCanary`: the host scopes
 their runs and queries (server `CanaryTests.PluginsConverted`); plugins with a page run one. Event rules are for users

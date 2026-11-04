@@ -5,7 +5,7 @@ namespace Oadm.Plugins.Ocr.Recognition;
 /// input size is a session of its own, and each session keeps its own copy of the model and its own buffers for that size on
 /// the card until it is disposed. The budget counts each session by its input pixels (<see cref="Estimate"/>: measured
 /// <see cref="BytesPerPixel"/> per pixel of a call plus <see cref="SessionBytes"/>) and keeps the sum at or below
-/// <see cref="MaxBytes"/>: before a new session the least recently used ones go (one log line the first time). A session larger
+/// the cap (<see cref="CapFor"/>): before a new session the least recently used ones go (one log line the first time). A session larger
 /// than the cap is never made (the callers split a Search into calls of at most <see cref="MaxCallBytes"/>). Every session
 /// unused for <see cref="IdleTimeout"/> is freed. A model call holds its session (<see cref="Hold"/>), so a session is never
 /// disposed while it runs.

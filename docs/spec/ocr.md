@@ -34,7 +34,7 @@ that better (the docs say so).
    finder calls at once (`OcrLimits.LargeTextFinderCalls`, measured: more only burn the CPU). The limit counts model calls (a
    tile, a line), so an idle server reads the lines of one picture at once; at most as many pictures as workers are in work.
    A reader has one frame in work, up to 4 while the recognition has room (`OcrLimits.MaxFramesInWork`,
-   `IRecognizerLoad.HasRoom`: a worker free and nothing waiting), so an idle machine carries one reader at full speed and busy
+   `IRecognizerLoad.HasRoom`: a CPU worker free, the card with room and nothing waiting), so an idle machine carries one reader at full speed and busy
    workers fall back to one frame per reader, shared as before. Results are taken in the order of the frames: an older
    frame's result never replaces a newer one. A frame without room is dropped, the newest wins, nothing queues, so the lag is
    bounded by the frames in work. At most 50 readers per server; watching readers by the
@@ -231,6 +231,8 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   live video.
 - The event `reading` reaches the pages only when a reader's values or note change, else at most once a second per reader;
   a preview's readings go only to the user who started it.
+- A reading cancelled on the graphics card ends cancelled, never as a reading with blank lines: nothing keeps it or fires it,
+  the unchanged areas neither.
 - A reading is kept as the reader's last and fires its events only while the reader is still stored with the same camera,
   source, resolution and areas (`ReaderRuntime.SamePicture`): a reading in work when the reader is deleted is dropped
   (the action ends "The reader no longer exists."), one of the old areas fires (the rule asked for it) but is not kept;
@@ -276,7 +278,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   column, the video keeps its 30 %, the results their minimum, the video what its card holds (padding, the video surface's
   120 px). The client's window minimum (640 px) leaves room for all of them. The position lasts as long as the page's view, one
   connection (the page keeps no client settings), for every reader.
-- Left: the readers (name, camera, mode, last text), **New** and **Delete** (red, with a confirmation); below the list
+- Left: the readers (name, camera, mode, last text), **New**, **Delete** (red, with a confirmation) and a search; below them
   the rest of its height for the list. "Runs on" and Use GPU sit in the page header right of the load
   (decision 2026-11-04); the "Runs on" text is the server's.
   - The reader's chip: "Watching · 2 fps" (green), "Watching · 8 fps (reads 5.1)" (orange, slower than set), "On action",
@@ -367,6 +369,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
     that starts watching takes the stream of the youngest preview; beyond: "No live results now: OADM already reads as
     many cameras as it can." The texts show where the results are. A preview's own stream that gives no pictures says
     why in its `problem`, like a reader.
+  - Another camera under the same id is a new preview: nothing of the old one stays (its reading, frame and rows).
   - A lease: a preview ends 30 s after its last `startPreview` (checked every 5 s), so a closed client never leaves one
     running; the page ends it with `stopPreview` when it hides the reader or the page.
   - The page makes the preview's id itself (32 hex digits, new per start) and sends it from the first call, so `stopPreview`
@@ -599,7 +602,7 @@ often, from worse pictures, and never a wrong value reported as sure.
 
 - The plugin picks at start: with **Use GPU** on, the graphics card when the provider loads and a test
   reading succeeds, else the CPU only. With it off the provider is never loaded at start (no DirectML in the process);
-  turning it on tries the card then, without a restart (seconds, the box is off meanwhile), and `gpuAvailable` stays true
+  turning it on tries the card then, without a restart (seconds, the box is off with a ring beside it meanwhile), and `gpuAvailable` stays true
   while the setting is off so the box can be used. Off during a run moves the readings to the CPU; DirectML, once loaded,
   leaves with the next start.
   Page header, short ("CPU 24 cores · RTX 5070 Ti", the full text as tooltip): "Runs on: CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti" or "Runs on: CPU (8
@@ -641,7 +644,7 @@ often, from worse pictures, and never a wrong value reported as sure.
   - a Search is split into calls of one size of at most half the cap (`TilesPerCall`: the fewest calls, the tiles spread
     evenly, blank tiles fill the last one), so two Search sizes (two cameras' resolutions) stay on the card together; a
     single tile of 1024 x 1024 (1.96 GB estimated) always fits. At the 4 GB cap: full HD 6 calls of one 768 x 768 tile (two would
-    be 2.15 GB), QHD 6 calls of one 1024 x 1024 tile, 4K 15; a card of 16 GB (cap 12.8 GB) takes a whole Search in one call. The calls' inputs and boxes are made on the CPU while the card
+    be 2.15 GB), QHD 6 calls of one 1024 x 1024 tile, 4K 15; a card of 16 GB (cap 12.8 GB) takes a whole full HD Search in one call. The calls' inputs and boxes are made on the CPU while the card
     runs another call (at most 3 calls ahead);
   - before a new session the least recently used ones go until it fits (made again when needed, 0.5 to 1 s) and the
     first time the server logs "Text recognition keeps at most <cap> MB of model sessions on the graphics card"; a session
@@ -763,6 +766,7 @@ decode, cut and decode the text. 720p: 12.6 per second on the CPU (before 6.6), 
 | 20 small fixed areas at once, in all | 150 | 260 | 620 | |
 | 20 label readers at once, in all | 6 | 10 | 56 | |
 | Search over full HD, one reader | 2.0 at 10.5 cores | 2.6 at 5.8 cores | 3.8 to 4.7 at 0.8 cores | |
+| Search over full HD, one reader set to 15 fps, with the 80 % cap (2026-11-04) | | | 6.9 at 0.81 cores, card 93 % busy, 7.8 GB on the card with about 1.7 GB of the desktop, reading 543 ms | |
 | Model process memory | | | 0.5 GB | 1.3 GB |
 | First call after the start | | | 2 s | 9 to 79 s |
 
@@ -797,7 +801,7 @@ receipts 50 %, hard signs 66.7 %. Moving labels, the same on the CPU and on Dire
 
 **Open**: DirectML is measured on one NVIDIA card only. AMD and Intel cards and the plugin on CUDA (Linux) are not tested; a
 test call and the 1.5 rule guard them, a card that reads differently would not be noticed. Search's goal of 10 per second
-is still open (3.8 to 4.7). 25 frames per second from a real camera's MJPEG stream is not measured.
+is still open (6.9). 25 frames per second from a real camera's MJPEG stream is not measured.
 
 ## Measured: dashes
 

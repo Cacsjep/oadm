@@ -16,8 +16,9 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// The readers at work (docs/spec/ocr.md "Readers", "Events and the rule action"):
 /// <list type="bullet">
 /// <item>one loop per watching reader on <see cref="IFrameSource.WatchAsync(FrameRequest, int, Action{string?}, CancellationToken)"/>:
-/// the newest frame wins (older ones are dropped, never queued), one reading at a time per reader, then per area the vote and
-/// the event only on change (<see cref="AreaWatch"/>);</item>
+/// the newest frame wins (older ones are dropped, never queued), one frame in work per reader, up to
+/// <see cref="OcrLimits.MaxFramesInWork"/> while the recognition has room, results in the frames' order, then per area the vote
+/// and the event only on change (<see cref="AreaWatch"/>);</item>
 /// <item>single readings (the action Read text) through <see cref="IFrameSource.SingleAsync"/> that publish every area's
 /// event; a watching reader answers with its fresh reading instead (<see cref="ReadOnceAsync"/>);</item>
 /// <item>the last reading of each reader (picture, results, cut-outs) and its last reads in memory only.</item>

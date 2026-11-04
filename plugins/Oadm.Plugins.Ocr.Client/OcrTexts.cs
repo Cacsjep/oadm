@@ -141,7 +141,7 @@ public static class OcrTexts
     public static string RunsOn(string what) => "Runs on: " + what;
 
     /// <summary>
-    /// The short form in the page header (the full text is its tooltip): "CPU (24 cores) · search on NVIDIA GeForce RTX 5070 Ti"
+    /// The short form in the page header (the full text is its tooltip): "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti"
     /// gives "CPU 24 cores · RTX 5070 Ti". Only the words every card repeats go; an unknown name stays as it is.
     /// </summary>
     public static string RunsOnShort(string what) => (what ?? string.Empty)

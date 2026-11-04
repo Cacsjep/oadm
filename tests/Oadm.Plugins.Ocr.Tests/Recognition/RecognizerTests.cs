@@ -181,6 +181,44 @@ public sealed class RecognizerTests(RecognizerFixture fixture)
         Assert.Equal(1f, scores.Frame(0).ToArray().Sum(), 2);
     }
 
+    /// <summary>The card as a cancelled reading meets it: the reading goes on, its lines stay blank (<see cref="CardModels"/>).</summary>
+    private sealed class CancelledOnTheCard(IModelRunner inner, CancellationTokenSource cancel) : IModelRunner
+    {
+        public CharacterList Characters => inner.Characters;
+
+        public ITextFinder Search => this;
+
+        public bool SearchOnCard => false;
+
+        public bool BatchTiles => false;
+
+        public int DetectionSide(int pixels) => inner.DetectionSide(pixels);
+
+        public Task<PooledFloats> DetectAsync(PooledFloats input, int count, int height, int width, CancellationToken ct) =>
+            inner.DetectAsync(input, count, height, width, CancellationToken.None);
+
+        public Task<float[]> UpsideDownAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct) => Task.FromResult(new float[lines.Count]);
+
+        public async Task<LineScores[]> RecognizeAsync(IReadOnlyList<SKBitmap> lines, CancellationToken ct)
+        {
+            var read = await inner.RecognizeAsync(lines, CancellationToken.None);
+            await cancel.CancelAsync();
+            return [.. read.Select(s => new LineScores(new float[s.Probabilities.Length], s.Frames, s.Classes))];
+        }
+    }
+
+    [Fact]
+    public async Task A_reading_cancelled_on_the_graphics_card_is_no_empty_reading()
+    {
+        var area = new Area { Name = "Brand", Box = new RelativeBox(0.28, 0.54, 0.16, 0.10) };
+        var characters = CharacterList.Load(Path.Combine(RecognizerFixture.ModelFolder, ModelFiles.RecognitionLatinCharacters));
+        using var cancel = new CancellationTokenSource();
+        var runner = new CancelledOnTheCard(new CpuRunner(fixture.Recognizer.CpuWorkers, characters, false), cancel);
+        using var picture = Picture.Decode(Fixture("box-1920x1080.jpg"));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => OnnxTextRecognizer.ReadWithAsync(picture, [area], runner, cancel.Token));
+    }
+
     [Fact]
     public void With_the_setting_off_the_graphics_card_is_tried_only_when_it_is_turned_on()
     {

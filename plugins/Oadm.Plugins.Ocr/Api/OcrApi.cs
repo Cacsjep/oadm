@@ -135,7 +135,6 @@ public static class OcrMethods
     public const string ResumePreview = "resumePreview";
 
     /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview, only to the user who started it (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
-    /// <summary>Event: <see cref="PreviewEvent"/> after every reading of a preview (the page fetches the cut-outs with <see cref="GetPreview"/>).</summary>
     public const string PreviewTopic = "preview";
 
     /// <summary>{} -> <see cref="EngineInfo"/>: what reads the pictures and the frame rates it offers. View.</summary>
@@ -288,7 +287,7 @@ public sealed record ReaderList
 {
     public IReadOnlyList<ReaderSummary> Readers { get; init; } = [];
 
-    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12, 15 or 25 on every server.</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = [];
 
     /// <summary>Watching readers per server at most (by the server's cores: 4 per recognition worker, 8 to 50).</summary>
@@ -380,7 +379,7 @@ public sealed record EngineInfo
     /// <summary>The setting "Use GPU" (on by default).</summary>
     public bool UseGpu { get; init; } = true;
 
-    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12, 15 or 25 on every server.</summary>
+    /// <summary>The frame rates a watching reader may use: 1, 2, 4, 8, 12 or 15 on every server.</summary>
     public IReadOnlyList<int> FpsChoices { get; init; } = OcrLimits.FpsChoices;
 }
 

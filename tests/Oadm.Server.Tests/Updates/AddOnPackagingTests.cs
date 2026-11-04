@@ -98,7 +98,7 @@ public sealed partial class AddOnPackagingTests
         Assert.True(sh.IndexOf("--addon", StringComparison.Ordinal) < sh.IndexOf("check_addon_folder", StringComparison.Ordinal));
         Assert.Contains("THIRD-PARTY-NOTICES.txt missing", Function(Read("manage.ps1"), "function Test-AddOnFolder("), StringComparison.Ordinal);
         Assert.Contains("THIRD-PARTY-NOTICES.txt missing", Function(Read("manage.sh"), "check_addon_folder() {"), StringComparison.Ordinal);
-        Assert.Contains("grep -qx 'THIRD-PARTY-NOTICES.txt' || fail", check, StringComparison.Ordinal);
+        Assert.Contains("grep -qx 'THIRD-PARTY-NOTICES.txt' <<< \"$names\" || fail", check, StringComparison.Ordinal);
 
         // The client part the server hands out (AddOnFolders.ClientPartPatterns) is what the size check counts.
         Assert.Equal(["*.Client.dll", "*.Client.pdb", "*.Server.dll", "*.Server.pdb"], Oadm.Server.AddOns.AddOnFolders.ClientPartPatterns);
@@ -126,7 +126,10 @@ public sealed partial class AddOnPackagingTests
         // oadm-version.txt (the server records a folder put in by hand with it), written before the notices and the ZIP.
         Assert.Contains("'oadm-version.txt'), \"$version`n\")", ps1, StringComparison.Ordinal);
         Assert.Contains("printf '%s\\n' \"$(app_version)\" > \"$stage/oadm-version.txt\"", sh, StringComparison.Ordinal);
-        Assert.Contains("grep -qx 'oadm-version.txt' || fail", check, StringComparison.Ordinal);
+        Assert.Contains("grep -qx 'oadm-version.txt' <<< \"$names\" || fail", check, StringComparison.Ordinal);
+        // grep -q on a pipe breaks under pipefail: on a long list it stops reading, printf gets SIGPIPE and the check fails.
+        Assert.DoesNotContain("\"$names\" | grep -q", check, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"$names\" | grep -Eq", check, StringComparison.Ordinal);
         // The packages shipped outside deps.json, for the notices (which delete the file); never in the ZIP.
         Assert.Contains("-getItem:OadmNoticePackage", ps1, StringComparison.Ordinal);
         Assert.Contains("-getItem:OadmNoticePackage", sh, StringComparison.Ordinal);

@@ -940,18 +940,27 @@ public sealed class PageViewModelTests
     public async Task Use_the_graphics_card_is_saved_at_once()
     {
         var ctx = Samples.Context();
-        ctx.Answers[OcrMethods.SetUseGpu] = json => OcrJson.Serialize(new EngineInfo
+        OcrViewModel? shown = null;
+        var (ringWhileAsked, boxOffWhileAsked) = (false, false);
+        ctx.Answers[OcrMethods.SetUseGpu] = json =>
         {
-            RunsOn = "CPU (8 cores)",
-            GpuAvailable = true,
-            UseGpu = OcrJson.Deserialize<UseGpuRequest>(json).UseGpu,
-        });
+            (ringWhileAsked, boxOffWhileAsked) = (shown!.IsSettingGpu, !shown.CanSetGpu);
+            return OcrJson.Serialize(new EngineInfo
+            {
+                RunsOn = "CPU (8 cores)",
+                GpuAvailable = true,
+                UseGpu = OcrJson.Deserialize<UseGpuRequest>(json).UseGpu,
+            });
+        };
         using var vm = await LoadedAsync(ctx);
+        shown = vm;
 
         vm.UseGpu = false;
-        await Eventually.TrueAsync(() => vm.RunsOnText == "Runs on: CPU (8 cores)", "the new engine");
+        await Eventually.TrueAsync(() => vm.RunsOnText == "Runs on: CPU (8 cores)" && !vm.IsSettingGpu, "the new engine");
         Assert.Equal("{\"useGpu\":false}", ctx.LastPayloadOf(OcrMethods.SetUseGpu));
         Assert.False(vm.UseGpu);
+        Assert.True(ringWhileAsked && boxOffWhileAsked); // the server may try the graphics card for seconds
+        Assert.True(vm.CanSetGpu);
     }
 
     [Fact]

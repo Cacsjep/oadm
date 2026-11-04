@@ -13,6 +13,7 @@
 # The limits are kept equal to the server's constants by a test (AddOnPackagingTests): AddOnFolders.MaxZipBytes
 # and AddOnFolders.MaxClientPartBytes.
 # Needs unzip (Linux, macOS, Git Bash on Windows).
+# grep -q reads here-strings: with pipefail "printf | grep -q" fails on a long text (grep stops reading, printf gets SIGPIPE).
 set -euo pipefail
 
 zip="$1"
@@ -36,30 +37,29 @@ echo "$(basename "$zip"): $(printf '%s\n' "$names" | grep -c .) files, $((size /
 bad_client="$(printf '%s\n' "$names" | grep -E '^client/.*(\.so$|\.so\.|\.dylib$)' || true)"
 [ -z "$bad_client" ] || fail "native libraries in client/: $(echo $bad_client)"
 
-printf '%s\n' "$names" | grep -qx 'plugin.json' || fail "no plugin.json at the top"
-printf '%s\n' "$names" | grep -qx 'THIRD-PARTY-NOTICES.txt' || fail "no THIRD-PARTY-NOTICES.txt at the top"
+grep -qx 'plugin.json' <<< "$names" || fail "no plugin.json at the top"
+grep -qx 'THIRD-PARTY-NOTICES.txt' <<< "$names" || fail "no THIRD-PARTY-NOTICES.txt at the top"
 unzip -p "$zip" plugin.json | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" || fail "plugin.json has another id than $id"
-printf '%s\n' "$names" | grep -Eq '^[^/]+\.Server\.dll$' || fail "no server part (*.Server.dll)"
-printf '%s\n' "$names" | grep -qx 'oadm-version.txt' || fail "no oadm-version.txt at the top"
+grep -Eq '^[^/]+\.Server\.dll$' <<< "$names" || fail "no server part (*.Server.dll)"
+grep -qx 'oadm-version.txt' <<< "$names" || fail "no oadm-version.txt at the top"
 expected="$(basename "$zip")"
 expected="${expected#oadm-addon-$id-}"
 expected="${expected%-$rid.zip}"
 stamped="$(unzip -p "$zip" oadm-version.txt | tr -d '\r\n')"
 [ "$stamped" = "$expected" ] || fail "oadm-version.txt says '$stamped', the ZIP's name '$expected'"
-! printf '%s\n' "$names" | grep -qx 'notices-extra.json' || fail "notices-extra.json must not ship"
+! grep -qx 'notices-extra.json' <<< "$names" || fail "notices-extra.json must not ship"
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 for p in "$root"/plugins/*.Client/*.csproj; do
   [ -f "$p" ] || continue
   grep -Eq '<OadmAddOn>[[:space:]]*true[[:space:]]*</OadmAddOn>' "$p" || continue
   grep -q "<OadmPluginId>$id</OadmPluginId>" "$p" || continue
-  printf '%s\n' "$names" | grep -Eq '^[^/]+\.Client\.dll$' || fail "no client part (*.Client.dll)"
+  grep -Eq '^[^/]+\.Client\.dll$' <<< "$names" || fail "no client part (*.Client.dll)"
 done
 
 os="${rid%%-*}"
-if [ "$os" = win ] && printf '%s\n' "$names" | grep -Eqi '(^|/)DirectML\.dll$'; then
+if [ "$os" = win ] && grep -Eqi '(^|/)DirectML\.dll$' <<< "$names"; then
   notices="$(unzip -p "$zip" THIRD-PARTY-NOTICES.txt)"
-  # Here-strings: with pipefail "printf | grep -q" fails by chance on a text this long (grep stops reading, printf gets SIGPIPE).
   grep -q 'MICROSOFT SOFTWARE LICENSE TERMS' <<< "$notices" && grep -q 'DIRECTML' <<< "$notices" \
     || fail "DirectML.dll without its license in THIRD-PARTY-NOTICES.txt (OadmNoticePackage Microsoft.AI.DirectML)"
 fi

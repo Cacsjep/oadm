@@ -160,7 +160,7 @@ public static class ReaderRules
     public const string PictureTooLarge = "This picture is too large to pause. Choose a lower resolution.";
 
     /// <summary>The refusal of Pause for a user without the host's Live view: the held picture is a piece of the camera's video.</summary>
-    public const string PauseNeedsLiveView = "Your role does not allow: Live view";
+    public const string PauseNeedsLiveView = "Your role does not allow: Live view.";
 
     /// <summary>
     /// The reader a preview reads (docs/spec/ocr.md "Page"): the page's draft as far as it can be read now. The camera and the
@@ -350,7 +350,7 @@ public static class ReaderRules
         return text.Any(char.IsControl) ? NameInvalid : null;
     }
 
-    /// <summary>The problem of a format, or null: not empty, at most 64 characters, at least one #, A or *.</summary>
+    /// <summary>The problem of a format, or null: not empty, at most 64 characters, at least one #, @ or *.</summary>
     public static string? FormatProblem(string? format)
     {
         var text = format?.Trim() ?? string.Empty;

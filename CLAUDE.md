@@ -22,6 +22,7 @@ Every rule here and in `docs/spec/` is agreed with the maintainer; change one on
 | Tests | xUnit, NSubstitute for mocks |
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
+| Text recognition | ONNX Runtime with PaddleOCR models, in an optional plugin; DirectML (Windows x64), CUDA (Linux x64) or the CPU |
 | Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
@@ -253,8 +254,8 @@ must never break.
   as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
 - **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
   default): readers (camera, up to 8 areas, Any text or a format such as `@@@U ###### #`) read text only inside their
-  areas, on a usable graphics card unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
-  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 25 fps, frames overlapping only with room, results in order (watching
+  areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
+  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); event Text read for the rules; read only, pictures never stored.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at

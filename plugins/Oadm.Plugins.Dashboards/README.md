@@ -104,7 +104,7 @@ Open gate on Gate house"). Video needs "Live view"; without it the widget says "
 group); storage, versions and every refusal; the values (each field's last value, the key
 cap, old values and their reasons, reading and suggesting types); the catalog (declared values at once, refined by received ones, at most once a second);
 watching (only watched values, one update per 250 ms, a page that went away); turned off keeps nothing; Perf: 50 widgets
-updating 4 times a second next to 30,000 other devices. `GroupScaleTests`: 50 group pages of 5 groups at 30,000 devices
+updating 4 times a second next to 100,000 other devices. `GroupScaleTests`: 50 group pages of 5 groups at 100,000 devices
 (no read of the device table per push, Perf the time of 100 pushes), a group change reads its devices again, a session
 moved to another group keeps no watch of the old one, 8 watches per session. Gauge: nice ticks for many ranges, the marker's place, the bands,
 the Min / Max rules (also refused by the server), the editor keeping the Number settings, headless drawing at several sizes

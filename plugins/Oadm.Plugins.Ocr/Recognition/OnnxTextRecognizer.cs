@@ -175,7 +175,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         }
     }
 
-    private static string CpuName(int cores) => $"CPU ({cores} cores)";
+    private static string CpuName(int cores) => Readers.ReaderRules.CpuText(cores);
 
     /// <summary>What reads with a graphics card: "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti".</summary>
     internal static string CardName(int cores, string card) => $"{CpuName(cores)} · {card}";
@@ -225,8 +225,11 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     /// <summary>Model calls at once: the CPU workers (the graphics card's time is counted in worker time).</summary>
     public int Capacity => Workers;
 
-    /// <summary>A CPU worker is free and no model call or picture waits (<see cref="IRecognizerLoad.HasRoom"/>).</summary>
-    public bool HasRoom => _pictures.CurrentCount > 0 && (ActiveCard?.HasRoom ?? _cpu.HasRoom);
+    /// <summary>
+    /// A CPU worker is free, no model call or picture waits and the card has room (<see cref="IRecognizerLoad.HasRoom"/>). The card
+    /// alone never says so: a model it does not take, or an area size beyond its memory, runs on the CPU workers.
+    /// </summary>
+    public bool HasRoom => _pictures.CurrentCount > 0 && _cpu.HasRoom && (ActiveCard?.HasRoom ?? true);
 
     /// <summary>The card while it is used and has not failed.</summary>
     private CardModels? ActiveCard => _useGpu && _card is { Failed: false } card ? card : null;
@@ -436,6 +439,9 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
             var wholeStart = Stopwatch.GetTimestamp();
             await ReadWholeAreasAsync(picture, areas, patterns, perArea, set, ct).ConfigureAwait(false);
             StageClock.Add(Stage.WallWhole, wholeStart);
+
+            // The card leaves the lines of a cancelled reading blank: such a result is no reading, nothing may keep or fire it.
+            ct.ThrowIfCancellationRequested();
             for (var a = 0; a < areas.Count; a++)
             {
                 results[a] = new AreaRecognition(Order(perArea[a]), tooSmall[a]);

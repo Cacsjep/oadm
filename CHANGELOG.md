@@ -9,11 +9,12 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Text recognition: a new optional vision plugin reads container numbers, meters, signs and labels. (OCR).
-- Dashboards: Table widget that lists each event's text with its time, the last 1,000 rows, with a search. 
+- Text recognition (OCR): a new optional plugin reads container numbers, meters, signs and labels.
+- Dashboards: Table widget that lists each event's text with its time, the last 1,000 rows, with a search.
 - Dashboards: a Text recognition widget shows one area of its reader and uses the reader's camera by itself. Widgets on a reader with several areas ask for the area once.
 - Applications: install from a vendor's ZIP file, alone or together with .eap files.
-- Dashboards: Button widget that can trigger event rules
+- Dashboards: Button widget that can trigger event rules.
+- Plugin SDK 0.10.0.
 - Administrators update the server and their client from inside OADM with Install now.
 - The Sites page says which site nodes are older than the server, with a link to the download page.
 - Servers and clients before this version are updated by hand once; from then on Install now does it.

@@ -62,7 +62,15 @@ internal sealed partial class ReaderRuntime
             {
                 if (!string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var kept) && kept.IsOf(owner, user))
                 {
-                    preview = kept;
+                    if (kept.Reader.DeviceId == reader.DeviceId)
+                    {
+                        preview = kept;
+                    }
+                    else
+                    {
+                        // Another camera: nothing of the old one (its reading, frame and rows) stays under this id.
+                        oldest = kept;
+                    }
                 }
                 else
                 {

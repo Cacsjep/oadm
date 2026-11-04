@@ -91,7 +91,7 @@ publishes every add-on plugin, server and client part together, for one platform
 - Build it before the server: its SHA-256 goes into the server's publish of that version and platform
   (`docs/spec/add-ons.md` rule 2); `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` carries it. A server published
   without that file cannot install optional plugins.
-- Limits: the ZIP at most 1 GB; the client part (`plugin.json`, top-level `*.Client.dll`, `client/`) at most 24 MB,
+- Limits: the ZIP at most 1 GB; the client part (`plugin.json`, top-level `*.Client.dll` and `*.Server.dll`, `client/`) at most 24 MB,
   no native libraries in it.
 - Staging folder: `artifacts/publish/addons/<rid>/<plugin id>/`.
 - Checks: `addons/check-addon-zip.sh <zip> <plugin id> <rid>` (also in CI); `addons/check-server-hash.sh <publish folder>

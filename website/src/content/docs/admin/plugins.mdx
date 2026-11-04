@@ -9,7 +9,7 @@ import plugins from '../../../assets/screens/client-plugins-page.png';
 import licenses from '../../../assets/screens/client-plugins-licenses.png';
 import licenseDialog from '../../../assets/screens/client-plugin-license.png';
 
-<Image src={plugins} alt="The Plugins page" class="screen" />
+<Image src={plugins} alt="The Plugins page: the plugin list and below it the Optional plugins card with Download ZIP and Install" class="screen" />
 
 The **Plugins** page lists the plugins you can turn off, each with a short description. Only administrators see it.
 
@@ -59,6 +59,11 @@ of a plugin says **Restart the client to use the new version.**
 Only administrators install and remove optional plugins. Both are written to the audit log, for example
 `Installed optional plugin Text recognition V4.10.0`.
 
+### Install by hand
+
+A build you made yourself cannot check the ZIP, so **Install** stays off. Unpack the ZIP into `addons/<id>` of the data
+folder and restart the server. A folder loads only when it is of this exact OADM version.
+
 ### Remove
 
 **Remove** asks **Remove Text recognition? It turns off now. Its settings are kept.** The plugin turns off at once and
@@ -82,8 +87,9 @@ plugin again.
 | **This ZIP is for another OADM version. This server needs V4.10.0.** | Use **Download ZIP** in the row |
 | **This ZIP is for another system. This server needs win-x64.** | Use **Download ZIP** in the row. The system of the server counts, not that of your computer |
 | **This ZIP holds another plugin. Choose the ZIP of Text recognition.** | Choose the ZIP of the plugin in this row |
+| **The file is damaged. Download it again.** | Use **Download ZIP** in the row |
 | **The upload stopped. Try again.** | Check the connection to the server and click **Install** again |
-| **This OADM build cannot check optional plugins. Put the plugin into its folder by hand.** | A build you made yourself. Install a release of OADM, or unpack the ZIP into `addons/<id>` of the data folder and restart the server |
+| **This OADM build cannot check optional plugins. Put the plugin into its folder by hand.** | A build you made yourself. Install a release of OADM, or [install by hand](#install-by-hand) |
 | **Not enough free disk space for the optional plugin.** | Free space on the drive of the data folder |
 | **The server is updating.** | Wait until the update is done |
 | **An optional plugin is being installed or removed. Try again when it is done.** | Wait, one install or remove runs at a time |

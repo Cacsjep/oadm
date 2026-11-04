@@ -52,5 +52,5 @@ callers with `task:oadm.acap:settings`, travel only in the task payload and are 
 ## Tests
 
 `tests/Oadm.Plugins.AppManagement.Tests`: server reads, group scope, refusals, the actions' payloads (FakeCoreContext's
-task runner), follow and read again, log and settings, the page's view model, a Perf test with 30,000 devices x 10
+task runner), follow and read again, log and settings, the page's view model, a Perf test with 100,000 devices x 10
 applications, headless screenshots (OADM_SCREENSHOT_DIR, OADM_TEST_APPEARANCE=Light for the light ones).

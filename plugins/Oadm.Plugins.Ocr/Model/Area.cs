@@ -12,8 +12,8 @@ public enum ExpectedTextKind
 
 /// <summary>
 /// The expected text of an area: <see cref="ExpectedTextKind.Any"/> or a <see cref="ExpectedTextKind.Format"/> where
-/// <c>#</c> is a digit, <c>A</c> a letter, <c>*</c> a letter or digit and every other character must appear as written
-/// (spaces and dashes may be missing). Example: container number <c>@@@U ###### #</c>.
+/// <c>#</c> is a digit, <c>@</c> a letter, <c>*</c> a letter or digit and every other character must appear as written
+/// (spaces may be missing). Example: container number <c>@@@U ###### #</c>.
 /// </summary>
 public sealed record ExpectedText
 {

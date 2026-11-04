@@ -232,6 +232,25 @@ public sealed class PauseTests
     }
 
     [Fact]
+    public async Task AnotherCameraUnderTheSameIdKeepsNothingOfTheOldOne()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var draft = ocr.NewReader("Belt");
+        var id = await PreviewOnAsync(ocr, draft, "A");
+        Assert.NotNull((await PreviewReadingAsync(ocr, id)).Reading);
+
+        var other = await ocr.PreviewAsync(draft with { DeviceId = ocr.Outside.Id }, id);
+
+        // Live too: the old camera's reading, rows and picture never answer for the new one, whatever its first frame takes.
+        Assert.Equal(id, other.PreviewId);
+        var reply = await PreviewReadingAsync(ocr, id);
+        Assert.Null(reply.Reading);
+        Assert.Empty(reply.Recent);
+        Assert.Equal(ReaderRules.NothingToPause, (await PauseAsync(ocr, id)).Problem);
+        Assert.Single(ocr.Plugin.Runtime!.Previews);
+    }
+
+    [Fact]
     public async Task ASavedReaderDeletedWhilePausedEndsThePause()
     {
         await using var ocr = await OcrHarness.StartAsync();

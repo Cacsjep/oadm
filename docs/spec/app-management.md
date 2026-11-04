@@ -30,7 +30,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 4. **Read only on demand.** The installed applications are read when the user chooses devices or clicks **Refresh**, and
    after a task of the page ends on a device (that device only). No reads in polling; the results live in server memory
    per user session (gone after a server restart), never in the database.
-5. **Scale.** 30,000 devices: reads as a plugin job (`IPluginJobs`), at most 16 devices at once, 15 s per device,
+5. **Scale.** 100,000 devices: reads as a plugin job (`IPluginJobs`), at most 16 devices at once, 15 s per device,
    progress row and Cancel; rows streamed to the page in batches; both grids virtualized; summaries, filters and search
    one pass over the rows.
 
@@ -244,6 +244,6 @@ Actions: the Applications plugin's task permissions; a role without them sees th
 - Install applications and Install licenses: the verdict per row from the shared rules (several files per architecture,
   downgrade, signed-only, not read devices; key found, expired, other application, no license needed), the run request
   sent (files, version, options; keys per application), the permissions (install, downgrade, license) checked by the
-  server part before any task; 30,000 devices checked and matched within a Perf budget; headless screenshots of both.
-- 30,000 devices with 10 applications each (300,000 rows): filter, search, summary and select all within a Perf budget.
+  server part before any task; 100,000 devices checked and matched within a Perf budget; headless screenshots of both.
+- 100,000 devices with 10 applications each (1,000,000 rows): filter, search, summary and select all within a Perf budget.
 - Headless screenshots of the page with two selected devices, dark and light.

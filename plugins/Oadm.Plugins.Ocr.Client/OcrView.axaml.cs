@@ -21,7 +21,7 @@ internal readonly record struct SplitLimits(double VideoMin, double VideoMax, do
 /// </summary>
 public partial class OcrView : UserControl, IReaderDialogs
 {
-    /// <summary>The readers column's fixed width (the reader rows and the runtime stats fit).</summary>
+    /// <summary>The readers column's fixed width (the reader rows fit).</summary>
     public const double ReadersWidth = 320;
 
     /// <summary>The settings column's fixed width (the format field and the areas fit).</summary>

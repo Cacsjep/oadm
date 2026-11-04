@@ -13,7 +13,7 @@ public sealed class TextFormat
 {
     /// <summary>
     /// The area menu's "Use read text as format" (docs/spec/ocr.md "Page"): a read text turned into a format. Every digit
-    /// becomes <c>#</c>, every letter (umlauts too) <c>A</c>, everything else stays as written; line breaks and runs of spaces
+    /// becomes <c>#</c>, every letter (umlauts too) <c>@</c>, everything else stays as written; line breaks and runs of spaces
     /// become one space, the ends are trimmed. "MSKU 123456 7" gives "@@@@ ###### #", "4/12" "#/##".
     /// </summary>
     public static string FromText(string? text)

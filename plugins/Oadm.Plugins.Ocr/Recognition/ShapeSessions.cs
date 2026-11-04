@@ -6,7 +6,7 @@ namespace Oadm.Plugins.Ocr.Recognition;
 /// The sessions of one model. On the CPU and with CUDA one session takes every input size. DirectML runs a session fast only
 /// for the input size it saw first (measured: a small area read after a full HD search took 160 instead of 38 ms), so there
 /// each input size gets a session of its own, kept in the card's <see cref="GpuSessionBudget"/> (counted by its input pixels,
-/// at most <see cref="GpuSessionBudget.MaxBytes"/> together, freed after 2 idle minutes). The callers keep the sizes few
+/// at most the budget's cap together, freed after 2 idle minutes). The callers keep the sizes few
 /// (sides in steps, the tiles of an area in calls of one size).
 /// </summary>
 internal sealed class ShapeSessions : IDisposable

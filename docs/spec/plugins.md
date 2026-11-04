@@ -325,7 +325,7 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.9.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.10.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
@@ -333,8 +333,8 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision`, Dashboards `EventTypeInfo.Path`, `IEventPublisher.IsUsedByRule`,
-  `ICorePlugin.AuditDetail`, Device triggers and PKI `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
+  (0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
+  `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers and PKI `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
   compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the

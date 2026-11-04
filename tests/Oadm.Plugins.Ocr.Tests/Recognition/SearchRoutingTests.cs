@@ -6,9 +6,9 @@ using SkiaSharp;
 namespace Oadm.Plugins.Ocr.Tests.Recognition;
 
 /// <summary>
-/// Where the text finder runs (docs/spec/ocr.md "GPU"): with a graphics card only an area read in tiles (Search) goes to the
-/// card, in calls that fit its memory cap whatever the picture's size; fixed-place areas stay on the CPU workers. The load
-/// counts the CPU workers and the card together. Fake runners and fake sessions, no graphics card.
+/// Where the text finder runs (docs/spec/ocr.md "GPU"): an area read in tiles (Search) goes to the card in calls that fit its
+/// memory cap whatever the picture's size, a fixed-place area stays in one piece. The load counts the CPU workers and the
+/// card together. Fake runners and fake sessions, no graphics card.
 /// </summary>
 public sealed class SearchRoutingTests
 {

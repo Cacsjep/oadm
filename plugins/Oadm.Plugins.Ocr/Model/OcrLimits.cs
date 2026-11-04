@@ -20,8 +20,8 @@ public static class OcrLimits
 
     /// <summary>
     /// Watching readers at most on a server with <paramref name="processorCount"/> cores: 4 per recognition worker, at least 8
-    /// and at most 50 (docs/spec/ocr.md "Limits"; 8 cores: 16, 24 cores: 48). The CPU reads every fixed area and every line
-    /// whether or not a graphics card helps with Search, so the cores set the limit. A worker reads a fixed area in about
+    /// and at most 50 (docs/spec/ocr.md "Limits"; 8 cores: 16, 24 cores: 48). The CPU decodes every picture and takes over
+    /// when a graphics card fails, so the cores set the limit. A worker reads a fixed area in about
     /// 28 ms (35 pictures per second); 4 readers at 2 frames per second use about a quarter of it, and unchanged areas cost
     /// almost nothing. Higher rates are the user's choice: the traffic light tells when the server no longer keeps up.
     /// </summary>

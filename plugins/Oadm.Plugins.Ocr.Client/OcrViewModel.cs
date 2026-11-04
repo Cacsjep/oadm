@@ -14,7 +14,7 @@ namespace Oadm.Plugins.Ocr.Client;
 
 /// <summary>
 /// The Text recognition page (docs/spec/ocr.md "Page"): the readers on the left (New, Delete, search), the selected reader on
-/// the right (<see cref="Editor"/>), "Runs on" and Use GPU below the list. <see cref="Activate"/> when the
+/// the right (<see cref="Editor"/>), "Runs on" and Use GPU in the page header. <see cref="Activate"/> when the
 /// page is shown reads the list and the engine, watches the live events (readers changed, a reading, the preview's readings)
 /// and previews the shown reader. <see cref="Deactivate"/> stops both: nothing is read or fetched while the page is hidden.
 /// </summary>
@@ -121,10 +121,13 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool UseGpu { get; set; } = true;
 
-    private bool _settingGpu;
+    /// <summary>A change of Use GPU is on its way: turning it on can take seconds (the server tries the graphics card).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSetGpu))]
+    public partial bool IsSettingGpu { get; private set; }
 
     /// <summary>The setting is server-wide: the change right and all devices (the server refuses users with a device group).</summary>
-    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable && !_settingGpu;
+    public bool CanSetGpu => MayChange && _ctx.HasAllDevices && GpuAvailable && !IsSettingGpu;
 
     public string? GpuBlockedReason =>
         !GpuAvailable ? OcrTexts.NoGpu
@@ -318,9 +321,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
 
     private async Task SetUseGpuAsync(bool value)
     {
-        // Turning it on can take seconds (the server tries the graphics card): the box waits.
-        _settingGpu = true;
-        OnPropertyChanged(nameof(CanSetGpu));
+        IsSettingGpu = true;
         try
         {
             var json = await _ctx.InvokeAsync(OcrMethods.SetUseGpu, OcrJson.Serialize(new UseGpuRequest { UseGpu = value }), CancellationToken.None)
@@ -336,8 +337,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            _settingGpu = false;
-            OnPropertyChanged(nameof(CanSetGpu));
+            IsSettingGpu = false;
         }
     }
 

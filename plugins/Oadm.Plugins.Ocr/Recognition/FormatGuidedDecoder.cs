@@ -126,7 +126,7 @@ internal sealed record GuidedMatch(IReadOnlyList<DecodedChar> Chars, int FirstFr
 
 /// <summary>
 /// Format-guided CTC decoding (docs/spec/ocr.md "Accuracy"): the best alignment of the format to a part of a line's frames,
-/// with the character choice limited per position while decoding (digits where <c>#</c>, letters where <c>A</c>), not fixed
+/// with the character choice limited per position while decoding (digits where <c>#</c>, letters where <c>@</c>), not fixed
 /// afterwards. A Viterbi search over the states before the match (free reading), each position with each allowed character,
 /// the gaps between positions (blank or space) and after the match (free reading). A container number whose check digit does
 /// not hold is no match (<see cref="GuidedMatch.CheckDigitValid"/> false): a wrong check digit is never repaired by changing a

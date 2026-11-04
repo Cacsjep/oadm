@@ -135,7 +135,6 @@ internal static class SessionFactory
         }
     }
 
-    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") or a general one.</summary>
     /// <summary>The card's memory in bytes as DirectML reports it ("15997 MB"), or null when it does not tell.</summary>
     public static long? GraphicsCardMemory(ExecutionTarget target)
     {
@@ -172,6 +171,7 @@ internal static class SessionFactory
             : null;
     }
 
+    /// <summary>The graphics card's name ("NVIDIA GeForce RTX 5070 Ti") or a general one.</summary>
     public static string GraphicsCardName(ExecutionTarget target)
     {
         try
