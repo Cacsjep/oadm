@@ -306,8 +306,9 @@ public static class LookAlike
 
 /// <summary>
 /// The ISO 6346 check digit of container numbers (docs/spec/ocr.md "Accuracy"), the one rule of the matcher and the
-/// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>@@@U</c> and seven <c>#</c> is a
-/// container number ("@@@U ###### #", also "@@@U ###### # 22G1" with the size and type code after it), and the 11th letter
+/// recognition's format-guided decoding: a format whose first 11 letters and digits are <c>@@@</c>, the equipment category
+/// (U freight container, J detachable equipment, Z trailer or chassis, either case) and seven <c>#</c> is a container
+/// number ("@@@U ###### #", "@@@Z ###### #", also "@@@U ###### # 22G1" with the size and type code after it), and the 11th letter
 /// or digit of its value is the check digit of the 10 before it. A value whose check digit does not fit is no match; no
 /// character is ever changed to make it fit.
 /// </summary>
@@ -316,7 +317,10 @@ public static class ContainerCheck
     /// <summary>The owner code, category and serial number: 4 letters and 6 digits.</summary>
     private const int CodeLength = 10;
 
-    /// <summary>True when the first 11 letters and digits of <paramref name="format"/> are <c>@@@U</c> and seven <c>#</c>.</summary>
+    /// <summary>
+    /// True when the first 11 letters and digits of <paramref name="format"/> are <c>@@@</c>, an ISO 6346 equipment category
+    /// (U, J or Z, either case, as every letter of a format) and seven <c>#</c>.
+    /// </summary>
     public static bool FormatHasCheckDigit(string? format)
     {
         if (format is null)
@@ -336,7 +340,9 @@ public static class ContainerCheck
             first[count++] = c;
             if (count == first.Length)
             {
-                return ((ReadOnlySpan<char>)first).StartsWith("@@@U", StringComparison.Ordinal) && first[4..].IndexOfAnyExcept('#') < 0;
+                return ((ReadOnlySpan<char>)first).StartsWith("@@@", StringComparison.Ordinal)
+                    && char.ToUpperInvariant(first[3]) is 'U' or 'J' or 'Z'
+                    && first[4..].IndexOfAnyExcept('#') < 0;
             }
         }
 
