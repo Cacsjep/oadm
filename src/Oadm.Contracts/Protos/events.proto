@@ -45,6 +45,10 @@ service EventService {
   rpc DeleteRecipient (RecipientId) returns (Empty);
   // Sends the type's test action once now with the action's default values and sample event values (audited).
   rpc TestRecipient (SaveRecipientRequest) returns (TestActionReply);
+  // The connection of every persistent recipient that has one: the whole list first, then after each change.
+  rpc WatchRecipientStatus (Empty) returns (stream RecipientStatusList);
+  // The certificates of PKI the recipient dialog offers.
+  rpc ListRecipientCertificates (Empty) returns (RecipientCertificateList);
 }
 
 message RecipientId { string id = 1; }
@@ -62,6 +66,32 @@ message RecipientEntry {
 
 message RecipientList { repeated RecipientEntry recipients = 1; }
 
+enum RecipientConnection {
+  RECIPIENT_NOT_USED = 0;
+  RECIPIENT_CONNECTING = 1;
+  RECIPIENT_CONNECTED = 2;
+  RECIPIENT_NOT_CONNECTED = 3;
+}
+
+message RecipientStatusEntry {
+  string id = 1;
+  RecipientConnection connection = 2;
+  string reason = 3;          // why it is not connected
+}
+
+// A recipient that is missing here is not used.
+message RecipientStatusList { repeated RecipientStatusEntry recipients = 1; }
+
+message RecipientCertificateChoice {
+  string id = 1;
+  string text = 2;
+}
+
+message RecipientCertificateList {
+  repeated RecipientCertificateChoice client = 1;
+  repeated RecipientCertificateChoice trusted = 2;
+}
+
 message SaveRecipientRequest {
   string id = 1;              // empty: a new recipient
   string name = 2;
@@ -75,6 +105,7 @@ message RecipientTypeEntry {
   string icon_key = 3;
   repeated ActionFieldEntry fields = 4;
   bool available = 5;         // false: the plugin of its test action is off
+  bool persistent = 6;        // one shared connection, with a status; Test only connects
 }
 
 message TestActionRequest {
@@ -141,6 +172,8 @@ enum ActionFieldKind {
   ACTION_FIELD_KEY_VALUES = 8; // rows of name and value, a JSON array of {"name", "value"}
   ACTION_FIELD_FILE = 9;       // a file, {"name", "data" (base64)}; compliance checks only
   ACTION_FIELD_RECIPIENT = 10; // the id of a recipient of recipient_types
+  ACTION_FIELD_CLIENT_CERTIFICATE = 11;  // the id of a certificate of ListRecipientCertificates.client
+  ACTION_FIELD_TRUSTED_CERTIFICATE = 12; // the id of a certificate of ListRecipientCertificates.trusted
 }
 
 // The numbers of Oadm.Sdk.Actions.ActionFieldFormat.
@@ -150,6 +183,7 @@ enum ActionTextFormat {
   ACTION_TEXT_FORMAT_HOST = 2;
   ACTION_TEXT_FORMAT_EMAIL = 3;
   ACTION_TEXT_FORMAT_EMAIL_LIST = 4;
+  ACTION_TEXT_FORMAT_OPC_ENDPOINT = 5;
 }
 
 message ActionFieldEntry {

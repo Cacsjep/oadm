@@ -17,6 +17,9 @@ public enum ActionFieldFormat
 
     /// <summary>Email addresses separated by commas or semicolons. No placeholders.</summary>
     EmailList = 4,
+
+    /// <summary>An opc.tcp:// address (SDK 0.12.0): no placeholders, no spaces, no login in it.</summary>
+    OpcEndpoint = 5,
 }
 
 /// <summary>The checks of <see cref="ActionFieldFormat"/>, shared by the server and the forms of the client.</summary>
@@ -24,6 +27,9 @@ public static class ActionFormats
 {
     /// <summary>The error of a URL that is not http:// or https://.</summary>
     public const string EnterUrl = "Enter a URL that starts with http:// or https://.";
+
+    /// <summary>The error of an address that is not opc.tcp://.</summary>
+    public const string EnterOpcEndpoint = "Enter an address that starts with opc.tcp://.";
 
     /// <summary>The error of a URL with a placeholder.</summary>
     public const string EnterFixedUrl = "Enter a fixed URL, without placeholders.";
@@ -49,7 +55,8 @@ public static class ActionFormats
         ArgumentNullException.ThrowIfNull(value);
         return format switch
         {
-            ActionFieldFormat.Url => UrlProblem(value),
+            ActionFieldFormat.Url => UrlProblem(value, EnterUrl, Uri.UriSchemeHttp, Uri.UriSchemeHttps),
+            ActionFieldFormat.OpcEndpoint => UrlProblem(value, EnterOpcEndpoint, "opc.tcp"),
             ActionFieldFormat.Host => IsHost(value) ? null : EnterHost,
             ActionFieldFormat.Email => IsMailbox(value) ? null : EnterEmail,
             ActionFieldFormat.EmailList => IsMailboxList(value) ? null : EnterEmailList,
@@ -66,7 +73,7 @@ public static class ActionFormats
             && (kind != UriHostNameType.Dns || !host.TrimEnd('.').Split('.')[^1].All(char.IsAsciiDigit));
     }
 
-    private static string? UrlProblem(string url)
+    private static string? UrlProblem(string url, string wrong, params string[] schemes)
     {
         if (url.AsSpan().IndexOfAny('{', '}') >= 0)
         {
@@ -78,9 +85,9 @@ public static class ActionFormats
             return EnterUrlWithoutSpaces; // Uri would escape them and hide the typing error
         }
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) || !IsHost(uri.Host))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || !schemes.Contains(uri.Scheme) || !IsHost(uri.Host))
         {
-            return EnterUrl;
+            return wrong;
         }
 
         return uri.UserInfo.Length > 0 ? EnterUrlWithoutLogin : null; // the target shows in the list and in the audit log

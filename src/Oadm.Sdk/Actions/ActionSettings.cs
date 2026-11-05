@@ -100,7 +100,7 @@ public static class ActionSettings
                     errors[field.Key] = field.EmptyText ?? field.Type switch
                     {
                         ActionFieldType.Recipient => ChooseRecipient,
-                        ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File => $"Choose {field.Label.ToLowerInvariant()}.",
+                        ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File or ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate => $"Choose {field.Label.ToLowerInvariant()}.",
                         _ => $"Enter {field.Label.ToLowerInvariant()}.",
                     };
                 }

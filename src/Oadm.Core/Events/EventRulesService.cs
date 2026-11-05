@@ -34,7 +34,7 @@ public sealed record RecipientModel(
 /// What the gRPC EventService does with rules: list them with their live state, check and save them (the engine applies
 /// the change before the call returns), turn them on or off, copy and delete them; and with recipients: list, save, delete.
 /// </summary>
-public sealed class EventRulesService(EventCatalog catalog, RuleStore store, RecipientStore recipients, RuleEngine engine, DeviceRepository devices) : IDisposable
+public sealed class EventRulesService(EventCatalog catalog, RuleStore store, RecipientStore recipients, RuleEngine engine, DeviceRepository devices) : IDisposable, Oadm.Sdk.Certificates.IRecipientCertificateUse
 {
     /// <summary>The rule names a refused delete lists; more are counted.</summary>
     private const int NamedRules = 5;
@@ -220,6 +220,30 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         }
 
         return ActionPlaceholders.Fill(type.Target ?? "{" + type.Fields[0].Key + "}", key => ActionSettings.Text(values, key) ?? string.Empty);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> UsesAsync(CancellationToken ct)
+    {
+        var uses = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var recipient in await recipients.ListAsync(ct).ConfigureAwait(false))
+        {
+            var fields = Catalog.FindRecipientType(recipient.TypeId)?.Type.Fields ?? [];
+            foreach (var field in fields.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate))
+            {
+                if (ActionSettings.Text(recipient.Settings, field.Key) is { Length: > 0 } id)
+                {
+                    if (!uses.TryGetValue(id, out var names))
+                    {
+                        uses[id] = names = [];
+                    }
+
+                    names.Add(recipient.Name);
+                }
+            }
+        }
+
+        return uses.ToDictionary(u => u.Key, u => (IReadOnlyList<string>)[.. u.Value.Distinct().Order(StringComparer.CurrentCultureIgnoreCase)], StringComparer.Ordinal);
     }
 
     private RecipientModel ToModel(StoredRecipient recipient, IReadOnlyList<string> usedBy)

@@ -68,6 +68,12 @@ public enum ActionFieldType
     /// <see cref="ActionField.RecipientTypes"/>. The host merges the recipient's fields into the settings before a run.
     /// </summary>
     Recipient = 10,
+
+    /// <summary>A certificate with its key from PKI's list, for a recipient that logs in with one (SDK 0.12.0): the value is its id.</summary>
+    ClientCertificate = 11,
+
+    /// <summary>A CA or imported certificate from PKI's list that a server is checked against (SDK 0.12.0): the value is its id.</summary>
+    TrustedCertificate = 12,
 }
 
 /// <summary>The value of a <see cref="ActionFieldType.File"/> setting.</summary>
@@ -196,6 +202,14 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     public static ActionField Code(string key, string label, string? languageKey = null, bool required = false) =>
         new(key, label, ActionFieldType.Code) { Required = required, MaxLength = 50_000, LanguageKey = languageKey };
 
+    /// <summary>A certificate with its key from PKI's list; nothing chosen means no client certificate unless <paramref name="required"/>.</summary>
+    public static ActionField ClientCertificate(string key, string label, bool required = false) =>
+        new(key, label, ActionFieldType.ClientCertificate) { Required = required };
+
+    /// <summary>A CA or imported certificate from PKI's list; nothing chosen means the operating system's trusted roots.</summary>
+    public static ActionField TrustedCertificate(string key, string label) =>
+        new(key, label, ActionFieldType.TrustedCertificate);
+
     /// <summary>A file of at most <paramref name="maxBytes"/> bytes with one of the <paramref name="accept"/> endings.</summary>
     public static ActionField File(string key, string label, IReadOnlyList<string> accept, int maxBytes, bool required = true) =>
         new(key, label, ActionFieldType.File) { Required = required, Accept = accept, MaxLength = maxBytes };
@@ -224,6 +238,12 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
 /// <param name="TestActionId">The action that sends the test of this type, with its default values.</param>
 public sealed record RecipientType(string Id, string DisplayName, string? IconKey, IReadOnlyList<ActionField> Fields, string TestActionId)
 {
+    /// <summary>
+    /// Null for a one shot type (open, send, close inside the action). Set: a persistent type (SDK 0.12.0), one open connection the
+    /// rules share, which the action reads with <see cref="IActionContext.SessionAsync{T}"/>; Test only connects, it sends nothing.
+    /// </summary>
+    public IRecipientSessionFactory? Sessions { get; init; }
+
     /// <summary>The one-line target of the Recipients list, with {key} for a field's value ("{host}:{port}"). Null: the first field.</summary>
     public string? Target { get; init; }
 
@@ -338,6 +358,14 @@ public interface IActionContext
 
     /// <summary>The license of the action's plugin package (plugin.json <c>license</c>); null on hosts without licenses.</summary>
     IPluginLicense? License => null;
+
+    /// <summary>
+    /// The open session of the persistent recipient chosen in <paramref name="fieldKey"/> (SDK 0.12.0), as the plugin's own
+    /// interface. The first action of a recipient waits for its connection; later ones fail at once while it is not connected
+    /// (<see cref="RecipientSessionTexts.NotConnected"/>), nothing is queued.
+    /// </summary>
+    Task<T> SessionAsync<T>(string fieldKey, CancellationToken ct)
+        where T : class => throw new NotSupportedException("This OADM version has no recipient sessions.");
 }
 
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>

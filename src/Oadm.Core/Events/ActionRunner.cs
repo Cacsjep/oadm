@@ -102,6 +102,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
     }
 
+    /// <summary>The open connections of persistent recipients (<see cref="IActionContext.SessionAsync{T}"/>); null without them.</summary>
+    public RecipientSessionPool? Sessions { get; set; }
+
     /// <summary>The licenses of commercial plugins, handed to their actions (<see cref="IActionContext.License"/>).</summary>
     public Plugins.IPluginLicenseSource? Licenses { get; set; }
 
@@ -513,7 +516,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 lines,
                 job,
                 textDevice,
-                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId),
+                Sessions,
+                recipientIds);
             var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger) { RecipientIds = recipientIds };
             await plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             Write(job, deviceId, plugin.DisplayName, EventLogResult.Ok, Joined(lines, EdgeText(job.Edge)), device);
@@ -621,6 +626,12 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return (false, label is null ? error.Value : $"{label}: {error.Value}");
         }
 
+        if (type.Type.Sessions is not null)
+        {
+            // A persistent type only connects: Test never publishes or writes to a real machine.
+            return Sessions is null ? (false, "Not available: this type of recipient is turned off") : await Sessions.TestAsync(type.Type, values, ct).ConfigureAwait(false);
+        }
+
         var settings = RecipientChecks.WithDefaults(action.Plugin, values);
         var sample = ActionPlaceholders.Fixed.ToDictionary(p => p.Name, _ => "sample", StringComparer.Ordinal);
         var trigger = new ActionTrigger(string.Empty, "Test event", null, null, null, true, DateTimeOffset.UtcNow, sample);
@@ -659,7 +670,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 lines,
                 job,
                 device,
-                Licenses?.LicenseOf(action.Registered.Origin.PackageId));
+                Licenses?.LicenseOf(action.Registered.Origin.PackageId),
+                Sessions,
+                recipientIds);
             var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger) { RecipientIds = recipientIds };
             await action.Plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             return (true, Joined(lines, "Sent"));
@@ -743,7 +756,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         List<string> lines,
         RuleEdgeJob job,
         IDeviceInfo? device,
-        Sdk.Licensing.IPluginLicense? license) : IActionContext
+        Sdk.Licensing.IPluginLicense? license,
+        RecipientSessionPool? sessions,
+        IReadOnlyDictionary<string, Guid> recipientIds) : IActionContext
     {
         public Sdk.Licensing.IPluginLicense? License { get; } = license;
 
@@ -766,6 +781,18 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         public string Text(string? text) => Placeholders.Fill(text, job, device);
 
         public string Text(string? text, PlaceholderEscape escape) => Placeholders.Fill(text, job, device, escape);
+
+        public async Task<T> SessionAsync<T>(string fieldKey, CancellationToken ct)
+            where T : class
+        {
+            if (sessions is null || !recipientIds.TryGetValue(fieldKey, out var id))
+            {
+                throw new InvalidOperationException(ActionSettings.ChooseRecipient);
+            }
+
+            return await sessions.GetAsync(id, ct).ConfigureAwait(false) as T
+                ?? throw new InvalidOperationException("The recipient has another type.");
+        }
     }
 
     private sealed class QueryContext(ILogger logger, ICorePlugin? owner, IPluginSettings settings, IDeviceRepository devices) : IActionQueryContext

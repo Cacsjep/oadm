@@ -9,6 +9,7 @@ using Grpc.Core;
 using Oadm.Core.Auth;
 using Oadm.Core.Events;
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Events;
 using Oadm.Server.Common;
 
@@ -23,6 +24,8 @@ namespace Oadm.Server.Events;
 public sealed class EventGrpcService(
     EventRulesService rules,
     ActionRunner actions,
+    RecipientSessionPool sessions,
+    Oadm.Core.Plugins.PluginServiceRegistry pluginServices,
     EventLog log,
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.EventService.EventServiceBase
@@ -61,6 +64,7 @@ public sealed class EventGrpcService(
                 DisplayName = type.Type.DisplayName,
                 IconKey = type.Type.IconKey ?? string.Empty,
                 Available = type.Available,
+                Persistent = type.Type.Sessions is not null,
             };
             entry.Fields.AddRange(type.Type.Fields.Select(ToProto));
             catalog.RecipientTypes.Add(entry);
@@ -260,6 +264,60 @@ public sealed class EventGrpcService(
             throw GrpcGuard.FailedPrecondition(ex.Message);
         }
     }
+
+    public override async Task WatchRecipientStatus(Proto.Empty request, IServerStreamWriter<Proto.RecipientStatusList> responseStream, ServerCallContext context)
+    {
+        using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
+        var ct = linked.Token;
+        var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+        void OnChanged(object? sender, EventArgs e) => signal.Writer.TryWrite(true);
+        sessions.Changed += OnChanged;
+        try
+        {
+            await responseStream.WriteAsync(RecipientStatuses(), ct).ConfigureAwait(false);
+            while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
+                signal.Reader.TryRead(out _);
+                await responseStream.WriteAsync(RecipientStatuses(), ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Client went away or server is stopping.
+        }
+        finally
+        {
+            sessions.Changed -= OnChanged;
+        }
+    }
+
+    public override async Task<Proto.RecipientCertificateList> ListRecipientCertificates(Proto.Empty request, ServerCallContext context)
+    {
+        var list = new Proto.RecipientCertificateList();
+        if (pluginServices.Get<IRecipientCertificates>() is { } certificates)
+        {
+            var ct = context.CancellationToken;
+            list.Client.AddRange((await certificates.ClientCertificatesAsync(ct).ConfigureAwait(false)).Select(ToProto));
+            list.Trusted.AddRange((await certificates.TrustedCertificatesAsync(ct).ConfigureAwait(false)).Select(ToProto));
+        }
+
+        return list;
+    }
+
+    private Proto.RecipientStatusList RecipientStatuses()
+    {
+        var list = new Proto.RecipientStatusList();
+        list.Recipients.AddRange(sessions.Statuses().Select(s => new Proto.RecipientStatusEntry
+        {
+            Id = s.Id.ToString(),
+            Connection = (Proto.RecipientConnection)(int)s.State,
+            Reason = s.Reason ?? string.Empty,
+        }));
+        return list;
+    }
+
+    private static Proto.RecipientCertificateChoice ToProto(ActionChoice choice) => new() { Id = choice.Value, Text = choice.Label };
 
     public override async Task<Proto.TestActionReply> TestRecipient(Proto.SaveRecipientRequest request, ServerCallContext context)
     {

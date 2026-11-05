@@ -564,6 +564,16 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
             sp.GetRequiredService<ILoggerFactory>()));
+        services.AddSingleton(sp => new RecipientSessionPool(
+            sp.GetRequiredService<EventCatalog>(),
+            sp.GetRequiredService<RecipientStore>(),
+            () => sp.GetRequiredService<PluginServiceRegistry>().Get<Sdk.Certificates.IRecipientCertificates>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILoggerFactory>()));
+        services.AddSingleton(sp => new RecipientEventSource(
+            sp.GetRequiredService<RecipientSessionPool>(),
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(RecipientEventSource.EventSourceId)));
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<RecipientEventSource>());
         services.AddSingleton(new RuleEngineOptions());
         services.AddSingleton(sp => new RuleEngine(
             sp.GetRequiredService<EventCatalog>(),
@@ -753,6 +763,9 @@ public static partial class OadmServerHost
         compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.Start();
+        sp.GetRequiredService<ActionRunner>().Sessions = sp.GetRequiredService<RecipientSessionPool>();
+        sp.GetRequiredService<PluginServiceRegistry>().For("oadm.host").Offer<Sdk.Certificates.IRecipientCertificateUse>(sp.GetRequiredService<EventRulesService>());
+        sp.GetRequiredService<RecipientEventSource>().Start();
         var addOnEvents = sp.GetRequiredService<AddOns.AddOnEventSource>();
         addOns.StateChanged += (_, _) => addOnEvents.Report();
         addOnEvents.Report();
@@ -806,6 +819,7 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<ExpiryWarningPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ClockTolerance>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<RecipientSessionPool>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);

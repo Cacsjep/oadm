@@ -176,6 +176,8 @@ public static class AccessPolicy
         ["/oadm.v1.EventService/SaveRecipient"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
         ["/oadm.v1.EventService/DeleteRecipient"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
         ["/oadm.v1.EventService/TestRecipient"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
+        ["/oadm.v1.EventService/WatchRecipientStatus"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
+        ["/oadm.v1.EventService/ListRecipientCertificates"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
         ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer).ForAllDevices(), // its text names devices
 
         // Plugins: pages per plugin (in the call); turning packages on or off is Administrator only.
