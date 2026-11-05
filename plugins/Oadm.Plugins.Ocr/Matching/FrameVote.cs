@@ -10,7 +10,7 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// published only when the vote gives it in <see cref="OcrLimits.EqualFramesToPublish"/> frames in a row and it differs
 /// from the value published last. With a format the combined value must match it like a single reading (and hold its check
 /// digit); a combination that does not is never published: the whole reading with the most weight wins instead. An area that
-/// becomes empty publishes once with an empty text; an area that was never read publishes nothing while it stays empty. Not
+/// becomes empty publishes once with an empty text (No text read); an area that was never read publishes nothing while it stays empty. Not
 /// thread-safe: one per area, fed by the reader's one reading at a time.
 /// </summary>
 /// <param name="accepts">Whether a value the vote combined may be published (the area's format); null: any text.</param>

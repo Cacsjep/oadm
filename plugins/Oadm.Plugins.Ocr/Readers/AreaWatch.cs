@@ -19,7 +19,7 @@ internal readonly record struct AreaDecision(AreaResult Voted, bool Publish, Val
 /// One area of a watching reader (docs/spec/ocr.md "Events and the rule action", "Accuracy"): each frame's result goes into
 /// the area's <see cref="FrameVote"/> (the last 5 frames, character by character, weighted by confidence), which publishes a
 /// value only once the vote gave it in <see cref="OcrLimits.EqualFramesToPublish"/> frames in a row and it differs from the
-/// last published one; an area that becomes empty publishes once with an empty text. With a format the voted value must
+/// last published one; an area that becomes empty publishes once with an empty text (No text read). With a format the voted value must
 /// match it (and its check digit) like each frame's value. With Moving objects <see cref="TwoFrames"/> takes the vote's
 /// place. Each candidate keeps a reference to the frame it was read in, released as the window moves on, so a value's
 /// cut-out always comes from that frame. One frame at a time (the reader's loop).

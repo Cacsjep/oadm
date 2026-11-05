@@ -53,7 +53,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Recognition/PictureCutter.cs` | The value's cut-out for the page, within 640 px and 64 KB |
 | `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder`, `FrameVote`, `TwoFrames` |
 | `Frames/` | `VapixFrameSource` (reopen pause 1 s doubling to 1 min, stall 3 s, request 15 s), `MjpegParser` |
-| `Events/` | The events "Text read" and "Reader problem" per reader, "Any reader problem", the action "Read text" |
+| `Events/` | The events "Text read", "No text read" and "Reader problem" per reader, "Any reader problem", the action "Read text" |
 
 ## Methods
 
@@ -61,6 +61,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 |---|---|---|
 | `listReaders` | show | The caller's readers with their last text and problem; the frame rates and watching limit of now |
 | `getReader` | show | One reader of the caller |
+| `readNow` | change | An On action reader reads one picture now with the real events, audited |
 | `saveReader` | change | Field errors as `{"errors":[{"field","message"}]}`; counts the watching readers per site (system access) |
 | `deleteReader` | change | Deletes; its event type goes |
 | `startPreview` | show | Starts or keeps the page's preview of a draft: `{"previewId","reader"}` to `{"previewId","problem"}` |

@@ -20,7 +20,7 @@ namespace Oadm.Plugins.Ocr.Client;
 /// </summary>
 public sealed partial class OcrViewModel : ObservableObject, IDisposable
 {
-    /// <summary>"oadm.ocr:change": New, Delete, Save, the settings.</summary>
+    /// <summary>"oadm.ocr:change": New, Delete, Save, Read now, the settings.</summary>
     public static readonly string ChangePermissionKey = OcrInfo.PluginId + ":" + OcrInfo.ChangePermission;
 
     private readonly ICorePluginClientContext _ctx;

@@ -58,7 +58,7 @@ public sealed class ReadTextAction(OcrPlugin owner) : IActionPlugin
         try
         {
             var reading = await owner.ReadOnceAsync(reader, ct).ConfigureAwait(false);
-            ctx.Log(string.Join("; ", reading.Reading.Areas.Select(a => $"{a.Area}: {(a.Text.Length == 0 ? "no text" : TextReadEvents.Join(a.Text))}")));
+            ctx.Log(string.Join("; ", reading.Reading.Areas.Select(a => $"{a.Area}: {(a.Text.Length > 0 ? TextReadEvents.Join(a.Text) : a.TextRead.Length > 0 ? TextReadEvents.Join(a.TextRead) : "no text")}")));
         }
         catch (InvalidOperationException ex) when (ex.Message == OcrInfo.AlreadyReading)
         {

@@ -49,6 +49,27 @@ public sealed class SplitServerTests
     }
 
     [Fact]
+    public void No_text_read_blanks_only_its_area_and_is_no_event_of_the_catalog()
+    {
+        const string TextRead = DashboardsPlugin.TextReadTypePrefix + "r1";
+        const string NoText = DashboardsPlugin.NoTextTypePrefix + "r1";
+        using var host = new PluginHost(DashboardsPluginInfo.MaxKeys);
+        host.Feed.ChangeTypes(types =>
+        {
+            types.Add(Types.Reader(TextRead, "Text read", Camera, "Gate", "Yard"));
+            types.Add(Types.Reader(NoText, "No text read", Camera, "Gate", "Yard"));
+        });
+        host.Feed.Publish(TextRead, Camera, PublishedEventKind.Fired, ("area", "Gate"), ("text", "AAAU 123456 7"));
+        host.Feed.Publish(TextRead, Camera, PublishedEventKind.Fired, ("area", "Yard"), ("text", "MSKU 765432 1"));
+
+        host.Feed.Publish(NoText, Camera, PublishedEventKind.Fired, ("area", "Gate"));
+
+        Assert.Equal(string.Empty, host.Plugin.Snapshot(new ValueKey(TextRead, Camera, "Gate")).Data["text"]);
+        Assert.Equal("MSKU 765432 1", host.Plugin.Snapshot(new ValueKey(TextRead, Camera, "Yard")).Data["text"]);
+        Assert.DoesNotContain(host.Plugin.Catalog().Events, e => e.TypeId == NoText);
+    }
+
+    [Fact]
     public void Each_split_value_keeps_its_own_latest_value()
     {
         using var host = Host();

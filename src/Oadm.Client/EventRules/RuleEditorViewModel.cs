@@ -342,7 +342,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     /// <summary>The action "Log entry": a test of it would only write to the server log.</summary>
     internal const string LogEntryActionId = "oadm.notifications.log";
 
-    /// <summary>"Send test": only actions without devices (email, HTTP); device actions would change devices.</summary>
+    /// <summary>"Send test": actions without devices, except Log entry; device actions would change devices.</summary>
     public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
 
     [ObservableProperty]

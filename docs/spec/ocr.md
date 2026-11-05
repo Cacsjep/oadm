@@ -256,7 +256,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   of `docs/spec/event-rules.md` (equals, contains, starts with; greater or less than for Number and Confidence). The type
   declares the reader's camera as its fixed device (`FixedDeviceId`) and Area as its split field (`SplitField`): on a
   dashboard the event is chosen per reader, the widget takes the camera by itself and shows the area chosen in its Area
-  select ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)).
+  select ([bundled-plugins.md](bundled-plugins.md#dashboards-core-plugin)). No text read is no event there: it blanks the area's Text read values (`DashboardsPlugin.ClearedText`).
 - Event **Reader problem** per reader (same folder, stateful, on the reader's camera, decision 2026-11-04, issue #33): on at once
   while the reader's chip on the page is red (`ReaderRuntime.ProblemOf`), off when it reads again; no waiting time. Values:
   Reader (no check), Problem (the server's full text, the chip's tooltip). **Any reader problem** (folder Text recognition,
@@ -271,9 +271,9 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   (decision 2026-11-04), a save that restarts its stream too; an On action reader stays off until its next failed action. A plugin that is not loaded sends nothing: that is the host's event
   Optional plugin not loaded (`docs/spec/add-ons.md`).
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
-  in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). No text at all is never an empty Text read, for watching readers and the action alike (decision 2026-11-05: an empty event ran rules and its dead time held back the real read after it): the area fires the reader's own stateless event **No text read** (`oadm.ocr.no-text.<reader id>`, value Area, same tree folder), once when a watching area's text is gone (never for an area that was never read) and on every action. A format that did not match still fires Text read with the raw text.
+  in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). No text at all is never an empty Text read, for watching readers and the action alike (decision 2026-11-05: an empty event ran rules and its dead time held back the real read after it): the area fires the reader's own stateless event **No text read** (`oadm.ocr.no-text.<reader id>`, value Area, same tree folder), once when a watching area's value goes empty, whatever raw text the frame still holds (decision 2026-11-05; an area that has held no value stays quiet), and for every area with no text on each action, a watching reader's too. Text that does not match the format: a watching reader fires nothing for it; the action fires Text read with the raw text in Text read and Matches format No.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
-  at its save: "Choose a reader."). Reads one picture now and publishes Text read of every area with text and No text read of the others, changed or not (the event log line says "no text" for those); a reader
+  at its save: "Choose a reader."). Reads one picture now and publishes Text read of every area with text and No text read of the others, changed or not (the event log line gives the raw text on a mismatch, "no text" for an empty area); a reader
   without an area ends "The reader has no area. Draw one on the Text recognition page." and reads nothing. A watching
   reader answers with its own reading of at most 1 s ago (`ReaderRuntime.FreshReading`, the voted values), else with the
   reading its stream has in work once it ends, else with a picture of its own: its stream reads all the time, so the
@@ -379,7 +379,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   preview in both modes, at the reader's rate (On action: 1 per second), so the results follow while areas are set up.
   The page sends its draft as it is (saved or not, a new reader too): on every change and every 10 s as the keep-alive
   (`startPreview`); the server takes new areas without opening the stream again, a new camera, source, resolution or
-  rate opens it again. A preview publishes **no** events: the rule events come from Watching, the action and Read now. **Read now** (decision 2026-11-05; the zap icon right of the Mode select, only for a saved On action reader whose draft is On action too and with "Change text readers", `OcrMethods.ReadNow`, audited) reads one picture and fires the real Text read events like the action, so the rules on the reader run; a watching reader is refused.
+  rate opens it again. A preview publishes **no** events: the rule events come from Watching, the action and Read now. **Read now** (decision 2026-11-05; the zap icon right of the Mode select, only for a saved On action reader whose draft is On action too and with "Change text readers", `OcrMethods.ReadNow`, audited) reads one picture and fires the real Text read and No text read events like the action, so the rules on the reader run; a watching reader is refused.
   - The draft is read as far as it can be (`ReaderRules.PreviewOf`): camera and resolution must be right; areas outside
     the picture are left out, a missing area name reads as "Area 2", a format with a problem reads any text, a frame rate
     not offered the default.
@@ -572,7 +572,7 @@ server, the traffic light ("Runtime stats") is the real guard.
 ## Permissions
 
 - **View text recognition**: the page, the readers and their results. Pause needs the host's **Live view** too.
-- **Change text readers**: New, Delete, Save, moving and drawing areas, Use GPU (with all devices).
+- **Change text readers**: New, Delete, Save, Read now, moving and drawing areas, Use GPU (with all devices).
 - Running the action is part of the event rules' own permissions.
 
 ## Accuracy
@@ -966,7 +966,7 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
 - Limits: at most `max(1, cores / 2)` workers held by a gate, one session set shared by all calls, 3 large text finder calls at once, a frame beside another only with room, in order (`WatchingTests`); 50 readers, the watching readers by the cores (4 per worker, 8 to 50) and 4 per site, a reader beyond them with the limit as its problem, the saved readers before the previews' own streams, 2 previews per user; GPU fallback to the CPU; the accuracy set and its score; device groups; Use GPU only with all devices.
 - MJPEG parsing from a recorded `multipart/x-mixed-replace` answer (boundary, Content-Length, a part without it).
 - End to end with the real parts (`EndToEndTests`): recorded pictures of the coffee box through a watching reader give
-  each value once and an empty value once when the box is gone; the action Read text reads a container number with its
+  each value once and No text read once when the box is gone; the action Read text reads a container number with its
   format and the page gets its cut-out.
 - The model sources: `Models.targets` and `Models/README.md` name the same files, revisions and SHA-256.
 - Speeds (`RecognitionSpeedTests`, `RecognitionBenchmarkTests` and `OneReaderSpeedTests` with the time and CPU of each stage, Perf, not in `manage

@@ -131,6 +131,31 @@ public sealed class WatchingTests
     }
 
     [Fact]
+    public async Task AValueGoneIsNoTextReadEvenWhileTheFrameStillHoldsOtherText()
+    {
+        await using var ocr = new OcrHarness(matcher: new LogoIsNoMatch());
+        await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
+        await WatchAsync(ocr, ocr.NewReader("Gate", ReaderMode.Watching) with { Fps = 2 });
+
+        foreach (var text in new[] { "MSCU", "MSCU", "MSCU", "logo", "logo", "logo", "logo", "", "", "", "", "" })
+        {
+            await ocr.SendAndWaitAsync(ocr.Inside.Id, text);
+        }
+
+        Assert.Equal(["MSCU"], Texts(ocr));
+        Assert.Single(ocr.NoText);
+    }
+
+    private sealed class LogoIsNoMatch : ITextMatcher
+    {
+        public AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected)
+        {
+            var raw = string.Join("\n", lines.Select(l => l.Text));
+            return raw == "logo" ? new(new AreaMatch(string.Empty, false, raw), [], 0, null) : new(new AreaMatch(raw, raw.Length > 0, raw), raw.Length > 0 ? [raw] : [], 90, null);
+        }
+    }
+
+    [Fact]
     public async Task EveryAreaVotesOnItsOwn()
     {
         await using var ocr = await OcrHarness.StartAsync();

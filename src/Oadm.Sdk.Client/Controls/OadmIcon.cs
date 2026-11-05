@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
-using Avalonia.Rendering;
 
 namespace Oadm.Sdk.Client.Controls;
 
@@ -11,7 +10,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// scaled to the control size, so all icons share one optical size and stroke width. The whole area takes the pointer,
 /// not only the drawn lines, so a tooltip on an icon opens reliably.
 /// </summary>
-public sealed class OadmIcon : Control, ICustomHitTest
+public sealed class OadmIcon : Control
 {
     public static readonly StyledProperty<Geometry?> DataProperty =
         AvaloniaProperty.Register<OadmIcon, Geometry?>(nameof(Data));
@@ -50,12 +49,10 @@ public sealed class OadmIcon : Control, ICustomHitTest
 
     protected override Size MeasureOverride(Size availableSize) => new(16, 16);
 
-    /// <summary>The whole area takes the pointer, not only the drawn lines.</summary>
-    public bool HitTest(Point point) => new Rect(Bounds.Size).Contains(point);
-
     public override void Render(DrawingContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        context.FillRectangle(Brushes.Transparent, new Rect(Bounds.Size)); // invisible: the whole area takes the pointer
         Geometry? data = Data;
         IBrush? brush = Foreground;
         if (data is null || brush is null)

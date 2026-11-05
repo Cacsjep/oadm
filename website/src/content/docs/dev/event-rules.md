@@ -59,7 +59,7 @@ the dialog and on the server.
   event by its name (`{port}`). `ctx.Text(text,
   PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL.
 - `Password` fields are stored encrypted and never sent back to a client. `ctx.Settings` are the plugin's settings.
-- An action without devices gets **Send test** in the rule dialog, with sample values.
+- An action without devices gets **Send test** in the rule dialog, with sample values (Log entry is the one exception).
 
 A core plugin can contribute actions through `IActionSource.ActionPlugins`; they share its state and settings and are
 available while the plugin is on. VAPIX Commander's "Run VAPIX command" works this way.

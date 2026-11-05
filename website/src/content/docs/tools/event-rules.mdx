@@ -100,7 +100,7 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Log entry**: writes a message to the server log (**Logs** page, **Server**) and does nothing else. Good for testing
   a rule.
 - **Read text**: reads one picture with a reader of [Text recognition](../text-recognition/events/#action-read-text) now
-  and sends its **Text read** events. No devices to choose: the reader names its camera.
+  and sends its **Text read** and **No text read** events. No devices to choose: the reader names its camera.
 
 Email, HTTP and TCP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
 message when it ends; `{state}` tells which one it is.

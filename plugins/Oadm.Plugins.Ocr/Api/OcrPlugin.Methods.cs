@@ -99,8 +99,16 @@ public sealed partial class OcrPlugin
                 await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
 
                 // The rule's time for an action, not the call's: a closed page is no timeout of the reader.
-                using var timeout = new CancellationTokenSource(OcrLimits.ReadNowTimeout);
-                await runtime.ReadOnceAsync(reader, timeout.Token).ConfigureAwait(false);
+                using var timeout = new CancellationTokenSource(OcrLimits.ReadNowTimeout, _parts.Time);
+                try
+                {
+                    await runtime.ReadOnceAsync(reader, timeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException ex) when (timeout.IsCancellationRequested)
+                {
+                    throw new InvalidOperationException(DeviceMessages.TimedOut, ex);
+                }
+
                 return "{}";
             }
 

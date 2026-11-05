@@ -24,7 +24,7 @@ public static class OcrInfo
     /// </summary>
     public const string ViewPermissionName = "View text recognition";
 
-    /// <summary>"Change text readers": New, Delete, Save ("oadm.ocr:change").</summary>
+    /// <summary>"Change text readers": New, Delete, Save, Read now ("oadm.ocr:change").</summary>
     public const string ChangePermission = "change";
 
     public const string ChangePermissionName = "Change text readers";
@@ -143,7 +143,7 @@ public static class OcrMethods
     public const string DeleteReader = "deleteReader";
 
     /// <summary>
-    /// <see cref="ReaderRequest"/> -> {}: an On action reader reads one picture now and fires its real Text read events, so
+    /// <see cref="ReaderRequest"/> -> {}: an On action reader reads one picture now and fires its real Text read and No text read events, so
     /// the rules on it run (the same as the action Read text; refused for a watching reader). Change, audited.
     /// </summary>
     public const string ReadNow = "readNow";

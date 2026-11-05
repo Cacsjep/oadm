@@ -712,6 +712,31 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
     /// <summary>The plugin's own events (its buttons): never values of a dashboard.</summary>
     private static bool IsOwn(string typeId) => typeId.StartsWith(DashboardsPluginInfo.ButtonTypePrefix, StringComparison.Ordinal);
 
+    /// <summary>Text recognition's event for an area without text (ids as in its OcrInfo): no value of its own.</summary>
+    internal const string NoTextTypePrefix = "oadm.ocr.no-text.";
+
+    /// <summary>Text recognition's event with the area's text.</summary>
+    internal const string TextReadTypePrefix = "oadm.ocr.text-read.";
+
+    /// <summary>
+    /// No text read of an area, as the empty Text read of that area: the widgets and tables on the area's text go blank
+    /// (Text read itself is never empty). Every other event as it is.
+    /// </summary>
+    internal static PublishedEvent ClearedText(PublishedEvent published) => !published.TypeId.StartsWith(NoTextTypePrefix, StringComparison.Ordinal) ? published : published with
+    {
+        TypeId = TextReadTypePrefix + published.TypeId[NoTextTypePrefix.Length..],
+        Data = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["area"] = published.Data.GetValueOrDefault("area") ?? string.Empty,
+            ["text"] = string.Empty,
+            ["textRead"] = string.Empty,
+            ["allMatches"] = string.Empty,
+            ["number"] = string.Empty,
+            ["confidence"] = "0",
+            ["matchesFormat"] = "No",
+        },
+    };
+
     // ------------------------------------------------------------------ events and values
 
     private void OnEvent(PublishedEvent published)
@@ -721,6 +746,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
             return; // a button's press is no value to show
         }
 
+        published = ClearedText(published);
         var newField = published.Data.Keys.Any(k => !_values.HasField(published.TypeId, k));
         var split = Types().GetValueOrDefault(published.TypeId) is { } type && EventShape.SplitFieldOf(type.Info) is { } field
             ? published.Data.GetValueOrDefault(field.Name)
@@ -967,9 +993,10 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
         foreach (var type in Types().Values)
         {
             var info = type.Info;
-            if (type.SourceId == DashboardsPluginInfo.PluginId || IsOwn(info.Id) || (reach is not null && !reach.Sees(type)))
+            if (type.SourceId == DashboardsPluginInfo.PluginId || IsOwn(info.Id) || info.Id.StartsWith(NoTextTypePrefix, StringComparison.Ordinal)
+                || (reach is not null && !reach.Sees(type)))
             {
-                continue; // the buttons' own events are no values; a group user sees only the group's events
+                continue; // the buttons' and No text read are no values; a group user sees only the group's events
             }
 
             var shape = EventShape.Of(info);

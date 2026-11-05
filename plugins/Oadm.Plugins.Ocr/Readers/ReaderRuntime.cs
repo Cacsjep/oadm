@@ -347,7 +347,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     {
         for (var i = 0; i < reading.Reading.Areas.Count && i < reading.Details.Count; i++)
         {
-            Fire(reader, reading.Reading.Areas[i], reading.Details[i]);
+            Fire(reader, reading.Reading.Areas[i], reading.Details[i], hasText: reading.Reading.Areas[i] is { } area && (area.Text.Length > 0 || area.TextRead.Length > 0));
         }
     }
 
@@ -864,7 +864,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
             {
                 // The same moment as its event.
                 AddRead(ReadsOf(reader.Id), reader, i, areas[i], decisions[i].Seen, read.Reading.Time);
-                Fire(reader, areas[i], details[i]);
+                Fire(reader, areas[i], details[i], hasText: areas[i].Text.Length > 0); // a value gone, whatever raw text this frame holds
             }
         }
 
@@ -970,13 +970,13 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     }
 
     /// <summary>
-    /// The event of one area. Nothing read is the event No text read, never an empty Text read: that would run the rules on
-    /// real reads and start their dead time, so the real read right after it would be held back. A format that did not match
-    /// still fires Text read, with the raw text in Text read.
+    /// The event of one area. No text is the event No text read, never an empty Text read: that would run the rules on real
+    /// reads and start their dead time, so the real read right after it would be held back. <paramref name="hasText"/>: a
+    /// watching area has a value; the action also counts text that did not match the format, with the raw text in Text read.
     /// </summary>
-    private void Fire(Reader reader, AreaResult area, AreaDetails details)
+    private void Fire(Reader reader, AreaResult area, AreaDetails details, bool hasText)
     {
-        if (area.Text.Length > 0 || area.TextRead.Length > 0)
+        if (hasText)
         {
             _ctx.EventPublisher?.Fire(OcrInfo.TextReadTypeId(reader.Id), reader.DeviceId, TextReadEvents.Data(area, details));
         }

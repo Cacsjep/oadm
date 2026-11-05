@@ -621,7 +621,7 @@ their own, matched by the MAC address in the key), and changes the settings an a
 version and a valid license; the choices are read from one device.
 
 - Rules that must hold: before uploading it reads the package manifest and refuses ("Nothing was changed") a wrong
-  architecture, an AXIS OS outside the package's range or below its schema minimum, root apps on AXIS OS 12+ and a
+  architecture, an AXIS OS outside the package's range (without a range: below its schema minimum), root apps on AXIS OS 12+ and a
   downgrade without the explicit option; a license key is sent only to the device whose MAC address it names, for the
   installed application's id and not expired (a device without a key: Done with warnings, nothing sent); activation with
   a license code is not offered (the device has no API for it, its web page asks Axis online). Several packages: same

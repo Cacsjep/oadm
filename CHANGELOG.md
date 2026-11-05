@@ -16,7 +16,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Text recognition: new readers start at 4 frames per second, so a text change shows after about a second.
-- Text recognition: Text read fires only when text was read, so an empty read no longer runs a rule or holds back the next read.
+- Text recognition: Text read fires only when text was read, so an empty read no longer runs a rule or holds back the next read. Move a rule that alerts on a failed read to No text read.
 
 ### Fixed
 

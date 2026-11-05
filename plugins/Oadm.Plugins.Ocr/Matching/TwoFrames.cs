@@ -6,7 +6,7 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// One area of a reader with Moving objects (docs/spec/ocr.md "Moving objects"): no vote; a value counts once it was read in
 /// <see cref="OcrLimits.EqualFramesToPublish"/> frames in a row and comes from the frame that confirmed it, so its row, event,
 /// cut-out and box all belong to it. A value seen once changes nothing; a value that stays is published once; an area that
-/// becomes empty publishes once with an empty text. Keeps no frame but the one of the value it stands for. Not thread-safe:
+/// becomes empty publishes once with an empty text (No text read). Keeps no frame but the one of the value it stands for. Not thread-safe:
 /// one per area, fed by the reader's one reading at a time.
 /// </summary>
 public sealed class TwoFrames

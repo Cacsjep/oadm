@@ -1,7 +1,7 @@
 # Notifications (`oadm.notifications`)
 
 Event rule actions, server only, always on. Four actions without devices: they run once each time the rule turns on
-or fires, and, when "Also send when the rule turns off" is checked, also when a stateful rule turns off (`RunsOn`).
+or fires, and, when "Also send when the rule turns off" ("Also write" for Log entry) is checked, also when a stateful rule turns off (`RunsOn`).
 Spec: [Event rules](../../docs/spec/event-rules.md).
 
 ## Decisions

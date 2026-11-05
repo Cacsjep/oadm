@@ -58,7 +58,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>"Read text".</summary>
     public IReadOnlyList<IActionPlugin> ActionPlugins { get; }
 
-    /// <summary>The events "Text read" and "Reader problem" of every reader and "Any reader problem"; none while the plugin is stopped.</summary>
+    /// <summary>The events "Text read", "No text read" and "Reader problem" of every reader and "Any reader problem"; none while the plugin is stopped.</summary>
     public IReadOnlyList<EventTypeInfo> EventTypes => _store is null
         ? []
         : [.. AllReaders.Select(TextReadEvents.TypeOf), .. AllReaders.Select(TextReadEvents.NoTextTypeOf), .. AllReaders.Select(ReaderProblemEvents.TypeOf), ReaderProblemEvents.AnyType];

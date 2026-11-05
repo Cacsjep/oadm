@@ -119,6 +119,24 @@ public sealed class ReadTextActionTests
     }
 
     [Fact]
+    public async Task ReadNowThatTakesTooLongSaysSoInPlainWords()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
+        ocr.Frames.Single = "0815";
+        using var gate = new SemaphoreSlim(0);
+        ocr.Recognizer.Gate = gate;
+
+        var call = ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id });
+        await Eventually.TrueAsync(() => ocr.Recognizer.Started == 1, "the reading started");
+        ocr.Time.Advance(OcrLimits.ReadNowTimeout);
+
+        var failed = await Assert.ThrowsAsync<InvalidOperationException>(() => call);
+        Assert.Equal(Oadm.Sdk.Devices.DeviceMessages.TimedOut, failed.Message);
+        Assert.Empty(ocr.TextRead);
+    }
+
+    [Fact]
     public async Task ReadNowRefusesAWatchingReaderAndAnUnknownOne()
     {
         await using var ocr = await OcrHarness.StartAsync();

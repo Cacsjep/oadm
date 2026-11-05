@@ -68,10 +68,11 @@ rule, so it never uses up the dead time of a rule on real reads.
 
 | Reader | Fires |
 |---|---|
-| **Watching** | Once when the text has left an area, after the same vote as **Text read**. Never for an area that has not read text yet |
-| **On action** | For every area with no text, every time **Read text** runs |
+| **Watching** | Once when an area's value is gone, after the same vote as **Text read**, also while other text is in the area |
+| **Read text** | For every area with no text, each time it runs, on any reader |
 
-Text that does not match the format is not **No text read**: it fires **Text read** with **Matches format** no.
+With **Read text**, text that does not match the format is not **No text read**: it fires **Text read** with **Matches format**
+no. A watching reader sends nothing for such text.
 
 ## Event: Reader problem
 
@@ -93,7 +94,7 @@ new. Use **Reader problem** to hear of each reader.
 ## Action: Read text
 
 **Read text**, in the group **Text recognition**, reads one picture of the chosen **Reader** now and sends **Text read**
-for each area. The event log lists what each area read.
+or **No text read** for each area. The event log lists what each area read.
 
 | Reader | Result |
 |---|---|
@@ -138,7 +139,7 @@ Each rule starts with **New rule** in [Event rules](../../event-rules/). **When*
 
 </Steps>
 
-Each widget shows one area, and a table lists only that area's reads. A widget whose area was renamed or deleted says **Area
+Each widget shows one area and goes blank when its text is gone, and a table lists only that area's reads. A widget whose area was renamed or deleted says **Area
 no longer exists**: choose the area again in its settings.
 
 To read on demand, put a button on a [dashboard](../../dashboards/) whose rule runs **Read text**.

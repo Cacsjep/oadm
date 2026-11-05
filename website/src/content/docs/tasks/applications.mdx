@@ -95,8 +95,7 @@ Before anything is uploaded, OADM reads the package and the device and refuses (
 
 - the package is not a valid `.eap` file, or a ZIP file holds none,
 - the package is built for another processor type,
-- the device's AXIS OS is outside the versions the package names (older packages often name none: then the device
-  decides),
+- the device's AXIS OS is outside the versions the package names, or below what its manifest needs when it names none,
 - the package runs as root and the device has AXIS OS 12 or later,
 - the package is older than the installed version and **Allow downgrade** is off,
 - the application is part of AXIS OS (bundled), for **Remove**.
