@@ -86,6 +86,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" (each to a recipient) and "Log entry"
+  Oadm.Plugins.Mqtt/                      event rule action "Publish MQTT message" and the recipient type MQTT (MQTTnet, one connection per recipient)
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server

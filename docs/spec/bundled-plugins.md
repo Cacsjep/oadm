@@ -646,3 +646,9 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   placeholders in a target; placeholder values are escaped for where
   they go, never the text around them; passwords and tokens are stored encrypted; untrusted certificates only with
   "Allow untrusted certificates" (off by default).
+- **MQTT** (`plugins/Oadm.Plugins.Mqtt`, id `oadm.mqtt`, library MQTTnet): the action **Publish MQTT message** without devices,
+  and the recipient type MQTT, one connection per recipient that its rules share ([recipient-sessions.md](recipient-sessions.md)).
+  Rules that must hold: output only, nothing subscribes; the topic is checked after its placeholders are filled, and empty, `+`,
+  `#` or NUL sends nothing; QoS 1 and 2 wait for the broker's acknowledge and a refusal fails the action; the plugin never
+  reconnects, the pool does; TLS is off by default and always runs the plugin's own certificate check (a Trusted CA replaces the
+  operating system's roots, the host name must still match).
