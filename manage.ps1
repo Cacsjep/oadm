@@ -159,7 +159,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
         }
         'test' {
             if (-not $script:Target) { $script:Target = 'unit' }
-            if ($script:Target -cnotin 'unit', 'perf', 'hardware', 'all') { Exit-Usage test "unknown target '$($script:Target)' for test" }
+            if ($script:Target -cnotin 'unit', 'perf', 'hardware', 'recipients', 'all') { Exit-Usage test "unknown target '$($script:Target)' for test" }
         }
         'publish' {
             if (-not $script:Target) { $script:Target = 'all' }
@@ -474,8 +474,21 @@ function Invoke-Run {
     }
 }
 
+# The real MQTT, Modbus and OPC UA servers in Docker: tests/RecipientStack, connect and write once to each.
+function Invoke-TestRecipients {
+    $compose = Join-Path $RepoRoot 'tests/RecipientStack/docker-compose.yml'
+    & docker compose -f $compose up -d
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    try {
+        Invoke-Dotnet (@('test', (Join-Path $RepoRoot 'tests/Oadm.RecipientStack.Tests/Oadm.RecipientStack.Tests.csproj'), '-c', $script:Configuration, '--filter', 'Category=RecipientStack') + $script:Extra)
+    } finally {
+        & docker compose -f $compose down
+    }
+}
+
 function Invoke-Test {
     Initialize-Dotnet
+    if ($script:Target -ceq 'recipients') { Invoke-TestRecipients; return }
     switch ($script:Target) {
         'unit' { $filter = 'Category!=Hardware&Category!=Perf&Category!=HardwareWrite' }
         'perf' { $filter = 'Category=Perf' }
@@ -563,7 +576,7 @@ function Invoke-Publish {
     }
     if ($script:Target -in 'all', 'client') {
         $out = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
-        Publish-App $ClientProject $out
+        Publish-App $ClientProject $out @('-p:IncludeNativeLibrariesForSelfExtract=false') # beside the exe: no unpacking at the first start
         Copy-Plugins $out
         # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
         if (Test-Path -LiteralPath (Join-Path $DocsOffline 'index.html')) {
@@ -714,6 +727,8 @@ function Invoke-PackageAddOns {
             Limit-RuntimeFolders $stage $rid
             # Build leftovers of the native packages: never needed at run time.
             Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -in 'DirectML.Debug.dll', 'DirectML.Debug.pdb', 'DirectML.pdb', 'onnxruntime.lib' } | Remove-Item -Force
+            # The ONNX Runtime packages copy their Windows libraries everywhere.
+            if ($rid -notlike 'win-*') { Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'onnxruntime*.dll' | Remove-Item -Force }
             # The release it belongs to: the server records a folder put in by hand with this version.
             [IO.File]::WriteAllText((Join-Path $stage 'oadm-version.txt'), "$version`n")
             # What it was built from: a later OADM with the same fingerprint has nothing new for it.

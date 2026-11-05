@@ -48,7 +48,11 @@ public sealed partial class PkiService
     /// by issuer one part per CA (the CAs' order, then Other CA), each part in the fixed order; the reply counts the groups
     /// over every page.
     /// </summary>
-    internal CertificatesReply GetCertificates(CertificatesRequest request, IReadOnlyList<IDeviceInfo> devices, bool onlyListed)
+    /// <param name="request">The page.</param>
+    /// <param name="devices">The caller's devices.</param>
+    /// <param name="onlyListed">Only certificates of those devices.</param>
+    /// <param name="recipients">The recipients per certificate (<see cref="RecipientUsesAsync"/>), read once per request; null: no names.</param>
+    internal CertificatesReply GetCertificates(CertificatesRequest request, IReadOnlyList<IDeviceInfo> devices, bool onlyListed, RecipientUses? recipients = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(devices);
@@ -72,7 +76,7 @@ public sealed partial class PkiService
             Limit = limit,
         };
         var warningDays = WarningDaysFor([.. byId.Values]);
-        var extras = onlyListed ? [] : ExtraRows(query, issuers);
+        var extras = onlyListed ? [] : ExtraRows(query, issuers, recipients);
         if (request.NoAuthorities)
         {
             extras.RemoveAll(e => e.Row.Kind == ListedCertificateKind.Authority);
@@ -199,7 +203,7 @@ public sealed partial class PkiService
     };
 
     /// <summary>The rows before the device certificates that match the query (filters and search), in the list's order.</summary>
-    private List<ExtraRow> ExtraRows(IssuedCertificateQuery query, IssuerIndex issuers)
+    private List<ExtraRow> ExtraRows(IssuedCertificateQuery query, IssuerIndex issuers, RecipientUses? recipients)
     {
         if (query.Source is not null)
         {
@@ -214,6 +218,11 @@ public sealed partial class PkiService
         {
             var known = ca.Row.AuthorityId is { } authorityId && authorities.TryGetValue(authorityId, out var found) ? found : null;
             var usedBy = known is null ? [] : AuthorityUsedBy(known);
+            if (recipients?.Text(ca.Row.Id!) is { } recipient)
+            {
+                usedBy.Add(recipient);
+            }
+
             var usedIn = known is null ? [] : UsedIn(known);
             all.Add(Extra(ca.Row with
             {
@@ -264,6 +273,7 @@ public sealed partial class PkiService
             || Policies.ShowingCertificate(l.Stored.Id) is not null))
         {
             var issuer = issuers.Of(local.Stored.IssuerFingerprint);
+            var usedBy = LocalUsedBy(local, recipients);
             all.Add(Extra(new IssuedCertificateInfo
             {
                 Id = local.RowId,
@@ -274,8 +284,8 @@ public sealed partial class PkiService
                 IssuedBy = issuer.Id == OtherIssuerId ? local.IssuerName : issuer.Name,
                 IssuerId = issuer.Id,
                 KeyText = local.KeyText,
-                UsedBy = Policies.ShowingCertificate(local.Stored.Id) is { } showing ? PolicyKinds.Name(showing.Kind) : null,
-                UsedByBadges = Policies.ShowingCertificate(local.Stored.Id) is { } shown ? [PolicyKinds.Name(shown.Kind)] : null,
+                UsedBy = usedBy.Count == 0 ? null : string.Join("; ", usedBy),
+                UsedByBadges = usedBy.Count == 0 ? null : [.. usedBy.Select(u => u.Contains(':', StringComparison.Ordinal) ? UsedByGroup(u) : u)],
                 NotBeforeUtc = local.NotBeforeUtc,
                 NotAfterUtc = local.NotAfterUtc,
                 IssuedUtc = local.Stored.AddedUtc,

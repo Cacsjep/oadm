@@ -50,8 +50,8 @@
     FFmpeg natives: one runtime package per RID. Publish (-r RID) uses that RID; a plain build uses
     the host platform so `dotnet run` and the tests decode too. Only the decoder libraries are kept
     (avcodec, avutil, swscale and swresample which avcodec links against); ffmpeg/ffprobe
-    executables, avformat, avfilter and avdevice are dropped. With PublishSingleFile and
-    IncludeNativeLibrariesForSelfExtract they end up inside the exe.
+    executables, avformat, avfilter and avdevice are dropped. The published client keeps them beside
+    the exe: IncludeNativeLibrariesForSelfExtract would unpack them at the first start of every build.
   -->
   <PropertyGroup>
     <OadmFfmpegRid>$(RuntimeIdentifier)</OadmFfmpegRid>

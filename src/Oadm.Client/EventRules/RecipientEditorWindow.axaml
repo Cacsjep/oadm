@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Client.EventRules"
+        x:Class="Oadm.Client.EventRules.RecipientEditorWindow"
+        x:DataType="vm:RecipientEditorViewModel"
+        Title="{Binding Title}"
+        Width="640" SizeToContent="Height" MaxHeight="860"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- One form: Type (only for a new one), Name, the type's fields; the result of Test as text next to its button. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <Border Classes="dialogBody">
+        <StackPanel Classes="form">
+          <ui:FormField Classes="wide" Label="Type" IsVisible="{Binding IsNew}">
+            <ComboBox ItemsSource="{Binding Types}" SelectedItem="{Binding SelectedType}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Classes="wide" Label="Name">
+            <TextBox x:Name="NameBox" Text="{Binding Name}" />
+          </ui:FormField>
+          <vm:SettingsFormView Fields="{Binding Fields}" />
+          <TextBlock Classes="error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+    </ScrollViewer>
+    <ui:LoadingOverlay Grid.Row="1" Text="Reading certificates" IsVisible="{Binding ShowCertificatesLoading}" />
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <ui:StatusChip Text="{Binding TestResult}" IsOk="{Binding TestOk}" IsError="{Binding TestFailed}" IsAccent="{Binding IsTesting}"
+                     MaxLines="2" MaxWidth="340" ToolTip.Tip="{Binding TestResult}" IsVisible="{Binding HasTestResult}" VerticalAlignment="Center" />
+      <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="{Binding TestTip}">
+        <ui:IconLabel Icon="{StaticResource Icon.send}" Text="Test" />
+      </Button>
+      <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

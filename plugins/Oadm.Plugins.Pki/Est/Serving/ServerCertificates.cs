@@ -109,24 +109,8 @@ public sealed class ServerCertificates(Func<IDeviceCertificateAuthority?> author
     private static string Label(X509Certificate2 certificate) =>
         $"{certificate.GetNameInfo(X509NameType.SimpleName, false)} ({certificate.GetNameInfo(X509NameType.SimpleName, true)}), until {certificate.NotAfter.ToUniversalTime():yyyy-MM-dd}";
 
-    private static X509Certificate2 WithKey(Oadm.Plugins.Pki.ServerCertificateMaterial material)
-    {
-        using var publicOnly = X509CertificateLoader.LoadCertificate(material.Leaf);
-        using var key = publicOnly.GetECDsaPublicKey() is { } ecPublic ? Ecdsa(ecPublic, material.Pkcs8) : null;
-        using var rsa = key is null ? RSA.Create() : null;
-        rsa?.ImportPkcs8PrivateKey(material.Pkcs8, out _);
-        using var withKey = key is not null ? publicOnly.CopyWithPrivateKey(key) : publicOnly.CopyWithPrivateKey(rsa!);
-        // Through PKCS#12, so Windows TLS can use the key (an in-memory key fails there).
-        return X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx), null, X509KeyStorageFlags.Exportable);
-
-        static ECDsa Ecdsa(ECDsa ecPublic, byte[] pkcs8)
-        {
-            ecPublic.Dispose();
-            var ec = ECDsa.Create();
-            ec.ImportPkcs8PrivateKey(pkcs8, out _);
-            return ec;
-        }
-    }
+    private static X509Certificate2 WithKey(Oadm.Plugins.Pki.ServerCertificateMaterial material) =>
+        Oadm.Plugins.Pki.Certificates.LocalCertificates.WithKey(material.Leaf, material.Pkcs8);
 
     /// <summary>This server's addresses (unicast, network cards that are up, no loopback or IPv6 link-local).</summary>
     public static IReadOnlyList<string> LocalAddresses()

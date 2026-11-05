@@ -87,6 +87,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
         _service = service;
         ctx.Services?.Offer<IDeviceCertificateAuthority>(new PkiCertificateAuthority(service)); // the OADM CA for EST and others
         ctx.Services?.Offer(service.Policies); // the policies for the 802.1X server inside PKI (in process, no SDK contract)
+        service.RecipientCertificateUse = () => ctx.Services?.Find<IRecipientCertificateUse>();
+        ctx.Services?.Offer<IRecipientCertificates>(new PkiRecipientCertificates(service)); // the certificates of recipients, for the host
         if (ctx.EventPublisher is { } publisher)
         {
             var expiry = new ExpiryEvents(service.Policies, service.SystemDevicesAsync, publisher, _options.Time, ctx.Logger);
@@ -244,7 +246,8 @@ public sealed class PkiPlugin : ICorePlugin, ICorePluginDownloads, IEventSource,
             {
                 // The caller's devices: every device for a user with all devices (rows of removed devices too), else the group's.
                 var devices = await caller.Devices.ListAsync(ct).ConfigureAwait(false);
-                return PkiJson.Serialize(service.GetCertificates(PkiJson.Deserialize<CertificatesRequest>(payloadJson), devices, onlyListed: !caller.HasAllDevices));
+                var recipients = caller.HasAllDevices ? await service.RecipientUsesAsync(ct).ConfigureAwait(false) : null; // a group's users get only device rows
+                return PkiJson.Serialize(service.GetCertificates(PkiJson.Deserialize<CertificatesRequest>(payloadJson), devices, onlyListed: !caller.HasAllDevices, recipients));
             }
 
             case PkiMethods.GetCertificate:

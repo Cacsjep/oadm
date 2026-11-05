@@ -157,6 +157,33 @@ public sealed class NoticesGeneratorTests : IDisposable
     }
 
     [Fact]
+    public void ALicenseFileThatNamesItselfIsListedByThatName()
+    {
+        const string License = "https://opcfoundation.org/license/mit.html\n\nMIT License\n\nOPC Foundation MIT License 1.00\n\nCopyright (c) 2005-2025 OPC Foundation, Inc.\n";
+        PackageInfo Read(string id, string version) => new(id, version, true, null, "LICENSE.txt", "https://aka.ms/deprecateLicenseUrl", null, null, null, [new PackageFile("LICENSE.txt", License)]);
+
+        var result = NoticesWriter.Build(
+            new NoticesOptions("1.0.0", null, "notes", []),
+            [new PackageUse("OPCFoundation.NetStandard.Opc.Ua.Core", "2.0.1", false, "plugin oadm.opcua"), new PackageUse("OPCFoundation.NetStandard.Opc.Ua.Client", "2.0.1", false, "plugin oadm.opcua")],
+            Read,
+            new LicenseTemplates(new Dictionary<string, string>()));
+
+        Assert.Contains("  License: OPC Foundation MIT License 1.00 (the file LICENSE.txt of the package, section 4)\n", result.Text, StringComparison.Ordinal);
+        Assert.Empty(result.Warnings);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(result.Text, "Copyright \\(c\\) 2005-2025 OPC Foundation"));
+    }
+
+    [Fact]
+    public void ALicenseFileWithoutAVersionedNameKeepsThePointerToTheFile()
+    {
+        PackageInfo Read(string id, string version) => new(id, version, true, null, "EULA.txt", null, null, null, null, [new PackageFile("EULA.txt", "You may use this. See the license for details.\n")]);
+
+        var result = NoticesWriter.Build(new NoticesOptions("1.0.0", null, "notes", []), [new PackageUse("Vendor.Lib", "1.0.0", false, "server")], Read, new LicenseTemplates(new Dictionary<string, string>()));
+
+        Assert.Contains("  License: see the file EULA.txt of the package (section 4)\n", result.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PackageLicenseFilesAreIncludedOnceAndTemplateCopiesAreSkipped()
     {
         var packages = new Dictionary<string, PackageInfo>

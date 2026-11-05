@@ -15,7 +15,7 @@ namespace Oadm.Client.Api;
 
 /// <summary>
 /// Fake mode: event rules in memory. The catalog has the built-in device status events, two sample device triggers and the
-/// two bundled actions; three sample rules (one on, one off) and a sample event log. No rule really runs; saving checks
+/// bundled actions; three sample rules (one on, one off), three recipients and a sample event log. No rule really runs; saving checks
 /// the basics like the server and logs a line.
 /// </summary>
 public sealed partial class FakeOadmApi
@@ -23,8 +23,11 @@ public sealed partial class FakeOadmApi
     private readonly List<RuleDefinition> _rules = [];
     private readonly Dictionary<string, (int Active, DateTime? LastFired)> _ruleStates = [];
     private readonly List<EventLogEntry> _eventLog = [];
+    private readonly List<RecipientEntry> _recipients = [];
     private readonly Broadcast<RuleList> _ruleEvents = new();
     private readonly Broadcast<EventLogPage> _eventLogEvents = new();
+    private readonly Broadcast<RecipientStatusList> _recipientStatusEvents = new();
+    private readonly List<RecipientStatusEntry> _recipientStatus = [];
     private long _eventLogId;
 
     private static readonly EventCatalog FakeCatalog = BuildFakeCatalog();
@@ -129,6 +132,12 @@ public sealed partial class FakeOadmApi
         catalog.Actions.Add(FakeEmailAction());
         catalog.Actions.Add(FakeTcpAction());
         catalog.Actions.Add(FakeLogEntryAction());
+        catalog.RecipientTypes.Add(FakeHttpRecipient());
+        catalog.RecipientTypes.Add(FakeEmailRecipient());
+        catalog.RecipientTypes.Add(FakeTcpRecipient());
+        catalog.RecipientTypes.Add(FakeMqttRecipient());
+        catalog.RecipientTypes.Add(FakeModbusRecipient());
+        catalog.RecipientTypes.Add(FakeOpcUaRecipient());
         return catalog;
     }
 
@@ -140,14 +149,10 @@ public sealed partial class FakeOadmApi
             Id = "oadm.notifications.http", DisplayName = "Send HTTP request", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
             Description = "Sends a request to a web service, for example a webhook of Teams, Slack or a building system.", Available = true, SourceName = "Notifications",
         };
+        http.Fields.Add(RecipientField(FakeHttpRecipientType));
         http.Fields.Add(Choice("method", "Method", "POST", ("GET", "GET"), ("POST", "POST"), ("PUT", "PUT"), ("PATCH", "PATCH"), ("DELETE", "DELETE")));
-        http.Fields.Add(new ActionFieldEntry { Key = "url", Label = "URL", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
         http.Fields.Add(new ActionFieldEntry { Key = "query", Label = "Query parameters", Kind = ActionFieldKind.ActionFieldKeyValues, MaxLength = 20_000 });
         http.Fields.Add(new ActionFieldEntry { Key = "headers", Label = "Headers", Kind = ActionFieldKind.ActionFieldKeyValues, MaxLength = 20_000 });
-        http.Fields.Add(Choice("auth", "Login", "none", ("none", "None"), ("basic", "Basic"), ("digest", "Digest"), ("bearer", "Bearer token")));
-        http.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 1000 });
-        http.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 256 });
-        http.Fields.Add(new ActionFieldEntry { Key = "token", Label = "Token", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 });
         http.Fields.Add(Choice("bodyType", "Body type", "json", ("none", "None"), ("json", "JSON"), ("xml", "XML"), ("text", "Text"), ("form", "Form")));
         http.Fields.Add(new ActionFieldEntry
         {
@@ -155,7 +160,6 @@ public sealed partial class FakeOadmApi
             MaxLength = 50_000, Hint = "Form: one name=value per line.",
             DefaultValue = "{\n  \"rule\": \"{rule}\",\n  \"event\": \"{event}\",\n  \"device\": \"{device}\",\n  \"state\": \"{state}\",\n  \"time\": \"{time}\"\n}",
         });
-        http.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         http.Fields.Add(new ActionFieldEntry { Key = "timeout", Label = "Timeout (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 120, DefaultValue = "15" });
         http.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
         return http;
@@ -169,14 +173,7 @@ public sealed partial class FakeOadmApi
             Id = "oadm.notifications.email", DisplayName = "Send email", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
             Description = "Sends an email through your mail server.", Available = true, SourceName = "Notifications",
         };
-        email.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
-        email.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "587" });
-        email.Fields.Add(Choice("security", "Encryption", "starttls", ("starttls", "STARTTLS (usually port 587)"), ("tls", "TLS (usually port 465)"), ("none", "None")));
-        email.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
-        email.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000 });
-        email.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, MaxLength = 256 });
-        email.Fields.Add(new ActionFieldEntry { Key = "from", Label = "From", Kind = ActionFieldKind.ActionFieldText, Required = true, MaxLength = 1000 });
-        email.Fields.Add(new ActionFieldEntry { Key = "to", Label = "To", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Several addresses separated by commas", MaxLength = 1000 });
+        email.Fields.Add(RecipientField(FakeEmailRecipientType));
         email.Fields.Add(new ActionFieldEntry { Key = "subject", Label = "Subject", Kind = ActionFieldKind.ActionFieldText, Required = true, DefaultValue = "{rule}: {event} on {device}", MaxLength = 1000 });
         email.Fields.Add(Choice("format", "Format", "text", ("text", "Text"), ("html", "HTML")));
         email.Fields.Add(new ActionFieldEntry
@@ -209,8 +206,7 @@ public sealed partial class FakeOadmApi
             Id = "oadm.notifications.tcp", DisplayName = "Send TCP message", Group = "Notifications", IconKey = "send", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
             Description = "Sends a message over a TCP connection, for example to a building, alarm or video system.", Available = true, SourceName = "Notifications",
         };
-        tcp.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", MaxLength = 1000 });
-        tcp.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "8000" });
+        tcp.Fields.Add(RecipientField(FakeTcpRecipientType));
         tcp.Fields.Add(Choice("format", "Format", "text", ("text", "Text"), ("json", "JSON"), ("xml", "XML"), ("hex", "Hex bytes")));
         tcp.Fields.Add(new ActionFieldEntry
         {
@@ -221,13 +217,117 @@ public sealed partial class FakeOadmApi
         lineEnd.VisibleWhenKey = "format";
         lineEnd.VisibleWhenValue = "text|json|xml";
         tcp.Fields.Add(lineEnd);
-        tcp.Fields.Add(new ActionFieldEntry { Key = "tls", Label = "Use TLS", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
-        tcp.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false", VisibleWhenKey = "tls", VisibleWhenValue = "true" });
         tcp.Fields.Add(new ActionFieldEntry { Key = "waitAnswer", Label = "Wait for an answer", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         tcp.Fields.Add(new ActionFieldEntry { Key = "expect", Label = "Answer must contain", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000, VisibleWhenKey = "waitAnswer", VisibleWhenValue = "true" });
         tcp.Fields.Add(new ActionFieldEntry { Key = "timeout", Label = "Timeout (s)", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 120, DefaultValue = "10" });
         tcp.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
         return tcp;
+    }
+
+    /// <summary>The recipient types as the Notifications plugin declares them.</summary>
+    internal const string FakeHttpRecipientType = "oadm.notifications.recipient.http";
+
+    /// <inheritdoc cref="FakeHttpRecipientType"/>
+    internal const string FakeEmailRecipientType = "oadm.notifications.recipient.email";
+
+    /// <inheritdoc cref="FakeHttpRecipientType"/>
+    internal const string FakeTcpRecipientType = "oadm.notifications.recipient.tcp";
+
+    /// <inheritdoc cref="FakeHttpRecipientType"/>
+    internal const string FakeMqttRecipientType = "oadm.mqtt.recipient";
+
+    /// <inheritdoc cref="FakeHttpRecipientType"/>
+    internal const string FakeModbusRecipientType = "oadm.modbus.recipient";
+
+    /// <inheritdoc cref="FakeHttpRecipientType"/>
+    internal const string FakeOpcUaRecipientType = "oadm.opcua.recipient";
+
+    /// <summary>The sample certificates of fake mode.</summary>
+    internal const string FakeClientCertificate = "local:broker-client";
+
+    /// <inheritdoc cref="FakeClientCertificate"/>
+    internal const string FakeTrustedCa = "ca:0A1B2C3D";
+
+    private static ActionFieldEntry RecipientField(string typeId) =>
+        new() { Key = "recipient", Label = "Recipient", Kind = ActionFieldKind.ActionFieldRecipient, Required = true, RecipientTypes = { typeId } };
+
+    private static RecipientTypeEntry FakeHttpRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeHttpRecipientType, DisplayName = "HTTP", IconKey = "send", Available = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "url", Label = "URL", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a URL.", Format = ActionTextFormat.Url, MaxLength = 1000 });
+        type.Fields.Add(Choice("auth", "Login", "none", ("none", "None"), ("basic", "Basic"), ("digest", "Digest"), ("bearer", "Bearer token")));
+        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter the user name.", VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 256 });
+        type.Fields.Add(new ActionFieldEntry { Key = "token", Label = "Token", Kind = ActionFieldKind.ActionFieldPassword, Required = true, EmptyText = "Enter the token.", VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 });
+        type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        return type;
+    }
+
+    private static RecipientTypeEntry FakeEmailRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeEmailRecipientType, DisplayName = "Email", IconKey = "send", Available = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "587" });
+        type.Fields.Add(Choice("security", "Encryption", "starttls", ("starttls", "STARTTLS (usually port 587)"), ("tls", "TLS (usually port 465)"), ("none", "None")));
+        type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, MaxLength = 256 });
+        type.Fields.Add(new ActionFieldEntry { Key = "from", Label = "From", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter an email address.", Format = ActionTextFormat.Email, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "to", Label = "To", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Several addresses separated by commas", EmptyText = "Enter an email address.", Format = ActionTextFormat.EmailList, MaxLength = 1000 });
+        return type;
+    }
+
+    private static RecipientTypeEntry FakeTcpRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeTcpRecipientType, DisplayName = "TCP", IconKey = "send", Available = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "8000" });
+        type.Fields.Add(new ActionFieldEntry { Key = "tls", Label = "Use TLS", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false", VisibleWhenKey = "tls", VisibleWhenValue = "true" });
+        return type;
+    }
+
+    /// <summary>The fields of a persistent type's TLS: the certificates of PKI, shown only with <paramref name="whenKey"/>.</summary>
+    private static void AddCertificates(RecipientTypeEntry type, string whenKey, string whenValue)
+    {
+        type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false", VisibleWhenKey = whenKey, VisibleWhenValue = whenValue });
+        type.Fields.Add(new ActionFieldEntry { Key = "trustedCa", Label = "Trusted CA", Kind = ActionFieldKind.ActionFieldTrustedCertificate, Hint = "Optional", VisibleWhenKey = whenKey, VisibleWhenValue = whenValue });
+        type.Fields.Add(new ActionFieldEntry { Key = "clientCertificate", Label = "Client certificate", Kind = ActionFieldKind.ActionFieldClientCertificate, Hint = "Optional", VisibleWhenKey = whenKey, VisibleWhenValue = whenValue });
+    }
+
+    private static RecipientTypeEntry FakeMqttRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeMqttRecipientType, DisplayName = "MQTT", IconKey = "send", Available = true, Persistent = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "1883" });
+        type.Fields.Add(Choice("protocolVersion", "Protocol version", "5.0", ("3.1.1", "3.1.1"), ("5.0", "5.0")));
+        type.Fields.Add(new ActionFieldEntry { Key = "tls", Label = "Use TLS", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
+        AddCertificates(type, "tls", "true");
+        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional" });
+        type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword });
+        type.Fields.Add(new ActionFieldEntry { Key = "clientId", Label = "Client ID", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional. One per recipient on a broker." });
+        return type;
+    }
+
+    private static RecipientTypeEntry FakeModbusRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeModbusRecipientType, DisplayName = "Modbus", IconKey = "send", Available = true, Persistent = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "502" });
+        type.Fields.Add(new ActionFieldEntry { Key = "unitId", Label = "Unit ID", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 0, Max = 255, DefaultValue = "1" });
+        return type;
+    }
+
+    private static RecipientTypeEntry FakeOpcUaRecipient()
+    {
+        var type = new RecipientTypeEntry { Id = FakeOpcUaRecipientType, DisplayName = "OPC UA", IconKey = "send", Available = true, Persistent = true };
+        type.Fields.Add(new ActionFieldEntry { Key = "endpoint", Label = "Endpoint", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "opc.tcp://host:4840", Format = ActionTextFormat.OpcEndpoint, MaxLength = 1000 });
+        type.Fields.Add(Choice("security", "Security", "none", ("none", "None"), ("sign", "Sign"), ("signAndEncrypt", "Sign and encrypt")));
+        AddCertificates(type, "security", "sign|signAndEncrypt");
+        type.Fields.Add(Choice("login", "Login", "anonymous", ("anonymous", "Anonymous"), ("user", "User name and password"), ("certificate", "Certificate")));
+        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Required = true, VisibleWhenKey = "login", VisibleWhenValue = "user" });
+        type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "login", VisibleWhenValue = "user" });
+        return type;
     }
 
     private static ActionFieldEntry Choice(string key, string label, string defaultValue, params (string Value, string Label)[] choices)
@@ -252,16 +352,31 @@ public sealed partial class FakeOadmApi
 
     private void SeedEventRules()
     {
+        var gateTeam = AddFakeRecipient("Gate team", FakeEmailRecipientType, "smtp.office365.com:587",
+            new JsonObject { ["host"] = "smtp.office365.com", ["port"] = 587, ["security"] = "starttls", ["allowUntrusted"] = false, ["user"] = "oadm@example.com", ["from"] = "oadm@example.com", ["to"] = "gate@example.com" }, "password");
+        var webhook = AddFakeRecipient("Teams webhook", FakeHttpRecipientType, "https://hooks.example.com/oadm",
+            new JsonObject { ["url"] = "https://hooks.example.com/oadm", ["auth"] = "bearer", ["allowUntrusted"] = false }, "token");
+        AddFakeRecipient("Alarm panel", FakeTcpRecipientType, "10.0.0.50:8000", new JsonObject { ["host"] = "10.0.0.50", ["port"] = 8000, ["tls"] = false, ["allowUntrusted"] = false });
+        var broker = AddFakeRecipient("Plant broker", FakeMqttRecipientType, "broker.plant.local:8883",
+            new JsonObject { ["host"] = "broker.plant.local", ["port"] = 8883, ["protocolVersion"] = "5.0", ["tls"] = true, ["allowUntrusted"] = false, ["trustedCa"] = FakeTrustedCa, ["clientCertificate"] = FakeClientCertificate });
+        var plc = AddFakeRecipient("Line 2 PLC", FakeModbusRecipientType, "10.0.0.70:502", new JsonObject { ["host"] = "10.0.0.70", ["port"] = 502, ["unitId"] = 1 });
+        var opc = AddFakeRecipient("Packing line", FakeOpcUaRecipientType, "opc.tcp://10.0.0.80:4840",
+            new JsonObject { ["endpoint"] = "opc.tcp://10.0.0.80:4840", ["security"] = "none", ["login"] = "anonymous", ["allowUntrusted"] = false });
+        AddFakeRecipient("Spare broker", FakeMqttRecipientType, "10.0.0.71:1883", new JsonObject { ["host"] = "10.0.0.71", ["port"] = 1883, ["protocolVersion"] = "5.0", ["tls"] = false, ["allowUntrusted"] = false });
+        _recipientStatus.Add(new RecipientStatusEntry { Id = broker.Id, Connection = RecipientConnection.RecipientConnected });
+        _recipientStatus.Add(new RecipientStatusEntry { Id = plc.Id, Connection = RecipientConnection.RecipientNotConnected, Reason = "No answer from 10.0.0.70:502." });
+        _recipientStatus.Add(new RecipientStatusEntry { Id = opc.Id, Connection = RecipientConnection.RecipientConnecting });
+
         var io = _devices.First(d => d.Address == "10.0.0.30");
         AddFakeRule("Person in the yard: warning lamp", true, (1, DateTime.UtcNow.AddMinutes(-12)),
             [Event(FakePersonTrigger, DeviceSelectorMode.All), Schedule("08:00", "18:00", DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday)],
             [Output(Guid.Parse(io.Id), "follow"), Command(DeviceSelectorMode.EventDevice, "saved:overlay-on", "saved:overlay-off")]);
         AddFakeRule("Camera offline in Building A", true, (0, DateTime.UtcNow.AddHours(-3)),
             [new RuleCondition { Kind = RuleConditionKind.Event, EventTypeId = "oadm.device.unreachable", Devices = new DeviceSelector { Mode = DeviceSelectorMode.Tags, Tags = ["Building A"] } }],
-            [Output(Guid.Parse(io.Id), "pulse")]);
+            [Output(Guid.Parse(io.Id), "pulse"), Message("oadm.notifications.email", gateTeam, "subject", "{rule}: {event} on {device}")]);
         AddFakeRule("Certificates about to expire", false, (0, null),
             [Event("oadm.device.certificate-expires-soon", DeviceSelectorMode.All)],
-            [Command(DeviceSelectorMode.EventDevice, "saved:overlay-on", null)]);
+            [Command(DeviceSelectorMode.EventDevice, "saved:overlay-on", null), Message("oadm.notifications.http", webhook, "method", "POST")]);
 
         var start = DateTime.UtcNow.AddMinutes(-15);
         AddLogLocked(start, EventLogKind.EventLogEvent, EventLogResult.EventLogInfo, "Person in the yard", _devices[5], null, "On");
@@ -272,6 +387,12 @@ public sealed partial class FakeOadmApi
         AddLogLocked(start.AddMinutes(-170), EventLogKind.EventLogRule, EventLogResult.EventLogInfo, "Rule turned on", _devices[4], _rules[1], "Device unreachable");
         AddLogLocked(start.AddMinutes(-170), EventLogKind.EventLogAction, EventLogResult.EventLogFailed, "Set output", io, _rules[1], "Unreachable - no route to the device");
         _eventLog.Sort((a, b) => a.Id.CompareTo(b.Id));
+
+        static RuleAction Message(string actionId, RecipientEntry recipient, string key, string value) => new()
+        {
+            ActionId = actionId,
+            Settings = new JsonObject { ["recipient"] = recipient.Id, [key] = value },
+        };
 
         static RuleCondition Event(string type, DeviceSelectorMode mode) =>
             new() { Kind = RuleConditionKind.Event, EventTypeId = type, Devices = new DeviceSelector { Mode = mode } };
@@ -294,6 +415,13 @@ public sealed partial class FakeOadmApi
                 ? new JsonObject { ["command"] = on, ["allowDangerous"] = false }
                 : new JsonObject { ["command"] = on, ["offCommand"] = off, ["allowDangerous"] = false },
         };
+    }
+
+    private RecipientEntry AddFakeRecipient(string name, string typeId, string target, JsonObject values, params string[] storedSecrets)
+    {
+        var recipient = new RecipientEntry { Id = Guid.NewGuid().ToString(), Name = name, TypeId = typeId, ValuesJson = values.ToJsonString(), Target = target, StoredSecretFields = { storedSecrets } };
+        _recipients.Add(recipient);
+        return recipient;
     }
 
     private void AddFakeRule(string name, bool enabled, (int Active, DateTime? LastFired) state, List<RuleCondition> conditions, List<RuleAction> actions)
@@ -489,6 +617,183 @@ public sealed partial class FakeOadmApi
         return Task.FromResult(new TestActionReply { Ok = true, Message = "Sent (fake mode: nothing left this computer)" });
     }
 
+    /// <summary>The next answer of a recipient's Test (tests); null: sent.</summary>
+    internal TestActionReply? NextRecipientTest { get; set; }
+
+    /// <summary>What the server answers to the next Test or Save of a recipient (tests); null: no refusal.</summary>
+    internal RpcException? NextRecipientRefusal { get; set; }
+
+    private void ThrowRecipientRefusal()
+    {
+        if (NextRecipientRefusal is { } refusal)
+        {
+            NextRecipientRefusal = null;
+            throw refusal;
+        }
+    }
+
+    public Task<IReadOnlyList<RecipientEntry>> ListRecipientsAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            return Task.FromResult<IReadOnlyList<RecipientEntry>>([.. _recipients.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase).Select(WithUseLocked)]);
+        }
+    }
+
+    public Task<RecipientEntry> SaveRecipientAsync(SaveRecipientRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            ThrowRecipientRefusal();
+            var name = request.Name.Trim();
+            if (_recipients.Exists(r => r.Id != request.Id && string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "A recipient with this name already exists."), new Metadata { { RecipientErrors.FieldTrailer, "name" } });
+            }
+
+            var settings = JsonNode.Parse(request.SettingsJson)!.AsObject();
+            var existing = _recipients.Find(r => r.Id == request.Id);
+            var type = FakeCatalog.RecipientTypes.First(t => t.Id == request.TypeId);
+            var secrets = type.Fields.Where(f => f.Kind == ActionFieldKind.ActionFieldPassword).Select(f => f.Key).ToHashSet();
+            var entry = new RecipientEntry
+            {
+                Id = existing?.Id ?? Guid.NewGuid().ToString(),
+                Name = name,
+                TypeId = request.TypeId,
+                ValuesJson = new JsonObject(settings.Where(p => !secrets.Contains(p.Key)).Select(p => KeyValuePair.Create(p.Key, p.Value?.DeepClone()))).ToJsonString(),
+                Target = type.Id == FakeHttpRecipientType ? settings["url"]?.ToString() ?? string.Empty
+                    : type.Id == FakeOpcUaRecipientType ? settings["endpoint"]?.ToString() ?? string.Empty
+                    : $"{settings["host"]}:{settings["port"]}",
+            };
+            entry.StoredSecretFields.AddRange(secrets.Where(s => !string.IsNullOrEmpty(settings[s]?.ToString()) || existing?.StoredSecretFields.Contains(s) == true));
+            _recipients.Remove(existing!);
+            _recipients.Add(entry);
+            PublishRulesLocked();
+            return Task.FromResult(WithUseLocked(entry));
+        }
+    }
+
+    public Task DeleteRecipientAsync(string id, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            var recipient = _recipients.Find(r => r.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, Oadm.Sdk.Actions.RecipientType.NotFoundText));
+            if (WithUseLocked(recipient).UsedBy is { Count: > 0 } used)
+            {
+                throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Used by {string.Join(", ", used)}. Change those rules first."));
+            }
+
+            _recipients.Remove(recipient);
+            PublishRulesLocked();
+            return Task.CompletedTask;
+        }
+    }
+
+    public Task<TestActionReply> TestRecipientAsync(SaveRecipientRequest request, CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            ThrowRecipientRefusal();
+            var persistent = FakeCatalog.RecipientTypes.FirstOrDefault(t => t.Id == request.TypeId)?.Persistent == true;
+            return Task.FromResult(NextRecipientTest ?? new TestActionReply
+            {
+                Ok = true,
+                Message = persistent ? Oadm.Sdk.Actions.RecipientSessionTexts.Connected : "Sent (fake mode: nothing left this computer)",
+            });
+        }
+    }
+
+    /// <summary>A status that a test or the demo sets; <see cref="RecipientConnection.RecipientNotUsed"/> takes the recipient off the list.</summary>
+    internal void SetRecipientStatus(string id, RecipientConnection connection, string reason = "")
+    {
+        lock (_gate)
+        {
+            _recipientStatus.RemoveAll(s => s.Id == id);
+            if (connection != RecipientConnection.RecipientNotUsed)
+            {
+                _recipientStatus.Add(new RecipientStatusEntry { Id = id, Connection = connection, Reason = reason });
+            }
+
+            _recipientStatusEvents.Publish(RecipientStatusLocked());
+        }
+    }
+
+    /// <summary>Ends the open status streams, as a dropped connection does (tests).</summary>
+    internal void EndRecipientStatusStreams() => _recipientStatusEvents.Complete();
+
+    private RecipientStatusList RecipientStatusLocked()
+    {
+        var list = new RecipientStatusList();
+        list.Recipients.AddRange(_recipientStatus.Select(s => s.Clone()));
+        return list;
+    }
+
+    public async IAsyncEnumerable<RecipientStatusList> WatchRecipientStatusAsync([EnumeratorCancellation] CancellationToken ct)
+    {
+        Channel<RecipientStatusList> channel;
+        RecipientStatusList first;
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            channel = _recipientStatusEvents.Subscribe();
+            first = RecipientStatusLocked();
+        }
+
+        try
+        {
+            yield return first;
+            await foreach (var list in channel.Reader.ReadAllAsync(ct))
+            {
+                yield return list;
+            }
+        }
+        finally
+        {
+            _recipientStatusEvents.Unsubscribe(channel);
+        }
+    }
+
+    /// <summary>What the dialog reads (tests change it); a test holds the read with <see cref="HoldRecipientCertificates"/>.</summary>
+    internal RecipientCertificateList FakeRecipientCertificates { get; set; } = new()
+    {
+        Client = { new RecipientCertificateChoice { Id = FakeClientCertificate, Text = "Broker client (OADM Root CA SERVER01), until 2028-06-01" } },
+        Trusted =
+        {
+            new RecipientCertificateChoice { Id = FakeTrustedCa, Text = "OADM Root CA SERVER01, until 2035-10-25" },
+            new RecipientCertificateChoice { Id = "local:opc-server", Text = "opc.plant.local, until 2029-01-01" },
+        },
+    };
+
+    /// <summary>While set, the read of the certificates waits for it (tests).</summary>
+    internal TaskCompletionSource? HoldRecipientCertificates { get; set; }
+
+    public async Task<RecipientCertificateList> ListRecipientCertificatesAsync(CancellationToken ct)
+    {
+        if (HoldRecipientCertificates is { } hold)
+        {
+            await hold.Task.WaitAsync(ct).ConfigureAwait(false);
+        }
+
+        lock (_gate)
+        {
+            ThrowIfOffline();
+            return FakeRecipientCertificates;
+        }
+    }
+
+    private RecipientEntry WithUseLocked(RecipientEntry recipient)
+    {
+        var entry = recipient.Clone();
+        entry.UsedBy.Clear();
+        entry.UsedBy.AddRange(_rules.Where(r => r.Actions.Any(a => a.Settings["recipient"]?.ToString() == recipient.Id)).Select(r => r.Name).Order(StringComparer.CurrentCultureIgnoreCase));
+        return entry;
+    }
+
     public Task<int> ClearEventLogAsync(CancellationToken ct)
     {
         lock (_gate)
@@ -576,6 +881,7 @@ public sealed partial class FakeOadmApi
             Stateful = true,
             ActiveCount = rule.Enabled ? active : 0,
             StateText = !rule.Enabled ? "Turned off" : active switch { 0 => "Off", 1 => "On", _ => $"On for {active} devices" },
+            Problem = FakeRecipientProblem(rule),
         };
         if (lastFired is { } fired)
         {
@@ -583,6 +889,21 @@ public sealed partial class FakeOadmApi
         }
 
         return summary;
+    }
+
+    /// <summary>"Send email: Choose a recipient." for an action without its recipient, like RuleTexts.Problem.</summary>
+    private string FakeRecipientProblem(RuleDefinition rule)
+    {
+        foreach (var action in rule.Actions)
+        {
+            var entry = FakeCatalog.Actions.FirstOrDefault(a => a.Id == action.ActionId);
+            if (entry?.Fields.Any(f => f.Kind == ActionFieldKind.ActionFieldRecipient) == true && !_recipients.Exists(r => r.Id == action.Settings["recipient"]?.ToString()))
+            {
+                return $"{entry.DisplayName}: {Sdk.Actions.ActionSettings.ChooseRecipient}";
+            }
+        }
+
+        return string.Empty;
     }
 
     private string FakeConditionText(RuleCondition condition, int index)
@@ -613,9 +934,11 @@ public sealed partial class FakeOadmApi
                 _ => $"Toggle output {settings["port"]}",
             },
             "oadm.vapix-commander.command" => FakeCommandText(settings),
-            _ => action.ActionId,
+            _ => FakeCatalog.Actions.FirstOrDefault(a => a.Id == action.ActionId)?.DisplayName is { } name
+                ? _recipients.Find(r => r.Id == settings["recipient"]?.ToString()) is { } recipient ? $"{name} to {recipient.Name}" : name
+                : action.ActionId,
         };
-        return action.Targets.Mode == DeviceSelectorMode.EventDevice ? text : text + " on " + FakeSelectorText(action.Targets, "the event's device");
+        return action.Targets.Mode == DeviceSelectorMode.EventDevice || FakeCatalog.Actions.FirstOrDefault(a => a.Id == action.ActionId)?.NeedsDevice == false ? text : text + " on " + FakeSelectorText(action.Targets, "the event's device");
     }
 
     private static string FakeCommandText(JsonObject settings)

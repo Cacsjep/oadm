@@ -19,7 +19,7 @@ Device groups (`docs/spec/device-scope.md`): every bundled package sets `minSdkV
 of the user's view (the host refuses the whole run otherwise) and touch only their own device; queries read only the
 queried device, which the host checks. Packages of task plugins and actions only run no `PluginCanary`: the host scopes
 their runs and queries (server `CanaryTests.PluginsConverted`); plugins with a page run one. Event rules are for users
-with all devices, so their actions (Set output, the Notifications, Run VAPIX command) act on any device or address the
+with all devices, so their actions (Set output, the Notifications, Write Modbus value, Publish MQTT message, Write OPC UA value, Run VAPIX command) act on any device or address the
 rule names.
 
 ## Restart
@@ -184,7 +184,7 @@ IEEE 802.1X, Renew certificates, View, Delete and Install certificates, Install 
 
 - Rules that must hold: the CA key is stored only encrypted with the master key (without `Secrets` no CA is kept; a key
   that cannot be decrypted shows "Key cannot be read" in the CA's row, nothing is overwritten; a stored CA that cannot be
-  read is a row with Delete only); a CA is never deleted while a policy or a service names it or while a CA it signed is
+  read is a row with Delete only); a CA is never deleted while a policy or a service names it, a recipient uses it or a CA it signed is
   listed, and its certificates stay in the list; the CAs with their key are trust anchors, so OADM-issued device
   certificates rate **Trusted** without an OS change; keys of device certificates are created on the device, OADM signs
   with its own subject and SAN (never the CSR's); every task checks AXIS OS 6.53+ (REST cert v1 from a fresh
@@ -633,7 +633,7 @@ version and a valid license; the choices are read from one device.
   range before the one write, read back afterwards (passwords never read back); setting values never appear in a log,
   step text, task name or the audit log.
 
-## Outputs and Notifications (event rule actions)
+## Outputs, Notifications, Modbus, MQTT and OPC UA (event rule actions)
 
 Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
 
@@ -641,6 +641,23 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   a device (follow the rule, pulse, set active / inactive, toggle). Rule that must hold: over the I/O port management API the
   port must exist and be an output before anything is written.
 - **Notifications** (`plugins/Oadm.Plugins.Notifications`, id `oadm.notifications`): the actions **Send email**, **Send
-  HTTP request**, **Send TCP message** and **Log entry**, without devices. Rules that must hold: placeholder values are escaped for where
+  HTTP request**, **Send TCP message** and **Log entry**, without devices, and the recipient types HTTP, Email and TCP
+  ([recipients.md](recipients.md)). Rules that must hold: a recipient holds the target and its login, the action the message; no
+  placeholders in a target; placeholder values are escaped for where
   they go, never the text around them; passwords and tokens are stored encrypted; untrusted certificates only with
   "Allow untrusted certificates" (off by default).
+- **Modbus** (`plugins/Oadm.Plugins.Modbus`, id `oadm.modbus`, our own client): the action **Write Modbus value** without devices, and the recipient
+  type Modbus, one connection per recipient ([recipient-sessions.md](recipient-sessions.md)). Rules that must hold: functions 05, 06 and 16 only, no
+  read function in the code; a value is checked before anything is sent, and one that does not fit writes nothing.
+- **MQTT** (`plugins/Oadm.Plugins.Mqtt`, id `oadm.mqtt`, library MQTTnet): the action **Publish MQTT message** without devices,
+  and the recipient type MQTT, one connection per recipient that its rules share ([recipient-sessions.md](recipient-sessions.md)).
+  Rules that must hold: output only, nothing subscribes; the topic is checked after its placeholders are filled, and empty, `+`,
+  `#` or NUL sends nothing; QoS 1 and 2 wait for the broker's acknowledge and a refusal fails the action; the plugin never
+  reconnects, the pool does; TLS is off by default and always runs the plugin's own certificate check (a Trusted CA replaces the
+  operating system's roots, the host name must still match).
+- **OPC UA** (`plugins/Oadm.Plugins.OpcUa`, id `oadm.opcua`, spec [recipient-sessions.md](recipient-sessions.md)): the action
+  **Write OPC UA value** and the persistent recipient type OPC UA, library OPCFoundation.NetStandard.Opc.Ua.Client (OPC Foundation
+  MIT License 1.00). Rules that must hold: output only, one write of the Value attribute per action, no browse, no read by the plugin, no
+  subscription; the value is checked before anything is sent; a new recipient works with only the address; nothing goes to disk
+  and no certificate is created (Sign and Sign and encrypt need a chosen client certificate, whose URI name is the application URI);
+  the stack's refusal of an unprotected password is shown in plain words, OADM adds no rule; no reconnect in the plugin.

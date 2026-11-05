@@ -547,6 +547,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
             new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
             sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new RecipientStore(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
+            sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new EventLog(
             sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
             sp.GetRequiredService<TimeProvider>(),
@@ -554,11 +558,22 @@ public static partial class OadmServerHost
         services.AddSingleton(sp => new ActionRunner(
             sp.GetRequiredService<EventCatalog>(),
             sp.GetRequiredService<RuleStore>(),
+            sp.GetRequiredService<RecipientStore>(),
             sp.GetRequiredService<EventLog>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
             sp.GetRequiredService<ILoggerFactory>()));
+        services.AddSingleton(sp => new RecipientSessionPool(
+            sp.GetRequiredService<EventCatalog>(),
+            sp.GetRequiredService<RecipientStore>(),
+            () => sp.GetRequiredService<PluginServiceRegistry>().Get<Sdk.Certificates.IRecipientCertificates>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILoggerFactory>()));
+        services.AddSingleton(sp => new RecipientEventSource(
+            () => sp.GetRequiredService<RecipientSessionPool>(), // the pool needs the catalog, which holds this source
+            () => sp.GetRequiredService<RuleEngine>().PublisherFor(RecipientEventSource.EventSourceId)));
+        services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<RecipientEventSource>());
         services.AddSingleton(new RuleEngineOptions());
         services.AddSingleton(sp => new RuleEngine(
             sp.GetRequiredService<EventCatalog>(),
@@ -748,6 +763,12 @@ public static partial class OadmServerHost
         compliance.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.Start();
+        sp.GetRequiredService<ActionRunner>().Sessions = sp.GetRequiredService<RecipientSessionPool>();
+        Func<Sdk.Certificates.IRecipientCertificates?> recipientCertificates = () => sp.GetRequiredService<PluginServiceRegistry>().Get<Sdk.Certificates.IRecipientCertificates>();
+        sp.GetRequiredService<ActionRunner>().Certificates = recipientCertificates;
+        sp.GetRequiredService<EventRulesService>().Certificates = recipientCertificates;
+        sp.GetRequiredService<PluginServiceRegistry>().For("oadm.host").Offer<Sdk.Certificates.IRecipientCertificateUse>(sp.GetRequiredService<EventRulesService>());
+        sp.GetRequiredService<RecipientEventSource>().Start();
         var addOnEvents = sp.GetRequiredService<AddOns.AddOnEventSource>();
         addOns.StateChanged += (_, _) => addOnEvents.Report();
         addOnEvents.Report();
@@ -801,10 +822,12 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<ExpiryWarningPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ClockTolerance>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
+        sp.GetRequiredService<RecipientEventSource>().Stop();
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<RecipientSessionPool>().DisposeAsync().ConfigureAwait(false); // after the runner: running actions keep their session
         await sp.GetRequiredService<EventLog>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);

@@ -167,6 +167,15 @@ public sealed class FakeActionContext(IVapixClient? vapix = null) : IActionConte
     /// <inheritdoc />
     public void Log(string message) => Lines.Add(message);
 
+    /// <summary>The sessions of persistent recipients by field key (SDK 0.12.0), the plugin's own interface or a fake of it.</summary>
+    public Dictionary<string, object> Sessions { get; } = new(StringComparer.Ordinal);
+
+    /// <inheritdoc />
+    public Task<T> SessionAsync<T>(string fieldKey, CancellationToken ct)
+        where T : class => Task.FromResult(Sessions.TryGetValue(fieldKey, out var session) && session is T typed
+            ? typed
+            : throw new InvalidOperationException(ActionSettings.ChooseRecipient));
+
     /// <inheritdoc />
     public string Text(string? text) =>
         Placeholders.Aggregate(text ?? "", (current, p) => current.Replace("{" + p.Key + "}", p.Value, StringComparison.Ordinal));

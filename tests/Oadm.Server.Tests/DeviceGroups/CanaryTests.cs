@@ -389,6 +389,9 @@ public sealed partial class CanaryTests
     /// <summary>Bundled plugins that need no PluginCanary, with the reason and the tests that cover them.</summary>
     internal static readonly Dictionary<string, string> PluginsConverted = new(StringComparer.Ordinal)
     {
+        ["oadm.modbus"] = "no methods and no devices; its action runs only in event rules, which are for users with all devices",
+        ["oadm.mqtt"] = "no methods and no devices; its action runs only in event rules, which are for users with all devices",
+        ["oadm.opcua"] = "no methods and no devices; its action runs only in event rules, which are for users with all devices",
         ["oadm.notifications"] = "no methods and no devices; its actions run only in event rules, which are for users with all devices",
         ["oadm.outputs"] = "no methods; its action runs only in event rules, which are for users with all devices (EventService closed by the rule)",
         ["oadm.acap"] = TaskPluginOnly,

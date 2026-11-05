@@ -37,6 +37,12 @@ public partial class RuleEditorWindow : Window
             var window = new Oadm.Sdk.Client.Controls.DevicePickerWindow(picker);
             return await window.ShowDialog<bool>(this).ConfigureAwait(true);
         };
+        viewModel.ShowRecipientEditor = async editor =>
+        {
+            var window = new RecipientEditorWindow();
+            window.Attach(editor);
+            return await window.ShowDialog<bool>(this).ConfigureAwait(true);
+        };
         viewModel.CloseRequested += (_, ok) => Close(ok);
         if (viewModel.IsNew)
         {

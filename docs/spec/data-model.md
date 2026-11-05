@@ -85,7 +85,8 @@ crash; with FULL a poll round of 5,000 devices took 22 s instead of 6 s.
   new sign-in). Removed from every backup copy (with a `VACUUM`), like `AuthTokens`.
 - Other tables live with their feature: `Users`, `Roles`, `AuthTokens`, `AuditEntries` ([security.md](security.md)),
   `Sites`, `RemovedSites` ([sites.md](sites.md)), `EventRules`, `EventRuleStates`, `EventLogEntries`
-  ([event-rules.md](event-rules.md)).
+  ([event-rules.md](event-rules.md)), `Recipients` (migration `Recipients`, [recipients.md](recipients.md): Id, Name unique, TypeId,
+  SettingsJson with the password values encrypted, UpdatedUtc).
 
 Device status enum: `Ok`, `Unreachable`, `CredentialsRequired` (401/403), `PasswordNotSet`
 (factory default), `CertificateChanged`, `Unknown`, and `SiteOffline` (computed, never stored:

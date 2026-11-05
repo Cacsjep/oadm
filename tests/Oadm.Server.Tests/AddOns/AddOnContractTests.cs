@@ -214,6 +214,14 @@ public sealed class AddOnContractTests
     }
 
     [Fact]
+    public void RestartServerWaitsForAnUpdateAndForPluginWorkAndSaysWhich()
+    {
+        Assert.Equal(AddOnTexts.Updating, AddOnTexts.RestartRefused(updating: true, addOnWork: true));
+        Assert.Equal(AddOnTexts.Busy, AddOnTexts.RestartRefused(updating: false, addOnWork: true));
+        Assert.Null(AddOnTexts.RestartRefused(updating: false, addOnWork: false));
+    }
+
+    [Fact]
     public async Task AFailedInstallIsAuditedWithItsReason()
     {
         await using var host = await StartReleaseAsync(AddOnRig.Zip());

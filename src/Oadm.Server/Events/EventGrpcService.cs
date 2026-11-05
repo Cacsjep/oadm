@@ -9,6 +9,7 @@ using Grpc.Core;
 using Oadm.Core.Auth;
 using Oadm.Core.Events;
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Events;
 using Oadm.Server.Common;
 
@@ -18,11 +19,13 @@ namespace Oadm.Server.Events;
 
 /// <summary>
 /// gRPC EventService: the catalog of events and actions, the rules (Admin to change, audited), their live state and the
-/// event log (<see cref="EventRulesService"/>, <see cref="EventLog"/>).
+/// event log (<see cref="EventRulesService"/>, <see cref="EventLog"/>), and the recipients the rules' actions send to.
 /// </summary>
 public sealed class EventGrpcService(
     EventRulesService rules,
     ActionRunner actions,
+    RecipientSessionPool sessions,
+    Oadm.Core.Plugins.PluginServiceRegistry pluginServices,
     EventLog log,
     AuditLog audit,
     IHostApplicationLifetime lifetime) : Proto.EventService.EventServiceBase
@@ -51,6 +54,20 @@ public sealed class EventGrpcService(
         foreach (var action in rules.Catalog.Actions)
         {
             catalog.Actions.Add(ToProto(action));
+        }
+
+        foreach (var type in rules.Catalog.RecipientTypes)
+        {
+            var entry = new Proto.RecipientTypeEntry
+            {
+                Id = type.Id,
+                DisplayName = type.Type.DisplayName,
+                IconKey = type.Type.IconKey ?? string.Empty,
+                Available = type.Available,
+                Persistent = type.Type.Sessions is not null,
+            };
+            entry.Fields.AddRange(type.Type.Fields.Select(ToProto));
+            catalog.RecipientTypes.Add(entry);
         }
 
         return Task.FromResult(catalog);
@@ -194,17 +211,7 @@ public sealed class EventGrpcService(
 
     public override async Task<Proto.TestActionReply> TestAction(Proto.TestActionRequest request, ServerCallContext context)
     {
-        System.Text.Json.Nodes.JsonObject settings;
-        try
-        {
-            settings = System.Text.Json.Nodes.JsonNode.Parse(string.IsNullOrEmpty(request.SettingsJson) ? "{}" : request.SettingsJson) as System.Text.Json.Nodes.JsonObject
-                ?? throw new JsonException("not an object");
-        }
-        catch (JsonException ex)
-        {
-            throw new RpcException(new Status(StatusCode.InvalidArgument, "The settings are not valid: " + ex.Message));
-        }
-
+        var settings = ParseSettings(request.SettingsJson);
         Guid? ruleId = string.IsNullOrEmpty(request.RuleId) ? null : GrpcGuard.ParseId(request.RuleId, "rule id");
         Guid? actionKey = string.IsNullOrEmpty(request.ActionKey) ? null : GrpcGuard.ParseId(request.ActionKey, "action key");
         Guid? deviceId = string.IsNullOrEmpty(request.DeviceId) ? null : GrpcGuard.ParseId(request.DeviceId, "device id");
@@ -215,6 +222,133 @@ public sealed class EventGrpcService(
         await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName) + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message)), context.CancellationToken).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
     }
+
+    public override async Task<Proto.RecipientList> ListRecipients(Proto.Empty request, ServerCallContext context)
+    {
+        var list = new Proto.RecipientList();
+        list.Recipients.AddRange((await rules.ListRecipientsAsync(context.CancellationToken).ConfigureAwait(false)).Select(ToProto));
+        return list;
+    }
+
+    public override async Task<Proto.RecipientEntry> SaveRecipient(Proto.SaveRecipientRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        Guid? id = string.IsNullOrEmpty(request.Id) ? null : GrpcGuard.ParseId(request.Id, "recipient id");
+        try
+        {
+            var (saved, created) = await rules.SaveRecipientAsync(id, request.Name, request.TypeId, ParseSettings(request.SettingsJson), ct).ConfigureAwait(false);
+            await audit.WriteAsync(created ? AuditActions.RecipientCreated : AuditActions.RecipientChanged, saved.Name, saved.Target, ct).ConfigureAwait(false);
+            return ToProto(saved);
+        }
+        catch (RecipientValidationException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message), new Metadata { { RecipientField, ex.Field } });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw GrpcGuard.NotFound(ex.Message);
+        }
+    }
+
+    public override async Task<Proto.Empty> DeleteRecipient(Proto.RecipientId request, ServerCallContext context)
+    {
+        var id = GrpcGuard.ParseId(request.Id, "recipient id");
+        try
+        {
+            var removed = await rules.DeleteRecipientAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(RecipientType.NotFoundText);
+            await audit.WriteAsync(AuditActions.RecipientDeleted, removed.Name, null, context.CancellationToken).ConfigureAwait(false);
+            return new Proto.Empty();
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw GrpcGuard.FailedPrecondition(ex.Message);
+        }
+    }
+
+    public override async Task WatchRecipientStatus(Proto.Empty request, IServerStreamWriter<Proto.RecipientStatusList> responseStream, ServerCallContext context)
+    {
+        using var linked = GrpcGuard.LinkWithShutdown(context, lifetime.ApplicationStopping);
+        var ct = linked.Token;
+        var signal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
+        void OnChanged(object? sender, EventArgs e) => signal.Writer.TryWrite(true);
+        sessions.Changed += OnChanged;
+        try
+        {
+            await responseStream.WriteAsync(RecipientStatuses(), ct).ConfigureAwait(false);
+            while (await signal.Reader.WaitToReadAsync(ct).ConfigureAwait(false))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
+                signal.Reader.TryRead(out _);
+                await responseStream.WriteAsync(RecipientStatuses(), ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Client went away or server is stopping.
+        }
+        finally
+        {
+            sessions.Changed -= OnChanged;
+        }
+    }
+
+    public override async Task<Proto.RecipientCertificateList> ListRecipientCertificates(Proto.Empty request, ServerCallContext context)
+    {
+        var list = new Proto.RecipientCertificateList();
+        if (pluginServices.Get<IRecipientCertificates>() is { } certificates)
+        {
+            var ct = context.CancellationToken;
+            list.Client.AddRange((await certificates.ClientCertificatesAsync(ct).ConfigureAwait(false)).Select(ToProto));
+            list.Trusted.AddRange((await certificates.TrustedCertificatesAsync(ct).ConfigureAwait(false)).Select(ToProto));
+        }
+
+        return list;
+    }
+
+    private Proto.RecipientStatusList RecipientStatuses()
+    {
+        var list = new Proto.RecipientStatusList();
+        list.Recipients.AddRange(sessions.Statuses().Select(s => new Proto.RecipientStatusEntry
+        {
+            Id = s.Id.ToString(),
+            Connection = (Proto.RecipientConnection)(int)s.State,
+            Reason = s.Reason ?? string.Empty,
+        }));
+        return list;
+    }
+
+    private static Proto.RecipientCertificateChoice ToProto(ActionChoice choice) => new() { Id = choice.Value, Text = choice.Label };
+
+    public override async Task<Proto.TestActionReply> TestRecipient(Proto.SaveRecipientRequest request, ServerCallContext context)
+    {
+        var ct = context.CancellationToken;
+        Guid? id = string.IsNullOrEmpty(request.Id) ? null : GrpcGuard.ParseId(request.Id, "recipient id");
+        var values = ParseSettings(request.SettingsJson);
+        var raw = (System.Text.Json.Nodes.JsonObject)values.DeepClone(); // the test adds stored passwords to values
+        var type = rules.Catalog.FindRecipientType(request.TypeId)?.Type;
+        var name = string.IsNullOrWhiteSpace(request.Name) ? type?.DisplayName ?? request.TypeId : request.Name.Trim();
+        var certificates = CertificatesOf(type, raw);
+        try
+        {
+            var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, values, ct).ConfigureAwait(false);
+            var done = type?.Sessions is not null ? "Connected to " : "Sent to ";
+            var detail = (ok ? done : "Failed to ") + Clip(rules.TargetOf(request.TypeId, raw)) + certificates + (ok ? string.Empty : " · " + Clip(message));
+            await audit.WriteAsync(AuditActions.RecipientTested, name, detail, ct).ConfigureAwait(false);
+            return new Proto.TestActionReply { Ok = ok, Message = message };
+        }
+        catch (RecipientValidationException ex)
+        {
+            // The target only after the checks: a refused value may hold what must not reach the audit, a login in a URL.
+            await audit.WriteAsync(AuditActions.RecipientTested, name, "Failed to " + Clip(type?.DisplayName ?? request.TypeId) + certificates + " · " + Clip(ex.Message), ct).ConfigureAwait(false);
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message), new Metadata { { RecipientField, ex.Field } });
+        }
+    }
+
+    private static string Clip(string text) => text.Length > 200 ? text[..200] : text;
+
+    /// <summary>The audit's mention of the certificates a Test uses: using a key is worth a line.</summary>
+    private static string CertificatesOf(RecipientType? type, System.Text.Json.Nodes.JsonObject values) =>
+        type is null ? string.Empty : string.Concat(RecipientChecks.UsedCertificates(type.Fields, RecipientChecks.WithDefaults(type.Fields, values)).Select(c => " · " + c.Field.Label + " " + Clip(c.Id)));
 
     public override async Task WatchLog(Proto.Empty request, IServerStreamWriter<Proto.EventLogPage> responseStream, ServerCallContext context)
     {
@@ -233,6 +367,37 @@ public sealed class EventGrpcService(
         {
             // Client went away or server is stopping.
         }
+    }
+
+    /// <summary>The trailer of a refused SaveRecipient: the field the message belongs below.</summary>
+    internal const string RecipientField = Proto.RecipientErrors.FieldTrailer;
+
+    private static System.Text.Json.Nodes.JsonObject ParseSettings(string json)
+    {
+        try
+        {
+            return System.Text.Json.Nodes.JsonNode.Parse(string.IsNullOrEmpty(json) ? "{}" : json) as System.Text.Json.Nodes.JsonObject
+                ?? throw new JsonException("not an object");
+        }
+        catch (JsonException ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "The settings are not valid: " + ex.Message));
+        }
+    }
+
+    private static Proto.RecipientEntry ToProto(RecipientModel recipient)
+    {
+        var entry = new Proto.RecipientEntry
+        {
+            Id = recipient.Id.ToString(),
+            Name = recipient.Name,
+            TypeId = recipient.TypeId,
+            ValuesJson = recipient.Values.ToJsonString(),
+            Target = recipient.Target,
+        };
+        entry.StoredSecretFields.AddRange(recipient.StoredSecretFields);
+        entry.UsedBy.AddRange(recipient.UsedBy);
+        return entry;
     }
 
     internal static Proto.ActionEntry ToProto(CatalogAction action)
@@ -273,12 +438,16 @@ public sealed class EventGrpcService(
             Kind = (Proto.ActionFieldKind)(int)field.Type,
             Required = field.Required,
             Hint = field.Hint ?? string.Empty,
+            EmptyText = field.EmptyText ?? string.Empty,
+            Format = (Proto.ActionTextFormat)(int)field.Format,
             Min = field.Min,
             Max = field.Max,
             MaxLength = field.MaxLength,
             OffEdge = field.OffEdge,
             VisibleWhenKey = field.VisibleWhenKey ?? string.Empty,
             VisibleWhenValue = field.VisibleWhenValue ?? string.Empty,
+            AlsoVisibleWhenKey = field.AlsoVisibleWhenKey ?? string.Empty,
+            AlsoVisibleWhenValue = field.AlsoVisibleWhenValue ?? string.Empty,
             Language = field.Language ?? string.Empty,
             LanguageKey = field.LanguageKey ?? string.Empty,
             ChoicesFromDevice = field.ChoicesFromDevice,
@@ -290,6 +459,7 @@ public sealed class EventGrpcService(
 
         proto.Choices.AddRange(field.Choices.Select(c => new Proto.ActionChoiceEntry { Value = c.Value, Label = c.Label }));
         proto.Accept.AddRange(field.Accept);
+        proto.RecipientTypes.AddRange(field.RecipientTypes);
         return proto;
     }
 

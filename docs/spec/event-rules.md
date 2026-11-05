@@ -9,7 +9,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 
 | Topic | Decision |
 |---|---|
-| Built-in events | Only what OADM already knows (`BuiltInEvents`, group "Device status", stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling). Each has an **Any device** twin for the server (group "Any device", `BuiltInEvents.AnyOf`): on while at least one device has it, value `count` (how many), recomputed by the engine with every device change. **Any device: clock off** (`oadm.device.any-clock-off`, value `count`, no per-device twin): on while at least one device's clock is off ([main-window.md](main-window.md) "Clock"), recomputed with every device change and with a new `Polling.ClockToleranceSeconds`. **Certificate expires soon** and **Certificate expired** with their Any device twins are PKI's events (group "Certificates", the days of each device's Expiry warning policy, [pki.md](pki.md#policies)); their ids keep the `oadm.device.` prefix (`oadm.device.certificate-expires-soon`, `oadm.device.certificate-expired`, `oadm.device.any-certificate-…`), so stored rules keep working. Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see [bundled-plugins.md](bundled-plugins.md#device-triggers-core-plugin); also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only) and the optional plugin **Text recognition** (Text read and No text read per reader and area on the reader's camera, Reader problem per reader, Any reader problem, with the action Read text, [ocr.md](ocr.md#events-and-the-rule-action)). **Optional plugin not loaded** (`oadm.add-on.not-loaded`, folder Optional plugins, stateful, server, values `count` and `plugin`) comes from the host, [add-ons.md](add-ons.md). |
+| Built-in events | Only what OADM already knows (`BuiltInEvents`, group "Device status", stateful per device): Device unreachable, Credentials required, Certificate changed (device status from polling). Each has an **Any device** twin for the server (group "Any device", `BuiltInEvents.AnyOf`): on while at least one device has it, value `count` (how many), recomputed by the engine with every device change. **Any device: clock off** (`oadm.device.any-clock-off`, value `count`, no per-device twin): on while at least one device's clock is off ([main-window.md](main-window.md) "Clock"), recomputed with every device change and with a new `Polling.ClockToleranceSeconds`. **Certificate expires soon** and **Certificate expired** with their Any device twins are PKI's events (group "Certificates", the days of each device's Expiry warning policy, [pki.md](pki.md#policies)); their ids keep the `oadm.device.` prefix (`oadm.device.certificate-expires-soon`, `oadm.device.certificate-expired`, `oadm.device.any-certificate-…`), so stored rules keep working. Every other device event comes from the opt-in plugin **Device triggers** (any event a device offers, see [bundled-plugins.md](bundled-plugins.md#device-triggers-core-plugin); also the AXIS Image Health Analytics detections, the Image Health Dashboard is a live display only) and the optional plugin **Text recognition** (Text read and No text read per reader and area on the reader's camera, Reader problem per reader, Any reader problem, with the action Read text, [ocr.md](ocr.md#events-and-the-rule-action)). **Optional plugin not loaded** (`oadm.add-on.not-loaded`, folder Optional plugins, stateful, server, values `count` and `plugin`) comes from the host, [add-ons.md](add-ons.md). **Recipient not connected** (`oadm.recipient.not-connected`, stateful, server, values `count` and `recipient`) comes from the host, [recipient-sessions.md](recipient-sessions.md). |
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
@@ -27,6 +27,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
   them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
+- **Recipients** ([recipients.md](recipients.md)): shared targets of Send email, Send HTTP request, Send TCP message, Publish MQTT message, Write Modbus value and Write OPC UA value (the last three share one connection per recipient, [recipient-sessions.md](recipient-sessions.md)). An action keeps
+  the message and a link to its recipient (`ActionFieldType.Recipient`, `ActionField.Recipient`); `ActionRunner` merges the recipient's
+  fields into the settings of a run and of a test. An action without its recipient fails with "Choose a recipient.".
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields, the folders
   of the event tree `Path`) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`, `IsUsedByRule` (SDK 0.10.0: enabled rules only,
@@ -51,17 +54,17 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   "connection lost" are values only.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
-  Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
-  back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
+  Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, File, Recipient (SDK 0.11.0, [recipients.md](recipients.md)), ClientCertificate and TrustedCertificate (SDK 0.12.0, [recipient-sessions.md](recipient-sessions.md)),
+  Password stored encrypted and never sent back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
   text, form), KeyValues = name / value rows stored as `[{"name","value"}]` (at most 50, one line each,
-  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `UsesPlaceholders` (the rule
+  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest", `AlsoVisibleWhenKey` / `AlsoVisibleWhenValue` are a second condition, either one shows the field), `UsesPlaceholders` (the rule
   dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
-  the target, the plugin's settings, `Log` and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
+  the target, the plugin's settings, `Log`, `SessionAsync<T>` (the open connection of a persistent recipient) and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
   value escaped for the format it goes into). The placeholders are one list,
   `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (everything OADM knows): {rule} {event} {state}
   {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
-  {status} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
+  {status} {site} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
   one pass (`ActionPlaceholders.Fill`: a value holding "{x}" is never filled again, unknown names stay). The client draws the settings form from `Fields` (`ActionSettings` checks
   shared by server and dialog); no client part is needed. The rule model `RuleDefinition` (JSON, camelCase) lives in
   `Oadm.Sdk.Events` and is the definition JSON of gRPC.
@@ -84,17 +87,18 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 - **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
   500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
   `ListActionChoices` (the last five need "Change event rules"), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
+  `ListRecipients`, `SaveRecipient`, `DeleteRecipient`, `TestRecipient` ([recipients.md](recipients.md)), `WatchRecipientStatus`, `ListRecipientCertificates` ([recipient-sessions.md](recipient-sessions.md)),
   `TestAction` (audited "Tested event rule action": runs an action without devices once now, outside rule states and
   limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
-  the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; a failure goes to the server log as a Warning and into the audit detail, its reason never empty; reply ok +
+  the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; an action on a persistent recipient is refused ("Test the recipient instead: it connects and sends nothing."); a failure goes to the server log as a Warning and into the audit detail, its reason never empty; reply ok +
   message).
 - **Notifications** (bundled always-on package `oadm.notifications`,
-  `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (method, URL, query and
-  header rows, login None / Basic / Digest / Bearer token, body type None / JSON / XML / Text / Form in the code editor,
-  "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
-  none, optional login, "Allow untrusted certificates", From, To, Subject, Format Text / HTML; the server settings live in
-  each action, no shared setting) and **Send TCP message** (host, port, Text / JSON / XML / Hex bytes, line end, optional TLS
-  with "Allow untrusted certificates", "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
+  `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (HTTP recipient: URL, login None /
+  Basic / Digest / Bearer token, "Allow untrusted certificates"; action: method, query and
+  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx) and **Send email** (MailKit;
+  Email recipient: mail server, port, STARTTLS / TLS / none, optional login, "Allow untrusted certificates", From, To; action:
+  Subject, Format Text / HTML, body) and **Send TCP message** (TCP recipient: host, port, optional TLS
+  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
   once each time the rule turns on or fires, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
@@ -111,8 +115,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
 - **Client**: rail page **Event rules** (only with "See event rules" and all devices: `MainWindowViewModel.SyncEventRulesItem`
   hides it, with the event log, for users with a device group; key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
-  that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
-  page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
+  that group; `EventRulesViewModel` + `EventRulesView`): **Rules** and **Recipients** ([recipients.md](recipients.md)) side by side with a splitter on top,
+  the **Event log** card below with a splitter, like the Devices page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
   Delete (red, confirmed); search on the right; grid On check box (with "Change event rules"), Name, When, Then, State chip (On ok, waiting accent, problem
   warning), Last run; double click edits; status "3 rules · 2 turned on · 1 active now"; live through
   `WatchRules`) and **Event log** (title, Refresh, **Delete all** (with "Delete the event log", red, confirmed; gRPC `ClearLog`, audited
@@ -124,8 +128,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   one row, Limits), **2 When** (Conditions: "When" / "And" rows with Add check (see "Field checks"), Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices (except Log entry) have **Send test** with
-  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
-  (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request, Send TCP message, Log entry; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
+  the result chip next to it (`TestAction`; off with "Test the recipient instead." for a persistent recipient, a change of the action during a test drops its reply); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
+  (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request, Send TCP message, Log entry, Publish MQTT message, Write Modbus value, Write OPC UA value; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first
   problem as tooltip) and Save on the overview. The devices of a condition or an action have no mode drop-down: one button
@@ -154,7 +158,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   a sample log.
 - **Tests**: `tests/Oadm.Core.Tests/Events` (the engine with a fake clock), `tests/Oadm.Server.Tests/EventServiceTests`,
   `tests/Oadm.Plugins.Outputs.Tests` (+ opt-in `OutputHardwareWriteTests`), `tests/Oadm.Plugins.Notifications.Tests`,
-  `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (5,000 devices).
+  `tests/Oadm.Plugins.Modbus.Tests`, `tests/Oadm.Plugins.Mqtt.Tests`, `tests/Oadm.Plugins.OpcUa.Tests`, `tests/Oadm.RecipientStack.Tests` (opt-in,
+  `manage test recipients`), `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (100,000 devices).
 
 ## Field checks
 

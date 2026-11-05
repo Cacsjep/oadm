@@ -270,7 +270,10 @@ public static class UpdateFolder
 /// <summary>The copy of the running program that becomes the helper (rule 3: the installer can replace the original).</summary>
 public static class HelperCopy
 {
-    /// <summary>Copies the running executable into a new folder below <paramref name="parent"/> and returns the copy's path.</summary>
+    /// <summary>
+    /// Copies the running executable and the native libraries beside it into a new folder below <paramref name="parent"/> and returns the
+    /// copy's path. The client's helper is a window: without Skia, HarfBuzz and ANGLE next to it, it cannot start and no update runs.
+    /// </summary>
     public static string Make(string parent, string? executable = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(parent);
@@ -279,6 +282,11 @@ public static class HelperCopy
         Directory.CreateDirectory(folder);
         var copy = Path.Combine(folder, Path.GetFileName(executable));
         File.Copy(executable, copy, overwrite: true);
+        foreach (var library in Directory.EnumerateFiles(Path.GetDirectoryName(Path.GetFullPath(executable))!).Where(IsNativeLibrary))
+        {
+            File.Copy(library, Path.Combine(folder, Path.GetFileName(library)), overwrite: true);
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(copy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -287,8 +295,22 @@ public static class HelperCopy
         return copy;
     }
 
-    /// <summary>Removes the helper folders of earlier updates (best effort: a running helper keeps its own).</summary>
-    public static void CleanUp(string parent)
+    /// <summary>A native library by its name: "libSkiaSharp.dll", "libavcodec.so.63", "libavcodec.63.dylib".</summary>
+    public static bool IsNativeLibrary(string file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        var name = Path.GetFileName(file);
+        return name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase)
+            || name.EndsWith(".so", StringComparison.Ordinal)
+            || name.Contains(".so.", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Removes the helper folders of earlier updates (best effort: a running helper keeps its own). <paramref name="keepYoungerThan"/>
+    /// spares a folder another process may still be filling.
+    /// </summary>
+    public static void CleanUp(string parent, TimeSpan? keepYoungerThan = null)
     {
         if (!Directory.Exists(parent))
         {
@@ -299,7 +321,10 @@ public static class HelperCopy
         {
             try
             {
-                Directory.Delete(folder, recursive: true);
+                if (keepYoungerThan is not { } age || DateTime.UtcNow - Directory.GetLastWriteTimeUtc(folder) >= age)
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

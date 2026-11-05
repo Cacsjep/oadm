@@ -58,6 +58,8 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
     public RuleStore Store { get; private set; } = null!;
 
+    public RecipientStore Recipients { get; private set; } = null!;
+
     public EventLog Log { get; private set; } = null!;
 
     public ActionRunner Runner { get; private set; } = null!;
@@ -121,13 +123,14 @@ internal sealed class EventRulesRig : IAsyncDisposable
 
         Catalog = new EventCatalog(Registry, SiteEvents is null ? null : [SiteEvents]);
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
+        Recipients = new RecipientStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
-        Runner = new ActionRunner(Catalog, Store, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
+        Runner = new ActionRunner(Catalog, Store, Recipients, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
         Clock = new ClockTolerance(_db.Get<Oadm.Core.Settings.ServerSettingsStore>(), Devices);
         await Clock.LoadAsync(CancellationToken.None);
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
             new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity }, clock: Clock);
-        Rules = new EventRulesService(Catalog, Store, Engine, Devices);
+        Rules = new EventRulesService(Catalog, Store, Recipients, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
         if (SiteEvents is { } siteEvents)
         {

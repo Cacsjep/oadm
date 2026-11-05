@@ -8,16 +8,17 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 
 | Topic | Decision |
 |---|---|
-| Mail server | Part of every **Send email** action (host, port, encryption, login). No shared setting: an action stands on its own and is copied with its rule. |
-| Escaping | Placeholder values are escaped for where they go: URL-encoded in the URL, the query and form bodies, JSON-escaped in JSON bodies and JSON TCP messages, XML-escaped in XML and HTML bodies and XML TCP messages. Text bodies, text emails and Text TCP messages get the values as they are. The text around them is never touched. |
+| Recipients | The target and its login live in a recipient ([spec](../../docs/spec/recipients.md)), the action keeps the message. The plugin declares the types HTTP, Email and TCP (`NotificationRecipients`); the host merges the chosen recipient's fields into the settings, so the actions read `host` or `url` as before. A target takes no placeholders. |
+| Escaping | Placeholder values are escaped for where they go: URL-encoded in form bodies, JSON-escaped in JSON bodies and JSON TCP messages, XML-escaped in XML and HTML bodies and XML TCP messages. Text bodies, text emails and Text TCP messages get the values as they are. The text around them is never touched. One exception: a query name and value are URL-encoded as a whole, typed text included. The URL takes no placeholders. |
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
-| Certificates | "Allow untrusted certificates" per action, off by default. |
-| Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`, administrators, audited). |
+| Certificates | "Allow untrusted certificates" per recipient, off by default. |
+| Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`), Test in the recipient dialog once with the action's defaults (`EventService.TestRecipient`); both audited, with "Change event rules". |
 | Sockets | The reviewed exceptions of the banned-API analyzer. |
 
 ## Send HTTP request (`oadm.notifications.http`)
 
-- Method GET, POST, PUT, PATCH, DELETE; URL (http or https); query parameters and headers as name / value rows.
+- HTTP recipient: URL (http or https), login, "Allow untrusted certificates".
+- Method GET, POST, PUT, PATCH, DELETE; query parameters and headers as name / value rows.
 - Body type None, JSON, XML, Text, Form (one `name=value` per line); the body is a code field colored by its type.
 - Success is any 2xx answer; the event log line says "HTTP 200 OK". Anything else fails with the status and the first
   200 characters of the answer. Timeout 1..120 s (default 15).
@@ -26,8 +27,9 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 
 ## Send email (`oadm.notifications.email`)
 
-- Mail server, port (default 587), encryption STARTTLS / TLS / none, optional user name and password, From, To (several
-  addresses separated by commas or semicolons), Subject, Format Text or HTML, Body.
+- Email recipient: mail server, port (default 587), encryption STARTTLS / TLS / none, optional user name and password, From, To
+  (several addresses separated by commas or semicolons). A second audience is a second recipient.
+- Subject, Format Text or HTML, Body.
 - HTML mails carry a plain-text part made from the HTML. Sent with MailKit (MIT).
 - Errors in plain words: wrong login, untrusted certificate, refused mail, server not reachable.
 
@@ -39,9 +41,9 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 
 ## Send TCP message (`oadm.notifications.tcp`)
 
-- Host (name or IP, placeholders allowed), port (default 8000), Format Text / JSON / XML / Hex bytes, Message (code field
-  colored by the format), Line end None / CR / LF / CR LF (not for hex), Use TLS (+ "Allow untrusted certificates"), Wait for
-  an answer (+ "Answer must contain"), timeout 1..120 s (default 10).
+- TCP recipient: host (name or IP), port (default 8000), Use TLS (+ "Allow untrusted certificates").
+- Format Text / JSON / XML / Hex bytes, Message (code field colored by the format), Line end None / CR / LF / CR LF (not for hex),
+  Wait for an answer (+ "Answer must contain"), timeout 1..120 s (default 10).
 - One connection per run: connect, write the message (UTF-8; hex: "02 41 0x42", spaces, commas and line breaks ignored),
   close. With TLS the certificate must be trusted unless allowed.
 - Without "Wait for an answer" success = the message was written; the log says "Sent 42 bytes to host:port". With it, the
@@ -52,7 +54,7 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 
 ## Placeholders
 
-Every text takes the placeholders of `Oadm.Sdk.Actions.ActionPlaceholders` ({rule}, {event}, {state}, {time}, {date},
+Every text of an action takes the placeholders of `Oadm.Sdk.Actions.ActionPlaceholders` ({rule}, {event}, {state}, {time}, {date},
 {timeUtc}, {device}, {address}, {hostName}, {model}, {serial}, {mac}, {firmware}, {category}, {tags}, {status}, {site},
 {webUrl})
 and every value of the event by its name ({objectId}, {port}). The device is the device of the event. The rule dialog
@@ -72,4 +74,5 @@ the server's own network (the user's own servers).
 
 `tests/Oadm.Plugins.Notifications.Tests`: a small HTTP server on 127.0.0.1 (plain and TLS with a self-signed
 certificate, Digest challenge), a small SMTP server and a small TCP server (plain and TLS, answers or not): escaping per body type, query and headers, every login,
-untrusted certificates, error answers, validation, HTML mails, unreachable servers, TCP text / JSON / hex messages, line ends and expected answers.
+untrusted certificates, error answers, validation, HTML mails, unreachable servers, TCP text / JSON / hex messages, line ends and expected answers;
+`NotificationRecipientsTests`: which field lives where. The merge with the real actions: `tests/Oadm.Core.Tests/Events/RecipientTests`.

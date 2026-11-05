@@ -316,6 +316,7 @@ public sealed partial class PkiService
         var id = request.Id ?? string.Empty;
         string name;
         string authorityId;
+        var recipients = await RecipientUsesAsync(ct).ConfigureAwait(false);
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -371,6 +372,11 @@ public sealed partial class PkiService
                 if (Refusal(authorityId) is { } refused)
                 {
                     return await ErrorAsync(refused, ct).ConfigureAwait(false);
+                }
+
+                if (RowIdsOf(authority).Select(recipients.First).OfType<string>().FirstOrDefault() is { } recipient)
+                {
+                    return await ErrorAsync(Certificates.CertificateRules.UsedByRecipient(recipient), ct).ConfigureAwait(false);
                 }
 
                 // A CA it signed that is still listed keeps it (its chain would end in nothing).
@@ -576,7 +582,7 @@ public sealed partial class PkiService
     }
 
     /// <summary>The rows of the page's Certificate authorities card; <paramref name="withPolicies"/> false: Used by without policy names.</summary>
-    private List<AuthorityRow> AuthorityRows(bool withPolicies) =>
+    private List<AuthorityRow> AuthorityRows(bool withPolicies, RecipientUses? recipients) =>
     [
         .. Authorities().Select(a => new AuthorityRow
         {
@@ -585,7 +591,7 @@ public sealed partial class PkiService
             Kind = a.Kind,
             NotAfterUtc = a.NotAfterUtc,
             Fingerprint = a.Certificates.Count > 0 ? CaCertificates.ColonFingerprint(Convert.ToHexString(SHA256.HashData(a.Certificates[0]))) : string.Empty,
-            UsedBy = withPolicies ? AuthorityUsedBy(a) : [.. UsedBy(a.Id)],
+            UsedBy = withPolicies ? [.. AuthorityUsedBy(a), .. RecipientsOf(a, recipients)] : [.. UsedBy(a.Id)],
             CertificatesPem = [.. a.Certificates.Select(der => new string(PemEncoding.Write("CERTIFICATE", der)) + "\n")],
             Issues = a.Issues,
         }),

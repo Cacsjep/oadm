@@ -231,15 +231,22 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
                     continue;
                 }
 
+                var context = new PluginLoadContext(dll, addOn);
+                // From memory: the file stays replaceable, so a plugin build can overwrite it while the client runs.
+                Assembly assembly = context.LoadWithoutLock(Path.GetFullPath(dll));
+                if (!IsClientPart(assembly))
+                {
+                    // A library with a name like a client part, next to a server part: Opc.Ua.Client.dll of the OPC UA plugin.
+                    context.Unload();
+                    continue;
+                }
+
                 if (packageId is not null)
                 {
                     parts.Packages.Add(packageId);
                 }
 
-                var context = new PluginLoadContext(dll, addOn);
                 parts.Contexts.Add(context);
-                // From memory: the file stays replaceable, so a plugin build can overwrite it while the client runs.
-                Assembly assembly = context.LoadWithoutLock(Path.GetFullPath(dll));
 
                 foreach (Type type in assembly.GetExportedTypes().Where(t => t is { IsClass: true, IsAbstract: false }))
                 {
@@ -275,6 +282,11 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
         return parts;
     }
+
+    private const string ClientSdkAssembly = "Oadm.Sdk.Client";
+
+    /// <summary>A client part builds on the client SDK; a library may only have a name like one (Opc.Ua.Client.dll).</summary>
+    internal static bool IsClientPart(Assembly assembly) => assembly.GetReferencedAssemblies().Any(a => a.Name == ClientSdkAssembly);
 
     /// <summary>The id of plugin.json in the folder, or null.</summary>
     private static string? ReadPackageId(string? directory)

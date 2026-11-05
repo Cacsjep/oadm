@@ -9,11 +9,11 @@ using Oadm.Sdk.Actions;
 namespace Oadm.Plugins.Notifications;
 
 /// <summary>
-/// Event rule action "Send TCP message": opens a connection to a host and port, writes one message and closes it, for
-/// building, alarm and video systems that listen on a plain socket. The message is text, JSON or XML with the
-/// placeholders (values escaped for the format) or hex bytes ("02 41 03"); an optional line end follows it. Optional TLS
-/// with "Allow untrusted certificates". "Wait for an answer" reads what the other side sends back and, with "Answer must
-/// contain", fails when that text does not come. Runs once per rule edge, no device.
+/// Event rule action "Send TCP message": opens a connection to a TCP recipient (host, port, optional TLS with "Allow
+/// untrusted certificates"; no placeholders in a recipient), writes one message and closes it, for building, alarm and
+/// video systems that listen on a plain socket. The message is text, JSON or XML with the placeholders (values escaped for
+/// the format) or hex bytes ("02 41 03"); an optional line end follows it. "Wait for an answer" reads what the other side
+/// sends back and, with "Answer must contain", fails when that text does not come. Runs once per rule edge, no device.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own servers on the server's network, not devices.")]
 public sealed class SendTcpAction : IActionPlugin
@@ -42,10 +42,11 @@ public sealed class SendTcpAction : IActionPlugin
 
     public bool UsesPlaceholders => true;
 
+    public IReadOnlyList<RecipientType> RecipientTypes { get; } = [NotificationRecipients.Tcp];
+
     public IReadOnlyList<ActionField> Fields { get; } =
     [
-        ActionField.Text("host", "Host", required: true) with { Hint = "Host name or IP address" },
-        ActionField.Number("port", "Port", 1, 65535, 8000),
+        NotificationRecipients.Field(NotificationRecipients.TcpType),
         ActionField.Choice("format", "Format", [new("text", "Text"), new("json", "JSON"), new("xml", "XML"), new("hex", "Hex bytes")], "text"),
         ActionField.Code("message", "Message", languageKey: "format", required: true) with
         {
@@ -57,8 +58,6 @@ public sealed class SendTcpAction : IActionPlugin
             VisibleWhenKey = "format",
             VisibleWhenValue = "text|json|xml",
         },
-        ActionField.Bool("tls", "Use TLS"),
-        ActionField.Bool("allowUntrusted", "Allow untrusted certificates") with { VisibleWhenKey = "tls", VisibleWhenValue = "true" },
         ActionField.Bool("waitAnswer", "Wait for an answer"),
         ActionField.Text("expect", "Answer must contain") with { VisibleWhenKey = "waitAnswer", VisibleWhenValue = "true", Hint = "Optional" },
         ActionField.Number("timeout", "Timeout (s)", 1, 120, 10),
@@ -69,12 +68,6 @@ public sealed class SendTcpAction : IActionPlugin
     {
         var invocation = Settings(settings);
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (invocation.Get("host") is { Length: > 0 } host && !host.Contains('{', StringComparison.Ordinal)
-            && Uri.CheckHostName(host.Trim()) == UriHostNameType.Unknown)
-        {
-            errors["host"] = "Enter a host name or IP address.";
-        }
-
         var message = invocation.Get("message") ?? string.Empty;
         switch (invocation.Get("format"))
         {
@@ -108,7 +101,7 @@ public sealed class SendTcpAction : IActionPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
-        var host = ctx.Text(invocation.Get("host")).Trim();
+        var host = invocation.Get("host")?.Trim() ?? string.Empty;
         if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
         {
             throw new InvalidOperationException($"\"{host}\" is not a host name or IP address. Nothing was sent.");
@@ -132,7 +125,7 @@ public sealed class SendTcpAction : IActionPlugin
                 if (invocation.GetBool("tls"))
                 {
                     var allowUntrusted = invocation.GetBool("allowUntrusted");
-#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this action.
+#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this recipient.
                     var tls = new SslStream(stream, leaveInnerStreamOpen: false, (_, _, _, errors) => allowUntrusted || errors == SslPolicyErrors.None);
 #pragma warning restore CA5359
                     await tls.AuthenticateAsClientAsync(new SslClientAuthenticationOptions { TargetHost = host }, timeout.Token).ConfigureAwait(false);

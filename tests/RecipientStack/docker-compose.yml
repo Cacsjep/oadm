@@ -1,0 +1,15 @@
+# The three servers the persistent recipients talk to. Only for "manage test recipients": connects and writes once to each.
+# Never part of the unit tests or of CI.
+services:
+  mqtt:
+    image: eclipse-mosquitto:2.0.20
+    ports: ["127.0.0.1:18830:1883"]
+    # Plain MQTT without a login, the default of a new recipient. No file to mount: Docker needs no shared folder.
+    command: ["sh", "-c", "echo listener 1883 0.0.0.0 > /tmp/m.conf && echo allow_anonymous true >> /tmp/m.conf && exec mosquitto -c /tmp/m.conf"]
+  modbus:
+    image: oitc/modbus-server:1.4.1
+    ports: ["127.0.0.1:15020:5020"]
+  opcua:
+    image: mcr.microsoft.com/iotedge/opc-plc:2.12.29
+    command: ["--pn=50000", "--ph=localhost", "--sph", "--aa", "--ut"]
+    ports: ["127.0.0.1:48400:50000"]

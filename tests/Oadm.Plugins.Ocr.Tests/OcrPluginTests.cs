@@ -21,7 +21,7 @@ public sealed class OcrPluginTests
         Assert.Equal(OcrInfo.PluginId, root.GetProperty("id").GetString());
         Assert.Equal("Text recognition", root.GetProperty("displayName").GetString());
         Assert.False(root.GetProperty("enabledByDefault").GetBoolean());
-        Assert.Equal(SdkInfo.Version, root.GetProperty("minSdkVersion").GetString());
+        Assert.True(Version.Parse(root.GetProperty("minSdkVersion").GetString()!) <= Version.Parse(SdkInfo.Version));
         Assert.Equal(OcrInfo.Description, root.GetProperty("description").GetString());
 
         // The add-on catalogue offers it with the same id, name and line.
@@ -206,5 +206,19 @@ public sealed class OcrPluginTests
 
         var list = new ReaderList { Readers = [new ReaderSummary { Id = "r1", Name = "Gate 2", Mode = ReaderMode.OnAction, LastText = "MSCU 123456 7" }] };
         Assert.Equal(OcrJson.Serialize(list), OcrJson.Serialize(OcrJson.Deserialize<ReaderList>(OcrJson.Serialize(list))));
+    }
+
+    [Fact]
+    public void TheSelfCheckSaysWhenAModelIsMissing()
+    {
+        var folder = Directory.CreateTempSubdirectory("oadm-ocr-check-").FullName;
+        try
+        {
+            Assert.Equal("The model det_mobile.onnx is missing.", new OcrPlugin().SelfCheck(folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
     }
 }

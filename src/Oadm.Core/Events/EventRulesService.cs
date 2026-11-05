@@ -1,4 +1,8 @@
+using System.Globalization;
+using System.Text.Json.Nodes;
+
 using Oadm.Core.Devices;
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Core.Events;
@@ -16,12 +20,28 @@ public sealed record RuleSummaryModel(
     DateTime? LastFiredUtc,
     string? Problem);
 
+/// <summary>A recipient for a client: no password values, its one-line target and the rules that use it.</summary>
+public sealed record RecipientModel(
+    Guid Id,
+    string Name,
+    string TypeId,
+    JsonObject Values,
+    IReadOnlyList<string> StoredSecretFields,
+    string Target,
+    IReadOnlyList<string> UsedBy);
+
 /// <summary>
 /// What the gRPC EventService does with rules: list them with their live state, check and save them (the engine applies
-/// the change before the call returns), turn them on or off, copy and delete them.
+/// the change before the call returns), turn them on or off, copy and delete them; and with recipients: list, save, delete.
 /// </summary>
-public sealed class EventRulesService(EventCatalog catalog, RuleStore store, RuleEngine engine, DeviceRepository devices)
+public sealed class EventRulesService(EventCatalog catalog, RuleStore store, RecipientStore recipients, RuleEngine engine, DeviceRepository devices) : IDisposable, Oadm.Sdk.Certificates.IRecipientCertificateUse
 {
+    /// <summary>The rule names a refused delete lists; more are counted.</summary>
+    private const int NamedRules = 5;
+
+    // A rule that is being saved and a recipient that is being deleted wait for each other: the rule's check holds.
+    private readonly SemaphoreSlim _links = new(1, 1);
+
     public EventCatalog Catalog { get; } = catalog;
 
     public RuleEngine Engine { get; } = engine;
@@ -29,11 +49,14 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
     /// <summary>A rule was saved, copied, turned on or off, or deleted (the engine raises state changes itself).</summary>
     public event EventHandler? Changed;
 
+    public void Dispose() => _links.Dispose();
+
     public async Task<IReadOnlyList<RuleSummaryModel>> ListAsync(CancellationToken ct)
     {
         var rules = await store.ListAsync(ct).ConfigureAwait(false);
         var names = await DeviceNamesAsync(rules.Select(r => r.Definition), ct).ConfigureAwait(false);
-        return [.. rules.Select(r => Summary(r, names))];
+        var linked = await RecipientsByIdAsync(ct).ConfigureAwait(false);
+        return [.. rules.Select(r => Summary(r, names, linked))];
     }
 
     /// <summary>The rule for a client (password values removed) and its summary; null when unknown.</summary>
@@ -46,7 +69,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         }
 
         var names = await DeviceNamesAsync([rule.Definition], ct).ConfigureAwait(false);
-        return (RuleStore.ForClient(rule.Definition), Summary(rule, names));
+        return (RuleStore.ForClient(rule.Definition), Summary(rule, names, await RecipientsByIdAsync(ct).ConfigureAwait(false)));
     }
 
     /// <summary>Checks and saves a rule. Throws <see cref="RuleValidationException"/> or <see cref="KeyNotFoundException"/>.</summary>
@@ -59,8 +82,20 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
             existing = await store.GetAsync(rule.Id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException("The rule no longer exists.");
         }
 
-        RuleValidator.Validate(rule, Catalog, key => StoredSecretsOf(existing, rule, key));
-        var (saved, previous) = await store.SaveAsync(rule, action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
+        StoredRule saved;
+        StoredRule? previous;
+        await _links.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var clean = WithoutOldTargets(rule); // first: a value that goes at this save must not refuse it
+            RuleValidator.Validate(clean, Catalog, key => StoredSecretsOf(existing, clean, key), await RecipientsByIdAsync(ct).ConfigureAwait(false));
+            (saved, previous) = await store.SaveAsync(clean, action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _links.Release();
+        }
+
         await Engine.ApplyRuleChangeAsync(previous, saved, ct).ConfigureAwait(false);
         var result = await GetAsync(saved.Definition.Id, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException("The rule no longer exists.");
         Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
@@ -103,7 +138,162 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
         return copy is null ? null : await GetAsync(copy.Definition.Id, ct).ConfigureAwait(false);
     }
 
-    private RuleSummaryModel Summary(StoredRule rule, IReadOnlyDictionary<Guid, string> names)
+    /// <summary>The certificates a recipient may name; null or a null result: none.</summary>
+    public Func<Oadm.Sdk.Certificates.IRecipientCertificates?>? Certificates { get; set; }
+
+    /// <summary>Every recipient with its target and the rules that use it; the rules are read and walked once per list.</summary>
+    public async Task<IReadOnlyList<RecipientModel>> ListRecipientsAsync(CancellationToken ct)
+    {
+        var rows = await recipients.ListAsync(ct).ConfigureAwait(false);
+        var usedBy = RecipientUse.ByRecipient(await store.ListAsync(ct).ConfigureAwait(false), rows.Select(r => r.Id));
+        return [.. rows.Select(r => ToModel(r, usedBy.GetValueOrDefault(r.Id) ?? []))];
+    }
+
+    /// <summary>
+    /// Checks and saves a recipient; its rules follow at their next run. Throws <see cref="RecipientValidationException"/>
+    /// or <see cref="KeyNotFoundException"/>.
+    /// </summary>
+    public async Task<(RecipientModel Recipient, bool Created)> SaveRecipientAsync(Guid? id, string name, string typeId, JsonObject settings, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var type = Catalog.FindRecipientType(typeId) ?? throw new RecipientValidationException("Choose a type.");
+        StoredRecipient? current = null;
+        IReadOnlyList<string> stored = [];
+        if (id is { } known)
+        {
+            current = await recipients.GetAsync(known, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(RecipientType.NotFoundText);
+            stored = RecipientStore.ForClient(current).StoredSecretFields;
+        }
+
+        var error = RecipientChecks.Errors(type, settings, stored).FirstOrDefault();
+        if (error.Value is not null)
+        {
+            throw new RecipientValidationException(error.Key, error.Value);
+        }
+
+        var fields = type.Type.Fields;
+        await RecipientChecks.CheckAgainstStoredAsync(fields, settings, current, Certificates?.Invoke(), ct).ConfigureAwait(false);
+        IReadOnlyList<string> forget = current is null ? [] : RecipientChecks.ForgottenPasswords(fields, settings, current);
+        var (saved, created) = await recipients.SaveAsync(id, name, type.Id, settings, fields, forget, ct).ConfigureAwait(false);
+        var rules = await store.ListAsync(ct).ConfigureAwait(false);
+        Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty); // the rules list names what the recipient holds
+        return (ToModel(saved, RecipientUse.ByRecipient(rules, [saved.Id]).GetValueOrDefault(saved.Id) ?? []), created);
+    }
+
+    /// <summary>
+    /// Deletes a recipient no rule uses. Returns it, null when unknown; throws <see cref="InvalidOperationException"/> with the
+    /// rule names while a rule uses it.
+    /// </summary>
+    public async Task<StoredRecipient?> DeleteRecipientAsync(Guid id, CancellationToken ct)
+    {
+        await _links.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var used = RecipientUse.ByRecipient(await store.ListAsync(ct).ConfigureAwait(false), [id]).GetValueOrDefault(id);
+            if (used is { Count: > 0 })
+            {
+                var more = used.Count - NamedRules;
+                throw new InvalidOperationException("Used by " + string.Join(", ", used.Take(NamedRules))
+                    + (more > 0 ? string.Create(CultureInfo.InvariantCulture, $" and {more} more") : string.Empty) + ". Change those rules first.");
+            }
+
+            var removed = await recipients.DeleteAsync(id, ct).ConfigureAwait(false);
+            if (removed is not null)
+            {
+                Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty);
+            }
+
+            return removed;
+        }
+        finally
+        {
+            _links.Release();
+        }
+    }
+
+    /// <summary>The one line of the Recipients list; a value of its template that is missing stays empty.</summary>
+    internal string Target(StoredRecipient recipient)
+    {
+        var (values, _) = RecipientStore.ForClient(recipient);
+        return TargetOf(recipient.TypeId, values);
+    }
+
+    /// <summary>The target of <paramref name="values"/> in one line; empty for a type that is gone or has no fields.</summary>
+    public string TargetOf(string typeId, JsonObject values)
+    {
+        if (Catalog.FindRecipientType(typeId)?.Type is not { } type || (type.Target is null && type.Fields.Count == 0))
+        {
+            return string.Empty;
+        }
+
+        return ActionPlaceholders.Fill(type.Target ?? "{" + type.Fields[0].Key + "}", key => ActionSettings.Text(values, key) ?? string.Empty);
+    }
+
+    /// <summary>
+    /// The certificates of every recipient, in hidden fields too: a hidden value can show again. Of a type that is not installed the
+    /// fields are unknown, so every stored value with the prefix of a certificate id counts.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> UsesAsync(CancellationToken ct)
+    {
+        var uses = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var recipient in await recipients.ListAsync(ct).ConfigureAwait(false))
+        {
+            var fields = Catalog.FindRecipientType(recipient.TypeId)?.Type.Fields;
+            var keys = fields?.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate).Select(f => f.Key)
+                ?? recipient.Settings.Where(s => IsCertificateId(s.Value)).Select(s => s.Key);
+            foreach (var key in keys)
+            {
+                if (ActionSettings.Text(recipient.Settings, key) is { Length: > 0 } id)
+                {
+                    if (!uses.TryGetValue(id, out var names))
+                    {
+                        uses[id] = names = [];
+                    }
+
+                    names.Add(recipient.Name);
+                }
+            }
+        }
+
+        return uses.ToDictionary(u => u.Key, u => (IReadOnlyList<string>)[.. u.Value.Distinct().Order(StringComparer.CurrentCultureIgnoreCase)], StringComparer.Ordinal);
+    }
+
+    /// <summary>The ids of PKI's Certificates list: <c>local:</c> and <c>ca:</c> rows (docs/spec/pki.md "Recipients").</summary>
+    private static bool IsCertificateId(JsonNode? value) =>
+        value is JsonValue text && text.TryGetValue<string>(out var id)
+        && (id.StartsWith("local:", StringComparison.Ordinal) || id.StartsWith("ca:", StringComparison.Ordinal));
+
+    private RecipientModel ToModel(StoredRecipient recipient, IReadOnlyList<string> usedBy)
+    {
+        var (values, stored) = RecipientStore.ForClient(recipient);
+        return new RecipientModel(recipient.Id, recipient.Name, recipient.TypeId, values, stored, Target(recipient), usedBy);
+    }
+
+    private async Task<Dictionary<Guid, StoredRecipient>> RecipientsByIdAsync(CancellationToken ct) =>
+        (await recipients.ListAsync(ct).ConfigureAwait(false)).ToDictionary(r => r.Id);
+
+    /// <summary>
+    /// A rule to store: an action with a recipient keeps only its declared fields, so the old values of its targets (passwords
+    /// too) go at this save, also when a client sends them back.
+    /// </summary>
+    private RuleDefinition WithoutOldTargets(RuleDefinition rule)
+    {
+        var copy = rule.Clone();
+        foreach (var action in copy.Actions)
+        {
+            if (Catalog.FindAction(action.ActionId)?.Plugin.Fields is { } fields && fields.Any(f => f.Type == ActionFieldType.Recipient))
+            {
+                foreach (var key in action.Settings.Select(p => p.Key).Where(k => !fields.Any(f => f.Key == k)).ToList())
+                {
+                    action.Settings.Remove(key);
+                }
+            }
+        }
+
+        return copy;
+    }
+
+    private RuleSummaryModel Summary(StoredRule rule, IReadOnlyDictionary<Guid, string> names, IReadOnlyDictionary<Guid, StoredRecipient> linked)
     {
         var definition = rule.Definition;
         string? Name(Guid id) => names.GetValueOrDefault(id);
@@ -114,12 +304,12 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rul
             definition.Name,
             definition.Enabled,
             RuleTexts.Conditions(definition, Catalog, Name),
-            RuleTexts.Actions(definition, Catalog, Name),
+            RuleTexts.Actions(definition, Catalog, Name, linked),
             stateful,
             definition.Enabled ? status?.ActiveCount ?? 0 : 0,
             RuleTexts.State(definition, stateful, status),
             status?.LastFiredUtc ?? rule.LastFiredUtc,
-            RuleTexts.Problem(definition, Catalog));
+            RuleTexts.Problem(definition, Catalog, linked));
     }
 
     /// <summary>Password fields of an action with a value on the server that an incoming rule keeps.</summary>

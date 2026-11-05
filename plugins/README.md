@@ -46,7 +46,7 @@ Both projects copy their output to `artifacts/plugins/<plugin id>/` (MSBuild tar
 with `dotnet run` of server and client. Installed plugins live in `<datafolder>/plugins/<id>/` or in `plugins/<id>/`
 next to the published exe.
 
-The server loads `*.Server.dll`, the client `*.Client.dll`, each in its own load context. Shared assemblies come from
+The server loads `*.Server.dll`, the client `*.Client.dll` that references `Oadm.Sdk.Client`, each in its own load context. Shared assemblies come from
 the host and are never copied into the plugin folder. Outside this repository the plugin project SDK `Oadm.Plugin.Sdk`
 does this by itself (the SDK packages without copies, Avalonia and the MVVM toolkit referenced for you,
 `Avalonia.Controls.DataGrid` without a version). The bundled
@@ -765,12 +765,22 @@ public sealed class EmailAction : IActionPlugin
 - **Fields**: `Text`, `Multiline`, `Number` (min / max), `Bool`, `Choice` (fixed list), `DynamicChoice` (the list comes
   from `ListChoicesAsync` while the rule is edited, e.g. saved VAPIX commands), `Password`, `Code` (a body in the code
   editor; `Language` or `LanguageKey` = the field whose value is json / xml / html / text / form), `KeyValues` (name / value
-  rows, read with `run.GetPairs(key)`). `Required`, `Hint`, `Default`,
+  rows, read with `run.GetPairs(key)`), `File`, `Recipient` (SDK 0.11.0, see below), `ClientCertificate` and `TrustedCertificate` (SDK 0.12.0, selects of the certificates in PKI, for fields of a recipient type). `Required`, `EmptyText` (SDK 0.11.0: the error of an empty required field, default "Enter" and the label), `Format` (SDK 0.11.0: Url, Host, Email or EmailList, SDK 0.12.0: OpcEndpoint, checked while the user types and on the server), `Hint`, `Default`,
   `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse"; several as
-  "basic|digest") and `OffEdge` (a
+  "basic|digest"; `AlsoVisibleWhenKey` / `AlsoVisibleWhenValue`, SDK 0.12.0: a second condition, either one shows the field) and `OffEdge` (a
   setting of "When the rule turns off", shown only for rules that turn on and off). The host checks required values,
   numbers, choices and lengths (`ActionSettings`, the same code in the dialog and on the server); `Validate` adds the
   action's own rules (errors per field key).
+- **Recipients** (SDK 0.11.0, [spec](../docs/spec/recipients.md)): a shared target several rules choose. Declare the kind in
+  `RecipientTypes` (`RecipientType(id, name, icon, fields, testActionId)`, optional `Target` such as "{host}:{port}") and add
+  `ActionField.Recipient("recipient", "Recipient", [typeId])` to `Fields`. Before a run the host merges the recipient's fields into the
+  settings under their own keys, so `run.Get("host")` works and passwords arrive decrypted (a persistent type's reach only the session); `run.RecipientIds` has the id per field.
+  Never fill placeholders in a target. `Validate` also checks a recipient's values, `Describe` sees them without passwords.
+  Sample: `plugins/Oadm.Plugins.Notifications/NotificationRecipients.cs`. A persistent type (SDK 0.12.0, one open connection its rules share) sets
+  `Sessions` to an `IRecipientSessionFactory`; the action reads the session with `ctx.SessionAsync<T>(fieldKey, ct)`, Test only connects
+  ([spec](../docs/spec/recipient-sessions.md), sample: `plugins/Oadm.Plugins.Modbus`).
+- **Self check** (SDK 0.12.0): `ICorePlugin.SelfCheck(pluginDirectory)` proves what a plugin ships really works, such as a native library or model;
+  the release runs it through `--self-check` on every platform. No device, no network, no change.
 - **Edges**: `ActionInvocation.Edge` is `Fired` (one-shot rule), `TurnedOn` or `TurnedOff`. Set `SupportsTurnOff` when
   the action has an off part and `RunsOn(edge, settings)` to skip edges (default: off edges only with `SupportsTurnOff`).
 - **Runs**: at most 16 at once for all rules, 30 s each (`ct` is cancelled; `MaxRunTime(settings)` asks for longer, e.g. a
@@ -778,8 +788,8 @@ public sealed class EmailAction : IActionPlugin
   event log; there is no retry. Devices that refuse the login are skipped before the action is called.
 - **Settings of the plugin** (an SMTP server): `ctx.Settings` (the package's, or the owning core plugin's).
 - **Placeholders**: `ctx.Text(text)` fills `ActionPlaceholders.Fixed` and the event's values; `ctx.Text(text,
-  PlaceholderEscape.Json | Xml | Url)` escapes every value for a body or URL, never the text around it. The rule dialog
-  lists the placeholders, and actions without devices get **Send test** (sample values).
+  PlaceholderEscape.Json | Xml | Url)` escapes every value for a body or URL, never the text around it. `ActionPlaceholders.FirstUnknown(text, ctx)` names a `{name}` the run does not fill, for an action that must not send it literally. The rule dialog
+  lists the placeholders, and actions without devices get **Send test** (sample values; off on a persistent recipient, its Test only connects).
 - Samples: `plugins/Oadm.Plugins.Outputs/SetOutputAction.cs` (device action, choices, a visible-when field, turn off),
   `plugins/Oadm.Plugins.VapixCommander/RunCommandAction.cs` (contributed by a core plugin, dynamic choices, off command).
   `plugins/Oadm.Plugins.Notifications` (actions without devices, code bodies, rows, escaping).

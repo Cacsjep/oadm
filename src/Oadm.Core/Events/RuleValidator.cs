@@ -31,8 +31,12 @@ public sealed class RuleValidationException : Exception
 /// </summary>
 public static class RuleValidator
 {
-    /// <summary>The first problem, or null when the rule can be saved.</summary>
-    public static string? FirstProblem(RuleDefinition rule, EventCatalog catalog, Func<Guid, IReadOnlyCollection<string>>? storedSecrets = null)
+    /// <summary>
+    /// The first problem, or null when the rule can be saved. <paramref name="recipients"/>: the recipients by id; null
+    /// leaves out the check that a chosen recipient exists and has a type of its field.
+    /// </summary>
+    public static string? FirstProblem(
+        RuleDefinition rule, EventCatalog catalog, Func<Guid, IReadOnlyCollection<string>>? storedSecrets = null, IReadOnlyDictionary<Guid, StoredRecipient>? recipients = null)
     {
         ArgumentNullException.ThrowIfNull(rule);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -85,7 +89,7 @@ public static class RuleValidator
         var stateful = IsStateful(rule, catalog);
         foreach (var action in rule.Actions)
         {
-            var problem = CheckAction(action, trigger!, stateful, catalog, storedSecrets?.Invoke(action.Key) ?? []);
+            var problem = CheckAction(action, trigger!, stateful, catalog, storedSecrets?.Invoke(action.Key) ?? [], recipients);
             if (problem is not null)
             {
                 return problem;
@@ -106,9 +110,10 @@ public static class RuleValidator
     }
 
     /// <summary>Throws <see cref="RuleValidationException"/> with <see cref="FirstProblem"/>.</summary>
-    public static void Validate(RuleDefinition rule, EventCatalog catalog, Func<Guid, IReadOnlyCollection<string>>? storedSecrets = null)
+    public static void Validate(
+        RuleDefinition rule, EventCatalog catalog, Func<Guid, IReadOnlyCollection<string>>? storedSecrets = null, IReadOnlyDictionary<Guid, StoredRecipient>? recipients = null)
     {
-        if (FirstProblem(rule, catalog, storedSecrets) is { } problem)
+        if (FirstProblem(rule, catalog, storedSecrets, recipients) is { } problem)
         {
             throw new RuleValidationException(problem);
         }
@@ -219,7 +224,32 @@ public static class RuleValidator
         return null;
     }
 
-    private static string? CheckAction(RuleAction action, CatalogEventType trigger, bool stateful, EventCatalog catalog, IReadOnlyCollection<string> storedSecrets)
+    /// <summary>
+    /// True when a recipient field of the action is empty or, with <paramref name="recipients"/>, points to no recipient of
+    /// the field's types.
+    /// </summary>
+    internal static bool MissesRecipient(RuleAction action, IEnumerable<ActionField> fields, IReadOnlyDictionary<Guid, StoredRecipient>? recipients)
+    {
+        foreach (var field in fields.Where(f => f.Type == ActionFieldType.Recipient))
+        {
+            var text = ActionSettings.Text(action.Settings, field.Key)?.Trim();
+            if (string.IsNullOrEmpty(text))
+            {
+                return true;
+            }
+
+            if (recipients is not null
+                && (!Guid.TryParse(text, out var id) || !recipients.TryGetValue(id, out var recipient) || !field.RecipientTypes.Contains(recipient.TypeId, StringComparer.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? CheckAction(
+        RuleAction action, CatalogEventType trigger, bool stateful, EventCatalog catalog, IReadOnlyCollection<string> storedSecrets, IReadOnlyDictionary<Guid, StoredRecipient>? recipients)
     {
         var catalogAction = catalog.FindAction(action.ActionId);
         if (catalogAction is null)
@@ -259,7 +289,13 @@ public static class RuleValidator
         if (errors.Count > 0)
         {
             var (key, message) = errors.First();
-            return $"{label}: {fields.First(f => f.Key == key).Label}: {message}";
+            var failed = fields.First(f => f.Key == key);
+            return failed.Type == ActionFieldType.Recipient ? $"{label}: {message}" : $"{label}: {failed.Label}: {message}";
+        }
+
+        if (MissesRecipient(action, fields, recipients))
+        {
+            return $"{label}: {ActionSettings.ChooseRecipient}";
         }
 
         if (!catalogAction.Available)

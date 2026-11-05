@@ -276,6 +276,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     private readonly RuleEditorViewModel _owner;
     private readonly RuleAction? _initial;
     private bool _loading;
+    private int _testGeneration; // every change of the action counts: a test's reply is about the settings it started from
 
     internal RuleActionViewModel(RuleEditorViewModel owner, RuleAction? initial)
     {
@@ -300,7 +301,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     public IReadOnlyList<ActionOption> Actions => _owner.Actions;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description), nameof(CanTest))]
+    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description), nameof(ShowTest), nameof(CanTest), nameof(TestTip))]
     public partial ActionOption? SelectedAction { get; set; }
 
     public DeviceSelectorViewModel Targets { get; }
@@ -339,11 +340,27 @@ public sealed partial class RuleActionViewModel : ObservableObject
 
     public bool HasFieldErrors => Fields.Any(f => f.IsVisible && f.Problem is not null);
 
+    /// <summary>"Send email: Subject: Enter subject.", "Send email: Choose a recipient."; null without an error.</summary>
+    internal string? FieldProblem => Fields.FirstOrDefault(f => f.IsVisible && f.Problem is not null) is { } first
+        ? first.IsRecipient ? $"{SelectedAction?.Entry.DisplayName}: {first.Problem}" : $"{SelectedAction?.Entry.DisplayName}: {first.Label}: {first.Problem}"
+        : null;
+
     /// <summary>The action "Log entry": a test of it would only write to the server log.</summary>
     internal const string LogEntryActionId = "oadm.notifications.log";
 
-    /// <summary>"Send test": actions without devices, except Log entry; device actions would change devices.</summary>
-    public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
+    /// <summary>Why Send test is off for an action on a persistent recipient.</summary>
+    internal const string TestRecipientInsteadTip = "Test the recipient instead.";
+
+    /// <summary>"Send test" shows: actions without devices, except Log entry; device actions would change devices.</summary>
+    public bool ShowTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
+
+    /// <summary>
+    /// Off for an action on a persistent recipient (MQTT, Modbus, OPC UA): a test would write to a real machine, the recipient's
+    /// own Test only connects.
+    /// </summary>
+    public bool CanTest => ShowTest && !Fields.Any(f => f.IsRecipient && _owner.IsPersistentRecipient(f));
+
+    public string TestTip => ShowTest && !CanTest ? TestRecipientInsteadTip : "Sends it once now, with sample event values";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTestResult))]
@@ -375,18 +392,25 @@ public sealed partial class RuleActionViewModel : ObservableObject
             return;
         }
 
+        var generation = _testGeneration;
         IsTesting = true;
         TestResult = "Sending";
         try
         {
             var reply = await _owner.TestActionAsync(this).ConfigureAwait(true);
-            TestOk = reply.Ok;
-            TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
+            if (generation == _testGeneration)
+            {
+                TestOk = reply.Ok;
+                TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            TestOk = false;
-            TestResult = ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message;
+            if (generation == _testGeneration)
+            {
+                TestOk = false;
+                TestResult = ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message;
+            }
         }
         finally
         {
@@ -394,7 +418,14 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
     }
 
-    private bool NotTesting() => !IsTesting;
+    private bool NotTesting() => !IsTesting && CanTest;
+
+    /// <summary>The action changed: a shown result, and the reply of a test still running, are about the old settings.</summary>
+    private void FormChanged()
+    {
+        _testGeneration++;
+        TestResult = null;
+    }
 
     [RelayCommand]
     private void Remove() => _owner.RemoveAction(this);
@@ -413,7 +444,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
 
         ShowErrors = true;
-        TestResult = null;
+        FormChanged();
         BuildFields(null);
         _owner.Revalidate();
     }
@@ -433,10 +464,20 @@ public sealed partial class RuleActionViewModel : ObservableObject
             var value = initial is not null
                 ? ActionSettings.Text(initial.Settings, entry.Key)
                 : entry.HasDefaultValue ? entry.DefaultValue : null;
+            if (field.IsRecipient)
+            {
+                field.SetChoices(_owner.RecipientChoices(entry));
+                field.RecipientCreator = _owner.NewRecipientAsync;
+            }
+
             field.SetValue(value);
             field.PasswordStored = initial?.StoredSecretFields.Contains(entry.Key) == true;
-            field.ShowError = false;
-            field.Changed += (_, _) => _owner.Revalidate();
+            field.ShowError = field.IsRecipient && initial is not null; // an old action says at once that it needs a recipient
+            field.Changed += (_, _) =>
+            {
+                FormChanged();
+                _owner.Revalidate();
+            };
             Fields.Add(field);
             if (entry.Kind == ActionFieldKind.ActionFieldDynamicChoice)
             {
@@ -450,6 +491,9 @@ public sealed partial class RuleActionViewModel : ObservableObject
     {
         ActionFieldViewModel.Refresh(Fields, statefulRule);
         OnPropertyChanged(nameof(Error));
+        OnPropertyChanged(nameof(CanTest));
+        OnPropertyChanged(nameof(TestTip));
+        TestCommand.NotifyCanExecuteChanged();
     }
 
     internal void ShowAllErrors()
@@ -505,13 +549,17 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
     private readonly RuleDefinition _original;
+    private readonly List<RecipientEntry> _recipients;
+    private readonly IReadOnlyList<RecipientTypeEntry> _recipientTypes;
     private bool _revalidating;
 
-    public RuleEditorViewModel(IOadmApi api, EventCatalog catalog, RuleDetail? detail, DeviceStore devices)
+    public RuleEditorViewModel(IOadmApi api, EventCatalog catalog, RuleDetail? detail, DeviceStore devices, IReadOnlyList<RecipientEntry>? recipients = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(devices);
+        _recipients = [.. recipients ?? []];
+        _recipientTypes = catalog.RecipientTypes;
         AllEventTypes = [.. catalog.EventTypes.OrderBy(t => t.Group == "Device status" ? 0 : 1).ThenBy(t => t.Group).ThenBy(t => t.DisplayName).Select(t => new EventTypeOption(t))];
         Actions = [.. catalog.Actions.OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(a => new ActionOption(a))];
         DeviceList = [.. devices.Devices];
@@ -640,7 +688,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     {
         RuleStep => FormError,
         WhenStep => Conditions.Select(c => c.Problem).FirstOrDefault(p => p is not null),
-        ThenStep => RuleActions.Select(a => a.Problem ?? (a.HasFieldErrors ? $"{a.SelectedAction?.Entry.DisplayName}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Label}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Problem}" : null)).FirstOrDefault(p => p is not null),
+        ThenStep => RuleActions.Select(a => a.Problem ?? a.FieldProblem).FirstOrDefault(p => p is not null),
         _ => null,
     };
 
@@ -889,6 +937,47 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         }
 
         PlaceholderGroups = groups;
+    }
+
+    /// <summary>Shows the recipient dialog (set by the window); true = saved.</summary>
+    public Func<RecipientEditorViewModel, Task<bool>>? ShowRecipientEditor { get; set; }
+
+    /// <summary>The recipients of a field's types, sorted by name.</summary>
+    internal IEnumerable<ActionChoiceEntry> RecipientChoices(ActionFieldEntry entry) => _recipients
+        .Where(r => entry.RecipientTypes.Contains(r.TypeId))
+        .OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+        .Select(r => new ActionChoiceEntry { Value = r.Id, Label = r.Name });
+
+    /// <summary>The chosen recipient is persistent; with none chosen yet, one of the field's types is.</summary>
+    internal bool IsPersistentRecipient(ActionFieldViewModel field)
+    {
+        var types = _recipients.Find(r => r.Id == field.Value) is { } chosen ? [chosen.TypeId] : field.Entry.RecipientTypes;
+        return _recipientTypes.Any(t => t.Persistent && types.Contains(t.Id));
+    }
+
+    /// <summary>New beside a recipient select: the recipient dialog for the field's types; the new one is selected.</summary>
+    internal async Task NewRecipientAsync(ActionFieldViewModel field)
+    {
+        if (ShowRecipientEditor is not { } show)
+        {
+            return;
+        }
+
+        var types = _recipientTypes.Where(t => field.Entry.RecipientTypes.Contains(t.Id)).ToList();
+        var editor = new RecipientEditorViewModel(_api, types, null, [.. _recipients.Select(r => r.Name)]);
+        if (!await show(editor).ConfigureAwait(true) || editor.Saved is not { } saved)
+        {
+            return;
+        }
+
+        _recipients.Add(saved);
+        foreach (var other in RuleActions.SelectMany(a => a.Fields).Where(f => f.IsRecipient))
+        {
+            other.SetChoices(RecipientChoices(other.Entry));
+        }
+
+        field.SelectChoice(saved.Id);
+        Revalidate();
     }
 
     /// <summary>

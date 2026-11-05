@@ -62,6 +62,18 @@ public enum ActionFieldType
     /// only; the rule dialog does not offer it.
     /// </summary>
     File = 9,
+
+    /// <summary>
+    /// A shared target of the event rules (SDK 0.11.0): the value is the id of a recipient of one of
+    /// <see cref="ActionField.RecipientTypes"/>. The host merges the recipient's fields into the settings before a run.
+    /// </summary>
+    Recipient = 10,
+
+    /// <summary>A certificate with its key from PKI's list, for a recipient that logs in with one (SDK 0.12.0): the value is its id.</summary>
+    ClientCertificate = 11,
+
+    /// <summary>A CA or imported certificate from PKI's list that a server is checked against (SDK 0.12.0): the value is its id.</summary>
+    TrustedCertificate = 12,
 }
 
 /// <summary>The value of a <see cref="ActionFieldType.File"/> setting.</summary>
@@ -113,6 +125,12 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>Help text below the input.</summary>
     public string? Hint { get; init; }
 
+    /// <summary>The error of a required field left empty; null = "Enter" and the label, for a label that does not read in a sentence.</summary>
+    public string? EmptyText { get; init; }
+
+    /// <summary>What a <see cref="ActionFieldType.Text"/> field must hold, checked while the user types and on the server.</summary>
+    public ActionFieldFormat Format { get; init; }
+
     /// <summary>The choices of a <see cref="ActionFieldType.Choice"/> field.</summary>
     public IReadOnlyList<ActionChoice> Choices { get; init; } = [];
 
@@ -134,6 +152,12 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>One value, or several separated by "|" ("basic|digest").</summary>
     public string? VisibleWhenValue { get; init; }
 
+    /// <summary>Also shown while this field has <see cref="AlsoVisibleWhenValue"/> (SDK 0.12.0): either condition shows it.</summary>
+    public string? AlsoVisibleWhenKey { get; init; }
+
+    /// <summary>One value, or several separated by "|".</summary>
+    public string? AlsoVisibleWhenValue { get; init; }
+
     /// <summary>Fixed language of a <see cref="ActionFieldType.Code"/> field: "json", "xml", "html", "text".</summary>
     public string? Language { get; init; }
 
@@ -148,6 +172,9 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
 
     /// <summary>File name endings a <see cref="ActionFieldType.File"/> field takes (".cfg"); empty = any.</summary>
     public IReadOnlyList<string> Accept { get; init; } = [];
+
+    /// <summary>The ids of the <see cref="RecipientType"/>s a <see cref="ActionFieldType.Recipient"/> field takes.</summary>
+    public IReadOnlyList<string> RecipientTypes { get; init; } = [];
 
     /// <summary>One line of text.</summary>
     public static ActionField Text(string key, string label, bool required = false, string? defaultValue = null) =>
@@ -181,6 +208,14 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     public static ActionField Code(string key, string label, string? languageKey = null, bool required = false) =>
         new(key, label, ActionFieldType.Code) { Required = required, MaxLength = 50_000, LanguageKey = languageKey };
 
+    /// <summary>A certificate with its key from PKI's list; nothing chosen means no client certificate unless <paramref name="required"/>.</summary>
+    public static ActionField ClientCertificate(string key, string label, bool required = false) =>
+        new(key, label, ActionFieldType.ClientCertificate) { Required = required };
+
+    /// <summary>A CA or imported certificate from PKI's list; nothing chosen means the operating system's trusted roots.</summary>
+    public static ActionField TrustedCertificate(string key, string label) =>
+        new(key, label, ActionFieldType.TrustedCertificate);
+
     /// <summary>A file of at most <paramref name="maxBytes"/> bytes with one of the <paramref name="accept"/> endings.</summary>
     public static ActionField File(string key, string label, IReadOnlyList<string> accept, int maxBytes, bool required = true) =>
         new(key, label, ActionFieldType.File) { Required = required, Accept = accept, MaxLength = maxBytes };
@@ -188,6 +223,44 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>Name and value rows (headers, query parameters); read them with <see cref="ActionInvocation.GetPairs"/>.</summary>
     public static ActionField KeyValues(string key, string label) =>
         new(key, label, ActionFieldType.KeyValues) { MaxLength = 20_000 };
+
+    /// <summary>
+    /// A required select of the recipients of <paramref name="typeIds"/> (SDK 0.11.0). Before a run the host merges the
+    /// chosen recipient's fields into the settings under their own keys, so <see cref="ActionInvocation.Get"/> reads them.
+    /// One per action: the keys of a second recipient would replace those of the first.
+    /// </summary>
+    public static ActionField Recipient(string key, string label, IReadOnlyList<string> typeIds) =>
+        new(key, label, ActionFieldType.Recipient) { Required = true, RecipientTypes = typeIds };
+}
+
+/// <summary>
+/// A kind of recipient (SDK 0.11.0): where and how to reach something, shared by the rules that choose it. Declared by an
+/// action plugin (<see cref="IActionPlugin.RecipientTypes"/>), so a type is never hard-coded in the host.
+/// </summary>
+/// <param name="Id">Unique id ("oadm.notifications.recipient.email").</param>
+/// <param name="DisplayName">What the Type select and the Type column show ("Email").</param>
+/// <param name="IconKey">Icon key; null = none.</param>
+/// <param name="Fields">The fields of a recipient, the <see cref="ActionField"/> kinds with their checks. Password fields are stored encrypted.</param>
+/// <param name="TestActionId">The action that sends the test of this type, with its default values.</param>
+public sealed record RecipientType(string Id, string DisplayName, string? IconKey, IReadOnlyList<ActionField> Fields, string TestActionId)
+{
+    /// <summary>
+    /// Null for a one shot type (open, send, close inside the action). Set: a persistent type (SDK 0.12.0), one open connection the
+    /// rules share, which the action reads with <see cref="IActionContext.SessionAsync{T}"/>; Test only connects, it sends nothing.
+    /// </summary>
+    public IRecipientSessionFactory? Sessions { get; init; }
+
+    /// <summary>The one-line target of the Recipients list, with {key} for a field's value ("{host}:{port}"). Null: the first field.</summary>
+    public string? Target { get; init; }
+
+    /// <summary>The longest name of a recipient.</summary>
+    public const int MaxNameLength = 64;
+
+    /// <summary>The refusal of a name another recipient has.</summary>
+    public const string NameTakenText = "A recipient with this name already exists.";
+
+    /// <summary>The refusal of an id that is gone.</summary>
+    public const string NotFoundText = "The recipient no longer exists.";
 }
 
 /// <summary>What happened, handed to an action run.</summary>
@@ -211,12 +284,13 @@ public sealed record ActionTrigger(
 
 /// <summary>
 /// One run of an action on one target (a device, or none for actions without <see cref="IActionPlugin.NeedsDevice"/>).
-/// <paramref name="Settings"/> are the action's settings with password fields decrypted.
+/// <paramref name="Settings"/> are the action's settings with password fields decrypted and the fields of a chosen
+/// recipient merged in under their own keys.
 /// </summary>
 /// <param name="RuleId">The rule.</param>
 /// <param name="RuleName">Its name.</param>
 /// <param name="Edge">Why the action runs.</param>
-/// <param name="Settings">The settings of the action, passwords decrypted.</param>
+/// <param name="Settings">The settings of the action, passwords decrypted, a chosen recipient's fields merged in.</param>
 /// <param name="Device">The target device; null for actions without devices.</param>
 /// <param name="Trigger">What happened.</param>
 public sealed record ActionInvocation(
@@ -227,6 +301,12 @@ public sealed record ActionInvocation(
     IDeviceInfo? Device,
     ActionTrigger Trigger)
 {
+    /// <summary>
+    /// The chosen recipients of this run, field key to recipient id (SDK 0.11.0); empty for an action without recipient
+    /// fields and for the Test of a recipient, which runs on the values of its form.
+    /// </summary>
+    public IReadOnlyDictionary<string, Guid> RecipientIds { get; init; } = new Dictionary<string, Guid>();
+
     /// <summary>A setting as text (null when missing or null).</summary>
     public string? Get(string key) =>
         Settings.ValueKind == JsonValueKind.Object && Settings.TryGetProperty(key, out var value)
@@ -284,6 +364,14 @@ public interface IActionContext
 
     /// <summary>The license of the action's plugin package (plugin.json <c>license</c>); null on hosts without licenses.</summary>
     IPluginLicense? License => null;
+
+    /// <summary>
+    /// The open session of the persistent recipient chosen in <paramref name="fieldKey"/> (SDK 0.12.0), as the plugin's own
+    /// interface. The first action of a recipient waits for its connection; later ones fail at once while it is not connected
+    /// (<see cref="RecipientSessionTexts.NotConnected"/>), nothing is queued.
+    /// </summary>
+    Task<T> SessionAsync<T>(string fieldKey, CancellationToken ct)
+        where T : class => throw new NotSupportedException("This OADM version has no recipient sessions.");
 }
 
 /// <summary>Services for <see cref="IActionPlugin.ListChoicesAsync"/> (read-only, while a rule is edited).</summary>
@@ -339,12 +427,22 @@ public interface IActionPlugin : IPlugin
     IReadOnlyList<ActionField> Fields { get; }
 
     /// <summary>
+    /// The kinds of recipient this plugin declares (SDK 0.11.0); the host collects them in the event catalog. Default: none.
+    /// <see cref="Validate"/> also checks a recipient's values: the host calls the type's test action with them when a
+    /// recipient is saved, and keeps the errors of the type's fields.
+    /// </summary>
+    IReadOnlyList<RecipientType> RecipientTypes => [];
+
+    /// <summary>
     /// Checks the settings before a rule is saved; returns errors per field key ("" for the whole action). The host has
     /// already checked required fields, numbers and choices. Default: no further errors.
     /// </summary>
     IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule) => new Dictionary<string, string>();
 
-    /// <summary>One line for the rule list: "Pulse output 1 for 5 s". Default: the display name.</summary>
+    /// <summary>
+    /// One line for the rule list: "Pulse output 1 for 5 s". Default: the display name. The settings hold a chosen
+    /// recipient's fields without its passwords; an action still without its recipient shows the display name.
+    /// </summary>
     string Describe(JsonElement settings) => DisplayName;
 
     /// <summary>Whether this edge needs a run with these settings (e.g. no "off" command chosen). Default: Fired and TurnedOn always, TurnedOff when <see cref="SupportsTurnOff"/>.</summary>

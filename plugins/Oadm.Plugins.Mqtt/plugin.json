@@ -1,0 +1,9 @@
+{
+  "id": "oadm.mqtt",
+  "version": "0.1.0",
+  "minSdkVersion": "0.12.0",
+  "displayName": "MQTT",
+  "description": "Event rule action that publishes a message to an MQTT broker.",
+  "alwaysOn": true,
+  "siteSupport": "full"
+}

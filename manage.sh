@@ -152,7 +152,7 @@ parse_args() {
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs|docs-offline) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
-    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
+    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node, addons or nuget)"
              case "$TARGET" in windows|linux|macos|site-node|addons|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
@@ -444,6 +444,14 @@ cmd_run() {
 cmd_test() {
   require_dotnet
   local filter
+  if [ "$TARGET" = recipients ]; then
+    # The real MQTT, Modbus and OPC UA servers in Docker: tests/RecipientStack, connect and write once to each.
+    local compose="$REPO_ROOT/tests/RecipientStack/docker-compose.yml" status=0
+    docker compose -f "$compose" up -d || exit $?
+    "$DOTNET" test "$REPO_ROOT/tests/Oadm.RecipientStack.Tests/Oadm.RecipientStack.Tests.csproj" -c "$CONFIGURATION" --filter "Category=RecipientStack" ${EXTRA[@]+"${EXTRA[@]}"} || status=$?
+    docker compose -f "$compose" down
+    return "$status"
+  fi
   case "$TARGET" in
     unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite" ;;
     perf) filter="Category=Perf" ;;
@@ -522,7 +530,7 @@ cmd_publish() {
   fi
   if [ "$TARGET" = all ] || [ "$TARGET" = client ]; then
     out="$REPO_ROOT/artifacts/publish/client/$RID"
-    publish_app "$CLIENT_PROJECT" "$out"
+    publish_app "$CLIENT_PROJECT" "$out" "-p:IncludeNativeLibrariesForSelfExtract=false" # beside the exe: no unpacking at the first start
     copy_plugins "$out"
     # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
     if [ -f "$DOCS_OFFLINE/index.html" ]; then cp -R "$DOCS_OFFLINE" "$out/docs"; else echo "warning: no offline docs in artifacts/docs-offline, the client has no Help (manage build docs-offline)" >&2; fi
@@ -681,6 +689,8 @@ package_addons() {
       limit_runtime_folders "$stage" "$rid"
       # Build leftovers of the native packages: never needed at run time.
       find "$stage" -type f \( -name 'DirectML.Debug.dll' -o -name 'DirectML.Debug.pdb' -o -name 'DirectML.pdb' -o -name 'onnxruntime.lib' \) -delete
+      # The ONNX Runtime packages copy their Windows libraries everywhere.
+      case "$rid" in win-*) ;; *) find "$stage" -type f -iname 'onnxruntime*.dll' -delete ;; esac
       # The release it belongs to: the server records a folder put in by hand with this version.
       printf '%s\n' "$(app_version)" > "$stage/oadm-version.txt"
       # What it was built from: a later OADM with the same fingerprint has nothing new for it.

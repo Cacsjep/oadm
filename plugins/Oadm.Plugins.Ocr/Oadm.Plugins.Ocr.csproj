@@ -26,13 +26,15 @@
   </ItemGroup>
 
   <!-- Recognition (docs/spec/ocr.md "GPU" and "Packaging and dependencies"): ONNX Runtime per server platform, chosen by the
-       target RID (the add-on ZIP builds per RID) or, without one, by the building machine. All three share one
-       Microsoft.ML.OnnxRuntime.Managed version. Windows: DirectML (any graphics card) plus the CPU; Linux x64: the GPU build
+       target RID (the add-on ZIP builds per RID) or, without one, by the building machine. Each uses the
+       Microsoft.ML.OnnxRuntime.Managed version of its own runtime (osx-x64 stays on 1.23.2, the last with Intel Mac libraries). Windows: DirectML (any graphics card) plus the CPU; Linux x64: the GPU build
        with the CUDA provider plus the CPU; everything else: the CPU build. -->
   <PropertyGroup>
     <OcrOnnxRuntimeVersion>1.24.4</OcrOnnxRuntimeVersion>
     <OcrRid>$(RuntimeIdentifier)</OcrRid>
     <OcrRid Condition="'$(OcrRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</OcrRid>
+    <!-- 1.24 dropped Intel Macs: 1.23.2 is the last package with osx-x64 natives. -->
+    <OcrOnnxRuntimeVersion Condition="'$(OcrRid)' == 'osx-x64'">1.23.2</OcrOnnxRuntimeVersion>
   </PropertyGroup>
   <ItemGroup Condition="$(OcrRid.StartsWith('win'))">
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="$(OcrOnnxRuntimeVersion)" />

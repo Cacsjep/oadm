@@ -62,6 +62,7 @@ and the event log.
 | Text read (group Text recognition, one per reader): Area, Text, Text read, All matches, Number, Confidence, Matches format | The readers of [Text recognition](../text-recognition/events/#event-text-read) |
 | Reader problem (one per reader), Any reader problem | On while a text reader cannot read, see [Text recognition](../text-recognition/events/#event-reader-problem) |
 | Optional plugin not loaded (group Optional plugins) | On while an optional plugin must be installed again; `{count}` and `{plugin}` |
+| Recipient not connected | On while an MQTT, Modbus or OPC UA recipient cannot be reached; `{count}` and `{recipient}` |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.
@@ -90,12 +91,14 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Run VAPIX command**: sends a saved command of the [VAPIX Commander](../vapix-commander/), with its values and
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
   dangerous need **Allow dangerous commands**. Text fields of the command take [placeholders](#placeholders).
-- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Method,
-  URL, query parameters, headers, a **Login** (Basic, Digest or Bearer token) and a body as JSON, XML, text or form.
-  **Allow untrusted certificates** accepts a self-signed certificate on the receiving side.
-- **Send email**: sends a mail through your mail server, as text or HTML. The mail server is part of the action.
-- **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
-  listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end and TLS. **Wait for an
+- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Choose a
+  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
+- **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
+- **Publish MQTT message**: publishes a message to a topic on an MQTT broker, a [recipient](#recipients).
+- **Write Modbus value**: writes on or off, a pulse, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.
+- **Write OPC UA value**: writes on or off, a number or text to a node of an OPC UA server, a [recipient](#recipients).
+- **Send TCP message**: sends a message to a [recipient](#recipients), for example a building, alarm or video system that
+  listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end. **Wait for an
   answer** with **Answer must contain** fails the action when the other side does not confirm.
 - **Log entry**: writes a message to the server log (**Logs** page, **Server**) and does nothing else. Good for testing
   a rule.
@@ -115,7 +118,7 @@ In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each v
 stays valid whatever the event sends. Text sends the values as they are.
 
 **Send test** sends the email, the request or the message once right away, with sample values for the event and the
-first device of the trigger.
+first device of the trigger. For MQTT, Modbus and OPC UA it is off: use **Test** on the recipient, which only connects.
 
 <Image src={httpAction} alt="Send HTTP request with a JSON body, headers and the placeholders" class="screen" />
 
@@ -123,6 +126,44 @@ first device of the trigger.
 
 When several devices turn a rule on, an action on chosen devices (the lamp on the I/O box) switches on with the first
 one and off when the last one ends.
+
+## Recipients
+
+A recipient says where to send, the action says what to send. Like the recipients of an Axis device, except that a rule keeps a
+link: change a recipient and all its rules follow.
+
+The **Recipients** card sits next to the rules. **New** asks for the type, a name and the type's fields:
+
+| Type | Holds |
+|---|---|
+| HTTP | URL, **Login** (Basic, Digest or Bearer token), **Allow untrusted certificates** |
+| Email | Mail server, port, encryption, **Allow untrusted certificates**, user name, password, From, To |
+| TCP | Host, port, **Use TLS**, **Allow untrusted certificates** |
+
+**Test** sends once now and shows the reason when it fails. Leave a stored password empty to keep it while the target stays. A target takes no
+[placeholders](#placeholders). For a second audience, create a second recipient.
+
+In a rule, choose the recipient in the action, or click **New** next to the select.
+
+**Delete** is refused while a rule uses the recipient: the message names the rules to change first.
+
+:::note[Rules from older versions]
+OADM does not move these rules for you. A Send email, Send HTTP request or Send TCP message of an older rule shows **Choose a
+recipient.**, does not run, and the event log says so. Create the recipient, open the rule and choose it. The old server settings
+go when you save the rule.
+:::
+
+### MQTT, Modbus and OPC UA
+
+An MQTT, Modbus or OPC UA recipient keeps one connection open, which all its rules share. It connects at the first action and closes after 5 minutes
+without one; a connection that failed keeps trying. The Target column shows the state, only an icon when the column is narrow, and the tooltip the reason. **Test** only connects, it sends
+nothing, and it replaces **Send test** for these actions.
+
+A new recipient needs only its address. TLS for MQTT, and security and login for OPC UA, are there when you need them. Certificates come from the
+[PKI](/tools/pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.
+
+The first action waits up to 15 seconds for the connection. After that an action does not wait for a connection that is down: it fails, and the event log says why. Nothing is sent later. Use the event
+**Recipient not connected** to act on it.
 
 ## Manage rules
 
@@ -135,7 +176,7 @@ one and off when the last one ends.
 
 ## Event log
 
-The **Event log** below the rules lists what happened: the events your rules use, when a rule turned on, off or ran, and every
+The **Event log** below the rules and recipients lists what happened: the events your rules use, when a rule turned on, off or ran, and every
 action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
 100,000 entries. Administrators can empty it with **Delete all**.
 

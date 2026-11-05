@@ -34,8 +34,80 @@ service EventService {
   rpc WatchLog (Empty) returns (stream EventLogPage);
   // Admin: deletes every entry of the event log (audited); reply = how many.
   rpc ClearLog (Empty) returns (ClearEventLogReply);
-  // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog).
+  // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog). Refuses an
+  // action on a persistent recipient: ok false with the text to test the recipient.
   rpc TestAction (TestActionRequest) returns (TestActionReply);
+  // Every recipient with its one-line target and the rules that use it (at most 200 rows, so no page).
+  rpc ListRecipients (Empty) returns (RecipientList);
+  // Creates (empty id) or changes a recipient (audited). INVALID_ARGUMENT with the first problem; the trailer
+  // "oadm-field" names its field (a key of the type's fields or "name"). NOT_FOUND.
+  rpc SaveRecipient (SaveRecipientRequest) returns (RecipientEntry);
+  // Audited. FAILED_PRECONDITION with the rule names while a rule uses it. NOT_FOUND.
+  rpc DeleteRecipient (RecipientId) returns (Empty);
+  // Sends the type's test action once now with the action's default values and sample event values (audited); a persistent
+  // type only connects. Refused checks: INVALID_ARGUMENT with the trailer, like SaveRecipient.
+  rpc TestRecipient (SaveRecipientRequest) returns (TestActionReply);
+  // The connection of every persistent recipient that has one: the whole list first, then after each change.
+  rpc WatchRecipientStatus (Empty) returns (stream RecipientStatusList);
+  // The certificates of PKI the recipient dialog offers.
+  rpc ListRecipientCertificates (Empty) returns (RecipientCertificateList);
+}
+
+message RecipientId { string id = 1; }
+
+// A shared target of event rule actions. Password values are never included.
+message RecipientEntry {
+  string id = 1;
+  string name = 2;
+  string type_id = 3;
+  string values_json = 4;                   // the values of the type's fields, without passwords
+  repeated string stored_secret_fields = 5; // the password fields with a value on the server
+  string target = 6;                        // "smtp.office365.com:587", "https://hooks.example.com"
+  repeated string used_by = 7;              // the names of the rules that use it
+}
+
+message RecipientList { repeated RecipientEntry recipients = 1; }
+
+enum RecipientConnection {
+  RECIPIENT_NOT_USED = 0;
+  RECIPIENT_CONNECTING = 1;
+  RECIPIENT_CONNECTED = 2;
+  RECIPIENT_NOT_CONNECTED = 3;
+}
+
+message RecipientStatusEntry {
+  string id = 1;
+  RecipientConnection connection = 2;
+  string reason = 3;          // why it is not connected
+}
+
+// A recipient that is missing here is not used.
+message RecipientStatusList { repeated RecipientStatusEntry recipients = 1; }
+
+message RecipientCertificateChoice {
+  string id = 1;
+  string text = 2;
+}
+
+message RecipientCertificateList {
+  repeated RecipientCertificateChoice client = 1;
+  repeated RecipientCertificateChoice trusted = 2;
+}
+
+message SaveRecipientRequest {
+  string id = 1;              // empty: a new recipient
+  string name = 2;
+  string type_id = 3;
+  string settings_json = 4;   // the type's fields; an empty password keeps the stored one
+}
+
+message RecipientTypeEntry {
+  string id = 1;
+  string display_name = 2;
+  string icon_key = 3;
+  repeated ActionFieldEntry fields = 4;
+  bool available = 5;         // false: the plugin of its test action is off
+  bool persistent = 6;        // one shared connection, with a status; Test only connects
 }
 
 message TestActionRequest {
@@ -101,6 +173,19 @@ enum ActionFieldKind {
   ACTION_FIELD_CODE = 7;       // a body drawn as a code editor (language or language_key)
   ACTION_FIELD_KEY_VALUES = 8; // rows of name and value, a JSON array of {"name", "value"}
   ACTION_FIELD_FILE = 9;       // a file, {"name", "data" (base64)}; compliance checks only
+  ACTION_FIELD_RECIPIENT = 10; // the id of a recipient of recipient_types
+  ACTION_FIELD_CLIENT_CERTIFICATE = 11;  // the id of a certificate of ListRecipientCertificates.client
+  ACTION_FIELD_TRUSTED_CERTIFICATE = 12; // the id of a certificate of ListRecipientCertificates.trusted
+}
+
+// The numbers of Oadm.Sdk.Actions.ActionFieldFormat.
+enum ActionTextFormat {
+  ACTION_TEXT_FORMAT_NONE = 0;
+  ACTION_TEXT_FORMAT_URL = 1;
+  ACTION_TEXT_FORMAT_HOST = 2;
+  ACTION_TEXT_FORMAT_EMAIL = 3;
+  ACTION_TEXT_FORMAT_EMAIL_LIST = 4;
+  ACTION_TEXT_FORMAT_OPC_ENDPOINT = 5;
 }
 
 message ActionFieldEntry {
@@ -121,6 +206,11 @@ message ActionFieldEntry {
   string language_key = 15;         // code field: the field whose value is the language
   bool choices_from_device = 16;    // dynamic choice read from one device the user picks (compliance checks)
   repeated string accept = 17;      // file field: the file name endings it takes (".cfg")
+  repeated string recipient_types = 18; // recipient field: the ids of the types it takes
+  string empty_text = 19;           // the error of a required field left empty; empty = "Enter" and the label
+  ActionTextFormat format = 20;     // what a text field must hold
+  string also_visible_when_key = 21;   // a second condition: either one shows the field
+  string also_visible_when_value = 22;
 }
 
 message ActionEntry {
@@ -140,6 +230,7 @@ message ActionEntry {
 message EventCatalog {
   repeated EventTypeEntry event_types = 1;
   repeated ActionEntry actions = 2;
+  repeated RecipientTypeEntry recipient_types = 3;
 }
 
 message RuleId { string id = 1; }

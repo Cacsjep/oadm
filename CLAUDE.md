@@ -23,6 +23,7 @@ Every rule here and in `docs/spec/` is agreed with the maintainer; change one on
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
 | Text recognition | ONNX Runtime with PaddleOCR models, in an optional plugin; DirectML (Windows x64), CUDA (Linux x64) or the CPU |
+| Event rule targets | MQTTnet (MQTT), the OPC Foundation .NET stack (OPC UA), our own Modbus TCP client, in plugins |
 | Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
@@ -85,7 +86,10 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.LoadTest(.Client)/ core plugin: Load test, a load test of the chosen cameras and the network (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
-  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" and "Log entry"
+  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" (each to a recipient) and "Log entry"
+  Oadm.Plugins.Modbus/                    event rule action "Write Modbus value" and the recipient type Modbus, our own client, write functions only
+  Oadm.Plugins.Mqtt/                      event rule action "Publish MQTT message" and the recipient type MQTT (MQTTnet, one connection per recipient)
+  Oadm.Plugins.OpcUa/                     event rule action "Write OPC UA value", recipient type OPC UA (one session per recipient)
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
@@ -103,6 +107,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
 tests/
   Oadm.<Project>.Tests/  one test project per project and per plugin (Oadm.Core.Tests, Oadm.Client.Tests,
                        Oadm.Plugins.Pki.Tests, ...); TestPlugins/ holds the plugins the loader tests load
+  Oadm.RecipientStack.Tests/ the real MQTT, Modbus and OPC UA servers (`manage test recipients`, never in CI)
+  RecipientStack/      their docker-compose.yml
   Shared/              RecordingFirewall, RecordingStreams, CallWatchers, CountingDeviceScopes, FakeAxisCom, FakeSiteTransport,
                        TestRepository (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
@@ -148,7 +154,7 @@ change before you change it, and update it in the same change. One paragraph eac
 must never break.
 
 - **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes (`PublishSingleFile`,
-  `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), plugins next to each exe, generated
+  `PublishReadyToRun`; server and site node with `IncludeNativeLibrariesForSelfExtract`, the client's native libraries beside its exe), plugins next to each exe, generated
   `THIRD-PARTY-NOTICES.txt`; terms of use accepted on the first client start; installers MSI (Windows x64), .deb
   (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb, a ZIP per
   optional plugin and platform (never in the installers); one
@@ -257,6 +263,10 @@ must never break.
   areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
   in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); events Text read, No text read and Reader problem for the rules; read only, pictures never stored.
+- **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): MQTT, Modbus, OPC UA, one shared connection per recipient, output only): shared
+  targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC UA, declared by plugins, at most 200); a rule keeps a link, the host merges the
+  recipient's fields into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
+  recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

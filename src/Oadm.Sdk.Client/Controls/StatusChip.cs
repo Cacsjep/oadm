@@ -72,6 +72,9 @@ public sealed class StatusChip : Grid
         UpdateText();
     }
 
+    /// <summary>The width its text and the gap before it take; a cell without room arranges the chip that much narrower.</summary>
+    public double WordWidth => _text.IsVisible ? _text.DesiredSize.Width : 0;
+
     /// <summary>The status in plain words ("Done", "Unreachable").</summary>
     public string? Text
     {

@@ -177,7 +177,7 @@ the reconnect.
   `ServerUpdateTracker` (the Watch stream, the banner "Updating the server to V4.9.0", "The server did not come back"
   after 10 minutes), `ClientUpdater` (Update client, the close for the server's installer) and `ClientUpdateHelper`
   (`Oadm.Client --update-helper install|wait ...`, a copy in `update/helper-*` of the client's own data folder, removed
-  on the next start, with a small window "Installing OADM V4.9.0" that cannot be closed). Download progress reaches the
+  on the next start once it is an hour old (a second client may start while the copy is made), with a small window "Installing OADM V4.9.0" that cannot be closed). Download progress reaches the
   dialog on its own thread; any failure is shown in the dialog, never a crash. A client that comes back to a server still
   waiting for its helper's result asks `Get` again every 10 seconds (at most 30 times). The client the helper starts gets `--updated client|server` and shows the result first. msiexec 1602
   (the elevation prompt or the installer cancelled), pkexec 126/127 and osascript -128 are "The update was cancelled.".

@@ -257,6 +257,54 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
         }
     }
 
+    /// <summary>A row's certificate with its key, the key cleared afterwards; null without a key or when the two do not fit.</summary>
+    public X509Certificate2? LoadWithKey(LocalCertificate row)
+    {
+        if (KeyOf(row) is not { } pkcs8)
+        {
+            return null;
+        }
+
+        try
+        {
+            return WithKey(row.Der, pkcs8);
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            LogKeyDoesNotFit(row.Stored.Id);
+            return null;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pkcs8);
+        }
+    }
+
+    /// <summary>
+    /// A certificate with its PKCS#8 key, in memory: through PKCS#12, so Windows TLS can use the key (an in-memory key fails
+    /// there). Never in a certificate store; a load without <see cref="X509KeyStorageFlags.PersistKeySet"/> takes the key with it
+    /// at <see cref="X509Certificate2.Dispose()"/>.
+    /// </summary>
+    public static X509Certificate2 WithKey(byte[] der, byte[] pkcs8)
+    {
+        using var publicOnly = X509CertificateLoader.LoadCertificate(der);
+        using var ecPublic = publicOnly.GetECDsaPublicKey();
+        using var ec = ecPublic is null ? null : ECDsa.Create();
+        ec?.ImportPkcs8PrivateKey(pkcs8, out _);
+        using var rsa = ec is null ? RSA.Create() : null;
+        rsa?.ImportPkcs8PrivateKey(pkcs8, out _);
+        using var withKey = ec is not null ? publicOnly.CopyWithPrivateKey(ec) : publicOnly.CopyWithPrivateKey(rsa!);
+        var pfx = withKey.Export(X509ContentType.Pfx);
+        try
+        {
+            return X509CertificateLoader.LoadPkcs12(pfx, null, X509KeyStorageFlags.Exportable);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pfx);
+        }
+    }
+
     /// <summary>
     /// A server made a new certificate (or read its stored one at its start): it replaces the one of the same server and
     /// name. Server certificates that ended more than 30 days ago leave (<see cref="IssuedRegistry.KeptAfterEnd"/>).
@@ -331,4 +379,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the certificate {Id} cannot be decrypted (other master key)")]
     private partial void LogKeyUnreadable(string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the certificate {Id} is damaged or does not fit the certificate")]
+    private partial void LogKeyDoesNotFit(string id);
 }

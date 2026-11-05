@@ -834,7 +834,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     private void LoadNow(AddOnEntry entry, string? old)
     {
         var folder = FolderOf(entry);
-        if (_loader.LoadPackage(folder) is not null)
+        if (_loader.LoadPackage(folder) is { Registered: > 0 })
         {
             AddOnFolders.DropOld(old);
             return;

@@ -883,7 +883,7 @@ at 8 per second) right rows 47 and 47, wrong none.
 
 ## Packaging and dependencies
 
-- Add-on (`docs/spec/add-ons.md`): one ZIP per server platform with ONNX Runtime (MIT: `Microsoft.ML.OnnxRuntime.DirectML`
+- Add-on (`docs/spec/add-ons.md`): one ZIP per server platform with ONNX Runtime (1.24.4, on Intel Macs 1.23.2, the last version with `osx-x64` libraries; MIT: `Microsoft.ML.OnnxRuntime.DirectML`
   on Windows, the GPU build with the CUDA provider on Linux x64, the CPU build elsewhere), SkiaSharp (MIT; Linux:
   `NativeAssets.Linux.NoDependencies`), the PP-OCRv5 mobile and server detection and Latin recognition models and the
   angle model as ONNX files with the character list (Apache-2.0, in the plugin's notices). The size is measured at the

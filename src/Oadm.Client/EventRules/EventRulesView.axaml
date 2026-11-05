@@ -5,15 +5,23 @@
              xmlns:vm="using:Oadm.Client.EventRules"
              x:Class="Oadm.Client.EventRules.EventRulesView"
              x:DataType="vm:EventRulesViewModel">
-  <!-- Rules on top, the event log below with a splitter (like the Devices page and its tasks) -->
-  <Grid RowDefinitions="Auto,*,Auto,320">
+  <!-- Rules and Recipients on top, side by side with a splitter (on a narrow page Recipients moves below Rules, see the code
+       behind); the event log below at full width with its own splitter, like the Devices page and its tasks -->
+  <Grid x:Name="PageGrid" RowDefinitions="Auto,*,Auto,320">
     <c:PageTitleBar Grid.Row="0" Title="Event rules" Subtitle="Run actions when events happen." Margin="0,0,0,16" />
 
+    <Grid x:Name="Panes" Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="7*" MinWidth="560" />
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="3*" MinWidth="280" />
+      </Grid.ColumnDefinitions>
+
     <!-- Rules -->
-    <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="200">
+    <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="160">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+          <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
             <ui:ToolbarButton Text="New rule" IconKey="add" Command="{Binding NewRuleCommand}"
                               ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
             <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditCommand}" />
@@ -22,8 +30,8 @@
             <Button Classes="toolbar danger" Command="{Binding DeleteCommand}">
               <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
             </Button>
-          </StackPanel>
-          <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" Placeholder="Search rules" />
+          </ui:ToolbarOverflowPanel>
+          <ui:SearchBox Grid.Column="1" Text="{Binding SearchText}" Placeholder="Search rules" />
         </Grid>
 
         <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding RulesStatus}" Margin="2,14,0,8" />
@@ -38,17 +46,17 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Name" Width="220" Binding="{Binding Name}" x:DataType="vm:RuleRowViewModel" />
-            <DataGridTextColumn Header="When" Width="2*" Binding="{Binding ConditionsText}" x:DataType="vm:RuleRowViewModel" />
-            <DataGridTextColumn Header="Then" Width="2*" Binding="{Binding ActionsText}" x:DataType="vm:RuleRowViewModel" />
-            <DataGridTemplateColumn Header="State" Width="220" SortMemberPath="StateText">
+            <DataGridTextColumn Header="Name" Width="170" MinWidth="170" Binding="{Binding Name}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTextColumn Header="When" Width="2*" MinWidth="140" Binding="{Binding ConditionsText}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTextColumn Header="Then" Width="2*" MinWidth="140" Binding="{Binding ActionsText}" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTemplateColumn Header="State" Width="170" MinWidth="170" SortMemberPath="StateText">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:RuleRowViewModel">
                   <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOn}" IsWarning="{Binding HasProblem}" IsAccent="{Binding IsWaiting}" MaxLines="2" />
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTextColumn Header="Last run" Width="140" Binding="{Binding LastFiredText}" SortMemberPath="LastFiredSortKey" x:DataType="vm:RuleRowViewModel" />
+            <DataGridTextColumn Header="Last run" Width="140" MinWidth="140" Binding="{Binding LastFiredText}" SortMemberPath="LastFiredSortKey" x:DataType="vm:RuleRowViewModel" />
           </DataGrid.Columns>
         </DataGrid>
         <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding RulesEmptyText}"
@@ -56,6 +64,56 @@
         <TextBlock Grid.Row="3" Classes="error" Text="{Binding RulesErrorText}" IsVisible="{Binding HasRulesError}" TextWrapping="Wrap" Margin="0,8,0,0" />
       </Grid>
     </Border>
+
+    <GridSplitter x:Name="PaneSplitter" Grid.Column="1" Classes="paneSplitter vertical" IsVisible="{Binding ShowRecipients}" />
+
+    <!-- Recipients -->
+    <Border x:Name="RecipientsCard" Grid.Column="2" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" MinHeight="160" IsVisible="{Binding ShowRecipients}">
+      <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <ui:ToolbarOverflowPanel Grid.Row="0" Spacing="4">
+          <ui:ToolbarButton Text="New" IconKey="add" Command="{Binding NewRecipientCommand}"
+                            ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarButton Text="Edit" IconKey="edit" Command="{Binding EditRecipientCommand}"
+                            ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarSeparator />
+          <Button Classes="toolbar danger" Command="{Binding DeleteRecipientCommand}"
+                  ToolTip.Tip="{Binding ReadOnlyHint}" ToolTip.ShowOnDisabled="True">
+            <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="Delete" Spacing="8" />
+          </Button>
+        </ui:ToolbarOverflowPanel>
+
+        <ui:SearchBox Grid.Row="1" Classes="stretch" Text="{Binding RecipientSearchText}" Placeholder="Search recipients" Margin="0,0,0,5" />
+
+        <DataGrid x:Name="RecipientGrid" Grid.Row="2" ItemsSource="{Binding Recipients}" SelectedItem="{Binding SelectedRecipient}"
+                  IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="Name" Width="*" MinWidth="76" SortMemberPath="Name">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:RecipientRowViewModel">
+                  <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Type" Width="72" MinWidth="72" Binding="{Binding TypeText}" x:DataType="vm:RecipientRowViewModel" />
+            <DataGridTemplateColumn Header="Target" Width="*" MinWidth="76" SortMemberPath="Target">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:RecipientRowViewModel">
+                  <vm:RecipientTargetCell WideTip="{Binding StatusTip}" CompactTip="{Binding StatusWordTip}">
+                    <TextBlock Text="{Binding Target}" ToolTip.Tip="{Binding Target}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsConnected}" IsAccent="{Binding IsConnecting}" IsError="{Binding IsNotConnected}"
+                                   IsVisible="{Binding HasStatus}" />
+                  </vm:RecipientTargetCell>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="16,0"
+                   Text="{Binding RecipientsEmptyText}" IsVisible="{Binding ShowRecipientsEmpty}" />
+        <TextBlock Grid.Row="3" Classes="error" Text="{Binding RecipientsErrorText}" IsVisible="{Binding HasRecipientsError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+      </Grid>
+    </Border>
+    </Grid>
 
     <GridSplitter Grid.Row="2" Classes="paneSplitter" />
 

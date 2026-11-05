@@ -22,6 +22,23 @@ public sealed class EventRuleEntity
 }
 
 /// <summary>
+/// A shared target of event rule actions (table Recipients). <see cref="SettingsJson"/> holds the values of the type's fields
+/// with password values encrypted (purpose <c>oadm:recipient:&lt;id&gt;:&lt;field&gt;</c>).
+/// </summary>
+public sealed class RecipientEntity
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string TypeId { get; set; } = string.Empty;
+
+    public string SettingsJson { get; set; } = "{}";
+
+    public DateTime UpdatedUtc { get; set; }
+}
+
+/// <summary>
 /// A rule that is on for one subject (table EventRuleStates): the device its trigger fired for, or
 /// <see cref="Guid.Empty"/> for a server-wide trigger. Only subjects whose on actions ran are stored; a server restart
 /// compares them with the fresh evaluation and runs only real changes.

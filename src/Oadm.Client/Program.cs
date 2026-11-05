@@ -26,6 +26,11 @@ internal static class Program
             return LiveView.GpuDecodingCheck.Run(Console.Out);
         }
 
+        if (args.Contains(Plugins.ClientSelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
+        {
+            return Plugins.ClientSelfCheck.Run(Console.Out, addOns: Plugins.ClientSelfCheck.AddOnFolders(args));
+        }
+
         AppOptions options = AppOptions.Parse(args);
         if (args.Contains(Plugins.ClientFolderReport.Argument, StringComparer.OrdinalIgnoreCase))
         {
@@ -54,6 +59,7 @@ internal static class Program
         try
         {
             Log.Information("OADM client starting ({Mode})", options.UseFake ? "fake server" : "gRPC");
+            _ = Task.Run(() => Infrastructure.OldNativeFolders.Clean(Infrastructure.OldNativeFolders.Places(), DateTime.UtcNow));
             App.Options = options;
             App.LogStore = logStore;
             return BuildAvaloniaApp().AfterSetup(_ => crashes.InstallUiHandler()).StartWithClassicDesktopLifetime(args);

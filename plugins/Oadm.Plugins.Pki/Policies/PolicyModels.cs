@@ -514,7 +514,11 @@ public sealed record PolicyList
 public sealed record PolicyCertificateChoice(string Id, string Name, string IssuerName, DateTime NotAfterUtc, bool Ecc, IReadOnlyList<string> Names, string? Problem = null)
 {
     /// <summary>"EST server (OADM CA), until 2035-10-25".</summary>
-    public string Label => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} ({IssuerName}), until {NotAfterUtc:yyyy-MM-dd}");
+    public string Label => Text(Name, IssuerName, NotAfterUtc);
+
+    /// <summary>"EST server (OADM CA), until 2035-10-25".</summary>
+    public static string Text(string name, string issuerName, DateTime notAfterUtc) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{name} ({issuerName}), until {notAfterUtc:yyyy-MM-dd}");
 
     /// <summary>A server of <paramref name="kind"/> can show it (no problem; the 802.1X server only with an ECC key).</summary>
     public bool UsableFor(string kind) => Problem is null && (kind != PolicyKinds.Dot1xServer || Ecc);

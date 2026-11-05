@@ -117,6 +117,9 @@ public static class AddOnTexts
     /// <summary>Install or remove while a self update runs.</summary>
     public const string Updating = "The server is updating.";
 
+    /// <summary>Why Restart server cannot run now; null: it can.</summary>
+    public static string? RestartRefused(bool updating, bool addOnWork) => updating ? Updating : addOnWork ? Busy : null;
+
     /// <summary>The row after Remove.</summary>
     public const string Removed = "Removed. The files go at the next restart of the server.";
 

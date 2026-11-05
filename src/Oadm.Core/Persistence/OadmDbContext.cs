@@ -36,6 +36,7 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
     public DbSet<Events.EventRuleEntity> EventRules => Set<Events.EventRuleEntity>();
     public DbSet<Events.EventRuleStateEntity> EventRuleStates => Set<Events.EventRuleStateEntity>();
     public DbSet<Events.EventLogEntryEntity> EventLogEntries => Set<Events.EventLogEntryEntity>();
+    public DbSet<Events.RecipientEntity> Recipients => Set<Events.RecipientEntity>();
     public DbSet<Compliance.ComplianceCheckEntity> ComplianceChecks => Set<Compliance.ComplianceCheckEntity>();
     public DbSet<Compliance.ComplianceResultEntity> ComplianceResults => Set<Compliance.ComplianceResultEntity>();
     public DbSet<DeviceGroup> DeviceGroups => Set<DeviceGroup>();
@@ -341,6 +342,16 @@ public sealed class OadmDbContext(DbContextOptions<OadmDbContext> options) : DbC
             e.HasKey(r => new { r.RuleId, r.SubjectId });
             e.Property(r => r.SinceUtc).HasConversion(UtcConverter);
             e.HasOne<Events.EventRuleEntity>().WithMany().HasForeignKey(r => r.RuleId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Events.RecipientEntity>(e =>
+        {
+            e.ToTable("Recipients");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Name).IsRequired().HasMaxLength(Events.RecipientStore.MaxNameLength);
+            e.Property(r => r.TypeId).IsRequired().HasMaxLength(200);
+            e.Property(r => r.SettingsJson).IsRequired();
+            e.HasIndex(r => r.Name).IsUnique();
         });
 
         modelBuilder.Entity<Events.EventLogEntryEntity>(e =>

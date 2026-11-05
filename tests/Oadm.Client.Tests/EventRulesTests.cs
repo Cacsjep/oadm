@@ -348,7 +348,8 @@ public sealed class EventRulesTests : IDisposable
             Assert.True(editor.ShowPlaceholders);
             Assert.False(http.ShowTargets);
             Assert.True(http.CanTest);
-            http.Fields.Single(f => f.Key == "url").Text = "https://hooks.example.com/oadm";
+            var hook = http.Fields.Single(f => f.IsRecipient);
+            hook.SelectChoice(hook.Choices.Single(c => c.Text == "Teams webhook").Value);
             var body = http.Fields.Single(f => f.Key == "body");
             body.Text = "{\n  \"objectID\": \"{objectId}\",\n  \"camera\": \"{serial}\",\n  \"time\": \"{time}\"\n}";
             Pump();
@@ -370,9 +371,8 @@ public sealed class EventRulesTests : IDisposable
             // Send email: HTML body colored like XML; the rows of a header field are gone.
             http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.email");
             var email = http;
-            email.Fields.Single(f => f.Key == "host").Text = "smtp.example.com";
-            email.Fields.Single(f => f.Key == "from").Text = "oadm@example.com";
-            email.Fields.Single(f => f.Key == "to").Text = "security@example.com";
+            var team = email.Fields.Single(f => f.IsRecipient);
+            team.SelectChoice(team.Choices.Single(c => c.Text == "Gate team").Value);
             email.Fields.Single(f => f.Key == "format").SelectChoice("html");
             email.Fields.Single(f => f.Key == "body").Text = "<p>Hello, camera <b>{serial}</b> saw object {objectId} at {time}.</p>\n<p><a href=\"{webUrl}\">Open the camera</a></p>";
             Pump();
@@ -393,15 +393,14 @@ public sealed class EventRulesTests : IDisposable
             http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.tcp");
             Assert.True(http.CanTest);
             var tcp = http;
-            tcp.Fields.Single(f => f.Key == "host").Text = "10.0.0.5";
-            tcp.Fields.Single(f => f.Key == "port").Text = "4001";
+            var panel = tcp.Fields.Single(f => f.IsRecipient);
+            panel.SelectChoice(panel.Choices.Single(c => c.Text == "Alarm panel").Value);
             tcp.Fields.Single(f => f.Key == "message").Text = "ALARM;{serial};{objectId};{time}";
             tcp.Fields.Single(f => f.Key == "lineEnd").SelectChoice("crlf");
             tcp.Fields.Single(f => f.Key == "waitAnswer").IsChecked = true;
             tcp.Fields.Single(f => f.Key == "expect").Text = "ACK";
             Pump();
             Assert.True(tcp.Fields.Single(f => f.Key == "expect").IsVisible);
-            Assert.False(tcp.Fields.Single(f => f.Key == "allowUntrusted").IsVisible);
             Assert.False(tcp.HasFieldErrors);
             dialog.GetVisualDescendants().OfType<ScrollViewer>().First().ScrollToHome();
             Pump();

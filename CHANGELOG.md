@@ -5,6 +5,31 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
+## [Unreleased]
+
+### Added
+
+- Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change a recipient and all its rules follow.
+- Event rules: a recipient has a Test button that says why a send failed.
+- Event rules: MQTT, Modbus and OPC UA recipients, with the actions Publish MQTT message, Write Modbus value and Write OPC UA value.
+- Event rules: the Recipients card shows whether a recipient is connected, and the event Recipient not connected tells a rule when it is gone.
+- Event rules: MQTT and OPC UA recipients can use certificates from the PKI page.
+- Event rules: a changed target asks for the password again, a stored password never goes to a new target.
+- PKI: a certificate or CA a recipient uses cannot be deleted.
+- Plugin SDK 0.12.0.
+
+### Changed
+
+- Event rules: the mail server, URL or host of an action moves to a recipient; rules from older versions show Choose a recipient until you pick one.
+- Event rules: the target of a recipient is fixed, placeholders stay in the action: message, query, headers, subject and topic.
+- The client's first start after an install or update takes under a second instead of about 5.
+- The client removes the folders older versions left in the temp folder.
+
+### Fixed
+
+- Text recognition: the package for Intel Macs has its recognition library, it was missing since 4.10.0.
+- Plugins page: Restart server waits while an update or another plugin's install runs.
+
 ## [4.11.0] - 2026-11-05
 
 ### Added

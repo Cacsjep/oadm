@@ -6,7 +6,7 @@ namespace Oadm.Sdk.Actions;
 
 /// <summary>
 /// The host's checks of declarative action settings (<see cref="ActionField"/>), shared by the server (before a rule is
-/// saved) and the rule dialog (errors below the fields): required values, number ranges, choices, lengths.
+/// saved) and the forms of the client (errors below the fields): required values, number ranges, choices, lengths, formats.
 /// </summary>
 public static class ActionSettings
 {
@@ -25,9 +25,18 @@ public static class ActionSettings
             return true;
         }
 
-        var current = Text(settings, key) ?? string.Empty;
-        return (field.VisibleWhenValue ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
+        return Matches(settings, key, field.VisibleWhenValue)
+            || (field.AlsoVisibleWhenKey is { Length: > 0 } other && Matches(settings, other, field.AlsoVisibleWhenValue));
     }
+
+    private static bool Matches(JsonObject settings, string key, string? values)
+    {
+        var current = Text(settings, key) ?? string.Empty;
+        return (values ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The error of a <see cref="ActionFieldType.Recipient"/> field that is empty or points to no recipient of its types.</summary>
+    public const string ChooseRecipient = "Choose a recipient.";
 
     /// <summary>Most rows of a <see cref="ActionFieldType.KeyValues"/> setting.</summary>
     public const int MaxPairs = 50;
@@ -94,9 +103,12 @@ public static class ActionSettings
                 var stored = field.Type == ActionFieldType.Password && storedSecrets?.Contains(field.Key) == true;
                 if (field.Required && !stored && field.Type != ActionFieldType.Bool)
                 {
-                    errors[field.Key] = field.Type is ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File
-                        ? $"Choose {field.Label.ToLowerInvariant()}."
-                        : $"Enter {field.Label.ToLowerInvariant()}.";
+                    errors[field.Key] = field.EmptyText ?? field.Type switch
+                    {
+                        ActionFieldType.Recipient => ChooseRecipient,
+                        ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File or ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate => $"Choose {field.Label.ToLowerInvariant()}.",
+                        _ => $"Enter {field.Label.ToLowerInvariant()}.",
+                    };
                 }
 
                 continue;
@@ -111,7 +123,7 @@ public static class ActionSettings
                 ActionFieldType.Choice => field.Choices.Any(c => string.Equals(c.Value, value, StringComparison.Ordinal)) ? null : "Choose one of the list.",
                 _ => value.Length > field.MaxLength
                     ? string.Create(CultureInfo.InvariantCulture, $"At most {field.MaxLength:N0} characters.")
-                    : null,
+                    : ActionFormats.Problem(field.Format, value),
             };
             if (problem is not null)
             {

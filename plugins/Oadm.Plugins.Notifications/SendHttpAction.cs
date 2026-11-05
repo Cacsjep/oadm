@@ -9,11 +9,11 @@ using Oadm.Sdk.Actions;
 namespace Oadm.Plugins.Notifications;
 
 /// <summary>
-/// Event rule action "Send HTTP request": any method, URL, query parameters, headers, login
-/// (none, Basic, Digest, Bearer token), a body with a format (JSON, XML, text, form) and "Allow untrusted certificates".
-/// Every text takes the placeholders; their values are escaped for the part they go into (URL-encoded in the URL and the
-/// query, JSON or XML escaped in the body), so "objectId": "{objectId}" stays valid JSON. Runs once per rule edge, no
-/// device. Success = any 2xx answer.
+/// Event rule action "Send HTTP request": an HTTP recipient holds the URL, the login (none, Basic, Digest, Bearer token) and
+/// "Allow untrusted certificates" (no placeholders in a recipient); the action keeps any method, query parameters, headers
+/// and a body with a format (JSON, XML, text, form). Its texts take the placeholders; their values are escaped for the
+/// part they go into (URL-encoded in the query, JSON or XML escaped in the body), so "objectId": "{objectId}" stays valid
+/// JSON. Runs once per rule edge, no device. Success = any 2xx answer.
 /// </summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own servers on the server's network, not devices.")]
 public sealed class SendHttpAction : IActionPlugin
@@ -39,16 +39,14 @@ public sealed class SendHttpAction : IActionPlugin
 
     public bool UsesPlaceholders => true;
 
+    public IReadOnlyList<RecipientType> RecipientTypes { get; } = [NotificationRecipients.Http];
+
     public IReadOnlyList<ActionField> Fields { get; } =
     [
+        NotificationRecipients.Field(NotificationRecipients.HttpType),
         ActionField.Choice("method", "Method", [new("GET", "GET"), new("POST", "POST"), new("PUT", "PUT"), new("PATCH", "PATCH"), new("DELETE", "DELETE")], "POST"),
-        ActionField.Text("url", "URL", required: true),
         ActionField.KeyValues("query", "Query parameters"),
         ActionField.KeyValues("headers", "Headers"),
-        ActionField.Choice("auth", "Login", [new("none", "None"), new("basic", "Basic"), new("digest", "Digest"), new("bearer", "Bearer token")], "none"),
-        ActionField.Text("user", "User name") with { VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest" },
-        ActionField.Password("password", "Password") with { VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest" },
-        ActionField.Password("token", "Token") with { VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 },
         ActionField.Choice("bodyType", "Body type", [new("none", "None"), new("json", "JSON"), new("xml", "XML"), new("text", "Text"), new("form", "Form")], "json"),
         ActionField.Code("body", "Body", languageKey: "bodyType") with
         {
@@ -57,7 +55,6 @@ public sealed class SendHttpAction : IActionPlugin
             Default = "{\n  \"rule\": \"{rule}\",\n  \"event\": \"{event}\",\n  \"device\": \"{device}\",\n  \"state\": \"{state}\",\n  \"time\": \"{time}\"\n}",
             Hint = "Form: one name=value per line.",
         },
-        ActionField.Bool("allowUntrusted", "Allow untrusted certificates"),
         ActionField.Number("timeout", "Timeout (s)", 1, 120, 15),
         ActionField.Bool("onOff", "Also send when the rule turns off") with { OffEdge = true },
     ];
@@ -67,17 +64,6 @@ public sealed class SendHttpAction : IActionPlugin
         var invocation = new ActionInvocation(Guid.Empty, string.Empty, ActionEdge.Fired, settings, null,
             new ActionTrigger(string.Empty, string.Empty, null, null, null, null, DateTimeOffset.UnixEpoch, new Dictionary<string, string>()));
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        var url = invocation.Get("url")?.Trim() ?? string.Empty;
-        if (url.Length > 0 && !url.StartsWith('{') && !IsHttpUrl(url))
-        {
-            errors["url"] = "Enter a URL that starts with http:// or https://.";
-        }
-
-        if (invocation.Get("auth") is "basic" or "digest" && string.IsNullOrWhiteSpace(invocation.Get("user")))
-        {
-            errors["user"] = "Enter the user name.";
-        }
-
         foreach (var header in invocation.GetPairs("headers"))
         {
             if (!IsToken(header.Key))
@@ -115,7 +101,7 @@ public sealed class SendHttpAction : IActionPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
-        var url = ctx.Text(invocation.Get("url")?.Trim(), PlaceholderEscape.Url);
+        var url = invocation.Get("url")?.Trim() ?? string.Empty;
         if (!IsHttpUrl(url))
         {
             throw new InvalidOperationException($"\"{url}\" is not an http:// or https:// URL. Nothing was sent.");
@@ -139,7 +125,7 @@ public sealed class SendHttpAction : IActionPlugin
         };
         if (invocation.GetBool("allowUntrusted"))
         {
-#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this action.
+#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this recipient.
             handler.SslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
 #pragma warning restore CA5359
         }

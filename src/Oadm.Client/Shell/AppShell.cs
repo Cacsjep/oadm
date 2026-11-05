@@ -31,6 +31,9 @@ public sealed partial class AppShell(
 
     private IClassicDesktopStyleApplicationLifetime? _desktop;
 
+    /// <summary>The splash is the first window: with the terms first, the time would measure the reading.</summary>
+    private bool _timesStart;
+
     public void Start(IClassicDesktopStyleApplicationLifetime desktop)
     {
         ArgumentNullException.ThrowIfNull(desktop);
@@ -40,6 +43,7 @@ public sealed partial class AppShell(
         api.SessionEnded += (_, _) => Dispatcher.UIThread.Post(() => session.RequestLogout(SessionEndedMessage));
         if (TermsViewModel.IsAccepted(settings.Current))
         {
+            _timesStart = true;
             ShowSplash(desktop);
             return;
         }
@@ -69,7 +73,33 @@ public sealed partial class AppShell(
         var window = new SplashWindow { DataContext = splash };
         desktop.MainWindow = window;
         window.Show();
+        if (_timesStart)
+        {
+            _ = LogFirstWindowAsync(window);
+        }
+
         _ = StartupAsync(window, splash);
+    }
+
+    /// <summary>The time from the click until the user sees something: the splash's first frame, counted from the process start.</summary>
+    private async Task LogFirstWindowAsync(Window window)
+    {
+        await FirstFrameAsync(window).ConfigureAwait(true);
+        var milliseconds = SinceProcessStart();
+        LogFirstWindow(logger, milliseconds);
+    }
+
+    private static long SinceProcessStart()
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            return (long)(DateTime.Now - process.StartTime).TotalMilliseconds;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            return -1; // only a log line: the start goes on
+        }
     }
 
     /// <summary>
@@ -118,6 +148,12 @@ public sealed partial class AppShell(
 #pragma warning restore CA1031
         {
             LogStartupFailed(logger, ex.Message);
+        }
+
+        if (_timesStart)
+        {
+            var milliseconds = SinceProcessStart();
+            LogReady(logger, milliseconds, login is null ? "main window" : "login window");
         }
 
         await minimum.ConfigureAwait(true);
@@ -255,6 +291,12 @@ public sealed partial class AppShell(
         ShowLogin(message);
         old?.Close();
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Start: first window after {Milliseconds} ms")]
+    private static partial void LogFirstWindow(ILogger logger, long milliseconds);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Start: ready after {Milliseconds} ms, next the {Window}")]
+    private static partial void LogReady(ILogger logger, long milliseconds, string window);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{UserName} logged out of {Server}")]
     private static partial void LogLoggedOut(ILogger logger, string userName, string server);

@@ -416,7 +416,7 @@ public sealed partial class PkiService
     /// Deletes rows (decision 2026-10-26: Delete is the only action, it never needs a revoke first): device certificates and
     /// certificates created, signed or imported here, ended server certificates. Still valid ones OADM issued go on the internal
     /// list of certificates the 802.1X and EST servers no longer accept (until they end; never shown). Refused for a
-    /// certificate a server policy shows. All or nothing: the first row that cannot go says why.
+    /// certificate a server policy shows or a recipient uses. All or nothing: the first row that cannot go says why.
     /// </summary>
     internal async Task<DeleteCertificatesReply> DeleteCertificatesAsync(DeleteCertificatesRequest request, string userName, CancellationToken ct)
     {
@@ -433,6 +433,7 @@ public sealed partial class PkiService
         }
 
         var now = Now.UtcDateTime;
+        var recipients = await RecipientUsesAsync(ct).ConfigureAwait(false);
         var serials = new List<string>();
         var locals = new List<string>();
         var servers = new List<string>();
@@ -466,6 +467,11 @@ public sealed partial class PkiService
                 if (Policies.ShowingCertificate(localId) is { } showing)
                 {
                     return Refused(CertificateRules.UsedByPolicy(showing.Name));
+                }
+
+                if (recipients.First(id) is { } recipient)
+                {
+                    return Refused(CertificateRules.UsedByRecipient(recipient));
                 }
 
                 // A CA of OADM issued created and signed ones: still valid, they would be accepted without a trace. Delete puts
