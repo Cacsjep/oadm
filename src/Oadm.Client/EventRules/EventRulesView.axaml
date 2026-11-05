@@ -87,7 +87,7 @@
         <DataGrid x:Name="RecipientGrid" Grid.Row="2" ItemsSource="{Binding Recipients}" SelectedItem="{Binding SelectedRecipient}"
                   IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTemplateColumn Header="Name" Width="*" MinWidth="84" SortMemberPath="Name">
+            <DataGridTemplateColumn Header="Name" Width="*" MinWidth="76" SortMemberPath="Name">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:RecipientRowViewModel">
                   <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
@@ -95,7 +95,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Type" Width="72" MinWidth="72" Binding="{Binding TypeText}" x:DataType="vm:RecipientRowViewModel" />
-            <DataGridTemplateColumn Header="Target" Width="*" MinWidth="84" SortMemberPath="Target">
+            <DataGridTemplateColumn Header="Target" Width="*" MinWidth="76" SortMemberPath="Target">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:RecipientRowViewModel">
                   <TextBlock Text="{Binding Target}" ToolTip.Tip="{Binding Target}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
