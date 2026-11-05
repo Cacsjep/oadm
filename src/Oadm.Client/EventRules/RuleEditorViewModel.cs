@@ -339,8 +339,11 @@ public sealed partial class RuleActionViewModel : ObservableObject
 
     public bool HasFieldErrors => Fields.Any(f => f.IsVisible && f.Problem is not null);
 
+    /// <summary>The action "Log entry": a test of it would only write to the server log.</summary>
+    internal const string LogEntryActionId = "oadm.notifications.log";
+
     /// <summary>"Send test": only actions without devices (email, HTTP); device actions would change devices.</summary>
-    public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true };
+    public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTestResult))]

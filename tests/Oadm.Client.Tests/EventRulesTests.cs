@@ -385,8 +385,13 @@ public sealed class EventRulesTests : IDisposable
             Pump();
             Capture(dialog, outDir, "event-rules-email-action-2.png");
 
+            // Log entry: no Send test, every other action without devices has it.
+            http.SelectedAction = http.Actions.Single(a => a.Id == RuleActionViewModel.LogEntryActionId);
+            Assert.False(http.CanTest);
+
             // Send TCP message: the line end hides for hex, TLS and the expected answer show their extra fields.
             http.SelectedAction = http.Actions.Single(a => a.Id == "oadm.notifications.tcp");
+            Assert.True(http.CanTest);
             var tcp = http;
             tcp.Fields.Single(f => f.Key == "host").Text = "10.0.0.5";
             tcp.Fields.Single(f => f.Key == "port").Text = "4001";

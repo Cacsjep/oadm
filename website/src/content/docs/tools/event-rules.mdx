@@ -97,6 +97,8 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
   listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end and TLS. **Wait for an
   answer** with **Answer must contain** fails the action when the other side does not confirm.
+- **Log entry**: writes a message to the server log (**Logs** page, **Server**) and does nothing else. Good for testing
+  a rule.
 - **Read text**: reads one picture with a reader of [Text recognition](../text-recognition/events/#action-read-text) now
   and sends its **Text read** events. No devices to choose: the reader names its camera.
 

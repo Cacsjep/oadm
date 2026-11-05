@@ -1,6 +1,6 @@
 # Notifications (`oadm.notifications`)
 
-Event rule actions, server only, always on. Three actions without devices: they run once each time the rule turns on
+Event rule actions, server only, always on. Four actions without devices: they run once each time the rule turns on
 or fires, and, when "Also send when the rule turns off" is checked, also when a stateful rule turns off (`RunsOn`).
 Spec: [Event rules](../../docs/spec/event-rules.md).
 
@@ -30,6 +30,12 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
   addresses separated by commas or semicolons), Subject, Format Text or HTML, Body.
 - HTML mails carry a plain-text part made from the HTML. Sent with MailKit (MIT).
 - Errors in plain words: wrong login, untrusted certificate, refused mail, server not reachable.
+
+## Log entry (`oadm.notifications.log`)
+
+- Writes the Message (placeholders allowed, default `{event} on {device} at {time}`) to the server log, level Information,
+  as "Event rule <name>: <text>", and does nothing else. For testing a rule or a rule that only needs a record. The filled
+  text stays on one line and is cut at 2,000 characters. No Send test (`RuleActionViewModel.CanTest`).
 
 ## Send TCP message (`oadm.notifications.tcp`)
 

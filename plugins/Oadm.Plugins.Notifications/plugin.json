@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "minSdkVersion": "0.4.0",
   "displayName": "Notifications",
-  "description": "Event rule actions that send an email, an HTTP request or a TCP message.",
+  "description": "Event rule actions that send an email, an HTTP request or a TCP message, or write a log entry.",
   "alwaysOn": true,
   "siteSupport": "full"
 }

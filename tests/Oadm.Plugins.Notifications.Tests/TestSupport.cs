@@ -30,7 +30,7 @@ internal sealed class TestContext(IReadOnlyDictionary<string, string>? data = nu
 
     public IVapixClient? Vapix => null;
 
-    public ILogger Logger => NullLogger.Instance;
+    public ILogger Logger { get; init; } = NullLogger.Instance;
 
     public ICorePlugin? Owner => null;
 

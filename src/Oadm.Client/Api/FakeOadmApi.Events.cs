@@ -128,6 +128,7 @@ public sealed partial class FakeOadmApi
         catalog.Actions.Add(FakeHttpAction());
         catalog.Actions.Add(FakeEmailAction());
         catalog.Actions.Add(FakeTcpAction());
+        catalog.Actions.Add(FakeLogEntryAction());
         return catalog;
     }
 
@@ -185,6 +186,19 @@ public sealed partial class FakeOadmApi
         });
         email.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also send when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
         return email;
+    }
+
+    /// <summary>"Log entry" as the Notifications plugin declares it.</summary>
+    private static ActionEntry FakeLogEntryAction()
+    {
+        var log = new ActionEntry
+        {
+            Id = "oadm.notifications.log", DisplayName = "Log entry", Group = "Notifications", IconKey = "log", NeedsDevice = false, SupportsTurnOff = true, UsesPlaceholders = true,
+            Description = "Writes a line to the server log.", Available = true, SourceName = "Notifications",
+        };
+        log.Fields.Add(new ActionFieldEntry { Key = "message", Label = "Message", Kind = ActionFieldKind.ActionFieldText, Required = true, DefaultValue = "{event} on {device} at {time}", MaxLength = 1000 });
+        log.Fields.Add(new ActionFieldEntry { Key = "onOff", Label = "Also write when the rule turns off", Kind = ActionFieldKind.ActionFieldBool, OffEdge = true, DefaultValue = "false" });
+        return log;
     }
 
     /// <summary>"Send TCP message" as the Notifications plugin declares it.</summary>
