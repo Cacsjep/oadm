@@ -147,5 +147,5 @@ internal sealed class PkiRecipientCertificates(PkiService service) : IRecipientC
     public Task<IReadOnlyList<ActionChoice>> TrustedCertificatesAsync(CancellationToken ct) => Task.FromResult(service.RecipientTrustedCertificates());
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<X509Certificate2>?> LoadAsync(string id, CancellationToken ct) => Task.FromResult(service.LoadRecipientCertificate(id, withKey: true));
+    public Task<IReadOnlyList<X509Certificate2>?> LoadAsync(string id, bool withKey, CancellationToken ct) => Task.FromResult(service.LoadRecipientCertificate(id, withKey));
 }

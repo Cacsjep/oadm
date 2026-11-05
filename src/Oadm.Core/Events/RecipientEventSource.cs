@@ -24,6 +24,7 @@ public sealed class RecipientEventSource : IHostEventSource
     private readonly Func<IEventPublisher> _publisher;
     private readonly Lock _gate = new();
     private string? _reported;
+    private bool _stopped;
 
     public RecipientEventSource(RecipientSessionPool pool, Func<IEventPublisher> publisher)
         : this(() => pool, publisher)
@@ -62,14 +63,32 @@ public sealed class RecipientEventSource : IHostEventSource
     /// <summary>The first full report (the rule engine runs); then the event follows the pool.</summary>
     public void Start()
     {
-        _pool().Changed += (_, _) => Report();
+        _pool().Changed += OnPoolChanged;
         Report();
     }
+
+    /// <summary>The server stops, before the rule engine: the sessions closing now end no event.</summary>
+    public void Stop()
+    {
+        lock (_gate)
+        {
+            _stopped = true;
+        }
+
+        _pool().Changed -= OnPoolChanged;
+    }
+
+    private void OnPoolChanged(object? sender, EventArgs e) => Report();
 
     private void Report()
     {
         lock (_gate)
         {
+            if (_stopped)
+            {
+                return;
+            }
+
             var names = _pool().Statuses()
                 .Where(s => s.State == RecipientConnectionState.NotConnected)
                 .Select(s => s.Name)

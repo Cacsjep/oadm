@@ -155,7 +155,8 @@ go when you save the rule.
 ### MQTT, Modbus and OPC UA
 
 An MQTT, Modbus or OPC UA recipient keeps one connection open, which all its rules share. It connects at the first action and closes after 5 minutes
-without one. The icon in the list shows the state, the tooltip the reason. **Test** only connects, it sends nothing.
+without one; a connection that failed keeps trying. The icon in the list shows the state, the tooltip the reason. **Test** only connects, it sends
+nothing, and it replaces **Send test** for these actions.
 
 A new recipient needs only its address. TLS for MQTT, and security and login for OPC UA, are there when you need them. Certificates come from the
 [PKI](/tools/pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.

@@ -138,6 +138,9 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         return copy is null ? null : await GetAsync(copy.Definition.Id, ct).ConfigureAwait(false);
     }
 
+    /// <summary>The certificates a recipient may name; null or a null result: none.</summary>
+    public Func<Oadm.Sdk.Certificates.IRecipientCertificates?>? Certificates { get; set; }
+
     /// <summary>Every recipient with its target and the rules that use it; the rules are read and walked once per list.</summary>
     public async Task<IReadOnlyList<RecipientModel>> ListRecipientsAsync(CancellationToken ct)
     {
@@ -154,10 +157,11 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
     {
         ArgumentNullException.ThrowIfNull(settings);
         var type = Catalog.FindRecipientType(typeId) ?? throw new RecipientValidationException("Choose a type.");
+        StoredRecipient? current = null;
         IReadOnlyList<string> stored = [];
         if (id is { } known)
         {
-            var current = await recipients.GetAsync(known, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(RecipientType.NotFoundText);
+            current = await recipients.GetAsync(known, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(RecipientType.NotFoundText);
             stored = RecipientStore.ForClient(current).StoredSecretFields;
         }
 
@@ -167,7 +171,10 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
             throw new RecipientValidationException(error.Key, error.Value);
         }
 
-        var (saved, created) = await recipients.SaveAsync(id, name, type.Id, settings, type.Type.Fields, ct).ConfigureAwait(false);
+        var fields = type.Type.Fields;
+        await RecipientChecks.CheckAgainstStoredAsync(fields, settings, current, Certificates?.Invoke(), ct).ConfigureAwait(false);
+        IReadOnlyList<string> forget = current is null ? [] : RecipientChecks.ForgottenPasswords(fields, settings, current);
+        var (saved, created) = await recipients.SaveAsync(id, name, type.Id, settings, fields, forget, ct).ConfigureAwait(false);
         var rules = await store.ListAsync(ct).ConfigureAwait(false);
         Oadm.Core.Auth.CallerContext.Raise(Changed, this, EventArgs.Empty); // the rules list names what the recipient holds
         return (ToModel(saved, RecipientUse.ByRecipient(rules, [saved.Id]).GetValueOrDefault(saved.Id) ?? []), created);
@@ -222,16 +229,21 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         return ActionPlaceholders.Fill(type.Target ?? "{" + type.Fields[0].Key + "}", key => ActionSettings.Text(values, key) ?? string.Empty);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    /// The certificates of every recipient, in hidden fields too: a hidden value can show again. Of a type that is not installed the
+    /// fields are unknown, so every stored value with the prefix of a certificate id counts.
+    /// </summary>
     public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> UsesAsync(CancellationToken ct)
     {
         var uses = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var recipient in await recipients.ListAsync(ct).ConfigureAwait(false))
         {
-            var fields = Catalog.FindRecipientType(recipient.TypeId)?.Type.Fields ?? [];
-            foreach (var field in fields.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate))
+            var fields = Catalog.FindRecipientType(recipient.TypeId)?.Type.Fields;
+            var keys = fields?.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate).Select(f => f.Key)
+                ?? recipient.Settings.Where(s => IsCertificateId(s.Value)).Select(s => s.Key);
+            foreach (var key in keys)
             {
-                if (ActionSettings.Text(recipient.Settings, field.Key) is { Length: > 0 } id)
+                if (ActionSettings.Text(recipient.Settings, key) is { Length: > 0 } id)
                 {
                     if (!uses.TryGetValue(id, out var names))
                     {
@@ -245,6 +257,11 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
 
         return uses.ToDictionary(u => u.Key, u => (IReadOnlyList<string>)[.. u.Value.Distinct().Order(StringComparer.CurrentCultureIgnoreCase)], StringComparer.Ordinal);
     }
+
+    /// <summary>The ids of PKI's Certificates list: <c>local:</c> and <c>ca:</c> rows (docs/spec/pki.md "Recipients").</summary>
+    private static bool IsCertificateId(JsonNode? value) =>
+        value is JsonValue text && text.TryGetValue<string>(out var id)
+        && (id.StartsWith("local:", StringComparison.Ordinal) || id.StartsWith("ca:", StringComparison.Ordinal));
 
     private RecipientModel ToModel(StoredRecipient recipient, IReadOnlyList<string> usedBy)
     {

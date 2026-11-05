@@ -460,10 +460,10 @@ certificates and the certificates created, signed or imported here. Two cards of
   device group sees only the device certificates of the group's devices and no actions.
 - An event `certificates` (at most one per second) makes every open tab read its page again.
 - **Recipients** (`IRecipientCertificates`, offered through `ctx.Services` while PKI runs, `PkiRecipientCertificates`; only the
-  host reads it, docs/spec/recipient-sessions.md "Security"): the value of a choice is the row's id (`local:<id>`, `ca:<SHA-256>`).
+  host reads it, by convention, docs/spec/recipient-sessions.md "Security"): the value of a choice is the row's id (`local:<id>`, `ca:<SHA-256>`).
   Client certificates: the rows with a key OADM holds that have not ended and are still accepted, no CA, no certificate a server
   policy shows (`Policies.ShowingCertificate`, those keys stay in the servers). Trusted: the CAs of the list and the imported certificates. Text like the
-  policy choices ("EST server (OADM Root CA SERVER01), until 2035-10-25", a self-signed one names itself once). `LoadAsync`
+  policy choices ("EST server (OADM Root CA SERVER01), until 2035-10-25", a self-signed one names itself once). `LoadAsync(id, withKey, ct)`
   (`LoadRecipientCertificate(id, withKey: true)`): the certificate with its key when OADM holds one (`LocalCertificates.LoadWithKey`,
   decrypted with the same purpose, through PKCS#12 like the EST server's, in no certificate store), then the issuers PKI lists; null
   when the row left the list, is no longer accepted, a server policy shows it (its key is never handed out, however it got

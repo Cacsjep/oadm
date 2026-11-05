@@ -78,6 +78,9 @@ public static class RecipientSessionTexts
     /// <summary>A certificate the recipient names that is gone.</summary>
     public const string CertificateGone = "The chosen certificate no longer exists. Choose another one.";
 
+    /// <summary>Send test of an action on a persistent recipient: it would really write to a machine.</summary>
+    public const string TestTheRecipient = "Test the recipient instead: it connects and sends nothing.";
+
     /// <summary>The result of a recipient's Test.</summary>
     public const string Connected = "Connected";
 

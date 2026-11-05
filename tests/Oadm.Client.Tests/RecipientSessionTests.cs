@@ -267,6 +267,22 @@ public sealed class RecipientSessionTests : IDisposable
     });
 
     [Fact]
+    public Task A_refused_test_stands_below_its_field() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var refusing = Substitute.For<IOadmApi>();
+        var refusal = new RpcException(new Status(StatusCode.InvalidArgument, "Enter the password again. The target changed."), new Metadata { { RecipientErrors.FieldTrailer, "host" } });
+        refusing.TestRecipientAsync(default!, default).ReturnsForAnyArgs(Task.FromException<TestActionReply>(refusal));
+        var catalog = await api.GetEventCatalogAsync(CancellationToken.None);
+        var editor = new RecipientEditorViewModel(refusing, catalog.RecipientTypes, await ByNameAsync(api, "Line 2 PLC"), []);
+
+        await editor.TestCommand.ExecuteAsync(null);
+
+        Assert.False(editor.TestOk);
+        Assert.Equal("Enter the password again. The target changed.", editor.Fields.Single(f => f.Key == "host").Error);
+    });
+
+    [Fact]
     public Task Test_of_a_one_shot_type_still_says_Sending() => _ui.RunAsync(async () =>
     {
         var (api, _) = await ApiAsync();

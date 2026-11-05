@@ -244,7 +244,7 @@ used again.
   `SetRuleEnabled`, `DuplicateRule`, `ListActionChoices`, `ListLog` (newest first, limit 0 = 10,000), `WatchLog`,
   `ClearLog`, `TestAction`, and the recipients (`docs/spec/recipients.md`): `ListRecipients` (like `ListRules`), `SaveRecipient` (INVALID_ARGUMENT
   with the trailer `oadm-field`, NOT_FOUND), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, NOT_FOUND), `TestRecipient` (reply ok
-  + message; a persistent type only connects), the last three like `SaveRule`, audited. `WatchRecipientStatus` (like `ListRecipients`: the
+  + message; a persistent type only connects; refused checks like `SaveRecipient`: INVALID_ARGUMENT with the trailer), the last three like `SaveRule`, audited. `WatchRecipientStatus` (like `ListRecipients`: the
   connection of every persistent recipient that has one, the whole list first, then after each change, at most every 500 ms; missing means not
   used, `docs/spec/recipient-sessions.md`), `ListRecipientCertificates` (like `SaveRule`: the certificates of PKI for the recipient dialog, both
   lists empty while PKI is off; ids and texts only, never a key). `GetCatalog` also gives `recipient_types` (`persistent`: one shared connection).

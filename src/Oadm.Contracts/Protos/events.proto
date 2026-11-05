@@ -34,7 +34,8 @@ service EventService {
   rpc WatchLog (Empty) returns (stream EventLogPage);
   // Admin: deletes every entry of the event log (audited); reply = how many.
   rpc ClearLog (Empty) returns (ClearEventLogReply);
-  // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog).
+  // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog). Refuses an
+  // action on a persistent recipient: ok false with the text to test the recipient.
   rpc TestAction (TestActionRequest) returns (TestActionReply);
   // Every recipient with its one-line target and the rules that use it (at most 200 rows, so no page).
   rpc ListRecipients (Empty) returns (RecipientList);
@@ -43,7 +44,8 @@ service EventService {
   rpc SaveRecipient (SaveRecipientRequest) returns (RecipientEntry);
   // Audited. FAILED_PRECONDITION with the rule names while a rule uses it. NOT_FOUND.
   rpc DeleteRecipient (RecipientId) returns (Empty);
-  // Sends the type's test action once now with the action's default values and sample event values (audited).
+  // Sends the type's test action once now with the action's default values and sample event values (audited); a persistent
+  // type only connects. Refused checks: INVALID_ARGUMENT with the trailer, like SaveRecipient.
   rpc TestRecipient (SaveRecipientRequest) returns (TestActionReply);
   // The connection of every persistent recipient that has one: the whole list first, then after each change.
   rpc WatchRecipientStatus (Empty) returns (stream RecipientStatusList);

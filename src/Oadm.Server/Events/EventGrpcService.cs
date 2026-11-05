@@ -324,15 +324,31 @@ public sealed class EventGrpcService(
         var ct = context.CancellationToken;
         Guid? id = string.IsNullOrEmpty(request.Id) ? null : GrpcGuard.ParseId(request.Id, "recipient id");
         var values = ParseSettings(request.SettingsJson);
-        var target = rules.TargetOf(request.TypeId, values);
-        var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, values, ct).ConfigureAwait(false);
-        var name = string.IsNullOrWhiteSpace(request.Name) ? rules.Catalog.FindRecipientType(request.TypeId)?.Type.DisplayName ?? request.TypeId : request.Name.Trim();
-        var to = target.Length > 200 ? target[..200] : target;
-        var done = rules.Catalog.FindRecipientType(request.TypeId)?.Type.Sessions is not null ? "Connected to " : "Sent to ";
-        var detail = (ok ? done : "Failed to ") + to + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message));
-        await audit.WriteAsync(AuditActions.RecipientTested, name, detail, ct).ConfigureAwait(false);
-        return new Proto.TestActionReply { Ok = ok, Message = message };
+        var raw = (System.Text.Json.Nodes.JsonObject)values.DeepClone(); // the test adds stored passwords to values
+        var type = rules.Catalog.FindRecipientType(request.TypeId)?.Type;
+        var name = string.IsNullOrWhiteSpace(request.Name) ? type?.DisplayName ?? request.TypeId : request.Name.Trim();
+        var certificates = CertificatesOf(type, raw);
+        try
+        {
+            var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, values, ct).ConfigureAwait(false);
+            var done = type?.Sessions is not null ? "Connected to " : "Sent to ";
+            var detail = (ok ? done : "Failed to ") + Clip(rules.TargetOf(request.TypeId, raw)) + certificates + (ok ? string.Empty : " · " + Clip(message));
+            await audit.WriteAsync(AuditActions.RecipientTested, name, detail, ct).ConfigureAwait(false);
+            return new Proto.TestActionReply { Ok = ok, Message = message };
+        }
+        catch (RecipientValidationException ex)
+        {
+            // The target only after the checks: a refused value may hold what must not reach the audit, a login in a URL.
+            await audit.WriteAsync(AuditActions.RecipientTested, name, "Failed to " + Clip(type?.DisplayName ?? request.TypeId) + certificates + " · " + Clip(ex.Message), ct).ConfigureAwait(false);
+            throw new RpcException(new Status(StatusCode.InvalidArgument, ex.Message), new Metadata { { RecipientField, ex.Field } });
+        }
     }
+
+    private static string Clip(string text) => text.Length > 200 ? text[..200] : text;
+
+    /// <summary>The audit's mention of the certificates a Test uses: using a key is worth a line.</summary>
+    private static string CertificatesOf(RecipientType? type, System.Text.Json.Nodes.JsonObject values) =>
+        type is null ? string.Empty : string.Concat(RecipientChecks.UsedCertificates(type.Fields, RecipientChecks.WithDefaults(type.Fields, values)).Select(c => " · " + c.Field.Label + " " + Clip(c.Id)));
 
     public override async Task WatchLog(Proto.Empty request, IServerStreamWriter<Proto.EventLogPage> responseStream, ServerCallContext context)
     {

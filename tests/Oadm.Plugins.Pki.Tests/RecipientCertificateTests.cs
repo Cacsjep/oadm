@@ -105,7 +105,7 @@ public sealed class RecipientCertificateTests
         var deleted = await CreateAsync(pki, "gone.example.com");
         await pki.Service.Issued.RevokeAsync([pki.Service.Local.List.Single(l => l.RowId == deleted).Serial], RevocationReason.Other, "admin", CancellationToken.None);
         Assert.Equal(accepted, Assert.Single(await Offer(pki).ClientCertificatesAsync(CancellationToken.None)).Value);
-        Assert.Null(await Offer(pki).LoadAsync(deleted, CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync(deleted, withKey: true, CancellationToken.None));
 
         time.SetUtcNow(pki.Service.Local.List.Single(l => l.RowId == accepted).NotAfterUtc.AddDays(1));
         Assert.Empty(await Offer(pki).ClientCertificatesAsync(CancellationToken.None));
@@ -133,7 +133,7 @@ public sealed class RecipientCertificateTests
         await using var pki = await PkiHarness.StartAsync();
         var id = await CreateAsync(pki);
 
-        var chain = await Offer(pki).LoadAsync(id, CancellationToken.None);
+        var chain = await Offer(pki).LoadAsync(id, withKey: true, CancellationToken.None);
 
         Assert.NotNull(chain);
         try
@@ -154,11 +154,33 @@ public sealed class RecipientCertificateTests
     }
 
     [Fact]
+    public async Task A_trusted_certificate_loads_without_its_key()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var id = await CreateAsync(pki);
+
+        var chain = await Offer(pki).LoadAsync(id, withKey: false, CancellationToken.None);
+
+        Assert.NotNull(chain);
+        try
+        {
+            Assert.All(chain, certificate => Assert.False(certificate.HasPrivateKey));
+        }
+        finally
+        {
+            foreach (var certificate in chain)
+            {
+                certificate.Dispose();
+            }
+        }
+    }
+
+    [Fact]
     public async Task A_loaded_key_signs_in_a_TLS_handshake_with_client_authentication()
     {
         await using var pki = await PkiHarness.StartAsync();
         var id = await ImportAsync(pki, Pfx(), FilePassword);
-        var chain = await Offer(pki).LoadAsync(id, CancellationToken.None);
+        var chain = await Offer(pki).LoadAsync(id, withKey: true, CancellationToken.None);
         using var client = Assert.Single(chain!);
         using var serverKey = RSA.Create(2048);
         using var generated = new CertificateRequest("CN=broker", serverKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
@@ -282,14 +304,14 @@ public sealed class RecipientCertificateTests
         await using var pki = await PkiHarness.StartAsync();
         var id = await CreateAsync(pki);
 
-        var ca = await Offer(pki).LoadAsync(CaRow(pki), CancellationToken.None);
+        var ca = await Offer(pki).LoadAsync(CaRow(pki), withKey: true, CancellationToken.None);
         using var root = Assert.Single(ca!);
         Assert.False(root.HasPrivateKey);
 
         Assert.Equal(1, (await DeleteAsync(pki, id)).Deleted);
-        Assert.Null(await Offer(pki).LoadAsync(id, CancellationToken.None));
-        Assert.Null(await Offer(pki).LoadAsync("ca:00", CancellationToken.None));
-        Assert.Null(await Offer(pki).LoadAsync("something else", CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync(id, withKey: true, CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync("ca:00", withKey: true, CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync("something else", withKey: true, CancellationToken.None));
     }
 
     [Fact]

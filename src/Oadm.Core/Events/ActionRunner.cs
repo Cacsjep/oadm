@@ -105,6 +105,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     /// <summary>The open connections of persistent recipients (<see cref="IActionContext.SessionAsync{T}"/>); null without them.</summary>
     public RecipientSessionPool? Sessions { get; set; }
 
+    /// <summary>The certificates a recipient's Test may name; null or a null result: none.</summary>
+    public Func<Sdk.Certificates.IRecipientCertificates?>? Certificates { get; set; }
+
     /// <summary>The licenses of commercial plugins, handed to their actions (<see cref="IActionContext.License"/>).</summary>
     public Plugins.IPluginLicenseSource? Licenses { get; set; }
 
@@ -548,7 +551,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     /// "Send test" of the rule dialog (administrators): runs an action without devices once now, outside every rule state
     /// and limit, with sample values for the event ("sample" for every value of <paramref name="eventTypeId"/>) and the
     /// given device as the device of the event. Password fields left empty take the stored value of the rule's action.
-    /// Nothing is written to the event log. Returns the result line.
+    /// Nothing is written to the event log. Returns the result line. An action on a persistent recipient is refused: it would
+    /// really write to a machine, and the recipient's Test only connects.
     /// </summary>
     public async Task<(bool Ok, string Message)> TestAsync(
         string actionId, JsonObject settings, string ruleName, Guid? ruleId, Guid? actionKey, string? eventTypeId, Guid? deviceId, CancellationToken ct)
@@ -563,6 +567,11 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (action.Plugin.NeedsDevice)
         {
             return (false, "Only actions without devices can be tested here.");
+        }
+
+        if (action.Plugin.Fields.Any(f => f.Type == ActionFieldType.Recipient && f.RecipientTypes.Any(t => _catalog.FindRecipientType(t)?.Type.Sessions is not null)))
+        {
+            return (false, RecipientSessionTexts.TestTheRecipient);
         }
 
         if (ruleId is { } rule && actionKey is { } key && await _store.GetAsync(rule, ct).ConfigureAwait(false) is { } stored
@@ -595,36 +604,44 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
     /// <summary>
     /// "Test" of the recipient dialog: runs the type's test action once now with that action's default values, the values
-    /// of the form and sample event values. A password left empty takes the stored one of <paramref name="id"/>.
+    /// of the form and sample event values. A password left empty takes the stored one of <paramref name="id"/>, only while the
+    /// target is the same. Throws <see cref="RecipientValidationException"/> when the checks refuse: a result means they passed.
     /// </summary>
     public async Task<(bool Ok, string Message)> TestRecipientAsync(string typeId, Guid? id, JsonObject values, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(values);
         if (_catalog.FindRecipientType(typeId) is not { Available: true, TestAction: { } action } type)
         {
-            return (false, "Not available: this type of recipient is turned off");
+            throw new RecipientValidationException("Not available: this type of recipient is turned off");
         }
 
         var recipient = id is { } known ? await _recipients.GetAsync(known, ct).ConfigureAwait(false) : null;
         if (recipient is not null && !string.Equals(recipient.TypeId, type.Type.Id, StringComparison.OrdinalIgnoreCase))
         {
-            return (false, "This recipient has another type."); // a stored password never goes to a target of another type
+            throw new RecipientValidationException("This recipient has another type."); // a stored password never goes to a target of another type
         }
 
-        var stored = recipient is null ? [] : _recipients.DecryptSettings(recipient);
-        foreach (var field in type.Type.Fields.Where(f => f.Type == ActionFieldType.Password))
+        var fields = type.Type.Fields;
+        var changed = recipient is not null && RecipientChecks.TargetChanged(fields, values, recipient.Settings);
+        if (recipient is not null && !changed)
         {
-            if (ActionSettings.Text(values, field.Key) is not { Length: > 0 } && stored[field.Key] is { } kept)
+            var stored = _recipients.DecryptSettings(recipient);
+            foreach (var field in fields.Where(f => f.Type == ActionFieldType.Password))
             {
-                values[field.Key] = kept.DeepClone();
+                if (ActionSettings.Text(values, field.Key) is not { Length: > 0 } && stored[field.Key] is { } kept)
+                {
+                    values[field.Key] = kept.DeepClone();
+                }
             }
         }
 
-        if (RecipientChecks.Errors(type, values, []).FirstOrDefault() is { Value: not null } error)
+        var secrets = changed ? RecipientStore.ForClient(recipient!).StoredSecretFields : [];
+        if (RecipientChecks.Errors(type, values, secrets).FirstOrDefault() is { Value: not null } error)
         {
-            var label = type.Type.Fields.FirstOrDefault(f => f.Key == error.Key)?.Label;
-            return (false, label is null ? error.Value : $"{label}: {error.Value}");
+            throw new RecipientValidationException(error.Key, error.Value);
         }
+
+        await RecipientChecks.CheckAgainstStoredAsync(fields, values, recipient, Certificates?.Invoke(), ct).ConfigureAwait(false);
 
         if (type.Type.Sessions is not null)
         {

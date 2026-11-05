@@ -11,6 +11,7 @@ using Oadm.Core.Events;
 using Oadm.Core.Plugins;
 using Oadm.Plugins.Notifications;
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Core.Tests.Events;
@@ -20,12 +21,35 @@ public sealed class RecipientTests
 {
     private const string TargetType = "test.target";
     private const string OtherType = "test.other";
+    private const string LoginType = "test.login";
 
     private static readonly ActionField[] TargetFields =
     [
         ActionField.Text("url", "URL", required: true),
         ActionField.Password("password", "Password"),
     ];
+
+    /// <summary>A password and certificates that show only for their login.</summary>
+    private static readonly ActionField[] LoginFields =
+    [
+        ActionField.Text("url", "URL", required: true),
+        ActionField.Text("auth", "Login", defaultValue: "none"),
+        ActionField.Password("password", "Password") with { VisibleWhenKey = "auth", VisibleWhenValue = "basic" },
+        ActionField.ClientCertificate("client", "Client certificate") with { VisibleWhenKey = "auth", VisibleWhenValue = "certificate" },
+        ActionField.TrustedCertificate("trusted", "Trusted CA"),
+    ];
+
+    private sealed class FakeCertificates : IRecipientCertificates
+    {
+        public Task<IReadOnlyList<ActionChoice>> ClientCertificatesAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<ActionChoice>>([new ActionChoice("local:listed", "Listed key")]);
+
+        public Task<IReadOnlyList<ActionChoice>> TrustedCertificatesAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<ActionChoice>>([new ActionChoice("ca:listed", "Listed CA")]);
+
+        public Task<IReadOnlyList<System.Security.Cryptography.X509Certificates.X509Certificate2>?> LoadAsync(string id, bool withKey, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
 
     /// <summary>An action that sends to a recipient and records what it got.</summary>
     private sealed class SendAction : IActionPlugin
@@ -46,6 +70,7 @@ public sealed class RecipientTests
         [
             new(TargetType, "Target", null, TargetFields, "test.send") { Target = "{url}" },
             new(OtherType, "Other", null, [ActionField.Text("url", "URL", required: true)], "test.send"),
+            new(LoginType, "Login", null, LoginFields, "test.send"),
         ];
 
         public IReadOnlyList<ActionField> Fields { get; } =
@@ -260,19 +285,125 @@ public sealed class RecipientTests
         await using var rig = await RigAsync(action);
         var recipient = await NewAsync(rig, "Gate", password: "s3cret");
 
-        var (ok, _) = await rig.Runner.TestRecipientAsync(TargetType, recipient.Id, Values("https://form.example.com"), CancellationToken.None);
+        var (ok, _) = await rig.Runner.TestRecipientAsync(TargetType, recipient.Id, Values("https://a.example.com"), CancellationToken.None);
 
         Assert.True(ok);
         var run = Assert.Single(action.Runs);
-        Assert.Equal("https://form.example.com", run.Get("url"));
+        Assert.Equal("https://a.example.com", run.Get("url"));
         Assert.Equal("s3cret", run.Get("password"));
         Assert.Empty(run.RecipientIds);
 
-        var (bad, reason) = await rig.Runner.TestRecipientAsync(TargetType, null, Values("bad"), CancellationToken.None);
-        Assert.False(bad);
-        Assert.Equal("URL: Enter a good URL.", reason);
-        var (unknown, _) = await rig.Runner.TestRecipientAsync("test.nothing", null, [], CancellationToken.None);
-        Assert.False(unknown);
+        var bad = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync(TargetType, null, Values("bad"), CancellationToken.None));
+        Assert.Equal("url", bad.Field);
+        Assert.Equal("Enter a good URL.", bad.Message);
+        await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync("test.nothing", null, [], CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheTestOfAChangedTargetNeverSendsTheStoredPassword()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var recipient = await NewAsync(rig, "Gate", password: "s3cret");
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync(TargetType, recipient.Id, Values("https://evil.example.com"), CancellationToken.None));
+
+        Assert.Equal("password", refused.Field);
+        Assert.Equal("Enter the password again. The target changed.", refused.Message);
+        Assert.Empty(action.Runs);
+
+        // An encrypted value from a client is no password, and one typed in goes to the new target.
+        var stored = Values("https://evil.example.com", RuleStore.SecretPrefix + "x");
+        await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync(TargetType, recipient.Id, stored, CancellationToken.None));
+        var (ok, _) = await rig.Runner.TestRecipientAsync(TargetType, recipient.Id, Values("https://new.example.com", "typed"), CancellationToken.None);
+        Assert.True(ok);
+        Assert.Equal("typed", Assert.Single(action.Runs).Get("password"));
+    }
+
+    [Fact]
+    public async Task ASaveOfAChangedTargetNeedsThePasswordAgain()
+    {
+        await using var rig = await RigAsync(new SendAction());
+        var recipient = await NewAsync(rig, "Gate", password: "s3cret");
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Rules.SaveRecipientAsync(recipient.Id, "Gate", TargetType, Values("https://evil.example.com"), CancellationToken.None));
+        Assert.Equal("password", refused.Field);
+        Assert.Equal("Enter the password again. The target changed.", refused.Message);
+        Assert.Equal("https://a.example.com", (await rig.Recipients.GetAsync(recipient.Id, CancellationToken.None))!.Settings["url"]!.GetValue<string>());
+
+        // Unchanged it keeps working, also under a new name; with the password the target can change.
+        var (renamed, _) = await rig.Rules.SaveRecipientAsync(recipient.Id, "Gate 2", TargetType, Values("https://a.example.com"), CancellationToken.None);
+        Assert.Contains("password", renamed.StoredSecretFields);
+        var (moved, _) = await rig.Rules.SaveRecipientAsync(recipient.Id, "Gate 2", TargetType, Values("https://b.example.com", "new"), CancellationToken.None);
+        Assert.Equal("https://b.example.com", moved.Target);
+    }
+
+    [Fact]
+    public async Task AHiddenStoredPasswordDoesNotFollowAChangedTarget()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var (first, _) = await rig.Rules.SaveRecipientAsync(null, "Hook", LoginType, new JsonObject { ["url"] = "https://a.example.com", ["auth"] = "basic", ["password"] = "s3cret" }, CancellationToken.None);
+
+        // Login None hides the password, so nothing can be asked below it.
+        var hidden = new JsonObject { ["url"] = "https://evil.example.com", ["auth"] = "none" };
+        await rig.Runner.TestRecipientAsync(LoginType, first.Id, (JsonObject)hidden.DeepClone(), CancellationToken.None);
+        Assert.False(Assert.Single(action.Runs).Settings.TryGetProperty("password", out _));
+        var (saved, _) = await rig.Rules.SaveRecipientAsync(first.Id, "Hook", LoginType, hidden, CancellationToken.None);
+        Assert.Empty(saved.StoredSecretFields);
+
+        // Showing it again finds no password to send.
+        var (ok, message) = await rig.Runner.TestRecipientAsync(LoginType, first.Id, new JsonObject { ["url"] = "https://evil.example.com", ["auth"] = "basic" }, CancellationToken.None);
+        Assert.True(ok, message);
+        Assert.False(action.Runs.Last().Settings.TryGetProperty("password", out _));
+    }
+
+    [Fact]
+    public async Task ACertificateMustBeOfferedAndAStoredOneStays()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        rig.Rules.Certificates = () => new FakeCertificates();
+        rig.Runner.Certificates = rig.Rules.Certificates;
+        var listed = new JsonObject { ["url"] = "https://a.example.com", ["auth"] = "certificate", ["client"] = "local:listed", ["trusted"] = "ca:listed" };
+
+        var (saved, _) = await rig.Rules.SaveRecipientAsync(null, "Hook", LoginType, (JsonObject)listed.DeepClone(), CancellationToken.None);
+
+        // A key of the list is no CA of the list, and a hidden field counts: it can show again.
+        foreach (var (key, value, auth) in new[] { ("client", "local:other", "certificate"), ("client", "ca:listed", "certificate"), ("trusted", "local:listed", "certificate"), ("client", "local:other", "none") })
+        {
+            var values = (JsonObject)listed.DeepClone();
+            values[key] = value;
+            values["auth"] = auth;
+            var refused = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Rules.SaveRecipientAsync(saved.Id, "Hook", LoginType, (JsonObject)values.DeepClone(), CancellationToken.None));
+            Assert.Equal((key, RecipientSessionTexts.CertificateGone), (refused.Field, refused.Message));
+            var test = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync(LoginType, saved.Id, values, CancellationToken.None));
+            Assert.Equal((key, RecipientSessionTexts.CertificateGone), (test.Field, test.Message));
+        }
+
+        // The stored value that left the list stays, so a rename does not fail.
+        rig.Rules.Certificates = null;
+        rig.Runner.Certificates = null;
+        await rig.Rules.SaveRecipientAsync(saved.Id, "Hook 2", LoginType, (JsonObject)listed.DeepClone(), CancellationToken.None);
+        await rig.Runner.TestRecipientAsync(LoginType, saved.Id, listed, CancellationToken.None);
+        Assert.Single(action.Runs);
+    }
+
+    [Fact]
+    public async Task HiddenFieldsAndTypesThatAreGoneStillProtectTheirCertificates()
+    {
+        await using var rig = await RigAsync(new SendAction());
+        rig.Rules.Certificates = () => new FakeCertificates();
+        await rig.Rules.SaveRecipientAsync(null, "Hidden", LoginType, new JsonObject { ["url"] = "https://a.example.com", ["auth"] = "none", ["client"] = "local:listed" }, CancellationToken.None);
+        ActionField[] uninstalled = [ActionField.Text("key", "Key"), ActionField.Text("anchor", "CA"), ActionField.Text("note", "Note"), ActionField.Password("password", "Password")];
+        await rig.Recipients.SaveAsync(
+            null, "Uninstalled", "test.uninstalled", new JsonObject { ["key"] = "local:listed", ["anchor"] = "ca:old", ["note"] = "plain", ["password"] = "local:secret" }, uninstalled, CancellationToken.None);
+
+        var uses = await rig.Rules.UsesAsync(CancellationToken.None);
+
+        Assert.Equal(["Hidden", "Uninstalled"], uses["local:listed"]);
+        Assert.Equal(["Uninstalled"], uses["ca:old"]);
+        Assert.Equal(2, uses.Count); // no plain text, no encrypted password
     }
 
     [Fact]
@@ -282,10 +413,9 @@ public sealed class RecipientTests
         await using var rig = await RigAsync(action);
         var recipient = await NewAsync(rig, "Mail", password: "s3cret");
 
-        var (ok, reason) = await rig.Runner.TestRecipientAsync(OtherType, recipient.Id, Values("https://other.example.com"), CancellationToken.None);
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Runner.TestRecipientAsync(OtherType, recipient.Id, Values("https://other.example.com"), CancellationToken.None));
 
-        Assert.False(ok);
-        Assert.Equal("This recipient has another type.", reason);
+        Assert.Equal("This recipient has another type.", refused.Message);
         Assert.Empty(action.Runs);
     }
 
@@ -524,7 +654,7 @@ public sealed class RecipientTests
     public async Task TheCatalogCollectsTheTypesOfThePlugins()
     {
         await using var rig = await RigAsync(new SendAction());
-        Assert.Equal([TargetType, OtherType], rig.Catalog.RecipientTypes.Select(t => t.Id));
+        Assert.Equal([TargetType, OtherType, LoginType], rig.Catalog.RecipientTypes.Select(t => t.Id));
         Assert.True(rig.Catalog.FindRecipientType(TargetType)!.Available);
         Assert.Null(rig.Catalog.FindRecipientType("test.nothing"));
     }
@@ -575,7 +705,9 @@ public sealed class RecipientTests
     public async Task SendHTTPRequestAndSendEmailReadTheirTargetThroughTheMerge()
     {
         await using var rig = await NotificationsRigAsync();
-        var port = FreePort(); // nothing listens: the error names the target the action got
+        using var held = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        held.Bind(new IPEndPoint(IPAddress.Loopback, 0)); // bound, never listening: the error names the target the action got
+        var port = ((IPEndPoint)held.LocalEndPoint!).Port;
         var (http, _) = await rig.Rules.SaveRecipientAsync(null, "Hook", NotificationRecipients.HttpType, new JsonObject { ["url"] = $"http://127.0.0.1:{port}/in", ["auth"] = "none" }, CancellationToken.None);
         var (mail, _) = await rig.Rules.SaveRecipientAsync(
             null,

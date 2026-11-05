@@ -764,6 +764,9 @@ public static partial class OadmServerHost
         siteEvents.EventTypesChanged += (_, _) => rules.SourcesChanged();
         siteEvents.Start();
         sp.GetRequiredService<ActionRunner>().Sessions = sp.GetRequiredService<RecipientSessionPool>();
+        Func<Sdk.Certificates.IRecipientCertificates?> recipientCertificates = () => sp.GetRequiredService<PluginServiceRegistry>().Get<Sdk.Certificates.IRecipientCertificates>();
+        sp.GetRequiredService<ActionRunner>().Certificates = recipientCertificates;
+        sp.GetRequiredService<EventRulesService>().Certificates = recipientCertificates;
         sp.GetRequiredService<PluginServiceRegistry>().For("oadm.host").Offer<Sdk.Certificates.IRecipientCertificateUse>(sp.GetRequiredService<EventRulesService>());
         sp.GetRequiredService<RecipientEventSource>().Start();
         var addOnEvents = sp.GetRequiredService<AddOns.AddOnEventSource>();
@@ -819,11 +822,12 @@ public static partial class OadmServerHost
         await sp.GetRequiredService<ExpiryWarningPublisher>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ClockTolerance>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<SiteEventSource>().DisposeAsync().ConfigureAwait(false);
-        await sp.GetRequiredService<RecipientSessionPool>().DisposeAsync().ConfigureAwait(false);
+        sp.GetRequiredService<RecipientEventSource>().Stop();
         await sp.GetRequiredService<CorePluginHost>().StopAllAsync(ct).ConfigureAwait(false);
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().FlushAsync().ConfigureAwait(false);
         await sp.GetRequiredService<RuleEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<ActionRunner>().DisposeAsync().ConfigureAwait(false);
+        await sp.GetRequiredService<RecipientSessionPool>().DisposeAsync().ConfigureAwait(false); // after the runner: running actions keep their session
         await sp.GetRequiredService<EventLog>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<TaskEngine>().DisposeAsync().ConfigureAwait(false);
         await sp.GetRequiredService<CoreDiscoveryService>().DisposeAsync().ConfigureAwait(false);

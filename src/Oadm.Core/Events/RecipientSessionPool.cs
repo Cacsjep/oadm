@@ -29,7 +29,7 @@ public sealed class RecipientSessionPoolOptions
 
     public TimeSpan LongestWait { get; init; } = TimeSpan.FromSeconds(60);
 
-    /// <summary>A session no action used for this long closes.</summary>
+    /// <summary>A connected session no action used for this long closes. A failed one keeps trying.</summary>
     public TimeSpan IdleClose { get; init; } = TimeSpan.FromMinutes(5);
 
     /// <summary>One connection attempt.</summary>
@@ -41,8 +41,9 @@ public sealed class RecipientSessionPoolOptions
 
 /// <summary>
 /// The open connections of the persistent recipients (docs/spec/recipient-sessions.md): one session per recipient id, opened at
-/// the first action that needs it, reconnected with a growing wait, closed when unused for 5 minutes, when the recipient changes
-/// or goes, and at the stop. Nothing is queued: an action on a session that is not connected fails at once. Thread-safe.
+/// the first action that needs it, reconnected with a growing wait, closed when connected and unused for 5 minutes, when the
+/// recipient changes or goes, and at the stop. A failed session stays Not connected through its retries. Nothing is queued: an
+/// action on a session that is not connected fails at once. Thread-safe; nothing is cancelled or raised under the lock.
 /// </summary>
 public sealed partial class RecipientSessionPool : IAsyncDisposable
 {
@@ -100,18 +101,18 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
             await slot.FirstAttempt.Task.WaitAsync(ct).ConfigureAwait(false);
             lock (_gate)
             {
-                if (slot.State == RecipientConnectionState.Connected && slot.Session is { } session)
+                if (!slot.Closed && slot.State == RecipientConnectionState.Connected && slot.Session is { } session)
                 {
                     return session;
                 }
 
-                if (!slot.Closed)
+                if (!slot.Closed || slot.RecipientGone)
                 {
                     throw new InvalidOperationException(RecipientSessionTexts.NotConnected(slot.Reason));
                 }
             }
 
-            // The recipient changed during the wait: the next round opens the new one.
+            // The slot closed during the wait (the recipient changed, or idle): the next round opens a new one.
         }
     }
 
@@ -153,6 +154,7 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Slot[] closing;
         Task[] running;
         lock (_gate)
         {
@@ -162,9 +164,10 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
             }
 
             _stopped = true;
-            foreach (var slot in _slots.Values)
+            closing = [.. _slots.Values];
+            foreach (var slot in closing)
             {
-                Close(slot);
+                slot.Closed = true;
             }
 
             _slots.Clear();
@@ -172,6 +175,11 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         }
 
         _recipients.Changed -= OnRecipientChanged;
+        foreach (var slot in closing)
+        {
+            Cancel(slot);
+        }
+
         await Task.WhenAll(running).ConfigureAwait(false);
     }
 
@@ -211,20 +219,20 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         var wait = _options.FirstWait;
         try
         {
-            while (!ct.IsCancellationRequested && !IsIdle(slot))
+            while (!ct.IsCancellationRequested)
             {
-                Set(slot, RecipientConnectionState.Connecting, null);
-                var (ended, connected) = await ConnectedRunAsync(slot, ct).ConfigureAwait(false);
-                if (ct.IsCancellationRequested || ended is null)
+                var (ended, stayedUp) = await ConnectedRunAsync(slot, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested || ended is null || slot.RecipientGone)
                 {
-                    break; // closed, or idle
+                    break; // closed, idle, or nothing left to connect to
                 }
 
-                if (connected)
+                if (stayedUp)
                 {
-                    wait = _options.FirstWait; // it worked: the wait starts again
+                    wait = _options.FirstWait; // it held: a target that accepts and then kicks keeps the growing wait
                 }
 
+                // Until it reaches Connected a retry stays Not connected with the last reason: the event never turns off between attempts.
                 Set(slot, RecipientConnectionState.NotConnected, ended);
                 slot.FirstAttempt.TrySetResult();
                 await Task.Delay(wait, _time, ct).ConfigureAwait(false);
@@ -248,18 +256,31 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         }
     }
 
-    /// <summary>One session from connect to its end. Returns the reason it ended (null: idle or closed) and whether it was connected.</summary>
-    private async Task<(string? Ended, bool Connected)> ConnectedRunAsync(Slot slot, CancellationToken ct)
+    /// <summary>
+    /// One session from connect to its end. Returns the reason it ended (null: idle or closed) and whether it stayed connected for
+    /// <see cref="RecipientSessionPoolOptions.LongestWait"/>.
+    /// </summary>
+    private async Task<(string? Ended, bool StayedUp)> ConnectedRunAsync(Slot slot, CancellationToken ct)
     {
         IRecipientSession? session = null;
         IReadOnlyList<X509Certificate2> loaded = [];
         var dropped = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var connected = false;
+        DateTimeOffset? connectedAt = null;
         void OnDropped(object? sender, RecipientDroppedEventArgs e) => dropped.TrySetResult(e.Reason);
         try
         {
-            var recipient = await _recipients.GetAsync(slot.Id, ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException(RecipientType.NotFoundText);
+            var recipient = await _recipients.GetAsync(slot.Id, ct).ConfigureAwait(false);
+            if (recipient is null)
+            {
+                lock (_gate)
+                {
+                    slot.RecipientGone = true;
+                    slot.Reason = RecipientType.NotFoundText;
+                }
+
+                return (RecipientType.NotFoundText, false); // no retry: no change of this recipient can follow
+            }
+
             SetName(slot, recipient.Name);
             if (_catalog.FindRecipientType(recipient.TypeId) is not { Available: true, Type: { Sessions: not null } type })
             {
@@ -269,7 +290,7 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
             (session, loaded) = await CreateAsync(type, _recipients.DecryptSettings(recipient), slot.Id, ct).ConfigureAwait(false);
             session.Dropped += OnDropped;
             await ConnectAsync(session, ct).ConfigureAwait(false);
-            connected = true;
+            connectedAt = _time.GetUtcNow();
             lock (_gate)
             {
                 slot.Session = session;
@@ -278,17 +299,17 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
             Set(slot, RecipientConnectionState.Connected, null);
             slot.FirstAttempt.TrySetResult();
             LogConnected(slot.Name);
-            return (await WaitEndAsync(slot, dropped.Task, ct).ConfigureAwait(false), true);
+            return (await WaitEndAsync(slot, dropped.Task, ct).ConfigureAwait(false), StayedUp(connectedAt));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return (null, connected);
+            return (null, false);
         }
 #pragma warning disable CA1031 // Plugin code is untrusted: a failed attempt is a reason.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            return (Reason(ex), connected);
+            return (Reason(ex), StayedUp(connectedAt));
         }
         finally
         {
@@ -325,9 +346,9 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
     {
         while (true)
         {
-            var left = LastUsed(slot) + _options.IdleClose - _time.GetUtcNow();
-            if (left <= TimeSpan.Zero)
+            if (LeaveWhenIdle(slot) is not { } left)
             {
+                Changed?.Invoke(this, EventArgs.Empty);
                 return null;
             }
 
@@ -344,39 +365,62 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         }
     }
 
-    private bool IsIdle(Slot slot) => _time.GetUtcNow() - LastUsed(slot) >= _options.IdleClose;
+    private bool StayedUp(DateTimeOffset? connectedAt) =>
+        connectedAt is { } at && _time.GetUtcNow() - at >= _options.LongestWait;
 
-    private DateTimeOffset LastUsed(Slot slot)
+    /// <summary>
+    /// The time left until a connected session is idle. Idle: decided under the lock and the slot leaves here, before the close, so
+    /// an action either kept the session or opens a new one (null).
+    /// </summary>
+    private TimeSpan? LeaveWhenIdle(Slot slot)
     {
         lock (_gate)
         {
-            return slot.LastUsed;
+            var left = slot.LastUsed + _options.IdleClose - _time.GetUtcNow();
+            if (left > TimeSpan.Zero)
+            {
+                return left;
+            }
+
+            slot.Closed = true;
+            slot.Session = null;
+            if (_slots.TryGetValue(slot.Id, out var current) && current == slot)
+            {
+                _slots.Remove(slot.Id);
+            }
+
+            return null;
         }
     }
 
-    /// <summary>A session that is not connected, with its certificates; the caller closes both.</summary>
+    /// <summary>A session that is not connected, with its certificates; the caller closes both. A failure leaves nothing open.</summary>
     private async Task<(IRecipientSession Session, IReadOnlyList<X509Certificate2> Loaded)> CreateAsync(RecipientType type, JsonObject values, Guid? id, CancellationToken ct)
     {
-        var settings = ActionSettings.Defaults(type.Fields);
-        foreach (var (key, value) in values)
-        {
-            settings[key] = value?.DeepClone();
-        }
-
+        var settings = RecipientChecks.WithDefaults(type.Fields, values);
         var chains = new Dictionary<string, IReadOnlyList<X509Certificate2>>(StringComparer.Ordinal);
-        foreach (var field in type.Fields.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate))
+        try
         {
-            if (ActionSettings.IsVisible(field, settings, statefulRule: true) && ActionSettings.Text(settings, field.Key) is { Length: > 0 } certificate)
+            foreach (var (field, certificate) in RecipientChecks.UsedCertificates(type.Fields, settings))
             {
                 var source = _certificates() ?? throw new InvalidOperationException(RecipientSessionTexts.CertificateGone);
-                chains[field.Key] = await source.LoadAsync(certificate, ct).ConfigureAwait(false)
+                var withKey = field.Type == ActionFieldType.ClientCertificate; // a key only where a client certificate needs one
+                chains[field.Key] = await source.LoadAsync(certificate, withKey, ct).ConfigureAwait(false)
                     ?? throw new InvalidOperationException(RecipientSessionTexts.CertificateGone);
             }
-        }
 
-        using var document = JsonDocument.Parse(settings.ToJsonString());
-        var request = new RecipientSessionRequest(document.RootElement.Clone(), chains, _loggers.CreateLogger("Oadm.Recipients." + type.Id)) { RecipientId = id };
-        return (type.Sessions!.Create(request), [.. chains.Values.SelectMany(c => c)]);
+            using var document = JsonDocument.Parse(settings.ToJsonString());
+            var request = new RecipientSessionRequest(document.RootElement.Clone(), chains, _loggers.CreateLogger("Oadm.Recipients." + type.Id)) { RecipientId = id };
+            return (type.Sessions!.Create(request), [.. chains.Values.SelectMany(c => c)]);
+        }
+        catch
+        {
+            foreach (var certificate in chains.Values.SelectMany(c => c))
+            {
+                certificate.Dispose();
+            }
+
+            throw;
+        }
     }
 
     private async Task CloseAsync(IRecipientSession? session, IReadOnlyList<X509Certificate2> loaded)
@@ -403,25 +447,36 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
 
     private void OnRecipientChanged(object? sender, Guid id)
     {
+        Slot? slot;
         lock (_gate)
         {
-            if (!_slots.Remove(id, out var slot))
+            if (!_slots.Remove(id, out slot))
             {
                 return;
             }
 
-            Close(slot);
+            slot.Closed = true;
         }
 
+        Cancel(slot);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Under the lock.</summary>
-    private static void Close(Slot slot)
+    /// <summary>
+    /// Outside the lock, and never a plain Cancel: that runs what waits on it right here, up to the session's close and
+    /// <see cref="Changed"/>. The slot's loop may have ended by itself.
+    /// </summary>
+    private static void Cancel(Slot slot)
     {
-        slot.Closed = true;
-        slot.Stop.Cancel();
         slot.FirstAttempt.TrySetResult();
+        try
+        {
+            _ = slot.Stop.CancelAsync();
+        }
+        catch (ObjectDisposedException)
+        {
+            // It ended by itself.
+        }
     }
 
     private void Finish(Slot slot)
@@ -506,5 +561,8 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         public DateTimeOffset LastUsed { get; set; }
 
         public bool Closed { get; set; }
+
+        /// <summary>The recipient no longer exists: the loop ended without a retry.</summary>
+        public bool RecipientGone { get; set; }
     }
 }

@@ -7,6 +7,7 @@ using Oadm.Core.Auth;
 using Oadm.Core.Events;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
@@ -42,7 +43,9 @@ public sealed class RecipientServiceTests
         public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [TypeId])];
 
         public IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule) =>
-            settings.TryGetProperty("url", out var url) && url.GetString() == "bad" ? new Dictionary<string, string> { ["url"] = "Enter a URL." } : new Dictionary<string, string>();
+            settings.TryGetProperty("url", out var url) && (url.GetString() == "bad" || url.GetString()!.Contains('@', StringComparison.Ordinal))
+                ? new Dictionary<string, string> { ["url"] = "Enter a URL." }
+                : new Dictionary<string, string>();
 
         public Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) =>
             FailWith is { } reason ? throw new InvalidOperationException(reason) : Task.CompletedTask;
@@ -171,6 +174,136 @@ public sealed class RecipientServiceTests
         }
     }
 
+    [Fact]
+    public async Task AChangedTargetIsRefusedBelowThePasswordOnTestAndSave()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            var saved = await events.SaveRecipientAsync(Request("Teams"));
+            var changed = Request("Teams", "https://evil.example.com", token: null, id: saved.Id);
+
+            var test = await Assert.ThrowsAsync<RpcException>(async () => await events.TestRecipientAsync(changed));
+            var save = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(changed));
+
+            foreach (var refused in new[] { test, save })
+            {
+                Assert.Equal(StatusCode.InvalidArgument, refused.StatusCode);
+                Assert.Equal("Enter the password again. The target changed.", refused.Status.Detail);
+                Assert.Equal("token", refused.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+            }
+
+            var same = Request("Teams", token: null, id: saved.Id);
+            Assert.True((await events.TestRecipientAsync(same)).Ok);
+            await events.SaveRecipientAsync(same);
+        }
+    }
+
+    [Fact]
+    public async Task ALoginInAURLOfARefusedTestStaysOutOfTheAudit()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await events.TestRecipientAsync(Request("Teams", "https://user:s3cret@hooks.example.com")));
+            Assert.Equal("url", refused.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+
+            var entry = Assert.Single((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RecipientTested);
+            Assert.Equal("Failed to Hook · Enter a URL.", entry.Detail);
+        }
+    }
+
+    private sealed class ListedCertificates : IRecipientCertificates
+    {
+        public Task<IReadOnlyList<ActionChoice>> ClientCertificatesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<ActionChoice>>([new ActionChoice("local:1", "Key")]);
+
+        public Task<IReadOnlyList<ActionChoice>> TrustedCertificatesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<ActionChoice>>([]);
+
+        public Task<IReadOnlyList<System.Security.Cryptography.X509Certificates.X509Certificate2>?> LoadAsync(string id, bool withKey, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<System.Security.Cryptography.X509Certificates.X509Certificate2>?>([]);
+    }
+
+    [Fact]
+    public async Task ACertificateOutsideTheOfferedListIsRefusedAndTheTestNamesTheOneItUses()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        host.Get<PluginRegistry>().RegisterActionPlugin(new SessionAction(), new PluginOrigin("test.session", "1.0", null) { DisplayName = "Session" });
+        host.Get<PluginServiceRegistry>().For("test.pki").Offer<IRecipientCertificates>(new ListedCertificates());
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+        Proto.SaveRecipientRequest Using(string certificate) => new() { Name = "Broker", TypeId = SessionAction.SessionType, SettingsJson = new JsonObject { ["host"] = "broker", ["client"] = certificate }.ToJsonString() };
+
+        foreach (var refused in new[]
+        {
+            await Assert.ThrowsAsync<RpcException>(async () => await events.TestRecipientAsync(Using("local:other"))),
+            await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(Using("local:other"))),
+        })
+        {
+            Assert.Equal(RecipientSessionTexts.CertificateGone, refused.Status.Detail);
+            Assert.Equal("client", refused.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+        }
+
+        Assert.True((await events.TestRecipientAsync(Using("local:1"))).Ok);
+        await events.SaveRecipientAsync(Using("local:1"));
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.RecipientTested && e.Detail == "Connected to broker · Client certificate local:1");
+    }
+
+    /// <summary>Holds until the stop cancels it, then asks for its session as a slow action does.</summary>
+    private sealed class StopAction : IActionPlugin
+    {
+        public TaskCompletionSource Running { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<Exception?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string Id => "test.stop-action";
+
+        public string DisplayName => "Run into the stop";
+
+        public string? IconKey => null;
+
+        public bool NeedsDevice => false;
+
+        public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [SessionAction.SessionType])];
+
+        public IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule) => new Dictionary<string, string>();
+
+        public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
+        {
+            Running.SetResult();
+            await Task.Delay(Timeout.Infinite, ct).ContinueWith(_ => { }, TaskScheduler.Default);
+            try
+            {
+                await ctx.SessionAsync<ConnectedSession>("recipient", CancellationToken.None);
+                Result.SetResult(null);
+            }
+#pragma warning disable CA1031 // The test reports what the action got.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                Result.SetResult(ex);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ARunningActionKeepsItsSessionDuringAStop()
+    {
+        var host = await TestServerHost.StartAsync();
+        var action = new StopAction();
+        host.Get<PluginRegistry>().RegisterActionPlugin(new SessionAction(), new PluginOrigin("test.session", "1.0", null) { DisplayName = "Session" });
+        host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.stop", "1.0", null) { DisplayName = "Stop" });
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+        var saved = await events.SaveRecipientAsync(new Proto.SaveRecipientRequest { Name = "Broker", TypeId = SessionAction.SessionType, SettingsJson = """{"host":"broker"}""" });
+        var rule = new RuleDefinition { Id = Guid.NewGuid(), Name = "Stop", Actions = [new RuleAction { ActionId = action.Id, Settings = new JsonObject { ["recipient"] = saved.Id } }] };
+        var trigger = new ActionTrigger(string.Empty, "Test", null, null, null, true, DateTimeOffset.UtcNow, new Dictionary<string, string>());
+
+        host.Get<ActionRunner>().Dispatch(new RuleEdgeJob(rule, false, ActionEdge.Fired, null, true, trigger));
+        await action.Running.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await host.DisposeAsync();
+
+        Assert.Null(await action.Result.Task.WaitAsync(TimeSpan.FromSeconds(30)));
+    }
+
     private sealed class ConnectedSession : IRecipientSession
     {
         public event EventHandler<RecipientDroppedEventArgs>? Dropped
@@ -202,7 +335,7 @@ public sealed class RecipientServiceTests
         public bool NeedsDevice => false;
 
         public IReadOnlyList<RecipientType> RecipientTypes { get; } =
-            [new(SessionType, "Session", "send", [ActionField.Text("host", "Host", required: true)], "test.session-action") { Target = "{host}", Sessions = new ConnectedSessions() }];
+            [new(SessionType, "Session", "send", [ActionField.Text("host", "Host", required: true), ActionField.ClientCertificate("client", "Client certificate")], "test.session-action") { Target = "{host}", Sessions = new ConnectedSessions() }];
 
         public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [SessionType])];
 

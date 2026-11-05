@@ -27,8 +27,15 @@ connections, and an action never owns a connection.
 
 - **One session per recipient id**, opened at the first action that needs it, never at the start: a recipient no rule uses holds no
   connection.
-- **Reconnect** with a growing wait, 1 s up to 60 s, through a `TimeProvider`. A session that stands unused for 5 minutes closes.
-- **A changed recipient** closes its session, the next action opens the new one. A deleted recipient closes it at once.
+- **Reconnect** with a growing wait, 1 s up to 60 s, through a `TimeProvider`. The wait starts again only after a connection stayed up for the
+  60 s: a broker that accepts and then kicks gets no reconnect every second.
+- **Idle:** only a connected session that no action used for 5 minutes closes (maintainer's default, 2026-11-05). A failed one keeps
+  trying and stays reported until it connects or the recipient changes or goes, also when no rule uses it any more. Idle is decided under the
+  pool's lock and the slot leaves there, before the close: an action keeps the session or gets a new one, never "Not connected" from a close.
+- **A changed recipient** closes its session, the next action opens the new one. A deleted recipient closes it at once. A recipient that no
+  longer exists is not retried.
+- **No lock around a close:** the pool collects its slots under the lock and cancels outside it, without running what waits on them, so a close
+  or `Changed` never runs under the lock (the event source takes its own lock and then the pool's).
 - **A run never waits long:** an action on a session that is not connected fails at once with "Not connected: <reason>" (event log,
   server log), and the rule's normal limits apply. No queue of messages, no replay after a reconnect: an alarm from 10 minutes ago
   must not fire a relay now.
@@ -39,7 +46,10 @@ connections, and an action never owns a connection.
   the card's default width and below) the chip shows only its icon and the tooltip says the word too, so the target keeps its room. The page
   watches only while it is shown, one post per burst, again after a drop (1, 2, 4 ... 15 s); a stream that ended clears the chips.
 - Secrets stay as in Recipients: decrypted only to open a session, kept only inside it.
-- Stops with the server; a stuck close never holds up the stop (5 s).
+- **Connecting** is only the first attempt. Until a session reaches Connected a retry stays Not connected with the last reason, so the event
+  below never turns off between attempts.
+- Stops with the server, after `ActionRunner`: a running action keeps its session. The event source stops first, so a stop ends no event. A
+  stuck close never holds up the stop (5 s).
 - Output only: nothing a session receives becomes an event. Sessions run on the server; recipients at sites are later.
 
 Event **Recipient not connected** (stateful, server, values `count` and `recipient`) tells a rule when a broker or a PLC is gone.
@@ -113,10 +123,17 @@ works with the fewest fields, and security is there when it is needed.
 - **The certificates come from PKI** (always on, free): the recipient dialog offers a **Client certificate** select (certificates of the
   Certificates list with a key OADM holds) and a **Trusted CA** select (the CAs of the list, and imported certificates for the self-signed
   servers common with OPC UA). Default trust is the server's operating system root store. Allow untrusted certificates stays an option.
-- **In the SDK:** two field types and `IRecipientCertificates`, which PKI offers through `IPluginServices`. The host loads the certificate when it
-  opens a session and hands it to the factory, so a plugin never searches PKI. The key stays inside the session. Windows TLS refuses a key held only
+- **In the SDK:** two field types and `IRecipientCertificates`, which PKI offers through `IPluginServices`. Only the host reads it, by convention:
+  any core plugin in the process could find it. The host loads the certificate when it opens a session (`LoadAsync(id, withKey, ct)`: a key only for a
+  Client certificate field, a Trusted CA field loads without one), hands it to the factory and disposes what it loaded also when a later field or
+  the factory fails, so a plugin never searches PKI. The key stays inside the session. Windows TLS refuses a key held only
   in memory (decision 2026-11-05: accepted), so on Windows it goes through the key store of the service account until the session closes.
-- **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; the Expiry warning covers it
+- **Server check:** on save and Test the host refuses a value of a certificate field that is not in `ClientCertificatesAsync` or
+  `TrustedCertificatesAsync` for its field, below the field with "The chosen certificate no longer exists. Choose another one."; hidden fields
+  count, an unchanged stored value stays. The audit of a Test names the certificate id. A role with Change event rules may use any listed key
+  through a recipient: accepted (decision 2026-11-05).
+- **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; a hidden field still counts, and of a
+  type that is not installed every stored value starting `local:` or `ca:` counts. The Expiry warning covers it
   as any certificate of the list ("Expires in 12 days" in its row, the expiry events stay about devices).
 - **In the dialog:** both selects are read once when it opens (`ListRecipientCertificates`, ring and "Reading certificates" while a shown
   type waits); an empty list says "Import or create one on the PKI page."; a value no longer in the list leaves the select empty with
@@ -148,8 +165,9 @@ works with the fewest fields, and security is there when it is needed.
 
 ## Tests
 
-- The pool with a fake session and a `FakeTimeProvider`: one session for many rules under load, the wait grows and resets, idle close,
-  change and delete, a dropped connection, a stop with a stuck session.
+- The pool with a fake session and a `FakeTimeProvider`: one session for many rules under load, the wait grows, resets only after a connection
+  held and keeps growing for one that is kicked, idle close and an action during it, change and delete, a dropped connection, a stop with a stuck
+  session, a close that blocks with the lock free, a target that stays down past the idle time with the event on without a break.
 - Unit tests: MQTT against MQTTnet's own in-process broker, Modbus against a fake PLC on the loopback (exception replies, wrong transaction
   id, a reply cut short), OPC UA without a network where possible. No network outside the machine.
 - The real servers run only when someone works on these types (decision 2026-11-05): `manage test recipients` starts Mosquitto, a Modbus server

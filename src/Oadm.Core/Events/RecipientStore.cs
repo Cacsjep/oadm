@@ -87,9 +87,15 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
     /// <see cref="RecipientValidationException"/> for a name, the type of a recipient that exists or
     /// <see cref="MaxRecipients"/>.
     /// </summary>
+    public Task<(StoredRecipient Recipient, bool Created)> SaveAsync(
+        Guid? id, string name, string typeId, JsonObject settings, IReadOnlyList<ActionField> fields, CancellationToken ct) =>
+        SaveAsync(id, name, typeId, settings, fields, [], ct);
+
+    /// <summary>As the other overload; the password fields of <paramref name="forget"/> lose their stored value.</summary>
     public async Task<(StoredRecipient Recipient, bool Created)> SaveAsync(
-        Guid? id, string name, string typeId, JsonObject settings, IReadOnlyList<ActionField> fields, CancellationToken ct)
+        Guid? id, string name, string typeId, JsonObject settings, IReadOnlyList<ActionField> fields, IReadOnlyCollection<string> forget, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(forget);
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(typeId);
         ArgumentNullException.ThrowIfNull(settings);
@@ -130,7 +136,7 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
             }
 
             var recipientId = row?.Id ?? Guid.NewGuid();
-            var stored = Protect(recipientId, settings, row is null ? null : ToStored(row).Settings, fields);
+            var stored = Protect(recipientId, settings, row is null ? null : ToStored(row).Settings, fields, forget);
             if (row is null)
             {
                 row = new RecipientEntity { Id = recipientId, TypeId = typeId };
@@ -228,7 +234,7 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
         return settings;
     }
 
-    private JsonObject Protect(Guid id, JsonObject settings, JsonObject? previous, IReadOnlyList<ActionField> fields)
+    private JsonObject Protect(Guid id, JsonObject settings, JsonObject? previous, IReadOnlyList<ActionField> fields, IReadOnlyCollection<string> forget)
     {
         var stored = new JsonObject();
         foreach (var field in fields)
@@ -252,7 +258,7 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
             {
                 stored[field.Key] = RuleStore.SecretPrefix + secrets.Protect(text, Purpose(id, field.Key));
             }
-            else if (previous?[field.Key] is { } kept && IsSecret(kept))
+            else if (!forget.Contains(field.Key) && previous?[field.Key] is { } kept && IsSecret(kept))
             {
                 stored[field.Key] = kept.DeepClone();
             }

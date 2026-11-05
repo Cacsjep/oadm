@@ -18,7 +18,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
 | Existing rules | The user moves them. No conversion. An old Send email, Send HTTP request or Send TCP message action has no recipient: its rule shows "Send email: Choose a recipient.", the action does not run (event log: Failed with that text) and the rule cannot be saved until one is chosen. The old values stay unread in the stored action and go at the next save, passwords included |
 | Delete | Refused while a rule uses it, with the rule names: "Used by OCR, Gate alarm. Change those rules first." |
 | Rights | The event rules' own: "See event rules" lists, "Change event rules" creates, changes, deletes and tests (audited). Users with a device group do not reach them, like every `EventService` method (`AccessRule.AllDevices`) |
-| Secrets | Password fields are stored with `ISecretProtector` (purpose `oadm:recipient:<id>:<field>`), never sent back to a client, decrypted only for a run or a test. Empty password on save keeps the stored one |
+| Secrets | Password fields are stored with `ISecretProtector` (purpose `oadm:recipient:<id>:<field>`), never sent back to a client, decrypted only for a run or a test. Empty password on save keeps the stored one, only while every other field is unchanged: with a changed target Test and Save refuse an empty password below the field, "Enter the password again. The target changed."; a hidden one, which nobody can be asked for, is dropped on save and not used by Test |
 | Limit | At most 200 recipients (`RecipientStore.MaxRecipients`), names unique, at most 64 characters |
 
 | Type | The recipient holds | The action keeps |
@@ -63,11 +63,13 @@ how to reach something, the action says what to send. Agreed with the maintainer
 - gRPC on `EventService`: `ListRecipients`, `SaveRecipient` (create or change, field errors like a rule, the trailer `oadm-field`
   names the field so the dialog shows the error below it), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, at most five,
   then "and 12 more": a status text must stay small), `TestRecipient` (runs the type's `TestActionId` with that action's default
-  values and sample event values; reply ok + message, a failure goes to the server log like Send test). `EventCatalog` gains
+  values and sample event values; reply ok + message, a failure goes to the server log like Send test; what the checks refuse is
+  INVALID_ARGUMENT with the trailer `oadm-field`, like a save, so the dialog shows it below the field). `EventCatalog` gains
   `recipient_types`. A `RecipientEntry` has id, name, type id, the values without passwords, which password fields are stored,
   a one-line target ("smtp.office365.com:587", "https://hooks.example.com") and the names of the rules that use it (`used_by`).
   Every method in `AccessPolicy`: list like `ListRules`, the others like `SaveRule`, `AllDevices`; change, delete and test
-  are audited ("Created recipient", "Changed recipient", "Deleted recipient", "Tested recipient" with the target). A test of a stored
+  are audited ("Created recipient", "Changed recipient", "Deleted recipient", "Tested recipient" with the target; a Test the checks refused
+  names the type instead: a refused value may hold a login). A test of a stored
   recipient with another type id is refused, so a stored password never reaches a target of another type. A list is at most 200
   rows, so no page is needed.
 
@@ -87,11 +89,13 @@ how to reach something, the action says what to send. Agreed with the maintainer
   result chip next to it (the reason as text, never only an icon), Cancel, Save.
 - **Rule dialog:** a `Recipient` field is a select of the recipients of its types, sorted by name, with a **New** command button
   beside it that opens the recipient dialog and selects the result. An old action shows the field empty with its error.
-- `Send test` of an action stays: the host merges the chosen recipient first. Off for a persistent recipient (recipient-sessions.md "Security").
+- `Send test` of an action stays for one shot types: the host merges the chosen recipient first. An action on a persistent type is refused
+  ([recipient sessions](recipient-sessions.md)): "Test the recipient instead: it connects and sends nothing."
 
 ## Tests
 
 - `RecipientStore`: create, change, unique name, limit, password kept on an empty save, never in a reply.
+- A changed target: Test and Save refuse an empty password, an unchanged recipient keeps working, a hidden password is dropped.
 - The merge in a run and in a test; a recipient gone; another type; an old action without a recipient (fails, the rule shows it, no
   send); the three Notifications actions read their target through the merge.
 - `DeleteRecipient` with rules, `used_by`, `AccessPolicy` rules, the audit.

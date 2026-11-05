@@ -14,6 +14,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Event rules: MQTT, Modbus and OPC UA recipients, with the actions Publish MQTT message, Write Modbus value and Write OPC UA value.
 - Event rules: the Recipients card shows whether a recipient is connected, and the event Recipient not connected tells a rule when it is gone.
 - Event rules: MQTT and OPC UA recipients can use certificates from the PKI page.
+- Event rules: a changed target asks for the password again, a stored password never goes to a new target.
 
 ### Changed
 
