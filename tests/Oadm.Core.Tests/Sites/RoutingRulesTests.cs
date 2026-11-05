@@ -36,6 +36,7 @@ public sealed partial class RoutingRulesTests
         "src/Oadm.Server/MyAxis/MyAxisGrpcService.cs", // www.axis.com downloads with the MyAxis session: no cookies, no redirect
         "plugins/Oadm.Plugins.DhcpServer/Serving/DhcpSockets.cs",
         "plugins/Oadm.Plugins.Firmware/Online/AxisSite.cs", // the public AXIS OS listings of www.axis.com, never a device or a .bin
+        "plugins/Oadm.Plugins.Modbus/ModbusSession.cs", // the user's own PLC, a recipient: no device, no device route
         "plugins/Oadm.Plugins.Notifications/SendHttpAction.cs",
         "plugins/Oadm.Plugins.Notifications/SendTcpAction.cs",
         "plugins/Oadm.Plugins.NtpServer/Serving/NtpUdpServer.cs",

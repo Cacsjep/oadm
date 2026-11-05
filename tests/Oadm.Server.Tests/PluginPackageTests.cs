@@ -222,7 +222,7 @@ public sealed class PluginPackageTests
 
         // Core functionality is always on; every bundled plugin has a description.
         Assert.Equal(
-            ["oadm.acap", "oadm.datetime", "oadm.device-config", "oadm.firmware", "oadm.network", "oadm.notifications", "oadm.outputs", "oadm.pki", "oadm.restart", "oadm.system-report", "oadm.users"],
+            ["oadm.acap", "oadm.datetime", "oadm.device-config", "oadm.firmware", "oadm.modbus", "oadm.mqtt", "oadm.network", "oadm.notifications", "oadm.opcua", "oadm.outputs", "oadm.pki", "oadm.restart", "oadm.system-report", "oadm.users"],
             manifests.Where(m => m.AlwaysOn).Select(m => m.Id).Order());
         Assert.All(manifests, m => Assert.False(string.IsNullOrWhiteSpace(m.Description), m.Id));
 

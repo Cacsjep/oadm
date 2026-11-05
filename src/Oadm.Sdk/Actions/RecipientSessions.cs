@@ -24,6 +24,7 @@ public interface IRecipientSession : IAsyncDisposable
 /// <param name="reason">A short plain reason, never a secret.</param>
 public sealed class RecipientDroppedEventArgs(string reason) : EventArgs
 {
+    /// <summary>A short plain reason for the Recipients card and the server log.</summary>
     public string Reason { get; } = reason;
 }
 
