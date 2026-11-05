@@ -22,6 +22,11 @@ public static class ModbusFrames
 
     private const byte ErrorFlag = 0x80;
 
+    /// <summary>The reply to every write: function, address, value or count.</summary>
+    private const int EchoLength = 5;
+
+    private const string UnexpectedAnswer = "The PLC gave an unexpected answer. The write may have happened.";
+
     public static byte[] WriteCoil(ushort address, bool on)
     {
         var pdu = new byte[5];
@@ -70,6 +75,17 @@ public static class ModbusFrames
         return frame;
     }
 
+    /// <summary>Throws with a plain reason unless <paramref name="reply"/>, from unit <paramref name="repliedUnit"/>, confirms <paramref name="request"/> to <paramref name="unitId"/>.</summary>
+    public static void CheckReply(byte[] request, byte[] reply, byte unitId, byte repliedUnit)
+    {
+        if (repliedUnit != unitId)
+        {
+            throw new InvalidOperationException(UnexpectedAnswer);
+        }
+
+        CheckReply(request, reply);
+    }
+
     /// <summary>Throws with a plain reason unless <paramref name="reply"/> confirms <paramref name="request"/>.</summary>
     public static void CheckReply(byte[] request, byte[] reply)
     {
@@ -81,9 +97,9 @@ public static class ModbusFrames
         }
 
         // Every write function echoes the function, the address and the value or count.
-        if (reply.Length < 5 || !reply.AsSpan(0, 5).SequenceEqual(request.AsSpan(0, 5)))
+        if (reply.Length != EchoLength || !reply.AsSpan().SequenceEqual(request.AsSpan(0, EchoLength)))
         {
-            throw new InvalidOperationException("The PLC gave an unexpected answer. The write may have happened.");
+            throw new InvalidOperationException(UnexpectedAnswer);
         }
     }
 
@@ -93,6 +109,7 @@ public static class ModbusFrames
         2 => "The PLC has no such address. Addresses count from 0.",
         3 => "The PLC refused the value.",
         4 => "The PLC failed to write.",
+        5 => "The PLC accepted the write and is still working on it.",
         6 => "The PLC is busy.",
         10 or 11 => "The gateway cannot reach the PLC. Check the unit ID.",
         _ => string.Create(CultureInfo.InvariantCulture, $"The PLC refused the write (code {code})."),

@@ -28,26 +28,45 @@ public sealed class ModbusSessionFactory : IRecipientSessionFactory
 
 /// <summary>
 /// One Modbus TCP connection, our own client: the three write functions and nothing else. Requests go one at a time, because many
-/// PLCs serve only one; a reply belongs to its request by transaction id, so a late reply after a timeout is ignored. The reader
-/// runs all the time, which is how a closed connection shows at once.
+/// PLCs serve only one; a reply belongs to its request by transaction id. The reader runs all the time, which is how a closed
+/// connection shows at once. A write without an answer ends the connection: its bytes may still wait in the kernel, and an abort
+/// throws them away, so that it cannot fire later.
 /// </summary>
+/// <param name="host">The PLC or gateway.</param>
+/// <param name="port">Its port.</param>
+/// <param name="unitId">The unit behind it.</param>
+/// <param name="time">The clock of the reply timeout.</param>
+/// <param name="replyTimeout">The wait for one reply; default <see cref="DefaultReplyTimeout"/>.</param>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The user's own PLC, not a device: it is not reached through the host's device routes.")]
-public sealed class ModbusSession(string host, int port, byte unitId) : IRecipientSession, IModbusWriter
+public sealed class ModbusSession(string host, int port, byte unitId, TimeProvider? time = null, TimeSpan? replyTimeout = null) : IRecipientSession, IModbusWriter
 {
-    /// <summary>One write. A PLC answers in milliseconds; a machine must not stand behind a slow one for long.</summary>
-    internal static readonly TimeSpan ReplyTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>One write, from the moment it is its turn. A PLC answers in milliseconds; a machine must not stand behind a slow one for long.</summary>
+    public static readonly TimeSpan DefaultReplyTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>An idle connection that was cut shows after about a minute, also when nothing is written.</summary>
+    private const int KeepAliveIdleSeconds = 30;
+    private const int KeepAliveIntervalSeconds = 10;
+    private const int KeepAliveProbes = 3;
+
+    private readonly TimeProvider _time = time ?? TimeProvider.System;
+    private readonly TimeSpan _replyTimeout = replyTimeout ?? DefaultReplyTimeout;
+
+    // Never disposed: a write that is in the queue at the close still gets its turn and its plain text.
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private TcpClient? _client;
     private Stream? _stream;
     private Task _reader = Task.CompletedTask;
-    private TaskCompletionSource<byte[]>? _pending;
+    private TaskCompletionSource<ModbusReply>? _pending;
     private ushort _pendingId;
     private ushort _nextId;
     private int _ended;
+    private int _disposed;
 
     public event EventHandler<RecipientDroppedEventArgs>? Dropped;
+
+    /// <summary>Whether the operating system watches the connection while nothing is written.</summary>
+    internal bool KeepsAlive => _client?.Client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive) is int value && value != 0;
 
     private string Target => string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
 
@@ -57,6 +76,11 @@ public sealed class ModbusSession(string host, int port, byte unitId) : IRecipie
         try
         {
             await _client.ConnectAsync(host, port, ct).ConfigureAwait(false);
+            var socket = _client.Client;
+            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveTime, KeepAliveIdleSeconds);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveInterval, KeepAliveIntervalSeconds);
+            socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.TcpKeepAliveRetryCount, KeepAliveProbes);
         }
         catch (Exception ex) when (ex is SocketException or IOException)
         {
@@ -78,41 +102,91 @@ public sealed class ModbusSession(string host, int port, byte unitId) : IRecipie
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         Interlocked.Exchange(ref _ended, 1);
         await _stop.CancelAsync().ConfigureAwait(false);
         _client?.Dispose(); // ends the reader
         await _reader.ConfigureAwait(false);
-        _oneAtATime.Dispose();
         _stop.Dispose();
     }
 
     private async Task SendAsync(byte[] pdu, CancellationToken ct)
     {
-        var stream = _stream ?? throw new InvalidOperationException(RecipientSessionTexts.NotConnected(null));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(ReplyTimeout);
-        await _oneAtATime.WaitAsync(timeout.Token).ConfigureAwait(false);
+        ThrowIfEnded();
+        await _oneAtATime.WaitAsync(ct).ConfigureAwait(false);
+        var sent = false;
         try
         {
+            using var timeout = new CancellationTokenSource(_replyTimeout, _time);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
             var id = ++_nextId;
-            var waiting = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var waiting = new TaskCompletionSource<ModbusReply>(TaskCreationOptions.RunContinuationsAsynchronously);
             _pendingId = id;
-            Volatile.Write(ref _pending, waiting);
-            await stream.WriteAsync(ModbusFrames.Request(id, unitId, pdu), timeout.Token).ConfigureAwait(false);
-            ModbusFrames.CheckReply(pdu, await waiting.Task.WaitAsync(timeout.Token).ConfigureAwait(false));
+            Interlocked.Exchange(ref _pending, waiting);
+            ThrowIfEnded(); // it ended during the wait for the turn, and the reader will not tell this one
+            linked.Token.ThrowIfCancellationRequested();
+            sent = true;
+            await _stream!.WriteAsync(ModbusFrames.Request(id, unitId, pdu), linked.Token).ConfigureAwait(false);
+            var reply = await waiting.Task.WaitAsync(linked.Token).ConfigureAwait(false);
+            ModbusFrames.CheckReply(pdu, reply.Pdu, unitId, reply.UnitId);
         }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
+            if (sent)
+            {
+                Abort(ct.IsCancellationRequested ? "A write was cancelled" : $"{Target} did not answer");
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+
             throw new InvalidOperationException($"{Target} did not answer. The write may have happened.");
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
-            throw new InvalidOperationException($"The connection to {Target} ended: {ex.Message}", ex);
+            throw new InvalidOperationException($"The connection to {Target} ended. The write may have happened.", ex);
         }
         finally
         {
             Volatile.Write(ref _pending, null);
             _oneAtATime.Release();
+        }
+    }
+
+    private void ThrowIfEnded()
+    {
+        if (_stream is null || Volatile.Read(ref _ended) != 0)
+        {
+            throw new InvalidOperationException(RecipientSessionTexts.NotConnected(null));
+        }
+    }
+
+    /// <summary>Ends the connection with a reset: a graceful close would still deliver what the kernel holds.</summary>
+    private void Abort(string reason)
+    {
+        var first = Interlocked.Exchange(ref _ended, 1) == 0;
+        try
+        {
+            if (_client?.Client is { } socket)
+            {
+                socket.LingerState = new LingerOption(true, 0);
+                socket.Close(); // not the client's Dispose, which shuts the connection down in order first
+            }
+        }
+        catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
+        {
+            // Gone already.
+        }
+
+        if (first)
+        {
+            Dropped?.Invoke(this, new RecipientDroppedEventArgs(reason));
         }
     }
 
@@ -137,7 +211,7 @@ public sealed class ModbusSession(string host, int port, byte unitId) : IRecipie
                 var waiting = Volatile.Read(ref _pending);
                 if (waiting is not null && BinaryPrimitives.ReadUInt16BigEndian(header) == _pendingId)
                 {
-                    waiting.TrySetResult(pdu);
+                    waiting.TrySetResult(new ModbusReply(header[ModbusFrames.HeaderLength - 1], pdu));
                 }
             }
         }
@@ -147,11 +221,14 @@ public sealed class ModbusSession(string host, int port, byte unitId) : IRecipie
         }
         finally
         {
+            var first = Interlocked.Exchange(ref _ended, 1) == 0;
             Volatile.Read(ref _pending)?.TrySetException(new IOException(reason));
-            if (Interlocked.Exchange(ref _ended, 1) == 0)
+            if (first)
             {
                 Dropped?.Invoke(this, new RecipientDroppedEventArgs(reason));
             }
         }
     }
+
+    private sealed record ModbusReply(byte UnitId, byte[] Pdu);
 }

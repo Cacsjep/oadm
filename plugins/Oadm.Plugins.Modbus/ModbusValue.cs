@@ -12,6 +12,7 @@ public sealed record ModbusWrite(bool? Coil, IReadOnlyList<ushort> Registers);
 public static class ModbusValue
 {
     public const string OnOff = "onoff";
+    public const string Pulse = "pulse";
     public const string Number = "number";
     public const string Text = "text";
 
@@ -30,18 +31,33 @@ public static class ModbusValue
     /// <summary>Two characters per register, the most one request holds.</summary>
     public const int MaxTextLength = ModbusFrames.MaxRegisters * 2;
 
+    /// <summary>The first address that does not exist.</summary>
+    private const int AddressCount = 65536;
+
     /// <summary>The write of <paramref name="value"/>; throws <see cref="FormatException"/> with a plain reason.</summary>
     public static ModbusWrite Encode(string valueType, string value, string numberFormat, string wordOrder, int textLength, string byteOrder)
     {
         ArgumentNullException.ThrowIfNull(value);
         return valueType switch
         {
-            OnOff => new ModbusWrite(OnOffValue(value), []),
+            OnOff or Pulse => new ModbusWrite(OnOffValue(value), []),
             Number => new ModbusWrite(null, NumberRegisters(value.Trim(), numberFormat, wordOrder)),
             Text => new ModbusWrite(null, TextRegisters(value, textLength, byteOrder)),
             _ => throw new FormatException("Choose a value type."),
         };
     }
+
+    /// <summary>The coils or registers a write of this type covers.</summary>
+    public static int Count(string valueType, string numberFormat, int textLength) => valueType switch
+    {
+        Number when numberFormat is Signed32 or Unsigned32 or Decimal32 => 2,
+        Text => (textLength + 1) / 2,
+        _ => 1,
+    };
+
+    /// <summary>Why a write of <paramref name="count"/> coils or registers cannot start at <paramref name="address"/>; null when it can.</summary>
+    public static string? AddressProblem(int address, int count) =>
+        address + count > AddressCount ? "This write would go past address 65535." : null;
 
     private static bool OnOffValue(string value) => value.Trim().ToLowerInvariant() switch
     {
@@ -65,7 +81,7 @@ public static class ModbusValue
             case Unsigned32 when uint.TryParse(value, Whole, culture, out var number):
                 return Words(number, wordOrder);
             case Decimal32 when float.TryParse(value, NumberStyles.Float, culture, out var number) && float.IsFinite(number):
-                return Words(BitConverter.SingleToUInt32Bits(number), wordOrder);
+                return !IsLost(number, value) ? Words(BitConverter.SingleToUInt32Bits(number), wordOrder) : throw new FormatException("This number is too small for a 32-bit float.");
             case Signed16: throw new FormatException("Enter a whole number from -32768 to 32767.");
             case Unsigned16: throw new FormatException("Enter a whole number from 0 to 65535.");
             case Signed32: throw new FormatException("Enter a whole number from -2147483648 to 2147483647.");
@@ -73,6 +89,13 @@ public static class ModbusValue
             case Decimal32: throw new FormatException("Enter a number.");
             default: throw new FormatException("Choose a number format.");
         }
+    }
+
+    /// <summary>A number that is not zero and became zero: writing 0 is not what the rule asks for.</summary>
+    private static bool IsLost(float number, string value)
+    {
+        var exponent = value.AsSpan().IndexOfAny('e', 'E');
+        return number == 0 && (exponent < 0 ? value.AsSpan() : value.AsSpan(0, exponent)).IndexOfAnyInRange('1', '9') >= 0;
     }
 
     private static ushort[] Words(uint value, string wordOrder)

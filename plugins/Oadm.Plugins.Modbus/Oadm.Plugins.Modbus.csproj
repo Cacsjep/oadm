@@ -21,6 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.Modbus.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

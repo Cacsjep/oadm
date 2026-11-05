@@ -83,6 +83,30 @@ public static partial class ActionPlaceholders
         return Pattern().Replace(text, m => lookup(m.Groups[1].Value) is { } value ? Escape(value, escape) : m.Value);
     }
 
+    /// <summary>
+    /// The first "{name}" of <paramref name="text"/> that <paramref name="context"/> does not fill (SDK 0.12.0); null when it fills them
+    /// all. It looks at the text of the settings, so a value that holds braces never counts. An action that changes a machine
+    /// refuses to run on an unknown name instead of writing it literally.
+    /// </summary>
+    public static string? FirstUnknown(string? text, IActionContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (string.IsNullOrEmpty(text))
+        {
+            return null;
+        }
+
+        foreach (Match match in Pattern().Matches(text))
+        {
+            if (string.Equals(context.Text(match.Value), match.Value, StringComparison.Ordinal))
+            {
+                return match.Value;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Writes <paramref name="value"/> for a text of the given format.</summary>
     public static string Escape(string value, PlaceholderEscape escape)
     {

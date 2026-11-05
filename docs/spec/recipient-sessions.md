@@ -17,6 +17,8 @@ connections, and an action never owns a connection.
   session can send is the plugin's own interface: the action asks for it with `ctx.SessionAsync<T>(fieldKey, ct)`, and the host never knows the
   protocol.
 - `ActionField.ClientCertificate` and `ActionField.TrustedCertificate`; `AlsoVisibleWhenKey` for a field that shows on either of two conditions.
+- `ActionPlaceholders.FirstUnknown(text, ctx)`: the first `{name}` of a setting that the run does not fill. It reads the setting, so a value
+  that holds braces never counts.
 - Default interface members, a new SDK version. A plugin of an older SDK sees nothing new.
 
 ## Host
@@ -57,13 +59,31 @@ rule uses one.
 
 | Value type | Written to | Settings |
 |---|---|---|
-| On or off | One coil | On, off or pulse with a time |
-| Number | One holding register, or two for 32 bits | 16-bit or 32-bit, signed or unsigned, or 32-bit float; word order (high word first by default) for two registers |
+| On or off | One coil | On or off |
+| Pulse | One coil | On, a time, off |
+| Number | One holding register, or two for 32 bits | 16-bit or 32-bit, signed or unsigned, or 32-bit float; word order (high word first by default), used by two registers |
 | Text | As many holding registers as the length needs | Fixed length in characters, two per register, padded with zeros, longer text refused; byte order; ASCII only |
 
+Pulse is a value type and not a choice of On or off, and Word order shows for every Number: a field shows on one condition (or either of
+two), so a choice nested under another stayed visible after the first one changed.
+
 Values may be placeholders ({number}, {text}), checked at the run: a value that does not fit the type fails the action and writes
-nothing. A Modbus write changes a real machine: the dialog says the address counts from 0, the value is validated before anything is
-sent, and one action is one write. A value on the off edge is optional. Modbus RTU is out of scope.
+nothing. An unknown {name} is never written literally, and a Text value that came out empty is not written ("Nothing was written.").
+A number too small for a float is refused, it never becomes 0; a whole number above 2^24 stays the nearest float. A write past
+address 65535 is refused at a save and before the write. A Modbus write changes a real machine: the dialog says the address counts from
+0, the value is validated before anything is sent, and one action is one write. A value on the off edge is optional. Modbus RTU is out
+of scope.
+
+**A pulse never leaves a relay on silently.** The off write runs whatever ends the wait (a cancel, a drop, a failed on write), on its own 10 s
+limit and on a session asked for again, so a reconnect or a changed recipient does not matter; inside the 10 s a failed try is repeated
+every second, because a dropped connection comes back in that time. If it still fails the action fails with a text ending "The coil
+may still be on." During the wait the action asks for the session at least every 60 s, so that a pulse longer than 5 minutes is not closed
+as unused. The run may take the pulse plus 45 s: connect, queue and off write.
+
+**A write without an answer never fires later.** A write that gets no answer in 5 s (counted from its turn, not from the queue), or that is
+cancelled after sending, resets the connection (linger 0) and drops the session: a graceful close would still deliver what the kernel
+holds. TCP keep alive shows an idle connection that was cut after about a minute. A reply counts only with the session's unit id and exactly
+the echo of the request.
 
 Nothing is read: no MQTT subscribe, no Modbus read function, no OPC UA read or subscription (rule confirmed by the maintainer on
 2026-11-05). What a protocol needs for a write stays: the broker's acknowledge, the echo or exception of a Modbus write, the status of
