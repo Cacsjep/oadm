@@ -1,12 +1,12 @@
-# Recipient sessions: MQTT and Modbus
+# Recipient sessions: MQTT, Modbus and OPC UA
 
-Spec, not built, **parked on 2026-11-05 until the maintainer asks**: Recipients only stays ready for it. Agreed with the maintainer on 2026-11-05: MQTT and Modbus TCP
-together, on one architecture that also carries OPC UA later. OPC UA itself waits for a license decision: the core of the OPC
-Foundation's .NET stack is RCL for corporate members and GPL 2.0 for others, which does not fit OADM's Apache-2.0 code.
+Spec, not built, **parked on 2026-11-05 until the maintainer asks**: Recipients only stays ready for it. Agreed with the maintainer on 2026-11-05: MQTT, Modbus TCP
+and OPC UA on one architecture. Libraries decided the same day: MQTTnet, the OPC Foundation's .NET stack, Modbus our own. **Client
+and output only**: OADM connects out and writes, it never runs a broker or server and never reads values.
 
 ## The rule
 
-A recipient type is **one shot** (HTTP, Email, TCP: open, send, close inside the action) or **persistent** (MQTT, Modbus, later OPC
+A recipient type is **one shot** (HTTP, Email, TCP: open, send, close inside the action) or **persistent** (MQTT, Modbus, OPC
 UA: one open connection that many rules share). The plugin declares it, the user never chooses. Many rules must never mean many
 connections, and an action never owns a connection.
 
@@ -15,7 +15,7 @@ connections, and an action never owns a connection.
 - `RecipientType.Kind`: `OneShot` (default) or `Persistent`.
 - A persistent type gives `IRecipientSessionFactory.Create(settings, ILogger)`, which returns an `IRecipientSession`
   (`IAsyncDisposable`): `ConnectAsync(ct)`, and `Dropped`, raised when the connection ended. What it can send is the plugin's own
-  interface: the action asks for it with `ctx.Session<T>(fieldKey)`, and the host never knows MQTT or Modbus.
+  interface: the action asks for it with `ctx.Session<T>(fieldKey)`, and the host never knows MQTT, Modbus or OPC UA.
 - Default interface members, a new SDK version. A plugin of an older SDK sees nothing new.
 
 ## Host
@@ -41,10 +41,11 @@ Event **Recipient not connected** (stateful, server, values `count` and `recipie
 
 | Package | Id | Recipient holds | Action |
 |---|---|---|---|
-| MQTT, library MQTTnet (MIT; before a release look at issue #2280, a private security report, and the unreleased TLS fix #2254) | `oadm.mqtt` | Broker host, port (1883, 8883 with TLS), TLS, Allow untrusted certificates, user name, password, client id (default `oadm-<server>`) | **Publish MQTT message**: topic, payload (text or JSON, placeholders escaped), QoS 0, 1 or 2, retain, off edge |
-| Modbus, library open (a small own client was proposed: FluentModbus has one maintainer and no code change since 2024, NModbus an open report of hanging reads) | `oadm.modbus` | Host, port (502), unit id | **Write Modbus value**: coil or holding register, address, value, optional pulse with a time; a value on the off edge |
+| MQTT, library MQTTnet (MIT; before a release look at issue #2280, a private security report, and the unreleased TLS fix #2254) | `oadm.mqtt` | Broker host, port, protocol version (3.1.1 or 5.0), see "Security", user name, password, client id (default `oadm-<server>`) | **Publish MQTT message**: topic, payload (text or JSON, placeholders escaped), QoS 0, 1 or 2, retain, off edge |
+| Modbus, our own client, no library: function codes 05, 06 and 16 only (the same connection rule as Send TCP message) | `oadm.modbus` | Host, port (502), unit id | **Write Modbus value**: coil or holding register, address, value, optional pulse with a time; a value on the off edge |
+| OPC UA, library OPCFoundation.NetStandard.Opc.Ua.Client (OPC Foundation MIT License 1.00 since the stack's relicensing, checked in the 2.0.1 package on 2026-11-05) | `oadm.opcua` | Endpoint (`opc.tcp://host:4840`, a new `ActionFieldFormat`), see "Security" | **Write OPC UA value**: node id, Value type (on or off, number, text), value; a value on the off edge |
 
-Both free and always on, no page (decision 2026-11-05): they only add actions and recipient types, and hold no connection until a
+All free and always on, no page (decision 2026-11-05): they only add actions and recipient types, and hold no connection until a
 rule uses one.
 
 **Write Modbus value** has a **Value type** (decision 2026-11-05: on or off, numbers and text):
@@ -59,12 +60,45 @@ Values may be placeholders ({number}, {text}), checked at the run: a value that 
 nothing. A Modbus write changes a real machine: the dialog says the address counts from 0, the value is validated before anything is
 sent, and one action is one write. A value on the off edge is optional. Modbus RTU is out of scope.
 
-Nothing is read: reading an MQTT topic or a PLC is a later step with its own decision, because output only is a rule today
-(decision 2026-11-05). A failed action is not sent later (decision 2026-11-05).
+Nothing is read: no MQTT subscribe, no Modbus read function, no OPC UA read or subscription (rule confirmed by the maintainer on
+2026-11-05). What a protocol needs for a write stays: the broker's acknowledge, the echo or exception of a Modbus write, the status of
+an OPC UA write. The user chooses the OPC UA value type, so OADM never reads a node's data type; a wrong type is the server's refusal.
+A failed action is not sent later (decision 2026-11-05).
+
+## Security
+
+Decision 2026-11-05: every standard option from the first version, and OADM never forces security: the user chooses. A new recipient
+works with the fewest fields, and security is there when it is needed.
+
+| | Default | Options |
+|---|---|---|
+| MQTT | TLS off, port 1883 | TLS (port 8883), client certificate (mutual TLS) optional |
+| OPC UA | Security none, anonymous login | Security none, sign, sign and encrypt; a chosen policy; login anonymous, user name and password, or a certificate |
+| Modbus | Plain TCP, port 502 | None: Modbus Security is left out |
+
+- **The certificates come from PKI** (always on, free): the recipient dialog offers a **Client certificate** select (certificates of the
+  Certificates list with a key OADM holds) and a **Trusted CA** select (the CAs of the list, and imported certificates for the self-signed
+  servers common with OPC UA). Default trust is the server's operating system root store. Allow untrusted certificates stays an option.
+- **Open points of the SDK:** a new field type for the two selects, and a new SDK interface PKI offers through `IPluginServices`
+  (`IServerCertificateSource` is PKI's own, and plugins share only SDK types). The host resolves the certificate when it opens a session and hands
+  it to `IRecipientSessionFactory`, so a plugin never searches PKI. The key stays in memory inside the session.
+- **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; the Expiry warning covers it.
+- **No new certificates in PKI:** Create stays as it is. An IEEE 802.1X certificate has client authentication, so it already works for MQTT.
+  OPC UA's sign, sign and encrypt and certificate login take a certificate imported into PKI. Its application URI comes from the certificate's URI name.
+- **Passwords with OPC UA:** the stack itself refuses a user name and password when neither a sign and encrypt channel nor the server's login
+  policy encrypts it (Bad security checks failed). OADM adds no rule of its own and shows that refusal in plain words.
+
+## Before the build
+
+- MQTTnet: the fix of its TLS check (#2254) is not in 5.2.0, the newest release. OADM sets its own certificate check, so both versions behave
+  the same. The fix is marked a breaking change: read it when updating.
+- `Oadm.Notices` knows SPDX expressions; the OPC UA packages carry a license file with requireLicenseAcceptance.
+- Their Microsoft.Extensions packages must fit `Oadm.Plugin.Versions.props`.
 
 ## Tests
 
 - The pool with a fake session and a `FakeTimeProvider`: one session for many rules under load, the wait grows and resets, idle close,
   change and delete, a dropped connection, a stop with a stuck session.
-- MQTT against MQTTnet's own in-process broker; Modbus against FluentModbus's in-process server or a fake socket. No network outside
-  the machine in unit tests; a real broker and PLC only in hardware tests, on request.
+- MQTT against MQTTnet's own in-process broker, Modbus against a fake socket from recorded frames (exception replies, wrong transaction id,
+  a reply cut short), OPC UA against the stack's own in-process server. No network outside the machine in unit tests; a real broker, PLC
+  and OPC UA server only in hardware tests, on request.
