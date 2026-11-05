@@ -102,7 +102,7 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Width="96" MinWidth="96" SortMemberPath="UsedByCount" CellStyleClasses="number">
+            <DataGridTemplateColumn Width="104" MinWidth="104" SortMemberPath="UsedByCount" CellStyleClasses="number">
               <DataGridTemplateColumn.Header>
                 <TextBlock Classes="numberHeader" Text="Used by" />
               </DataGridTemplateColumn.Header>
