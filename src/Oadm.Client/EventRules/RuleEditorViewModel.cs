@@ -381,7 +381,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         {
             var reply = await _owner.TestActionAsync(this).ConfigureAwait(true);
             TestOk = reply.Ok;
-            TestResult = reply.Message;
+            TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

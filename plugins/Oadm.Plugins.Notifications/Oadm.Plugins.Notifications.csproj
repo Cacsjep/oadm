@@ -25,9 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MailKit" Version="4.18.1" PrivateAssets="all" />
+    <!-- Never PrivateAssets="all" here: dotnet publish leaves such a package out, and the installers publish the plugins. -->
+    <PackageReference Include="MailKit" Version="4.18.1" />
     <!-- Transitive System.Security.Cryptography.Pkcs pinned to the patched version (CVE-2026-84008, CVE-2026-70162). -->
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" PrivateAssets="all" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
   <!-- Development deployment: copy the plugin output to artifacts/plugins/oadm.notifications/ so the

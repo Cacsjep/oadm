@@ -537,15 +537,23 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return (false, Joined(lines, "Timeout - the action did not finish in time"));
+            var message = Joined(lines, "Timeout - the action did not finish in time");
+            LogActionFailed(null, definition.Name, action.Plugin.DisplayName, TestRun, message);
+            return (false, message);
         }
 #pragma warning disable CA1031 // A failed test is the answer, never a crash.
         catch (Exception ex) when (ex is not OperationCanceledException)
 #pragma warning restore CA1031
         {
-            return (false, Joined(lines, ex.Message));
+            // Never an empty answer: a dependency that cannot load can end here with no message of its own.
+            var message = Joined(lines, string.IsNullOrWhiteSpace(ex.Message) ? $"The action failed ({ex.GetType().Name})" : ex.Message);
+            LogActionFailed(ex, definition.Name, action.Plugin.DisplayName, TestRun, message);
+            return (false, message);
         }
     }
+
+    /// <summary>The server log's mark of a Send test.</summary>
+    private const string TestRun = " (test)";
 
     private static string EdgeText(ActionEdge edge) => edge switch
     {

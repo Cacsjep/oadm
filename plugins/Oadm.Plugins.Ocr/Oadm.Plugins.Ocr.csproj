@@ -54,7 +54,7 @@
     <!-- JPEG decode, crop, turn and bicubic scale. The version of the host's Avalonia.Skia, so one process never holds two. -->
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <!-- Linux servers without fontconfig and freetype; private: the client and the tests bring Avalonia's own Linux assets. -->
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" PrivateAssets="all" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" PrivateAssets="all" Publish="true" />
   </ItemGroup>
   <ItemGroup>
     <!-- The character list and the models' license (Models/README.md): next to the server part in the plugin folder. -->

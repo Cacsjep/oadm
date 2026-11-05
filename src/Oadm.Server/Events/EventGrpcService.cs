@@ -212,7 +212,7 @@ public sealed class EventGrpcService(
             request.ActionId, settings, request.RuleName, ruleId, actionKey, string.IsNullOrEmpty(request.EventTypeId) ? null : request.EventTypeId,
             deviceId, context.CancellationToken).ConfigureAwait(false);
         var name = rules.Catalog.FindAction(request.ActionId)?.Plugin.DisplayName ?? request.ActionId;
-        await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName), context.CancellationToken).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName) + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message)), context.CancellationToken).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
     }
 

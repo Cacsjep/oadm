@@ -15,6 +15,15 @@ public sealed partial class AddOnPackagingTests
 {
     private static string Read(params string[] parts) => File.ReadAllText(TestRepository.Path(parts)).ReplaceLineEndings("\n");
 
+    [Fact]
+    public void ThePublishedNotificationsPluginKeepsItsMailLibrary()
+    {
+        // PrivateAssets="all" takes a package out of dotnet publish: the build works, an installed server has no MailKit.
+        var packages = XDocument.Parse(Read("plugins", "Oadm.Plugins.Notifications", "Oadm.Plugins.Notifications.csproj")).Descendants("PackageReference").ToList();
+        Assert.Contains(packages, p => (string?)p.Attribute("Include") == "MailKit");
+        Assert.DoesNotContain(packages, p => (string?)p.Attribute("PrivateAssets") == "all");
+    }
+
     /// <summary>Every plugin project: its plugin id (OadmPluginId, else the folder name) and whether it is an add-on.</summary>
     private static List<(string Project, string Id, bool AddOn)> PluginProjects() =>
         [.. Directory.GetDirectories(TestRepository.Path("plugins"))

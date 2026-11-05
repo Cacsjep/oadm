@@ -284,7 +284,7 @@ public static class RuleValidator
         catch (Exception ex)
 #pragma warning restore CA1031
         {
-            return $"{label}: {ex.Message}";
+            return string.IsNullOrWhiteSpace(ex.Message) ? $"{label}: the action cannot be checked ({ex.GetType().Name})." : $"{label}: {ex.Message}";
         }
 
         return null;

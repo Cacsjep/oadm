@@ -86,7 +86,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   `ListActionChoices` (the last five need "Change event rules"), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
   `TestAction` (audited "Tested event rule action": runs an action without devices once now, outside rule states and
   limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
-  the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; reply ok +
+  the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; a failure goes to the server log as a Warning and into the audit detail, its reason never empty; reply ok +
   message).
 - **Notifications** (bundled always-on package `oadm.notifications`,
   `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (method, URL, query and
