@@ -576,7 +576,7 @@ function Invoke-Publish {
     }
     if ($script:Target -in 'all', 'client') {
         $out = Join-Path $RepoRoot "artifacts/publish/client/$($script:Rid)"
-        Publish-App $ClientProject $out
+        Publish-App $ClientProject $out @('-p:IncludeNativeLibrariesForSelfExtract=false') # beside the exe: no unpacking at the first start
         Copy-Plugins $out
         # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
         if (Test-Path -LiteralPath (Join-Path $DocsOffline 'index.html')) {

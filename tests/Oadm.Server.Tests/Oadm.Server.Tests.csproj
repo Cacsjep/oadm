@@ -23,6 +23,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
+    <!-- SelfCheckTests: a real plugin with a real library to take away. -->
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Notifications\Oadm.Plugins.Notifications.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Restart\Oadm.Plugins.Restart.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.VapixCommander\Oadm.Plugins.VapixCommander.csproj" />

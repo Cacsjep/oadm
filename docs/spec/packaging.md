@@ -6,8 +6,12 @@ The file layout of every installer and the user-facing install notes are in `pac
 
 ## Publish
 
-- Server and client publish as one self-contained single-file exe per platform (`PublishSingleFile`,
-  `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), see `manage publish`. Every plugin project is published
+- Server and client publish as one self-contained single-file exe per platform (`PublishSingleFile`, `PublishReadyToRun`), see
+  `manage publish`. `Oadm.Server --self-check` and `Oadm.Client --self-check` load every plugin with its real load context, follow all its
+  assembly references and try the native libraries; release.yml runs them on the published folders of every platform and in the smoke tests of the
+  installed packages. A deps.json check would not do: a package publish leaves out is missing there too (Send email in 4.11.0). The server and the site node also embed their native libraries (`IncludeNativeLibrariesForSelfExtract`). The client keeps
+  them beside the exe (decision 2026-11-05): unpacking made the first start of every build take 4.65 s instead of 0.79 s and left 73 MB per
+  build in the temp folder; `OldNativeFolders` removes those left-overs in the background at a start. Every plugin project is published
   once into `artifacts/publish/plugins/<plugin id>/` (`<OadmPluginId>`, server and client part together) and copied next
   to both exes in `plugins/<plugin id>/`, so a new plugin project is packaged without further changes. Add-on plugin
   projects (`<OadmAddOn>true</OadmAddOn>`, `docs/spec/add-ons.md`) are left out (`Test-AddOn` / `is_addon`), so no
@@ -23,8 +27,7 @@ The file layout of every installer and the user-facing install notes are in `pac
 - Code never uses `Assembly.Location` (empty in single-file); use `AppContext.BaseDirectory`.
 - **FFmpeg:** the client bundles the decoder libraries (avcodec, avutil, swscale, swresample; FFmpeg 9, LGPL-2.1 build
   from the `DevEnvy.FFmpeg.Binaries.LGPLv2.Runtime.<rid>` package, bindings `FFmpeg.AutoGen`). They are native shared
-  libraries embedded in the single-file exe and extracted by the .NET host at startup (`DOTNET_BUNDLE_EXTRACT_BASE_DIR`);
-  the publish folder contains only the exe. They add about 57 MB to the win-x64 exe. `OADM_FFMPEG_DIR` loads a
+  libraries beside the exe, about 57 MB on win-x64. `OADM_FFMPEG_DIR` loads a
   user-supplied build instead (LGPL replaceability), `Oadm.Client --check-decoder` verifies the decoder without a window.
   Never add GPL or nonfree FFmpeg builds.
 

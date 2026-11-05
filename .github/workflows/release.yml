@@ -19,7 +19,7 @@ name: release
 #   nuget-pack    (with the installers) the plugin SDK packages, every template built and tested with them
 #   4. nuget      the plugin SDK packages on nuget.org (Trusted Publishing), after the release; skipped without the
 #                 repository variable NUGET_USER and for a pre-release tag (v1.2.0-rc.1)
-# A job starts only when the jobs before it passed, so a release exists only when everything passed.
+# Tests and installers run side by side. The job release needs both, so a release exists only when everything passed.
 on:
   push:
     tags: ['v*.*.*']
@@ -97,7 +97,8 @@ jobs:
 
   installers:
     name: installer ${{ matrix.target }} ${{ matrix.rid }}
-    needs: [tests, docs]
+    # Not after the tests: both take about 14 minutes, side by side a release takes 17 instead of 31. The job release still needs both.
+    needs: docs
     strategy:
       fail-fast: false
       matrix:
@@ -200,6 +201,16 @@ jobs:
           rid="${{ matrix.rid }}"
           for id in $(bash packaging/addons/addon-ids.sh); do
             bash packaging/addons/check-server-hash.sh "artifacts/publish/server/$rid" "artifacts/packages/oadm-addon-$id-$version-$rid.zip" "$id"
+          done
+
+      # What the apps need to really run, on every platform, also the one that is not installed here (docs/spec/packaging.md): a
+      # plugin with all its libraries, the native libraries, the decoder.
+      - name: Self check of the published apps
+        shell: bash
+        run: |
+          for app in server/Oadm.Server client/Oadm.Client; do
+            folder="artifacts/publish/${app%%/*}/${{ matrix.rid }}"
+            "$folder/${app##*/}" --self-check
           done
 
       - name: License texts next to the published exes
@@ -415,6 +426,8 @@ jobs:
           test -f /opt/oadm/client/docs/index.html && test ! -e /opt/oadm/server/docs
           ! sudo journalctl -u oadm-server --no-pager | grep -q 'could not be fixed'
           oadm-client --check-decoder
+          oadm-client --self-check
+          /opt/oadm/server/Oadm.Server --self-check
           sudo apt-get remove -y oadm-server oadm-client
           ! systemctl is-active oadm-server
           sudo test -f /var/lib/oadm/master.key
@@ -428,6 +441,7 @@ jobs:
           test ! -e /opt/oadm/server/Oadm.Server
           test -f /opt/oadm/client/docs/index.html
           oadm-client --check-decoder
+          oadm-client --self-check
           sudo apt-get remove -y oadm-client
           test ! -e /usr/bin/oadm-client
           echo "client only: install, decoder, remove ok"

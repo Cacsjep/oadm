@@ -70,6 +70,14 @@ function Test-Decoder {
     # WinExe: Start-Process returns at once; Invoke-Limited waits for the exit code.
     $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
     if ($d.ExitCode -ne 0) { throw "decoder check failed: $($d.ExitCode)" }
+    # Everything the installed program needs: plugins with all their libraries, native libraries (docs/spec/packaging.md).
+    $c = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--self-check' '' 120
+    if ($c.ExitCode -ne 0) { throw "client self check failed: $($c.ExitCode)" }
+    $server = 'C:\Program Files\OADM\Server\Oadm.Server.exe'
+    if (Test-Path $server) {
+        $s = Invoke-Limited $server '--self-check' '' 120
+        if ($s.ExitCode -ne 0) { throw "server self check failed: $($s.ExitCode)" }
+    }
 }
 
 Show-Machine

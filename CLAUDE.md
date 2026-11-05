@@ -149,7 +149,7 @@ change before you change it, and update it in the same change. One paragraph eac
 must never break.
 
 - **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes (`PublishSingleFile`,
-  `IncludeNativeLibrariesForSelfExtract`, `PublishReadyToRun`), plugins next to each exe, generated
+  `PublishReadyToRun`; server and site node with `IncludeNativeLibrariesForSelfExtract`, the client's native libraries beside its exe), plugins next to each exe, generated
   `THIRD-PARTY-NOTICES.txt`; terms of use accepted on the first client start; installers MSI (Windows x64), .deb
   (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb, a ZIP per
   optional plugin and platform (never in the installers); one

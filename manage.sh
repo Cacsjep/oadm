@@ -530,7 +530,7 @@ cmd_publish() {
   fi
   if [ "$TARGET" = all ] || [ "$TARGET" = client ]; then
     out="$REPO_ROOT/artifacts/publish/client/$RID"
-    publish_app "$CLIENT_PROJECT" "$out"
+    publish_app "$CLIENT_PROJECT" "$out" "-p:IncludeNativeLibrariesForSelfExtract=false" # beside the exe: no unpacking at the first start
     copy_plugins "$out"
     # Help (docs/spec/help.md): the offline docs of manage build docs-offline (release.yml: its job docs), if built.
     if [ -f "$DOCS_OFFLINE/index.html" ]; then cp -R "$DOCS_OFFLINE" "$out/docs"; else echo "warning: no offline docs in artifacts/docs-offline, the client has no Help (manage build docs-offline)" >&2; fi

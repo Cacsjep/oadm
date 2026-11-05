@@ -6,12 +6,19 @@ using Oadm.Server.Hosting;
 // --Oadm:RegenerateTlsCertificate=true (new certificate; clients confirm its fingerprint again).
 // --update runs the update helper (Updates/ServerUpdateHelper).
 // --print-folders prints the data and plugin folders as JSON and exits (FolderReport).
+// --self-check checks the libraries and plugins this program needs and exits, 1 on a problem (SelfCheck).
 // A restore stops the host; on a console a new one is built in this process (the installed service is restarted by its
 // service manager instead, see ServerRestart).
 // --update: the update helper (docs/spec/self-update.md), a copy of this program started outside the service.
 if (args.Contains(Oadm.Server.Updates.HelperArguments.Flag, StringComparer.OrdinalIgnoreCase))
 {
     Environment.ExitCode = await Oadm.Server.Updates.ServerUpdateHelper.RunFromCommandLineAsync(args).ConfigureAwait(false);
+    return;
+}
+
+if (args.Contains(SelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
+{
+    Environment.ExitCode = SelfCheck.Run(Console.Out);
     return;
 }
 
